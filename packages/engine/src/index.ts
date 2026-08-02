@@ -66,6 +66,7 @@ export {
   normalizeVp9CpuUsed,
 } from "./services/vp9Options.js";
 export {
+  getCgroupMemoryLimitMb,
   getSystemTotalMb,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
@@ -179,6 +180,7 @@ export {
   parseImageElements,
   extractVideoFramesRange,
   extractAllVideoFrames,
+  resolveVideoExtractionDuration,
   resolveProjectRelativeSrc,
   getFrameAtTime,
   createFrameLookupTable,

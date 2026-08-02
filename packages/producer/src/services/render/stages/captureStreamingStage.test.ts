@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, expect, it, mock } from "bun:test";
 import { getCaptureStageBrowserConsole } from "../captureStageError.js";
 import { createCapturePlan } from "../capturePlan.js";
@@ -131,8 +132,13 @@ mock.module("../../hdrCompositor.js", () => ({
 }));
 
 mock.module("./captureHdrResources.js", () => ({
+  cleanupHdrVideoFrameSource: () => {},
   decodeHdrImageBuffers: () => new Map(),
-  extractHdrVideoFrames: async () => new Map(),
+  extractHdrVideoFrames: async () => ({
+    sources: new Map(),
+    estimatedBytes: 0,
+    releaseReservation: () => {},
+  }),
   planHdrResources: () => ({
     hdrVideoStartTimes: new Map(),
     nativeHdrVideos: [],

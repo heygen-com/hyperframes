@@ -60,7 +60,6 @@ import {
   type HdrTransitionMeta,
   type HdrVideoFrameSource,
   type TransitionRange,
-  closeHdrVideoFrameSource,
   resolveCompositeTransfer,
 } from "../../hdrCompositor.js";
 import { type HdrPerfCollector, createHdrPerfCollector } from "../hdrPerf.js";
@@ -68,6 +67,7 @@ import type { HdrDiagnostics, ProgressCallback, RenderJob } from "../../renderOr
 import type { CompositionMetadata } from "../shared.js";
 import {
   decodeHdrImageBuffers,
+  cleanupHdrVideoFrameSource,
   extractHdrVideoFrames,
   planHdrResources,
   probeHdrExtractionDims,
@@ -129,6 +129,7 @@ export interface CaptureHdrStageResult {
   warnings: CaptureWarning[];
 }
 
+// fallow-ignore-next-line complexity
 export async function runCaptureHdrStage(
   input: CaptureHdrStageInput,
 ): Promise<CaptureHdrStageResult> {
@@ -215,6 +216,7 @@ export async function runCaptureHdrStage(
   let hdrEncoder: StreamingEncoder | null = null;
   let hdrEncoderClosed = false;
   let domSessionClosed = false;
+  let releaseHdrExtractionReservation: (() => void) | null = null;
   const hdrVideoFrameSources = new Map<string, HdrVideoFrameSource>();
   try {
     await initializeSession(domSession);
@@ -296,7 +298,8 @@ export async function runCaptureHdrStage(
       abortSignal,
       hdrDiagnostics,
     });
-    for (const [id, source] of extracted) hdrVideoFrameSources.set(id, source);
+    releaseHdrExtractionReservation = extracted.releaseReservation;
+    for (const [id, source] of extracted.sources) hdrVideoFrameSources.set(id, source);
     const hdrImageBuffers = decodeHdrImageBuffers({
       log,
       hdrImageSrcPaths,
@@ -454,9 +457,11 @@ export async function runCaptureHdrStage(
       });
     }
     for (const frameSource of hdrVideoFrameSources.values()) {
-      closeHdrVideoFrameSource(frameSource, log);
+      cleanupHdrVideoFrameSource(frameSource, log);
     }
     hdrVideoFrameSources.clear();
+    releaseHdrExtractionReservation?.();
+    releaseHdrExtractionReservation = null;
   }
 
   return {

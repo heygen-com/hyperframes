@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   _resetCgroupLimitCacheForTests,
@@ -151,6 +152,30 @@ describe("parseCgroupLimitMb", () => {
 
   it("uses cgroup v2 when both v2 and v1 contents are present", () => {
     expect(parseCgroupLimitMb(`${4096 * BYTES_PER_MIB}`, `${2048 * BYTES_PER_MIB}`)).toBe(4096);
+  });
+});
+
+describe("getCgroupMemoryLimitMb", () => {
+  it("returns only an actual cgroup limit and never host RAM", async () => {
+    await withSystemMemoryMocks(
+      {
+        files: { [CGROUP_V2_MEMORY_MAX_PATH]: `${24576 * BYTES_PER_MIB}` },
+        hostTotalMb: 65536,
+      },
+      ({ getCgroupMemoryLimitMb }) => {
+        expect(getCgroupMemoryLimitMb()).toBe(24576);
+      },
+    );
+
+    await withSystemMemoryMocks(
+      {
+        files: { [CGROUP_V2_MEMORY_MAX_PATH]: "max" },
+        hostTotalMb: 65536,
+      },
+      ({ getCgroupMemoryLimitMb }) => {
+        expect(getCgroupMemoryLimitMb()).toBeNull();
+      },
+    );
   });
 });
 

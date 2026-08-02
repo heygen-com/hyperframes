@@ -84,6 +84,12 @@ export interface ExtractionOptions {
   format?: VideoFrameFormat;
   sdrToHdrTransfer?: HdrTransfer;
   /**
+   * Absolute composition/timeline end in seconds. Applied only after source
+   * metadata resolves open-ended/natural-duration media, so authored start,
+   * mediaStart, loop, and sentinel semantics remain unchanged.
+   */
+  timelineEnd?: number;
+  /**
    * Bounded per-source FFmpeg retries. Default 0 preserves stable behavior;
    * the producer may canary at most one retry after observing typed failures.
    */
@@ -444,7 +450,10 @@ export function parseVideoElements(html: string): VideoElement[] {
     // reference; the resolver handles both.
     const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     // Derive end from data-end → data-start+data-duration → Infinity (natural duration).
-    // The caller (htmlCompiler) clamps Infinity to the composition's absoluteEnd.
+    // Static compilation cannot always clamp root media because GSAP may supply
+    // the root duration at runtime. The producer passes the resolved timeline
+    // end into frame extraction, which caps the source duration only after the
+    // natural duration is known without rewriting authored timing metadata.
     let end = 0;
     if (endAttr) {
       end = parseFloat(endAttr);
@@ -723,6 +732,24 @@ function resolveSegmentDuration(
   if (Number.isFinite(requested) && requested > 0) return requested;
   const sourceRemaining = metadata.durationSeconds - mediaStart;
   return sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
+}
+
+/** Resolve source duration first, then cap it at the remaining render timeline. */
+export function resolveVideoExtractionDuration(
+  video: Pick<VideoElement, "start" | "end" | "mediaStart">,
+  metadata: VideoMetadata,
+  timelineEnd?: number,
+): number {
+  const resolvedDuration = resolveSegmentDuration(
+    video.end - video.start,
+    video.mediaStart,
+    metadata,
+  );
+  if (timelineEnd === undefined) return resolvedDuration;
+  if (!Number.isFinite(timelineEnd)) {
+    throw new Error(`Video extraction timelineEnd must be finite; got ${String(timelineEnd)}`);
+  }
+  return Math.min(resolvedDuration, Math.max(0, timelineEnd - video.start));
 }
 
 /**
@@ -1029,6 +1056,11 @@ export async function extractAllVideoFrames(
   >,
   compiledDir?: string,
 ): Promise<ExtractionResult> {
+  if (options.timelineEnd !== undefined && !Number.isFinite(options.timelineEnd)) {
+    throw new Error(
+      `Video extraction timelineEnd must be finite; got ${String(options.timelineEnd)}`,
+    );
+  }
   const startTime = Date.now();
   const extracted: ExtractedFrames[] = [];
   const errors: VideoExtractionFailure[] = [];
@@ -1062,6 +1094,7 @@ export async function extractAllVideoFrames(
   const warnedSrcs = new Set<string>();
   for (const video of videos) {
     if (signal?.aborted) break;
+    if (options.timelineEnd !== undefined && video.start >= options.timelineEnd) continue;
     try {
       let videoPath = video.src;
       if (!isHttpUrl(videoPath)) {
@@ -1113,8 +1146,8 @@ export async function extractAllVideoFrames(
   breakdown.resolveMs = Date.now() - phase1Start;
 
   // Snapshot the pre-preflight key inputs so the extraction cache keys on the
-  // user-visible source (original path, original mediaStart, original segment
-  // bounds) rather than the workDir-local normalized file produced by the
+  // user-visible source (original path and mediaStart) rather than the
+  // workDir-local normalized file produced by the
   // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
@@ -1129,8 +1162,6 @@ export async function extractAllVideoFrames(
       mtimeMs: stat.mtimeMs,
       size: stat.size,
       mediaStart: video.mediaStart,
-      start: video.start,
-      end: video.end,
     };
   });
 
@@ -1316,17 +1347,12 @@ export async function extractAllVideoFrames(
       ? sdrToHdrTransformKey(work.sdrToHdrTransfer)
       : undefined;
 
-    const keyDuration = resolveSegmentDuration(
-      keyInput.end - keyInput.start,
-      keyInput.mediaStart,
-      work.metadata,
-    );
     const lookup = lookupCacheEntry(cacheRootDir, {
       videoPath: keyInput.videoPath,
       mtimeMs: keyInput.mtimeMs,
       size: keyInput.size,
       mediaStart: keyInput.mediaStart,
-      duration: keyDuration,
+      duration: work.videoDuration,
       fps: options.fps,
       format: work.format,
       transform,
@@ -1516,11 +1542,7 @@ export async function extractAllVideoFrames(
       }
       try {
         const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
-        const videoDuration = resolveSegmentDuration(
-          video.end - video.start,
-          video.mediaStart,
-          metadata,
-        );
+        const videoDuration = resolveVideoExtractionDuration(video, metadata, options.timelineEnd);
         if (video.end - video.start !== videoDuration) {
           video.end = video.start + videoDuration;
         }

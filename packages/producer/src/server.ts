@@ -84,6 +84,7 @@ interface RenderInput {
   quality: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   videoFrameFormat?: RenderConfig["videoFrameFormat"];
+  hdrMode?: RenderConfig["hdrMode"];
   workers?: number;
   useGpu: boolean;
   debug: boolean;
@@ -158,6 +159,10 @@ function parseServerFormat(value: unknown): RenderInput["format"] {
   return value === "mp4" || value === "webm" || value === "mov" ? value : undefined;
 }
 
+function parseServerHdrMode(value: unknown): RenderInput["hdrMode"] {
+  return value === "auto" || value === "force-hdr" || value === "force-sdr" ? value : undefined;
+}
+
 export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "projectDir"> {
   // Accept either a JSON `number` (integer fps) or a JSON `string` (rational
   // like "30000/1001"). Falls back to 30 fps on parse failure to preserve the
@@ -176,6 +181,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const outputPath = parseOutputCandidate(body);
   const entryFile = nonEmptyString(body.entryFile);
   const format = parseServerFormat(body.format);
+  const hdrMode = parseServerHdrMode(body.hdrMode);
   const videoFrameFormat = isVideoFrameFormat(body.videoFrameFormat)
     ? body.videoFrameFormat
     : undefined;
@@ -193,6 +199,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     strictness,
     entryFile,
     format,
+    hdrMode,
     variables,
     outputResolution,
     outputResolutionAspectAgnostic,
@@ -254,6 +261,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
+      hdrMode: input.hdrMode,
     },
   });
   return renderConfigFromRequest(request, { logger: log });
@@ -285,6 +293,9 @@ function resolvePreparedRenderOutput(
 function validateRenderOverrides(body: Record<string, unknown>): string | undefined {
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
+  }
+  if (body.hdrMode !== undefined && parseServerHdrMode(body.hdrMode) === undefined) {
+    return 'hdrMode must be one of: "auto", "force-hdr", "force-sdr"';
   }
   return validateOutputResolutionOverride(body);
 }

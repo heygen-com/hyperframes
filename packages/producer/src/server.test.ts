@@ -46,6 +46,17 @@ describe("parseRenderOptions — render strictness", () => {
   });
 });
 
+describe("parseRenderOptions — hdrMode", () => {
+  it.each(["auto", "force-hdr", "force-sdr"] as const)("forwards %s", (hdrMode) => {
+    expect(parseRenderOptions({ hdrMode }).hdrMode).toBe(hdrMode);
+  });
+
+  it("drops invalid values from the lenient parser", () => {
+    expect(parseRenderOptions({ hdrMode: "hdr" }).hdrMode).toBeUndefined();
+    expect(parseRenderOptions({ hdrMode: true }).hdrMode).toBeUndefined();
+  });
+});
+
 describe("prepareRenderBody — validation", () => {
   it.each(["", "   "])(
     "treats an empty projectDir as absent and uses inline HTML",
@@ -65,6 +76,14 @@ describe("prepareRenderBody — validation", () => {
     const result = await prepareRenderBody({ variables: [1, 2], html: "<html></html>" });
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("variables must be a JSON object");
+  });
+
+  it("rejects an explicitly-supplied invalid hdrMode", async () => {
+    const result = await prepareRenderBody({ hdrMode: "hdr", html: "<html></html>" });
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain(
+      'hdrMode must be one of: "auto", "force-hdr", "force-sdr"',
+    );
   });
 
   it("rejects an explicitly-supplied invalid outputResolution", async () => {

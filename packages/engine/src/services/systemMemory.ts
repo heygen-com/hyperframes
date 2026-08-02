@@ -80,7 +80,11 @@ export function _resetCgroupLimitCacheForTests(): void {
   _warnedCgroupReadFailure = false;
 }
 
-function getCgroupLimitMb(): number | null {
+/**
+ * Actual Linux cgroup memory ceiling in MiB, or null when the process is not
+ * cgroup-limited. Unlike getSystemTotalMb this never falls back to host RAM.
+ */
+export function getCgroupMemoryLimitMb(): number | null {
   if (_cachedCgroupLimitMb !== undefined) return _cachedCgroupLimitMb;
 
   if (process.platform !== "linux") {
@@ -142,7 +146,7 @@ function warnCgroupReadFailure(path: string, error: unknown): void {
 /** Total physical RAM in MiB. */
 export function getSystemTotalMb(): number {
   const hostTotalMb = Math.floor(totalmem() / BYTES_PER_MIB);
-  const cgroupLimitMb = getCgroupLimitMb();
+  const cgroupLimitMb = getCgroupMemoryLimitMb();
 
   return cgroupLimitMb === null ? hostTotalMb : Math.min(hostTotalMb, cgroupLimitMb);
 }

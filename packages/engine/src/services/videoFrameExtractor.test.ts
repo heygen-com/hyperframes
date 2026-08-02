@@ -24,6 +24,7 @@ import {
   resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
+  resolveVideoExtractionDuration,
   getFrameAtTime,
   analyzeClipMediaFit,
   classifyVideoExtractionError,
@@ -44,6 +45,55 @@ import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.j
 // below run too — they exercise the extractor in isolation against a
 // synthesized VFR fixture.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
+
+describe("resolveVideoExtractionDuration", () => {
+  const metadata = (durationSeconds: number): VideoMetadata => ({
+    durationSeconds,
+    videoStreamDurationSeconds: durationSeconds,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    videoCodec: "h264",
+    hasAudio: false,
+    isVFR: false,
+    hasAlpha: false,
+    colorSpace: null,
+  });
+  const video = (overrides: Partial<VideoElement> = {}): VideoElement => ({
+    id: "root-video",
+    src: "video.mp4",
+    start: 0,
+    end: Number.POSITIVE_INFINITY,
+    mediaStart: 0,
+    loop: false,
+    hasAudio: false,
+    ...overrides,
+  });
+
+  it("caps an open 60-second root source to a two-second composition", () => {
+    expect(resolveVideoExtractionDuration(video(), metadata(60), 2)).toBe(2);
+  });
+
+  it("keeps a shorter natural source duration inside a longer composition", () => {
+    expect(resolveVideoExtractionDuration(video(), metadata(2), 10)).toBe(2);
+  });
+
+  it("preserves explicit bounds and loop flags while applying the timeline ceiling", () => {
+    const explicitLoop = video({ end: 8, loop: true });
+    expect(resolveVideoExtractionDuration(explicitLoop, metadata(60), 10)).toBe(8);
+    expect(explicitLoop.loop).toBe(true);
+  });
+
+  it("preserves negative start and mediaStart semantics", () => {
+    const preroll = video({ start: -3, mediaStart: 5 });
+    expect(resolveVideoExtractionDuration(preroll, metadata(60), 2)).toBe(5);
+    expect(preroll).toMatchObject({ start: -3, mediaStart: 5 });
+  });
+
+  it("retains legacy behavior when no timeline end is supplied", () => {
+    expect(resolveVideoExtractionDuration(video(), metadata(60))).toBe(60);
+  });
+});
 
 describe("video extraction failure taxonomy and bounded retry", () => {
   it("classifies missing and transient HTTP sources without exposing retry ambiguity", () => {
