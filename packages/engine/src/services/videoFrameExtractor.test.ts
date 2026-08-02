@@ -24,6 +24,7 @@ import {
   resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
+  resolveVideoExtractionWindow,
   resolveVideoExtractionDuration,
   getFrameAtTime,
   analyzeClipMediaFit,
@@ -84,10 +85,14 @@ describe("resolveVideoExtractionDuration", () => {
     expect(explicitLoop.loop).toBe(true);
   });
 
-  it("preserves negative start and mediaStart semantics", () => {
-    const preroll = video({ start: -3, mediaStart: 5 });
-    expect(resolveVideoExtractionDuration(preroll, metadata(60), 2)).toBe(5);
-    expect(preroll).toMatchObject({ start: -3, mediaStart: 5 });
+  it("trims materially negative preroll and advances the source offset", () => {
+    const preroll = video({ start: -60, end: 120, mediaStart: 0 });
+    expect(resolveVideoExtractionWindow(preroll, metadata(120), 2)).toEqual({
+      compositionStart: 0,
+      mediaStart: 60,
+      durationSeconds: 2,
+    });
+    expect(resolveVideoExtractionDuration(preroll, metadata(120), 2)).toBe(2);
   });
 
   it("retains legacy behavior when no timeline end is supplied", () => {

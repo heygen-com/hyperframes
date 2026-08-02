@@ -130,10 +130,10 @@ describe("resolveHdrExtractionWindow", () => {
     });
   });
 
-  it("preserves negative starts and source offsets while bounding the timeline end", () => {
-    expect(resolveHdrExtractionWindow({ id: "hdr", start: -3, end: 60, mediaStart: 5 }, 2)).toEqual(
-      { compositionStart: -3, mediaStart: 5, durationSeconds: 5 },
-    );
+  it("trims materially negative preroll and advances the source offset", () => {
+    expect(
+      resolveHdrExtractionWindow({ id: "hdr", start: -60, end: 120, mediaStart: 0 }, 2),
+    ).toEqual({ compositionStart: 0, mediaStart: 60, durationSeconds: 2 });
   });
 
   it("rejects HDR media with no interval inside the composition", () => {
@@ -197,7 +197,7 @@ describe("reserveHdrExtractionBytes", () => {
 describe("extractHdrVideoFrames", () => {
   it("pins FFmpeg seek/duration, raw frame count, and reservation lifetime", async () => {
     const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-extract-"));
-    const video = hdrVideo("preroll", { start: -1, end: 60, mediaStart: 7 });
+    const video = hdrVideo("preroll", { start: -60, end: 120, mediaStart: 0 });
     const fixture = hdrExtractionFixture([video], framesDir);
     const calls: string[][] = [];
 
@@ -208,19 +208,20 @@ describe("extractHdrVideoFrames", () => {
           calls.push(args);
           const rawPath = args.at(-1);
           if (!rawPath) throw new Error("mock FFmpeg output path missing");
-          // start=-1 through composition end=2 => 3s * 2fps = 6 rgb48le 1x1 frames.
-          writeFileSync(rawPath, Buffer.alloc(6 * 6));
+          // The visible [0, 2] interval is two seconds at 2fps = 4 rgb48le 1x1 frames.
+          writeFileSync(rawPath, Buffer.alloc(4 * 6));
           return ffmpegResult(true);
         },
       });
       try {
         expect(calls).toHaveLength(1);
         const args = calls[0] ?? [];
-        expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual(["-ss", "7"]);
-        expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "3"]);
-        expect(extracted.sources.get("preroll")?.frameCount).toBe(6);
-        expect(extracted.estimatedBytes).toBe(36);
-        expect(getHdrExtractionReservedBytes()).toBe(36);
+        expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual(["-ss", "60"]);
+        expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "2"]);
+        expect(fixture.prep.hdrVideoStartTimes.get("preroll")).toBe(0);
+        expect(extracted.sources.get("preroll")?.frameCount).toBe(4);
+        expect(extracted.estimatedBytes).toBe(24);
+        expect(getHdrExtractionReservedBytes()).toBe(24);
       } finally {
         for (const source of extracted.sources.values()) cleanupHdrVideoFrameSource(source);
         extracted.releaseReservation();

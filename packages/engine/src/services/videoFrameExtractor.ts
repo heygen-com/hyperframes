@@ -85,8 +85,8 @@ export interface ExtractionOptions {
   sdrToHdrTransfer?: HdrTransfer;
   /**
    * Absolute composition/timeline end in seconds. Applied only after source
-   * metadata resolves open-ended/natural-duration media, so authored start,
-   * mediaStart, loop, and sentinel semantics remain unchanged.
+   * metadata resolves open-ended/natural-duration media. Invisible negative
+   * preroll is trimmed while advancing mediaStart to preserve source alignment.
    */
   timelineEnd?: number;
   /**
@@ -734,22 +734,61 @@ function resolveSegmentDuration(
   return sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
 }
 
-/** Resolve source duration first, then cap it at the remaining render timeline. */
-export function resolveVideoExtractionDuration(
+export interface TimelineExtractionWindow {
+  compositionStart: number;
+  mediaStart: number;
+  durationSeconds: number;
+}
+
+/** Intersect a resolved source interval with the render timeline. */
+export function resolveTimelineExtractionWindow(
+  video: Pick<VideoElement, "start" | "end" | "mediaStart">,
+  resolvedDuration: number,
+  timelineEnd?: number,
+): TimelineExtractionWindow {
+  if (timelineEnd === undefined) {
+    return {
+      compositionStart: video.start,
+      mediaStart: video.mediaStart,
+      durationSeconds: resolvedDuration,
+    };
+  }
+  if (!Number.isFinite(timelineEnd)) {
+    throw new Error(`Video extraction timelineEnd must be finite; got ${String(timelineEnd)}`);
+  }
+  const compositionStart = Math.max(0, video.start);
+  const trimmedPreroll = compositionStart - video.start;
+  const durationSeconds = Math.max(
+    0,
+    Math.min(resolvedDuration - trimmedPreroll, timelineEnd - compositionStart),
+  );
+  return {
+    compositionStart,
+    mediaStart: video.mediaStart + trimmedPreroll,
+    durationSeconds,
+  };
+}
+
+/** Resolve source duration first, then intersect it with the render timeline. */
+export function resolveVideoExtractionWindow(
   video: Pick<VideoElement, "start" | "end" | "mediaStart">,
   metadata: VideoMetadata,
   timelineEnd?: number,
-): number {
+): TimelineExtractionWindow {
   const resolvedDuration = resolveSegmentDuration(
     video.end - video.start,
     video.mediaStart,
     metadata,
   );
-  if (timelineEnd === undefined) return resolvedDuration;
-  if (!Number.isFinite(timelineEnd)) {
-    throw new Error(`Video extraction timelineEnd must be finite; got ${String(timelineEnd)}`);
-  }
-  return Math.min(resolvedDuration, Math.max(0, timelineEnd - video.start));
+  return resolveTimelineExtractionWindow(video, resolvedDuration, timelineEnd);
+}
+
+export function resolveVideoExtractionDuration(
+  video: Pick<VideoElement, "start" | "end" | "mediaStart">,
+  metadata: VideoMetadata,
+  timelineEnd?: number,
+): number {
+  return resolveVideoExtractionWindow(video, metadata, timelineEnd).durationSeconds;
 }
 
 /**
@@ -1146,10 +1185,11 @@ export async function extractAllVideoFrames(
   breakdown.resolveMs = Date.now() - phase1Start;
 
   // Snapshot the pre-preflight key inputs so the extraction cache keys on the
-  // user-visible source (original path and mediaStart) rather than the
+  // user-visible source path rather than the
   // workDir-local normalized file produced by the
   // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
+  // Phase 3 updates mediaStart after trimming any invisible negative preroll.
   const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
     const stat = readKeyStat(videoPath);
     // Missing files return null — skip the cache path for that entry. The
@@ -1542,10 +1582,16 @@ export async function extractAllVideoFrames(
       }
       try {
         const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
-        const videoDuration = resolveVideoExtractionDuration(video, metadata, options.timelineEnd);
-        if (video.end - video.start !== videoDuration) {
-          video.end = video.start + videoDuration;
+        const window = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
+        const videoDuration = window.durationSeconds;
+        if (videoDuration <= 0) {
+          throw new Error(`Video "${video.id}" has no interval inside the render timeline`);
         }
+        video.start = window.compositionStart;
+        video.end = window.compositionStart + videoDuration;
+        video.mediaStart = window.mediaStart;
+        const keyInput = cacheKeyInputs[index];
+        if (keyInput) keyInput.mediaStart = window.mediaStart;
 
         const format = resolveFrameFormat(metadata, options.format);
         const sdrToHdrTransfer = sdrToHdrTransfers[index];

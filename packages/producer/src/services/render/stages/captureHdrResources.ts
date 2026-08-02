@@ -35,7 +35,9 @@ import {
   normalizeObjectFit,
   queryElementStacking,
   resampleRgb48leObjectFit,
+  resolveTimelineExtractionWindow,
   runFfmpeg,
+  type TimelineExtractionWindow,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
@@ -260,11 +262,7 @@ export function getHdrExtractionReservedBytes(): number {
   return aggregateHdrExtractionReservedBytes;
 }
 
-export interface HdrExtractionWindow {
-  compositionStart: number;
-  mediaStart: number;
-  durationSeconds: number;
-}
+export type HdrExtractionWindow = TimelineExtractionWindow;
 
 export function resolveHdrExtractionWindow(
   video: { id: string; start: number; end: number; mediaStart: number },
@@ -277,21 +275,22 @@ export function resolveHdrExtractionWindow(
   }
   const requestedEnd =
     Number.isFinite(video.end) && video.end > video.start ? video.end : compositionDuration;
-  const effectiveEnd = Math.min(requestedEnd, compositionDuration);
-  const compositionStart = video.start;
-  const durationSeconds = effectiveEnd - video.start;
-  const mediaStart = video.mediaStart;
+  const window = resolveTimelineExtractionWindow(
+    video,
+    requestedEnd - video.start,
+    compositionDuration,
+  );
   if (
-    !Number.isFinite(durationSeconds) ||
-    durationSeconds <= 0 ||
-    !Number.isFinite(mediaStart) ||
-    mediaStart < 0
+    !Number.isFinite(window.durationSeconds) ||
+    window.durationSeconds <= 0 ||
+    !Number.isFinite(window.mediaStart) ||
+    window.mediaStart < 0
   ) {
     throw new Error(
       `HDR video "${video.id}" has no finite interval inside the ${compositionDuration}s composition`,
     );
   }
-  return { compositionStart, mediaStart, durationSeconds };
+  return window;
 }
 
 function cleanupHdrFrameDirectory(
@@ -416,6 +415,7 @@ export async function extractHdrVideoFrames(args: {
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
     const window = resolveHdrExtractionWindow(video, composition.duration);
     extractionWindows.set(videoId, window);
+    prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
     plannedVideos.push({
       durationSeconds: window.durationSeconds,
       width: dims.width,
