@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.89"
+  description="Released - 2026-08-02"
+  tags={["Release", "Studio", "CLI"]}
+>
+Stops generated waveform, thumbnail, and transcode caches from retriggering Studio project reloads or appearing as project files. Real source edits still invalidate previews normally.
+
+## Fixes
+
+- **CLI:** Ignore generated cache directories in the recursive project watcher, preventing preview refresh loops during cache generation ([#2952](https://github.com/heygen-com/hyperframes/pull/2952))
+- **Studio:** Keep generated caches out of Storyboard signatures and the project file tree while retaining invalidation for real source edits ([#2952](https://github.com/heygen-com/hyperframes/pull/2952))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.88...v0.7.89).
+</Update>
+
+<Update
   label="HyperFrames v0.7.88"
   description="Released - 2026-08-01"
   tags={["Release", "Engine", "Guides", "Prompting"]}
