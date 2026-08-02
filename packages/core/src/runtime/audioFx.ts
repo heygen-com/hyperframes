@@ -11,7 +11,12 @@
  */
 
 import { HF_AUDIO_FX_ATTR, parseAudioFxChain, type HfAudioFxChain } from "../audioFx.js";
-import { buildFxChain, chainNeedsWorklets, ensureAudioFxWorklets } from "../audio/audioFxGraph.js";
+import {
+  audioFxWorkletsReady,
+  buildFxChain,
+  chainNeedsWorklets,
+  ensureAudioFxWorklets,
+} from "../audio/audioFxGraph.js";
 import type { FxChainHandle } from "../audio/audioFxGraph.js";
 
 const EMPTY: HfAudioFxChain = { version: 1, nodes: [] };
@@ -56,6 +61,36 @@ export function attachElementFxChain(
     return null;
   }
 
+  // An AudioWorkletNode cannot be constructed before its processor is
+  // registered — it throws, and the whole chain is lost. So when the chain
+  // needs worklets and the module has not landed yet, play dry and swap the
+  // graph in once registration resolves.
+  if (chainNeedsWorklets(chain) && !audioFxWorkletsReady(ctx)) {
+    source.connect(destination);
+    let cancelled = false;
+    let pending: FxChainHandle | null = null;
+    void ensureAudioFxWorklets(ctx)
+      .then(() => {
+        if (cancelled) return;
+        try {
+          const late = buildFxChain(ctx, chain);
+          source.disconnect(destination);
+          source.connect(late.input);
+          late.output.connect(destination);
+          pending = late;
+        } catch {
+          // Still unbuildable; the dry connection already stands.
+        }
+      })
+      .catch(() => undefined);
+    return {
+      dispose: () => {
+        cancelled = true;
+        pending?.dispose();
+      },
+    };
+  }
+
   let handle: FxChainHandle;
   try {
     handle = buildFxChain(ctx, chain);
@@ -67,12 +102,6 @@ export function attachElementFxChain(
 
   source.connect(handle.input);
   handle.output.connect(destination);
-
-  if (chainNeedsWorklets(chain)) {
-    // Worklet processors are registered lazily; until the module resolves those
-    // nodes pass silence, which is a brief dropout rather than a broken track.
-    void ensureAudioFxWorklets(ctx).catch(() => undefined);
-  }
 
   // Follow the attribute while the source plays, so dragging a knob is heard
   // without rescheduling the track. Values-only changes re-parameterise the
