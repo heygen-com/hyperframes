@@ -88,6 +88,8 @@ export interface AutomationRange {
   unit: string;
   label: string;
   scale: "linear" | "log";
+  /** Where an empty lane draws its flat line, and what a new point starts at. */
+  default: number;
 }
 
 export const VOLUME_RANGE: AutomationRange = {
@@ -97,6 +99,7 @@ export const VOLUME_RANGE: AutomationRange = {
   unit: "",
   label: "Volume",
   scale: "linear",
+  default: 1,
 };
 
 /**
@@ -124,6 +127,7 @@ export function resolveAutomationRange(
     unit: p.unit,
     label: `${def?.label ?? node.type} · ${p.label}`,
     scale: p.scale === "log" && p.min > 0 ? "log" : "linear",
+    default: p.default,
   };
 }
 
