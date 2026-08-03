@@ -94,6 +94,26 @@ describe("distributed video metadata", () => {
     expect(sourceDerived.videos[0]?.mediaStart).toBe(1);
   });
 
+  it("round-trips a non-zero video stream start and defaults legacy plans to zero", () => {
+    const withStart = buildPlanVideosJson({
+      videos: [video()],
+      extracted: [
+        extractedMetadata({
+          metadata: {
+            ...extractedMetadata().metadata,
+            videoStreamStartSeconds: 5,
+          },
+        }),
+      ],
+      compositionEnd: 8,
+    });
+    expect(parsePlanVideosJson(withStart).extracted[0]?.metadata.videoStreamStartSeconds).toBe(5);
+
+    const legacy = structuredClone(withStart);
+    delete legacy.extracted[0]?.metadata.videoStreamStartSeconds;
+    expect(parsePlanVideosJson(legacy).extracted[0]?.metadata.videoStreamStartSeconds).toBe(0);
+  });
+
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, 2])(
     "fails closed when no safe composition boundary can be derived (%s)",
     (compositionEnd) => {

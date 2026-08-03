@@ -268,6 +268,7 @@ describe.skipIf(!HAS_FFMPEG)("raw HDR held tails on sparse-timestamp sources", (
   const fixtureDir = mkdtempSync(join(tmpdir(), "hf-hdr-sparse-held-tail-"));
   const cfrFixture = join(fixtureDir, "sub-1fps-cfr.mp4");
   const vfrFixture = join(fixtureDir, "sparse-vfr.mp4");
+  const nonZeroStartFixture = join(fixtureDir, "nonzero-start.mp4");
 
   beforeAll(async () => {
     const fixtures = [
@@ -280,6 +281,11 @@ describe.skipIf(!HAS_FFMPEG)("raw HDR held tails on sparse-timestamp sources", (
         path: vfrFixture,
         input: "testsrc2=s=64x64:d=10:rate=1/2",
         filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-vsync", "vfr"],
+      },
+      {
+        path: nonZeroStartFixture,
+        input: "testsrc2=s=64x64:d=3:rate=1",
+        filters: ["-output_ts_offset", "5"],
       },
     ];
     for (const fixture of fixtures) {
@@ -310,14 +316,21 @@ describe.skipIf(!HAS_FFMPEG)("raw HDR held tails on sparse-timestamp sources", (
   });
 
   it.each([
-    { label: "sub-1fps CFR", src: cfrFixture, expectedVfr: false },
-    { label: "sparse VFR", src: vfrFixture, expectedVfr: true },
+    { label: "sub-1fps CFR", src: cfrFixture, expectedVfr: false, streamStart: 0 },
+    { label: "sparse VFR", src: vfrFixture, expectedVfr: true, streamStart: 0 },
+    {
+      label: "non-zero stream start",
+      src: nonZeroStartFixture,
+      expectedVfr: false,
+      streamStart: 5,
+    },
   ])(
     "writes exactly one raw HDR frame for $label",
-    async ({ src, expectedVfr }) => {
+    async ({ src, expectedVfr, streamStart }) => {
       const metadata = await extractMediaMetadata(src);
-      expect(metadata.fps).toBeLessThan(1);
+      expect(metadata.fps).toBeLessThanOrEqual(1);
       expect(metadata.isVFR).toBe(expectedVfr);
+      expect(metadata.videoStreamStartSeconds).toBeCloseTo(streamStart, 6);
       const framesDir = mkdtempSync(join(fixtureDir, "raw-out-"));
       const video = hdrVideo(`real-${String(expectedVfr)}`, {
         src,

@@ -972,6 +972,112 @@ describe("AAC duration refinement must never fail or distort the call", () => {
   });
 });
 
+describe("final video frame timestamp probes", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("normalizes absolute frame PTS by the selected video stream start", async () => {
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 64,
+              height: 64,
+              duration: "3",
+              start_time: "5",
+              r_frame_rate: "1/1",
+              avg_frame_rate: "1/1",
+            },
+          ],
+          format: { duration: "8" },
+        }),
+      },
+      { kind: "exit", code: 0, stdout: "5.000000,\n6.000000\n7.000000\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractFinalVideoFrameTimestamp, extractMediaMetadata } = await import("./ffprobe.js");
+
+    const metadata = await extractMediaMetadata("/tmp/nonzero-start.mp4");
+    expect(metadata.videoStreamDurationSeconds).toBe(3);
+    expect(metadata.videoStreamStartSeconds).toBe(5);
+    await expect(extractFinalVideoFrameTimestamp("/tmp/nonzero-start.mp4", metadata)).resolves.toBe(
+      2,
+    );
+
+    const intervalIndex = calls[1]?.args.indexOf("-read_intervals") ?? -1;
+    expect(calls[1]?.args[intervalIndex + 1]).toBe("7%8");
+  });
+
+  it("does not share a caller-cancellable probe across render consumers", async () => {
+    type KillableFakeProc = FakeProc & { kill: (signal?: NodeJS.Signals) => boolean };
+    const processes: KillableFakeProc[] = [];
+    const spawn = () => {
+      const proc = new EventEmitter() as KillableFakeProc;
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = vi.fn(() => {
+        process.nextTick(() => proc.emit("close", null, "SIGTERM"));
+        return true;
+      });
+      processes.push(proc);
+      process.nextTick(() => proc.emit("spawn"));
+      return proc;
+    };
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractFinalVideoFrameTimestamp } = await import("./ffprobe.js");
+    const metadata = { videoStreamDurationSeconds: 3, videoStreamStartSeconds: 0 };
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    const first = extractFinalVideoFrameTimestamp(
+      "/tmp/shared-source.mp4",
+      metadata,
+      firstController.signal,
+    );
+    const second = extractFinalVideoFrameTimestamp(
+      "/tmp/shared-source.mp4",
+      metadata,
+      secondController.signal,
+    );
+    expect(processes).toHaveLength(2);
+
+    firstController.abort();
+    await expect(first).rejects.toThrow(/ffprobe abort/);
+    expect(processes[0]?.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(processes[1]?.kill).not.toHaveBeenCalled();
+
+    processes[1]?.stdout.emit("data", Buffer.from("2.000000\n"));
+    processes[1]?.emit("close", 0, null);
+    await expect(second).resolves.toBe(2);
+
+    expect(secondController.signal.aborted).toBe(false);
+  });
+
+  it("still deduplicates cancellation-independent probes", async () => {
+    const { spawn, calls } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "2.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractFinalVideoFrameTimestamp } = await import("./ffprobe.js");
+    const metadata = { videoStreamDurationSeconds: 3, videoStreamStartSeconds: 0 };
+
+    await Promise.all([
+      extractFinalVideoFrameTimestamp("/tmp/shared-source.mp4", metadata),
+      extractFinalVideoFrameTimestamp("/tmp/shared-source.mp4", metadata),
+    ]);
+
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe("runFfprobe process and stream handling", () => {
   afterEach(() => {
     vi.resetModules();

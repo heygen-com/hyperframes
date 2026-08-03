@@ -153,6 +153,13 @@ function readVideoMetadata(
       record.videoStreamDurationSeconds,
       `${field}.videoStreamDurationSeconds`,
     ),
+    // Plans written before stream-start metadata existed implicitly used the
+    // overwhelmingly common start-at-zero domain. Preserve that compatibility
+    // while carrying non-zero edit-list/transport timestamps in new plans.
+    videoStreamStartSeconds:
+      record.videoStreamStartSeconds === undefined
+        ? 0
+        : readFiniteNumber(record.videoStreamStartSeconds, `${field}.videoStreamStartSeconds`),
     width: readPositiveInteger(record.width, `${field}.width`),
     height: readPositiveInteger(record.height, `${field}.height`),
     fps: readFiniteNumber(record.fps, `${field}.fps`),

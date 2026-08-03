@@ -902,7 +902,10 @@ export async function resolveFinalFrameExtractionWindow(
   const playableDuration = resolvePlayableVideoDuration(metadata);
   const finalFrameTimestamp = await extractFinalVideoFrameTimestamp(
     videoPath,
-    playableDuration,
+    {
+      videoStreamDurationSeconds: playableDuration,
+      videoStreamStartSeconds: metadata.videoStreamStartSeconds,
+    },
     signal,
   );
   if (window.mediaStart < finalFrameTimestamp - 1e-9) return window;

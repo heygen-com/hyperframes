@@ -158,6 +158,11 @@ export interface VideoColorSpace {
 export interface VideoMetadata {
   durationSeconds: number;
   videoStreamDurationSeconds: number;
+  /** Absolute presentation timestamp at which the selected video stream
+   * starts. FFmpeg input seeks are relative to this point, while ffprobe frame
+   * timestamps are absolute, so callers crossing those APIs must normalize by
+   * this value. Absent only in legacy/manually-constructed metadata. */
+  videoStreamStartSeconds?: number;
   width: number;
   height: number;
   fps: number;
@@ -192,6 +197,7 @@ interface FFProbeStream {
   width?: number;
   height?: number;
   duration?: string;
+  start_time?: string;
   nb_frames?: string;
   nb_read_packets?: string;
   pix_fmt?: string;
@@ -485,6 +491,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
         return {
           durationSeconds: 0,
           videoStreamDurationSeconds: 0,
+          videoStreamStartSeconds: 0,
           width: stillImageMeta.width,
           height: stillImageMeta.height,
           fps: 0,
@@ -535,10 +542,13 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
 
     const containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
+    const parsedStreamStart = videoStream.start_time ? parseFloat(videoStream.start_time) : 0;
+    const streamStart = Number.isFinite(parsedStreamStart) ? parsedStreamStart : 0;
 
     return {
       durationSeconds: containerDuration,
       videoStreamDurationSeconds: streamDuration > 0 ? streamDuration : containerDuration,
+      videoStreamStartSeconds: streamStart,
       width: videoStream.width || stillImage()?.width || 0,
       height: videoStream.height || stillImage()?.height || 0,
       fps,
@@ -560,20 +570,30 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
 }
 
 /**
- * Return the presentation timestamp of the final decoded video frame.
+ * Return the FFmpeg input-seek position of the final decoded video frame.
  *
  * A fixed seek window near EOF is not sufficient: sub-1fps and sparse VFR
  * sources can have no frame timestamp inside that window even though the last
  * decoded frame remains displayed through the stream duration. ffprobe seeks
  * to the preceding keyframe and walks forward; retaining only its stdout tail
- * keeps memory bounded even for a pathological long GOP.
+ * keeps memory bounded even for a pathological long GOP. ffprobe reports
+ * absolute presentation timestamps, but FFmpeg input `-ss` is relative to the
+ * stream start; the result is normalized into that relative seek domain.
  */
 export async function extractFinalVideoFrameTimestamp(
   filePath: string,
-  videoDurationSeconds: number,
+  metadata: Pick<VideoMetadata, "videoStreamDurationSeconds" | "videoStreamStartSeconds">,
   signal?: AbortSignal,
 ): Promise<number> {
-  const cached = finalVideoFrameTimestampCache.get(filePath);
+  const videoDurationSeconds = metadata.videoStreamDurationSeconds;
+  const candidateStreamStart = metadata.videoStreamStartSeconds ?? 0;
+  const videoStreamStartSeconds = Number.isFinite(candidateStreamStart) ? candidateStreamStart : 0;
+  const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoDurationSeconds)}`;
+  // A caller-owned abort signal cannot safely own a globally shared process
+  // promise: aborting the first render would fail unrelated consumers, while
+  // a later consumer could not cancel its own wait. Match the audio-probe
+  // policy below and cache only cancellation-independent probes.
+  const cached = signal ? undefined : finalVideoFrameTimestampCache.get(cacheKey);
   if (cached) return cached;
 
   const probePromise = (async () => {
@@ -582,14 +602,15 @@ export async function extractFinalVideoFrameTimestamp(
         `[FFmpeg] Cannot locate final video frame for invalid duration ${String(videoDurationSeconds)}`,
       );
     }
-    const intervalStart = Math.max(0, videoDurationSeconds - 1);
+    const streamEnd = videoStreamStartSeconds + videoDurationSeconds;
+    const intervalStart = Math.max(videoStreamStartSeconds, streamEnd - 1);
     const stdout = await runFfprobe(
       filePath,
       [
         "-select_streams",
         "v:0",
         "-read_intervals",
-        `${intervalStart}%${videoDurationSeconds}`,
+        `${intervalStart}%${streamEnd}`,
         "-show_entries",
         "frame=best_effort_timestamp_time",
         "-of",
@@ -603,20 +624,22 @@ export async function extractFinalVideoFrameTimestamp(
       .map((line) => line.trim().split(",")[0]?.trim() ?? "")
       .filter((value) => value.length > 0)
       .map((value) => Number(value))
-      .filter((timestamp) => Number.isFinite(timestamp) && timestamp >= 0);
+      .filter((timestamp) => Number.isFinite(timestamp));
     const timestamp = timestamps.at(-1);
     if (timestamp === undefined) {
       throw new Error("[FFmpeg] ffprobe found no decodable final video frame");
     }
-    return Math.min(timestamp, videoDurationSeconds);
+    return Math.min(Math.max(timestamp - videoStreamStartSeconds, 0), videoDurationSeconds);
   })();
 
-  finalVideoFrameTimestampCache.set(filePath, probePromise);
-  probePromise.catch(() => {
-    if (finalVideoFrameTimestampCache.get(filePath) === probePromise) {
-      finalVideoFrameTimestampCache.delete(filePath);
-    }
-  });
+  if (!signal) {
+    finalVideoFrameTimestampCache.set(cacheKey, probePromise);
+    probePromise.catch(() => {
+      if (finalVideoFrameTimestampCache.get(cacheKey) === probePromise) {
+        finalVideoFrameTimestampCache.delete(cacheKey);
+      }
+    });
+  }
   return probePromise;
 }
 
