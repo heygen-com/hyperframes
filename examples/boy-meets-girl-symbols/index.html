@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Boy Meets Girl Symbols</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --bg: #f6f5f1;
+        --surface: #ffffff;
+        --surface2: #eeedea;
+        --border: #e0dfdb;
+        --heading: #0a0a0a;
+        --text: #1a1a1a;
+        --text-secondary: #6b6b6b;
+        --accent-blue: #2563eb;
+        --accent-purple: #7c3aed;
+        --accent-rose: #e11d48;
+        --accent-green: #1a7a0a;
+        --boy: #12213f;
+        --path: #d9d5cc;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 73% 22%, rgba(124, 58, 237, 0.1), transparent 29%),
+          radial-gradient(circle at 24% 72%, rgba(37, 99, 235, 0.1), transparent 31%), var(--bg);
+      }
+
+      .scene-content {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        width: 100%;
+        height: 100%;
+        padding: 78px 104px 82px;
+        gap: 36px;
+      }
+
+      .title-block {
+        position: relative;
+        z-index: 8;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        max-width: 920px;
+        gap: 12px;
+      }
+
+      .title-kicker {
+        font-family: "IBM Plex Mono", "SF Mono", monospace;
+        font-size: 22px;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent-purple);
+      }
+
+      .title-main {
+        max-width: 840px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 98px;
+        font-weight: 400;
+        line-height: 0.94;
+        letter-spacing: 0;
+        color: var(--heading);
+      }
+
+      .title-note {
+        max-width: 560px;
+        font-size: 28px;
+        line-height: 1.35;
+        font-weight: 350;
+        color: var(--text-secondary);
+      }
+
+      .stage {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        min-height: 710px;
+        overflow: hidden;
+      }
+
+      .horizon {
+        position: absolute;
+        left: 72px;
+        right: 72px;
+        bottom: 248px;
+        height: 2px;
+        background: var(--border);
+      }
+
+      .path {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 30px;
+        height: 270px;
+        border-radius: 50% 50% 0 0;
+        background: var(--path);
+        border-top: 1px solid var(--border-light, #d0cfcb);
+      }
+
+      .path::after {
+        content: "";
+        position: absolute;
+        inset: 44px 240px auto;
+        height: 2px;
+        background: rgba(26, 26, 26, 0.12);
+      }
+
+      .symbol {
+        position: absolute;
+        display: block;
+        object-fit: contain;
+        user-select: none;
+        pointer-events: none;
+      }
+
+      .sun {
+        top: 28px;
+        right: 150px;
+        width: 142px;
+        height: 142px;
+      }
+
+      .cloud-one {
+        top: 154px;
+        left: 1070px;
+        width: 168px;
+        height: 168px;
+        opacity: 0.56;
+      }
+
+      .cloud-two {
+        top: 206px;
+        left: 1295px;
+        width: 130px;
+        height: 130px;
+        opacity: 0.42;
+      }
+
+      .tree-left,
+      .tree-right {
+        bottom: 198px;
+        width: 184px;
+        height: 184px;
+        opacity: 0.92;
+      }
+
+      .tree-left {
+        left: 98px;
+      }
+
+      .tree-right {
+        right: 116px;
+      }
+
+      .leaf {
+        width: 66px;
+        height: 66px;
+        opacity: 0.65;
+      }
+
+      .leaf-one {
+        left: 334px;
+        top: 162px;
+      }
+
+      .leaf-two {
+        right: 342px;
+        top: 370px;
+      }
+
+      .leaf-three {
+        left: 828px;
+        top: 106px;
+      }
+
+      .person {
+        position: absolute;
+        bottom: 132px;
+        width: 360px;
+        height: 360px;
+        z-index: 5;
+        will-change: transform;
+      }
+
+      .boy {
+        left: 565px;
+        transform-origin: 50% 88%;
+      }
+
+      .girl {
+        left: 905px;
+        bottom: 134px;
+        width: 342px;
+        height: 342px;
+        transform-origin: 50% 88%;
+      }
+
+      .boy-sprite {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background-image: url("assets/sf/figure-walk-sheet/figure.walk-walk-sheet.png");
+        background-repeat: no-repeat;
+        background-position: 0 0;
+        background-size: 10800px 720px;
+        will-change: transform, background-position;
+      }
+
+      .meet-line {
+        position: absolute;
+        left: 764px;
+        bottom: 146px;
+        z-index: 4;
+        width: 318px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.46), transparent);
+        transform-origin: center;
+      }
+
+      .speech-bubbles {
+        left: 824px;
+        top: 172px;
+        z-index: 6;
+        width: 172px;
+        height: 172px;
+      }
+
+      .heart {
+        z-index: 7;
+        width: 104px;
+        height: 104px;
+      }
+
+      .heart-main {
+        left: 866px;
+        top: 246px;
+      }
+
+      .heart-small-left {
+        left: 760px;
+        top: 306px;
+        width: 72px;
+        height: 72px;
+        opacity: 0.82;
+      }
+
+      .heart-small-right {
+        left: 982px;
+        top: 294px;
+        width: 78px;
+        height: 78px;
+        opacity: 0.82;
+      }
+
+      .sparkle {
+        z-index: 7;
+        width: 86px;
+        height: 86px;
+      }
+
+      .sparkle-one {
+        left: 732px;
+        top: 216px;
+      }
+
+      .sparkle-two {
+        left: 1012px;
+        top: 198px;
+        width: 74px;
+        height: 74px;
+      }
+
+      .sparkle-three {
+        left: 914px;
+        top: 124px;
+        width: 64px;
+        height: 64px;
+      }
+
+      .caption-chip {
+        position: absolute;
+        right: 104px;
+        bottom: 72px;
+        z-index: 9;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 20px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-family: "IBM Plex Mono", "SF Mono", monospace;
+        font-size: 20px;
+        line-height: 1;
+        backdrop-filter: blur(12px);
+      }
+
+      .caption-chip::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--accent-rose);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-1e1m"
+      id="root"
+      data-composition-id="boy-meets-girl-symbols"
+      data-start="0"
+      data-duration="12"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div data-hf-id="hf-cn5c" class="scene-content">
+        <div data-hf-id="hf-cgbe" class="title-block">
+          <div data-hf-id="hf-dw5t" class="title-kicker">SF Symbols study</div>
+          <div data-hf-id="hf-wubu" class="title-main">Boy meets girl.</div>
+          <div data-hf-id="hf-1rnd" class="title-note">
+            A small city-park loop made entirely from system symbol language.
+          </div>
+        </div>
+
+        <div data-hf-id="hf-tan6" class="stage">
+          <div data-hf-id="hf-t4i1" class="horizon"></div>
+          <div data-hf-id="hf-jnhx" class="path"></div>
+          <div data-hf-id="hf-fwho" class="meet-line"></div>
+
+          <img
+            data-hf-id="hf-jore"
+            class="symbol sun"
+            src="assets/sf/sun/sun.max.fill-spin-frames/sun.max.fill-spin-000.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-sug3"
+            class="symbol cloud-one"
+            src="assets/scene/cloud-one.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-8b9j"
+            class="symbol cloud-two"
+            src="assets/scene/cloud-two.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-a1uf"
+            class="symbol tree-left"
+            src="assets/scene/tree-left.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-tiln"
+            class="symbol tree-right"
+            src="assets/scene/tree-right.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-ck0n"
+            class="symbol leaf leaf-one"
+            src="assets/scene/leaf-one.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-5pgn"
+            class="symbol leaf leaf-two"
+            src="assets/scene/leaf-two.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-g38z"
+            class="symbol leaf leaf-three"
+            src="assets/scene/leaf-three.png"
+            alt=""
+          />
+
+          <div
+            data-hf-id="hf-nr00"
+            id="boy"
+            class="person boy"
+            data-layout-allow-overflow
+            aria-hidden="true"
+          >
+            <div class="boy-sprite"></div>
+          </div>
+          <img
+            data-hf-id="hf-tm3d"
+            id="girl"
+            class="symbol person girl"
+            src="assets/g/pink-wave.png"
+            alt=""
+          />
+
+          <img
+            data-hf-id="hf-idch"
+            class="symbol speech-bubbles"
+            src="assets/sf/bubbles/bubble.left.and.bubble.right.fill-spin-frames/bubble.left.and.bubble.right.fill-spin-000.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-1mvj"
+            class="symbol heart heart-main"
+            src="assets/scene/heart-main.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-yi3t"
+            class="symbol heart heart-small-left"
+            src="assets/scene/heart-left.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-cy0f"
+            class="symbol heart heart-small-right"
+            src="assets/scene/heart-right.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-ox3r"
+            class="symbol sparkle sparkle-one"
+            src="assets/scene/sparkle-one.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-jnur"
+            class="symbol sparkle sparkle-two"
+            src="assets/scene/sparkle-two.png"
+            alt=""
+          />
+          <img
+            data-hf-id="hf-7h9v"
+            class="symbol sparkle sparkle-three"
+            src="assets/scene/sparkle-three.png"
+            alt=""
+          />
+        </div>
+
+        <div data-hf-id="hf-1uj6" class="caption-chip">first hello / frame 096</div>
+      </div>
+    </div>
+
+    <script>
+      function scheduleBoyFrames(timeline, start, end) {
+        const fps = 30;
+        const frameCount = 60;
+        const frameColumns = 30;
+        const frameWidth = 360;
+        const frameHeight = 360;
+        const totalFrames = Math.floor((end - start) * fps);
+        for (let step = 0; step <= totalFrames; step += 1) {
+          const at = start + step / fps;
+          const frame = step % frameCount;
+          const column = frame % frameColumns;
+          const row = Math.floor(frame / frameColumns);
+          timeline.set(
+            ".boy-sprite",
+            { backgroundPosition: `${-column * frameWidth}px ${-row * frameHeight}px` },
+            at,
+          );
+        }
+      }
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set("#boy", { autoAlpha: 1 }, 0);
+      tl.set(".boy-sprite", { backgroundPosition: "0px 0px" }, 0);
+      tl.set([".heart", ".sparkle", ".speech-bubbles"], { opacity: 0, scale: 0.62 }, 0);
+      tl.set(".meet-line", { opacity: 0, scaleX: 0.2 }, 0);
+
+      tl.from(".title-kicker", { y: 24, opacity: 0, duration: 0.42, ease: "power2.out" }, 0.18);
+      tl.from(".title-main", { y: 46, opacity: 0, duration: 0.58, ease: "expo.out" }, 0.28);
+      tl.from(".title-note", { x: -28, opacity: 0, duration: 0.44, ease: "back.out(1.6)" }, 0.52);
+      tl.from(
+        ".caption-chip",
+        { y: 28, opacity: 0, scale: 0.94, duration: 0.45, ease: "power3.out" },
+        0.74,
+      );
+
+      tl.from(".horizon", { scaleX: 0, opacity: 0, duration: 0.58, ease: "power2.out" }, 0.18);
+      tl.from(".path", { y: 120, opacity: 0, duration: 0.7, ease: "expo.out" }, 0.24);
+      tl.from(
+        ".sun",
+        { scale: 0.55, opacity: 0, rotation: -28, duration: 0.58, ease: "back.out(1.8)" },
+        0.34,
+      );
+      tl.from(".cloud-one", { x: 90, opacity: 0, duration: 0.52, ease: "sine.out" }, 0.46);
+      tl.from(".cloud-two", { x: 70, opacity: 0, duration: 0.48, ease: "power1.out" }, 0.56);
+      tl.from(
+        ".tree-left",
+        { y: 60, opacity: 0, scale: 0.82, duration: 0.56, ease: "back.out(1.4)" },
+        0.42,
+      );
+      tl.from(
+        ".tree-right",
+        { y: 70, opacity: 0, scale: 0.82, duration: 0.56, ease: "back.out(1.4)" },
+        0.52,
+      );
+      tl.from(
+        ".leaf",
+        { y: -32, opacity: 0, rotation: -18, duration: 0.5, stagger: 0.13, ease: "power2.out" },
+        0.72,
+      );
+
+      tl.fromTo(
+        "#boy",
+        { x: -260, y: 18, autoAlpha: 1, scale: 0.96 },
+        { x: 185, y: 0, autoAlpha: 1, scale: 1, duration: 5.15, ease: "sine.inOut" },
+        0.82,
+      );
+      scheduleBoyFrames(tl, 0.82, 6.2);
+      tl.to(
+        ".boy-sprite",
+        { y: -7, duration: 0.25, repeat: 21, yoyo: true, ease: "sine.inOut" },
+        0.82,
+      );
+
+      tl.from(
+        "#girl",
+        { x: 105, y: 10, autoAlpha: 1, rotation: 7, duration: 0.72, ease: "expo.out" },
+        1.15,
+      );
+      tl.to("#girl", { y: -6, duration: 0.95, repeat: 8, yoyo: true, ease: "sine.inOut" }, 2.0);
+      tl.to(
+        "#girl",
+        { rotation: -4, duration: 0.72, repeat: 7, yoyo: true, ease: "sine.inOut" },
+        2.1,
+      );
+
+      tl.to(".meet-line", { opacity: 1, scaleX: 1, duration: 0.46, ease: "power2.out" }, 5.55);
+      tl.to(
+        ".speech-bubbles",
+        { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.9)" },
+        5.85,
+      );
+      tl.to(
+        ".heart-main",
+        { opacity: 1, scale: 1, y: -10, duration: 0.5, ease: "back.out(2)" },
+        6.18,
+      );
+      tl.to(
+        ".heart-small-left",
+        { opacity: 0.82, scale: 1, x: -28, y: -18, duration: 0.48, ease: "power3.out" },
+        6.34,
+      );
+      tl.to(
+        ".heart-small-right",
+        { opacity: 0.82, scale: 1, x: 26, y: -24, duration: 0.48, ease: "power3.out" },
+        6.42,
+      );
+      tl.to(
+        ".sparkle",
+        { opacity: 1, scale: 1, rotation: 24, duration: 0.46, stagger: 0.1, ease: "back.out(2.1)" },
+        6.58,
+      );
+
+      tl.to(".cloud-one", { x: -46, duration: 10.4, ease: "none" }, 1.2);
+      tl.to(".cloud-two", { x: -36, duration: 10.2, ease: "none" }, 1.4);
+      tl.to(
+        ".sun",
+        { scale: 1.06, rotation: 12, duration: 1.8, repeat: 5, yoyo: true, ease: "sine.inOut" },
+        1.0,
+      );
+      tl.to(
+        ".leaf-one",
+        { x: 52, y: 38, rotation: 24, duration: 3.2, repeat: 2, yoyo: true, ease: "sine.inOut" },
+        1.3,
+      );
+      tl.to(
+        ".leaf-two",
+        { x: -42, y: 46, rotation: -18, duration: 3.0, repeat: 2, yoyo: true, ease: "sine.inOut" },
+        1.5,
+      );
+      tl.to(
+        ".leaf-three",
+        { x: 34, y: 28, rotation: 16, duration: 2.8, repeat: 3, yoyo: true, ease: "sine.inOut" },
+        1.7,
+      );
+      tl.to(
+        ".sparkle",
+        { y: -18, rotation: 44, duration: 1.0, repeat: 3, yoyo: true, ease: "sine.inOut" },
+        7.05,
+      );
+      tl.to(".heart", { y: -22, duration: 1.25, repeat: 2, yoyo: true, ease: "sine.inOut" }, 7.22);
+
+      tl.to("#root", { opacity: 0, duration: 0.5, ease: "power2.in" }, 11.45);
+
+      window.__timelines["boy-meets-girl-symbols"] = tl;
+    </script>
+  </body>
+</html>

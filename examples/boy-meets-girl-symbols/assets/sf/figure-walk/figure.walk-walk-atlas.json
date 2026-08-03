@@ -1,0 +1,254 @@
+{
+  "columns": 6,
+  "effect": "walk",
+  "frameCount": 24,
+  "frameHeight": 256,
+  "frameWidth": 256,
+  "frames": [
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 0,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 1,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 256,
+      "y": 0
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 2,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 512,
+      "y": 0
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 3,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 768,
+      "y": 0
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 4,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1024,
+      "y": 0
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 5,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1280,
+      "y": 0
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 6,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 0,
+      "y": 256
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 7,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 256,
+      "y": 256
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 8,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 512,
+      "y": 256
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 9,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 768,
+      "y": 256
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 10,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1024,
+      "y": 256
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 11,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1280,
+      "y": 256
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 12,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 0,
+      "y": 512
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 13,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 256,
+      "y": 512
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 14,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 512,
+      "y": 512
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 15,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 768,
+      "y": 512
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 16,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1024,
+      "y": 512
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 17,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1280,
+      "y": 512
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 18,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 0,
+      "y": 768
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 19,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 256,
+      "y": 768
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 20,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 512,
+      "y": 768
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 21,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 768,
+      "y": 768
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 22,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1024,
+      "y": 768
+    },
+    {
+      "durationMs": 83,
+      "height": 256,
+      "index": 23,
+      "pivotX": 0.5,
+      "pivotY": 0.5,
+      "width": 256,
+      "x": 1280,
+      "y": 768
+    }
+  ],
+  "framesPerSecond": 12,
+  "image": "figure.walk-walk-sheet.png",
+  "loop": true,
+  "rows": 4,
+  "symbolName": "figure.walk"
+}
