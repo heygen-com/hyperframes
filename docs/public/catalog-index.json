@@ -28,6 +28,20 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png"
     },
     {
+        "name": "beat-freeze-cut",
+        "type": "block",
+        "title": "Beat Freeze Cut",
+        "description": "A beat-driven speed ramp, freeze-frame hit, and hard-cut sequence for music-led promos and montages.",
+        "tags": [
+            "transition",
+            "music",
+            "beat-driven",
+            "freeze-frame"
+        ],
+        "href": "/catalog/blocks/beat-freeze-cut",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/beat-freeze-cut.png"
+    },
+    {
         "name": "blue-sweater-intro-video",
         "type": "block",
         "title": "Blue Sweater Intro Video",
@@ -45,7 +59,7 @@
         "name": "caption-blend-difference",
         "type": "component",
         "title": "Blend Difference",
-        "description": "Auto-inverting text using mix-blend-mode: difference \u2014 flips between white and black per-pixel against the background",
+        "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
         "tags": [
             "text",
             "effect",
@@ -252,7 +266,7 @@
         "name": "caption-texture",
         "type": "component",
         "title": "Texture",
-        "description": "Flowing texture mask over large uppercase text \u2014 ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
+        "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
         "tags": [
             "captions",
             "caption-style",
@@ -392,7 +406,7 @@
         "name": "grain-overlay",
         "type": "component",
         "title": "Grain Overlay",
-        "description": "Animated film grain texture overlay using CSS keyframes \u2014 adds warmth and analog character to any composition",
+        "description": "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition",
         "tags": [
             "texture",
             "grain",
@@ -418,7 +432,7 @@
         "name": "grid-pixelate-wipe",
         "type": "component",
         "title": "Grid Pixelate Wipe",
-        "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing \u2014 use between scenes",
+        "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing — use between scenes",
         "tags": [
             "transition",
             "wipe",
@@ -432,7 +446,7 @@
         "name": "motion-blur",
         "type": "component",
         "title": "Motion Blur",
-        "description": "Velocity-driven motion blur \u2014 samples element position each frame and scales CSS blur + horizontal stretch proportionally to speed",
+        "description": "Velocity-driven motion blur — samples element position each frame and scales CSS blur + horizontal stretch proportionally to speed",
         "tags": [
             "effect",
             "motion-blur",
@@ -790,7 +804,7 @@
         "name": "parallax-unzoom",
         "type": "component",
         "title": "Parallax Unzoom",
-        "description": "Reveal transition \u2014 focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
+        "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
         "tags": [
             "transition",
             "reveal",
@@ -806,7 +820,7 @@
         "name": "parallax-zoom",
         "type": "component",
         "title": "Parallax Zoom",
-        "description": "Center card scales up to fill the frame while siblings parallax outward \u2014 inspired by the eBay Playbook hero transition",
+        "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
         "tags": [
             "transition",
             "zoom",
@@ -870,7 +884,7 @@
         "name": "shimmer-sweep",
         "type": "component",
         "title": "Shimmer Sweep",
-        "description": "Animated light sweep across text or elements using a CSS gradient mask \u2014 ideal for AI accents and premium reveals",
+        "description": "Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals",
         "tags": [
             "text",
             "shimmer",
@@ -884,7 +898,7 @@
         "name": "spain-map",
         "type": "block",
         "title": "Spain Map",
-        "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend \u2014 D3 conic conformal projection",
+        "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
         "tags": [
             "data",
             "map",
@@ -1133,7 +1147,7 @@
         "name": "us-map",
         "type": "block",
         "title": "US Map",
-        "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend \u2014 pure inline SVG with GSAP",
+        "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
         "tags": [
             "data",
             "map",
@@ -1148,7 +1162,7 @@
         "name": "us-map-bubble",
         "type": "block",
         "title": "US Bubble Map",
-        "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines \u2014 composable with us-map",
+        "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map",
         "tags": [
             "data",
             "map",
@@ -1164,7 +1178,7 @@
         "name": "us-map-flow",
         "type": "block",
         "title": "US Flow Map",
-        "description": "Animated connection arcs between US cities over a base map \u2014 composable origin-destination flow visualization",
+        "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
         "tags": [
             "data",
             "map",
@@ -1181,7 +1195,7 @@
         "name": "us-map-hex",
         "type": "block",
         "title": "US Hex Grid Map",
-        "description": "Animated hexagonal tile grid map \u2014 each state as an equal-weight hex with data fill and abbreviation label",
+        "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
         "tags": [
             "data",
             "map",
@@ -1197,7 +1211,7 @@
         "name": "vfx-iphone-device",
         "type": "block",
         "title": "iPhone & MacBook 3D Showcase",
-        "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360\u00b0 turntable.",
+        "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.",
         "tags": [
             "html-in-canvas",
             "3d",
@@ -1291,7 +1305,7 @@
         "name": "vignette",
         "type": "component",
         "title": "Vignette",
-        "description": "Cinematic radial vignette overlay using a pure-CSS gradient \u2014 darkens the edges to pull focus toward the center",
+        "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
         "tags": [
             "vignette",
             "overlay",
@@ -1331,7 +1345,7 @@
         "name": "world-map",
         "type": "block",
         "title": "World Map",
-        "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset \u2014 D3 Natural Earth projection",
+        "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
         "tags": [
             "data",
             "map",
