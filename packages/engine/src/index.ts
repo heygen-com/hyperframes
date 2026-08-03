@@ -182,6 +182,7 @@ export {
   extractAllVideoFrames,
   resolveTimelineExtractionWindow,
   resolveVideoExtractionWindow,
+  resolveFinalFrameExtractionWindow,
   resolveVideoExtractionDuration,
   resolvePlayableVideoDuration,
   resolveProjectRelativeSrc,
@@ -261,6 +262,7 @@ export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCa
 export {
   extractMediaMetadata,
   extractVideoMetadata,
+  extractFinalVideoFrameTimestamp,
   extractAudioMetadata,
   analyzeKeyframeIntervals,
   type VideoMetadata,

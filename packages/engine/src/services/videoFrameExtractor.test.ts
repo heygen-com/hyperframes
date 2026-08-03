@@ -35,9 +35,14 @@ import {
   type ExtractedFrames,
   type ExtractionResult,
 } from "./videoFrameExtractor.js";
-import { extractVideoMetadata, type VideoMetadata } from "../utils/ffprobe.js";
+import {
+  extractFinalVideoFrameTimestamp,
+  extractVideoMetadata,
+  type VideoMetadata,
+} from "../utils/ffprobe.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.js";
+import { resolveRuntimeMediaClipDuration } from "../../../core/src/runtime/media.js";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
 // regression test at packages/producer/tests/vfr-screen-recording/ runs inside
@@ -123,7 +128,7 @@ describe("resolveVideoExtractionDuration", () => {
     });
   });
 
-  it("preserves source frames needed to hold a non-loop final frame", () => {
+  it("marks an entirely held interval for exact final-frame resolution", () => {
     expect(
       resolveVideoExtractionWindow(
         video({ start: -5, end: 10, mediaStart: 0, loop: false }),
@@ -131,16 +136,21 @@ describe("resolveVideoExtractionDuration", () => {
         2,
       ),
     ).toEqual({
-      compositionStart: -3,
-      mediaStart: 2,
-      durationSeconds: 1,
+      compositionStart: -2.000001,
+      mediaStart: 2.999999,
+      durationSeconds: 0.000001,
       preserveTimelineEnd: true,
+      ensureFinalFrame: true,
     });
   });
 
   it.each([
     { loop: true, preservation: { preserveTimelinePhase: true }, label: "loop" },
-    { loop: false, preservation: { preserveTimelineEnd: true }, label: "held tail" },
+    {
+      loop: false,
+      preservation: { preserveTimelineEnd: true, ensureFinalFrame: true },
+      label: "held tail",
+    },
   ])(
     "caps a finite long slot to one short source range for $label playback",
     ({ loop, preservation }) => {
@@ -155,7 +165,11 @@ describe("resolveVideoExtractionDuration", () => {
 
   it.each([
     { loop: true, preservation: { preserveTimelinePhase: true }, label: "loop" },
-    { loop: false, preservation: { preserveTimelineEnd: true }, label: "held tail" },
+    {
+      loop: false,
+      preservation: { preserveTimelineEnd: true, ensureFinalFrame: true },
+      label: "held tail",
+    },
   ])(
     "uses the playable video-stream duration for a long-audio mux in $label playback",
     ({ loop, preservation }) => {
@@ -180,41 +194,34 @@ describe("resolveVideoExtractionDuration", () => {
       mediaStart: 2,
       durationSeconds: 1,
       preserveTimelineEnd: true,
+      ensureFinalFrame: true,
     });
   });
 
   it.each([
-    {
-      start: -5,
-      timelineEnd: 2,
-      expected: {
-        compositionStart: -3,
-        mediaStart: 2,
-        durationSeconds: 1,
-        preserveTimelineEnd: true,
-      },
-      label: "already past source EOF",
+    { start: 0, expected: { compositionStart: 0, mediaStart: 0, durationSeconds: 3 } },
+    { start: -2, expected: { compositionStart: 0, mediaStart: 2, durationSeconds: 1 } },
+    { start: -5, expected: { compositionStart: 0, mediaStart: 5, durationSeconds: 0 } },
+  ])(
+    "keeps an omitted-duration clip source-bounded like runtime (start=$start)",
+    ({ start, expected }) => {
+      for (const loop of [false, true]) {
+        const parsed = parseVideoElements(
+          `<video id="natural" src="video.mp4"${loop ? " loop" : ""}></video>`,
+        )[0]!;
+        const planned = { ...parsed, start };
+        const runtimeDuration = resolveRuntimeMediaClipDuration({
+          isVideo: true,
+          sourceDuration: 3,
+          hostRemaining: 15 - start,
+          explicitDuration: null,
+        });
+        expect(runtimeDuration).toBe(3);
+        expect(parsed.end).toBe(Number.POSITIVE_INFINITY);
+        expect(resolveVideoExtractionWindow(planned, metadata(3), 15)).toEqual(expected);
+      }
     },
-    {
-      start: -2,
-      timelineEnd: 15,
-      expected: {
-        compositionStart: 0,
-        mediaStart: 2,
-        durationSeconds: 1,
-        preserveTimelineEnd: true,
-      },
-      label: "partially crossing source EOF",
-    },
-  ])("preserves an open-ended non-loop held tail $label", ({ start, timelineEnd, expected }) => {
-    expect(
-      resolveVideoExtractionWindow(
-        video({ start, end: Number.POSITIVE_INFINITY, loop: false }),
-        metadata(3),
-        timelineEnd,
-      ),
-    ).toEqual(expected);
-  });
+  );
 
   it("bounds an entirely held long source to its final-frame sample", () => {
     expect(
@@ -224,10 +231,11 @@ describe("resolveVideoExtractionDuration", () => {
         2,
       ),
     ).toEqual({
-      compositionStart: -481,
-      mediaStart: 119,
-      durationSeconds: 1,
+      compositionStart: -480.000001,
+      mediaStart: 119.999999,
+      durationSeconds: 0.000001,
       preserveTimelineEnd: true,
+      ensureFinalFrame: true,
     });
   });
 
@@ -246,12 +254,11 @@ describe("resolveVideoExtractionDuration", () => {
     });
   });
 
-  it("extracts one cycle for an open-ended loop that spans the composition", () => {
+  it("keeps an open-ended loop source-bounded instead of inventing a longer slot", () => {
     expect(resolveVideoExtractionWindow(video({ loop: true }), metadata(3), 10)).toEqual({
       compositionStart: 0,
       mediaStart: 0,
       durationSeconds: 3,
-      preserveTimelinePhase: true,
     });
   });
 
@@ -1235,6 +1242,91 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
   }, 60_000);
 });
 
+describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
+  const fixtureDir = mkdtempSync(join(tmpdir(), "hf-sparse-held-tail-"));
+  const cfrFixture = join(fixtureDir, "sub-1fps-cfr.mp4");
+  const vfrFixture = join(fixtureDir, "sparse-vfr.mp4");
+
+  beforeAll(async () => {
+    const fixtures = [
+      {
+        path: cfrFixture,
+        input: "testsrc2=s=64x64:d=10:rate=1/5",
+        filters: [] as string[],
+      },
+      {
+        path: vfrFixture,
+        input: "testsrc2=s=64x64:d=10:rate=1/2",
+        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-vsync", "vfr"],
+      },
+    ];
+    for (const fixture of fixtures) {
+      const result = await runFfmpeg([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        fixture.input,
+        ...fixture.filters,
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-y",
+        fixture.path,
+      ]);
+      if (!result.success) {
+        throw new Error(`sparse fixture synthesis failed: ${result.stderr.slice(-400)}`);
+      }
+    }
+  }, 30_000);
+
+  afterAll(() => {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  it.each([
+    { label: "sub-1fps CFR", src: cfrFixture, expectedVfr: false, finalTimestamp: 5 },
+    { label: "sparse VFR", src: vfrFixture, expectedVfr: true, finalTimestamp: 4 },
+  ])(
+    "extracts one real final SDR frame for $label",
+    async ({ src, expectedVfr, finalTimestamp }) => {
+      const metadata = await extractVideoMetadata(src);
+      expect(metadata.fps).toBeLessThan(1);
+      expect(metadata.isVFR).toBe(expectedVfr);
+      await expect(
+        extractFinalVideoFrameTimestamp(src, metadata.videoStreamDurationSeconds),
+      ).resolves.toBe(finalTimestamp);
+      const outputDir = mkdtempSync(join(fixtureDir, "out-"));
+      const video: VideoElement = {
+        id: `held-${String(expectedVfr)}`,
+        src,
+        start: -15,
+        end: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+      };
+
+      const result = await extractAllVideoFrames([video], fixtureDir, {
+        fps: 30,
+        format: "png",
+        outputDir,
+        timelineEnd: 2,
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(result.extracted).toHaveLength(1);
+      expect(result.extracted[0]?.totalFrames).toBe(1);
+      expect(video).toMatchObject({ start: 0, end: 5, loop: false });
+      expect(video.mediaStart).toBeCloseTo(metadata.videoStreamDurationSeconds - 0.000001, 7);
+    },
+    30_000,
+  );
+});
+
 // Regression test for the VFR (variable frame rate) freeze bug.
 // Screen recordings and phone videos often have irregular timestamps.
 // When such inputs hit `extractVideoFramesRange`'s `-ss <start> -i ... -t <dur>
@@ -1368,10 +1460,11 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     const extracted = result.extracted[0];
     if (!extracted) throw new Error("expected held-tail source frames");
     const lookup = createFrameLookupTable([video], result.extracted);
-    // The authored slot remains active through end=5, but extraction is
-    // rebased to the source's final one-second sample instead of materializing
-    // the full ten-second source just to hold its last frame.
-    expect(video).toMatchObject({ start: -6, end: 5, mediaStart: 9, loop: false });
+    // The authored slot remains active through end=5, but lookup is rebased to
+    // one exact final frame instead of assuming the last second contains a
+    // timestamp or materializing the full source.
+    expect(video).toMatchObject({ start: 0, end: 5, mediaStart: 9.999999, loop: false });
+    expect(extracted.totalFrames).toBe(1);
     expect(lookup.getFrame("negative-held-tail", 0)).toBe(
       extracted.framePaths.get(extracted.totalFrames - 1),
     );

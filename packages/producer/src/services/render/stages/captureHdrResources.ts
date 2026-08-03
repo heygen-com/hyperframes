@@ -36,6 +36,7 @@ import {
   normalizeObjectFit,
   queryElementStacking,
   resampleRgb48leObjectFit,
+  resolveFinalFrameExtractionWindow,
   resolveVideoExtractionWindow,
   runFfmpeg,
   type TimelineExtractionWindow,
@@ -404,11 +405,14 @@ export async function extractHdrVideoFrames(args: {
   hdrDiagnostics: HdrDiagnostics;
   runFfmpegImpl?: typeof runFfmpeg;
   extractMediaMetadataImpl?: typeof extractMediaMetadata;
+  resolveFinalFrameExtractionWindowImpl?: typeof resolveFinalFrameExtractionWindow;
 }): Promise<HdrVideoExtractionResult> {
   const { job, log, framesDir, composition, prep, width, height, abortSignal, hdrDiagnostics } =
     args;
   const runFfmpegImpl = args.runFfmpegImpl ?? runFfmpeg;
   const extractMediaMetadataImpl = args.extractMediaMetadataImpl ?? extractMediaMetadata;
+  const resolveFinalFrameExtractionWindowImpl =
+    args.resolveFinalFrameExtractionWindowImpl ?? resolveFinalFrameExtractionWindow;
   const out = new Map<string, HdrVideoFrameSource>();
   mkdirSync(framesDir, { recursive: true });
   const plannedVideos: Array<{ durationSeconds: number; width: number; height: number }> = [];
@@ -418,8 +422,15 @@ export async function extractHdrVideoFrames(args: {
     if (!video) continue;
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
     const metadata = await extractMediaMetadataImpl(srcPath);
-    const window = resolveHdrExtractionWindow(video, composition.duration, metadata);
-    if (!window) continue;
+    const initialWindow = resolveHdrExtractionWindow(video, composition.duration, metadata);
+    if (!initialWindow) continue;
+    const window = await resolveFinalFrameExtractionWindowImpl(
+      srcPath,
+      video,
+      metadata,
+      initialWindow,
+      abortSignal,
+    );
     extractionWindows.set(videoId, window);
     prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
     plannedVideos.push({
@@ -448,13 +459,19 @@ export async function extractHdrVideoFrames(args: {
       const rawPath = join(frameDir, "frames.rgb48le");
       const ffmpegArgs = [
         "-ss",
-        String(window.mediaStart),
+        String(window.extractionMediaStart ?? window.mediaStart),
         "-i",
         srcPath,
-        "-t",
-        String(window.durationSeconds),
-        "-r",
-        fpsToFfmpegArg(job.config.fps),
+      ];
+      if (window.finalFrameOnly) {
+        ffmpegArgs.push("-frames:v", "1");
+      } else {
+        ffmpegArgs.push("-t", String(window.durationSeconds));
+      }
+      if (!window.finalFrameOnly) {
+        ffmpegArgs.push("-r", fpsToFfmpegArg(job.config.fps));
+      }
+      ffmpegArgs.push(
         "-vf",
         `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=increase,crop=${dims.width}:${dims.height}`,
         "-pix_fmt",
@@ -463,7 +480,7 @@ export async function extractHdrVideoFrames(args: {
         "rawvideo",
         "-y",
         rawPath,
-      ];
+      );
       const result = await runFfmpegImpl(ffmpegArgs, { signal: abortSignal });
       if (!result.success) {
         hdrDiagnostics.videoExtractionFailures += 1;
