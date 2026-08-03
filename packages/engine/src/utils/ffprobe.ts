@@ -578,7 +578,10 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
  * to the preceding keyframe and walks forward; retaining only its stdout tail
  * keeps memory bounded even for a pathological long GOP. ffprobe reports
  * absolute presentation timestamps, but FFmpeg input `-ss` is relative to the
- * stream start; the result is normalized into that relative seek domain.
+ * stream start; the result is normalized into that relative seek domain. Some
+ * unindexed transports cannot decode after an interval seek, so an empty tail
+ * probe falls back to a bounded-output full scan rather than rejecting valid
+ * media. The scan may cost decode time, but retains only 64 KiB of timestamps.
  */
 export async function extractFinalVideoFrameTimestamp(
   filePath: string,
@@ -604,28 +607,32 @@ export async function extractFinalVideoFrameTimestamp(
     }
     const streamEnd = videoStreamStartSeconds + videoDurationSeconds;
     const intervalStart = Math.max(videoStreamStartSeconds, streamEnd - 1);
-    const stdout = await runFfprobe(
-      filePath,
-      [
+    const parseFinalTimestamp = (stdout: string): number | undefined =>
+      stdout
+        .split("\n")
+        .map((line) => line.trim().split(",")[0]?.trim() ?? "")
+        .filter((value) => value.length > 0)
+        .map((value) => Number(value))
+        .filter((timestamp) => Number.isFinite(timestamp))
+        .at(-1);
+    const probe = async (readInterval?: string): Promise<number | undefined> => {
+      const args = [
         "-select_streams",
         "v:0",
-        "-read_intervals",
-        `${intervalStart}%${streamEnd}`,
         "-show_entries",
         "frame=best_effort_timestamp_time",
         "-of",
         "csv=p=0",
-      ],
-      signal,
-      { retainTail: true, maxChars: 64 * 1024 },
-    );
-    const timestamps = stdout
-      .split("\n")
-      .map((line) => line.trim().split(",")[0]?.trim() ?? "")
-      .filter((value) => value.length > 0)
-      .map((value) => Number(value))
-      .filter((timestamp) => Number.isFinite(timestamp));
-    const timestamp = timestamps.at(-1);
+      ];
+      if (readInterval) args.splice(2, 0, "-read_intervals", readInterval);
+      const stdout = await runFfprobe(filePath, args, signal, {
+        retainTail: true,
+        maxChars: 64 * 1024,
+      });
+      return parseFinalTimestamp(stdout);
+    };
+    const timestamp =
+      (await probe(`${intervalStart}%${streamEnd}`)) ?? (await probe(/* full scan */));
     if (timestamp === undefined) {
       throw new Error("[FFmpeg] ffprobe found no decodable final video frame");
     }

@@ -602,11 +602,14 @@ export async function extractVideoFramesRange(
   if (codecMayHaveAlpha(metadata.videoCodec)) {
     args.push("-c:v", decoderForCodec(metadata.videoCodec));
   }
-  args.push("-ss", String(startTime), "-i", videoPath);
   if (options.finalFrameOnly) {
-    args.push("-frames:v", "1");
+    // Output-side seek decodes from the start before selecting the final
+    // sample. This is intentionally reserved for the one-frame path: input
+    // seeking is faster, but valid unindexed transports (notably MPEG-TS with
+    // a negative timestamp base) can seek to EOF and emit zero frames.
+    args.push("-i", videoPath, "-ss", String(startTime), "-frames:v", "1");
   } else {
-    args.push("-t", String(duration));
+    args.push("-ss", String(startTime), "-i", videoPath, "-t", String(duration));
   }
 
   const vfFilters: string[] = [];

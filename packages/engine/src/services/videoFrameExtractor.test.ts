@@ -1247,6 +1247,7 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
   const cfrFixture = join(fixtureDir, "sub-1fps-cfr.mp4");
   const vfrFixture = join(fixtureDir, "sparse-vfr.mp4");
   const nonZeroStartFixture = join(fixtureDir, "nonzero-start.mp4");
+  const negativeStartTransportFixture = join(fixtureDir, "negative-start.ts");
 
   beforeAll(async () => {
     const fixtures = [
@@ -1264,6 +1265,20 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
         path: nonZeroStartFixture,
         input: "testsrc2=s=64x64:d=3:rate=1",
         filters: ["-output_ts_offset", "5"],
+      },
+      {
+        path: negativeStartTransportFixture,
+        input: "testsrc2=s=64x64:d=3:rate=1",
+        filters: [
+          "-mpegts_copyts",
+          "1",
+          "-muxdelay",
+          "0",
+          "-avoid_negative_ts",
+          "disabled",
+          "-output_ts_offset",
+          "-2",
+        ],
       },
     ];
     for (const fixture of fixtures) {
@@ -1314,6 +1329,13 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
       expectedVfr: false,
       finalTimestamp: 2,
       streamStart: 5,
+    },
+    {
+      label: "unindexed negative-base MPEG-TS",
+      src: negativeStartTransportFixture,
+      expectedVfr: false,
+      finalTimestamp: 2,
+      streamStart: -2,
     },
   ])(
     "extracts one real final SDR frame for $label",

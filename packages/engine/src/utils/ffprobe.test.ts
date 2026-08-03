@@ -1016,6 +1016,27 @@ describe("final video frame timestamp probes", () => {
     expect(calls[1]?.args[intervalIndex + 1]).toBe("7%8");
   });
 
+  it("falls back to a bounded-output full scan when a transport cannot interval-seek", async () => {
+    const { spawn, calls } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "" },
+      { kind: "exit", code: 0, stdout: "-2.000000,\n-1.000000\n0.000000\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractFinalVideoFrameTimestamp } = await import("./ffprobe.js");
+
+    await expect(
+      extractFinalVideoFrameTimestamp("/tmp/unindexed-negative-base.ts", {
+        videoStreamDurationSeconds: 3,
+        videoStreamStartSeconds: -2,
+      }),
+    ).resolves.toBe(2);
+
+    const intervalIndex = calls[0]?.args.indexOf("-read_intervals") ?? -1;
+    expect(calls[0]?.args[intervalIndex + 1]).toBe("0%1");
+    expect(calls[1]?.args).not.toContain("-read_intervals");
+  });
+
   it("does not share a caller-cancellable probe across render consumers", async () => {
     type KillableFakeProc = FakeProc & { kill: (signal?: NodeJS.Signals) => boolean };
     const processes: KillableFakeProc[] = [];

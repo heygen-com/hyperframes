@@ -457,16 +457,21 @@ export async function extractHdrVideoFrames(args: {
       createdFrameDirs.add(frameDir);
       const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
       const rawPath = join(frameDir, "frames.rgb48le");
-      const ffmpegArgs = [
-        "-ss",
-        String(window.extractionMediaStart ?? window.mediaStart),
-        "-i",
-        srcPath,
-      ];
+      const extractionStart = String(window.extractionMediaStart ?? window.mediaStart);
+      const ffmpegArgs: string[] = [];
       if (window.finalFrameOnly) {
-        ffmpegArgs.push("-frames:v", "1");
+        // Decode before seeking for the one-frame path. Input-side seeking can
+        // return zero frames for valid unindexed/negative-base transports.
+        ffmpegArgs.push("-i", srcPath, "-ss", extractionStart, "-frames:v", "1");
       } else {
-        ffmpegArgs.push("-t", String(window.durationSeconds));
+        ffmpegArgs.push(
+          "-ss",
+          extractionStart,
+          "-i",
+          srcPath,
+          "-t",
+          String(window.durationSeconds),
+        );
       }
       if (!window.finalFrameOnly) {
         ffmpegArgs.push("-r", fpsToFfmpegArg(job.config.fps));
