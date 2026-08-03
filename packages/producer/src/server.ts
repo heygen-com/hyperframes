@@ -84,7 +84,7 @@ interface RenderInput {
   quality: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   videoFrameFormat?: RenderConfig["videoFrameFormat"];
-  hdrMode?: RenderConfig["hdrMode"];
+  outputDynamicRange?: "auto" | "hdr" | "sdr";
   workers?: number;
   useGpu: boolean;
   debug: boolean;
@@ -159,8 +159,26 @@ function parseServerFormat(value: unknown): RenderInput["format"] {
   return value === "mp4" || value === "webm" || value === "mov" ? value : undefined;
 }
 
-function parseServerHdrMode(value: unknown): RenderInput["hdrMode"] {
+function parseServerOutputDynamicRange(value: unknown): RenderInput["outputDynamicRange"] {
+  return value === "auto" || value === "hdr" || value === "sdr" ? value : undefined;
+}
+
+function parseLegacyServerHdrMode(value: unknown): RenderConfig["hdrMode"] {
   return value === "auto" || value === "force-hdr" || value === "force-sdr" ? value : undefined;
+}
+
+function fromRenderHdrMode(hdrMode: RenderConfig["hdrMode"]): RenderInput["outputDynamicRange"] {
+  if (hdrMode === "force-hdr") return "hdr";
+  if (hdrMode === "force-sdr") return "sdr";
+  return hdrMode;
+}
+
+function toRenderHdrMode(
+  outputDynamicRange: RenderInput["outputDynamicRange"],
+): RenderConfig["hdrMode"] {
+  if (outputDynamicRange === "hdr") return "force-hdr";
+  if (outputDynamicRange === "sdr") return "force-sdr";
+  return outputDynamicRange;
 }
 
 export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "projectDir"> {
@@ -181,7 +199,9 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const outputPath = parseOutputCandidate(body);
   const entryFile = nonEmptyString(body.entryFile);
   const format = parseServerFormat(body.format);
-  const hdrMode = parseServerHdrMode(body.hdrMode);
+  const outputDynamicRange =
+    parseServerOutputDynamicRange(body.outputDynamicRange) ??
+    fromRenderHdrMode(parseLegacyServerHdrMode(body.hdrMode));
   const videoFrameFormat = isVideoFrameFormat(body.videoFrameFormat)
     ? body.videoFrameFormat
     : undefined;
@@ -199,7 +219,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     strictness,
     entryFile,
     format,
-    hdrMode,
+    outputDynamicRange,
     variables,
     outputResolution,
     outputResolutionAspectAgnostic,
@@ -261,7 +281,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
-      hdrMode: input.hdrMode,
+      hdrMode: toRenderHdrMode(input.outputDynamicRange),
     },
   });
   return renderConfigFromRequest(request, { logger: log });
@@ -294,8 +314,23 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
   }
-  if (body.hdrMode !== undefined && parseServerHdrMode(body.hdrMode) === undefined) {
-    return 'hdrMode must be one of: "auto", "force-hdr", "force-sdr"';
+  if (
+    body.outputDynamicRange !== undefined &&
+    parseServerOutputDynamicRange(body.outputDynamicRange) === undefined
+  ) {
+    return 'outputDynamicRange must be one of: "auto", "hdr", "sdr"';
+  }
+  const legacyHdrMode = parseLegacyServerHdrMode(body.hdrMode);
+  if (body.hdrMode !== undefined && legacyHdrMode === undefined) {
+    return 'legacy hdrMode must be one of: "auto", "force-hdr", "force-sdr"';
+  }
+  const outputDynamicRange = parseServerOutputDynamicRange(body.outputDynamicRange);
+  if (
+    outputDynamicRange !== undefined &&
+    legacyHdrMode !== undefined &&
+    outputDynamicRange !== fromRenderHdrMode(legacyHdrMode)
+  ) {
+    return "outputDynamicRange and legacy hdrMode must describe the same output policy";
   }
   return validateOutputResolutionOverride(body);
 }

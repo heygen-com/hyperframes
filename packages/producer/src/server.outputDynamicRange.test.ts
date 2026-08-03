@@ -38,17 +38,25 @@ function createInternalStreamingApp(): Hono {
   return app;
 }
 
-describe("POST /v1/render-stream — hdrMode", () => {
+function requestRender(overrides: Record<string, unknown>) {
+  return createInternalStreamingApp().request("/v1/render-stream", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ html: "<html><body></body></html>", ...overrides }),
+  });
+}
+
+describe("POST /v1/render-stream — outputDynamicRange", () => {
   beforeEach(() => capturedRenderConfigs.splice(0));
 
-  it.each(["auto", "force-hdr", "force-sdr"] as const)(
-    "forwards %s through createRenderRequest into RenderConfig",
-    async (hdrMode) => {
-      const response = await createInternalStreamingApp().request("/v1/render-stream", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ html: "<html><body></body></html>", hdrMode }),
-      });
+  it.each([
+    ["auto", "auto"],
+    ["hdr", "force-hdr"],
+    ["sdr", "force-sdr"],
+  ] as const)(
+    "maps %s through createRenderRequest to internal hdrMode %s",
+    async (outputDynamicRange, hdrMode) => {
+      const response = await requestRender({ outputDynamicRange });
 
       expect(response.status).toBe(200);
       expect(await response.text()).toContain('"type":"complete"');
@@ -58,16 +66,24 @@ describe("POST /v1/render-stream — hdrMode", () => {
   );
 
   it("rejects an invalid mode before creating a render job", async () => {
-    const response = await createInternalStreamingApp().request("/v1/render-stream", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ html: "<html><body></body></html>", hdrMode: "hdr" }),
-    });
+    const response = await requestRender({ outputDynamicRange: "force-sdr" });
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain(
-      'hdrMode must be one of: \\"auto\\", \\"force-hdr\\", \\"force-sdr\\"',
+      'outputDynamicRange must be one of: \\"auto\\", \\"hdr\\", \\"sdr\\"',
     );
     expect(capturedRenderConfigs).toHaveLength(0);
+  });
+
+  it("accepts the matching legacy field during rolling deployment", async () => {
+    const response = await requestRender({
+      outputDynamicRange: "sdr",
+      hdrMode: "force-sdr",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('"type":"complete"');
+    expect(capturedRenderConfigs).toHaveLength(1);
+    expect(capturedRenderConfigs[0]?.hdrMode).toBe("force-sdr");
   });
 });

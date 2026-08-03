@@ -46,14 +46,30 @@ describe("parseRenderOptions — render strictness", () => {
   });
 });
 
-describe("parseRenderOptions — hdrMode", () => {
-  it.each(["auto", "force-hdr", "force-sdr"] as const)("forwards %s", (hdrMode) => {
-    expect(parseRenderOptions({ hdrMode }).hdrMode).toBe(hdrMode);
+describe("parseRenderOptions — outputDynamicRange", () => {
+  it.each(["auto", "hdr", "sdr"] as const)("forwards %s", (outputDynamicRange) => {
+    expect(parseRenderOptions({ outputDynamicRange }).outputDynamicRange).toBe(outputDynamicRange);
   });
 
   it("drops invalid values from the lenient parser", () => {
-    expect(parseRenderOptions({ hdrMode: "hdr" }).hdrMode).toBeUndefined();
-    expect(parseRenderOptions({ hdrMode: true }).hdrMode).toBeUndefined();
+    expect(
+      parseRenderOptions({ outputDynamicRange: "force-sdr" }).outputDynamicRange,
+    ).toBeUndefined();
+    expect(parseRenderOptions({ outputDynamicRange: true }).outputDynamicRange).toBeUndefined();
+  });
+
+  it.each([
+    ["auto", "auto"],
+    ["force-hdr", "hdr"],
+    ["force-sdr", "sdr"],
+  ] as const)("maps legacy hdrMode %s to %s", (hdrMode, outputDynamicRange) => {
+    expect(parseRenderOptions({ hdrMode }).outputDynamicRange).toBe(outputDynamicRange);
+  });
+
+  it("prefers the canonical field when both equivalent fields are present", () => {
+    expect(
+      parseRenderOptions({ outputDynamicRange: "sdr", hdrMode: "force-sdr" }).outputDynamicRange,
+    ).toBe("sdr");
   });
 });
 
@@ -78,11 +94,26 @@ describe("prepareRenderBody — validation", () => {
     expect((result as { error: string }).error).toContain("variables must be a JSON object");
   });
 
-  it("rejects an explicitly-supplied invalid hdrMode", async () => {
-    const result = await prepareRenderBody({ hdrMode: "hdr", html: "<html></html>" });
+  it("rejects an explicitly-supplied invalid outputDynamicRange", async () => {
+    const result = await prepareRenderBody({
+      outputDynamicRange: "force-sdr",
+      html: "<html></html>",
+    });
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain(
-      'hdrMode must be one of: "auto", "force-hdr", "force-sdr"',
+      'outputDynamicRange must be one of: "auto", "hdr", "sdr"',
+    );
+  });
+
+  it("rejects conflicting canonical and legacy policies", async () => {
+    const result = await prepareRenderBody({
+      outputDynamicRange: "sdr",
+      hdrMode: "force-hdr",
+      html: "<html></html>",
+    });
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain(
+      "outputDynamicRange and legacy hdrMode must describe the same output policy",
     );
   });
 
