@@ -182,6 +182,42 @@ describe("resolveHdrExtractionWindow", () => {
   });
 
   it.each([
+    {
+      start: -5,
+      compositionDuration: 2,
+      expected: {
+        compositionStart: -3,
+        mediaStart: 2,
+        durationSeconds: 1,
+        preserveTimelineEnd: true,
+      },
+      label: "already past source EOF",
+    },
+    {
+      start: -2,
+      compositionDuration: 15,
+      expected: {
+        compositionStart: 0,
+        mediaStart: 2,
+        durationSeconds: 1,
+        preserveTimelineEnd: true,
+      },
+      label: "partially crossing source EOF",
+    },
+  ])(
+    "preserves an open-ended HDR non-loop held tail $label",
+    ({ start, compositionDuration, expected }) => {
+      expect(
+        resolveHdrExtractionWindow(
+          hdrVideo("open-held", { start, end: Number.POSITIVE_INFINITY, loop: false }),
+          compositionDuration,
+          videoMetadata(3),
+        ),
+      ).toEqual(expected);
+    },
+  );
+
+  it.each([
     { loop: true, preservation: { preserveTimelinePhase: true }, label: "loop" },
     { loop: false, preservation: { preserveTimelineEnd: true }, label: "held tail" },
   ])(

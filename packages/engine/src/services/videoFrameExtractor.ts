@@ -807,13 +807,12 @@ export function resolveTimelineExtractionWindow(
   const compositionStart = Math.max(0, video.start);
   const trimmedPreroll = compositionStart - video.start;
   const timelineDuration = Math.max(0, timelineEnd - compositionStart);
-  // An open-ended loop remains active through the render timeline; one source
-  // cycle is enough to service it. Non-looping open-ended media retains the
-  // natural-duration fallback supplied by resolveSegmentDuration.
-  const resolvedVisibleDuration =
-    video.loop && !Number.isFinite(video.end)
-      ? timelineDuration
-      : resolvedDuration - trimmedPreroll;
+  // An open-ended authored slot remains active through the render timeline.
+  // One source cycle is enough for a loop; a non-looping slot needs its final
+  // extracted frame kept available for held-tail playback.
+  const resolvedVisibleDuration = !Number.isFinite(video.end)
+    ? timelineDuration
+    : resolvedDuration - trimmedPreroll;
   const visibleDuration = Math.max(0, Math.min(resolvedVisibleDuration, timelineDuration));
   let mediaStart = video.mediaStart + trimmedPreroll;
   if (visibleDuration > 0 && sourceDuration !== undefined) {

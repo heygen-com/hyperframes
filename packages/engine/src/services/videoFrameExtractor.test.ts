@@ -183,6 +183,39 @@ describe("resolveVideoExtractionDuration", () => {
     });
   });
 
+  it.each([
+    {
+      start: -5,
+      timelineEnd: 2,
+      expected: {
+        compositionStart: -3,
+        mediaStart: 2,
+        durationSeconds: 1,
+        preserveTimelineEnd: true,
+      },
+      label: "already past source EOF",
+    },
+    {
+      start: -2,
+      timelineEnd: 15,
+      expected: {
+        compositionStart: 0,
+        mediaStart: 2,
+        durationSeconds: 1,
+        preserveTimelineEnd: true,
+      },
+      label: "partially crossing source EOF",
+    },
+  ])("preserves an open-ended non-loop held tail $label", ({ start, timelineEnd, expected }) => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start, end: Number.POSITIVE_INFINITY, loop: false }),
+        metadata(3),
+        timelineEnd,
+      ),
+    ).toEqual(expected);
+  });
+
   it("bounds an entirely held long source to its final-frame sample", () => {
     expect(
       resolveVideoExtractionWindow(
