@@ -53,6 +53,7 @@
     "generate:catalog-previews": "tsx scripts/generate-catalog-previews.ts",
     "package:codex-plugin": "node scripts/package-codex-plugin.mjs",
     "upload:docs-images": "bash scripts/upload-docs-images.sh",
+    "docs:bundle-reference": "bun scripts/docs/bundle-live-reference.mjs examples/docs-reference-project examples/docs-reference-project/live/index.html",
     "prepare": "test -d .git && lefthook install || true",
     "lint:registry-items": "node scripts/lint-registry-items.mjs"
   },

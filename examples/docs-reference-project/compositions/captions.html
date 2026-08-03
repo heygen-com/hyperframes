@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>captions — example.com intro</title>
+    <!-- This head is metadata for the source file only. The runtime clones ONLY
+         the <template> contents, so every style, node and script that has to
+         exist at render time lives inside it. GSAP is deliberately not
+         re-imported here: the host page already provides the global, and a
+         second <script src> would be a render-time network fetch. -->
+  </head>
+  <body>
+    <template>
+      <style>
+        /* Root is styled by #root, never by a class: the compiler scopes each
+           sub-composition's CSS to its data-composition-id, which would turn a
+           root class selector into a descendant selector that cannot match. */
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 1920px;
+          height: 1080px;
+          pointer-events: none;
+        }
+
+        /* Fixed lower band. Full-width absolute + text-align, NOT
+           left:50% + translateX(-50%) — the latter clips at canvas edges.
+           bottom:64px puts the pill at y 934–1016, inside the 184px band the
+           main composition reserves, so a caption can never cover the artwork. */
+        .group {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 64px;
+          text-align: center;
+          /* the root is click-through so the artwork underneath stays
+             selectable in Studio; the pills themselves are not */
+          pointer-events: auto;
+          opacity: 0;
+          visibility: hidden;
+        }
+        .pill {
+          display: inline-block;
+          max-width: 1304px;
+          padding: 16px 32px;
+          border-radius: 12px;
+          background: #1b1b1b;
+          font-family: "Inter", sans-serif;
+          font-weight: 700; /* bundled weight */
+          font-size: 42px;
+          line-height: 1.2;
+          letter-spacing: -0.005em;
+          text-align: center;
+        }
+        /* Emphasis by luminance only. A word starts read-pending and stays lit
+           once spoken — no scale pop, no colour flash, no scatter exit. Both
+           states clear WCAG AA against #1b1b1b (6.1:1 idle, 17.2:1 lit). */
+        .w {
+          color: #9a9a9a;
+        }
+      </style>
+
+      <div
+        id="root"
+        data-composition-id="captions"
+        data-start="0"
+        data-duration="10"
+        data-width="1920"
+        data-height="1080"
+        data-layout-allow-caption-zone
+      ></div>
+
+      <script>
+        (function () {
+          // Phrase groups. start/end/s/e are absolute composition seconds, taken
+          // from `npx hyperframes transcribe assets/narration.wav --model small.en`
+          // plus the narration clip's data-start of 1.00s. Three groups for three
+          // spoken sentences: stable, one visible at a time, never re-grouped.
+          var GROUPS = [
+            {
+              start: 1.1,
+              end: 2.81,
+              words: [
+                { t: "This", s: 1.1, e: 1.36 },
+                { t: "is", s: 1.36, e: 1.54 },
+                // spoken "example dot com"; written as the string it is
+                { t: "example.com.", s: 1.54, e: 2.81 },
+              ],
+            },
+            {
+              start: 2.81,
+              end: 5.48,
+              words: [
+                { t: "The", s: 2.81, e: 2.95 },
+                { t: "domain", s: 2.95, e: 3.24 },
+                { t: "reserved", s: 3.24, e: 3.56 },
+                { t: "for", s: 3.74, e: 3.81 },
+                { t: "documentation", s: 3.88, e: 4.62 },
+                { t: "examples.", s: 4.74, e: 5.38 },
+              ],
+            },
+            {
+              start: 5.48,
+              end: 8.03,
+              words: [
+                { t: "Use", s: 5.48, e: 5.55 },
+                { t: "it", s: 5.62, e: 5.68 },
+                { t: "in", s: 5.68, e: 5.8 },
+                { t: "your", s: 5.8, e: 6.03 },
+                { t: "docs —", s: 6.09, e: 6.36 },
+                { t: "no", s: 6.48, e: 6.54 },
+                { t: "permission", s: 6.54, e: 6.77 },
+                { t: "needed.", s: 7.17, e: 7.68 },
+              ],
+            },
+          ];
+
+          var IDLE = "#9a9a9a";
+          var LIT = "#ffffff";
+          // Back-to-back phrases: the narration has no pause between sentences
+          // (group 0 ends the exact instant group 1 begins), so the handoff is a
+          // quick fade-down / fade-up rather than a crossfade. Keeping them
+          // short holds the dip at a sentence boundary under ~0.2s while still
+          // guaranteeing only one group is ever drawn on a given frame.
+          var ENTER = 0.18;
+          var EXIT = 0.1;
+
+          var root = document.getElementById("root");
+          var api = window.__hyperframes;
+
+          // Build the DOM synchronously — one group element, one span per word.
+          GROUPS.forEach(function (group, gi) {
+            var groupEl = document.createElement("div");
+            groupEl.id = "cg-" + gi;
+            groupEl.className = "group";
+
+            var pill = document.createElement("div");
+            pill.className = "pill";
+
+            var text = group.words
+              .map(function (w) {
+                return w.t;
+              })
+              .join(" ");
+
+            // Overflow guard: shrink the phrase until it fits one line rather
+            // than letting it wrap up out of the caption band.
+            if (api && typeof api.fitTextFontSize === "function") {
+              var fit = api.fitTextFontSize(text, {
+                fontFamily: "Inter",
+                fontWeight: 700,
+                maxWidth: 1240,
+                baseFontSize: 42,
+                minFontSize: 30,
+                step: 2,
+              });
+              if (fit && fit.fontSize) pill.style.fontSize = fit.fontSize + "px";
+            }
+
+            group.words.forEach(function (w, wi) {
+              if (wi > 0) pill.appendChild(document.createTextNode(" "));
+              var span = document.createElement("span");
+              span.id = "cw-" + gi + "-" + wi;
+              span.className = "w";
+              span.textContent = w.t;
+              pill.appendChild(span);
+            });
+
+            groupEl.appendChild(pill);
+            root.appendChild(groupEl);
+          });
+
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+
+          GROUPS.forEach(function (group, gi) {
+            var groupEl = document.getElementById("cg-" + gi);
+
+            // enter — fromTo, not from: the host re-seeks this sub-composition
+            // every time its slot becomes visible, and from() can desync.
+            tl.fromTo(
+              groupEl,
+              { autoAlpha: 0, y: 14 },
+              { autoAlpha: 1, y: 0, duration: ENTER, ease: "power3.out" },
+              group.start,
+            );
+
+            // progressive fill — each word lights on its own measured onset and
+            // stays lit, so the phrase completes with the voice.
+            group.words.forEach(function (w, wi) {
+              tl.fromTo(
+                "#cw-" + gi + "-" + wi,
+                { color: IDLE },
+                { color: LIT, duration: 0.14, ease: "none" },
+                w.s,
+              );
+            });
+
+            // exit, then the mandatory hard kill exactly at group.end so no group
+            // can bleed into the next one or into the end card.
+            tl.to(
+              groupEl,
+              { autoAlpha: 0, y: -8, duration: EXIT, ease: "power2.in" },
+              group.end - EXIT,
+            );
+            tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end);
+          });
+
+          // Self-lint: prove every group is really gone after its own end.
+          //
+          // Call getComputedStyle BARE, not as window.getComputedStyle(el).
+          // Inside a sub-composition the runtime evaluates this script with a
+          // `window` wrapper object (window !== globalThis, though property
+          // reads/writes proxy through to the real window). Retrieving the
+          // native function through the wrapper and calling it as a method
+          // makes the wrapper the receiver, so it throws
+          // `TypeError: Illegal invocation`, the timeline is never registered,
+          // and the render ships whatever DOM state the throw left behind.
+          GROUPS.forEach(function (group, gi) {
+            var el = document.getElementById("cg-" + gi);
+            if (!el) return;
+            tl.seek(group.end + 0.01);
+            var computed = getComputedStyle(el);
+            if (computed.opacity !== "0" && computed.visibility !== "hidden") {
+              console.warn(
+                "[caption-lint] group " +
+                  gi +
+                  " still visible at t=" +
+                  (group.end + 0.01).toFixed(2) +
+                  "s",
+              );
+            }
+          });
+          tl.seek(0);
+
+          window.__timelines["captions"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
