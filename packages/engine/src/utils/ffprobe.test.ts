@@ -1083,6 +1083,29 @@ describe("final video frame timestamp probes", () => {
     expect(secondController.signal.aborted).toBe(false);
   });
 
+  it("deduplicates the interval and fallback chain within one cancellation scope", async () => {
+    const { spawn, calls } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "" },
+      { kind: "exit", code: 0, stdout: "-2.000000\n-1.000000\n0.000000\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractFinalVideoFrameTimestamp } = await import("./ffprobe.js");
+    const metadata = { videoStreamDurationSeconds: 3, videoStreamStartSeconds: -2 };
+    const signal = new AbortController().signal;
+
+    await expect(
+      Promise.all([
+        extractFinalVideoFrameTimestamp("/tmp/repeated-held-tail.ts", metadata, signal),
+        extractFinalVideoFrameTimestamp("/tmp/repeated-held-tail.ts", metadata, signal),
+      ]),
+    ).resolves.toEqual([2, 2]);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.args).toContain("-read_intervals");
+    expect(calls[1]?.args).not.toContain("-read_intervals");
+  });
+
   it("still deduplicates cancellation-independent probes", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "2.000000\n" }]);
     vi.resetModules();

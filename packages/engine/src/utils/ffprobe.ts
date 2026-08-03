@@ -142,6 +142,10 @@ function parseProbeJson(stdout: string): FFProbeOutput {
 
 const videoMetadataCache = new Map<string, Promise<VideoMetadata>>();
 const finalVideoFrameTimestampCache = new Map<string, Promise<number>>();
+const finalVideoFrameTimestampSignalCaches = new WeakMap<
+  AbortSignal,
+  Map<string, Promise<number>>
+>();
 const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
 // FFmpeg's built-in AAC encoder emits AAC-LC, which has 1024 samples per packet.
 const AAC_LC_SAMPLES_PER_PACKET = 1024;
@@ -593,10 +597,18 @@ export async function extractFinalVideoFrameTimestamp(
   const videoStreamStartSeconds = Number.isFinite(candidateStreamStart) ? candidateStreamStart : 0;
   const cacheKey = `${filePath}\0${String(videoStreamStartSeconds)}\0${String(videoDurationSeconds)}`;
   // A caller-owned abort signal cannot safely own a globally shared process
-  // promise: aborting the first render would fail unrelated consumers, while
-  // a later consumer could not cancel its own wait. Match the audio-probe
-  // policy below and cache only cancellation-independent probes.
-  const cached = signal ? undefined : finalVideoFrameTimestampCache.get(cacheKey);
+  // promise: aborting one render would fail unrelated consumers. Calls in the
+  // SAME cancellation scope should still share the expensive interval +
+  // fallback chain, though — duplicate held-tail elements in one render carry
+  // the same signal and otherwise fan out N full-file scans before extraction
+  // dedupe. Weakly key the cache by cancellation owner to preserve both
+  // aggregate work bounds and cross-render isolation.
+  let probeCache = finalVideoFrameTimestampCache;
+  if (signal) {
+    probeCache = finalVideoFrameTimestampSignalCaches.get(signal) ?? new Map();
+    finalVideoFrameTimestampSignalCaches.set(signal, probeCache);
+  }
+  const cached = probeCache.get(cacheKey);
   if (cached) return cached;
 
   const probePromise = (async () => {
@@ -639,14 +651,12 @@ export async function extractFinalVideoFrameTimestamp(
     return Math.min(Math.max(timestamp - videoStreamStartSeconds, 0), videoDurationSeconds);
   })();
 
-  if (!signal) {
-    finalVideoFrameTimestampCache.set(cacheKey, probePromise);
-    probePromise.catch(() => {
-      if (finalVideoFrameTimestampCache.get(cacheKey) === probePromise) {
-        finalVideoFrameTimestampCache.delete(cacheKey);
-      }
-    });
-  }
+  probeCache.set(cacheKey, probePromise);
+  probePromise.catch(() => {
+    if (probeCache.get(cacheKey) === probePromise) {
+      probeCache.delete(cacheKey);
+    }
+  });
   return probePromise;
 }
 
