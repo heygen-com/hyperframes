@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-underline-grow",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Underline Grow",
+  "description": "Name settles in, an accent rule grows out beneath it, and the title rises after. The safe default.",
+  "tags": ["lower-third", "podcast", "interview", "minimal"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-underline-grow.html",
+      "target": "compositions/lower-third-underline-grow.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

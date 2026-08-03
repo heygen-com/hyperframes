@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-ticker-crawl",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Ticker Crawl",
+  "description": "Static name block with credentials crawling in a thin strip beneath. Seek-safe, no infinite repeat.",
+  "tags": ["lower-third", "podcast", "interview", "news", "ticker"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-ticker-crawl.html",
+      "target": "compositions/lower-third-ticker-crawl.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

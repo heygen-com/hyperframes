@@ -1242,6 +1242,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png"
   },
   {
+    "name": "lower-third-badge-pill",
+    "type": "block",
+    "title": "Lower Third / Badge Pill",
+    "description": "Rounded pill with an avatar slot that springs in. Compact enough to survive a 9:16 crop.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "vertical-safe"
+    ],
+    "href": "/catalog/blocks/lower-third-badge-pill",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-badge-pill.png"
+  },
+  {
     "name": "lower-third-bild",
     "type": "block",
     "title": "Lower Third — BILD Style",
@@ -1254,6 +1268,133 @@
     ],
     "href": "/catalog/blocks/lower-third-bild",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-bild.png"
+  },
+  {
+    "name": "lower-third-bracket-frame",
+    "type": "block",
+    "title": "Lower Third / Bracket Frame",
+    "description": "Four corner brackets draw themselves around the text. No fill, so the footage stays visible.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "no-fill"
+    ],
+    "href": "/catalog/blocks/lower-third-bracket-frame",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-bracket-frame.png"
+  },
+  {
+    "name": "lower-third-glass-panel",
+    "type": "block",
+    "title": "Lower Third / Glass Panel",
+    "description": "Frosted backdrop-filter panel that scales and sharpens into place. Tech podcasts and remote interviews.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "glass"
+    ],
+    "href": "/catalog/blocks/lower-third-glass-panel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-glass-panel.png"
+  },
+  {
+    "name": "lower-third-hairline-rule",
+    "type": "block",
+    "title": "Lower Third / Hairline Rule",
+    "description": "Editorial restraint. A one-pixel rule draws across, then name and title stagger up through masks.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "editorial"
+    ],
+    "href": "/catalog/blocks/lower-third-hairline-rule",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-hairline-rule.png"
+  },
+  {
+    "name": "lower-third-slab-wipe",
+    "type": "block",
+    "title": "Lower Third / Slab Wipe",
+    "description": "Solid bar clips open left to right under a heavy slab serif. Interview and documentary.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "documentary"
+    ],
+    "href": "/catalog/blocks/lower-third-slab-wipe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-slab-wipe.png"
+  },
+  {
+    "name": "lower-third-split-flap",
+    "type": "block",
+    "title": "Lower Third / Split Flap",
+    "description": "Departure-board character flip on the name. Seeded glyph columns, stepped transforms, fully seek-safe.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "kinetic"
+    ],
+    "href": "/catalog/blocks/lower-third-split-flap",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-split-flap.png"
+  },
+  {
+    "name": "lower-third-stacked-caps",
+    "type": "block",
+    "title": "Lower Third / Stacked Caps",
+    "description": "Three lines of condensed caps, each masked up in sequence. Returning guests and episode credits.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "condensed"
+    ],
+    "href": "/catalog/blocks/lower-third-stacked-caps",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-stacked-caps.png"
+  },
+  {
+    "name": "lower-third-tape-strike",
+    "type": "block",
+    "title": "Lower Third / Tape Strike",
+    "description": "Name slams in past its mark and settles while the title types out beneath. High energy.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "typewriter"
+    ],
+    "href": "/catalog/blocks/lower-third-tape-strike",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-tape-strike.png"
+  },
+  {
+    "name": "lower-third-ticker-crawl",
+    "type": "block",
+    "title": "Lower Third / Ticker Crawl",
+    "description": "Static name block with credentials crawling in a thin strip beneath. Seek-safe, no infinite repeat.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "news",
+      "ticker"
+    ],
+    "href": "/catalog/blocks/lower-third-ticker-crawl",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-ticker-crawl.png"
+  },
+  {
+    "name": "lower-third-underline-grow",
+    "type": "block",
+    "title": "Lower Third / Underline Grow",
+    "description": "Name settles in, an accent rule grows out beneath it, and the title rises after. The safe default.",
+    "tags": [
+      "lower-third",
+      "podcast",
+      "interview",
+      "minimal"
+    ],
+    "href": "/catalog/blocks/lower-third-underline-grow",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-underline-grow.png"
   },
   {
     "name": "lt-accent-underline",
