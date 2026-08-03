@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>2D Animation Style Sampler</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        background: #0d0c0a;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0d0c0a;
+        /* Required so beats using mix-blend-mode composite against their own
+           scene rather than punching through to the page background. */
+        isolation: isolate;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      /* Every sub-composition slot fills the frame. */
+      #root > div[data-composition-src] {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---- Title / end cards (root-owned, not sub-comps) ---- */
+      .card {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0d0c0a;
+        color: #f2ece0;
+      }
+
+      .card-kicker {
+        font-size: 24px;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        color: #b8926a;
+        margin-bottom: 34px;
+      }
+
+      .card-title {
+        font-size: 104px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.04;
+        text-align: center;
+        max-width: 1400px;
+      }
+
+      .card-sub {
+        margin-top: 40px;
+        font-size: 30px;
+        font-weight: 300;
+        color: #8d8578;
+        letter-spacing: 0.02em;
+      }
+
+      .card-rule {
+        width: 0;
+        height: 2px;
+        background: #b8926a;
+        margin-top: 52px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="root"
+      data-root="true"
+      data-width="1920"
+      data-height="1080"
+      data-fps="24"
+      data-start="0"
+      data-duration="58.5"
+    >
+      <!-- ============ TITLE CARD ============ -->
+      <div id="title-card" class="clip card" data-start="0" data-duration="3" data-track-index="1">
+        <div class="card-kicker" id="title-kicker">HyperFrames</div>
+        <div class="card-title" id="title-main">15 &times; 2D Animation Styles</div>
+        <div class="card-rule" id="title-rule"></div>
+        <div class="card-sub" id="title-sub">What the framework can actually render</div>
+      </div>
+
+      <!-- ============ 15 STYLE BEATS ============ -->
+      <div
+        id="slot-cel"
+        data-composition-id="cel"
+        data-composition-src="compositions/01-cel.html"
+        data-start="3"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-roto"
+        data-composition-id="roto"
+        data-composition-src="compositions/02-roto.html"
+        data-start="6.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-anime"
+        data-composition-id="anime"
+        data-composition-src="compositions/03-anime.html"
+        data-start="10"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-paintglass"
+        data-composition-id="paintglass"
+        data-composition-src="compositions/04-paint-on-glass.html"
+        data-start="13.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-charcoal"
+        data-composition-id="charcoal"
+        data-composition-src="compositions/05-charcoal.html"
+        data-start="17"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-inkwash"
+        data-composition-id="inkwash"
+        data-composition-src="compositions/06-ink-wash.html"
+        data-start="20.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-vector"
+        data-composition-id="vector"
+        data-composition-src="compositions/07-vector.html"
+        data-start="24"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-flat"
+        data-composition-id="flat"
+        data-composition-src="compositions/08-flat.html"
+        data-start="27.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-isometric"
+        data-composition-id="isometric"
+        data-composition-src="compositions/09-isometric.html"
+        data-start="31"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-pixel"
+        data-composition-id="pixel"
+        data-composition-src="compositions/10-pixel.html"
+        data-start="34.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-motiongfx"
+        data-composition-id="motiongfx"
+        data-composition-src="compositions/11-motion-graphics.html"
+        data-start="38"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-lineart"
+        data-composition-id="lineart"
+        data-composition-src="compositions/12-line-art.html"
+        data-start="41.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-cutout"
+        data-composition-id="cutout"
+        data-composition-src="compositions/13-cutout-puppet.html"
+        data-start="45"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-papercut"
+        data-composition-id="papercut"
+        data-composition-src="compositions/14-paper-cutout.html"
+        data-start="48.5"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="slot-collage"
+        data-composition-id="collage"
+        data-composition-src="compositions/15-collage.html"
+        data-start="52"
+        data-duration="3.5"
+        data-track-index="1"
+      ></div>
+
+      <!-- ============ END CARD ============ -->
+      <div id="end-card" class="clip card" data-start="55.5" data-duration="3" data-track-index="1">
+        <div class="card-kicker" id="end-kicker">Verdict</div>
+        <div class="card-title" id="end-main">All 15 are reachable.<br />Three are hard.</div>
+        <div class="card-rule" id="end-rule"></div>
+        <div class="card-sub" id="end-sub">See ASSESSMENT.md for the per-style breakdown</div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      // Root owns only the title and end cards; every beat animates itself.
+      tl.from("#title-kicker", { opacity: 0, y: 18, duration: 0.5, ease: "power2.out" }, 0.15);
+      tl.from("#title-main", { opacity: 0, y: 34, duration: 0.7, ease: "power3.out" }, 0.32);
+      tl.to("#title-rule", { width: 260, duration: 0.7, ease: "power2.inOut" }, 0.75);
+      tl.from("#title-sub", { opacity: 0, duration: 0.6, ease: "power1.out" }, 1.0);
+      tl.to("#title-card", { opacity: 0, duration: 0.45, ease: "power2.in" }, 2.55);
+
+      tl.from("#end-kicker", { opacity: 0, y: 16, duration: 0.45, ease: "power2.out" }, 55.7);
+      tl.from("#end-main", { opacity: 0, y: 30, duration: 0.65, ease: "power3.out" }, 55.85);
+      tl.to("#end-rule", { width: 260, duration: 0.7, ease: "power2.inOut" }, 56.25);
+      tl.from("#end-sub", { opacity: 0, duration: 0.6, ease: "power1.out" }, 56.5);
+
+      window.__timelines["root"] = tl;
+    </script>
+  </body>
+</html>

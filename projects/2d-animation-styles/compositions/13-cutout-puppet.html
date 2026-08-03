@@ -1,0 +1,195 @@
+<template>
+  <div
+    id="beat-cutout"
+    data-composition-id="cutout"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-cutout {
+        background: #161a22;
+        overflow: hidden;
+      }
+      #beat-cutout .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #eef1f6;
+      }
+      #beat-cutout .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #f0a35e;
+        margin-bottom: 14px;
+      }
+      #beat-cutout .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-cutout .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #94a0b0;
+        margin-top: 12px;
+      }
+      #beat-cutout .co-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #beat-cutout .co-note {
+        position: absolute;
+        right: 96px;
+        bottom: 92px;
+        font-size: 22px;
+        font-weight: 300;
+        color: #8794a5;
+        text-align: right;
+      }
+    </style>
+
+    <div class="co-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <!-- The rig from projects/character-rig, re-staged. Pivots are set with
+             GSAP's svgOrigin (SVG user space) rather than CSS transform-origin,
+             which would resolve against each group's own bounding box and snap
+             nested joints to the wrong centre. -->
+        <g id="co-character">
+          <ellipse id="co-body" cx="960" cy="700" rx="112" ry="146" fill="#2b3242" />
+
+          <g id="co-shoulder">
+            <line
+              x1="1050"
+              y1="612"
+              x2="1096"
+              y2="724"
+              stroke="#2b3242"
+              stroke-width="40"
+              stroke-linecap="round"
+            />
+            <g id="co-elbow">
+              <line
+                x1="1096"
+                y1="724"
+                x2="1084"
+                y2="846"
+                stroke="#2b3242"
+                stroke-width="34"
+                stroke-linecap="round"
+              />
+              <circle cx="1084" cy="852" r="24" fill="#f0a35e" />
+            </g>
+          </g>
+
+          <line
+            x1="870"
+            y1="612"
+            x2="826"
+            y2="742"
+            stroke="#2b3242"
+            stroke-width="40"
+            stroke-linecap="round"
+          />
+
+          <g id="co-head">
+            <circle cx="960" cy="470" r="118" fill="#f0d3b4" />
+            <g id="co-eyes">
+              <ellipse cx="920" cy="452" rx="13" ry="17" fill="#1b2029" />
+              <ellipse cx="1000" cy="452" rx="13" ry="17" fill="#1b2029" />
+            </g>
+            <ellipse id="co-mouth" cx="960" cy="522" rx="26" ry="9" fill="#8c3f36" />
+          </g>
+
+          <!-- joint markers, so the rig structure is legible on screen -->
+          <g fill="none" stroke="#f0a35e" stroke-width="3" opacity="0.75">
+            <circle cx="1050" cy="612" r="17" />
+            <circle cx="1096" cy="724" r="14" />
+            <circle cx="960" cy="560" r="14" />
+          </g>
+        </g>
+      </svg>
+    </div>
+    <div class="co-note">
+      One drawing, six moving parts.<br />Cheapest per-minute style for a series.
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">13 / CUT-OUT</div>
+      <div class="beat-name">Digital cut-out</div>
+      <div class="beat-tech">
+        Nested SVG joints, svgOrigin pivots &mdash; parts move, never redraw
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // svgOrigin takes coordinates in the SVG's own user space, which is what
+        // makes a two-joint chain behave: the elbow rotates about the elbow, and
+        // inherits the shoulder's rotation on top.
+        gsap.set("#co-shoulder", { svgOrigin: "1050 612" });
+        gsap.set("#co-elbow", { svgOrigin: "1096 724" });
+        gsap.set("#co-head", { svgOrigin: "960 560" });
+        gsap.set("#co-eyes", { svgOrigin: "960 452" });
+
+        // idle bounce — finite repeat, never -1
+        tl.to(
+          "#co-character",
+          { y: -16, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 4 },
+          0,
+        );
+
+        // wave: shoulder swings, elbow follows a beat late (drag)
+        tl.to("#co-shoulder", { rotation: -58, duration: 0.5, ease: "power2.out" }, 0.3);
+        tl.to(
+          "#co-shoulder",
+          { rotation: -38, duration: 0.34, ease: "sine.inOut", yoyo: true, repeat: 3 },
+          0.8,
+        );
+        tl.to("#co-elbow", { rotation: -34, duration: 0.5, ease: "power2.out" }, 0.42);
+        tl.to(
+          "#co-elbow",
+          { rotation: 16, duration: 0.34, ease: "sine.inOut", yoyo: true, repeat: 3 },
+          0.94,
+        );
+        tl.to("#co-shoulder", { rotation: 0, duration: 0.5, ease: "power2.inOut" }, 2.5);
+        tl.to("#co-elbow", { rotation: 0, duration: 0.5, ease: "power2.inOut" }, 2.55);
+
+        tl.to(
+          "#co-head",
+          { rotation: 7, duration: 1.1, ease: "sine.inOut", yoyo: true, repeat: 1 },
+          0.4,
+        );
+
+        // blinks: two frames closed, hard cut both ways
+        [0.75, 2.35].forEach(function (t) {
+          tl.set("#co-eyes", { scaleY: 0.1 }, t);
+          tl.set("#co-eyes", { scaleY: 1 }, t + 0.0833);
+        });
+
+        // mouth shapes driven by a baked amplitude envelope — closed/open/wide
+        var ENV = [0, 0.5, 0.8, 0.3, 0.7, 0.9, 0.2, 0.6, 0.85, 0.4, 0.1, 0.55, 0.75, 0.25, 0];
+        ENV.forEach(function (a, i) {
+          var ry = a < 0.15 ? 5 : a < 0.6 ? 15 : 27;
+          var rx = a < 0.15 ? 26 : a < 0.6 ? 24 : 30;
+          tl.set("#co-mouth", { attr: { rx: rx, ry: ry } }, 0.6 + i * 0.13);
+        });
+        tl.set("#co-mouth", { attr: { rx: 26, ry: 9 } }, 2.6);
+
+        tl.from(".co-note", { opacity: 0, duration: 0.6 }, 1.0);
+
+        tl.from(
+          "#beat-cutout .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["cutout"] = tl;
+      })();
+    </script>
+  </div>
+</template>

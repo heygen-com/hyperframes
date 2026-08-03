@@ -1,0 +1,186 @@
+<template>
+  <div
+    id="beat-anime"
+    data-composition-id="anime"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-anime {
+        background: #12141c;
+        overflow: hidden;
+      }
+      #beat-anime .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #f2f0ea;
+      }
+      #beat-anime .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #e2a33f;
+        margin-bottom: 14px;
+      }
+      #beat-anime .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-anime .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #9aa0ad;
+        margin-top: 12px;
+      }
+      #beat-anime .an-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #beat-anime .an-flash {
+        position: absolute;
+        inset: 0;
+        background: #fff6d8;
+        opacity: 0;
+      }
+    </style>
+
+    <div class="an-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <defs>
+          <linearGradient id="an-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1b2233" />
+            <stop offset="100%" stop-color="#3d2a3a" />
+          </linearGradient>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#an-sky)" />
+
+        <!-- speed lines: the manga emphasis device, converging on the subject -->
+        <g id="an-speed" stroke="#f6efdd" stroke-width="4" opacity="0.55">
+          <path d="M0 120 L620 470" />
+          <path d="M0 340 L620 500" />
+          <path d="M0 560 L620 528" />
+          <path d="M0 820 L620 566" />
+          <path d="M1920 120 L1300 470" />
+          <path d="M1920 340 L1300 500" />
+          <path d="M1920 560 L1300 528" />
+          <path d="M1920 820 L1300 566" />
+        </g>
+
+        <!-- hard light shaft: flat, no gradient, one hard edge -->
+        <path
+          id="an-shaft"
+          d="M760 0 L1180 0 L1500 1080 L1000 1080 Z"
+          fill="#f6efdd"
+          opacity="0.1"
+        />
+
+        <!-- subject: flat cel fills, thick outline, oversized eyes -->
+        <g id="an-figure">
+          <ellipse
+            cx="960"
+            cy="700"
+            rx="176"
+            ry="212"
+            fill="#2b3a56"
+            stroke="#0d1017"
+            stroke-width="9"
+          />
+          <circle cx="960" cy="452" r="168" fill="#f0d3b4" stroke="#0d1017" stroke-width="9" />
+          <path
+            d="M792 420 Q 960 250 1128 420 Q 1060 356 960 350 Q 860 356 792 420 Z"
+            fill="#1d2436"
+            stroke="#0d1017"
+            stroke-width="8"
+          />
+          <g id="an-eyes">
+            <ellipse
+              cx="896"
+              cy="480"
+              rx="42"
+              ry="52"
+              fill="#ffffff"
+              stroke="#0d1017"
+              stroke-width="7"
+            />
+            <ellipse
+              cx="1024"
+              cy="480"
+              rx="42"
+              ry="52"
+              fill="#ffffff"
+              stroke="#0d1017"
+              stroke-width="7"
+            />
+            <circle cx="900" cy="486" r="22" fill="#1b2740" />
+            <circle cx="1028" cy="486" r="22" fill="#1b2740" />
+            <circle cx="908" cy="474" r="8" fill="#ffffff" />
+            <circle cx="1036" cy="474" r="8" fill="#ffffff" />
+          </g>
+          <path
+            d="M930 556 Q 960 578 990 556"
+            fill="none"
+            stroke="#0d1017"
+            stroke-width="7"
+            stroke-linecap="round"
+          />
+        </g>
+      </svg>
+    </div>
+    <div class="an-flash"></div>
+
+    <div class="beat-label">
+      <div class="beat-num">03 / TRADITIONAL</div>
+      <div class="beat-name">Anime / manga</div>
+      <div class="beat-tech">Held keys on threes, speed lines, flat cel fills</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Limited animation: the subject holds a key pose, then SNAPS to the
+        // next one. steps(3) on the settle keeps the in-betweens discrete —
+        // this is the whole difference between anime and smooth Western tweening.
+        tl.from(
+          "#an-figure",
+          { scale: 1.16, transformOrigin: "960px 560px", duration: 0.5, ease: "steps(3)" },
+          0,
+        );
+        tl.from(
+          "#an-speed path",
+          { opacity: 0, duration: 0.3, ease: "steps(2)", stagger: 0.02 },
+          0.1,
+        );
+
+        // Impact flash — one frame on, one frame off. At 24fps that is 1/24s.
+        tl.set(".an-flash", { opacity: 0.85 }, 0.42);
+        tl.set(".an-flash", { opacity: 0 }, 0.4617);
+
+        // Held blink: closed for exactly two frames, then open. No tween.
+        tl.set("#an-eyes", { scaleY: 0.08, transformOrigin: "960px 480px" }, 1.55);
+        tl.set("#an-eyes", { scaleY: 1 }, 1.6333);
+        tl.set("#an-eyes", { scaleY: 0.08 }, 2.62);
+        tl.set("#an-eyes", { scaleY: 1 }, 2.7033);
+
+        // Speed lines pulse on threes (8fps at 24fps render).
+        for (var i = 0; i < 28; i++) {
+          tl.set("#an-speed", { opacity: i % 2 === 0 ? 0.55 : 0.28 }, 0.5 + i * 0.125);
+        }
+
+        tl.to("#an-shaft", { opacity: 0.2, duration: 1.8, ease: "sine.inOut" }, 0.6);
+
+        tl.from(
+          "#beat-anime .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["anime"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -1,0 +1,129 @@
+<template>
+  <div
+    id="beat-pixel"
+    data-composition-id="pixel"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-pixel {
+        background: #12101c;
+        overflow: hidden;
+      }
+      #beat-pixel .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #f4f0ff;
+      }
+      #beat-pixel .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #ffb84d;
+        margin-bottom: 14px;
+      }
+      #beat-pixel .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-pixel .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #9d95bb;
+        margin-top: 12px;
+      }
+      #beat-pixel .px-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #beat-pixel .px-scale {
+        image-rendering: pixelated;
+        transform-origin: 50% 50%;
+      }
+    </style>
+
+    <div class="px-stage">
+      <!-- Authored on a real 32x24 grid, then upscaled 26x with
+           image-rendering: pixelated. Nothing anti-aliases, because the source
+           genuinely has that few pixels. -->
+      <svg
+        id="px-art"
+        class="px-scale"
+        width="832"
+        height="624"
+        viewBox="0 0 32 24"
+        shape-rendering="crispEdges"
+      >
+        <rect width="32" height="24" fill="#1b1730" />
+        <g id="px-stars" fill="#f4f0ff">
+          <rect x="3" y="2" width="1" height="1" />
+          <rect x="11" y="4" width="1" height="1" />
+          <rect x="21" y="1" width="1" height="1" />
+          <rect x="27" y="5" width="1" height="1" />
+          <rect x="7" y="7" width="1" height="1" />
+        </g>
+        <rect y="17" width="32" height="7" fill="#2f2a52" />
+        <rect y="19" width="32" height="5" fill="#3d3668" />
+        <g id="px-hero">
+          <rect x="14" y="9" width="4" height="4" fill="#ffb84d" />
+          <rect x="15" y="10" width="1" height="1" fill="#12101c" />
+          <rect x="17" y="10" width="1" height="1" fill="#12101c" />
+          <rect x="14" y="13" width="4" height="4" fill="#e2564a" />
+          <rect x="13" y="14" width="1" height="2" fill="#e2564a" />
+          <rect x="18" y="14" width="1" height="2" fill="#e2564a" />
+          <rect x="14" y="17" width="1" height="2" fill="#2f6f8f" />
+          <rect x="17" y="17" width="1" height="2" fill="#2f6f8f" />
+        </g>
+        <g id="px-coin" fill="#efd11f">
+          <rect x="25" y="12" width="2" height="3" />
+          <rect x="24" y="13" width="4" height="1" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">10 / DIGITAL</div>
+      <div class="beat-name">Pixel art</div>
+      <div class="beat-tech">Integer grid, nearest-neighbour upscale, stepped motion</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Motion must land on whole pixels or the illusion dies. Every hop is a
+        // zero-duration set at an integer offset — 8 poses per second, matching
+        // a 16-bit sprite cadence rather than the 24fps render.
+        var STEP = 26; // one source pixel = 26 rendered px at this upscale
+        var hops = [0, -1, -2, -2, -1, 0, 0, 0];
+        for (var i = 0; i < 28; i++) {
+          var h = hops[i % hops.length];
+          tl.set("#px-hero", { y: (h * STEP) / 26 }, i * 0.125);
+        }
+        // Coin spins by swapping widths — a 4-frame sprite cycle, not a rotation.
+        var spin = [2, 1, 2, 3];
+        for (var c = 0; c < 28; c++) {
+          var w = spin[c % spin.length];
+          tl.set("#px-coin rect:first-child", { attr: { width: w, x: 26 - w / 2 } }, c * 0.125);
+        }
+        tl.from("#px-art", { scale: 0.86, duration: 0.6, ease: "steps(4)" }, 0);
+        tl.to("#px-art", { scale: 1.05, duration: 2.6, ease: "steps(8)" }, 0.6);
+
+        tl.from(
+          "#beat-pixel .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["pixel"] = tl;
+      })();
+    </script>
+  </div>
+</template>
