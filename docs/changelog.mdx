@@ -9,6 +9,35 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.90"
+  description="Released - 2026-08-03"
+  tags={["Release", "Producer", "Engine", "Contributing"]}
+>
+Prevents short compositions from decoding entire long video sources and exhausting producer memory through HDR raw-frame scratch and filesystem page cache. Extraction now follows the playable timeline, reserves bounded scratch capacity across concurrent renders, and cleans resources on every exit path.
+
+## Fixes
+
+- **Producer:** Bound video extraction to the composition's playable interval instead of the source's full duration, including negative timeline starts, non-zero media offsets, loops, held tails, and distributed planning ([#2955](https://github.com/heygen-com/hyperframes/pull/2955))
+- **Producer:** Limit concurrent HDR raw-frame scratch against the configured ceiling, cgroup memory, and free disk; release reservations and temporary resources after success, cancellation, and partial failure ([#2955](https://github.com/heygen-com/hyperframes/pull/2955))
+- **Engine:** Resolve the true final playable frame for held-tail media, including streams with non-zero or negative timestamp bases, without sharing cancellation state across renders ([#2955](https://github.com/heygen-com/hyperframes/pull/2955))
+- **Producer API:** Add `outputDynamicRange: auto | hdr | sdr` while temporarily accepting the legacy `hdrMode` field for rolling migrations ([#2955](https://github.com/heygen-com/hyperframes/pull/2955))
+
+## Rollout
+
+- Upgrade the HyperFrames producer fleet to v0.7.90 before deploying callers that send `outputDynamicRange`; the legacy `hdrMode` field remains accepted only to bridge the rolling deployment.
+
+## Catalog
+
+- **Contributing:** Refresh the catalog contribution guide ([#2954](https://github.com/heygen-com/hyperframes/pull/2954))
+
+## Internal
+
+- **Release:** Publish stable packages only from a reviewed release PR's exact merge commit, with fail-closed checkout/tag verification and safe same-commit retries ([#2959](https://github.com/heygen-com/hyperframes/pull/2959))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.89...v0.7.90).
+</Update>
+
+<Update
   label="HyperFrames v0.7.89"
   description="Released - 2026-08-02"
   tags={["Release", "Studio", "CLI"]}
