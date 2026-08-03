@@ -92,6 +92,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "beat-freeze-cut",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "shimmer-sweep",
       "type": "hyperframes:component"
     },

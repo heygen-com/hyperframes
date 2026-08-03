@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "beat-freeze-cut",
+  "type": "hyperframes:block",
+  "title": "Beat Freeze Cut",
+  "description": "A beat-driven speed ramp, freeze-frame hit, and hard-cut sequence for music-led promos and montages.",
+  "tags": ["transition", "music", "beat-driven", "freeze-frame"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "beat-freeze-cut.html",
+      "target": "compositions/beat-freeze-cut.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "params": [
+    {
+      "key": "--bg-color",
+      "label": "Background",
+      "type": "color",
+      "default": "#0B0D10"
+    },
+    {
+      "key": "--accent-color",
+      "label": "Accent",
+      "type": "color",
+      "default": "#00E5C7"
+    }
+  ]
+}

@@ -300,6 +300,7 @@
           {
             "group": "CSS Transitions",
             "pages": [
+              "catalog/blocks/beat-freeze-cut",
               "catalog/blocks/transitions-3d",
               "catalog/blocks/transitions-blur",
               "catalog/blocks/transitions-cover",
