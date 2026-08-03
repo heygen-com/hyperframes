@@ -57,13 +57,11 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
     The release commit can include the version bump, `releases/v0.6.53.md`, and the docs changelog update.
   </Step>
   <Step title="Publish">
-    Push the release tag:
-    ```bash
-    git push origin main --tags
-    ```
-    The publish workflow uses `releases/v0.6.53.md` as the GitHub Release body when the file exists. If no reviewed release file is present, it falls back to GitHub-generated notes.
+    Push the `release/v0.6.53` branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow pins its checkout to the exact merge SHA, verifies that SHA, creates `v0.6.53`, and uses `releases/v0.6.53.md` as the GitHub Release body. If no reviewed release file is present, it falls back to GitHub-generated notes.
 
-    The generated compare link points to the future `v0.6.53` tag. It may not resolve between the PR merge and the final tag push.
+    To recover a failed publish, rerun the original merged-PR workflow. Do not push the stable tag or use a manual dispatch; those paths are intentionally disabled so recovery cannot publish a different commit.
+
+    The generated compare link points to the future `v0.6.53` tag. It may not resolve until the release PR merges and the publish workflow creates the tag.
   </Step>
 </Steps>
 

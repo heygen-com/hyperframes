@@ -2,7 +2,6 @@
 import { execFileSync } from "node:child_process";
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-([0-9A-Za-z-]+)(?:\.[0-9A-Za-z-]+)*)?$/;
-const STABLE_BRANCH_RE = /^origin\/(main|release\/v.+)$/;
 const PRERELEASE_BRANCH_RE = /^origin\/(next|alpha|beta|rc|canary|prerelease\/.+)$/;
 const RELEASE_PR_RE = /^release\/v\d+\.\d+\.\d+$/;
 
@@ -26,57 +25,60 @@ export function normalizeRemoteBranches(output) {
     .filter((line) => line && !line.includes("HEAD ->"));
 }
 
-export function validateReleaseChannel({ version, distTag, eventName, prHeadRef, remoteBranches }) {
-  const errors = [];
-
-  if (!VERSION_RE.test(version)) {
-    errors.push(`Invalid release version "${version}". Expected x.y.z or x.y.z-channel.N.`);
-    return errors;
-  }
-
+function validateDistTag(version, distTag) {
   const expectedTag = expectedDistTag(version);
-  const isPrerelease = expectedTag !== "latest";
+  if (distTag === expectedTag) return [];
+  return [
+    `Version "${version}" must publish with npm dist-tag "${expectedTag}", got "${distTag}".`,
+  ];
+}
 
-  if (distTag !== expectedTag) {
+function validateMergedReleasePr({ version, prHeadRef }) {
+  const errors = [];
+  if (!RELEASE_PR_RE.test(prHeadRef)) {
     errors.push(
-      `Version "${version}" must publish with npm dist-tag "${expectedTag}", got "${distTag}".`,
+      `Merged release PRs must come from release/vX.Y.Z branches, got "${prHeadRef || "<empty>"}".`,
     );
   }
-
-  if (eventName === "pull_request") {
-    if (!RELEASE_PR_RE.test(prHeadRef)) {
-      errors.push(
-        `Merged release PRs must come from release/vX.Y.Z branches, got "${prHeadRef || "<empty>"}".`,
-      );
-    }
-    if (isPrerelease) {
-      errors.push(
-        "Merged release PRs publish stable releases only. Publish prereleases from next/alpha tags instead.",
-      );
-    }
-    return errors;
-  }
-
-  if (eventName !== "push" && eventName !== "workflow_dispatch") {
-    errors.push(`Unsupported publish event "${eventName}".`);
-    return errors;
-  }
-
-  const allowedBranch = isPrerelease
-    ? remoteBranches.some((branch) => PRERELEASE_BRANCH_RE.test(branch))
-    : remoteBranches.some((branch) => STABLE_BRANCH_RE.test(branch));
-
-  if (!allowedBranch) {
-    const expectedBranches = isPrerelease
-      ? "origin/next, origin/alpha, origin/beta, origin/rc, origin/canary, or origin/prerelease/*"
-      : "origin/main or origin/release/v*";
-    const actualBranches = remoteBranches.length > 0 ? remoteBranches.join(", ") : "<none>";
+  if (expectedDistTag(version) !== "latest") {
     errors.push(
-      `Tag v${version} is on ${actualBranches}, but ${distTag} releases must be reachable from ${expectedBranches}.`,
+      "Merged release PRs publish stable releases only. Publish prereleases from next/alpha tags instead.",
     );
   }
-
   return errors;
+}
+
+function validatePrereleaseTagPush({ version, distTag, remoteBranches }) {
+  if (expectedDistTag(version) === "latest") {
+    return [
+      "Stable tag publishing is disabled. Merge a reviewed release/vX.Y.Z PR into main and rerun that immutable merge event for recovery.",
+    ];
+  }
+
+  const allowedBranch = remoteBranches.some((branch) => PRERELEASE_BRANCH_RE.test(branch));
+  if (allowedBranch) return [];
+  const actualBranches = remoteBranches.length > 0 ? remoteBranches.join(", ") : "<none>";
+  return [
+    `Tag v${version} is on ${actualBranches}, but ${distTag} releases must be reachable from origin/next, origin/alpha, origin/beta, origin/rc, origin/canary, or origin/prerelease/*.`,
+  ];
+}
+
+const EVENT_VALIDATORS = new Map([
+  ["pull_request", validateMergedReleasePr],
+  ["push", validatePrereleaseTagPush],
+]);
+
+function validateReleaseSource(input) {
+  const validator = EVENT_VALIDATORS.get(input.eventName);
+  return validator ? validator(input) : [`Unsupported publish event "${input.eventName}".`];
+}
+
+export function validateReleaseChannel(input) {
+  if (!VERSION_RE.test(input.version)) {
+    return [`Invalid release version "${input.version}". Expected x.y.z or x.y.z-channel.N.`];
+  }
+
+  return [...validateDistTag(input.version, input.distTag), ...validateReleaseSource(input)];
 }
 
 function readRemoteBranchesContainingHead() {
@@ -87,30 +89,44 @@ function readRemoteBranchesContainingHead() {
   return normalizeRemoteBranches(output);
 }
 
-function main() {
-  const version = process.env.VERSION ?? "";
-  const distTag = process.env.DIST_TAG ?? "";
-  const eventName = process.env.EVENT_NAME ?? "";
-  const prHeadRef = process.env.PR_HEAD_REF ?? "";
-  const remoteBranches = eventName === "pull_request" ? [] : readRemoteBranchesContainingHead();
+function readEnv(name) {
+  return process.env[name] ?? "";
+}
 
-  const errors = validateReleaseChannel({
-    version,
-    distTag,
+function readRemoteBranchesForEvent(eventName) {
+  return eventName === "pull_request" ? [] : readRemoteBranchesContainingHead();
+}
+
+function readValidationInput() {
+  const eventName = readEnv("EVENT_NAME");
+  return {
+    version: readEnv("VERSION"),
+    distTag: readEnv("DIST_TAG"),
     eventName,
-    prHeadRef,
-    remoteBranches,
-  });
+    prHeadRef: readEnv("PR_HEAD_REF"),
+    remoteBranches: readRemoteBranchesForEvent(eventName),
+  };
+}
 
+function reportValidation(input, errors) {
   if (errors.length > 0) {
     for (const error of errors) {
       console.error(`::error::${error}`);
     }
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  const branches = remoteBranches.length > 0 ? remoteBranches.join(", ") : "not required";
-  console.log(`Release channel validated for v${version} (${distTag}); branches: ${branches}`);
+  const branches =
+    input.remoteBranches.length > 0 ? input.remoteBranches.join(", ") : "not required";
+  console.log(
+    `Release channel validated for v${input.version} (${input.distTag}); branches: ${branches}`,
+  );
+}
+
+function main() {
+  const input = readValidationInput();
+  reportValidation(input, validateReleaseChannel(input));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

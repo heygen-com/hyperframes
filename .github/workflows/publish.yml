@@ -5,16 +5,12 @@ permissions: {}
 on:
   push:
     tags:
-      - "v*"
+      # Stable tags are created only by a merged, reviewed release PR. Direct
+      # tag pushes are reserved for prerelease channels.
+      - "v*-*"
   pull_request:
     types: [closed]
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to publish (e.g. 0.4.11). Tag v<version> must already exist."
-        required: true
-        type: string
 
 jobs:
   publish:
@@ -25,35 +21,43 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    # Run on tag push, manual dispatch, OR when a release/* PR is merged
+    env:
+      EXPECTED_RELEASE_SHA: >-
+        ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.merge_commit_sha
+            || github.sha }}
+    # Stable releases come only from reviewed release PRs. Tag pushes are
+    # prerelease-only because the trigger pattern requires a hyphenated version.
     if: >-
       github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'release/v'))
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          # On manual dispatch, check out the existing tag so we publish the
-          # exact commit that was tagged — not whatever is currently on main.
-          ref: >-
-            ${{ github.event_name == 'workflow_dispatch'
-                && format('refs/tags/v{0}', inputs.version)
-                || github.ref }}
+          # Pin every release to an immutable ref. In particular, a merged
+          # release PR event exposes main as github.ref, which may advance
+          # before this job starts; use the event's exact merge commit instead.
+          ref: ${{ env.EXPECTED_RELEASE_SHA }}
+
+      - name: Verify immutable release checkout
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_COMMIT_SHA="$(git rev-parse "${EXPECTED_RELEASE_SHA}^{commit}")"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
+            echo "::error::Expected release commit $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
+            exit 1
+          fi
 
       - name: Resolve version
         id: version
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION: ${{ inputs.version }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           if [ "$EVENT_NAME" = "push" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="${INPUT_VERSION}"
-            VERSION="${VERSION#v}"
           else
             BRANCH="${PR_HEAD_REF}"
             VERSION="${BRANCH#release/v}"
@@ -84,8 +88,29 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
+          TAG="v$VERSION"
+          EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
+
+          verify_remote_tag() {
+            git fetch --force --no-tags origin "+refs/tags/$TAG:refs/tags/$TAG"
+            ACTUAL_TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
+            if [ "$ACTUAL_TAG_SHA" != "$EXPECTED_TAG_SHA" ]; then
+              echo "::error::Release tag $TAG points to $ACTUAL_TAG_SHA, expected $EXPECTED_TAG_SHA"
+              exit 1
+            fi
+            echo "Release tag $TAG already exists at the expected commit — skipping"
+          }
+
+          if [ -n "$(git ls-remote --refs origin "refs/tags/$TAG")" ]; then
+            verify_remote_tag
+          else
+            git tag --no-sign "$TAG" "$EXPECTED_TAG_SHA"
+            if ! git push origin "refs/tags/$TAG"; then
+              # A concurrent retry may have created the tag after ls-remote.
+              git tag -d "$TAG"
+              verify_remote_tag
+            fi
+          fi
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
