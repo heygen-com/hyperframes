@@ -286,7 +286,7 @@ async function finalizeCli(result: CommandResult): Promise<void> {
   await telemetryReady.catch(() => {});
   _trackCommandResult?.({
     command,
-    success: result.exitCode === 0 && !commandFailed,
+    success: result.exitCode === 0 && commandSucceededForTelemetry(),
     exitCode: result.exitCode,
     durationMs: Date.now() - commandStart,
     runId,
@@ -324,7 +324,7 @@ process.on(
     if (!finalized) {
       _trackCommandResult?.({
         command,
-        success: code === 0 && !commandFailed,
+        success: code === 0 && commandSucceededForTelemetry(),
         exitCode: code,
         durationMs: Date.now() - commandStart,
         runId,
@@ -396,6 +396,17 @@ function exitAfterPostRenderTermination(
 function handleStreamEpipe(): never {
   if (!isRenderSucceeded()) commandFailed = true;
   process.exit(0);
+}
+
+// Success gate for the cli_command_result telemetry field. `commandFailed`
+// can be set by pre-artifact noise — a stray unhandledRejection mid-render,
+// or an EPIPE that fires before validation on a run that still completes.
+// Once the render artifact has been validated (`isRenderSucceeded()`), that
+// earlier noise must not score the run as a failure: the run delivered.
+// Genuine failures keep a non-zero exit code and are caught by the
+// `exitCode === 0 &&` half of the expression at both call sites.
+function commandSucceededForTelemetry(): boolean {
+  return !commandFailed || isRenderSucceeded();
 }
 
 // Terminate the process after a genuine CLI failure — mark commandFailed,

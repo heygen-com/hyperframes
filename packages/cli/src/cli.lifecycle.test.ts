@@ -111,6 +111,29 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  it("does not let pre-artifact noise doom a run whose render later validates", async () => {
+    const trackCommandResult = vi.fn();
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      const successState = await import("./utils/render-success-state.js");
+      // Noise arrives BEFORE the artifact is validated (mid-render EPIPE /
+      // stray rejection shape), then the render completes and validates.
+      mockInitCommand(() => {
+        emitStreamEpipe();
+        successState.markRenderSucceeded();
+      });
+      mockTelemetry({ trackCommandResult });
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+
+      expect(trackCommandResult).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+      successState._resetRenderSuccessForTests();
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
   it("still scores an EPIPE before the artifact is validated as a failure", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
