@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -118,11 +118,15 @@ describe.skipIf(!HAS_MEDIA_TOOLS)("preflightCompositionAssetMediaTypes", () => {
     };
   }
 
-  async function run(input: { videoSrc?: string; audioSrc?: string; imageSrc?: string }) {
+  async function run(
+    input: { videoSrc?: string; audioSrc?: string; imageSrc?: string },
+    signal?: AbortSignal,
+  ) {
     return preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir,
       composition: composition(input),
+      signal,
     });
   }
 
@@ -189,5 +193,18 @@ describe.skipIf(!HAS_MEDIA_TOOLS)("preflightCompositionAssetMediaTypes", () => {
     writeFileSync(join(projectDir, "corrupt-media"), "not a media container");
     await expect(run({ videoSrc: "missing-media" })).resolves.toBeUndefined();
     await expect(run({ imageSrc: "corrupt-media" })).resolves.toBeUndefined();
+  });
+
+  it("re-probes a path after its media contents are replaced", async () => {
+    const mutablePath = join(projectDir, "mutable-media");
+    const signal = new AbortController().signal;
+    copyFileSync(audioPath, mutablePath);
+    await expect(run({ videoSrc: "mutable-media" }, signal)).rejects.toMatchObject({
+      code: ASSET_MEDIA_TYPE_MISMATCH,
+      retryable: false,
+    });
+
+    copyFileSync(videoPath, mutablePath);
+    await expect(run({ videoSrc: "mutable-media" }, signal)).resolves.toBeUndefined();
   });
 });

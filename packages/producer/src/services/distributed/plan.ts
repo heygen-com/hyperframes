@@ -989,6 +989,7 @@ export async function buildLocalExecutionPlan(
     forceScreenshot,
     log,
     assertNotAborted,
+    abortSignal,
     compiled,
     composition,
     width,

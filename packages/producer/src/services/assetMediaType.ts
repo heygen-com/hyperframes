@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/engine";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
+const MEDIA_PREFLIGHT_CONCURRENCY = 4;
 
 export type AssetElementMediaType = "audio" | "image" | "video";
 export type DetectedAssetMediaType = AssetElementMediaType | "unknown";
@@ -132,25 +133,30 @@ export async function preflightCompositionAssetMediaTypes(input: {
   }
 
   const mismatches: AssetMediaTypeMismatch[] = [];
-  await Promise.all(
-    [...byPath].map(async ([resolvedPath, pathReferences]) => {
-      let profile: MediaProbeProfile;
-      try {
-        profile = await probeMediaProfile(resolvedPath, { signal: input.signal });
-      } catch (error) {
-        if (input.signal?.aborted) throw input.signal.reason ?? error;
-        return;
-      }
-      for (const reference of pathReferences) {
-        if (mediaProfileMatchesElementType(reference.expected, profile)) continue;
-        mismatches.push({
-          expected: reference.expected,
-          detected: detectedAssetMediaType(profile),
-          elementFingerprint: fingerprintElementId(reference.id),
-        });
-      }
-    }),
-  );
+  const entries = [...byPath];
+  for (let offset = 0; offset < entries.length; offset += MEDIA_PREFLIGHT_CONCURRENCY) {
+    await Promise.all(
+      entries
+        .slice(offset, offset + MEDIA_PREFLIGHT_CONCURRENCY)
+        .map(async ([resolvedPath, pathReferences]) => {
+          let profile: MediaProbeProfile;
+          try {
+            profile = await probeMediaProfile(resolvedPath, { signal: input.signal });
+          } catch (error) {
+            if (input.signal?.aborted) throw input.signal.reason ?? error;
+            return;
+          }
+          for (const reference of pathReferences) {
+            if (mediaProfileMatchesElementType(reference.expected, profile)) continue;
+            mismatches.push({
+              expected: reference.expected,
+              detected: detectedAssetMediaType(profile),
+              elementFingerprint: fingerprintElementId(reference.id),
+            });
+          }
+        }),
+    );
+  }
 
   if (mismatches.length > 0) throw new AssetMediaTypeMismatchError(mismatches);
 }

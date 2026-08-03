@@ -2272,6 +2272,7 @@ async function executeRenderPipeline(input: {
           forceScreenshot: captureForceScreenshot,
           log,
           assertNotAborted,
+          abortSignal: executionSignal,
           compiled,
           composition,
           width,

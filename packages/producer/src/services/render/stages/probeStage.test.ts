@@ -12,6 +12,10 @@ import {
 const capturedCfgs: unknown[] = [];
 const capturedOptions: unknown[] = [];
 let mediaPreflightCallCount = 0;
+let mediaPreflightError: Error | null = null;
+let mediaPreflightSignal: AbortSignal | undefined;
+let afterMediaPreflight: (() => void) | null = null;
+let fileServerCloseCallCount = 0;
 
 type MockSession = {
   id: number;
@@ -57,11 +61,18 @@ function resetRetryMocks() {
   closedSessions.length = 0;
   durationProbeSessions.length = 0;
   mediaPreflightCallCount = 0;
+  mediaPreflightError = null;
+  mediaPreflightSignal = undefined;
+  afterMediaPreflight = null;
+  fileServerCloseCallCount = 0;
 }
 
 mock.module("../../assetMediaType.js", () => ({
-  preflightCompositionAssetMediaTypes: async () => {
+  preflightCompositionAssetMediaTypes: async (input: { signal?: AbortSignal }) => {
     mediaPreflightCallCount += 1;
+    mediaPreflightSignal = input.signal;
+    if (mediaPreflightError) throw mediaPreflightError;
+    afterMediaPreflight?.();
   },
 }));
 
@@ -134,9 +145,12 @@ mock.module("../../fileServer.js", () => ({
   createFileServer: async () => ({
     url: "http://127.0.0.1:0",
     port: 0,
-    close: () => {},
+    close: () => {
+      fileServerCloseCallCount += 1;
+    },
     addPreHeadScript: () => {},
   }),
+  closeFileServerSafely: (fileServer: { close: () => void }) => fileServer.close(),
   VIRTUAL_TIME_SHIM: "",
 }));
 
@@ -246,6 +260,7 @@ function makeProbeInput(overrides: {
       debug: () => {},
     },
     assertNotAborted: () => {},
+    abortSignal: undefined as AbortSignal | undefined,
   };
 }
 
@@ -327,6 +342,37 @@ describe("runProbeStage — forceScreenshot threading", () => {
     await runProbeStage(input);
 
     expect(mediaPreflightCallCount).toBe(1);
+  });
+
+  it("passes cancellation through and closes probe-owned resources when preflight rejects", async () => {
+    resetRetryMocks();
+    mediaPreflightError = new Error("ASSET_MEDIA_TYPE_MISMATCH");
+    const controller = new AbortController();
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.abortSignal = controller.signal;
+
+    await expect(runProbeStage(input)).rejects.toThrow("ASSET_MEDIA_TYPE_MISMATCH");
+
+    expect(mediaPreflightSignal).toBe(controller.signal);
+    expect(closeCaptureSessionCallCount).toBe(1);
+    expect(fileServerCloseCallCount).toBe(1);
+    mediaPreflightError = null;
+  });
+
+  it("closes probe-owned resources when cancellation lands after an empty preflight", async () => {
+    resetRetryMocks();
+    const controller = new AbortController();
+    afterMediaPreflight = () => controller.abort(new Error("render cancelled"));
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.abortSignal = controller.signal;
+    input.assertNotAborted = () => controller.signal.throwIfAborted();
+
+    await expect(runProbeStage(input)).rejects.toThrow("render cancelled");
+
+    expect(closeCaptureSessionCallCount).toBe(1);
+    expect(fileServerCloseCallCount).toBe(1);
   });
 
   it("launches a probe when a static-duration composition inserts video at runtime", async () => {

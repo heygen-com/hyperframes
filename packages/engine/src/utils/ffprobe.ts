@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
-import { createReadStream, readFileSync } from "fs";
+import { createReadStream, readFileSync, statSync } from "fs";
+import { open as openFile } from "node:fs/promises";
 import * as zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
 import { basename } from "path";
@@ -147,7 +148,14 @@ const finalVideoFrameTimestampSignalCaches = new WeakMap<
   Map<string, Promise<number>>
 >();
 const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
-const mediaProbeOutputCache = new Map<string, Promise<FFProbeOutput>>();
+interface MediaProbeCacheEntry {
+  identity: string;
+  promise: Promise<FFProbeOutput>;
+}
+
+const mediaProbeOutputCache = new Map<string, MediaProbeCacheEntry>();
+const mediaProbeOutputSignalCaches = new WeakMap<AbortSignal, Map<string, MediaProbeCacheEntry>>();
+const MEDIA_PROBE_OUTPUT_CACHE_MAX_ENTRIES = 128;
 // FFmpeg's built-in AAC encoder emits AAC-LC, which has 1024 samples per packet.
 const AAC_LC_SAMPLES_PER_PACKET = 1024;
 
@@ -303,31 +311,95 @@ function isPngImageProbe(output: FFProbeOutput): boolean {
   );
 }
 
+function mediaFileIdentity(filePath: string): string | null {
+  try {
+    const stat = statSync(filePath, { bigint: true });
+    return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+  } catch {
+    return null;
+  }
+}
+
 async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise<FFProbeOutput> {
+  let cache = mediaProbeOutputCache;
   if (signal) {
-    const stdout = await runFfprobe(
-      filePath,
-      ["-print_format", "json", "-show_format", "-show_streams"],
-      signal,
-    );
-    return parseProbeJson(stdout);
+    cache = mediaProbeOutputSignalCaches.get(signal) ?? new Map<string, MediaProbeCacheEntry>();
+    mediaProbeOutputSignalCaches.set(signal, cache);
   }
 
-  const cached = mediaProbeOutputCache.get(filePath);
-  if (cached) return cached;
-  const promise = runFfprobe(filePath, [
-    "-print_format",
-    "json",
-    "-show_format",
-    "-show_streams",
-  ]).then(parseProbeJson);
-  mediaProbeOutputCache.set(filePath, promise);
+  const identity = mediaFileIdentity(filePath);
+  const cached = cache.get(filePath);
+  if (identity !== null && cached?.identity === identity) {
+    // The no-signal fallback is process-scoped, so touch its entries to make
+    // the fixed-size map an LRU. Signal-owned maps are released with their
+    // render and do not need process-lifetime eviction.
+    if (!signal) {
+      cache.delete(filePath);
+      cache.set(filePath, cached);
+    }
+    return cached.promise;
+  }
+  const promise = runFfprobe(
+    filePath,
+    ["-print_format", "json", "-show_format", "-show_streams"],
+    signal,
+  ).then(parseProbeJson);
+  if (identity !== null) {
+    cache.set(filePath, { identity, promise });
+    if (!signal && cache.size > MEDIA_PROBE_OUTPUT_CACHE_MAX_ENTRIES) {
+      const oldestPath = cache.keys().next().value;
+      if (oldestPath !== undefined) cache.delete(oldestPath);
+    }
+  }
   promise.catch(() => {
-    if (mediaProbeOutputCache.get(filePath) === promise) {
-      mediaProbeOutputCache.delete(filePath);
+    if (cache.get(filePath)?.promise === promise) {
+      cache.delete(filePath);
     }
   });
   return promise;
+}
+
+class StructurallyIncompletePngError extends Error {}
+
+async function hasCompletePngStructure(filePath: string, signal?: AbortSignal): Promise<boolean> {
+  let file: Awaited<ReturnType<typeof openFile>> | undefined;
+  try {
+    file = await openFile(filePath, "r");
+    signal?.throwIfAborted();
+    const fileSize = (await file.stat()).size;
+    const signature = Buffer.alloc(8);
+    const signatureRead = await file.read(signature, 0, signature.length, 0);
+    if (
+      signatureRead.bytesRead !== signature.length ||
+      !signature.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    ) {
+      return false;
+    }
+
+    let seenHeader = false;
+    let seenImageData = false;
+    let offset = 8;
+    const chunkHeader = Buffer.alloc(8);
+    while (offset + 12 <= fileSize) {
+      signal?.throwIfAborted();
+      const headerRead = await file.read(chunkHeader, 0, chunkHeader.length, offset);
+      if (headerRead.bytesRead !== chunkHeader.length) return false;
+      const chunkLength = chunkHeader.readUInt32BE(0);
+      const chunkEnd = offset + 12 + chunkLength;
+      if (chunkEnd > fileSize) return false;
+      const chunkType = chunkHeader.toString("ascii", 4, 8);
+      if (chunkType === "IHDR") seenHeader = chunkLength === 13 && offset === 8;
+      if (chunkType === "IDAT") seenImageData = true;
+      if (chunkType === "IEND") return seenHeader && seenImageData && chunkLength === 0;
+      offset = chunkEnd;
+    }
+    return false;
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    return false;
+  } finally {
+    await file?.close().catch(() => {});
+  }
 }
 
 /**
@@ -341,13 +413,19 @@ export async function probeMediaProfile(
 ): Promise<MediaProbeProfile> {
   try {
     const output = await probeMediaOutput(filePath, options?.signal);
+    options?.signal?.throwIfAborted();
     const videoStreams = output.streams.filter((stream) => stream.codec_type === "video");
     const hasMovingVideoStream = videoStreams.some(
       (stream) => stream.disposition?.attached_pic !== 1,
     );
     const isStillImage = videoStreams.length > 0 && (await isStillImageVisual(output, filePath));
-    if (isStillImage && isPngImageProbe(output) && !extractStillImageMetadata(filePath)) {
-      throw new Error("[FFmpeg] PNG input is structurally incomplete");
+    options?.signal?.throwIfAborted();
+    if (
+      isStillImage &&
+      isPngImageProbe(output) &&
+      !(await hasCompletePngStructure(filePath, options?.signal))
+    ) {
+      throw new StructurallyIncompletePngError("[FFmpeg] PNG input is structurally incomplete");
     }
     return {
       hasVideoStream: videoStreams.length > 0,
@@ -355,11 +433,13 @@ export async function probeMediaProfile(
       visualKind: isStillImage ? "still" : hasMovingVideoStream ? "moving" : "none",
     };
   } catch (error) {
+    if (options?.signal?.aborted) throw options.signal.reason ?? error;
+    if (error instanceof StructurallyIncompletePngError) throw error;
     // Preserve the PNG parser fallback used by extractMediaMetadata when the
     // packaged ffprobe binary is unavailable. Signature parsing (not the file
     // extension) keeps extensionless PNGs eligible for preflight.
     const stillImage = extractStillImageMetadata(filePath);
-    if (stillImage) {
+    if (stillImage && (await hasCompletePngStructure(filePath, options?.signal))) {
       return { hasVideoStream: true, hasAudioStream: false, visualKind: "still" };
     }
     throw error;

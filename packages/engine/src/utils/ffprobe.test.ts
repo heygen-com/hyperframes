@@ -116,9 +116,12 @@ describe("extractPngMetadataFromBuffer", () => {
     expect(extractPngMetadataFromBuffer(fixture)?.colorSpace?.colorTransfer).toBe("smpte2084");
   });
 
-  it("rejects a CRC-valid PNG header without image data and an end marker", () => {
+  it("keeps metadata fallback independent from full PNG integrity validation", () => {
     const ihdr = pngChunk("IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 16, 2, 0, 0, 0]);
-    expect(extractPngMetadataFromBuffer(buildPngWithChunks([ihdr]))).toBeNull();
+    expect(extractPngMetadataFromBuffer(buildPngWithChunks([ihdr]))).toMatchObject({
+      width: 1,
+      height: 1,
+    });
   });
 });
 
@@ -216,6 +219,64 @@ describe("probeMediaProfile", () => {
     });
   });
 
+  it("deduplicates probes within one cancellation scope without sharing across scopes", async () => {
+    const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-media-probe-cache-"));
+    const fixturePath = resolve(fixtureDir, "asset");
+    writeFileSync(fixturePath, "cache identity only");
+    const outcome = {
+      kind: "exit" as const,
+      code: 0,
+      stdout: JSON.stringify({
+        streams: [{ codec_type: "video", codec_name: "h264" }],
+        format: { format_name: "mov,mp4,m4a,3gp,3g2,mj2" },
+      }),
+    };
+    const { spawn, calls } = createSpawnSpy([outcome, outcome]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { probeMediaProfile } = await import("./ffprobe.js");
+    const firstSignal = new AbortController().signal;
+    const secondSignal = new AbortController().signal;
+    try {
+      await Promise.all([
+        probeMediaProfile(fixturePath, { signal: firstSignal }),
+        probeMediaProfile(fixturePath, { signal: firstSignal }),
+      ]);
+      expect(calls).toHaveLength(1);
+      await probeMediaProfile(fixturePath, { signal: secondSignal });
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds the process-scoped probe cache", async () => {
+    const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-media-probe-lru-"));
+    const fixturePaths = Array.from({ length: 129 }, (_, index) =>
+      resolve(fixtureDir, `asset-${index}`),
+    );
+    for (const fixturePath of fixturePaths) writeFileSync(fixturePath, "probe identity");
+    const outcome = {
+      kind: "exit" as const,
+      code: 0,
+      stdout: JSON.stringify({
+        streams: [{ codec_type: "audio", codec_name: "aac" }],
+        format: { format_name: "aac" },
+      }),
+    };
+    const { spawn, calls } = createSpawnSpy([outcome]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { probeMediaProfile } = await import("./ffprobe.js");
+    try {
+      for (const fixturePath of fixturePaths) await probeMediaProfile(fixturePath);
+      await probeMediaProfile(fixturePaths[0]!);
+      expect(calls).toHaveLength(130);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
   it("classifies extensionless AVIF from its ISO-BMFF brand instead of the generic mov demuxer", async () => {
     const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-avif-profile-"));
     const fixturePath = resolve(fixtureDir, "asset");
@@ -291,6 +352,35 @@ describe("probeMediaProfile", () => {
       }
     },
   );
+
+  it("does not turn an aborted PNG probe into a successful metadata fallback", async () => {
+    type KillableFakeProc = FakeProc & { kill: (signal?: NodeJS.Signals) => boolean };
+    const spawn = () => {
+      const proc = new EventEmitter() as KillableFakeProc;
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = vi.fn(() => {
+        process.nextTick(() => proc.emit("close", null, "SIGTERM"));
+        return true;
+      });
+      process.nextTick(() => proc.emit("spawn"));
+      return proc;
+    };
+    const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-aborted-png-profile-"));
+    const fixturePath = resolve(fixtureDir, "asset");
+    writeFileSync(fixturePath, buildMinimalPng());
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { probeMediaProfile } = await import("./ffprobe.js");
+    const controller = new AbortController();
+    try {
+      const pending = probeMediaProfile(fixturePath, { signal: controller.signal });
+      controller.abort(new Error("render cancelled"));
+      await expect(pending).rejects.toThrow("render cancelled");
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
 });
 
 interface SpawnCall {
@@ -398,6 +488,23 @@ describe("ffprobe missing-binary fallback", () => {
     expect(JSON.stringify(meta)).not.toContain(successfulStderr);
     expect(calls[0]?.command).toBe(resolve("/tools/ffprobe.exe"));
     expect(calls[0]?.args.slice(0, 2)).toEqual(["-v", "error"]);
+  });
+
+  it("does not accept an incomplete PNG through the missing-binary fallback", async () => {
+    const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-truncated-png-fallback-"));
+    const fixturePath = resolve(fixtureDir, "asset");
+    const ihdr = pngChunk("IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 16, 2, 0, 0, 0]);
+    writeFileSync(fixturePath, buildPngWithChunks([ihdr]));
+    const { spawn } = createSpawnSpy([{ kind: "missing" }]);
+    hidePathBinaries();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { probeMediaProfile } = await import("./ffprobe.js");
+    try {
+      await expect(probeMediaProfile(fixturePath)).rejects.toThrow(/ffprobe/i);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
   });
 
   // `profile` matters now: the packet refinement is an allowlist on AAC-LC,
