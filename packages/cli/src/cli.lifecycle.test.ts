@@ -134,6 +134,37 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  it("does not let a pre-validation unhandledRejection doom a validated render", async () => {
+    // The production-reachable producer of the stale-failure override: the
+    // unhandledRejection handler deliberately does NOT exit, so a stray
+    // rejection mid-render sets commandFailed (and exitCode 1), the render
+    // then completes and validates, and finalizeCli writes exit code 0.
+    const trackCommandResult = vi.fn();
+    // Detach the test runner's own unhandledRejection listeners so the
+    // synthetic emit reaches only the CLI's handler, then restore them.
+    const priorListeners = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    try {
+      const successState = await import("./utils/render-success-state.js");
+      mockInitCommand(() => {
+        process.emit("unhandledRejection", new Error("stray teardown noise"), Promise.resolve());
+        successState.markRenderSucceeded();
+      });
+      mockTelemetry({ trackCommandResult });
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+
+      expect(trackCommandResult).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, exitCode: 0 }),
+      );
+      successState._resetRenderSuccessForTests();
+    } finally {
+      process.removeAllListeners("unhandledRejection");
+      for (const listener of priorListeners) process.on("unhandledRejection", listener);
+    }
+  });
+
   it("still scores an EPIPE before the artifact is validated as a failure", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
