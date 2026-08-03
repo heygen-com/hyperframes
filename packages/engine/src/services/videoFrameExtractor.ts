@@ -97,7 +97,21 @@ export function extractionFrameCountForDuration(
 ): number {
   if (!Number.isFinite(durationSeconds) || !Number.isFinite(fps)) return 0;
   if (durationSeconds <= 0 || fps <= 0) return 0;
-  const frames = isVFR ? Math.ceil(durationSeconds * fps) : Math.round(durationSeconds * fps);
+  // FFmpeg parses `-t` on its AV_TIME_BASE (microsecond) clock and ignores
+  // fractional digits beyond that precision. Quantize the same way before
+  // translating duration to frames. Besides matching the command FFmpeg
+  // actually executes, this removes subtraction artifacts whose magnitude is
+  // determined by the absolute authored timestamps rather than the short
+  // duration itself (for example, 4.03 - 3.53).
+  const ffmpegDurationSeconds = Math.trunc(durationSeconds * 1_000_000) / 1_000_000;
+  const rawFrames = ffmpegDurationSeconds * fps;
+  const nearestInteger = Math.round(rawFrames);
+  // Multiplication can still introduce a few ULPs after the microsecond
+  // quantization. Snap only that remaining arithmetic noise to an integer.
+  const integerTolerance = Number.EPSILON * Math.max(1, Math.abs(rawFrames)) * 4;
+  const quantizedFrames =
+    Math.abs(rawFrames - nearestInteger) <= integerTolerance ? nearestInteger : rawFrames;
+  const frames = isVFR ? Math.ceil(quantizedFrames) : Math.round(quantizedFrames);
   return Math.max(1, frames);
 }
 
@@ -1122,6 +1136,12 @@ function buildSupersetGroup(
 ): SupersetGroupPlan | null {
   if (misses.length < 2) return null;
   if (misses.some(({ work }) => work.finalFrameOnly)) return null;
+  // VFR normalization (`-fps_mode cfr -r`) establishes its duplicate/drop
+  // phase relative to each seek. A union extraction therefore cannot be
+  // sliced into the same frames as independently sought member ranges, even
+  // when their offsets land on an integral output-frame boundary. Keep VFR
+  // ranges direct until the extractor has a proven absolute timestamp phase.
+  if (misses.some(({ work }) => work.metadata.isVFR)) return null;
   const baseStart = Math.min(...misses.map(({ work }) => work.video.mediaStart));
   if (!misses.every(({ work }) => isIntegralFrameOffset(work.video.mediaStart - baseStart, fps))) {
     return null;

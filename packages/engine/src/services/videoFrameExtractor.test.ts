@@ -316,6 +316,28 @@ describe("extractionFrameCountForDuration", () => {
     expect(extractionFrameCountForDuration(0.616666, 30, false)).toBe(18);
   });
 
+  it.each([
+    [0.33 - 0.03, 30, 9],
+    [0.29 - 0.04, 24, 6],
+    [0.35 - 0.05, 60, 18],
+    [4.03 - 3.53, 30, 15],
+    [4.03 - 3.78, 24, 6],
+  ])(
+    "snaps floating-point integral boundaries before VFR ceil (%s seconds at %i fps)",
+    (duration, fps, expectedFrames) => {
+      expect(extractionFrameCountForDuration(duration, fps, true)).toBe(expectedFrames);
+    },
+  );
+
+  it("still ceils a genuine fractional boundary beyond floating-point noise", () => {
+    expect(extractionFrameCountForDuration(0.300001, 30, true)).toBe(10);
+  });
+
+  it("matches FFmpeg's six-digit duration parsing", () => {
+    expect(extractionFrameCountForDuration(0.6000009, 30, true)).toBe(18);
+    expect(extractionFrameCountForDuration(0.600001, 30, true)).toBe(19);
+  });
+
   it("fails closed for invalid durations and emits one frame for positive sub-frame work", () => {
     expect(extractionFrameCountForDuration(Number.NaN, 30, true)).toBe(0);
     expect(extractionFrameCountForDuration(1, 0, true)).toBe(0);
@@ -2120,7 +2142,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(supersetDirNames(outputDir)).toEqual([]);
   }, 60_000);
 
-  it("uses VFR ceil frame counts when slicing overlapping short trims from a superset", async () => {
+  it("keeps overlapping VFR trims direct because CFR resampling phase resets per seek", async () => {
     const outputDir = join(FIXTURE_DIR, "out-vfr-superset-short");
     mkdirSync(outputDir, { recursive: true });
 
@@ -2137,10 +2159,58 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(extractedFor(result, "vfr-short-a").metadata.isVFR).toBe(true);
     expect(extractedFor(result, "vfr-short-a").totalFrames).toBe(19);
     expect(extractedFor(result, "vfr-short-b").totalFrames).toBe(19);
-    expect(statSync(framePath(result, "vfr-short-a", 3)).ino).toBe(
+    expect(statSync(framePath(result, "vfr-short-a", 3)).ino).not.toBe(
       statSync(framePath(result, "vfr-short-b", 0)).ino,
     );
     expect(supersetDirNames(outputDir)).toEqual([]);
+  }, 60_000);
+
+  it("keeps batched and direct VFR extraction equal at a floating integral boundary", async () => {
+    const groupedOutputDir = join(FIXTURE_DIR, "out-vfr-superset-integral-boundary");
+    const directOutputDir = join(FIXTURE_DIR, "out-vfr-direct-integral-boundary");
+    mkdirSync(groupedOutputDir, { recursive: true });
+    mkdirSync(directOutputDir, { recursive: true });
+
+    const first: VideoElement = {
+      id: "vfr-integral-a",
+      src: VFR_FIXTURE,
+      start: 0.03,
+      end: 0.33,
+      mediaStart: 0.03,
+      loop: false,
+      hasAudio: false,
+    };
+    const second: VideoElement = {
+      ...first,
+      id: "vfr-integral-b",
+      mediaStart: 0.13,
+    };
+
+    const direct = await extractAllVideoFrames([{ ...second }], FIXTURE_DIR, {
+      fps: 30,
+      outputDir: directOutputDir,
+    });
+    const grouped = await extractAllVideoFrames([{ ...first }, second], FIXTURE_DIR, {
+      fps: 30,
+      outputDir: groupedOutputDir,
+    });
+
+    expect(direct.errors).toEqual([]);
+    expect(grouped.errors).toEqual([]);
+    expect(extractedFor(direct, second.id).totalFrames).toBe(9);
+    expect(extractedFor(grouped, first.id).totalFrames).toBe(9);
+    expect(extractedFor(grouped, second.id).totalFrames).toBe(9);
+    for (let frame = 0; frame < 9; frame += 1) {
+      expect(
+        readFileSync(framePath(grouped, second.id, frame)).equals(
+          readFileSync(framePath(direct, second.id, frame)),
+        ),
+      ).toBe(true);
+    }
+    expect(statSync(framePath(grouped, first.id, 3)).ino).not.toBe(
+      statSync(framePath(grouped, second.id, 0)).ino,
+    );
+    expect(supersetDirNames(groupedOutputDir)).toEqual([]);
   }, 60_000);
 
   it("publishes overlapping superset slices to cache entries and hits them on the next render", async () => {
