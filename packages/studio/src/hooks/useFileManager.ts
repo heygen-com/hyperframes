@@ -121,9 +121,11 @@ export function useFileManager({
           throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`);
         }
       }
-      const writeToken = createStudioWriteToken();
-      markStudioWriteToken(writeToken);
       await retryStudioSave(async () => {
+        // Each request gets its own receipt identity. If a committed request loses its response,
+        // the retry can produce a second filesystem receipt that must be suppressed independently.
+        const writeToken = createStudioWriteToken();
+        markStudioWriteToken(writeToken);
         let response: Response;
         try {
           response = await fetch(

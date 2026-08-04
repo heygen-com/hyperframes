@@ -162,6 +162,17 @@
         "produceDrawElementFrame",
       ],
     },
+    // External-conflict persistence is the #2990 stack boundary. The coordinator
+    // consumes these exports in child PR #2991; keep the primitive independently reviewable.
+    {
+      "file": "packages/studio/src/utils/externalConflictStorage.ts",
+      "exports": [
+        "persistExternalConflictSnapshot",
+        "persistExternalFailureSnapshot",
+        "loadExternalConflictSnapshot",
+        "deleteExternalConflictSnapshot",
+      ],
+    },
     // CLI command files: every command exports a const `examples` per the
     // convention documented in CLAUDE.md. This is a namespace barrel, not a
     // collision.

@@ -24,11 +24,24 @@ vi.mock("./useEditorSave", () => ({
 }));
 
 import { useFileManager } from "./useFileManager";
+import { resetStudioWriteTokens } from "../utils/studioFileVersion";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+function useTestFileManager(projectId: string) {
+  return useFileManager({
+    projectId,
+    showToast: vi.fn(),
+    recordEdit: vi.fn(async () => {}),
+    domEditSaveTimestampRef: { current: 0 },
+    setRefreshKey: vi.fn(),
+  });
+}
+
 describe("useFileManager project ownership", () => {
   afterEach(() => {
+    resetStudioWriteTokens();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -54,13 +67,7 @@ describe("useFileManager project ownership", () => {
 
     const captured: { manager: ReturnType<typeof useFileManager> | null } = { manager: null };
     function Probe({ projectId }: { projectId: string }) {
-      captured.manager = useFileManager({
-        projectId,
-        showToast: vi.fn(),
-        recordEdit: vi.fn(async () => {}),
-        domEditSaveTimestampRef: { current: 0 },
-        setRefreshKey: vi.fn(),
-      });
+      captured.manager = useTestFileManager(projectId);
       return null;
     }
 
@@ -103,6 +110,48 @@ describe("useFileManager project ownership", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-b%23fragment/files/index.html?optional=1",
     );
+
+    await act(async () => root.unmount());
+  });
+
+  it("uses a fresh write token when a lost response retries a committed save", async () => {
+    vi.useFakeTimers();
+    let putAttempt = 0;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (!init?.method) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ content: "BEFORE", version: "v1" }),
+        } as Response);
+      }
+      putAttempt += 1;
+      if (putAttempt === 1) return Promise.reject(new TypeError("response lost"));
+      return Promise.resolve({ ok: true, json: async () => ({ version: "v2" }) } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const captured: { manager: ReturnType<typeof useFileManager> | null } = { manager: null };
+    function Probe() {
+      captured.manager = useTestFileManager("project-a");
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe />));
+    const manager = captured.manager;
+    if (!manager) throw new Error("file manager did not render");
+    await manager.readProjectFile("index.html");
+
+    const write = manager.writeProjectFile("index.html", "AFTER");
+    await vi.runAllTimersAsync();
+    await write;
+
+    const writeTokens = fetchMock.mock.calls
+      .filter(([, init]) => init?.method === "PUT")
+      .map(([, init]) => new Headers(init?.headers).get("X-Hyperframes-Write-Token"));
+    expect(writeTokens).toHaveLength(2);
+    expect(writeTokens[0]).toBeTruthy();
+    expect(writeTokens[1]).not.toBe(writeTokens[0]);
 
     await act(async () => root.unmount());
   });
