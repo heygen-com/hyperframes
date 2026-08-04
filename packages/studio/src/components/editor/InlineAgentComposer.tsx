@@ -13,10 +13,13 @@ import {
   type CustomAgentDraft,
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
+import { FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
 const COMPOSER_WIDTH = 320;
+/** Collapsed width of the ask handle; it expands to its label on hover. */
+const HANDLE_WIDTH = 26;
 const COMPOSER_HEIGHT = 84;
 const GAP = 10;
 
@@ -67,12 +70,8 @@ function Chevron() {
   );
 }
 
-// Depth from layered shadow, not a border; the hairline ring only keeps the
-// edge legible against arbitrary composition content underneath. Radii are
-// concentric: 16px outer, 6px padding, 10px field.
-const SURFACE_CLASS =
-  "rounded-2xl bg-neutral-950/95 p-1.5 ring-1 ring-white/10 backdrop-blur-md " +
-  "shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]";
+// Radii are concentric: 16px outer, 6px padding, 10px field.
+const SURFACE_CLASS = `rounded-2xl p-1.5 ${FLOATING_SURFACE}`;
 
 /**
  * The agent prompt box, drawn on the canvas beside the element it edits — no
@@ -427,25 +426,34 @@ function AskAgentHandle({
 }) {
   if (!rect || canvas.width === 0) return null;
 
-  const size = 24;
-  const left = clampNumber(rect.left + rect.width - size, GAP, Math.max(GAP, canvas.width - size - GAP));
-  const top = clampNumber(rect.top - size - 6, GAP, Math.max(GAP, canvas.height - size - GAP));
+  // Sits above the selection's top edge, clear of the corner resize handles,
+  // and clamped so it never leaves the canvas on an element near an edge. It
+  // grows rightward on hover, so the anchor is the right edge either way.
+  const right = clampNumber(rect.left + rect.width, HANDLE_WIDTH + GAP, canvas.width - GAP);
+  const top = clampNumber(rect.top - 32, GAP, Math.max(GAP, canvas.height - 26 - GAP));
 
   return (
     <button
       data-ask-agent-handle="true"
-      className="hf-composer-enter absolute z-20 flex size-6 items-center justify-center rounded-full bg-neutral-950/95 ring-1 ring-white/10 backdrop-blur-md transition-[scale,box-shadow] duration-150 ease-out hover:ring-white/25 active:scale-[0.96] shadow-[0_1px_2px_rgba(0,0,0,0.5),0_8px_20px_-8px_rgba(0,0,0,0.7)]"
-      style={{ left, top }}
+      className={`hf-composer-enter group absolute z-20 flex h-[26px] w-[26px] items-center gap-1.5 overflow-hidden rounded-full px-[6px] text-[11px] leading-none text-neutral-300 transition-[width,color,box-shadow] duration-150 ease-out hover:w-[104px] hover:text-neutral-100 hover:ring-white/25 focus-visible:w-[104px] active:scale-[0.96] ${FLOATING_CHIP}`}
+      style={{ left: right - HANDLE_WIDTH, top }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         onOpen();
       }}
-      title={`Ask ${label} about this element (⌘K)`}
       aria-label={`Ask ${label} about this element`}
     >
-      <AgentGlyph kind={agentKind ?? "custom"} size={13} iconUrl={agentIconUrl} />
+      <AgentGlyph kind={agentKind ?? "custom"} size={14} iconUrl={agentIconUrl} />
+      {/* The label rides in on hover — at rest this is a mark, not a banner over
+          the composition, and no OS tooltip covers the element it points at. */}
+      <span className="flex flex-1 items-center gap-1.5 whitespace-nowrap opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-visible:opacity-100">
+        <span>Ask</span>
+        <span className="ml-auto rounded bg-white/10 px-1 py-0.5 text-[9px] leading-none text-neutral-400">
+          ⌘K
+        </span>
+      </span>
     </button>
   );
 }

@@ -17,6 +17,13 @@ export interface OverlayRect {
    * transform is unmeasurable — those render axis-aligned exactly as before.
    */
   angle?: number;
+  /**
+   * The element's transform projects to something a rotated rectangle cannot
+   * describe — a 3D rotation or perspective. The rect is then the axis-aligned
+   * bounds of the projected corners, and chrome that assumes an element-local
+   * plane (crop) has no correct place to draw.
+   */
+  projected3d?: boolean;
 }
 
 export interface GroupOverlayItem {
@@ -149,6 +156,54 @@ function rotationDegreesFromMatrix(matrix: DOMMatrix): number {
  *  the AABB directly (see its doc comment) — tight enough to only swallow
  *  matrix-decomposition floating-point noise, never an actual rotation. */
 const ROTATION_GATE_EPSILON_DEG = 1e-4;
+
+/** How far a projected quad may drift from a rotated rectangle, in overlay px. */
+const SIMILARITY_EPSILON_PX = 0.75;
+
+interface OverlayCorners {
+  nw: { x: number; y: number };
+  ne: { x: number; y: number };
+  sw: { x: number; y: number };
+  se: { x: number; y: number };
+}
+
+/**
+ * A 2D rotation keeps opposite edges equal and adjacent edges perpendicular; a
+ * 3D rotation or a perspective does not. Everything downstream (the selection
+ * chrome, crop, resize handles) models the element as rect + angle, so this is
+ * the line between "we can draw it exactly" and "we can only bound it".
+ */
+function isRotatedRectangle(corners: OverlayCorners): boolean {
+  const top = cornerEdgeLength(corners.nw, corners.ne);
+  const bottom = cornerEdgeLength(corners.sw, corners.se);
+  const left = cornerEdgeLength(corners.nw, corners.sw);
+  const right = cornerEdgeLength(corners.ne, corners.se);
+  if (Math.abs(top - bottom) > SIMILARITY_EPSILON_PX) return false;
+  if (Math.abs(left - right) > SIMILARITY_EPSILON_PX) return false;
+
+  // Perpendicular adjacent edges: their dot product is zero for a rectangle.
+  const ax = corners.ne.x - corners.nw.x;
+  const ay = corners.ne.y - corners.nw.y;
+  const bx = corners.sw.x - corners.nw.x;
+  const by = corners.sw.y - corners.nw.y;
+  const dot = ax * bx + ay * by;
+  const scale = Math.max(1, cornerEdgeLength(corners.nw, corners.ne));
+  return Math.abs(dot) / scale <= SIMILARITY_EPSILON_PX;
+}
+
+/** Axis-aligned bounds of a projected quad — always drawable, never wrong. */
+function boundsOfCorners(corners: OverlayCorners): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} {
+  const xs = [corners.nw.x, corners.ne.x, corners.sw.x, corners.se.x];
+  const ys = [corners.nw.y, corners.ne.y, corners.sw.y, corners.se.y];
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
+}
 
 /** iframe→overlay mapping basis shared by every overlay-geometry function. */
 interface OverlayRootScale {
@@ -372,6 +427,19 @@ export function orientedOverlayRect(
 
   const corners = elementCornerOverlayPoints(overlayEl, iframe, element, scale, transform);
   if (!corners) return base;
+
+  // A 3D rotation or a perspective projects to a trapezoid: rect + angle would
+  // draw a confidently wrong box beside the element. Bound it instead, and say
+  // so, so element-local chrome can stand down.
+  if (!isRotatedRectangle(corners)) {
+    return {
+      ...boundsOfCorners(corners),
+      editScaleX: base.editScaleX,
+      editScaleY: base.editScaleY,
+      projected3d: true,
+    };
+  }
+
   // Unrotated edge lengths (in overlay px): nw→ne is the width, nw→sw the height.
   const width = cornerEdgeLength(corners.nw, corners.ne);
   const height = cornerEdgeLength(corners.nw, corners.sw);
@@ -404,7 +472,8 @@ export function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolea
     Math.abs(a.height - b.height) < OVERLAY_RECT_EPSILON_PX &&
     Math.abs(a.editScaleX - b.editScaleX) < 0.001 &&
     Math.abs(a.editScaleY - b.editScaleY) < 0.001 &&
-    Math.abs((a.angle ?? 0) - (b.angle ?? 0)) < OVERLAY_RECT_ANGLE_EPSILON_DEG
+    Math.abs((a.angle ?? 0) - (b.angle ?? 0)) < OVERLAY_RECT_ANGLE_EPSILON_DEG &&
+    (a.projected3d ?? false) === (b.projected3d ?? false)
   );
 }
 

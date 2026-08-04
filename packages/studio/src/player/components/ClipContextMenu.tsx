@@ -8,6 +8,14 @@ import {
   useDomEditSelectionContextOptional,
 } from "../../contexts/DomEditContext";
 import { AgentGlyph } from "../../components/editor/agentGlyphs";
+import {
+  FLOATING_SURFACE,
+  MENU_DIVIDER,
+  MENU_ROW,
+  MENU_ROW_DANGER,
+  MENU_ROW_DISABLED,
+  MENU_ROW_ENABLED,
+} from "../../components/ui/floatingSurface";
 
 interface ClipContextMenuProps {
   x: number;
@@ -53,18 +61,14 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[196px] rounded-xl bg-neutral-950/95 p-1 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+      className={`fixed z-50 min-w-[196px] rounded-xl p-1 ${FLOATING_SURFACE}`}
       style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
         <>
           <button
             type="button"
-            className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ease-out ${
-              canSplit
-                ? "cursor-pointer text-neutral-200 hover:bg-neutral-800/80"
-                : "cursor-not-allowed text-neutral-600"
-            }`}
+            className={`${MENU_ROW} justify-between ${canSplit ? MENU_ROW_ENABLED : MENU_ROW_DISABLED}`}
             disabled={!canSplit}
             onClick={() => {
               if (canSplit) {
@@ -76,7 +80,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <span>{splitLabel}</span>
             <span className="text-neutral-500 text-[10px] ml-3">S</span>
           </button>
-          <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />
+          <div data-menu-divider="true" className={MENU_DIVIDER} />
         </>
       )}
 
@@ -84,7 +88,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         <>
           <button
             type="button"
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-200 transition-colors duration-150 ease-out hover:bg-neutral-800/80"
+            className={`${MENU_ROW} ${MENU_ROW_ENABLED}`}
             onClick={() => {
               // Resolve the clip back to its live DOM element so the agent gets
               // the same rich context a canvas selection produces.
@@ -104,13 +108,13 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <span className="flex-1">Ask {agentState?.agentRunLabel ?? "agent"}</span>
             <span className="text-[10px] text-neutral-600">⌘K</span>
           </button>
-          <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />
+          <div data-menu-divider="true" className={MENU_DIVIDER} />
         </>
       )}
 
       <button
         type="button"
-        className="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-red-400 transition-colors duration-150 ease-out hover:bg-red-500/10"
+        className={`${MENU_ROW} justify-between ${MENU_ROW_DANGER}`}
         onClick={() => {
           onDelete(element);
           onClose();

@@ -33,6 +33,14 @@ import {
 } from "../../contexts/DomEditContext";
 import { AgentGlyph } from "./agentGlyphs";
 import {
+  FLOATING_SURFACE,
+  MENU_DIVIDER,
+  MENU_ROW,
+  MENU_ROW_DANGER,
+  MENU_ROW_DISABLED,
+  MENU_ROW_ENABLED,
+} from "../ui/floatingSurface";
+import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
   resolveZOrderChange,
@@ -229,7 +237,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[196px] rounded-xl bg-neutral-950/95 p-1 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+      className={`fixed z-50 min-w-[196px] rounded-xl p-1 ${FLOATING_SURFACE}`}
       style={{ left: adjustedX, top: adjustedY }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
@@ -244,7 +252,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         <>
           <button
             type="button"
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-200 transition-colors duration-150 ease-out hover:bg-neutral-800/80"
+            className={`${MENU_ROW} ${MENU_ROW_ENABLED}`}
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               e.preventDefault();
@@ -263,7 +271,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             <span className="flex-1">Ask {agentState?.agentRunLabel ?? "agent"}</span>
             <span className="text-[10px] text-neutral-600">⌘K</span>
           </button>
-          <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />
+          <div data-menu-divider="true" className={MENU_DIVIDER} />
         </>
       )}
 
@@ -274,11 +282,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             <button
               key={action}
               type="button"
-              className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ease-out ${
-                enabled
-                  ? "cursor-pointer text-neutral-200 hover:bg-neutral-800/80"
-                  : "cursor-not-allowed text-neutral-600"
-              }`}
+              className={`${MENU_ROW} ${enabled ? MENU_ROW_ENABLED : MENU_ROW_DISABLED}`}
               disabled={!enabled}
               // Act on pointerDown, not click: a pointerDown that reaches the
               // overlay/document would otherwise re-select or dismiss the menu
@@ -299,12 +303,12 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           );
         })}
 
-      {hasDivider && <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />}
+      {hasDivider && <div data-menu-divider="true" className={MENU_DIVIDER} />}
 
       {hasDelete && (
         <button
           type="button"
-          className="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-red-400 transition-colors duration-150 ease-out hover:bg-red-500/10"
+          className={`${MENU_ROW} justify-between ${MENU_ROW_DANGER}`}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.preventDefault();

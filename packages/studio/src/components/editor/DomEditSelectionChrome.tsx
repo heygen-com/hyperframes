@@ -245,7 +245,7 @@ export function DomEditSelectionChrome({
       </div>
       {/* Crop owns its element-local oriented frame. Keep it outside the chrome's
           rotated plane or a rotated selection applies the angle twice. */}
-      {selection.capabilities.canCrop && groupSelectionCount <= 1 && (
+      {selection.capabilities.canCrop && groupSelectionCount <= 1 && !overlayRect.projected3d && (
         <DomEditCropHandles
           selection={selection}
           overlayRect={overlayRect}

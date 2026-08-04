@@ -2,11 +2,9 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AgentGlyph, type AgentJob, type AgentKind } from "./agentGlyphs";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { FLOATING_SURFACE, GHOST_ICON_BUTTON } from "../ui/floatingSurface";
 
-const ROW_BUTTON_CLASS =
-  "rounded-md p-0.5 text-neutral-600 transition-colors duration-150 ease-out " +
-  "hover:bg-neutral-800/70 hover:text-neutral-200 active:scale-[0.96] disabled:opacity-25 " +
-  "disabled:hover:bg-transparent disabled:hover:text-neutral-600";
+const ROW_BUTTON_CLASS = GHOST_ICON_BUTTON;
 
 function RowIcon({ paths }: { paths: string[] }) {
   return (
@@ -143,7 +141,7 @@ export function AgentRunTray({
   return createPortal(
     <div
       data-agent-run-tray="true"
-      className="hf-composer-enter fixed w-[300px] rounded-2xl bg-neutral-950/95 p-1.5 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+      className={`hf-composer-enter fixed w-[300px] rounded-2xl p-1.5 ${FLOATING_SURFACE}`}
       // Above the panels and the timeline chrome, below modals and toasts.
       style={{ left: position.x, top: position.y, zIndex: 80 }}
       onPointerDown={(e) => e.stopPropagation()}

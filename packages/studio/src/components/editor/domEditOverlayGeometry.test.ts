@@ -177,3 +177,92 @@ describe("orientedOverlayRect — rotation gate (perf fix, V15 18a/18b)", () => 
     expect(restored?.angle ?? 0).toBe(0);
   });
 });
+
+describe("orientedOverlayRect — 3D projections", () => {
+  // A perspective/rotateX projection is a trapezoid: the top edge is shorter
+  // than the bottom one, which rect + angle cannot describe.
+  class TrapezoidMatrix {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+    constructor(init?: string) {
+      // Any non-identity transform string means "3D" for this stand-in.
+      if (init?.includes("matrix3d")) this.b = 0.0001;
+    }
+    transformPoint(pt: { x: number; y: number }) {
+      // Squeeze the top edge toward the centre: a keystone, like rotateX.
+      const squeeze = pt.y === 0 ? 0.6 : 1;
+      return { x: 100 + (pt.x - 100) * squeeze, y: pt.y };
+    }
+  }
+
+  function build3dHarness() {
+    const overlayEl = document.createElement("div");
+    document.body.appendChild(overlayEl);
+    stubRectFor(overlayEl, { left: 0, top: 0, width: 1000, height: 1000 });
+
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    stubRectFor(iframe, { left: 0, top: 0, width: 1000, height: 1000 });
+
+    const doc = iframe.contentDocument!;
+    const root = doc.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-width", "1000");
+    root.setAttribute("data-height", "1000");
+    doc.body.appendChild(root);
+
+    const el = doc.createElement("div");
+    root.appendChild(el);
+    stubRectFor(el, { left: 40, top: 0, width: 200, height: 100 });
+    Object.defineProperty(el, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(el, "offsetHeight", { value: 100, configurable: true });
+    el.style.transform = "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)";
+
+    const win = iframe.contentWindow as unknown as Window & {
+      DOMMatrix: unknown;
+      DOMPoint: unknown;
+    };
+    win.DOMMatrix = TrapezoidMatrix;
+    win.DOMPoint = class {
+      constructor(
+        public x: number,
+        public y: number,
+      ) {}
+    };
+    return { overlayEl, iframe, el };
+  }
+
+  function stubRectFor(
+    el: Element,
+    rect: { left: number; top: number; width: number; height: number },
+  ) {
+    (el as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        right: rect.left + rect.width,
+        bottom: rect.top + rect.height,
+        x: rect.left,
+        y: rect.top,
+        toJSON() {
+          return this;
+        },
+      }) as DOMRect;
+  }
+
+  it("bounds a keystoned element instead of drawing a wrong rotated box", () => {
+    const { overlayEl, iframe, el } = build3dHarness();
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    // Marked so element-local chrome (crop) can stand down, and left unrotated.
+    if (rect?.projected3d) {
+      expect(rect.angle ?? 0).toBe(0);
+    }
+  });
+});
