@@ -193,7 +193,7 @@ export function ExternalFileConflictBanner({
             Review or export Studio draft
           </button>
         )}
-        {failure && !failure.recovered && (
+        {failure && !failure.recovered && failure.studioContent != null && (
           <button type="button" onClick={() => void coordinator.retry()} className="underline">
             Retry save
           </button>

@@ -126,7 +126,6 @@ export function StudioApp() {
   const { sdkHandle, editFlowSdkSession } = useStudioSdkSessions(
     projectId,
     activeCompPath,
-    domEditSaveTimestampRef,
     masterCompPath,
   );
   useEffect(() => {

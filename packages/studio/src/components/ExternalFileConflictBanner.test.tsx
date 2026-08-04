@@ -113,4 +113,30 @@ describe("ExternalFileConflictBanner", () => {
 
     await act(async () => root.unmount());
   });
+
+  it("does not offer retry when a failed DOM edit has no recoverable source candidate", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const coordinator: ExternalFileChangeCoordinatorHandle = {
+      blocked: {
+        status: "failed",
+        generation: 1,
+        path: "index.html",
+        error: new Error("offline"),
+        payload: { path: "index.html", version: "v2", content: "external" },
+        studioContent: null,
+        recovered: false,
+      },
+      retry: vi.fn(async () => undefined),
+      useExternalFile: vi.fn(async () => undefined),
+      keepStudioFile: vi.fn(async () => undefined),
+    };
+
+    await act(async () => root.render(<ExternalFileConflictBanner coordinator={coordinator} />));
+    expect(document.body.textContent).not.toContain("Retry save");
+    expect(document.body.textContent).toContain("Discard Studio edits and reload file");
+
+    await act(async () => root.unmount());
+  });
 });

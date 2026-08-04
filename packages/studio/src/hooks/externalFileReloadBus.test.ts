@@ -15,4 +15,20 @@ describe("external file reload bus", () => {
     removeFirst();
     removeSecond();
   });
+
+  it("isolates a broken listener so later SDK owners still reload", () => {
+    const broken = vi.fn(() => {
+      throw new Error("stale owner");
+    });
+    const healthy = vi.fn();
+    const removeBroken = addExternalFileReloadListener(broken);
+    const removeHealthy = addExternalFileReloadListener(healthy);
+
+    expect(() => notifyExternalFileReload("scenes/card.html")).not.toThrow();
+    expect(broken).toHaveBeenCalledWith("scenes/card.html");
+    expect(healthy).toHaveBeenCalledWith("scenes/card.html");
+
+    removeBroken();
+    removeHealthy();
+  });
 });

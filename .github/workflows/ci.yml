@@ -129,7 +129,7 @@ jobs:
       - run: corepack enable
       - run: corepack prepare pnpm@10.17.1 --activate
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run verify:packed-manifests
 
@@ -148,7 +148,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run lint
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
@@ -182,7 +182,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - name: Run fallow audit
         id: audit
         # `bun install` above made `bunx fallow` resolve from node_modules, so
@@ -238,7 +238,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run format:check
 
   typecheck:
@@ -256,7 +256,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run --filter '*' typecheck
 
@@ -283,7 +283,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run test:scripts
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
@@ -314,7 +314,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --filter @hyperframes/engine build
@@ -422,7 +422,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         if: runner.os != 'Windows'
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: bash scripts/ci/install-workspace-dependencies.sh --ignore-scripts
       - name: Install dependencies
         if: runner.os == 'Windows'
         run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
@@ -437,7 +437,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
       # imports resolve via the "node" export condition (dist) under vitest.
       - run: bun run --filter '@hyperframes/parsers' build
@@ -459,7 +459,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Runtime coverage now imports core modules that consume workspace
       # subpaths. Build their dist exports before Vitest resolves them.
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
@@ -480,7 +480,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the studio vite.config.ts (loaded by Node) can
       # resolve @hyperframes/core and @hyperframes/studio-server via the "node"
       # export condition (dist).
@@ -523,7 +523,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Same reason as studio-load-smoke: vite.config.ts is loaded by Node and
       # resolves the workspace packages through their "node" export condition.
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
@@ -634,7 +634,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
 
       # Pack the CLI as a tarball (simulates what `npm publish` produces)
@@ -711,7 +711,7 @@ jobs:
           sudo apt-get install -y ffmpeg
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-workspace-dependencies.sh
       - name: Build monorepo
         run: bun run build
 

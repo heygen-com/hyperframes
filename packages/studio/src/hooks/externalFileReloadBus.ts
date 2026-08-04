@@ -8,5 +8,11 @@ export function addExternalFileReloadListener(listener: ExternalFileReloadListen
 }
 
 export function notifyExternalFileReload(path: string): void {
-  for (const listener of listeners) listener(path);
+  for (const listener of listeners) {
+    try {
+      listener(path);
+    } catch {
+      // A stale SDK owner must not prevent sibling owners from reloading.
+    }
+  }
 }

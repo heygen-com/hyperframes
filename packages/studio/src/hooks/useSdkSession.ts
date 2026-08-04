@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { MutableRefObject } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
 import { readStudioFileChangePath } from "../components/editor/manualEdits";
@@ -142,9 +141,7 @@ function disposeSdkSession(session: Composition): void {
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
-  domEditSaveTimestampRef?: MutableRefObject<number>,
 ): SdkSessionHandle {
-  void domEditSaveTimestampRef;
   const [ownedSession, setOwnedSession] = useState<OwnedSdkSession | null>(null);
   const ownedSessionRef = useRef<OwnedSdkSession | null>(null);
   const sessionOwnersRef = useRef(new WeakMap<Composition, SdkSessionOwner>());
