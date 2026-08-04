@@ -34,6 +34,9 @@ export interface EditingSectionApplicability {
   /** Position/size/rotation/stacking — meaningless on an element with no
    *  rendered box (e.g. `<audio>`, which never paints a visual frame). */
   layout: boolean;
+  /** Audio FX chain and voiceover carve — `<audio>` only. Video carries its
+   *  sound on a separate `<audio>` element, so this never applies to it. */
+  audioFx: boolean;
   /** Fill/radius/stroke/shadow/blend-mode/clip — same "no rendered box" gate
    *  as `layout`, kept separate since a future tag could need one without
    *  the other. */
@@ -207,6 +210,7 @@ export function resolveEditingSections(facts: EditableElementFacts): EditingSect
   return {
     text: facts.hasEditableText && !facts.isCompositionHost && !facts.isInsideLockedComposition,
     media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
+    audioFx: facts.tag === "audio",
     colorGrading: facts.tag === "video" || facts.tag === "img",
     timing: facts.hasTimingStart || facts.animationCount > 0,
     animation: facts.animationCount > 0,
