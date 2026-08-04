@@ -30,6 +30,11 @@ export type ElementAnimationsOutcome =
   | { kind: "fetch-error" }
   | { kind: "cold" };
 
+export interface GsapAnimationFetchOptions {
+  /** Refuse the edit when the parse endpoint is unavailable instead of treating it as no motion. */
+  failOnFetchError?: boolean;
+}
+
 /**
  * Classify a parse result for one element. Differentiates a hard fetch failure
  * (`parsed === null`) from a warm-but-empty cold parse (`animations.length === 0`)
@@ -44,32 +49,48 @@ export function selectElementAnimationsOrRetry(
   return { kind: "resolved", animations: getAnimationsForElement(parsed.animations, target) };
 }
 
+// Retry policy deliberately distinguishes cold parses from hard fetch errors.
+// fallow-ignore-next-line complexity
+async function fetchElementAnimationsWithRetry(
+  projectId: string,
+  gsapSourceFile: string,
+  target: { id: string | null; selector: string | null },
+  failOnFetchError: boolean,
+): Promise<GsapAnimation[]> {
+  let coldAttempts = 0;
+  let errorAttempts = 0;
+  for (;;) {
+    const parsed = await fetchParsedAnimations(projectId, gsapSourceFile);
+    const outcome = selectElementAnimationsOrRetry(parsed, target);
+    if (outcome.kind === "resolved") return outcome.animations;
+    if (outcome.kind === "fetch-error") {
+      if (errorAttempts >= FETCH_ERROR_RETRIES) {
+        if (failOnFetchError) throw new Error("GSAP animation ownership could not be verified");
+        return [];
+      }
+      errorAttempts++;
+      await delay(FETCH_ERROR_DELAY_MS);
+      continue;
+    }
+    if (coldAttempts >= COLD_PARSE_RETRIES) return [];
+    coldAttempts++;
+    await delay(COLD_PARSE_DELAY_MS);
+  }
+}
+
 export function useGsapAnimationFetchFallback(projectId: string | null, gsapSourceFile: string) {
   return useCallback(
-    (selection: DomEditSelection) => async (): Promise<GsapAnimation[]> => {
-      if (!projectId) return [];
-      const target = { id: selection.id ?? null, selector: selection.selector ?? null };
-      // A drag can fire before the async parse is warm; a cold parse must retry
-      // rather than fall through to the no-animation path (which duplicates the
-      // tween). A hard fetch error is a different failure — retry only briefly.
-      let coldAttempts = 0;
-      let errorAttempts = 0;
-      for (;;) {
-        const parsed = await fetchParsedAnimations(projectId, gsapSourceFile);
-        const outcome = selectElementAnimationsOrRetry(parsed, target);
-        if (outcome.kind === "resolved") return outcome.animations;
-        if (outcome.kind === "fetch-error") {
-          if (errorAttempts >= FETCH_ERROR_RETRIES) return [];
-          errorAttempts++;
-          await delay(FETCH_ERROR_DELAY_MS);
-          continue;
-        }
-        // cold
-        if (coldAttempts >= COLD_PARSE_RETRIES) return [];
-        coldAttempts++;
-        await delay(COLD_PARSE_DELAY_MS);
-      }
-    },
+    (selection: DomEditSelection, options?: GsapAnimationFetchOptions) =>
+      async (): Promise<GsapAnimation[]> => {
+        if (!projectId) return [];
+        const target = { id: selection.id ?? null, selector: selection.selector ?? null };
+        return fetchElementAnimationsWithRetry(
+          projectId,
+          gsapSourceFile,
+          target,
+          options?.failOnFetchError === true,
+        );
+      },
     [projectId, gsapSourceFile],
   );
 }

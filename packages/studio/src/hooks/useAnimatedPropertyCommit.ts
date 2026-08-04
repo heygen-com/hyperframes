@@ -24,6 +24,7 @@ import {
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
+import { assertGsapEditPersisted, directEditOutcomeForProperties } from "./gsapEditOutcome";
 
 interface CommitAnimatedPropertyDeps {
   selectedGsapAnimations: GsapAnimation[];
@@ -68,6 +69,8 @@ function pickBestAnimation(
   if (candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0];
   const currentTime = usePlayerStore.getState().currentTime;
+  // Intentional multi-signal ranking: group match, selector specificity, and playhead overlap.
+  // fallow-ignore-next-line complexity
   const scored = candidates.map((a) => {
     let score = 0;
     if (a.keyframes) score += 10;
@@ -393,11 +396,19 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const { selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache } = deps;
 
   const commitAnimatedProperties = useCallback(
+    // This is the single routing boundary for set, keyframe, whole-tween, and first-group writes.
+    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
       if (!gsapCommitMutation) return;
       const propEntries = Object.entries(props);
       if (propEntries.length === 0) return;
       const primaryProp = propEntries[0]![0];
+      assertGsapEditPersisted(
+        directEditOutcomeForProperties(
+          selectedGsapAnimations,
+          new Set(propEntries.map(([property]) => property)),
+        ),
+      );
 
       const iframe = previewIframeRef.current;
       const selector = selectorFromSelection(selection);
@@ -529,8 +540,9 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
         bumpGsapCache();
-      } catch {
+      } catch (error) {
         bumpGsapCache();
+        throw error;
       }
     },
     [selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache],

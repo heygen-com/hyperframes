@@ -70,6 +70,8 @@ function keyframedScaleFixture(): GsapAnimation {
   } as unknown as GsapAnimation;
 }
 
+// Resize/rotation hold tests intentionally pin the same no-conversion contract.
+// fallow-ignore-next-line code-duplication
 it("updates a duration-zero size hold in place instead of converting it to keyframes", async () => {
   const el = document.createElement("div");
   el.id = "box";
@@ -96,7 +98,7 @@ it("updates a duration-zero size hold in place instead of converting it to keyfr
     commitMutation,
   );
 
-  expect(handled).toBe(true);
+  expect(handled).toEqual({ status: "persisted" });
   expect(commitMutation).toHaveBeenCalledTimes(1);
   expect(commitMutation.mock.calls[0]![1]).toEqual({
     type: "update-properties",
@@ -115,6 +117,7 @@ it("updates a duration-zero size hold in place instead of converting it to keyfr
   );
 });
 
+// fallow-ignore-next-line code-duplication
 it("requires explicit unroll for helper-authored resize before mutating", async () => {
   const el = document.createElement("div");
   el.id = "box";
@@ -139,7 +142,64 @@ it("requires explicit unroll for helper-authored resize before mutating", async 
       null,
       commitMutation,
     ),
-  ).rejects.toMatchObject({ reason: "unroll-required" });
+  ).resolves.toEqual({ status: "blocked", reason: "unroll-required" });
+  expect(commitMutation).not.toHaveBeenCalled();
+});
+
+// fallow-ignore-next-line code-duplication
+it("reuses the ownership parse instead of fetching a resolved size group twice", async () => {
+  const el = document.createElement("div");
+  el.id = "box";
+  document.body.append(el);
+  const selection = { id: "box", selector: "#box", element: el } as DomEditSelection;
+  const sizeHold = {
+    id: "#box-set-size",
+    targetSelector: "#box",
+    propertyGroup: "size",
+    method: "set",
+    properties: { width: 150, height: 150 },
+  } as unknown as GsapAnimation;
+  const fetchAnimations = vi.fn().mockResolvedValue([sizeHold]);
+  const commitMutation = vi.fn();
+
+  await expect(
+    tryGsapResizeIntercept(
+      selection,
+      { width: 344, height: 344 },
+      [],
+      null,
+      commitMutation,
+      fetchAnimations,
+    ),
+  ).resolves.toEqual({ status: "persisted" });
+  expect(fetchAnimations).toHaveBeenCalledTimes(1);
+  expect(commitMutation).toHaveBeenCalledWith(
+    selection,
+    expect.objectContaining({ type: "update-properties", animationId: sizeHold.id }),
+    expect.anything(),
+  );
+});
+
+it("blocks when runtime size motion exists but the authored tween cannot be resolved", async () => {
+  const el = document.createElement("div");
+  el.id = "box";
+  document.body.append(el);
+  const selection = { id: "box", selector: "#box", element: el } as DomEditSelection;
+  const liveSizeTween = {
+    targets: () => [el],
+    vars: { width: 300, duration: 1 },
+    duration: () => 1,
+    startTime: () => 0,
+  };
+  const iframe = {
+    contentWindow: { __timelines: { main: { getChildren: () => [liveSizeTween] } } },
+    contentDocument: document,
+  } as unknown as HTMLIFrameElement;
+  const commitMutation = vi.fn();
+
+  await expect(
+    tryGsapResizeIntercept(selection, { width: 344, height: 344 }, [], iframe, commitMutation),
+  ).resolves.toEqual({ status: "blocked", reason: "source-uneditable" });
   expect(commitMutation).not.toHaveBeenCalled();
 });
 
@@ -186,7 +246,7 @@ async function runResize(
     commitMutation as never,
     async () => [keyframedScaleFixture()],
   );
-  expect(handled).toBe(true);
+  expect(handled).toEqual({ status: "persisted" });
   return committed;
 }
 

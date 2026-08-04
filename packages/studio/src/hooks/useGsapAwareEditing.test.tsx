@@ -80,62 +80,51 @@ function mountResizeHandler(animations: GsapAnimation[]) {
   return { selection, fallback, commitMutation, resize: resize!, root };
 }
 
+type AwareEditingParams = Parameters<typeof useGsapAwareEditing>[0];
+
+function mountGroupHandler({
+  gsapCommitMutation,
+  makeFetchFallback,
+  trackGsapInteractionFailure = vi.fn(),
+}: Pick<AwareEditingParams, "gsapCommitMutation" | "makeFetchFallback"> &
+  Partial<Pick<AwareEditingParams, "trackGsapInteractionFailure">>) {
+  let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
+  function Harness() {
+    groupCommit = useGsapAwareEditing({
+      domEditSelection: null,
+      selectedGsapAnimations: [],
+      gsapCommitMutation,
+      previewIframeRef: { current: null },
+      showToast: vi.fn(),
+      bumpGsapCache: vi.fn(),
+      makeFetchFallback,
+      trackGsapInteractionFailure,
+      handleDomBoxSizeCommit: vi.fn(),
+      addGsapAnimation: vi.fn(),
+      convertToKeyframes: vi.fn(),
+      setArcPath: vi.fn(),
+      updateArcSegment: vi.fn(),
+    }).handleGsapAwareGroupPathOffsetCommit;
+    return null;
+  }
+  const root = mountReactHarness(<Harness />);
+  return { groupCommit: (updates: DomEditGroupPathOffsetCommit[]) => groupCommit(updates), root };
+}
+
 describe("useGsapAwareEditing anchored resize", () => {
-  it("reports and rethrows an animated inspector commit rejection", async () => {
-    const error = new Error("source rejected");
-    mocks.commitAnimatedProperty.mockRejectedValue(error);
-    const trackFailure = vi.fn();
-    const selection = {
-      element: document.createElement("div"),
-      id: "clip",
-      selector: "#clip",
-    } as unknown as DomEditSelection;
-    let commit!: (selection: DomEditSelection, property: string, value: number) => Promise<void>;
-    function Harness() {
-      commit = useGsapAwareEditing({
-        domEditSelection: selection,
-        selectedGsapAnimations: [],
-        gsapCommitMutation: vi.fn(),
-        previewIframeRef: { current: null },
-        showToast: vi.fn(),
-        bumpGsapCache: vi.fn(),
-        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
-        trackGsapInteractionFailure: trackFailure,
-        handleDomBoxSizeCommit: vi.fn(),
-        addGsapAnimation: vi.fn(),
-        convertToKeyframes: vi.fn(),
-        setArcPath: vi.fn(),
-        updateArcSegment: vi.fn(),
-      }).commitAnimatedProperty;
-      return null;
-    }
-    const root = mountReactHarness(<Harness />);
-
-    await expect(commit(selection, "rotationX", 12)).rejects.toBe(error);
-    expect(trackFailure).toHaveBeenCalledWith(
-      error,
-      selection,
-      "property",
-      "Edit animated property",
-    );
-    act(() => root.unmount());
-  });
-
-  it("forwards the anchor offset to the DOM fallback when GSAP does not handle resize", async () => {
-    mocks.resize.mockResolvedValue(false);
+  it("rejects a blocked resize instead of falling through to a competing DOM write", async () => {
+    mocks.resize.mockResolvedValue({ status: "blocked", reason: "source-uneditable" });
     const h = mountResizeHandler([]);
-    await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
-    expect(h.fallback).toHaveBeenCalledWith(
-      h.selection,
-      { width: 300, height: 200 },
-      { x: -50, y: -25 },
-    );
+    await expect(
+      act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 })),
+    ).rejects.toMatchObject({ reason: "source-uneditable" });
+    expect(h.fallback).not.toHaveBeenCalled();
     act(() => h.root.unmount());
   });
 
   it("persists the anchor exactly once through GSAP position when size route handles resize", async () => {
-    mocks.resize.mockResolvedValue(true);
-    mocks.drag.mockResolvedValue(true);
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    mocks.drag.mockResolvedValue({ status: "persisted" });
     const h = mountResizeHandler([]);
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
     expect(h.fallback).not.toHaveBeenCalled();
@@ -145,12 +134,12 @@ describe("useGsapAwareEditing anchored resize", () => {
   });
 
   it("settles the live GSAP position before resize persistence reaches its first await", async () => {
-    let resolveResize!: (handled: boolean) => void;
-    const pendingResize = new Promise<boolean>((resolve) => {
+    let resolveResize!: (outcome: { status: "persisted" }) => void;
+    const pendingResize = new Promise<{ status: "persisted" }>((resolve) => {
       resolveResize = resolve;
     });
     mocks.resize.mockReturnValue(pendingResize);
-    mocks.drag.mockResolvedValue(true);
+    mocks.drag.mockResolvedValue({ status: "persisted" });
     mocks.readPosition.mockReturnValue({ x: 120.4, y: 80.2 });
     const h = mountResizeHandler([]);
     h.selection.element.setAttribute("data-hf-drag-gsap-base-x", "120.4");
@@ -168,7 +157,7 @@ describe("useGsapAwareEditing anchored resize", () => {
       mocks.resize.mock.invocationCallOrder[0]!,
     );
 
-    resolveResize(true);
+    resolveResize({ status: "persisted" });
     await act(() => commit);
     act(() => h.root.unmount());
   });
@@ -176,7 +165,7 @@ describe("useGsapAwareEditing anchored resize", () => {
   it("passes a transaction-scoped commit wrapper into the resize path", async () => {
     mocks.resize.mockImplementation(async (selection, _size, _animations, _iframe, commit) => {
       await commit(selection, { type: "resize" }, { label: "Resize", softReload: true });
-      return true;
+      return { status: "persisted" };
     });
     const h = mountResizeHandler([]);
 
@@ -220,26 +209,10 @@ describe("useGsapAwareEditing anchored resize", () => {
         return Promise.resolve();
       },
     );
-    let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
-    function Harness() {
-      groupCommit = useGsapAwareEditing({
-        domEditSelection: null,
-        selectedGsapAnimations: [],
-        gsapCommitMutation: commitMutation,
-        previewIframeRef: { current: null },
-        showToast: vi.fn(),
-        bumpGsapCache: vi.fn(),
-        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
-        trackGsapInteractionFailure: vi.fn(),
-        handleDomBoxSizeCommit: vi.fn(),
-        addGsapAnimation: vi.fn(),
-        convertToKeyframes: vi.fn(),
-        setArcPath: vi.fn(),
-        updateArcSegment: vi.fn(),
-      }).handleGsapAwareGroupPathOffsetCommit;
-      return null;
-    }
-    const root = mountReactHarness(<Harness />);
+    const { groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: commitMutation,
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+    });
     const updates = [
       {
         selection: { element: document.createElement("div"), id: "a", selector: "#a" },
@@ -262,6 +235,7 @@ describe("useGsapAwareEditing anchored resize", () => {
 
   it("preflights every group member before the first mutation", async () => {
     const commitMutation = vi.fn().mockResolvedValue(undefined);
+    const makeFetchFallback = vi.fn(() => vi.fn().mockResolvedValue([]));
     mocks.drag.mockImplementation(
       async (_selection, _next, _animations, _iframe, _commit, _fetch, options) => {
         if (options?.preflightOnly) {
@@ -273,26 +247,10 @@ describe("useGsapAwareEditing anchored resize", () => {
         return { status: "persisted" };
       },
     );
-    let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
-    function Harness() {
-      groupCommit = useGsapAwareEditing({
-        domEditSelection: null,
-        selectedGsapAnimations: [],
-        gsapCommitMutation: commitMutation,
-        previewIframeRef: { current: null },
-        showToast: vi.fn(),
-        bumpGsapCache: vi.fn(),
-        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
-        trackGsapInteractionFailure: vi.fn(),
-        handleDomBoxSizeCommit: vi.fn(),
-        addGsapAnimation: vi.fn(),
-        convertToKeyframes: vi.fn(),
-        setArcPath: vi.fn(),
-        updateArcSegment: vi.fn(),
-      }).handleGsapAwareGroupPathOffsetCommit;
-      return null;
-    }
-    const root = mountReactHarness(<Harness />);
+    const { groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: commitMutation,
+      makeFetchFallback,
+    });
     const updates = [
       {
         selection: { element: document.createElement("div"), id: "ok", selector: "#ok" },
@@ -314,6 +272,32 @@ describe("useGsapAwareEditing anchored resize", () => {
     });
     expect(commitMutation).not.toHaveBeenCalled();
     expect(mocks.drag).toHaveBeenCalledTimes(2);
+    expect(makeFetchFallback).toHaveBeenNthCalledWith(1, updates[0]!.selection, {
+      failOnFetchError: true,
+    });
+    expect(makeFetchFallback).toHaveBeenNthCalledWith(2, updates[1]!.selection, {
+      failOnFetchError: true,
+    });
+    act(() => root.unmount());
+  });
+
+  it("fails a group preflight closed when ownership cannot be fetched", async () => {
+    const fetchError = new Error("parse endpoint unavailable");
+    const commitMutation = vi.fn().mockResolvedValue(undefined);
+    const { groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: commitMutation,
+      makeFetchFallback: () => vi.fn().mockRejectedValue(fetchError),
+    });
+    const updates = [
+      {
+        selection: { element: document.createElement("div"), id: "a", selector: "#a" },
+        next: { x: 10, y: 10 },
+      },
+    ] as unknown as DomEditGroupPathOffsetCommit[];
+
+    await expect(groupCommit(updates)).rejects.toBe(fetchError);
+    expect(mocks.drag).not.toHaveBeenCalled();
+    expect(commitMutation).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 
@@ -330,7 +314,7 @@ describe("useGsapAwareEditing anchored resize", () => {
   });
 
   it("does not apply the anchor twice when scale route already settles the drop point", async () => {
-    mocks.resize.mockResolvedValue(true);
+    mocks.resize.mockResolvedValue({ status: "persisted" });
     const scale = { propertyGroup: "scale" } as GsapAnimation;
     const h = mountResizeHandler([scale]);
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));

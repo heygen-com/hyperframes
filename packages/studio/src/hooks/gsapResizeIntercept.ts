@@ -29,7 +29,11 @@ import { roundTo3 } from "../utils/rounding";
 import { resolveGroupTween, POSITION_CHANNELS } from "./gsapRuntimeBridge";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { logResize } from "../utils/resizeDebug";
-import { assertGsapAnimationDirectlyEditable, GsapEditBlockedError } from "./gsapEditOutcome";
+import {
+  animationWritesAnyProperty,
+  directEditOutcomeForProperties,
+  type GsapEditOutcome,
+} from "./gsapEditOutcome";
 
 const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
 
@@ -55,31 +59,44 @@ export async function tryGsapResizeIntercept(
   iframe: HTMLIFrameElement | null,
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
-): Promise<boolean> {
+): Promise<GsapEditOutcome> {
+  const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
+  const allKnownAnimations = [...animations, ...fetchedAnimations];
   // If the element already has a scale-group tween, resize should modify scale
   // (the user is resizing something whose visual size is driven by scale).
   // Otherwise, use the size group (width/height).
-  const hasScaleGroup = animations.some((a) => a.propertyGroup === "scale");
+  const hasScaleGroup = allKnownAnimations.some((a) => a.propertyGroup === "scale");
   const resizeGroup: PropertyGroupName = hasScaleGroup ? "scale" : "size";
-  const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   const resizeProperties =
     resizeGroup === "scale" ? new Set(["scale", "scaleX", "scaleY"]) : new Set(["width", "height"]);
-  for (const animation of [...animations, ...fetchedAnimations].filter(
-    (candidate) =>
-      candidate.propertyGroup === resizeGroup ||
-      Object.keys(candidate.properties).some((property) => resizeProperties.has(property)),
-  )) {
-    assertGsapAnimationDirectlyEditable(animation);
-  }
+  const editability = directEditOutcomeForProperties(allKnownAnimations, resizeProperties);
+  if (editability.status === "blocked") return editability;
+  const workingAnimations = animations.length > 0 ? animations : fetchedAnimations;
+  // The initial ownership fetch already supplied the complete parse. Only retain
+  // the fetch callback when a legacy mixed tween may be split and must then be
+  // re-read; otherwise resolveGroupTween would perform the same network read twice.
+  const postSplitFetch = workingAnimations.some((animation) => !animation.propertyGroup)
+    ? fetchFallbackAnimations
+    : undefined;
   const resolved = await resolveGroupTween(
     resizeGroup,
-    animations,
+    workingAnimations,
     selection,
     commitMutation,
-    fetchFallbackAnimations,
+    postSplitFetch,
   );
 
-  let anim = resolved?.anim ?? null;
+  let anim =
+    resolved?.anim && animationWritesAnyProperty(resolved.anim, resizeProperties)
+      ? resolved.anim
+      : null;
+  const liveSelector = selectorFromSelection(selection);
+  const hasLiveResizeTween = liveSelector
+    ? hasNonHoldTweenForElement(iframe, liveSelector, undefined, [...resizeProperties])
+    : false;
+  if (!anim && hasLiveResizeTween) {
+    return { status: "blocked", reason: "source-uneditable" };
+  }
   logResize("intercept-enter", {
     hasScaleGroup,
     resizeGroup,
@@ -89,15 +106,15 @@ export async function tryGsapResizeIntercept(
   });
   if (!anim || isInstantHold(anim)) {
     const sel = selectorFromSelection(selection) ?? writeTargetSelector(selection);
-    if (!sel) throw new GsapEditBlockedError("no-selector");
-    const sizeSet = anim ?? findSizeSetAnimation(animations, sel, selection.element);
+    if (!sel) return { status: "blocked", reason: "no-selector" };
+    const sizeSet = anim ?? findSizeSetAnimation(workingAnimations, sel, selection.element);
 
     // If the element is animated (has a real tween, not just a static size
     // hold), keyframe the size at the playhead so other keyframes keep theirs —
     // instead of a global set that resizes every frame.
     if (resizeGroup === "size") {
       const animatedTween = pickClosestToPlayhead(
-        animations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
+        workingAnimations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });
@@ -109,7 +126,7 @@ export async function tryGsapResizeIntercept(
           animatedTween,
           { commitMutation, fetchAnimations: fetchFallbackAnimations },
         );
-        if (handled) return true;
+        if (handled) return { status: "persisted" };
       }
     }
 
@@ -118,11 +135,11 @@ export async function tryGsapResizeIntercept(
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,
     });
-    return true;
+    return { status: "persisted" };
   }
 
   const tweenDuration = resolveTweenDuration(anim);
-  if (tweenDuration <= 0) return false;
+  if (tweenDuration <= 0) return { status: "blocked", reason: "source-uneditable" };
 
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
@@ -284,7 +301,7 @@ export async function tryGsapResizeIntercept(
       "Resize animation",
     );
     await finalizeScaleResizeCommit();
-    return true;
+    return { status: "persisted" };
   }
 
   const ct = usePlayerStore.getState().currentTime;
@@ -396,7 +413,7 @@ export async function tryGsapResizeIntercept(
       },
     );
     await finalizeScaleResizeCommit();
-    return true;
+    return { status: "persisted" };
   }
 
   const SIZE_PROPS = new Set(["width", "height"]);
@@ -418,7 +435,7 @@ export async function tryGsapResizeIntercept(
     { label: `Resize (keyframe ${pct}%)`, softReload: true },
   );
   await finalizeScaleResizeCommit();
-  return true;
+  return { status: "persisted" };
 }
 
 // ── Rotation intercept ────────────────────────────────────────────────────

@@ -41,14 +41,14 @@ type Commit = (
 /** Renders the hook and hands its commit function to the caller via a ref callback. */
 function renderHookWith(
   animations: GsapAnimation[],
-  onMutation: (mutation: Record<string, unknown>, label: string) => void,
+  onMutation: (mutation: Record<string, unknown>, label: string) => unknown | Promise<unknown>,
   onReady: (commit: Commit) => void,
 ) {
   function Harness() {
     const { commitAnimatedProperties } = useAnimatedPropertyCommit({
       selectedGsapAnimations: animations,
       gsapCommitMutation: async (_sel, mutation, options) => {
-        onMutation(mutation, options.label);
+        await onMutation(mutation, options.label);
       },
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -60,6 +60,48 @@ function renderHookWith(
   }
   return mountReactHarness(<Harness />);
 }
+
+describe("useAnimatedPropertyCommit — ownership and rejection propagation", () => {
+  it("rejects a helper-authored property before sending a mutation", async () => {
+    const helperRotation = {
+      id: "#box-to-rotation",
+      targetSelector: "#box",
+      propertyGroup: "rotation",
+      method: "to",
+      properties: { rotationX: 10 },
+      provenance: { kind: "helper", fn: "spin", callSite: 1 },
+    } as unknown as GsapAnimation;
+    const mutations: Array<Record<string, unknown>> = [];
+    let commit!: Commit;
+    const root = renderHookWith(
+      [helperRotation],
+      (mutation) => mutations.push(mutation),
+      (ready) => (commit = ready),
+    );
+
+    await expect(commit(selection, { rotationX: 12 })).rejects.toMatchObject({
+      name: "GsapEditBlockedError",
+      reason: "unroll-required",
+    });
+    expect(mutations).toHaveLength(0);
+    act(() => root.unmount());
+  });
+
+  it("rethrows a persistence failure to the telemetry wrapper", async () => {
+    const failure = new Error("save failed");
+    let commit!: Commit;
+    const root = renderHookWith(
+      [keyframedAnim],
+      async () => {
+        throw failure;
+      },
+      (ready) => (commit = ready),
+    );
+
+    await expect(commit(selection, { x: 50 })).rejects.toBe(failure);
+    act(() => root.unmount());
+  });
+});
 
 function renderCommitHook(
   mutations: Array<Record<string, unknown>>,
@@ -74,35 +116,28 @@ function renderCommitHook(
 // off, it must shift the whole tween instead of adding/updating a keyframe
 // at the playhead.
 describe("useAnimatedPropertyCommit — autoKeyframeEnabled toggle (#1808)", () => {
-  it("shifts the whole tween instead of updating a keyframe when the toggle is off", async () => {
-    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 0 });
+  async function runCommitWithAutoKeyframe(enabled: boolean) {
+    usePlayerStore.setState({ autoKeyframeEnabled: enabled, currentTime: 0 });
     const mutations: Array<Record<string, unknown>> = [];
     let commit: Commit | undefined;
     const root = renderCommitHook(mutations, (fn) => (commit = fn));
+    await act(async () => commit!(selection, { x: 50 }));
+    act(() => root.unmount());
+    return mutations;
+  }
 
-    await act(async () => {
-      await commit!(selection, { x: 50 });
-    });
-
+  it("shifts the whole tween instead of updating a keyframe when the toggle is off", async () => {
+    const mutations = await runCommitWithAutoKeyframe(false);
     expect(mutations).toHaveLength(1);
     expect(mutations[0]!.type).toBe("replace-with-keyframes");
-    act(() => root.unmount());
   });
 
   it("still updates a keyframe at the playhead when the toggle is on (default)", async () => {
-    const mutations: Array<Record<string, unknown>> = [];
-    let commit: Commit | undefined;
-    const root = renderCommitHook(mutations, (fn) => (commit = fn));
-
-    await act(async () => {
-      await commit!(selection, { x: 50 });
-    });
-
+    const mutations = await runCommitWithAutoKeyframe(true);
     expect(mutations.some((m) => m.type === "update-keyframe" || m.type === "add-keyframe")).toBe(
       true,
     );
     expect(mutations.some((m) => m.type === "replace-with-keyframes")).toBe(false);
-    act(() => root.unmount());
   });
 });
 
