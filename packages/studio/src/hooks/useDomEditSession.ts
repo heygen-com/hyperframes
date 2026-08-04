@@ -149,11 +149,14 @@ export function useDomEditSession({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
+    agentRunLabel,
+    agentRunning,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
     handleAskAgent,
     handleAgentModalSubmit,
+    handleAgentModalRun,
   } = useAskAgentModal({
     projectId,
     activeCompPath,
@@ -472,6 +475,8 @@ export function useDomEditSession({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
+    agentRunLabel,
+    agentRunning,
     // Refs
     domEditSelectionRef,
     // Callbacks
@@ -498,6 +503,7 @@ export function useDomEditSession({
     handleDomRemoveTextField,
     handleAskAgent,
     handleAgentModalSubmit,
+    handleAgentModalRun,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,

@@ -38,6 +38,10 @@ export function useAskAgentModal({
   );
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
+  // null while unknown — the Run button stays hidden until the server confirms
+  // a harness CLI (claude / codex / HYPERFRAMES_AGENT_CMD) is installed.
+  const [agentRunLabel, setAgentRunLabel] = useState<string | null>(null);
+  const [agentRunning, setAgentRunning] = useState(false);
 
   // ── Refs ──
 
@@ -73,30 +77,89 @@ export function useAskAgentModal({
     [activeCompPath, domEditSelectionRef, projectIdRef],
   );
 
+  // The ref, not the state value: a timeline clip applies its selection and
+  // opens the modal in the same tick, so the state copy is still stale here.
+  const resolveSelection = useCallback(
+    () => domEditSelectionRef.current ?? domEditSelection,
+    [domEditSelection, domEditSelectionRef],
+  );
+
   const handleAskAgent = useCallback(() => {
-    if (!domEditSelection) return;
+    const selection = resolveSelection();
+    if (!selection) return;
     setAgentPromptTagSnippet(undefined);
     setAgentPromptSelectionContext(undefined);
     setAgentModalAnchorPoint(null);
-    void preloadAgentPromptSnippet(domEditSelection);
+    void preloadAgentPromptSnippet(selection);
     setAgentModalOpen(true);
-  }, [domEditSelection, preloadAgentPromptSnippet]);
 
-  const handleAgentModalSubmit = useCallback(
-    async (userInstruction: string) => {
-      if (!domEditSelection) return;
+    const pid = projectIdRef.current;
+    if (!pid) return;
+    void fetch(`/api/projects/${pid}/agent`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { available?: boolean; label?: string | null } | null) => {
+        setAgentRunLabel(data?.available ? (data.label ?? "agent") : null);
+      })
+      .catch(() => setAgentRunLabel(null));
+  }, [preloadAgentPromptSnippet, projectIdRef, resolveSelection]);
 
-      const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
-      const tagSnippet = agentPromptTagSnippet ?? domEditSelection.element.outerHTML;
-      const prompt = buildElementAgentPrompt({
-        selection: domEditSelection,
+  const buildPrompt = useCallback(
+    (selection: DomEditSelection, userInstruction: string) => {
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      return buildElementAgentPrompt({
+        selection,
         currentTime: usePlayerStore.getState().currentTime,
-        tagSnippet,
+        tagSnippet: agentPromptTagSnippet ?? selection.element.outerHTML,
         selectionContext: agentPromptSelectionContext,
         userInstruction,
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
+    },
+    [activeCompPath, agentPromptSelectionContext, agentPromptTagSnippet, projectDir],
+  );
 
+  /** Hand the prompt to the user's own agent CLI; the file watcher reloads the preview. */
+  const handleAgentModalRun = useCallback(
+    async (userInstruction: string) => {
+      const selection = resolveSelection();
+      const pid = projectIdRef.current;
+      if (!selection || !pid) return;
+
+      setAgentRunning(true);
+      try {
+        const response = await fetch(`/api/projects/${pid}/agent`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ prompt: buildPrompt(selection, userInstruction) }),
+        });
+        const data = (await response.json()) as {
+          error?: string;
+          exitCode?: number;
+          label?: string;
+        };
+        if (!response.ok || data.exitCode) {
+          showToast(data.error ?? `Agent exited with code ${data.exitCode}`, "error");
+          return;
+        }
+        showToast(`${data.label ?? "Agent"} finished.`);
+        setAgentModalOpen(false);
+        setAgentPromptSelectionContext(undefined);
+        setAgentModalAnchorPoint(null);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Agent run failed.", "error");
+      } finally {
+        setAgentRunning(false);
+      }
+    },
+    [buildPrompt, projectIdRef, resolveSelection, showToast],
+  );
+
+  const handleAgentModalSubmit = useCallback(
+    async (userInstruction: string) => {
+      const selection = resolveSelection();
+      if (!selection) return;
+
+      const prompt = buildPrompt(selection, userInstruction);
       const copied = await copyTextToClipboard(prompt);
       if (!copied) {
         showToast("Could not copy prompt to clipboard.", "error");
@@ -110,14 +173,7 @@ export function useAskAgentModal({
       setCopiedAgentPrompt(true);
       copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
     },
-    [
-      activeCompPath,
-      agentPromptSelectionContext,
-      agentPromptTagSnippet,
-      domEditSelection,
-      projectDir,
-      showToast,
-    ],
+    [buildPrompt, resolveSelection, showToast],
   );
 
   // ── Effects ──
@@ -146,6 +202,8 @@ export function useAskAgentModal({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
+    agentRunLabel,
+    agentRunning,
 
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
     setAgentModalOpen,
@@ -156,5 +214,6 @@ export function useAskAgentModal({
     preloadAgentPromptSnippet,
     handleAskAgent,
     handleAgentModalSubmit,
+    handleAgentModalRun,
   };
 }

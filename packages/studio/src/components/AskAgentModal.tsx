@@ -29,12 +29,19 @@ export function AskAgentModal({
   selectionLabel,
   contextPreview,
   anchorPoint = null,
+  runLabel = null,
+  running = false,
+  onRun,
   onSubmit,
   onClose,
 }: {
   selectionLabel: string;
   contextPreview?: string;
   anchorPoint?: AgentModalAnchorPoint | null;
+  /** Name of the installed agent CLI, or null when none is available to run. */
+  runLabel?: string | null;
+  running?: boolean;
+  onRun?: (instruction: string) => void;
   onSubmit: (instruction: string) => void;
   onClose: () => void;
 }) {
@@ -55,9 +62,16 @@ export function AskAgentModal({
     requestAnimationFrame(() => inputRef.current?.focus());
   });
 
+  const canRun = Boolean(runLabel && onRun);
+
   const handleSubmit = () => {
-    if (!value.trim()) return;
+    if (!value.trim() || running) return;
     onSubmit(value.trim());
+  };
+
+  const handleRun = () => {
+    if (!value.trim() || running || !onRun) return;
+    onRun(value.trim());
   };
 
   return (
@@ -115,7 +129,10 @@ export function AskAgentModal({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                if (canRun) handleRun();
+                else handleSubmit();
+              }
               // Escape is handled at the document level by useDialogBehavior,
               // guarded against discarding a dirty draft.
             }}
@@ -133,15 +150,32 @@ export function AskAgentModal({
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
           <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+            {running
+              ? `${runLabel} is editing the composition…`
+              : `${navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to ${canRun ? "run" : "copy"}`}
           </span>
-          <button
-            className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            disabled={!value.trim()}
-            onClick={handleSubmit}
-          >
-            Copy prompt
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className={
+                canRun
+                  ? "px-3 py-1.5 rounded-lg border border-neutral-800 text-xs font-medium text-neutral-300 hover:bg-neutral-800/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  : "px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              }
+              disabled={!value.trim() || running}
+              onClick={handleSubmit}
+            >
+              Copy prompt
+            </button>
+            {canRun && (
+              <button
+                className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!value.trim() || running}
+                onClick={handleRun}
+              >
+                {running ? "Running…" : `Run ${runLabel}`}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

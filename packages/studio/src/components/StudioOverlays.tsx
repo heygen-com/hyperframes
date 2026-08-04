@@ -69,6 +69,9 @@ export function StudioOverlays({
           selectionLabel={domEditSession.domEditSelection.label}
           contextPreview={buildAgentContextPreview(domEditSession.domEditSelection, activeCompPath)}
           anchorPoint={domEditSession.agentModalAnchorPoint}
+          runLabel={domEditSession.agentRunLabel}
+          running={domEditSession.agentRunning}
+          onRun={domEditSession.handleAgentModalRun}
           onSubmit={domEditSession.handleAgentModalSubmit}
           onClose={() => {
             domEditSession.setAgentModalOpen(false);

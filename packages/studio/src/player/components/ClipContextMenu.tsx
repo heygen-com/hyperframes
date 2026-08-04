@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 
 interface ClipContextMenuProps {
   x: number;
@@ -24,9 +25,12 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDelete,
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
+  // Null in standalone player mounts (no studio provider) — the agent entry
+  // only exists where there is a project on disk to edit.
+  const domEditActions = useDomEditActionsContextOptional();
 
   const menuWidth = 200;
-  const menuHeight = 80;
+  const menuHeight = domEditActions ? 110 : 80;
   const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
@@ -66,6 +70,28 @@ export const ClipContextMenu = memo(function ClipContextMenu({
           >
             <span>{splitLabel}</span>
             <span className="text-neutral-500 text-[10px] ml-3">S</span>
+          </button>
+          <div className="my-1 border-t border-neutral-700/60" />
+        </>
+      )}
+
+      {domEditActions && (
+        <>
+          <button
+            type="button"
+            className="w-full flex items-center px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            onClick={() => {
+              // Resolve the clip back to its live DOM element so the agent gets
+              // the same rich context a canvas selection produces.
+              void domEditActions.buildDomSelectionForTimelineElement(element).then((selection) => {
+                if (!selection) return;
+                domEditActions.applyDomSelection(selection);
+                domEditActions.handleAskAgent();
+              });
+              onClose();
+            }}
+          >
+            Ask agent
           </button>
           <div className="my-1 border-t border-neutral-700/60" />
         </>
