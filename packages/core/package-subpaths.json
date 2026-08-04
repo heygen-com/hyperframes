@@ -86,6 +86,12 @@
       "types": "./dist/compiler/index.d.ts",
       "environments": ["bun", "node"]
     },
+    "./audio-fx": {
+      "source": "./src/audioFx.ts",
+      "runtime": "./dist/audioFx.js",
+      "types": "./dist/audioFx.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",
