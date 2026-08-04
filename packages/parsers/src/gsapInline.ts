@@ -202,13 +202,93 @@ function rangeOf(node: Node): [number, number] | undefined {
     : undefined;
 }
 
-/** Plain identifier params + block body (shape we can inline). Timeline content checked separately. */
+interface SupportedParam {
+  name: string;
+  defaultExpression?: Node;
+}
+
+const SAFE_DEFAULT_NODES = new Set([
+  "ArrayExpression",
+  "BinaryExpression",
+  "ChainExpression",
+  "ConditionalExpression",
+  "Identifier",
+  "Literal",
+  "LogicalExpression",
+  "MemberExpression",
+  "ObjectExpression",
+  "Property",
+  "SpreadElement",
+  "TemplateElement",
+  "TemplateLiteral",
+  "UnaryExpression",
+]);
+
+/**
+ * A default expression is safe only when evaluating it cannot execute author
+ * code and every value identifier refers to an earlier parameter. This mirrors
+ * JavaScript's left-to-right default binding while keeping the static parser
+ * deliberately narrower than a JavaScript interpreter.
+ */
+function isSafeDefaultExpression(node: Node, earlierParams: ReadonlySet<string>): boolean {
+  let safe = true;
+  // fallow-ignore-next-line complexity
+  const visit = (current: Node, parent?: Node, key?: string): void => {
+    if (!isNode(current) || !safe) return;
+    if (!SAFE_DEFAULT_NODES.has(current.type)) {
+      safe = false;
+      return;
+    }
+    if (current.type === "UnaryExpression" && current.operator === "delete") {
+      safe = false;
+      return;
+    }
+    if (current.type === "Identifier") {
+      const nonValue = parent && key ? isNonValueIdentifierSlot(parent, key) : false;
+      if (!nonValue && current.name !== "undefined" && !earlierParams.has(current.name)) {
+        safe = false;
+      }
+      return;
+    }
+    for (const childKey of Object.keys(current)) {
+      if (SKIP_KEYS.has(childKey)) continue;
+      const child = current[childKey];
+      if (Array.isArray(child)) {
+        for (const item of child) visit(item, current, childKey);
+      } else {
+        visit(child, current, childKey);
+      }
+    }
+  };
+  visit(node);
+  return safe;
+}
+
+function supportedParams(fn: Node): SupportedParam[] | null {
+  const params: SupportedParam[] = [];
+  const earlier = new Set<string>();
+  for (const param of fn.params ?? []) {
+    if (param.type === "Identifier") {
+      params.push({ name: param.name });
+      earlier.add(param.name);
+      continue;
+    }
+    if (
+      param.type !== "AssignmentPattern" ||
+      param.left?.type !== "Identifier" ||
+      !isSafeDefaultExpression(param.right, earlier)
+    ) {
+      return null;
+    }
+    params.push({ name: param.left.name, defaultExpression: param.right });
+    earlier.add(param.left.name);
+  }
+  return params;
+}
+
+/** Identifier/default params + block body (shape we can inline). Timeline content checked separately. */
 function isShapeEligible(fn: Node): boolean {
-  return (
-    isFunctionNode(fn) &&
-    fn.body?.type === "BlockStatement" &&
-    !(fn.params ?? []).some((p: Node) => p.type !== "Identifier")
-  );
+  return isFunctionNode(fn) && fn.body?.type === "BlockStatement" && supportedParams(fn) !== null;
 }
 
 /** True if the subtree calls any function named in `names`. */
@@ -354,13 +434,37 @@ function expandBody(
   return [block];
 }
 
-function inlineHelper(call: Node, ctx: ExpandCtx): Node[] {
+function isExplicitUndefined(node: Node | undefined): boolean {
+  return node?.type === "Identifier" && node.name === "undefined";
+}
+
+function inlineHelper(call: Node, ctx: ExpandCtx): Node[] | null {
   const fn = ctx.helpers.get(call.callee.name);
+  if (!fn) return null;
+  const params = supportedParams(fn);
+  if (!params) return null;
   const bindings = new Map<string, Node>();
-  (fn.params ?? []).forEach((p: Node, i: number) => {
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]!;
     const arg = call.arguments?.[i];
-    if (arg) bindings.set(p.name, arg);
-  });
+    if (arg && !isExplicitUndefined(arg)) {
+      bindings.set(param.name, arg);
+      continue;
+    }
+    if (param.defaultExpression) {
+      const resolvedDefault = substituteParams(cloneNode(param.defaultExpression), bindings);
+      // An earlier parameter without a binding means the default cannot be
+      // evaluated statically for this call. Leave the helper untouched.
+      let unresolved = false;
+      walkNodes(resolvedDefault, (node) => {
+        if (node.type === "Identifier" && params.slice(0, i).some((p) => p.name === node.name)) {
+          unresolved = true;
+        }
+      });
+      if (unresolved) return null;
+      bindings.set(param.name, resolvedDefault);
+    }
+  }
   const prov: GsapProvenance = {
     kind: "helper",
     fn: call.callee.name,

@@ -104,6 +104,48 @@ const sites = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.callSite)
 const iters = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.iteration);
 
 describe("inlineComputedTimelines — helpers", () => {
+  it("binds omitted and explicit undefined arguments through identifier defaults", () => {
+    const { tweens } = run(`const tl=gsap.timeline();
+      function slam(selector, at, opts = {}) { tl.to(selector, opts, at); }
+      slam("#a", 1);
+      slam("#b", 2, undefined);`);
+    expect(tweens).toHaveLength(2);
+    expect(tweens.map((t) => t.pos.value)).toEqual([1, 2]);
+    expect(kinds(tweens)).toEqual(["helper", "helper"]);
+  });
+
+  it("keeps null as the explicit argument instead of applying the default", () => {
+    const { ast } = run(`const tl=gsap.timeline();
+      function slam(selector, at, opts = {}) { tl.to(selector, opts, at); }
+      slam("#a", 1, null);`);
+    let vars: any;
+    simple(ast, {
+      CallExpression(n: any) {
+        if (tlMethod(n, "tl") === "to") vars = n.arguments[1];
+      },
+    });
+    expect(vars).toMatchObject({ type: "Literal", value: null });
+  });
+
+  it("resolves a default that only references an earlier bound parameter", () => {
+    const { tweens } = run(`const tl=gsap.timeline();
+      function slam(selector, at, end = at) { tl.to(selector, {}, end); }
+      slam("#a", 3);`);
+    expect(tweens[0]!.pos).toMatchObject({ type: "Literal", value: 3 });
+  });
+
+  it("leaves helpers with effectful or forward-reference defaults uninlined", () => {
+    const effectful = run(`const tl=gsap.timeline();
+      function slam(selector, at = Date.now()) { tl.to(selector, {}, at); }
+      slam("#a");`);
+    expect(effectful.ast.body.some((s: any) => s.type === "FunctionDeclaration")).toBe(true);
+
+    const forward = run(`const tl=gsap.timeline();
+      function slam(selector = later, later = "#a") { tl.to(selector, {}, 0); }
+      slam();`);
+    expect(forward.ast.body.some((s: any) => s.type === "FunctionDeclaration")).toBe(true);
+  });
+
   it("expands a helper called N times, substituting positions per call", () => {
     const { tweens } = run(`const tl=gsap.timeline();
       function addCycle(at){ tl.to("#p", {}, at + 0.3); }
