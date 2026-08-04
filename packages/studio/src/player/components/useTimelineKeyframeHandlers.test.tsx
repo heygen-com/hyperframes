@@ -5,13 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
+import * as telemetry from "../../telemetry/events";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const trackStudioSegmentEaseEdit = vi.hoisted(() => vi.fn());
-vi.mock("../../telemetry/events", () => ({ trackStudioSegmentEaseEdit }));
 
 const ELEMENT: TimelineElement = {
   id: "clip-1",
@@ -46,8 +44,8 @@ const COLLIDING_TARGET: TimelineKeyframeTarget = {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  trackStudioSegmentEaseEdit.mockClear();
-  usePlayerStore.setState({ focusedEaseSegment: null });
+  vi.restoreAllMocks();
+  usePlayerStore.setState({ focusedEaseSegment: null, timelineSessionEpoch: 0 });
 });
 
 /**
@@ -78,6 +76,9 @@ function mountHandlers(options: Partial<Parameters<typeof useTimelineKeyframeHan
 
 describe("useTimelineKeyframeHandlers", () => {
   it("tracks opening the segment ease editor when a timeline segment is selected", () => {
+    const trackStudioSegmentEaseEdit = vi
+      .spyOn(telemetry, "trackStudioSegmentEaseEdit")
+      .mockImplementation(() => {});
     const { root, handlers } = mountHandlers();
     act(() => handlers.onSelectSegment?.(ELEMENT.id, TARGET));
 
@@ -90,7 +91,7 @@ describe("useTimelineKeyframeHandlers", () => {
     const { root, handlers } = mountHandlers();
     act(() => handlers.onSelectSegment?.(ELEMENT.id, COLLIDING_TARGET));
 
-    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
       animationId: "position-tween",
       collidingAnimationTargets: [
         { animationId: "position-tween", tweenPercentage: 100 },
@@ -111,7 +112,7 @@ describe("useTimelineKeyframeHandlers", () => {
     // Selecting a segment must NOT move the playhead.
     act(() => handlers.onSelectSegment?.(ELEMENT.id, FLAT_TWEEN_TARGET));
     expect(onSeek).not.toHaveBeenCalled();
-    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
       animationId: "position-tween",
       tweenPercentage: 100,
       elementId: ELEMENT.id,
@@ -123,6 +124,41 @@ describe("useTimelineKeyframeHandlers", () => {
     // Clicking the keyframe itself still seeks to it (start 1 + 50% of 2 = 2).
     act(() => handlers.onClickKeyframe?.(ELEMENT, TARGET));
     expect(onSeek).toHaveBeenCalledExactlyOnceWith(2);
+    act(() => root.unmount());
+  });
+
+  it("scopes a keyframe context target to the opening timeline session", () => {
+    const setKfContextMenu = vi.fn();
+    usePlayerStore.setState({ timelineSessionEpoch: 4 });
+
+    function Harness() {
+      const { onContextMenuKeyframe } = useTimelineKeyframeHandlers({
+        expandedElements: [ELEMENT],
+        keyframeCache: new Map(),
+        setSelectedElementId: vi.fn(),
+        setKfContextMenu,
+        toggleSelectedKeyframe: vi.fn(),
+      });
+      return (
+        <button
+          type="button"
+          onContextMenu={(event) => onContextMenuKeyframe(event, ELEMENT.id, TARGET)}
+        />
+      );
+    }
+
+    const root = mountReactHarness(<Harness />);
+    const button = document.querySelector("button");
+    expect(button).not.toBeNull();
+    act(() => {
+      button?.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 20 }),
+      );
+    });
+
+    expect(setKfContextMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ elementId: ELEMENT.id, sessionEpoch: 4, x: 14, y: 22 }),
+    );
     act(() => root.unmount());
   });
 });

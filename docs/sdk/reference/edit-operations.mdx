@@ -92,7 +92,7 @@ These ops target one or more elements by explicit hf-id. `target` accepts a sing
 | `setStyle` | `target`, `styles` | Merges CSS inline styles. `null` values remove that property. |
 | `setText` | `target`, `value` | Replaces the element's direct text content. |
 | `setAttribute` | `target`, `name`, `value` | Sets or removes an HTML attribute. `null` removes it. Does not touch `style`, `class`, or `data-hf-*`. |
-| `setTiming` | `target`, `start?`, `duration?`, `trackIndex?` | Updates one or more timing attributes (`data-start`, `data-duration`, `data-track`). Omitted fields are unchanged. |
+| `setTiming` | `target`, `start?`, `duration?`, `trackIndex?` | Updates one or more timing attributes (`data-start`, `data-duration`, `data-track-index`). Omitted fields are unchanged. |
 | `setHold` | `target`, `hold` | Sets an elastic hold window; see `ElasticHold` shape below. |
 | `moveElement` | `target`, `x`, `y` | Repositions the element by setting `data-x` / `data-y` (not CSS `left`/`top`). |
 | `removeElement` | `target` | Removes the element and all its children from the document. Inverse of `addElement`. |
@@ -554,4 +554,3 @@ comp.dispatch({
   update: { curviness: 2, cp1: { x: 220, y: -100 } },
 });
 ```
-

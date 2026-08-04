@@ -1,0 +1,82 @@
+---
+title: "Create a product or website video"
+sidebarTitle: "Product or website"
+description: "Turn a product URL or launch brief into a promo, product tour, or social video."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Give HyperFrames the real URL when the product, website, or brand should appear in the result.
+
+<Frame caption="A real product-launch film, built from the product itself.">
+  <DocsVideo
+    title="A narrated Huly product-launch film created with HyperFrames"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/product-launch-huly-v1.mp4"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/product-launch-huly-v1.jpg"
+  />
+</Frame>
+
+## Make the request
+
+Give the agent the real product URL and the result you want:
+
+```text
+Using /hyperframes, make a 30-second launch video for https://example.com.
+```
+
+The agent inspects the product, proposes a direction, and confirms anything
+important that the request did not settle. Add an audience, required claim, or
+final action when one must be exact; you do not need to specify every scene.
+
+## What should the video do?
+
+- **Launch video** — turn real product evidence into a persuasive story with one clear action at the end.
+- **Product tour** — show one complete task through the product's real screens, from the first action to the result.
+- **Short social video** — prove one useful point quickly, show the evidence, and stop after the payoff.
+
+A tour features the product as it exists. A launch video rearranges the same evidence into a persuasive story. A social video proves one point and ends.
+
+If you already have approved wording, paste the script and say whether it must remain verbatim. Say **do not capture the website** when the video should use only the supplied brief.
+
+Use a [faceless explainer](/guides/faceless-explainer) instead when there is no product to show and the visuals should be invented.
+
+## What HyperFrames builds from
+
+<div className="my-5 grid gap-3 sm:grid-cols-3">
+  <div className="border-b border-zinc-200 pb-3 dark:border-zinc-800">
+    <div className="font-medium">Real screens</div>
+    <div className="mt-1 text-sm text-zinc-500">
+      The interface and product states worth showing.
+    </div>
+  </div>
+  <div className="border-b border-zinc-200 pb-3 dark:border-zinc-800">
+    <div className="font-medium">Product language</div>
+    <div className="mt-1 text-sm text-zinc-500">Claims, features, proof, and the final action.</div>
+  </div>
+  <div className="border-b border-zinc-200 pb-3 dark:border-zinc-800">
+    <div className="font-medium">Brand system</div>
+    <div className="mt-1 text-sm text-zinc-500">Color, type, imagery, motion, and sound.</div>
+  </div>
+</div>
+
+HyperFrames can animate captured product material or rebuild only the part that needs to move. A raw screen recording is not the default.
+
+## Review the result
+
+- Every product claim is current.
+- The shown states are realistic and use no private material.
+- The important interface remains readable while the video plays.
+- The opening proves the product quickly and the ending asks for one clear action.
+
+Ask the agent for a broader story revision. Use Studio for a direct visual or
+timing change. Render from the agent, Studio, or the CLI when the result is ready.
+
+<Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
+  Check the final project, render it from your preferred surface, and review the file.
+</Card>
+
+## Related topics
+
+- [Create a faceless explainer when there is no product to show](/guides/faceless-explainer)
+- [Edit the finished project in Studio](/studio)
+- [Prompt for product-launch videos](/prompting/product-launch)

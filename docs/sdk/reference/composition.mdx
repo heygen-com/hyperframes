@@ -64,7 +64,7 @@ comp.setAttribute("hf-video", "autoplay", null); // removes autoplay
 setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void
 ```
 
-Update the `data-start`, `data-duration`, and/or `data-track` attributes of one element. All fields are optional; omitted fields are left unchanged.
+Update the `data-start`, `data-duration`, and/or `data-track-index` attributes of one element. All fields are optional; omitted fields are left unchanged.
 
 ```typescript
 comp.setTiming("hf-title", { start: 0.5, duration: 2.5 });
@@ -189,9 +189,9 @@ getVariableUsage(): VariableUsageReport
 
 Read-only variable APIs (no dispatch). `getVariableDeclarations` returns the typed
 schema (same strict filter the render pipeline uses). `getVariableValues` resolves
-values exactly like the runtime's `getVariables()` — declared defaults merged under
-the given overrides — so callers can predict what a composition script will read for
-a given `--variables` payload. `validateVariableValues` runs the same checks as
+values for this composition file — its declared defaults merged under the given overrides. The
+runtime additionally walks declarations from inlined sub-compositions in an assembled document, so
+query each SDK composition separately when you need that wider view. `validateVariableValues` runs the same checks as
 `--strict-variables` (`undeclared` / `type-mismatch` / `enum-out-of-range`).
 `getVariableUsage` statically scans every inline script for `getVariables()` reads
 and cross-references the schema: `{ usedIds, unusedDeclarations, undeclaredReads,
@@ -439,7 +439,7 @@ Search elements by structured query. Returns an array of `scopedId` strings for 
 | `tag` | `string` | Exact HTML tag name, lowercase (`"div"`, `"img"`). |
 | `text` | `string` | Substring match against the element's `text` field. |
 | `name` | `string` | Exact match against `data-name` attribute. |
-| `track` | `number` | Exact track index (`data-track`). |
+| `track` | `number` | Exact track index (`data-track-index`). |
 | `composition` | `string` | Filter to elements inside a specific sub-composition host by its `hf-id`. |
 
 ```typescript
@@ -628,6 +628,8 @@ comp.on("selectionchange", (ids) => {
 Fires after every committed change with a `PatchEvent` containing RFC 6902 forward and inverse patches, the `origin`, and semantic `opTypes`. Use this to mirror edits into a host history stack, collaboration layer, or audit log.
 
 ```typescript
+import { ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
+
 comp.on("patch", ({ patches, inversePatches, origin, opTypes }) => {
   if (origin !== ORIGIN_APPLY_PATCHES) {
     hostHistory.push({ patches, inversePatches });

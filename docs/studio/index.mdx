@@ -1,0 +1,168 @@
+---
+title: "Work on a project in Studio"
+sidebarTitle: "Studio overview"
+description: "Open a HyperFrames project, understand the workspace, make a safe edit, and finish a version."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+<div className="hf-docs-video-frame">
+  <DocsVideo
+    title="A narrated tour of a real HyperFrames Studio project"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-front-door-v2.mp4"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-front-door-v2.jpg"
+  />
+</div>
+
+Studio is the visual editor for the same HTML project your agent and the CLI
+use. The Reference Project from the first-video guide opens here without an
+import or conversion. Open any project folder, then run:
+
+```bash
+npx hyperframes preview
+```
+
+## Know the workspace
+
+<Frame caption="Preview keeps project files, the live frame, the Inspector, and time-based editing in one workspace.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/overview-v1.jpg"
+    alt="HyperFrames Studio Preview showing project tools, a live composition, the Inspector, and the timeline"
+  />
+</Frame>
+
+- **Storyboard** shows the planned sequence, direction, voiceover, status, and
+  comments. Use it to review the story.
+- **Preview** shows the built project. The live frame is in the middle, the
+  timeline is below, project tools are on the left, and the Inspector is on the
+  right.
+- **Code**, **Comps**, **Assets**, and **Catalog** expose the project source,
+  compositions, media, and reusable visuals. **Design**, **Layers**,
+  **Variables**, and **Renders** control the selected work.
+
+You do not need to learn every panel. Choose the surface that matches the
+problem in front of you.
+
+| You want to change                              | Start with                       |
+| ----------------------------------------------- | -------------------------------- |
+| Something visible in the current frame          | Canvas, then Design or Layers    |
+| When something appears or how long it stays     | Timeline                         |
+| One movement or transition                      | Animation controls and keyframes |
+| The story, several scenes, or project structure | Your agent                       |
+
+## Make one safe edit
+
+Pause where the problem is visible. Click the element on the canvas, or choose
+it in **Layers** when several elements overlap. Then change only the property
+you meant to change.
+
+<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
+  <Frame caption="The canvas selects the visible element; Design exposes the properties Studio can edit safely.">
+    <video
+      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-direct-edit-loop-v2.mp4"
+      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-direct-edit-loop-v2.jpg"
+      alt="Selecting an element and changing it in HyperFrames Studio"
+      aria-label="Selecting an element and changing it in HyperFrames Studio"
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="metadata"
+    />
+  </Frame>
+</div>
+
+Use the canvas to move, resize, rotate, or crop a supported element. Use
+**Design** for text, layout, style, media, motion, 3D, or color controls that
+apply to the selection. Play through the surrounding moment before accepting
+the change; a correct still frame can still create a collision in motion.
+
+<Warning>
+  Auto-keyframe starts enabled. Turn it off before a normal layout correction that should stay
+  constant. Leave it on only when the change at the current playhead time should become animation.
+</Warning>
+
+For the complete visible-edit workflow, continue to [Edit the
+frame](/studio/canvas).
+
+## Change time on the timeline
+
+Drag a clip to move it earlier or later. Drag an edge to change its duration.
+Use the razor only when one supported clip must become two.
+
+<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
+  <Frame caption="Timing changes stay visible beside the frame and neighboring tracks.">
+    <video
+      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-timing-loop-v2.mp4"
+      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-timing-loop-v2.jpg"
+      alt="Adjusting clip timing in the HyperFrames Studio timeline"
+      aria-label="Adjusting clip timing in the HyperFrames Studio timeline"
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="metadata"
+    />
+  </Frame>
+</div>
+
+Move the playhead through the surrounding cut after every timing change. Use
+[the timeline guide](/studio/timeline) when you need trimming, splitting,
+beats, nested scenes, or multi-item editing.
+
+## Hand a broader change back to the agent
+
+Studio is best for a change you can point at. Ask the agent when the request
+affects the story, several scenes, source research, or unfamiliar project code.
+
+Use **Ask agent** or **Copy to Agent** when Studio offers it, then add the human
+intent that the copied context cannot know:
+
+```text
+Make the opening feel faster, but keep the current narration and final scene.
+```
+
+The agent and Studio edit the same source. There is no export or conversion
+between them.
+
+## Check and render the version
+
+Watch the project from the beginning, run **Lint**, and fix the reported issues.
+Before delivery, run the project-level browser gate as well:
+
+```bash
+npx hyperframes check
+```
+
+Then render through Studio, your agent, or the CLI. Open the exported file and
+watch it once before sharing it.
+
+<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
+  <Frame caption="Studio queues and monitors a render from the same project.">
+    <video
+      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.mp4"
+      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.jpg"
+      alt="Queuing and monitoring a render in HyperFrames Studio"
+      aria-label="Queuing and monitoring a render in HyperFrames Studio"
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="metadata"
+    />
+  </Frame>
+</div>
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Edit the frame" icon="crop" href="/studio/canvas">
+    Select, style, arrange, group, and replace visible elements.
+  </Card>
+  <Card title="Edit timing" icon="timeline" href="/studio/timeline">
+    Trim, split, move, and retime clips on the project timeline.
+  </Card>
+  <Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
+    Review, validate, render, and deliver the project.
+  </Card>
+</CardGroup>

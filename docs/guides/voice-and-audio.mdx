@@ -1,0 +1,127 @@
+---
+title: "Use voice, music, sound, and captions"
+sidebarTitle: "Voice, sound, and captions"
+description: "Build an understandable audio mix, transcribe real speech, and turn it into readable captions."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Give each audio layer one job. Add another layer only when it helps the viewer
+understand or feel the video.
+
+| Layer         | Main job                                            |
+| ------------- | --------------------------------------------------- |
+| Voiceover     | Carry the explanation or story                      |
+| Source audio  | Preserve speech or sound from existing footage      |
+| Music         | Shape pace, tone, and structure                     |
+| Sound effects | Reinforce a specific action or transition           |
+| Captions      | Make spoken words readable and searchable on screen |
+
+<Frame caption="Play with sound. The same real HyperFrames scene first lets music compete with the line, then gives the voice room while keeping a stable caption rail.">
+  <DocsVideo
+    title="A comparison of an obstructed and a clear narration mix"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/audio-mix-proof-v1.jpg"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/audio-mix-proof-v1.mp4"
+  />
+</Frame>
+
+## Create a voiceover
+
+Give the agent the approved wording and useful voice direction:
+
+```text
+Generate the approved SCRIPT.md as a warm, direct voiceover.
+Natural pace, no announcer energy. Keep the product-name pronunciation exact.
+```
+
+The project can keep the script, audio, and word-level transcript separately.
+That lets you regenerate the voice without discarding the timing and caption
+work around it.
+
+Listen before building the final edit. Fix wording, pronunciation, or delivery
+in the script or voice direction rather than cutting around a bad read.
+
+## Transcribe recorded speech
+
+Transcription creates timed words from an audio or video file. Start with the
+automatic engine: it uses Parakeet when installed and falls back to Whisper.
+
+```bash
+npx hyperframes transcribe interview.mp4
+```
+
+Pass the spoken language when you know it. This filters non-target speech and
+lets the Whisper fallback choose a multilingual model when needed.
+
+```bash
+npx hyperframes transcribe interview.mp4 --language es
+```
+
+For difficult English audio, force the larger English Whisper model. For an
+unknown language, use multilingual `large-v3` and let Whisper detect it.
+
+```bash
+npx hyperframes transcribe interview.mp4 --engine whisper --model medium.en
+npx hyperframes transcribe interview.mp4 --engine whisper --model large-v3
+```
+
+Larger models take longer and do not remove the need to read the result.
+
+The command can also import an existing `.srt`, `.vtt`, or supported transcript
+JSON file:
+
+```bash
+npx hyperframes transcribe subtitles.srt
+```
+
+## Turn the transcript into captions
+
+1. Read the complete transcript.
+2. Correct names, product terms, numbers, punctuation, and obvious recognition
+   errors.
+3. Group words into short phrases that break on meaning.
+4. Open [Captions in Studio](/studio/captions) to inspect the rhythm and adjust
+   placement, scale, or rotation. Make durable wording, timing, style, and
+   animation changes in the caption source or ask the agent to update it.
+5. Watch once with sound for synchronization and once muted for readability.
+
+Captions should follow what was said. They should not cover a face, product
+control, or another important visual. Use emphasis on the few words that carry
+the point instead of making every word compete.
+
+For an existing talking-head clip, use [Captions or
+recuts](/guides/captions-and-recuts) to choose between plain captions, designed
+graphic overlays, and an actual change to the spoken edit.
+
+## Mix for understanding
+
+- Keep voice clear above music.
+- Duck music under important speech instead of reducing the whole track
+  equally.
+- Use sound effects for meaningful events, not every movement.
+- Avoid cutting words, breaths, or reverb tails accidentally at scene
+  boundaries.
+- Let a deliberate silence remain silent.
+- Listen on ordinary headphones and laptop speakers.
+
+When narration drives the project, time visual changes to its real transcript
+rather than estimated scene lengths. When music drives the project, use the
+[music-video workflow](/guides/music-to-video) and its analyzed structure.
+
+## Review the complete sound pass
+
+- The correct voice and source recordings are used.
+- Names, claims, and captions are accurate.
+- Speech stays clear through the loudest musical section.
+- Effects arrive with the action they support.
+- The opening does not surprise the listener with excessive volume.
+- Music and ambience finish intentionally instead of stopping at the file edge.
+
+Render a review file and listen without watching once. Audio problems are often
+easier to notice when the visuals are not competing for attention.
+
+## Related topics
+
+- [Add captions or repackage talking-head footage](/guides/captions-and-recuts)
+- [Edit captions in Studio](/studio/captions)
+- [Finish, render, and share](/guides/export-and-share)

@@ -1,417 +1,94 @@
 ---
 title: "@hyperframes/engine"
-description: "Seekable page-to-video capture engine using Chrome's BeginFrame API."
+description: "Low-level, seekable frame capture and encoding primitives."
 ---
 
-The engine package provides the low-level video capture pipeline: it loads an HTML page in headless Chrome, seeks to each frame independently, and captures pixel buffers using Chrome's `HeadlessExperimental.beginFrame` API. This is the layer that makes Hyperframes rendering deterministic.
+`@hyperframes/engine` is the low-level layer beneath the
+[Producer](/packages/producer). It opens a page that implements the HyperFrames
+seek protocol, seeks to an exact time, and captures the resulting frame.
+
+Most integrations should use the CLI or Producer. Use the Engine only when you
+need to own frame capture, encoding, media extraction, or browser management.
 
 ```bash
 npm install @hyperframes/engine
 ```
 
-## When to Use
+## Why it is different from screen recording
 
-<Warning>
-  **Most users should NOT use the engine directly.** Use the [CLI](/packages/cli) (`npx hyperframes render`) or the [producer](/packages/producer) package instead — they handle runtime injection, audio mixing, and encoding for you.
-</Warning>
+A screen recorder waits for the wall clock and may miss frames under load. The
+Engine asks the page to seek to a specific time and captures that state before
+moving on.
 
-**Use `@hyperframes/engine` when you need to:**
-- Build a custom rendering pipeline with full control over frame capture
-- Integrate Hyperframes capture into an existing video processing system
-- Capture individual frames (e.g., for thumbnails or sprite sheets) without encoding to video
-- Implement a custom encoding backend (not FFmpeg)
+That makes frame scheduling repeatable and prevents dropped frames caused by a
+slow machine. Exact pixels can still vary with Chrome, fonts, codecs, GPU
+behavior, and the host environment. Pin those dependencies when exact visual
+reproducibility matters.
 
-**Use a different package if you want to:**
-- Render an HTML composition to a finished MP4 or WebM — use the [producer](/packages/producer) or [CLI](/packages/cli)
-- Preview compositions in the browser — use the [CLI](/packages/cli) or [studio](/packages/studio)
-- Lint or parse composition HTML — use [core](/packages/core)
+## Capture frames
 
-## How It Works
+The page at `serverUrl` must expose `window.__hf` with a `duration` and a
+deterministic `seek(time)` function.
 
-The engine implements a **seek-and-capture** loop that is fundamentally different from screen recording:
-
-<Steps>
-  <Step title="Launch headless Chrome">
-    The engine starts `chrome-headless-shell`, a minimal headless Chrome binary optimized for programmatic control via the Chrome DevTools Protocol (CDP).
-  </Step>
-  <Step title="Load the composition">
-    Your HTML composition is loaded into a browser page. The Hyperframes runtime is injected to manage timeline seeking.
-  </Step>
-  <Step title="Seek to each frame">
-    For every frame in the video (e.g., 900 frames for a 30-second video at 30fps), the engine calls `window.__hf.seek(time)` to advance the composition to the exact timestamp. No wall clock is involved — each frame is independently positioned.
-  </Step>
-  <Step title="Capture via BeginFrame">
-    Chrome's `HeadlessExperimental.beginFrame` API captures the compositor output as a pixel buffer. This produces pixel-perfect frames without any screen recording artifacts.
-  </Step>
-  <Step title="Hand off frames">
-    Captured frame buffers are passed to a consumer — typically FFmpeg (via the producer) for encoding into MP4, but you can provide your own consumer.
-  </Step>
-</Steps>
-
-This approach guarantees [deterministic rendering](/concepts/determinism): the same HTML always produces the identical video, regardless of system load or timing.
-
-## Configuration
-
-```typescript
-import { resolveConfig, DEFAULT_CONFIG } from '@hyperframes/engine';
-import type { EngineConfig } from '@hyperframes/engine';
-
-// Use defaults
-const config = DEFAULT_CONFIG;
-
-// Or resolve with overrides
-const config = resolveConfig({
-  // ... custom options
-});
-```
-
-### Quality Presets
-
-| Preset | Use Case | Speed |
-|--------|----------|-------|
-| `draft` | Fast iteration during development | Fastest |
-| `standard` | Production renders with good quality/speed balance | Moderate |
-| `high` | Final delivery, maximum quality | Slowest |
-
-### FPS Options
-
-| FPS | Use Case |
-|-----|----------|
-| `24` | Cinematic look, smaller file size |
-| `30` | Standard web video, good balance |
-| `60` | Smooth motion, UI animations, screen recordings |
-
-## Programmatic Usage
-
-The engine uses a session-based API for frame capture:
-
-```typescript
+```ts
 import {
-  createCaptureSession,
-  initializeSession,
   captureFrame,
-  captureFrameToBuffer,
-  getCompositionDuration,
   closeCaptureSession,
-} from '@hyperframes/engine';
-
-// 1. Create a capture session (serverUrl, outputDir, options)
-const session = await createCaptureSession(serverUrl, outputDir, {
-  fps: { num: 30, den: 1 }, width: 1920, height: 1080,
-});
-
-// 2. Initialize the session
-await initializeSession(session);
-
-// 3. Get the total duration (async)
-const duration = await getCompositionDuration(session);
-
-// 4. Capture frames
-const totalFrames = Math.ceil(duration * 30);
-for (let i = 0; i < totalFrames; i++) {
-  // Capture to disk
-  const result = await captureFrame(session, i);
-  // result.path, result.captureTimeMs
-
-  // Or capture to buffer (in-memory)
-  const bufResult = await captureFrameToBuffer(session, i);
-  // bufResult.buffer, bufResult.captureTimeMs
-}
-
-// 5. Clean up
-await closeCaptureSession(session);
-```
-
-### Browser Management
-
-```typescript
-import {
-  acquireBrowser,
-  releaseBrowser,
-  resolveHeadlessShellPath,
-  buildChromeArgs,
-} from '@hyperframes/engine';
-
-// Acquire a browser instance (creates or reuses from pool)
-const browser = await acquireBrowser();
-
-// Get the Chrome binary path
-const chromePath = await resolveHeadlessShellPath();
-
-// Release when done
-await releaseBrowser(browser);
-```
-
-### Encoding
-
-The engine includes FFmpeg encoding utilities with support for MP4 (h264) and WebM (VP9 with alpha):
-
-```typescript
-import {
-  encodeFramesFromDir,
-  muxVideoWithAudio,
-  applyFaststart,
-  detectGpuEncoder,
-  getEncoderPreset,
-  ENCODER_PRESETS,
-} from '@hyperframes/engine';
-
-// Get format-aware encoder settings
-const mp4Preset = getEncoderPreset('standard', 'mp4');
-// { codec: "h264", pixelFormat: "yuv420p", preset: "medium", quality: 23 }
-
-const webmPreset = getEncoderPreset('standard', 'webm');
-// { codec: "vp9", pixelFormat: "yuva420p", preset: "good", quality: 23 }
-
-// Encode captured frames to video
-await encodeFramesFromDir(framesDir, 'frame_%06d.png', outputPath, {
-  fps: { num: 30, den: 1 },
-  ...webmPreset,
-});
-
-// Mix video with audio (uses Opus for WebM, AAC for MP4)
-await muxVideoWithAudio(videoPath, audioPath, outputPath);
-
-// Apply MP4 faststart for streaming (no-op for WebM)
-await applyFaststart(inputPath, outputPath);
-
-// Detect GPU encoding support
-const gpu = await detectGpuEncoder();
-// gpu: "nvenc" | "videotoolbox" | "vaapi" | "qsv" | "amf" | null
-```
-
-#### WebM with VP9 Alpha
-
-When encoding for transparency, use `format: "webm"` with `getEncoderPreset()`. This configures:
-- **VP9 codec** (`libvpx-vp9`) with alpha-capable `yuva420p` pixel format
-- **`-auto-alt-ref 0`** and **`alpha_mode=1`** metadata for proper alpha encoding
-- **`-row-mt 1`** for multi-threaded VP9 encoding
-- **Opus audio** in the mux step (instead of AAC for MP4)
-
-### Streaming Encoder
-
-For memory-efficient encoding without writing frames to disk:
-
-```typescript
-import { spawnStreamingEncoder } from '@hyperframes/engine';
-
-const encoder = await spawnStreamingEncoder({
-  outputPath: './output.mp4',
-  fps: { num: 30, den: 1 },
-  width: 1920,
-  height: 1080,
-});
-
-// Feed frames directly to encoder
-encoder.writeFrame(frameBuffer);
-// ...
-const result = await encoder.finalize();
-```
-
-### Video Frame Extraction
-
-Extract frames from source video files for injection into the browser:
-
-```typescript
-import {
-  parseVideoElements,
-  extractAllVideoFrames,
-  getFrameAtTime,
-  createFrameLookupTable,
-  FrameLookupTable,
-} from '@hyperframes/engine';
-
-// Parse video elements from HTML
-const videos = parseVideoElements(html);
-
-// Extract all frames from a video
-const frames = await extractAllVideoFrames(videoPath, { fps: 30 });
-
-// Create a lookup table for fast frame access
-const lookup = createFrameLookupTable(frames);
-const frame = lookup.getFrame('video-1', 5.0);
-```
-
-### Audio Processing
-
-```typescript
-import { parseAudioElements, processCompositionAudio } from '@hyperframes/engine';
-
-// Parse audio elements from HTML
-const audioElements = parseAudioElements(html);
-
-// Process and mix all audio tracks
-const mixResult = await processCompositionAudio({ audioElements, duration, fps });
-```
-
-### Parallel Rendering
-
-```typescript
-import {
-  calculateOptimalWorkers,
-  distributeFrames,
-  executeParallelCapture,
-  getSystemResources,
-} from '@hyperframes/engine';
-
-// Check system resources
-const resources = getSystemResources();
-
-// Calculate optimal worker count
-const workers = calculateOptimalWorkers(totalFrames);
-
-// Distribute frames across workers
-const tasks = distributeFrames(totalFrames, workers);
-
-// Execute parallel capture
-const results = await executeParallelCapture(tasks);
-```
-
-### File Server
-
-Serve composition files over HTTP for the browser to load:
-
-```typescript
-import { createFileServer } from '@hyperframes/engine';
-
-const server = await createFileServer({ root: './my-video', port: 0 });
-// server.url, server.port
-// ... use server.url as the composition URL
-await server.close();
-```
-
-## HDR APIs
-
-The engine exports two layers of HDR support: **color-space utilities** that classify sources and configure the FFmpeg encoder, and a **WebGPU readback runtime** for capturing CSS-animated DOM directly into HDR.
-
-For end-to-end HDR rendering (HDR video and image sources composited into an HDR10 MP4) use the [producer](/packages/producer) or the CLI render pipeline with HDR auto-detect / `--hdr` / `--sdr` — see [HDR Rendering](/guides/hdr). The APIs below are for custom integrations.
-
-### Color space utilities
-
-```typescript
-import {
-  isHdrColorSpace,
-  detectTransfer,
-  analyzeCompositionHdr,
-  getHdrEncoderColorParams,
-  DEFAULT_HDR10_MASTERING,
-} from '@hyperframes/engine';
-import type { HdrTransfer, HdrEncoderColorParams, HdrMasteringMetadata } from '@hyperframes/engine';
-
-// Classify a single source from its ffprobe color space
-isHdrColorSpace(colorSpace);          // boolean — true for BT.2020 / PQ / HLG
-detectTransfer(colorSpace);           // 'pq' | 'hlg' (gate on isHdrColorSpace first)
-
-// Pick the dominant transfer across many sources
-analyzeCompositionHdr([cs1, cs2]);    // { hasHdr, dominantTransfer: 'pq' | 'hlg' | null }
-
-// Build the FFmpeg color params + HDR10 static metadata for x265
-const params = getHdrEncoderColorParams('pq');
-// {
-//   colorPrimaries: 'bt2020',
-//   colorTrc: 'smpte2084',
-//   colorspace: 'bt2020nc',
-//   pixelFormat: 'yuv420p10le',
-//   x265ColorParams: 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=...:max-cll=1000,400',
-//   mastering: { masterDisplay: '...', maxCll: '1000,400' },
-// }
-```
-
-`getHdrEncoderColorParams` always includes both color tagging *and* the HDR10 static metadata (mastering display + content light level). Without that metadata, downstream players treat the file as SDR BT.2020 and tone-map incorrectly. Pass a custom `HdrMasteringMetadata` if you have measured per-content values; otherwise the conservative `DEFAULT_HDR10_MASTERING` defaults match how most HDR10 grading suites tag content.
-
-### WebGPU HDR DOM capture
-
-For capturing CSS-animated DOM directly into HDR (no FFmpeg source involved), the engine exposes a separate WebGPU pipeline:
-
-```typescript
-import {
-  launchHdrBrowser,
-  buildHdrChromeArgs,
-  initHdrReadback,
-  uploadAndReadbackHdrFrame,
-  float16ToPqRgb,
-} from '@hyperframes/engine';
-
-// Launch headed Chrome with WebGPU enabled
-const { browser, page } = await launchHdrBrowser({ width: 1920, height: 1080 });
-
-// Inject the WebGPU readback runtime
-const ok = await initHdrReadback(page, 1920, 1080);
-
-// For each frame: upload float16 pixels, read back float16 RGBA
-const { rgba16, bytesPerRow } = await uploadAndReadbackHdrFrame(page, float16Base64);
-
-// Convert linear float16 → PQ-encoded 16-bit RGB suitable for piping into ffmpeg/x265
-const pqRgb = float16ToPqRgb(rgba16, width, height, bytesPerRow);
-```
-
-<Warning>
-  This path requires **headed Chrome with `--enable-unsafe-webgpu`** — WebGPU is unavailable in `chrome-headless-shell`. It is *not* used by the default HDR-aware render pipeline (which extracts HDR pixels from sources via FFmpeg and composites in Node). Use it only for advanced custom pipelines that need CSS animations driving HDR pixel output.
-</Warning>
-
-## The `window.__hf` Protocol
-
-The engine communicates with the browser page via the `window.__hf` protocol. Any page that implements this protocol can be captured by the engine — you are not limited to Hyperframes compositions.
-
-```typescript
-// The page must expose this on window.__hf
-interface HfProtocol {
-  duration: number;                  // Total duration in seconds
-  seek(time: number): void;         // Seek to a specific time
-  media?: HfMediaElement[];         // Optional media element declarations
-}
-
-interface HfMediaElement {
-  elementId: string;                 // DOM element ID
-  src: string;                       // Media source URL
-  startTime: number;                 // Start time on timeline
-  endTime: number;                   // End time on timeline
-  mediaOffset?: number;              // Playback offset in source
-  volume?: number;                   // Volume (0-1)
-  hasAudio?: boolean;                // Whether element has audio
+  createCaptureSession,
+  getCompositionDuration,
+  initializeSession,
+} from "@hyperframes/engine";
+
+const fps = { num: 30, den: 1 };
+const session = await createCaptureSession(
+  serverUrl,
+  "./frames",
+  {
+    width: 1920,
+    height: 1080,
+    fps,
+    format: "jpeg",
+  },
+);
+
+try {
+  await initializeSession(session);
+  const duration = await getCompositionDuration(session);
+  const totalFrames = Math.ceil(duration * 30);
+
+  for (let frame = 0; frame < totalFrames; frame += 1) {
+    const time = frame / 30;
+    await captureFrame(session, frame, time);
+  }
+} finally {
+  await closeCaptureSession(session);
 }
 ```
 
-## Key Concepts
+Use `captureFrameToBuffer()` when the next stage needs an in-memory buffer
+instead of a file.
 
-### BeginFrame Rendering
+## What else the package exposes
 
-Traditional screen capture records at wall-clock speed — if your system is under load, frames get dropped. The engine uses Chrome's `HeadlessExperimental.beginFrame` to explicitly advance the compositor, producing each frame on demand. This means:
+| Surface | Use it for |
+| --- | --- |
+| Browser management | Launching, pooling, and releasing Chrome |
+| Encoders | MP4, WebM, MOV, GIF, PNG-sequence, muxing, and faststart |
+| Media extraction | Preparing source video frames and audio tracks |
+| Parallel capture | Distributing frame ranges across workers |
+| Diagnostics | Capture performance, media metadata, and GPU parity |
 
-- **No dropped frames** — every frame is captured
-- **No timing dependency** — a 60-second video does not take 60 seconds to capture
-- **Pixel-perfect output** — the compositor produces the exact pixels it would display
+These are rendering internals. Their result and error conventions differ by
+operation: browser and capture orchestration throws, FFmpeg wrappers generally
+return result objects, and teardown helpers avoid masking the original failure.
 
-For more on how this enables deterministic output, see [Deterministic Rendering](/concepts/determinism).
-
-### Seek Contract
-
-The engine relies on the Hyperframes runtime's `window.__hf.seek(time)` function. When called, `seek`:
-
-1. Pauses all GSAP timelines
-2. Seeks every timeline to the exact timestamp
-3. Updates all media elements (video, audio) to match
-4. Mounts/unmounts clips based on their `data-start` and `data-duration`
-
-This contract is what makes frame-by-frame capture possible — each frame is a complete, independent snapshot of the composition at that point in time.
-
-### Chrome Requirements
-
-The engine requires `chrome-headless-shell`, which is included when you install the package. It uses a pinned Chrome version to ensure consistent rendering across environments. For fully deterministic output (including fonts), use Docker mode via the [producer](/packages/producer).
-
-## Related Packages
+## Related topics
 
 <CardGroup cols={2}>
-  <Card title="Producer" icon="film" href="/packages/producer">
-    Wraps the engine with runtime injection, FFmpeg encoding, and audio mixing for complete MP4 output.
+  <Card title="@hyperframes/producer" icon="video" href="/packages/producer">
+    Get a finished video without assembling the pipeline yourself.
   </Card>
-  <Card title="Core" icon="cube" href="/packages/core">
-    Provides the types, runtime, and linter that the engine depends on.
-  </Card>
-  <Card title="CLI" icon="terminal" href="/packages/cli">
-    The easiest way to render — calls the producer (and engine) under the hood.
-  </Card>
-  <Card title="Studio" icon="palette" href="/packages/studio">
-    Visual editor for building compositions before rendering them with the engine.
+  <Card title="Deterministic rendering" icon="repeat" href="/concepts/determinism">
+    Understand what HyperFrames controls and what the environment still affects.
   </Card>
 </CardGroup>

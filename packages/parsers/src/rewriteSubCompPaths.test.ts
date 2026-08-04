@@ -55,4 +55,46 @@ describe("rewriteAssetPath", () => {
 
     expect(elements[0]?.style).toBe(`background-image: url("cover.png")`);
   });
+
+  // A sub-composition referencing a SIBLING file (`_shared.css`, no `../`) means
+  // a file in its own directory, but the inlined/preview document resolves it
+  // against the project root — so it 404s. `assetExists` lets a caller that can
+  // see the filesystem opt into browser semantics, while paths with no such
+  // sibling (the registry's project-root `assets/logo.png` convention) stay put.
+  describe("with an assetExists probe", () => {
+    const exists = (p: string) =>
+      [
+        "design/styleframes/_shared.css",
+        "design/styleframes/frame.png",
+        "assets/logo.png",
+      ].includes(p);
+
+    it("resolves a sibling file against the sub-composition dir", () => {
+      expect(rewriteAssetPath("design/styleframes/frame-01.html", "_shared.css", exists)).toBe(
+        "design/styleframes/_shared.css",
+      );
+    });
+
+    it("keeps a query string and hash on the rewritten path", () => {
+      expect(rewriteAssetPath("design/styleframes/frame-01.html", "frame.png?v=2", exists)).toBe(
+        "design/styleframes/frame.png?v=2",
+      );
+    });
+
+    it("leaves project-root-relative paths alone when no sibling exists", () => {
+      expect(rewriteAssetPath("blocks/hero.html", "assets/logo.png", exists)).toBe(
+        "assets/logo.png",
+      );
+    });
+
+    it("still resolves `../` without consulting the probe", () => {
+      expect(rewriteAssetPath("compositions/scene.html", "../icon.svg", exists)).toBe("icon.svg");
+    });
+
+    it("is a no-op without the probe (unchanged default)", () => {
+      expect(rewriteAssetPath("design/styleframes/frame-01.html", "_shared.css")).toBe(
+        "_shared.css",
+      );
+    });
+  });
 });

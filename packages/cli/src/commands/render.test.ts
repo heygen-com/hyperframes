@@ -30,11 +30,14 @@ const configState = vi.hoisted(
     cache: Record<string, unknown> | null;
     writeConfigCalls: Array<Record<string, unknown>>;
     failWrites: number;
+    /** Config write lands but the install-state mirror does not. */
+    failMirrors: number;
   } => ({
     disk: { telemetryEnabled: true, deParallelRouterTrialFired: true },
     cache: null,
     writeConfigCalls: [],
     failWrites: 0,
+    failMirrors: 0,
   }),
 );
 
@@ -147,6 +150,22 @@ vi.mock("../telemetry/config.js", () => ({
     configState.cache = { ...config };
     return true;
   }),
+  // The breaker's safety path uses this rather than writeConfig, so it can
+  // see a mirror failure instead of having it collapsed into `true`.
+  writeConfigWithResult: vi.fn((config: Record<string, unknown>) => {
+    configState.writeConfigCalls.push({ ...config });
+    if (configState.failWrites > 0) {
+      configState.failWrites--;
+      return { ok: false, error: "mock write failure" };
+    }
+    configState.disk = { ...config };
+    configState.cache = { ...config };
+    if (configState.failMirrors > 0) {
+      configState.failMirrors--;
+      return { ok: true, mirrored: false };
+    }
+    return { ok: true };
+  }),
 }));
 
 vi.mock("../telemetry/client.js", () => ({
@@ -216,6 +235,7 @@ describe("renderLocal browser GPU config", () => {
     configState.disk = { telemetryEnabled: true, deParallelRouterTrialFired: true };
     configState.cache = null;
     configState.failWrites = 0;
+    configState.failMirrors = 0;
     configState.writeConfigCalls = [];
     trackingState.shouldTrack = true;
     trackingState.renderObservations = [];
@@ -1048,6 +1068,33 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
 
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+  });
+
+  // The config write landing is NOT enough: config.json is the copy a stale
+  // writer or a re-mint can erase, so a run that mirrored nothing has left the
+  // safety fact on the erasable store only. writeConfig() collapsed
+  // {ok:true, mirrored:false} to success and the loop stopped there.
+  it("retries when the install-state mirror fails even though config.json landed", async () => {
+    configState.disk = {
+      telemetryEnabled: true,
+      deParallelRouterTrialFired: false,
+      telemetryNoticeShown: true,
+    };
+    configState.failMirrors = 1; // first attempt mirrors nothing
+    producerState.executeImpl = async (job) => {
+      job.perfSummary = {
+        resolution: { width: 100, height: 100 },
+        drawElement: { parallelRouter: "reverted" },
+      };
+    };
+    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
+
+    expect(configState.disk.deParallelRouterTrialFired).toBe(true);
+    // Two writes: the one whose mirror failed, then the retry that mirrored.
+    const firedWrites = configState.writeConfigCalls.filter(
+      (c) => c.deParallelRouterTrialFired === true,
+    );
+    expect(firedWrites.length).toBeGreaterThanOrEqual(2);
   });
 
   it("re-asserts the fired flag when the write is lost (concurrent clobber / transient failure), without re-counting the render", async () => {

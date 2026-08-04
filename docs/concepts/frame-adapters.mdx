@@ -1,148 +1,73 @@
 ---
-title: Frame Adapters
-description: "Bring your own animation runtime to Hyperframes."
+title: "Frame adapters"
+description: "Connect a seekable animation timeline to a custom HyperFrames host."
 ---
 
-The Frame Adapter pattern is how Hyperframes supports multiple animation runtimes. The core question every adapter answers:
-
-> What should the screen look like at frame N?
-
-If a runtime can answer that, it can plug into Hyperframes.
-
 <Info>
-  The Adapter API is currently at **v0** (experimental). Breaking changes are possible until v1. The core contract (seek-by-frame, deterministic output) is stable, but method signatures may evolve.
+  The exported `FrameAdapter` interface is experimental v0 API. Its signatures
+  may change before v1.
 </Info>
 
-## How It Works
+A frame adapter answers one question: what state should an animation have at frame N?
 
-The host application (the [engine](/packages/engine) or [producer](/packages/producer)) drives rendering by calling adapter methods in a strict sequence. The adapter never controls its own clock -- it only responds to seek commands.
+Most composition authors do not implement this interface. HyperFrames already seeks registered GSAP, CSS, Anime.js, Lottie, Three.js, Web Animations, and TypeGPU animation through its browser runtime. Use the [GSAP guide](/guides/gsap-animation) for the normal authoring path.
 
-```mermaid
-sequenceDiagram
-    participant Host as Host (Engine)
-    participant Adapter as Frame Adapter
-    participant Chrome as Chrome / Browser
+Use `FrameAdapter` when you are building a custom host around a seekable animation object.
 
-    Host->>Adapter: init(context)
-    Adapter-->>Host: ready
-    Host->>Adapter: getDurationFrames()
-    Adapter-->>Host: 300 frames
+## Interface
 
-    loop For each frame 0..300
-        Host->>Host: normalize frame (clamp, floor)
-        Host->>Adapter: seekFrame(frame)
-        Adapter->>Chrome: Update DOM / canvas state
-        Adapter-->>Host: done
-        Host->>Chrome: Capture pixel buffer
-    end
-
-    Host->>Adapter: destroy()
-    Adapter-->>Host: cleaned up
-```
-
-## Adapter API (v0)
-
-```typescript adapters/types.ts
-type FrameAdapterContext = {
-  compositionId: string;
-  fps: number;
-  width: number;
-  height: number;
-  rootElement?: HTMLElement;
-};
+```ts
+import type { FrameAdapter, FrameAdapterContext } from "@hyperframes/core";
 
 type FrameAdapter = {
   id: string;
-  init?: (ctx: FrameAdapterContext) => Promise<void> | void;
+  init?: (context: FrameAdapterContext) => Promise<void> | void;
   getDurationFrames: () => number;
   seekFrame: (frame: number) => Promise<void> | void;
   destroy?: () => Promise<void> | void;
 };
 ```
 
-## Required Semantics
+The context contains the composition ID, frame rate, dimensions, and optional root element.
 
-- `getDurationFrames()` must return a finite integer >= 0
-- `seekFrame(frame)` must support arbitrary seek order (forward, backward, random)
-- `seekFrame(frame)` must be idempotent for the same input frame
-- `seekFrame(frame)` must clamp internal time to the adapter's range
-- Adapters should be paused/seek-driven, not clock-driven
+## Adapt a GSAP timeline
 
-## Host Orchestration
+`@hyperframes/core` includes a helper for a GSAP-like timeline:
 
-The host normalizes frames before calling the adapter:
+```ts
+import { createGSAPFrameAdapter } from "@hyperframes/core";
 
-```typescript engine/render-loop.ts
-normalizedFrame = clamp(Math.floor(frame), 0, durationFrames);
+const adapter = createGSAPFrameAdapter({
+  id: "intro",
+  fps: 30,
+  timeline,
+});
+
+await adapter.init?.({
+  compositionId: "intro",
+  fps: 30,
+  width: 1920,
+  height: 1080,
+});
+
+await adapter.seekFrame(90); // three seconds
 ```
 
-A typical render loop:
+The helper pauses the timeline, derives its frame length, and converts each frame request to seconds.
 
-```typescript engine/render-loop.ts
-await adapter.init?.({ compositionId, fps, width, height, rootElement });
-const durationFrames = adapter.getDurationFrames();
+## Contract
 
-for (let frame = 0; frame <= durationFrames; frame += 1) {
-  await adapter.seekFrame(frame);
-  // capture pixel buffer for this frame
-}
+A custom adapter must:
 
-await adapter.destroy?.();
-```
+- return a finite, non-negative frame count;
+- support forward, backward, and random seeks;
+- return the same state when the same frame is requested again;
+- avoid wall-clock timers and unseeded randomness;
+- finish asynchronous work before the frame is captured;
+- release listeners and other resources in `destroy()`.
 
-## Determinism Contract
+The host still owns the capture and encoding pipeline. The adapter owns only the animation state.
 
-These rules are non-negotiable for any adapter. They are the foundation of Hyperframes' [deterministic rendering](/concepts/determinism) guarantee.
+## Continue
 
-- Canonical clock: `t = frame / fps`
-- No wall-clock dependencies (`Date.now`, drift-dependent logic)
-- No unseeded randomness
-- No render-time network fetches
-- Fixed output params (`fps`, `width`, `height`)
-- Finite duration only
-- Deterministic frame quantization before seek
-
-## Supported Runtimes
-
-First-party runtime adapters:
-
-All runtime adapters live in the `/hyperframes-animation` skill — invoke it for the runtime-specific seek API as well as motion rules, scene blueprints, and transitions.
-
-| Runtime | Seek Method | Skill |
-|---------|-------------|-------|
-| [GSAP](/guides/gsap-animation) | `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)` | `/hyperframes-animation` |
-| Anime.js | `instance.seek(timeMs)` for animations registered on `window.__hfAnime` | `/hyperframes-animation` |
-| CSS keyframes | Browser `Animation.currentTime`, with paused negative-delay fallback | `/hyperframes-animation` |
-| Lottie / dotLottie | `goToAndStop(timeMs, false)`, raw-frame setters, or player seek APIs | `/hyperframes-animation` |
-| Three.js / WebGL | `hf-seek` events plus `window.__hfThreeTime` for deterministic scene rendering | `/hyperframes-animation` |
-| Web Animations API | `document.getAnimations()` and `animation.currentTime` | `/hyperframes-animation` |
-| TypeGPU / WebGPU | GPU compute shaders with deterministic seek via `hf-seek` events | `/hyperframes-animation` |
-
-Community adapters are welcome -- if it can seek by frame, it belongs in Hyperframes.
-
-## Conformance Tests
-
-Every adapter should pass these minimum tests:
-
-1. **Repeatability** -- seek same frame twice, get identical output
-2. **Random seek** -- seek order `[90, 10, 50, 10]` produces deterministic results
-3. **Bounds** -- negative and overflow frame values do not break
-4. **Duration** -- returned duration is a finite integer
-5. **Cleanup** -- no leaked timers/listeners after `destroy`
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Deterministic Rendering" icon="lock" href="/concepts/determinism">
-    Understand the determinism guarantees adapters must uphold
-  </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
-    See the first-party GSAP adapter in action
-  </Card>
-  <Card title="@hyperframes/engine" icon="gear" href="/packages/engine">
-    The capture engine that drives adapters during rendering
-  </Card>
-  <Card title="Contributing" icon="code-branch" href="/contributing">
-    Build and contribute your own adapter
-  </Card>
-</CardGroup>
+Read [Deterministic rendering](/concepts/determinism) for the timing rules or [`@hyperframes/core`](/packages/core) for the package exports.

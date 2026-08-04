@@ -359,6 +359,66 @@ it("parses the caption-zone grammar and enables the frame gate", async () => {
   );
 });
 
+it("preserves caption-zone after bare --frame-check", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: [
+      "--frame-check",
+      "--caption-zone",
+      "x0=0;y0=.82;x1=1;y1=1;severity=error;seek=.25,1",
+      "--json",
+    ],
+  });
+
+  expect(runPipeline).toHaveBeenCalledWith(
+    PROJECT,
+    expect.objectContaining({
+      captionZone: {
+        x0: 0,
+        y0: 0.82,
+        x1: 1,
+        y1: 1,
+        severity: "error",
+        seek: [0.25, 1],
+      },
+      frameCheck: {},
+    }),
+  );
+});
+
+it("preserves --json after bare --frame-check", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: ["--snapshots", "--samples", "15", "--frame-check", "--json"],
+  });
+
+  expect(runPipeline).toHaveBeenCalledWith(
+    PROJECT,
+    expect.objectContaining({
+      samples: 15,
+      snapshots: true,
+      frameCheck: {},
+    }),
+  );
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('"ok"'));
+});
+
 it("threads --no-proxy into the browser check options", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -1165,6 +1225,15 @@ describe("frame-check flag grammar", () => {
     expect(() => parseFrameCheck("tol=-2")).toThrow("Invalid --frame-check");
     expect(() => parseFrameCheck("tol=4px")).toThrow("Invalid --frame-check");
     expect(() => parseFrameCheck("tol=2garbage")).toThrow("Invalid --frame-check");
+  });
+
+  it("attributes swallowed option values to --frame-check", async () => {
+    const { parseFrameCheck } = await import("./check.js");
+
+    expect(() => parseFrameCheck("--json")).toThrow(
+      'Invalid --frame-check: value "--json" appears to have swallowed the next option; use --frame-check= or move --frame-check to the end',
+    );
+    expect(() => parseFrameCheck("severity")).toThrow("Invalid --frame-check");
   });
 });
 

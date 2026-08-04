@@ -312,4 +312,29 @@ describe("studioRenderTelemetry", () => {
       expect(p.observabilityExtractVfrPreflightCount).toBe(6);
     });
   });
+
+  // The browser profile's opt-out is invisible to the CLI's own policy, so
+  // without an explicit signal these fired for an opted-out user — attributed
+  // to the install id, which is worse than attributing them correctly.
+  describe("browser telemetry opt-out", () => {
+    it("emits nothing for a render whose browser opted out", () => {
+      emitStudioRenderComplete({ ...opts, telemetryOptOut: true }, 5000, fullPerf);
+      emitStudioRenderError(
+        { ...opts, telemetryOptOut: true },
+        1200,
+        "encode",
+        new Error("boom"),
+        undefined,
+      );
+      expect(trackRenderComplete).not.toHaveBeenCalled();
+      expect(trackRenderError).not.toHaveBeenCalled();
+    });
+
+    // An older client sends no flag at all. That is not consent withdrawn, and
+    // treating it as such would silently drop every pre-upgrade render.
+    it.each([undefined, false])("still emits when telemetryOptOut is %s", (flag) => {
+      emitStudioRenderComplete({ ...opts, telemetryOptOut: flag }, 5000, fullPerf);
+      expect(trackRenderComplete).toHaveBeenCalledTimes(1);
+    });
+  });
 });

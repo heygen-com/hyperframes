@@ -1,0 +1,96 @@
+---
+title: "Add an avatar presenter"
+sidebarTitle: "Avatar presenter"
+description: "Create or reuse a presenter clip, keep it as project media, and combine it with editable HyperFrames scenes."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Use an avatar when a person should speak on screen. Use HyperFrames for the
+parts around that person: layouts, product scenes, captions, graphics, timing,
+music, and the final composition.
+
+<Frame caption="A presenter clip remains the source footage while HyperFrames adds the caption rail and emphasis layer around it.">
+  <DocsVideo
+    title="Presenter footage with a readable caption rail and an emphasis moment"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/captions-anchor-rail.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/avatar-presenter-caption-rail-v1.jpg"
+  />
+</Frame>
+
+## Choose the right path
+
+**The presenter is the whole video.** Use HeyGen Video Agent or an avatar-video
+workflow. The result is a rendered HeyGen video, not an editable HyperFrames
+composition.
+
+**The presenter is one part of a designed video.** Generate the presenter clip,
+keep it as a local project asset, then compose the rest in HyperFrames. This is
+the path below.
+
+**You already recorded a person.** Skip avatar generation. Bring the footage
+into the project and choose [captions, designed overlays, or a real recut](/guides/captions-and-recuts).
+
+## Ask for the complete result
+
+Tell the agent what the presenter contributes and what remains editable:
+
+```text
+Using /hyperframes, make a 20-second product update.
+Use a generated presenter only for the opening sentence.
+Build the product scenes, captions, and ending in HyperFrames.
+Keep the presenter clip as a local project asset.
+```
+
+The agent may ask you to sign in to HeyGen before it generates the clip. Check
+the active account first:
+
+```bash
+npx hyperframes auth status
+```
+
+Run `npx hyperframes auth login` if no account is active. Avatar generation can
+use the allowance or credits attached to that account; confirm the account and
+usage before starting a long or repeated run.
+
+## Build around the clip
+
+Once the presenter video exists:
+
+1. Keep the original file inside the project.
+2. Place and trim it like any other video clip.
+3. Transcribe the real speech before styling captions.
+4. Add product scenes or graphics only where they support what is being said.
+5. Render and watch the complete file with sound.
+
+Use **Assets → Import media** in Studio, or ask the agent to add the generated
+file. If the presenter must sit over a designed background, create a transparent
+version locally:
+
+```bash
+npx hyperframes remove-background assets/presenter.mp4 \
+  -o assets/presenter-transparent.webm
+```
+
+Background removal is optional. Keep the original background when it already
+belongs in the shot or when difficult hair, hands, or motion produce a weak
+matte.
+
+## Check the result
+
+- The presenter says the approved words with the intended voice.
+- Captions match the actual audio, including names and numbers.
+- The person does not cover the product or another important visual.
+- Music stays below speech.
+- Generated and source media are stored locally rather than fetched during render.
+- The final file has been watched once from beginning to end.
+
+For manual avatar, voice, and image-to-video controls, use the current
+[HeyGen CLI guide](https://developers.heygen.com/cli) and
+[Create Video reference](https://developers.heygen.com/reference/create-video).
+
+## Related topics
+
+- [Work with captions and talking-head footage](/guides/captions-and-recuts)
+- [Work with all project media](/guides/media)
+- [Remove the presenter's background](/guides/remove-background)

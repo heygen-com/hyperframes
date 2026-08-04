@@ -1,0 +1,370 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "title",          "type": "string", "label": "Title",              "default": "Example Domain",                                                    "placeholder": "the page heading, verbatim", "maxLength": 26 },
+    { "id": "accent",         "type": "color",  "label": "Accent",             "default": "#334488" },
+    { "id": "supportingLine", "type": "string", "label": "Supporting line",    "default": "For use in documentation examples without needing permission.", "placeholder": "one sentence, verbatim from the page", "maxLength": 90 },
+    { "id": "siteUrl",        "type": "string", "label": "Address",            "default": "example.com",                                                       "placeholder": "bare domain, no scheme", "maxLength": 32 },
+    { "id": "pageImage",      "type": "string", "label": "Captured page (1x)", "default": "assets/example-com.png",                                            "placeholder": "a 1920x1080 1x capture" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>example.com — 10s intro</title>
+    <!-- Keep `data-composition-variables` (on <html>, above) pure ASCII.
+         The <html> element's attributes are consumed before this <meta charset>
+         is in effect, so a literal em dash in a `default` renders as mojibake
+         (â€"). Use a JSON escape instead: \u2014 survives, verified by
+         snapshot. Text in the document body and inside a sub-composition's
+         <template> is unaffected; both decode as UTF-8 normally. -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #e9e9e7;
+      }
+
+      /* ------------------------------------------------------------------
+         Palette. Every value is read off the live capture except --canvas,
+         which is example.com's own #EEEEEE stepped down ~3% so the captured
+         plate has something to lift off. See frame.md.
+
+         --accent is not declared here: the runtime publishes every scalar
+         variable as a --<id> custom property on the composition root, so
+         `var(--accent, #334488)` follows the declared default and any
+         --variables override, with the literal as a plain-HTML fallback.
+         ------------------------------------------------------------------ */
+      #root {
+        --canvas: #e9e9e7;
+        --surface: #eeeeee;
+        --ink: #1b1b1b;
+        --ink-muted: #5a5c63;
+        --hairline: #d6d6d6;
+        /* the caption band, reserved structurally rather than by eye */
+        --band: 184px;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Inter", sans-serif;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ---------- track 0 · ground ---------- */
+      .ground {
+        position: absolute;
+        inset: 0;
+        background: var(--canvas);
+      }
+      .wash {
+        position: absolute;
+        left: -260px;
+        top: -320px;
+        width: 1500px;
+        height: 1200px;
+        border-radius: 50%;
+        background: radial-gradient(
+          closest-side,
+          rgba(255, 255, 255, 0.82),
+          rgba(255, 255, 255, 0)
+        );
+      }
+      .top-rule {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 6px;
+        background: var(--accent, #334488);
+        transform-origin: 0% 50%;
+      }
+
+      /* ---------- track 1 · stage ----------
+         The stage stops where the caption band starts, so no amount of copy
+         can ever collide with a caption. Nothing is positioned by eye. */
+      .stage-grid {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        top: 0;
+        bottom: var(--band);
+        display: flex;
+        align-items: center;
+        gap: 40px;
+      }
+
+      /* left · the lockup (640px) */
+      .col-type {
+        flex: 0 0 640px;
+      }
+      .title-mask {
+        display: block;
+        overflow: hidden;
+      }
+      .title {
+        display: block;
+        font-size: 132px;
+        font-weight: 900; /* bundled weight — 500/600 are not embedded */
+        line-height: 1.02;
+        letter-spacing: -0.035em;
+        color: var(--ink);
+      }
+      .brand-bar {
+        display: block;
+        width: 200px;
+        height: 8px;
+        margin-top: 34px;
+        background: var(--accent, #334488);
+        transform-origin: 0% 50%;
+      }
+      .address {
+        display: block;
+        margin-top: 30px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 42px;
+        font-weight: 400;
+        line-height: 1;
+        color: var(--accent, #334488);
+      }
+      .support {
+        display: block;
+        margin-top: 34px;
+        max-width: 640px;
+        font-size: 38px;
+        font-weight: 400;
+        line-height: 1.45;
+        letter-spacing: -0.005em;
+        color: var(--ink-muted);
+      }
+
+      /* right · the real captured page (1000px) ----------
+         object-fit:none renders the 1920×1080 capture at its intrinsic size and
+         object-position crops to the window, so the page's own 16px body text is
+         pixel-exact 1:1. That is also why the plate never scales and never
+         rotates: a 1x capture has no headroom above 1:1. */
+      .col-plate {
+        flex: 1 1 auto;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+      }
+      .plate {
+        position: relative;
+        width: 1000px;
+        height: 400px;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        background: var(--surface);
+        box-shadow:
+          0 28px 64px -18px rgba(27, 27, 27, 0.3),
+          0 2px 5px rgba(27, 27, 27, 0.06);
+      }
+      .page {
+        display: block;
+        width: 998px;
+        height: 398px;
+        object-fit: none;
+        object-position: -300px -104px;
+      }
+      /* the film's one argument: those are the page's words, not ours.
+         Measured against the capture — the content block sits at x 384–1131,
+         y 162–260 of the 1920×1080 screenshot, i.e. 84,58 → 831,156 in here. */
+      .page-marker {
+        position: absolute;
+        left: 56px;
+        top: 58px;
+        width: 5px;
+        height: 98px;
+        border-radius: 2px;
+        background: var(--accent, #334488);
+        transform-origin: 50% 0%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="10"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- track 0 · ground. The fill lives on a clip layer, never on #root:
+           the producer can drop the root element's own background. -->
+      <div id="bg" class="clip" data-start="0" data-duration="10" data-track-index="0">
+        <div class="ground"></div>
+        <div class="wash" data-layout-allow-overflow></div>
+        <div id="top-rule" class="top-rule"></div>
+      </div>
+
+      <!-- track 1 · stage -->
+      <div id="stage" class="clip" data-start="0" data-duration="10" data-track-index="1">
+        <div class="stage-grid">
+          <div class="col-type">
+            <div class="title-mask">
+              <h1 id="title" class="title" data-var-text="title">Example Domain</h1>
+            </div>
+            <span id="brand-bar" class="brand-bar"></span>
+            <span id="address" class="address" data-var-text="siteUrl">example.com</span>
+            <p id="support" class="support" data-var-text="supportingLine">
+              For use in documentation examples without needing permission.
+            </p>
+          </div>
+
+          <div class="col-plate">
+            <div id="plate" class="plate">
+              <!-- data-var-src binds the source to the `pageImage` variable; the
+                   authored src is the fallback. Keep data-var-src BEFORE src:
+                   `lint`'s missing_local_asset scan matches the last `src=` in
+                   the tag, and `data-var-src` ends in `src` too, so the reverse
+                   order makes it read the variable id as a file path. -->
+              <img
+                id="page"
+                class="page"
+                data-var-src="pageImage"
+                src="assets/example-com.png"
+                alt="The example.com landing page: the heading Example Domain, one sentence of body copy, and a Learn more link."
+              />
+              <div id="page-marker" class="page-marker"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- track 2 · captions overlay (sub-composition) -->
+      <div
+        id="captions-slot"
+        data-composition-id="captions"
+        data-composition-src="compositions/captions.html"
+        data-start="0"
+        data-duration="10"
+        data-track-index="2"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <!-- audio. The framework owns playback; never call play()/pause()/seek. -->
+      <audio
+        id="bgm"
+        src="assets/bgm.wav"
+        data-start="0"
+        data-duration="10"
+        data-track-index="8"
+        data-volume="0.34"
+      ></audio>
+      <audio
+        id="vo"
+        src="assets/narration.wav"
+        data-start="1"
+        data-duration="6.97"
+        data-track-index="9"
+        data-volume="1"
+      ></audio>
+      <audio
+        id="sfx-plate"
+        src="assets/sfx-whoosh.mp3"
+        data-start="2.62"
+        data-duration="0.6"
+        data-track-index="10"
+        data-volume="0.2"
+      ></audio>
+      <audio
+        id="sfx-marker"
+        src="assets/sfx-tick.mp3"
+        data-start="4.54"
+        data-duration="0.4"
+        data-track-index="11"
+        data-volume="0.16"
+      ></audio>
+    </div>
+
+    <script>
+      // One paused timeline, built synchronously, keyed to data-composition-id.
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Load states. Everything that animates in is hidden explicitly, so a
+      // paused seek to t=0 renders the true first frame. Initial transforms are
+      // set here rather than in CSS: a CSS transform plus a GSAP tween on the
+      // same property fight each other (lint: gsap_css_transform_conflict).
+      gsap.set("#top-rule", { scaleX: 0 });
+      gsap.set("#title", { yPercent: 106 });
+      gsap.set("#brand-bar", { scaleX: 0 });
+      gsap.set(["#address", "#support"], { autoAlpha: 0, y: 20 });
+      gsap.set("#plate", { autoAlpha: 0, x: 140 });
+      gsap.set("#page-marker", { scaleY: 0 });
+
+      // Every cue below is a measured word timing from assets/narration.wav
+      // (see SCRIPT.md), not an estimate.
+
+      // 0.10s — the frame asserts itself. Narration has not started.
+      tl.to("#top-rule", { scaleX: 1, duration: 0.9, ease: "power3.out" }, 0.1);
+
+      // 1.00s — VO "This is…" · the name rises out of its mask.
+      tl.to("#title", { yPercent: 0, duration: 0.68, ease: "power4.out" }, 1.0);
+
+      // 1.55s / 1.78s — the brand rule, then VO "…example.com." lands the address.
+      tl.to("#brand-bar", { scaleX: 1, duration: 0.44, ease: "expo.out" }, 1.55);
+      tl.to("#address", { autoAlpha: 1, y: 0, duration: 0.55, ease: "power3.out" }, 1.78);
+
+      // 2.66s — VO "The domain…" · the real page travels in. x and opacity ONLY.
+      tl.to("#plate", { autoAlpha: 1, x: 0, duration: 0.85, ease: "power4.out" }, 2.66);
+
+      // 4.55s — VO "…examples." · the marker draws beside the page's own content block.
+      tl.to("#page-marker", { scaleY: 1, duration: 0.6, ease: "power2.out" }, 4.55);
+
+      // 5.15 → 6.42s — held read. Deliberately empty; a held frame beats bad motion.
+
+      // 6.42s — VO "…no permission needed." · the last reveal, in the final 30%.
+      tl.to("#support", { autoAlpha: 1, y: 0, duration: 0.68, ease: "power3.out" }, 6.42);
+
+      // 8.03 → 10.00s — still end card. No tween. This is the poster frame.
+
+      // Audio: the bed ducks under the narration, recovers, then fades out.
+      // Volume keyframes are probed off the timeline and applied identically in
+      // preview and render; data-volume is only the static baseline.
+      tl.to("#bgm", { volume: 0.13, duration: 0.6, ease: "sine.inOut" }, 0.7);
+      tl.to("#bgm", { volume: 0.3, duration: 0.9, ease: "sine.inOut" }, 7.7);
+      tl.to("#bgm", { volume: 0, duration: 1.0, ease: "sine.in" }, 9.0);
+
+      window.__timelines["main"] = tl;
+
+      // The documentation embed can change three safe variables without
+      // rebuilding the project. Only the parent iframe is trusted, and each
+      // value is allowlisted and bounded before it touches the composition.
+      window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) return;
+        const message = event.data;
+        if (!message || message.type !== "hyperframes-docs:variables") return;
+
+        const variables = message.variables;
+        if (!variables || typeof variables !== "object") return;
+
+        if (typeof variables.title === "string") {
+          document.getElementById("title").textContent = variables.title.slice(0, 42);
+        }
+        if (typeof variables.supportingLine === "string") {
+          document.getElementById("support").textContent = variables.supportingLine.slice(0, 90);
+        }
+        if (typeof variables.accent === "string" && /^#[0-9a-fA-F]{6}$/.test(variables.accent)) {
+          document.getElementById("root").style.setProperty("--accent", variables.accent);
+        }
+      });
+    </script>
+  </body>
+</html>

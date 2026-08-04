@@ -50,7 +50,7 @@ import type {
 ```typescript
 import { lintHyperframeHtml, lintMediaUrls } from '@hyperframes/lint';
 
-const result = lintHyperframeHtml(html, { filePath: 'index.html' });
+const result = await lintHyperframeHtml(html, { filePath: 'index.html' });
 // result.ok, result.errorCount, result.warningCount, result.findings
 
 for (const finding of result.findings) {
@@ -59,7 +59,7 @@ for (const finding of result.findings) {
 }
 
 // Additional media URL validation
-const mediaFindings = lintMediaUrls(result.findings);
+const mediaFindings = await lintMediaUrls(html);
 ```
 
 ## Linting a Project
@@ -74,7 +74,7 @@ const result: ProjectLintResult = await lintProject('./my-composition');
 // result.totalErrors, result.totalWarnings, result.results[]
 //   each result entry: { file, result: HyperframeLintResult }
 
-if (shouldBlockRender(false, false, result.totalErrors, result.totalWarnings)) {
+if (shouldBlockRender(true, false, result.totalErrors, result.totalWarnings)) {
   throw new Error(`Lint found ${result.totalErrors} blocking error(s)`);
 }
 ```
@@ -123,10 +123,10 @@ Detected issues include:
   (`gsap_timeline_set_initial_hide`)
 
 <Info>
-  For a full list of what the linter catches and how to fix each issue, see [Common Mistakes](/guides/common-mistakes) and [Troubleshooting](/guides/troubleshooting).
+  For common failures and fixes, see [Troubleshooting](/guides/troubleshooting).
 </Info>
 
-## Related Packages
+## Related topics
 
 <CardGroup cols={2}>
   <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">

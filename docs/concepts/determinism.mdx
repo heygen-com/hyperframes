@@ -1,103 +1,72 @@
 ---
 title: Deterministic Rendering
-description: "Same input, identical output. Every time."
+description: "Make every frame depend on the playhead, not the wall clock."
 ---
 
-Hyperframes is built around a core guarantee: **the same [composition](/concepts/compositions) always produces the same video**. This is what makes automated pipelines, CI testing, and AI-driven workflows reliable.
+HyperFrames renders by seeking to one frame at a time. A well-authored composition can therefore reproduce the same state whenever the renderer seeks to the same frame.
 
-## How It Works
+This is what makes a slow animation safe to render: the renderer does not need to play it in real time, and it does not drop frames when a frame takes longer to produce.
 
-The rendering pipeline is frame-by-frame and seek-driven. No realtime playback is involved -- every frame is independently seeked and captured.
+## The rendering model
 
-<Steps>
-  <Step title="Frame clock">
-    The [engine](/packages/engine) computes the time for each frame using integer math: `time = floor(frame) / fps`. There is no wall-clock dependency -- rendering is entirely decoupled from real time.
-  </Step>
-  <Step title="Seek">
-    The [frame adapter](/concepts/frame-adapters) receives a `seekFrame(frame)` call and deterministically positions all animations, DOM state, and canvas content to the exact frame. The adapter pauses all [GSAP](/guides/gsap-animation) timelines and seeks them to the computed time.
-  </Step>
-  <Step title="Capture">
-    Chrome's `HeadlessExperimental.beginFrame` API captures the pixel buffer for the current frame. This is a single, atomic operation -- no partial paints or race conditions.
-  </Step>
-  <Step title="Encode">
-    FFmpeg encodes the captured frames into the final MP4 video. Audio tracks from `<audio>` and `<video>` elements are mixed in during this stage.
-  </Step>
-</Steps>
+For each output frame, HyperFrames:
 
-```mermaid
-graph LR
-    A["Frame Clock<br/>t = frame / fps"] --> B["Seek<br/>adapter.seekFrame(frame)"]
-    B --> C["Capture<br/>beginFrame API"]
-    C --> D["Encode<br/>FFmpeg"]
-    D --> E["MP4"]
-    style A fill:#00C4FF,color:#fff
-    style B fill:#00C4FF,color:#fff
-    style C fill:#00C4FF,color:#fff
-    style D fill:#00C4FF,color:#fff
-    style E fill:#00A8E1,color:#fff
+1. converts the frame number to a time;
+2. seeks the registered animation adapter to that state;
+3. updates time-based media and composition state;
+4. captures the frame;
+5. sends the result to the encoder.
+
+The preview and renderer use the same composition runtime. Preview performance can still depend on your computer, while the final render advances frame by frame.
+
+## What your composition must control
+
+The frame must be reproducible from its inputs and current time.
+
+- Use a paused, registered timeline instead of animation driven by `requestAnimationFrame`.
+- Do not use `Date.now()` or the current system time.
+- Seed random values instead of calling unseeded `Math.random()`.
+- Keep assets local or make sure they are fully available before rendering.
+- Give the composition a finite duration, dimensions, and frame rate.
+- Make custom frame adapters safe to seek in any order.
+
+Run both checks before a final render:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
 ```
 
-## What Makes It Deterministic
+## What “repeatable” does not mean
 
-- **No wall-clock dependencies** -- rendering does not use `Date.now()`, `requestAnimationFrame`, or system timers
-- **No unseeded randomness** -- `Math.random()` without a seed breaks determinism
-- **No render-time network fetches** -- all assets must be loaded before rendering starts
-- **Fixed output parameters** -- `fps`, `width`, and `height` are locked before the first frame
-- **Finite duration** -- every [composition](/concepts/compositions) has a known, finite length
+Seek-driven rendering controls time. It does not make different computers identical.
 
-These same rules apply to every [frame adapter](/concepts/frame-adapters). If you are building a custom adapter, you must follow the [determinism contract](/concepts/frame-adapters#determinism-contract).
-
-## Docker Mode
-
-For maximum reproducibility, render in Docker:
+Chrome versions, installed fonts, GPU behavior, operating systems, and encoder versions can produce small differences even when the composition is unchanged. If exact reproduction across machines matters, render in the same controlled environment:
 
 ```bash
 npx hyperframes render --docker --output output.mp4
 ```
 
-Docker mode uses an exact Chrome version and font set, ensuring:
-- Same Chromium rendering engine across all platforms
-- Same system fonts (no platform-specific font substitution)
-- Same FFmpeg encoder version
+Docker reduces environment differences by using a controlled browser, font, and encoder setup. Keep the same assets and render settings as well.
 
-See the [Rendering guide](/guides/rendering) for all rendering options.
+## For frame-adapter authors
 
-## Preview vs. Render Parity
+A frame adapter must follow four rules:
 
-The browser preview and the rendered MP4 should match. Hyperframes achieves this through:
+- seeking the same frame twice returns the same state;
+- frames can be requested out of order;
+- no unfinished asynchronous work changes the committed frame later;
+- `destroy()` leaves no state behind for the next render.
 
-- **One runtime** -- the same `hyperframe.runtime` drives both preview and render
-- **Producer-canonical behavior** -- the [producer's](/packages/producer) seek semantics are the source of truth
-- **Readiness gates** -- `__playerReady` and `__renderReady` ensure the [composition](/concepts/compositions) is fully loaded before any frame is captured
+See [Frame adapters](/concepts/frame-adapters) for the interface and a complete example.
 
-Parity here means **visual fidelity** — every frame looks the same. It does *not* mean performance parity. Preview plays in real time in a browser, so frame-rate limits are bound by your hardware. Render is seek-driven and frame-at-a-time, so it never drops frames regardless of per-frame cost. A composition can stutter in preview and render perfectly. See [Performance](/guides/performance) for why.
-
-<Note>
-  Local rendering (without Docker) may show slight differences due to platform-specific font rendering and Chrome version. Use Docker mode when exact reproducibility matters.
-</Note>
-
-## For Adapter Authors
-
-If you are building a [frame adapter](/concepts/frame-adapters), your adapter must follow the determinism contract:
-
-- `seekFrame(frame)` must be idempotent -- same frame, same result
-- No side effects that depend on call order (must handle random access)
-- No async operations that resolve after the frame is "committed"
-- Clean lifecycle: `init` -> `seekFrame` (N times) -> `destroy`
-
-## Next Steps
+## Continue
 
 <CardGroup cols={2}>
-  <Card title="Frame Adapters" icon="plug" href="/concepts/frame-adapters">
-    Build adapters that uphold the determinism contract
+  <Card title="Render a composition" icon="film" href="/guides/rendering">
+    Choose local, Docker, batch, or cloud rendering.
   </Card>
-  <Card title="Rendering" icon="film" href="/guides/rendering">
-    Render to MP4 locally or in Docker
-  </Card>
-  <Card title="@hyperframes/producer" icon="clapperboard" href="/packages/producer">
-    The full rendering pipeline that orchestrates deterministic output
-  </Card>
-  <Card title="Common Mistakes" icon="triangle-exclamation" href="/guides/common-mistakes">
-    Pitfalls that break determinism and how to avoid them
+  <Card title="Improve render performance" icon="gauge-high" href="/guides/performance">
+    Understand preview speed, capture cost, and render time.
   </Card>
 </CardGroup>

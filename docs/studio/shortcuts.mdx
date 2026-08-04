@@ -1,0 +1,78 @@
+---
+title: "Keyboard shortcuts"
+description: "Use Studio shortcuts for playback, editing, navigation, and project actions."
+---
+
+Shortcuts depend on the active area. The table below covers the shortcuts
+implemented by the current Studio player, canvas, and timeline.
+
+## Playback
+
+| Shortcut | Action |
+| --- | --- |
+| Space | Play or pause |
+| J / K / L | Play backward, stop, or play forward |
+| Left / Right arrow | Step one frame, or nudge a selected canvas element horizontally |
+| Up / Down arrow | Nudge a selected canvas element vertically |
+| Shift + arrow | Step ten frames horizontally, or nudge a selected element farther |
+| M | Mute or unmute |
+| Shift + L | Toggle loop playback |
+| I / O | Set the work-area in or out point |
+| Shift + I / Shift + O | Clear the in or out point |
+| A / E | Jump to the in or out point |
+| F | Toggle fullscreen |
+
+## Editing
+
+| Shortcut | Action |
+| --- | --- |
+| V | Selection tool |
+| B | Toggle the razor tool |
+| S | Split the selected eligible clip at the playhead |
+| N | Toggle timeline snapping |
+| Command/Ctrl + Z | Undo |
+| Command/Ctrl + Shift + Z | Redo |
+| Command/Ctrl + C / V / X | Copy, paste, or cut the selected element |
+| Command/Ctrl + G | Group selected elements |
+| Command/Ctrl + Shift + G | Ungroup |
+| Delete | Delete the selected keyframe or element |
+
+The selected area decides what a shared shortcut does. For example, arrow keys nudge a selected canvas element; without a nudgeable selection they step through frames.
+
+## Keyframes and recording
+
+| Shortcut | Action |
+| --- | --- |
+| K | Add a keyframe when the current selection supports it |
+| H | Toggle hold or bezier for selected keyframes |
+| U | Expand or collapse the selected element’s keyframe properties |
+| Left / Right arrow | Nudge selected keyframes by one frame |
+| Shift + Left / Right arrow | Nudge selected keyframes by ten frames |
+| R | Start or stop gesture recording |
+
+During gesture recording, drag records position, scroll records depth,
+Shift-drag records 3D rotation, Option/Alt-drag records rotation, and
+Command/Ctrl-drag or scroll records opacity or scale.
+
+## Canvas and panels
+
+| Shortcut | Action |
+| --- | --- |
+| G | Toggle the canvas grid |
+| Command/Ctrl + 1 | Open Compositions |
+| Command/Ctrl + 2 | Open Assets |
+| Option/Alt + drag | Move an entire animation path |
+| Shift + drag a resize handle | Resize uniformly |
+
+<Warning>
+  A shortcut should not fire while you are typing into a text or source field. If the wrong area has focus, click the canvas or timeline before using an editing shortcut.
+</Warning>
+
+Use the **Shortcuts and tools** button beside the playback controls for the
+built-in shortcut list, work-area controls, and jump-to-frame field.
+
+## Related topics
+
+- [Edit the frame](/studio/canvas)
+- [Edit timing on the timeline](/studio/timeline)
+- [Edit animation and keyframes](/studio/animation)

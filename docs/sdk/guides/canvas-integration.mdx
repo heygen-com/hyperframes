@@ -54,19 +54,19 @@ detach();
 `preview.elementAtPoint(x, y)` performs a synchronous hit-test at coordinates in the iframe's own coordinate space and returns the nearest `[data-hf-id]` element, or `null` for a transparent hit.
 
 ```typescript
-iframe.addEventListener("click", (e) => {
-  // e.clientX / e.clientY are in the outer frame's space.
-  // If the iframe is positioned, convert to iframe-local coords.
-  const rect = iframe.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
+iframe.addEventListener("load", () => {
+  const frameDocument = iframe.contentDocument;
+  if (!frameDocument) return;
 
-  const hit = preview.elementAtPoint(x, y);
-  if (hit) {
-    // hit.id  — the data-hf-id value
-    // hit.tag — the lowercased tag name (e.g. "div", "img", "video")
-    preview.select([hit.id]);
-  }
+  // Events inside an iframe do not bubble to the outer <iframe> element.
+  frameDocument.addEventListener("click", (event) => {
+    const hit = preview.elementAtPoint(event.clientX, event.clientY);
+    if (hit) {
+      // hit.id  — the data-hf-id value
+      // hit.tag — the lowercased tag name (e.g. "div", "img", "video")
+      preview.select([hit.id]);
+    }
+  });
 });
 ```
 
@@ -111,45 +111,46 @@ let startX = 0;
 let startY = 0;
 let targetId: string | null = null;
 
-iframe.addEventListener("pointerdown", (e) => {
-  const rect = iframe.getBoundingClientRect();
-  const hit = preview.elementAtPoint(e.clientX - rect.left, e.clientY - rect.top);
-  if (!hit) return;
+iframe.addEventListener("load", () => {
+  const frameDocument = iframe.contentDocument;
+  if (!frameDocument) return;
 
-  dragging = true;
-  targetId = hit.id;
-  startX = e.clientX;
-  startY = e.clientY;
-  iframe.setPointerCapture(e.pointerId);
-});
+  frameDocument.addEventListener("pointerdown", (event) => {
+    const hit = preview.elementAtPoint(event.clientX, event.clientY);
+    if (!hit) return;
 
-iframe.addEventListener("pointermove", (e) => {
-  if (!dragging || !targetId) return;
+    dragging = true;
+    targetId = hit.id;
+    startX = event.clientX;
+    startY = event.clientY;
+    // The target comes from the iframe's realm, so `instanceof Element` against
+    // this window's constructor is always false and capture would be skipped —
+    // then a pointer leaving the frame loses `pointerup` and drag state sticks.
+    if (event.target && "setPointerCapture" in event.target) {
+      (event.target as Element).setPointerCapture(event.pointerId);
+    }
+  });
 
-  const dx = e.clientX - startX;
-  const dy = e.clientY - startY;
+  frameDocument.addEventListener("pointermove", (event) => {
+    if (!dragging || !targetId) return;
+    preview.applyDraft(targetId, {
+      dx: event.clientX - startX,
+      dy: event.clientY - startY,
+    });
+  });
 
-  // applyDraft at 60fps — no model mutation, no patch event
-  preview.applyDraft(targetId, { dx, dy });
-});
+  frameDocument.addEventListener("pointerup", () => {
+    if (!dragging || !targetId) return;
+    preview.commitPreview();
+    dragging = false;
+    targetId = null;
+  });
 
-iframe.addEventListener("pointerup", () => {
-  if (!dragging || !targetId) return;
-
-  // Derives a moveElement op from the accumulated dx/dy, dispatches it
-  // through the callback you passed to createIframePreviewAdapter, then
-  // clears the CSS vars and internal draft state.
-  preview.commitPreview();
-
-  dragging = false;
-  targetId = null;
-});
-
-iframe.addEventListener("pointercancel", () => {
-  // Clears the CSS vars. Model is never touched.
-  preview.cancelPreview();
-  dragging = false;
-  targetId = null;
+  frameDocument.addEventListener("pointercancel", () => {
+    preview.cancelPreview();
+    dragging = false;
+    targetId = null;
+  });
 });
 ```
 
@@ -200,4 +201,3 @@ Once hit-testing and drag are working, you can use the affordance resolver to dr
     Resolve which edit controls to show for the selected element.
   </Card>
 </CardGroup>
-

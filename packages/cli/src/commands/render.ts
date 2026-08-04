@@ -66,6 +66,7 @@ import {
   readConfigFresh,
   recordRecentRender,
   writeConfig,
+  writeConfigWithResult,
   type HyperframesConfig,
 } from "../telemetry/config.js";
 import { shouldTrack } from "../telemetry/client.js";
@@ -1253,13 +1254,23 @@ function resolveDeParallelRouterOutcome(job: RenderJob): string | undefined {
  */
 function persistDeParallelRouterTrialFired(): boolean {
   const MAX_ATTEMPTS = 3;
+  let mirrored = false;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const config = readConfigFresh();
-    if (config.deParallelRouterTrialFired) return true;
+    // Both stores must carry the latch, not just config.json. Checking only
+    // the config let a run stop early after a failed mirror — and config.json
+    // is the copy a stale writer or a re-mint can erase, so the durable one
+    // is exactly the one that was missing. The read side merges install-state
+    // back in, so the two together are what make the trip survive.
+    if (config.deParallelRouterTrialFired && mirrored) return true;
     config.deParallelRouterTrialFired = true;
-    if (!writeConfig(config)) return false;
+    const result = writeConfigWithResult(config);
+    if (!result.ok) return false;
+    mirrored = result.mirrored !== false;
+    if (mirrored) return true;
+    // Config landed but the mirror did not — retry rather than report success.
   }
-  return Boolean(readConfigFresh().deParallelRouterTrialFired);
+  return false;
 }
 
 /**

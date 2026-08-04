@@ -1,0 +1,72 @@
+---
+title: "Edit timing on the timeline"
+description: "Move, trim, split, align, and inspect clips in HyperFrames Studio."
+---
+
+The timeline controls when elements appear and how long they remain.
+
+<Frame caption="The selected clip edge changes its duration while the canvas and neighboring tracks remain visible.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/timeline-v1.jpg"
+    alt="HyperFrames Studio timeline with the edge of a selected clip ready to trim"
+  />
+</Frame>
+
+## Move a clip
+
+Drag the body of a clip left or right. Its start time changes while its duration stays the same.
+
+Use snapping to align the clip with the playhead, another boundary, or a useful beat.
+
+## Trim a clip
+
+Drag the left or right edge.
+
+- Trimming the left edge changes when the clip begins.
+- Trimming the right edge changes when it ends.
+
+Trimming does not automatically rewrite the story. Play the surrounding section to check entrances, exits, media continuity, and narration.
+
+## Split a clip
+
+Splitting is supported for eligible timeline elements.
+
+You can:
+
+- place the playhead, open the clip menu, and choose **Split at…**;
+- switch to the razor tool and click the clip;
+- hold Shift while using the razor to split every eligible clip under that time.
+
+Use the **B** shortcut to switch to the razor tool. Return to the selection tool when you finish cutting.
+
+<Note>
+  A split must happen inside the clip, not exactly on its start or end. Some element types cannot be split safely.
+</Note>
+
+## Zoom and navigate
+
+Zoom in for keyframes and short edits. Zoom out to understand the complete sequence.
+
+Use the playhead for the exact edit moment. Use playback and frame stepping to check what happens immediately before and after it.
+
+## Work with beats
+
+Beat markers provide timing landmarks, especially for music-driven work. Snap edits to them when the audio should drive the cut; ignore them when the story or voiceover needs a different rhythm.
+
+## Move several items
+
+Select multiple eligible timeline elements when they need to remain aligned. Drag them together, then check for collisions or gaps on their tracks.
+
+## Open a nested scene
+
+Expand a nested composition to see its children, or open it and use the breadcrumb to return. Be clear whether you are changing the scene’s internal timing or its timing in the parent video.
+
+## Undo mistakes
+
+Move, trim, split, and many other timeline actions participate in Studio history. Undo immediately when a result is unexpected, then retry with a closer zoom or a more precise playhead position.
+
+## Related topics
+
+- [Edit the frame](/studio/canvas)
+- [Edit animation and keyframes](/studio/animation)
+- [Use Studio keyboard shortcuts](/studio/shortcuts)

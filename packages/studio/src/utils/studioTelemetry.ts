@@ -1,4 +1,6 @@
 import { resolveStudioDistinctId } from "../telemetry/distinctId";
+import { browserTelemetryAllowed } from "../telemetry/policy";
+import { canaryEventProperties } from "../telemetry/canary";
 
 // PostHog public ingest key — write-only, safe to ship in the client bundle
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -26,12 +28,15 @@ function getDistinctId(): string {
   return resolveStudioDistinctId();
 }
 
+/**
+ * This path predates telemetry/config.ts and enforced only its own
+ * localStorage key, so `navigator.doNotTrack`, VITE_HYPERFRAMES_NO_TELEMETRY,
+ * Vite dev mode and the documented `hyperframes-studio:telemetryDisabled` all
+ * failed to silence `studio:*` events. Now one shared policy governs every
+ * transport — including the legacy key, which it still honours.
+ */
 function isEnabled(): boolean {
-  try {
-    return localStorage.getItem("hf-studio-telemetry-opt-out") !== "1";
-  } catch {
-    return true;
-  }
+  return browserTelemetryAllowed();
 }
 
 function getSessionProperties(): EventProperties {
@@ -56,7 +61,10 @@ export function trackStudioEvent(event: string, properties: EventProperties = {}
 
   queue.push({
     event: `studio:${event}`,
-    properties: { ...getSessionProperties(), ...properties },
+    // Canary assignments on every event, matching the CLI and the newer
+    // studio client — "every telemetry event carries the assignment" has to
+    // include this path or a cohort breakdown silently omits `studio:*`.
+    properties: { ...getSessionProperties(), ...canaryEventProperties(), ...properties },
     timestamp: new Date().toISOString(),
   });
 

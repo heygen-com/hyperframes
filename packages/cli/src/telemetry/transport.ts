@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { POSTHOG_API_KEY } from "./posthogKey.js";
 import { readConfig } from "./config.js";
 
 // This is a public project API key — safe to embed in client-side code.
 // It only allows writing events, not reading data.
-export const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
+
 const POSTHOG_HOST = "https://us.i.posthog.com";
 const FLUSH_TIMEOUT_MS = 5_000;
 

@@ -37,7 +37,9 @@ async function loadTelemetryCommand(options?: {
   vi.doMock("../utils/env.js", () => ({
     isDevMode: () => options?.devMode ?? false,
   }));
-  vi.doMock("../telemetry/transport.js", () => ({
+  // The key moved to a leaf module to break a config -> policy -> transport
+  // -> config import cycle; policy.ts reads it from there now.
+  vi.doMock("../telemetry/posthogKey.js", () => ({
     POSTHOG_API_KEY: options?.apiKey ?? "phc_test",
   }));
   const module = await import("./telemetry.js");

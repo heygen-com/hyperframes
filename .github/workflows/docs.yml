@@ -49,4 +49,6 @@ jobs:
 
       - name: Check broken links
         working-directory: docs
-        run: npx mint broken-links
+        # --check-redirects also resolves every redirect destination, so a
+        # restructure cannot leave a redirect pointing at a page it removed.
+        run: npx mint broken-links --check-redirects

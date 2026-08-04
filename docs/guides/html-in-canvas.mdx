@@ -1,130 +1,104 @@
 ---
-title: "HTML-in-Canvas"
-description: "Render live HTML as WebGL textures — GPU shaders, 3D geometry, and cinematic effects on any DOM content."
+title: "HTML in Canvas"
+description: "Use live DOM content as a texture for WebGL and canvas effects."
 ---
 
-# HTML-in-Canvas
+HTML in Canvas uses Chrome's experimental `drawElementImage()` API to copy rendered DOM content into a canvas. That canvas can become a Three.js texture or the input to a shader effect.
 
-The HTML-in-Canvas API (`drawElementImage`) lets you capture live, rendered DOM elements directly into a canvas at GPU speed. This means you can take any HTML — dashboards, forms, landing pages, app UIs — and render them as textures in WebGL scenes with shaders, 3D transformations, and post-processing effects.
+Use it when the visual treatment depends on both real HTML and GPU effects—for example, an interface inside a 3D device or a DOM scene passing through a distortion shader. It is an advanced, browser-dependent technique.
 
-<Warning>
-**Chrome flag required.** The `drawElementImage` API is experimental and must be enabled manually:
+## Start with a proven block
 
-1. Open `chrome://flags/#canvas-draw-element` in Chrome or Brave
-2. Set **CanvasDrawElement** to **Enabled**
-3. Restart the browser
+The fastest path is to install a Catalog block that already handles capability detection and fallback behavior:
 
-HyperFrames enables this flag automatically during rendering (`--enable-features=CanvasDrawElement`), so rendered videos work without manual setup. The flag is only needed for live preview in the Studio.
-</Warning>
-
-## How it works
-
-1. Place HTML content inside a `<canvas layoutsubtree>` element
-2. The browser renders the HTML children as normal DOM
-3. Call `ctx.drawElementImage(element, x, y, w, h)` to capture the rendered pixels into the canvas
-4. Use the canvas as a Three.js texture, apply shaders, map to 3D geometry
-
-```html
-<!-- 1. HTML content lives inside the canvas -->
-<canvas id="capture" layoutsubtree width="1920" height="1080">
-  <div class="my-dashboard">
-    <h1>Revenue: $4.2M</h1>
-    <div class="chart">...</div>
-  </div>
-</canvas>
-
-<!-- 2. WebGL canvas for 3D rendering -->
-<canvas id="theater" width="1920" height="1080"></canvas>
+```bash
+npx hyperframes add vfx-iphone-device
 ```
 
-```javascript
-// 3. Capture HTML to canvas
-var capCanvas = document.getElementById("capture");
-var ctx = capCanvas.getContext("2d");
-ctx.drawElementImage(capCanvas.querySelector(".my-dashboard"), 0, 0, 1920, 1080);
+Other relevant examples include [Portal](/catalog/blocks/vfx-portal), [Shatter](/catalog/blocks/vfx-shatter), and [Liquid Glass Notification](/catalog/blocks/liquid-glass-notification).
 
-// 4. Use as Three.js texture
-var texture = new THREE.CanvasTexture(capCanvas);
-var material = new THREE.MeshBasicMaterial({ map: texture });
-```
-
-## What makes this different
-
-Traditional approaches like `html2canvas` re-parse and re-render the DOM in JavaScript — they're slow, lossy, and miss CSS features like `backdrop-filter`, complex shadows, and web fonts. The `drawElementImage` API uses the browser's own compositor, so:
-
-- **Pixel-perfect** — every CSS feature is supported because the browser renders it natively
-- **GPU-accelerated** — captures at 60fps, fast enough for real-time animation
-- **Live content** — the HTML can animate, scroll, and change between captures
-- **Multiple captures simultaneously** — no nesting restrictions, multiple `<canvas layoutsubtree>` elements can capture different content in the same composition
-
-## Feature detection
-
-Always feature-detect before using the API. Compositions should fall back gracefully for browsers without the flag enabled.
-
-```javascript
-function isSupported() {
-  var tc = document.createElement("canvas");
-  if (!("layoutSubtree" in tc)) return false;
-  tc.setAttribute("layoutsubtree", "");
-  var ctx = tc.getContext("2d");
-  return ctx && typeof ctx.drawElementImage === "function";
-}
-
-if (isSupported()) {
-  ctx.drawElementImage(element, 0, 0, w, h);
-} else {
-  // Fallback: draw text directly on canvas, use static image, etc.
-}
-```
-
-## Re-capturing every frame
-
-For animated content (scrolling, transitions, counters), call `drawElementImage` inside your render loop to update the texture every frame:
-
-```javascript
-function render() {
-  // Update HTML state
-  scrollContainer.style.transform = "translateY(-" + scrollOffset + "px)";
-  counterEl.textContent = Math.round(currentValue);
-
-  // Re-capture
-  ctx.clearRect(0, 0, W, H);
-  ctx.drawElementImage(htmlElement, 0, 0, W, H);
-  texture.needsUpdate = true;
-
-  // Render 3D scene with updated texture
-  renderer.render(scene, camera);
-}
-```
-
-## Catalog blocks
-
-Install all HTML-in-Canvas blocks at once:
+Install every block tagged `html-in-canvas` only when you want to compare the full set:
 
 ```bash
 npx hyperframes add html-in-canvas
 ```
 
-Or install individually:
+## Browser support
 
-| Block | Description | Install |
-|-------|-------------|---------|
-| [iOS 26 Liquid Glass Home Screen](/catalog/blocks/ios26-liquid-glass) | iPhone home screen with live Liquid Glass notifications and widgets | `npx hyperframes add ios26-liquid-glass` |
-| [macOS Tahoe Liquid Glass Desktop](/catalog/blocks/macos-tahoe-liquid-glass) | MacBook desktop with liquid glass windows, dock, and notifications | `npx hyperframes add macos-tahoe-liquid-glass` |
-| [Liquid Glass Notification](/catalog/blocks/liquid-glass-notification) | Native-feeling glass notification stack with progress and reply states | `npx hyperframes add liquid-glass-notification` |
-| [iPhone & MacBook](/catalog/blocks/vfx-iphone-device) | Real 3D GLTF devices with live HTML screens | `npx hyperframes add vfx-iphone-device` |
-| [Text Cursor](/catalog/blocks/vfx-text-cursor) | Dramatic text reveal with chromatic shadows | `npx hyperframes add vfx-text-cursor` |
-| [Portal](/catalog/blocks/vfx-portal) | Dimension breach with volumetric light | `npx hyperframes add vfx-portal` |
-| [Shatter](/catalog/blocks/vfx-shatter) | HTML shatters into glass fragments | `npx hyperframes add vfx-shatter` |
-| [Magnetic](/catalog/blocks/vfx-magnetic) | Magnetic field particle visualization | `npx hyperframes add vfx-magnetic` |
-| [Liquid Background](/catalog/blocks/vfx-liquid-background) | Organic liquid simulation | `npx hyperframes add vfx-liquid-background` |
+`drawElementImage()` is an experimental Chromium feature. The feature flag only works in browser builds that contain the API.
 
-## Rendering
+HyperFrames enables `CanvasDrawElement` when it launches Chrome and checks whether the API is actually available. The render engine can fall back to its normal capture path when the fast-capture API is unavailable or unsafe for a composition.
 
-HyperFrames enables the Chrome flag automatically during rendering. No special configuration needed:
+To refresh the browser used by the CLI:
 
 ```bash
-npx hyperframes render --output my-video.mp4
+npx hyperframes browser ensure --force
 ```
 
-For Docker renders, the flag is also enabled automatically inside the container.
+For a normal browser preview, enable `chrome://flags/#canvas-draw-element` in a compatible Chrome or Brave build and restart it. Keep a visual fallback because collaborators may open the composition in a browser without the feature.
+
+## Minimal pattern
+
+```html
+<canvas id="capture" layoutsubtree width="1920" height="1080">
+  <section id="source">
+    <h1>Revenue: $4.2M</h1>
+  </section>
+</canvas>
+
+<canvas id="scene" width="1920" height="1080"></canvas>
+```
+
+```javascript
+var captureCanvas = document.getElementById("capture");
+var source = document.getElementById("source");
+var captureContext = captureCanvas.getContext("2d");
+
+function supportsHtmlInCanvas() {
+  var probe = document.createElement("canvas");
+  probe.setAttribute("layoutsubtree", "");
+  var context = probe.getContext("2d");
+
+  return "layoutSubtree" in probe && typeof context?.drawElementImage === "function";
+}
+
+if (supportsHtmlInCanvas()) {
+  captureContext.drawElementImage(source, 0, 0, 1920, 1080);
+} else {
+  // Draw a simpler canvas version or use a static image.
+}
+```
+
+After capture, use `captureCanvas` like any other canvas texture:
+
+```javascript
+var texture = new THREE.CanvasTexture(captureCanvas);
+var material = new THREE.MeshBasicMaterial({ map: texture });
+```
+
+If the DOM changes, capture it again and set `texture.needsUpdate = true`.
+
+## Know the limits
+
+The browser's paint-record path does not reproduce every compositor effect. Filters, backdrop filters, some 3D transforms, masks, blend modes, and similar effects can force HyperFrames back to the normal capture path.
+
+That fallback protects the final result, but it also means HTML in Canvas is not a promise of universal CSS support or faster rendering. Test the actual composition:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+npx hyperframes render --output html-in-canvas.mp4
+```
+
+Review transition frames and effects in the rendered file, not only in a live preview.
+
+## Related topics
+
+<CardGroup cols={2}>
+  <Card title="Shader transitions" icon="wand-magic-sparkles" href="/packages/shader-transitions">
+    Apply built-in WebGL transitions between scenes.
+  </Card>
+  <Card title="Browse visual blocks" icon="grid-2" href="/catalog">
+    Start from a working effect instead of rebuilding its capture logic.
+  </Card>
+</CardGroup>

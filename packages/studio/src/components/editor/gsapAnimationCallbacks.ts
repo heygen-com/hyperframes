@@ -1,5 +1,4 @@
 import type { ArcPathSegment } from "@hyperframes/parsers/gsap-parser";
-import { usePlayerStore } from "../../player";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 /**
@@ -163,13 +162,4 @@ export function withTrackedGsapAnimationCallbacks(
         }
       : undefined,
   };
-}
-
-/**
- * Stable consumer for the store's one-shot ease-focus request. Module-level on
- * purpose: an inline arrow in the section components is a dep of AnimationCard's
- * focus effect, so a fresh identity each render re-runs that effect every render.
- */
-export function clearFocusedEaseSegment(): void {
-  usePlayerStore.getState().setFocusedEaseSegment(null);
 }

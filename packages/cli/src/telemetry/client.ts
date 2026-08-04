@@ -3,6 +3,7 @@ import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { getSystemMeta } from "./system.js";
+import { canaryEventProperties } from "./canary.js";
 import { enqueue, type EventProperties } from "./transport.js";
 import { telemetryRuntimeOverride } from "./policy.js";
 
@@ -35,6 +36,23 @@ export function shouldTrack(): boolean {
   const config = readConfig();
   telemetryEnabled = config.telemetryEnabled;
   return telemetryEnabled;
+}
+
+/**
+ * Drop the cached posture so the next `shouldTrack()` re-reads the persisted
+ * preference.
+ *
+ * The memo is right for a CLI command — one process, one answer, and the
+ * question is asked per event. It is wrong for `hyperframes preview`, which
+ * lives for hours: run `hyperframes telemetry disable` in another terminal and
+ * this process kept the old answer indefinitely, still resolving canaries and
+ * still injecting the CLI id into every page load. Callers that serve requests
+ * refresh at a request boundary; see `refreshTelemetryPosture` in
+ * server/telemetryIdentity.ts, which invalidates this and the config cache
+ * together so the two cannot disagree.
+ */
+export function resetTelemetryPostureCache(): void {
+  telemetryEnabled = null;
 }
 
 /**
@@ -75,10 +93,21 @@ export function trackEvent(
       term_program: sys.term_program ?? undefined,
       // Did this install's mint find a previous install's state marker?
       // The fleet-wide rate of `true` IS the recoverable-churn fraction —
-      // the share of "new" ids that are really a config wipe on a machine
+      // the share of "new" ids that are really a config re-mint on a machine
       // we already knew. Absent (not false) when the config predates the
       // marker. Resolved after the shouldTrack guard.
       install_predecessor_found: readConfig().predecessorFound,
+      // Splits the `true` share above: a machine we knew but whose record we
+      // could not read. Without it a partial disk write is indistinguishable
+      // from a genuinely fresh install. Absent in the normal case.
+      install_state_file_corrupt: readConfig().stateFileCorrupt,
+      // Canary assignments as `$feature/canary-<name>` — PostHog's native flag
+      // property shape, so breakdowns and experiment analysis work on a canary
+      // with nothing configured server-side. On EVERY event, not just renders:
+      // a staged rollout is only as good as the ability to split any metric by
+      // cohort. Resolved after the shouldTrack guard, so opted-out installs
+      // never pay for it. See telemetry/canary.ts.
+      ...canaryEventProperties(),
       agent_env_hints: sys.agent_env_hints ?? undefined,
     },
     distinctId,

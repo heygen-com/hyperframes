@@ -9,6 +9,103 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.91"
+  description="Released - 2026-08-04"
+  tags={["Release", "Studio", "Core", "CLI"]}
+>
+Percentage-based canary rollouts land, so a change can ship to a stable slice of
+installs instead of all-or-nothing — decided locally and offline, with two inert
+calibration canaries validating the mechanism before anything depends on it. Also
+29 new registry theme items across three families, a faster virtualized Studio
+timeline, and sub-composition sibling asset paths now resolving everywhere.
+
+## Features
+
+- **Cli,studio:** Telemetry opt-out is canary opt-out ([4f464dc42](https://github.com/heygen-com/hyperframes/commit/4f464dc424c648c1210fbfd0675ff774ee0037d4))
+- **CLI:** Bucket canaries on a machine-lineage seed, not the telemetry id ([8dd20ac2e](https://github.com/heygen-com/hyperframes/commit/8dd20ac2e8f8c082c69ac9a4be5f3df8b7690b2c))
+- **Core:** Inert calibration canaries to validate the mechanism in the wild ([a7bb061af](https://github.com/heygen-com/hyperframes/commit/a7bb061afeaec9f39acc04314a673a2b2ded5fc2))
+- **Core:** Emit canary assignments as PostHog flag properties ([a1682e122](https://github.com/heygen-com/hyperframes/commit/a1682e12282c537f7692a3d0b8541263cde7bd50))
+- **Studio:** Browser canary binding + leaf subpath imports ([71ee156da](https://github.com/heygen-com/hyperframes/commit/71ee156dacd16e236590ccb5b1d936d0c414a771))
+- **CLI:** Attach canary cohort to telemetry, harden canary tests, document ([df1521a0b](https://github.com/heygen-com/hyperframes/commit/df1521a0b6fd64885f1c16d5c075c005755a7dbd))
+- **Core:** Percentage-based canary rollouts ([3aea78668](https://github.com/heygen-com/hyperframes/commit/3aea78668734772f9cc83bac81e2495cae2140b0))
+
+## Fixes
+
+- **Studio:** Scope timeline context targets ([423c5ffad](https://github.com/heygen-com/hyperframes/commit/423c5ffadb47d1a97a65c4ef0f7229097e14ad0e), [#2708](https://github.com/heygen-com/hyperframes/pull/2708))
+- **Core:** Resolve sub-composition sibling asset paths everywhere ([4e7fcf7f2](https://github.com/heygen-com/hyperframes/commit/4e7fcf7f2a5af2922ecb6855f08ed879018b8521), [#2994](https://github.com/heygen-com/hyperframes/pull/2994))
+- **Studio:** Resolve sibling asset paths in sub-composition previews ([cbd8a77d1](https://github.com/heygen-com/hyperframes/commit/cbd8a77d162be059126698f7e20680c5430dd3d5), [#2983](https://github.com/heygen-com/hyperframes/pull/2983))
+- **CLI:** Stop bare --frame-check from swallowing the next flag ([70cc4f59a](https://github.com/heygen-com/hyperframes/commit/70cc4f59a1165f1a132a7bf96d2c8f98ceef2d1a), [#2966](https://github.com/heygen-com/hyperframes/pull/2966))
+- **Producer:** Correct short VFR frame coverage ([127eb1937](https://github.com/heygen-com/hyperframes/commit/127eb193715a79252ac77969a95d431a89fee4fe), [#2936](https://github.com/heygen-com/hyperframes/pull/2936))
+- **Producer:** Reject asset media type mismatches ([9792c3295](https://github.com/heygen-com/hyperframes/commit/9792c32950133cc7a6aa55361f682bb431db5439), [#2937](https://github.com/heygen-com/hyperframes/pull/2937))
+- **CLI:** Stop dropping queued telemetry when process.exit races the final flush ([bc6dbc7e2](https://github.com/heygen-com/hyperframes/commit/bc6dbc7e216353a67700230164e81c3f6076f559), [#2970](https://github.com/heygen-com/hyperframes/pull/2970))
+- **Cli,studio:** Adopt the CLI's canary decisions in a launched Studio ([98b23a885](https://github.com/heygen-com/hyperframes/commit/98b23a8850dfe01a9f12957eef25a240294cbe21))
+- **CLI:** Keep the canary bucket seed inside the config dir ([9f2b892a7](https://github.com/heygen-com/hyperframes/commit/9f2b892a7137dc14b3e58a0773ba55384562d875))
+
+## Performance
+
+- **Studio:** Stabilize virtualized beat gestures ([677fd31e9](https://github.com/heygen-com/hyperframes/commit/677fd31e9a7bf52475236abbfb662f528862d795), [#2709](https://github.com/heygen-com/hyperframes/pull/2709))
+- **Studio:** Virtualize timeline marquee selection ([91d14744a](https://github.com/heygen-com/hyperframes/commit/91d14744a09fefab92363af78065097327a092ce), [#2707](https://github.com/heygen-com/hyperframes/pull/2707))
+- **Studio:** Stabilize virtualized timeline drops ([bb5c60387](https://github.com/heygen-com/hyperframes/commit/bb5c603870a0ef2b0defe485c57e4b7d084d5b90), [#2706](https://github.com/heygen-com/hyperframes/pull/2706))
+- **Studio:** Stabilize virtualized keyframe retiming ([44bee4c3c](https://github.com/heygen-com/hyperframes/commit/44bee4c3cf208c1f2757beca2e2aa38e96aebc3c), [#2705](https://github.com/heygen-com/hyperframes/pull/2705))
+- **Studio:** Stabilize virtualized clip gestures ([f52398cee](https://github.com/heygen-com/hyperframes/commit/f52398ceeff388bab66a8ce2fd8db96c786e8f69), [#2704](https://github.com/heygen-com/hyperframes/pull/2704))
+
+## Docs & Examples
+
+- **Changelog:** Weekly digest 2026-07-27–2026-08-03 ([1d0d4d893](https://github.com/heygen-com/hyperframes/commit/1d0d4d8939d358edb7cdb017733b7641d5eec42c), [#2969](https://github.com/heygen-com/hyperframes/pull/2969))
+- **Canary:** Connect canary rollouts to the telemetry docs ([54534d53c](https://github.com/heygen-com/hyperframes/commit/54534d53c257fda8fa0f14d4d91fd58724f6b6a6))
+- **Canary:** Calibration check 2 reflects the breaker rollover ([0d98de023](https://github.com/heygen-com/hyperframes/commit/0d98de023f5d38b0f7767c7f4defc6a85bff217a))
+- **Canary:** Keep contributor docs vendor- and access-neutral ([18d6dd2d7](https://github.com/heygen-com/hyperframes/commit/18d6dd2d7ff44994d24d360edd0d7981967fd29d))
+- **Canary:** Note override contamination as check 3's innocent explanation ([10536e847](https://github.com/heygen-com/hyperframes/commit/10536e8473b31eef5b35a2977673bcae35be83c5))
+- **Canary:** Make calibration check 4 compare per-surface values ([c43b4e2d9](https://github.com/heygen-com/hyperframes/commit/c43b4e2d951c229935f65a4e224ef8a66c43dd12))
+- **Canary:** Link the calibration dashboard from the checks section ([00b576297](https://github.com/heygen-com/hyperframes/commit/00b57629746d3006d8cf3d8fc760b7e0e84c4f77))
+
+## Catalog
+
+- **Registry:** Animate mk card offsets with transforms, not top/left ([ce7d75dba](https://github.com/heygen-com/hyperframes/commit/ce7d75dbaa29e3920216f6e848e68b4b6257602e))
+- **Registry:** Add beat-freeze-cut ([d3d286a1a](https://github.com/heygen-com/hyperframes/commit/d3d286a1a53ed52d78ab3994195e83d2188ec163))
+- **Registry:** Connector geometry, family accent, and demo legibility ([35231e964](https://github.com/heygen-com/hyperframes/commit/35231e964daab6d6b73d8dc3917f9f95f5944157))
+- **Registry:** Mk / yt / hw theme families — 29 items ([f252ec6d9](https://github.com/heygen-com/hyperframes/commit/f252ec6d9942486b4bbdbbdae05f25e683c4ab26))
+- **Registry:** Add hw-scribble-transition — scribble transition ([264f2f140](https://github.com/heygen-com/hyperframes/commit/264f2f14016f88bf4fcf6a450031e5975dabc97e))
+- **Registry:** Add hw-frame — sketched frame ([4467a8d61](https://github.com/heygen-com/hyperframes/commit/4467a8d61cb591a798ad17fef0bb53cf8ebf76d6))
+- **Registry:** Add hw-path-text — text along a path ([662402337](https://github.com/heygen-com/hyperframes/commit/66240233748e1e3c10958882565af656891456a5))
+- **Registry:** Add hw-pipeline — hand-drawn flowchart ([b77a16384](https://github.com/heygen-com/hyperframes/commit/b77a163845c600741163b6541fcc64d07a0cb5e5))
+- **Registry:** Add hw-underline — squiggle marks ([b0f6cc7b9](https://github.com/heygen-com/hyperframes/commit/b0f6cc7b9b528142890600760f508889939d828a))
+- **Registry:** Add hw-box-label — hand-drawn box label ([0ba613e57](https://github.com/heygen-com/hyperframes/commit/0ba613e571f746a6fc65699f86fa8ede842f4d42))
+- **Registry:** Add hw-title — handwritten title ([fae656076](https://github.com/heygen-com/hyperframes/commit/fae6560766193f8c894e39238bdbd16e10422dc1))
+- **Registry:** Add hw-text-cloud — speech bubble ([3beed70e5](https://github.com/heygen-com/hyperframes/commit/3beed70e56fdbeaa4d2cd4cc96a06ac984a08b23))
+- **Registry:** Add hw-callout-circle — scribble callout circle ([f1a506eb4](https://github.com/heygen-com/hyperframes/commit/f1a506eb4b8c03ceb751288d36c100654225e3ee))
+- **Registry:** Add hw-arrow — hand-drawn arrow ([95a2ae0a4](https://github.com/heygen-com/hyperframes/commit/95a2ae0a498534ff48f6eac17a0b44eae2c907c6))
+- **Registry:** Add hw-boil — hand-drawn boil ([d4f1ad0c3](https://github.com/heygen-com/hyperframes/commit/d4f1ad0c37e56e0aa6651b4d041598c2b438cdb7))
+- **Registry:** Add yt-doc-lower-third — documentary lower third ([e9d279282](https://github.com/heygen-com/hyperframes/commit/e9d279282487e5c3a64013be3e08f590e7046ae2))
+- **Registry:** Add mk-emphasis-type — background emphasis type ([cc98f5fd6](https://github.com/heygen-com/hyperframes/commit/cc98f5fd6d84101708134d58d10c25aa28c2841f))
+- **Registry:** Add yt-screen-warp — on-screen display effect ([1ead7a768](https://github.com/heygen-com/hyperframes/commit/1ead7a768ae88edaa7ecacfda4f868e4e1073cbf))
+- **Registry:** Add mk-logo-sting — outline logo sting ([44cd52025](https://github.com/heygen-com/hyperframes/commit/44cd5202533f176593b37404a85f51997877438f))
+- **Registry:** Add yt-vertical-fill — vertical media filler ([ba774de05](https://github.com/heygen-com/hyperframes/commit/ba774de05ccb6bac895b96d6abace85a29caffcc))
+- **Registry:** Add mk-line-graph — minimal line graph ([4ce35b7cb](https://github.com/heygen-com/hyperframes/commit/4ce35b7cba683d7f2ffe8ad4e3f03e853f6425c3))
+- **Registry:** Add yt-circle-pointer — pointer circle + countdown ([c4425bfb4](https://github.com/heygen-com/hyperframes/commit/c4425bfb40e28caf4f4e1e42715331f0c8a50929))
+- **Registry:** Add mk-progress-stat — count-up stat card ([2039bf5f4](https://github.com/heygen-com/hyperframes/commit/2039bf5f44285c26cfe4f1f46c62215dcf5d8337))
+- **Registry:** Add yt-feather-highlight — feathered spotlight ([4e0a7dda8](https://github.com/heygen-com/hyperframes/commit/4e0a7dda8859aa9d89be05d364144a78dd96bbfa))
+- **Registry:** Add mk-usage-arc — hairline arc gauge ([63c6cd02e](https://github.com/heygen-com/hyperframes/commit/63c6cd02ead1c8bd93cde2a354a84cd9ff3b6a1f))
+- **Registry:** Add yt-logo-intro — logo intro sequence ([894861235](https://github.com/heygen-com/hyperframes/commit/8948612359947e5b721af764725ddae9cda3a020))
+- **Registry:** Add mk-cta-button — pill cta button ([eed6adafb](https://github.com/heygen-com/hyperframes/commit/eed6adafb0a98705ba42a8b65802c8946d7028bc))
+- **Registry:** Add yt-prism-title — chromatic fringe title ([9036e3c76](https://github.com/heygen-com/hyperframes/commit/9036e3c76caef82f582f53effe5b6888c07d8560))
+- **Registry:** Add mk-clone-wall-transition — text clone wall transition ([fc40c882e](https://github.com/heygen-com/hyperframes/commit/fc40c882e1db9c8924f21b34335308bb875f76c2))
+- **Registry:** Add yt-avatar-pip — circle pip window ([d924630f2](https://github.com/heygen-com/hyperframes/commit/d924630f23b0075bc69a3497426323c83c351969))
+- **Registry:** Add mk-placeholder-grid — rounded media grid ([ac8d34fb9](https://github.com/heygen-com/hyperframes/commit/ac8d34fb9db1442e6d4ea1e7f0bbdf9c91df2b79))
+- **Registry:** Add yt-comment-card — comment cards ([a4ef52fcb](https://github.com/heygen-com/hyperframes/commit/a4ef52fcb044b99c8547c336ccdfb7aa0d94b2bc))
+- **Registry:** Add mk-callout-highlight — word-sweep highlight ([9be7a6415](https://github.com/heygen-com/hyperframes/commit/9be7a6415c7847690a3216f958ae834100ccfcbf))
+- **Registry:** Add yt-lcd-background — scanline board background ([a7f83f6fc](https://github.com/heygen-com/hyperframes/commit/a7f83f6fc6f0767049b8308837c602cd179d7f7f))
+- **Registry:** Add mk-specs-list — specs checklist ([3e4a4042e](https://github.com/heygen-com/hyperframes/commit/3e4a4042e550e176689233bc33c6db631c5daad5))
+- **Registry:** Add yt-camera-move — camera punch-in ([ea5e5e5bb](https://github.com/heygen-com/hyperframes/commit/ea5e5e5bb5f755a3eb4bcded663d03d0cf858521))
+- **Registry:** Add mk-pill-callout — capsule callout chip ([95125834e](https://github.com/heygen-com/hyperframes/commit/95125834e8b3bd810e9f16eb65f85455887384ec))
+- **Registry:** Add mk-background — minimal procedural gradient background ([61c82135f](https://github.com/heygen-com/hyperframes/commit/61c82135f3677ae61a963d587b5aaec134d1656b))
+
+## Internal
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.90...v0.7.91).
+</Update>
+
+<Update
   label="HyperFrames v0.7.90"
   description="Released - 2026-08-03"
   tags={["Release", "Producer", "Engine", "Contributing"]}

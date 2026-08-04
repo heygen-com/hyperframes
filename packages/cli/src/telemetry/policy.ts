@@ -1,5 +1,5 @@
 import { isDevMode } from "../utils/env.js";
-import { POSTHOG_API_KEY } from "./transport.js";
+import { POSTHOG_API_KEY } from "./posthogKey.js";
 
 export type TelemetryStatusSource =
   | "config"

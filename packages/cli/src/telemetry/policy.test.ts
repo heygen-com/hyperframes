@@ -5,7 +5,9 @@ async function loadPolicy(options?: { devMode?: boolean; apiKey?: string }) {
   vi.doMock("../utils/env.js", () => ({
     isDevMode: () => options?.devMode ?? false,
   }));
-  vi.doMock("./transport.js", () => ({
+  // The key moved to a leaf module to break a config -> policy -> transport
+  // -> config import cycle; policy.ts reads it from there now.
+  vi.doMock("./posthogKey.js", () => ({
     POSTHOG_API_KEY: options?.apiKey ?? "phc_test",
   }));
   return import("./policy.js");

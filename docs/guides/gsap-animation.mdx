@@ -1,134 +1,116 @@
 ---
-title: GSAP Animation
-description: "Add animations to your Hyperframes compositions with GSAP."
+title: "Animate with GSAP"
+sidebarTitle: "GSAP animation"
+description: "Create a paused timeline that HyperFrames can seek to any frame."
 ---
 
-Hyperframes uses [GSAP](https://gsap.com/) for animation. Timelines are paused and controlled by the runtime — you define the animations, the framework handles playback. For background on how animation runtimes plug into Hyperframes, see [Frame Adapters](/concepts/frame-adapters).
+GSAP is the primary animation runtime for HyperFrames compositions. You author the motion; HyperFrames owns the playhead.
 
-## Setup
+## Minimal contract
 
-Include GSAP and create a paused timeline:
+Give the composition a finite duration, create a paused timeline, and register it under the composition ID:
 
-```html index.html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
-<script>
-  // 1. Create a paused timeline — the framework controls playback
-  const tl = gsap.timeline({ paused: true });
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="intro"
+      data-start="0"
+      data-duration="3"
+      data-width="1920"
+      data-height="1080"
+    >
+      <h1 id="title" class="clip" data-start="0" data-duration="3" data-track-index="0">
+        HyperFrames
+      </h1>
+    </div>
 
-  // 2. Add animations using the position parameter (3rd arg) for absolute timing
-  tl.to("#title", { opacity: 1, duration: 0.5 }, 0);
+    <script>
+      const timeline = gsap.timeline({ paused: true });
 
-  // 3. Initialize the global timelines registry (if not already present)
-  window.__timelines = window.__timelines || {};
+      timeline.fromTo(
+        "#title",
+        { opacity: 0, y: 32 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+        0,
+      );
 
-  // 4. Register the timeline using the data-composition-id as the key
-  window.__timelines["root"] = tl;
-</script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.intro = timeline;
+    </script>
+  </body>
+</html>
 ```
 
-<Note>
-  The key you use in `window.__timelines` must match the `data-composition-id` attribute on your composition's root element. See [Compositions](/concepts/compositions) for how the root element is structured.
-</Note>
+The registry key must match `data-composition-id`.
 
-## Key Rules
+## Rules that matter
 
-1. **Always create timelines with `{ paused: true }`** — the framework controls playback via [deterministic seeking](/concepts/determinism)
-2. **Register timelines on `window.__timelines`** with the [`data-composition-id`](/concepts/data-attributes#composition-attributes) as key
-3. **Use the position parameter** (3rd argument) for absolute timing: `tl.to(el, vars, 1.5)`
-4. **Only animate visual properties** — never control media playback in scripts
+1. Create the timeline with `{ paused: true }`.
+2. Register it on `window.__timelines`.
+3. Give important tweens an explicit position.
+4. Prefer `fromTo()` when both endpoints matter; it remains reliable after backward or random seeks.
+5. Animate transforms and opacity for movement. Avoid repeatedly animating layout properties such as `top`, `left`, `width`, or `height`.
+6. Let HyperFrames control clip visibility and media playback.
 
-## Supported Methods
+The normal timeline methods are `to()`, `from()`, `fromTo()`, and `set()`. GSAP supports many CSS properties, but the [HyperFrames animation skill](https://github.com/heygen-com/hyperframes/tree/main/skills/hyperframes-animation) contains the render-safe patterns used by agents.
 
-| Method | Description |
-|--------|-------------|
-| `tl.to(target, vars, position)` | Animate to values |
-| `tl.from(target, vars, position)` | Animate from values |
-| `tl.fromTo(target, fromVars, toVars, position)` | Animate from/to values |
-| `tl.set(target, vars, position)` | Set values instantly |
+## Duration
 
-## Supported Properties
+An explicit root `data-duration` is the composition's render length:
 
-`opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotation`, `color`, `backgroundColor`, and other CSS-animatable transform/color properties. Do **not** animate `visibility`, `width`, or `height` — these break deterministic rendering.
-
-## Timeline Duration and Composition Duration
-
-A composition's duration equals its GSAP timeline duration. The two are directly linked:
-
-```javascript compositions/intro-anim.html
-// Your last animation ends at 3 seconds...
-tl.from("#title", { opacity: 0, y: -50, duration: 1 }, 0);
-tl.to("#title", { opacity: 0, duration: 1 }, 2);
-// ...so this composition is exactly 3 seconds long.
+```html
+<div data-composition-id="demo" data-duration="12"></div>
 ```
 
-If your composition contains a video clip that is 283 seconds long, but your last GSAP animation ends at 8 seconds, the composition will be only 8 seconds long and the video will be cut short. To extend the timeline to match the video:
+This is the clearest choice for a complete composition. If the root omits `data-duration`, HyperFrames can infer length from registered timelines and supported media after the page initializes.
 
-```javascript index.html
-// All your visual animations
-tl.to("#lower-third", { left: -640, duration: 0.6 }, 7.2);
+Do not assume a long source video automatically extends a shorter explicit root duration. The authored duration is the output window.
 
-// Extend the timeline to 283 seconds to match the video length.
-// This adds a zero-duration tween at 283s without affecting any elements.
-tl.set({}, {}, 283);
+## Media belongs to the runtime
+
+Do not play or seek media from the GSAP timeline:
+
+```js
+// Do not do this.
+document.querySelector("video").play();
+document.querySelector("audio").currentTime = 5;
 ```
 
-<Warning>
-  This is one of the most common mistakes in Hyperframes. If your video cuts off early, the timeline is too short. See [Common Mistakes: Composition Duration Shorter Than Video](/guides/common-mistakes) for more details.
-</Warning>
+Use media timing attributes instead. If a video needs to move or resize, animate a wrapper around it rather than the video element itself.
 
-## What NOT to Do
+## Nested compositions
 
-These patterns will break your composition or cause sync issues:
+Each nested composition owns and registers its own timeline. The parent decides when the nested scene appears through its host element:
 
-```javascript index.html
-// WRONG: Playing media in scripts — the framework owns media playback
-document.getElementById("el-video").play();
-document.getElementById("el-audio").currentTime = 5;
-
-// WRONG: Creating a non-paused timeline
-const tl = gsap.timeline(); // missing { paused: true }!
-
-// WRONG: Animating dimensions directly on a <video> element
-tl.to("#el-video", { width: 500, height: 280 }, 5);
-
-// WRONG: Manually nesting sub-timelines
-const masterTL = window.__timelines["root"];
-masterTL.add(window.__timelines["intro-anim"], 0);
+```html
+<div
+  data-composition-id="intro"
+  data-composition-src="compositions/intro.html"
+  data-start="2"
+  data-duration="4"
+></div>
 ```
 
-The framework automatically manages [media playback](/reference/html-schema#framework-managed-behavior), [clip lifecycle](/concepts/compositions#two-layers-primitives-and-scripts), and [sub-composition nesting](#sub-composition-timelines). Scripts that duplicate this behavior will conflict.
+Do not manually add the child timeline to the parent's GSAP timeline. HyperFrames maps the parent playhead into the nested scene.
 
-## Sub-Composition Timelines
+## Verify the motion
 
-Each [nested composition](/concepts/compositions#nested-compositions) registers its own timeline. The framework automatically nests sub-composition timelines into the parent based on [`data-start`](/concepts/data-attributes#timing-attributes):
-
-```javascript compositions/intro-anim.html
-// In compositions/intro-anim.html
-const tl = gsap.timeline({ paused: true });
-tl.from(".title", { opacity: 0, y: -50, duration: 1 });
-window.__timelines["intro-anim"] = tl;
-
-// DO NOT manually add sub-timelines to the master:
-// masterTL.add(window.__timelines["intro-anim"], 0); // UNNECESSARY
+```bash
+npx hyperframes lint
+npx hyperframes check
+npx hyperframes snapshot --at 0,0.6,2.9
 ```
 
-<Warning>
-  Don't animate `width`, `height`, `top`, or `left` directly on `<video>` elements — this can cause the browser to stop rendering frames. Wrap the video in a `<div>` and animate the wrapper instead. See [Common Mistakes](/guides/common-mistakes) for a detailed explanation.
-</Warning>
+Check the first frame, the moving state, and the end state. A timeline that looks correct only during continuous browser playback may still fail when the renderer seeks directly to a frame.
 
-## Next Steps
+## Related topics
 
-<CardGroup cols={2}>
-  <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
-    Understand the building blocks that timelines animate
-  </Card>
-  <Card title="Frame Adapters" icon="plug" href="/concepts/frame-adapters">
-    Learn how GSAP plugs into the render pipeline
-  </Card>
-  <Card title="Common Mistakes" icon="triangle-exclamation" href="/guides/common-mistakes">
-    Avoid pitfalls that break animations
-  </Card>
-  <Card title="HTML Schema Reference" icon="code" href="/reference/html-schema">
-    Full reference for composition attributes
-  </Card>
-</CardGroup>
+- [Edit animation and keyframes in Studio](/studio/animation)
+- [Understand deterministic rendering](/concepts/determinism)
+- [Use the HTML composition schema](/reference/html-schema)

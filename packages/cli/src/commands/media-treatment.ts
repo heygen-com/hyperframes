@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import {
   HF_COLOR_GRADING_ATTR,
   getHfColorGradingCapabilities,
@@ -502,7 +502,7 @@ export function resolveMediaTreatmentSource(
   if (!cleanSource) throw new Error("Selected media has no analyzable local src");
   const projectRelative = cleanSource.startsWith("/")
     ? cleanSource
-    : rewriteAssetPath(compositionFile, cleanSource);
+    : rewriteAssetPath(compositionFile, cleanSource, (path) => existsSync(join(projectDir, path)));
   const asset = resolveExistingLocalAsset(projectDir, projectRelative);
   if (!asset) throw new Error(`Media file not found: ${source}`);
   return asset.resolved;

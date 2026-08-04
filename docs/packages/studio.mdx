@@ -1,256 +1,122 @@
 ---
 title: "@hyperframes/studio"
-description: "Visual composition editor with live preview, timeline view, and hot reload."
+description: "React components and hooks used to build the HyperFrames Studio editing interface."
 ---
 
-The studio package provides a browser-based visual editor for creating and previewing Hyperframes compositions. It gives you a real-time preview of your video, a visual timeline of all clips, and player controls for seeking and playback — all updating live as you edit your HTML.
+`@hyperframes/studio` contains the React application, editor components, player,
+timeline, and hooks that power HyperFrames Studio.
 
-```bash
-npm install @hyperframes/studio
-```
-
-## When to Use
-
-**Use `@hyperframes/studio` when you need to:**
-- Build a custom composition editor UI (e.g., embedded in your own web application)
-- Integrate the Hyperframes preview player into a larger product
-- Extend the editor with custom panels, toolbars, or integrations
-
-**Use a different package if you want to:**
-- Preview compositions during development — use the [CLI](/packages/cli) (`npx hyperframes preview`), which launches the studio for you
-- Render compositions to MP4 — use the [CLI](/packages/cli) or [producer](/packages/producer)
-- Capture frames programmatically — use the [engine](/packages/engine)
-
-<Tip>
-  **For most development workflows, you do not need to install the studio directly.** Running `npx hyperframes preview` starts the studio automatically with hot reload. Install `@hyperframes/studio` only if you are embedding the editor into your own application.
-</Tip>
-
-## Running the Studio
-
-### Via the CLI (recommended)
+Most people should not install this package directly. To open a project in the
+complete Studio application, run:
 
 ```bash
 npx hyperframes preview
 ```
 
-This starts the studio development server, opens your composition in the browser, and watches for file changes. This is the easiest way to get a live preview.
-
-### From the monorepo
+Install the package only when you are extending Studio or building an editor that
+uses its lower-level parts:
 
 ```bash
-# From the root
-bun run dev
-
-# Or target the studio package directly
-bun run --filter @hyperframes/studio dev
+npm install @hyperframes/studio react react-dom zustand
 ```
 
-The studio dev server listens on `http://localhost:5190` (see `packages/studio/vite.config.ts` `server.port`).
+<Warning>
+  The exported components are building blocks, not a drop-in embedded editor. Components such as
+  `EditorShell`, `NLEPreview`, `Timeline`, `PropertyPanel`, and `FileTree` require project state,
+  callbacks, or Studio contexts. Use `StudioApp` when you need the complete application, or inspect
+  the component types before composing a custom host.
+</Warning>
 
-## Package Exports
+When you run Studio from the monorepo, its dev server listens on `http://localhost:5190`.
 
-The studio has two entry points:
+## Entry points
 
-| Import | Description |
-|--------|-------------|
-| `@hyperframes/studio` | React components, hooks, and types |
-| `@hyperframes/studio/tailwind-preset` | Tailwind CSS preset for studio styling |
+| Import                                | Contains                                                   |
+| ------------------------------------- | ---------------------------------------------------------- |
+| `@hyperframes/studio`                 | React components, hooks, utilities, and their public types |
+| `@hyperframes/studio/tailwind-preset` | Tailwind preset used by Studio                             |
 
-Peer dependencies: `react` (19), `react-dom` (19), `zustand` (4 or 5).
+Peer dependencies are React 19, React DOM 19, and Zustand 4 or 5.
 
-## Components
+## Main exports
 
-### Layout
+### Complete application
 
-```typescript
-import { NLELayout, NLEPreview, CompositionBreadcrumb } from '@hyperframes/studio';
-import type { CompositionLevel } from '@hyperframes/studio';
+| Export      | Use                             |
+| ----------- | ------------------------------- |
+| `StudioApp` | The complete Studio application |
 
-// Main NLE (Non-Linear Editor) layout container
-<NLELayout>
-  {/* Preview, timeline, and editor panels */}
-</NLELayout>
+### Editor structure
 
-// Preview panel
-<NLEPreview />
+| Export                  | Use                                      |
+| ----------------------- | ---------------------------------------- |
+| `EditorShell`           | Preview, side panels, and timeline shell |
+| `NLEPreview`            | Composition preview surface              |
+| `CompositionBreadcrumb` | Navigation through nested compositions   |
+| `SourceEditor`          | Source editor                            |
+| `PropertyPanel`         | Inspector for the selected element       |
+| `FileTree`              | Project file browser                     |
 
-// Breadcrumb navigation for nested compositions
-<CompositionBreadcrumb levels={levels} />
-```
+### Playback and timeline
 
-### Player & Timeline
+| Export                 | Use                                    |
+| ---------------------- | -------------------------------------- |
+| `Player`               | Composition iframe and playback bridge |
+| `PlayerControls`       | Playback, seeking, and frame controls  |
+| `Timeline`             | Timeline editing surface               |
+| `VideoThumbnail`       | Video clip thumbnail                   |
+| `CompositionThumbnail` | Nested-composition thumbnail           |
 
-```typescript
-import {
-  Player,
-  PlayerControls,
-  Timeline,
-} from '@hyperframes/studio';
-import type { TimelineElement } from '@hyperframes/studio';
+### Hooks and utilities
 
-// Embed the preview player
-<Player />
+| Export                                                      | Use                                                   |
+| ----------------------------------------------------------- | ----------------------------------------------------- |
+| `useTimelinePlayer`                                         | Read and control the shared player state              |
+| `usePlayerStore`                                            | Access the Zustand player store                       |
+| `useElementPicker`                                          | Select and edit an element through the preview iframe |
+| `resolveSourceFile`, `applyPatch`                           | Locate and patch source                               |
+| `parseStyleString`, `mergeStyleIntoTag`, `findElementBlock` | Work with inline source styles and elements           |
 
-// Playback controls (play, pause, seek, frame-step)
-<PlayerControls />
+The package also exports `CompositionLevel`, `TimelineElement`, `PickedElement`,
+and `PatchOperation`.
 
-// Timeline editor with scrubber
-<Timeline />
-```
+## How Studio stays connected to a project
 
-### Editor Components
+1. Studio loads the composition in an iframe with the HyperFrames runtime.
+2. Player controls communicate with that runtime to play, pause, and seek.
+3. The editor and timeline send changes through the Studio API.
+4. The Studio server writes those changes back to the project files.
+5. External file changes refresh the preview while keeping the current position
+   when possible.
 
-```typescript
-import { SourceEditor, PropertyPanel, FileTree } from '@hyperframes/studio';
+Preview and render use the same seekable composition contract. Preview still
+depends on the browser playing in real time, while render captures frames one at a
+time. A heavy project can therefore stutter during preview and still render every
+frame.
 
-// Code editor (CodeMirror-based) for HTML, CSS, and JavaScript
-<SourceEditor />
-
-// Property inspector for selected elements
-<PropertyPanel />
-
-// Project file browser
-<FileTree />
-```
-
-### Full Application
-
-```typescript
-import { StudioApp } from '@hyperframes/studio';
-
-// The complete studio application (wraps all components)
-<StudioApp />
-```
-
-## Hooks
-
-### `useTimelinePlayer`
-
-Manages player state and playback control:
+## Tailwind preset
 
 ```typescript
-import { useTimelinePlayer } from '@hyperframes/studio';
-
-const player = useTimelinePlayer();
-// player.play(), player.pause(), player.togglePlay(), player.seek(time)
-// player.refreshPlayer(), player.saveSeekPosition(), player.resetPlayer()
-```
-
-### `usePlayerStore`
-
-Zustand store for player state:
-
-```typescript
-import { usePlayerStore, liveTime, formatTime } from '@hyperframes/studio';
-
-const store = usePlayerStore();
-// Access current time, duration, playing state, etc.
-
-// Format time for display
-const display = formatTime(liveTime.current);
-```
-
-### `useElementPicker`
-
-Element selection from the preview:
-
-```typescript
-import { useElementPicker } from '@hyperframes/studio';
-
-const picker = useElementPicker(iframeRef);
-// picker.isPickMode, picker.pickedElement
-// picker.enablePick(), picker.disablePick(), picker.clearPick()
-// picker.setStyle(prop, value), picker.setDataAttr(name, value), picker.setTextContent(text)
-```
-
-## Features
-
-### Live Preview
-
-The studio renders your composition in an iframe using the Hyperframes runtime. What you see in the preview is exactly what will be captured during rendering — the same runtime code, the same seek logic, the same clip lifecycle.
-
-Changes to your HTML are picked up automatically through hot reload, so you can edit `index.html` in your editor and see the result in the browser within milliseconds.
-
-<Note>
-  The *visual* output of preview matches render exactly. Real-time *playback smoothness* depends on your hardware, because preview actually plays the composition in your browser at 30/60fps. Render doesn't have that constraint — it captures each frame individually via a seek-driven pipeline, so expensive frames make the render slower but never drop. If you see stutter in preview but the rendered mp4 is clean, that's expected. See [Performance](/guides/performance) for the patterns that most often cause it.
-</Note>
-
-### Timeline View
-
-The timeline panel provides a visual representation of your composition's structure:
-
-- Each clip appears as a colored bar on its track
-- Bar position and width reflect `data-start` and `data-duration`
-- Visually higher rows render in front; lower rows render underneath
-- Relative timing references (e.g., `data-start="intro"`) are resolved and displayed as absolute positions
-
-This makes it easy to understand the temporal structure of complex compositions with many overlapping clips.
-
-### Timeline Editing
-
-The timeline supports move and trim actions that persist directly back into your HTML source.
-
-For a full breakdown of:
-
-- what timeline editing can do today
-- how each action maps to `data-start`, `data-duration`, `data-track-index`, and `z-index`
-- which clip types support start trim
-- current limitations and mental models
-
-see [Timeline Editing](/guides/timeline-editing).
-
-### Player Controls
-
-The studio includes a full set of playback controls:
-
-- **Play / Pause** — start and stop playback
-- **Seek** — click anywhere on the timeline to jump to that point
-- **Scrub** — drag the playhead to scrub through the composition frame by frame
-- **Frame step** — advance or rewind one frame at a time for precise positioning
-
-### Hot Reload
-
-File changes are detected and applied without restarting the server. The preview maintains its current playback position when possible, so you can tweak an animation at the 5-second mark without having to seek back to it after every save.
-
-## Architecture
-
-The studio is a React application with the following structure:
-
-1. **Iframe preview** — your composition HTML is loaded in an isolated iframe with the Hyperframes runtime injected. This ensures the preview uses the same rendering path as production.
-
-2. **Runtime bridge** — the studio communicates with the iframe via `postMessage` to control playback (play, pause, seek) and receive state updates (current time, duration, readiness).
-
-3. **Timeline component** — parses the composition using `@hyperframes/core` to extract clip timing data and renders the visual timeline panel.
-
-4. **File watcher** — a development server (Vite-based) watches your project files and triggers hot module replacement when changes are detected.
-
-## Tailwind CSS Preset
-
-The studio exports a Tailwind CSS preset for consistent styling:
-
-```typescript
-// tailwind.config.ts
-import studioPreset from '@hyperframes/studio/tailwind-preset';
+import studioPreset from "@hyperframes/studio/tailwind-preset";
 
 export default {
   presets: [studioPreset],
-  // ... your config
 };
 ```
 
-## Related Packages
+## Related topics
 
 <CardGroup cols={2}>
-  <Card title="CLI" icon="terminal" href="/packages/cli">
-    Launches the studio via `npx hyperframes preview` — the easiest way to preview compositions.
+  <Card title="Use Studio" icon="pen-to-square" href="/studio">
+    Learn the complete editing workflow.
   </Card>
-  <Card title="Core" icon="cube" href="/packages/core">
-    Types, parsing, and runtime that the studio uses for preview and timeline rendering.
+  <Card title="Studio server" icon="server" href="/packages/studio-server">
+    Connect project files, media, linting, and render jobs.
   </Card>
-  <Card title="Producer" icon="film" href="/packages/producer">
-    Renders the compositions you build in the studio to finished MP4 files.
+  <Card title="Player" icon="circle-play" href="/packages/player">
+    Embed playback without the editing interface.
   </Card>
-  <Card title="Engine" icon="gear" href="/packages/engine">
-    The capture engine that powers production rendering of your compositions.
+  <Card title="SDK" icon="code" href="/sdk/quickstart">
+    Query and edit compositions without Studio.
   </Card>
 </CardGroup>

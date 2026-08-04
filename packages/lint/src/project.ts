@@ -133,7 +133,10 @@ function resolveCssAssetCandidates(
     return resolveLocalAssetCandidates(projectDir, join(dirname(cssRootRelativePath), url));
   }
   if (htmlCompSrcPath) {
-    return resolveLocalAssetCandidates(projectDir, rewriteAssetPath(htmlCompSrcPath, url));
+    return resolveLocalAssetCandidates(
+      projectDir,
+      rewriteAssetPath(htmlCompSrcPath, url, (path) => existsSync(join(projectDir, path))),
+    );
   }
   return resolveLocalAssetCandidates(projectDir, url);
 }
@@ -284,7 +287,9 @@ function lintAudioSrcNotFound(
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (isUnresolvedAssetPlaceholder(src)) continue;
-      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      const rootRelative = compSrcPath
+        ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
+        : src;
       if (!resolveLocalAssetCandidates(projectDir, rootRelative).some(existsSync)) {
         missingSrcs.push(src);
       }
@@ -330,7 +335,9 @@ function lintMissingLocalAsset(
       const src = cleanAssetUrl(rawSrc);
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
-      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      const rootRelative = compSrcPath
+        ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
+        : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (resolvedAsset) continue;
 

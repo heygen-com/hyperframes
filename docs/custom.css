@@ -1,36 +1,38 @@
 /* HyperFrames Design System — Mintlify Theme Overrides */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-
-/* ── TT Norms Pro (matches hyperframes.heygen.com) ── */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 @font-face {
-  font-family: 'TT Norms Pro';
-  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Normal.woff2') format('woff2');
+  font-family: "TT Norms Pro";
+  src: url("https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Normal.woff2")
+    format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'TT Norms Pro';
-  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Medium.woff2') format('woff2');
+  font-family: "TT Norms Pro";
+  src: url("https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Medium.woff2")
+    format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'TT Norms Pro';
-  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_DemiBold.woff2') format('woff2');
+  font-family: "TT Norms Pro";
+  src: url("https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_DemiBold.woff2")
+    format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'TT Norms Pro';
-  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Bold.woff2') format('woff2');
+  font-family: "TT Norms Pro";
+  src: url("https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Bold.woff2")
+    format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -57,6 +59,14 @@
   --hf-text-tertiary: #999999;
   --hf-heading: #0a0a0a;
   --hf-code-bg: #ffffff;
+  --hf-ui-border: #eeeeee;
+  --hf-sidebar-rail: #eeeeee;
+  --hf-sidebar-text: #707070;
+  --hf-floating-input-shadow: 0 8px 28px rgba(10, 10, 10, 0.08), 0 1px 4px rgba(10, 10, 10, 0.08);
+  --mintlify-slot-header-height: 3rem;
+  --hf-brand: #16785b;
+  --hf-brand-soft: rgba(22, 120, 91, 0.1);
+  --hf-video-accent: #3ce6ac;
 
   --hf-accent-green: #1a7a0a;
   --hf-accent-green-light: rgba(26, 122, 10, 0.07);
@@ -85,6 +95,12 @@
   --hf-text-tertiary: #666666;
   --hf-heading: #f5f5f5;
   --hf-code-bg: #141414;
+  --hf-ui-border: #2a2a2a;
+  --hf-sidebar-rail: #2a2a2a;
+  --hf-sidebar-text: #a0a0a0;
+  --hf-floating-input-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.4);
+  --hf-brand: #3ce6ac;
+  --hf-brand-soft: rgba(60, 230, 172, 0.12);
 
   --hf-accent-green: #22c55e;
   --hf-accent-green-light: rgba(34, 197, 94, 0.1);
@@ -102,14 +118,32 @@
 /* ── Typography ── */
 
 body {
-  font-family: 'TT Norms Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family:
+    "TT Norms Pro",
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'TT Norms Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family:
+    "TT Norms Pro",
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
-h1, h2 {
+h1,
+h2 {
   letter-spacing: -0.02em;
 }
 
@@ -117,19 +151,76 @@ h3 {
   letter-spacing: -0.01em;
 }
 
-/* Code font — IBM Plex Mono (loaded via Google Fonts above) */
-code, pre, pre code, kbd,
-[class*="code"],
-[class*="Code"] {
-  font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+/* ── Workflow routing ── */
+.hf-workflow-routes {
+  margin: 1.5rem 0;
+  border-top: 1px solid var(--hf-border-color);
 }
 
-/* ── Code blocks ── */
+.hf-workflow-route {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--hf-border-color);
+  color: inherit;
+  text-decoration: none;
+}
 
-pre {
-  background: var(--hf-code-bg) !important;
-  border: 1px solid var(--hf-border-color) !important;
-  border-radius: 8px !important;
+.hf-workflow-route:hover .hf-workflow-route-title {
+  color: var(--hf-accent-green);
+}
+
+.hf-workflow-route video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  border-radius: 0.5rem;
+  background: #000;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.hf-workflow-route-title {
+  display: block;
+  color: var(--hf-heading);
+  font-weight: 650;
+  line-height: 1.35;
+  transition: color 120ms ease;
+}
+
+.hf-workflow-route-copy {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--hf-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 639px) {
+  .hf-workflow-route {
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: 0.8rem;
+  }
+}
+
+/* Code font — IBM Plex Mono (loaded via Google Fonts above).
+ *
+ * Deliberately scoped to real code elements. The previous rule also matched
+ * [class*="code"] / [class*="Code"], which caught any element whose class
+ * merely contained that substring — including every Accordion, whose wrapper
+ * carries the Tailwind utility `dark:bg-codeblock`. That set the whole
+ * accordion (and, by inheritance, its title and prose) in monospace, so plain
+ * sentences rendered like terminal output. Syntax tokens inside `pre` inherit
+ * from `pre`, so they do not need a selector of their own. */
+code,
+pre,
+pre code,
+kbd,
+samp {
+  font-family: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
 }
 
 /* ── Selection ── */
@@ -140,12 +231,245 @@ pre {
 
 /* ── Links ── */
 
-a:not([class]) {
-  color: var(--hf-accent-blue);
+#content-area :where(p, li, td, blockquote) a:not([class]) {
+  border-bottom: 1px solid color-mix(in srgb, var(--hf-brand) 72%, transparent);
+  color: inherit;
+  text-decoration: none;
 }
 
-a:not([class]):hover {
-  opacity: 0.85;
+#content-area :where(p, li, td, blockquote) a:not([class]):hover {
+  border-bottom-color: var(--hf-brand);
+  color: var(--hf-brand);
+}
+
+/* ── Documentation navigation ── */
+
+/*
+ * Keep Aspen's full-width header, but place its desktop controls on one row:
+ * logo → section tabs → search → actions. Mobile keeps Mintlify's layout.
+ */
+@media (min-width: 1024px) {
+  #navbar {
+    height: 3rem;
+  }
+
+  #navbar > div:has(.nav-tabs) {
+    display: grid;
+    grid-template-columns: max-content max-content minmax(10.25rem, 1fr) max-content;
+    column-gap: 1rem;
+    align-items: center;
+    height: 3rem;
+  }
+
+  #navbar > div:has(.nav-tabs) > .relative,
+  #navbar > div:has(.nav-tabs) > .relative > div:first-child,
+  #navbar > div:has(.nav-tabs) > .relative > div:first-child > div:first-child {
+    display: contents;
+  }
+
+  #navbar > div:has(.nav-tabs) > .relative > div:first-child > div:first-child > div:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #navbar div:has(> .nav-tabs) {
+    grid-column: 2;
+    grid-row: 1;
+    height: 3rem;
+    padding: 0;
+  }
+
+  #navbar .nav-tabs {
+    align-items: center;
+    gap: 0.25rem;
+    height: 3rem;
+  }
+
+  /* Use the same quiet pill treatment as Mintlify's own documentation. */
+  #navbar .nav-tabs-item {
+    height: 2.25rem !important;
+    padding: 0 0.8rem;
+    border-radius: 999px;
+    color: var(--hf-text);
+    transition:
+      background-color 140ms ease,
+      color 140ms ease;
+  }
+
+  #navbar .nav-tabs-item:hover {
+    background: color-mix(in srgb, var(--hf-heading) 6%, transparent);
+    color: var(--hf-heading);
+  }
+
+  #navbar .nav-tabs-item.text-primary {
+    background: color-mix(in srgb, var(--hf-heading) 9%, transparent);
+    color: var(--hf-heading) !important;
+  }
+
+  #navbar .nav-tabs-item > .absolute.bottom-0 {
+    display: none;
+  }
+
+  #navbar div:has(> #search-bar-entry) {
+    grid-column: 3;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  #navbar .topbar-right-container {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  #sidebar-content {
+    top: 3rem !important;
+    height: calc(100vh - 3rem) !important;
+  }
+
+  /* Keep the repository compact, but retain its useful live star count. */
+  #navbar a[title="heygen-com/hyperframes"] {
+    width: 7.5rem;
+    min-width: 7.5rem;
+    height: 2.25rem;
+    padding: 0 0.75rem;
+    justify-content: center;
+  }
+
+  #navbar a[title="heygen-com/hyperframes"] > span.truncate {
+    display: none;
+  }
+
+  #navbar a[title="heygen-com/hyperframes"] > span:not(.truncate) {
+    display: flex !important;
+    color: var(--hf-heading);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * Mintlify removes the live count for roughly one animation frame during
+   * client-side navigation. Keep a truthful placeholder in its place so the
+   * control does not collapse while the live count reloads.
+   */
+  #navbar a[title="heygen-com/hyperframes"]:not(:has(> span:not(.truncate)))::after {
+    color: var(--hf-heading);
+    content: "★";
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* The native gutter was almost 15px wide. Keep the rail quiet and compact. */
+#navigation-items {
+  scrollbar-color: color-mix(in srgb, var(--hf-text) 30%, transparent) transparent;
+  scrollbar-gutter: auto !important;
+  scrollbar-width: thin;
+}
+
+#navigation-items::-webkit-scrollbar {
+  width: 5px;
+}
+
+#navigation-items::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#navigation-items::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hf-text) 30%, transparent);
+}
+
+#navigation-items::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--hf-text) 46%, transparent);
+}
+
+/* Preserve a useful search field on smaller desktop widths. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  #navbar #assistant-entry {
+    display: none;
+  }
+}
+
+/* Use main's quieter structural border color across Aspen surfaces. */
+#body-content [class*="border-gray-200"],
+#body-content [class*="border-gray-100"] {
+  border-color: var(--hf-ui-border) !important;
+}
+
+/* Keep the floating agent input noticeable against the page background. */
+#body-content .chat-assistant-floating-input > div > div {
+  border-color: var(--hf-border-color-light) !important;
+  background-color: var(--hf-background-light) !important;
+  box-shadow: var(--hf-floating-input-shadow);
+}
+
+/*
+ * Match the navigation rhythm and active-page rail used on the main docs.
+ * Each link owns one rail segment, so the current page can highlight only
+ * its segment. These rules are visual only; groups remain non-collapsible.
+ */
+#navigation-items .sidebar-group-header {
+  color: var(--hf-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+#navigation-items .sidebar-group {
+  padding-left: 0;
+}
+
+#navigation-items .sidebar-group::before {
+  content: none;
+}
+
+#navigation-items .sidebar-group > li {
+  margin-bottom: 0;
+}
+
+#navigation-items .sidebar-group > li + li {
+  margin-top: 0 !important;
+}
+
+#navigation-items .sidebar-group > li > a {
+  width: calc(100% - 1rem);
+  margin-left: 1rem;
+  padding: 0.375rem 0.75rem 0.375rem 1rem;
+  border-left: 1px solid var(--hf-sidebar-rail);
+  border-radius: 0;
+  background: transparent !important;
+  color: var(--hf-sidebar-text);
+}
+
+#navigation-items .sidebar-group > li > a:hover {
+  background: transparent !important;
+  color: var(--hf-heading);
+}
+
+#navigation-items .sidebar-group > li[data-active="true"] > a,
+#navigation-items .sidebar-group > li[data-active-nav-item="true"] > a,
+#navigation-items .sidebar-group > li > a[aria-current="page"] {
+  border-left-color: currentColor;
+  color: var(--hf-heading);
+}
+
+/* Aspen inserts horizontal separators; main uses the same space without a rule. */
+#navigation-items div:has(> .sidebar-group) + div {
+  height: 2rem;
+  padding: 0;
+}
+
+#navigation-items div:has(> .sidebar-group) + div > * {
+  display: none;
+}
+
+/*
+ * Aspen assumes a 96px header and fades scrolled navigation before it reaches
+ * that boundary. Our header is 48px; align the sticky sidebar to it and let
+ * links clip exactly at the header instead of disappearing early.
+ */
+#navigation-items,
+#navigation-items [data-id] {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 
 /* Catalog texture examples */
@@ -181,7 +505,7 @@ a:not([class]):hover {
 
 .hf-texture-preview-word {
   color: #fff;
-  font-family: Impact, 'Arial Black', sans-serif;
+  font-family: Impact, "Arial Black", sans-serif;
   font-size: 42px;
   line-height: 0.9;
   letter-spacing: 0;
@@ -203,9 +527,7 @@ a:not([class]):hover {
   border-radius: 8px;
   padding: 22px;
   margin: 20px 0 24px;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.54) 1px, transparent 1px),
-    #f1f1f1;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.54) 1px, transparent 1px), #f1f1f1;
   background-size: 44px 100%;
 }
 
@@ -244,7 +566,7 @@ a:not([class]):hover {
 
 .hf-texture-animate-word {
   color: #181818;
-  font-family: Impact, 'Arial Black', sans-serif;
+  font-family: Impact, "Arial Black", sans-serif;
   font-size: 92px;
   line-height: 0.9;
   letter-spacing: 0;
@@ -278,6 +600,11 @@ a:not([class]):hover {
   display: grid;
   gap: 32px;
   margin: 20px 0 40px;
+}
+
+.hf-texture-example-groups > div,
+.hf-texture-example-card {
+  min-width: 0;
 }
 
 .hf-texture-example-title {
@@ -337,7 +664,7 @@ a:not([class]):hover {
 
 .hf-texture-example-word {
   color: #181818;
-  font-family: Impact, 'Arial Black', sans-serif;
+  font-family: Impact, "Arial Black", sans-serif;
   font-size: 54px;
   line-height: 0.9;
   letter-spacing: 0;
@@ -376,6 +703,378 @@ a:not([class]):hover {
   overflow-wrap: anywhere;
 }
 
+/* Portrait proof clips should read as examples inside the page, not become the
+ * page. Landscape films keep the full content width; only explicitly marked
+ * portrait media gets this compact, centered treatment. */
+.hf-portrait-video {
+  display: block;
+  width: auto;
+  max-width: min(100%, 18rem);
+  max-height: min(32rem, 68vh);
+  margin: 0.75rem auto 0;
+  border-radius: 0.5rem;
+  background: #111;
+}
+
+/* Full narrated films use a quiet custom control layer over the native video
+ * engine. Preview loops remain plain muted videos. */
+.hf-docs-video-block {
+  width: 100%;
+}
+
+.hf-docs-video-block[data-portrait="true"] {
+  width: min(100%, 18rem);
+  margin: 0.75rem auto 0;
+}
+
+.hf-docs-video-block[data-portrait="true"] .hf-docs-video {
+  aspect-ratio: 9 / 16;
+  max-height: min(32rem, 68vh);
+}
+
+/*
+ * Mintlify loads custom React snippets after the page shell. Reserve the
+ * film's real shape so the unloaded component never flashes as a thin Frame
+ * rail, then let the hydrated player and chapter guide size themselves.
+ */
+.hf-docs-video-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #070707;
+}
+
+.hf-docs-video-frame:has(.hf-docs-video-block) {
+  aspect-ratio: auto;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+
+.hf-docs-video {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #070707;
+  color: #fff;
+  isolation: isolate;
+  outline: none;
+}@media (max-width: 720px) {}
+
+@media (max-width: 520px) {}
+
+.hf-docs-video:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hf-video-accent) 78%, transparent);
+}
+
+.hf-docs-video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0 !important;
+  background: #070707;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.hf-docs-video-hero-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.35rem;
+  height: 3.35rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(8, 8, 8, 0.56);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  z-index: 3;
+}
+
+.hf-docs-video-hero-play:hover {
+  border-color: var(--hf-video-accent);
+  background: rgba(8, 8, 8, 0.78);
+}
+
+.hf-docs-video-hero-play:focus-visible,
+.hf-docs-video-control:focus-visible,
+.hf-docs-video-rate:focus-visible,
+.hf-docs-video-progress:focus-visible {
+  outline: 2px solid var(--hf-video-accent);
+  outline-offset: 2px;
+}
+
+.hf-docs-video-hero-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+}
+
+.hf-docs-video-hero-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: 0.1rem;
+  fill: currentColor;
+}
+
+.hf-docs-video-controls {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  gap: 0.45rem;
+  padding: 3.75rem 1rem 0.78rem;
+  background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.84));
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    visibility 0s linear;
+  z-index: 2;
+}
+
+.hf-docs-video-controls[data-visible="false"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(0.4rem);
+  visibility: hidden;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    visibility 0s linear 160ms;
+}
+
+.hf-docs-video-progress {
+  width: 100%;
+  height: 1rem;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Timecode bubble that tracks the pointer along the progress bar. It is a label,
+   not a thumbnail: rendering a second <video> here made every page with a film
+   download the whole file twice. */
+.hf-docs-video-scrub-preview {
+  position: absolute;
+  bottom: 3.6rem;
+  left: clamp(2rem, var(--hf-video-preview-x), calc(100% - 2rem));
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  z-index: 4;
+}
+
+.hf-docs-video-scrub-preview[data-visible="false"] {
+  visibility: hidden;
+  opacity: 0;
+  transform: translate(-50%, 0.3rem);
+}
+
+.hf-docs-video-scrub-preview span {
+  display: block;
+  padding: 0.16rem 0.4rem;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.hf-docs-video-progress::-webkit-slider-runnable-track {
+  height: 0.22rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--hf-video-accent) 0,
+    var(--hf-video-accent) var(--hf-video-progress),
+    rgba(255, 255, 255, 0.34) var(--hf-video-progress),
+    rgba(255, 255, 255, 0.34) 100%
+  );
+}
+
+.hf-docs-video-progress::-moz-range-track {
+  height: 0.22rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.hf-docs-video-progress::-moz-range-progress {
+  height: 0.22rem;
+  border-radius: 999px;
+  background: var(--hf-video-accent);
+}
+
+.hf-docs-video-progress::-webkit-slider-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: -0.315rem;
+  border: 2px solid #121212;
+  border-radius: 50%;
+  background: var(--hf-video-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.hf-docs-video-progress::-moz-range-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid #121212;
+  border-radius: 50%;
+  background: var(--hf-video-accent);
+}
+
+.hf-docs-video-control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.hf-docs-video-control,
+.hf-docs-video-rate {
+  display: grid;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  cursor: pointer;
+}
+
+.hf-docs-video-control:hover,
+.hf-docs-video-rate:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+}
+
+.hf-docs-video-control svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: currentColor;
+}
+
+.hf-docs-video-rate {
+  min-width: 2.75rem;
+  padding: 0 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.hf-docs-video-time {
+  margin-left: 0.2rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.74rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hf-docs-video-time span {
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.hf-docs-video-spacer {
+  flex: 1 1 auto;
+}
+
+.hf-docs-video-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin: -1rem 0 0 -1rem;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: var(--hf-video-accent);
+  border-radius: 50%;
+  animation: hf-docs-video-spin 700ms linear infinite;
+  z-index: 3;
+}
+
+@keyframes hf-docs-video-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .hf-docs-video-hero-play {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .hf-docs-video-hero-icon {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .hf-docs-video-controls {
+    gap: 0.25rem;
+    padding: 2.75rem 0.6rem 0.42rem;
+  }
+
+  .hf-docs-video-scrub-preview {
+    bottom: 3.2rem;
+  }
+
+  .hf-docs-video-time {
+    margin-left: 0;
+    font-size: 0.67rem;
+  }
+
+  .hf-docs-video-rate {
+    min-width: 2.45rem;
+    padding: 0 0.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-docs-video-controls {
+    transition: none;
+  }
+
+  .hf-docs-video-spinner {
+    animation: none;
+  }
+
+  .hf-docs-video-scrub-preview {
+    transition: none;
+  }
+}
+
 @media (max-width: 860px) {
   .hf-texture-preview-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -409,4 +1108,11 @@ a:not([class]):hover {
   .hf-texture-animate-word {
     animation: none;
   }
+}
+
+/* Hide the section/group label ("Start here", etc.) that the theme renders
+ * above every page title. It repeats the sidebar grouping and adds noise on
+ * every page; each page leads with its own H1 instead. */
+.eyebrow {
+  display: none;
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { CanvasResolution } from "@hyperframes/parsers";
 import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
+import { browserTelemetryAllowed } from "../../telemetry/policy";
 import { generateId } from "../../utils/generateId";
 
 export interface RenderJob {
@@ -157,16 +158,28 @@ export function useRenderQueue(projectId: string | null) {
         resolution?: string;
         composition?: string;
         variables?: Record<string, unknown>;
-        telemetryDistinctId: string;
+        telemetryDistinctId?: string;
+        telemetryOptOut?: boolean;
       } = {
         fps,
         quality,
         format,
+      };
+      // The id is MINTED by getAnonymousId(), so calling it unconditionally
+      // created a telemetry identity for a profile that had opted out — and
+      // then shipped it to the server. The server's own policy cannot see this
+      // browser's localStorage or DoNotTrack, so it has to be told: an
+      // explicit `telemetryOptOut` suppresses the render outcome, which
+      // omitting the id alone does NOT (an old client omits it too, and that
+      // falls back to the install id).
+      if (browserTelemetryAllowed()) {
         // So the server-emitted render_complete/render_error is attributed to
         // this browser user (same id studio_* events use), making the render
         // funnel joinable. Matches studio_render_start fired just above.
-        telemetryDistinctId: getAnonymousId(),
-      };
+        body.telemetryDistinctId = getAnonymousId();
+      } else {
+        body.telemetryOptOut = true;
+      }
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;
       if (opts.variables && Object.keys(opts.variables).length > 0) {

@@ -1,0 +1,81 @@
+---
+title: "Bring a design into a project"
+sidebarTitle: "Bring in a design"
+description: "Start from Figma, a design-tool draft, or an existing brand system without turning the video into a stack of screenshots."
+---
+
+Use an existing design as source material: preserve its visual language, then
+rebuild what must move as editable HyperFrames scenes.
+
+## Choose what should remain editable
+
+| Source | Keep as media | Rebuild in HTML |
+| --- | --- | --- |
+| Logo, icon, illustration, or textured artwork | Usually | Only when individual parts must animate |
+| Product screenshot | When a still proves the point | When the scene needs a real interaction or responsive crop |
+| Figma component | When exact pixels matter more than editing | When text, color, layout, or states must change |
+| Storyboard frames | Use as visual references | Reconstruct the intended motion between states |
+| Brand colors and type | Import the files and values | Apply them across the composition |
+
+Do not animate a stack of complete screenshots merely because they came from a
+design tool. Use screenshots for proof; use HTML for the parts that need to
+change.
+
+## Start from Figma
+
+Send the agent the Figma link and the outcome:
+
+```text
+Use this Figma section as the visual source for a 20-second product intro:
+https://www.figma.com/design/FILE/Project?node-id=10-20
+
+Preserve the brand type and colors. Import artwork as local assets, rebuild the
+product states that need to move, and treat the frames as key moments rather
+than separate slides.
+```
+
+The agent can use the `/figma` skill to import assets, read brand values,
+reconstruct editable components, and translate supported motion. Everything
+required by the final render should end up as local project source.
+
+For tokens, API credentials, exact CLI commands, and import troubleshooting,
+use the [Figma integration reference](/guides/figma).
+
+## Start from Claude Design or Open Design
+
+These tools can establish layout, palette, type, and scene direction before a
+deeper production pass.
+
+1. Give the design tool the current HyperFrames instruction file and your real
+   brand material.
+2. Ask for a valid project rather than isolated mockups.
+3. Download or save the project to disk.
+4. Open that folder with a coding agent.
+5. Let the agent validate timing, motion, media, captions, and rendering.
+
+[Claude Design instruction](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) · [Open Design handoff](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/open-design-hyperframes.md)
+
+## Judge the handoff
+
+A useful handoff has:
+
+- a clear visual direction;
+- real assets or honestly labeled placeholders;
+- editable source for anything likely to change;
+- stable local media and fonts;
+- a project that opens and can be checked.
+
+Run:
+
+```bash
+npx hyperframes check
+npx hyperframes preview
+```
+
+Then review the actual movement in [Studio](/studio), not only the design stills.
+
+## Related topics
+
+- [Use the Figma integration](/guides/figma)
+- [Work on the project in Studio](/studio)
+- [Choose where to create](/guides/choose-creation-path)

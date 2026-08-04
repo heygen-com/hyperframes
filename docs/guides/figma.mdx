@@ -1,32 +1,38 @@
 ---
-title: Figma Import
+title: Figma integration
 description: "Bring Figma designs into HyperFrames — frozen assets, brand tokens, editable components, storyboard reconstruction, and Figma Motion timelines translated to GSAP."
 ---
 
-The work your designer already did in Figma — layout, color, type, motion — becomes the starting point of a composition instead of a thing to rebuild by hand. Point at a Figma URL; the artifact lands as a native HyperFrames piece: a frozen local file, a composition variable, editable HTML, or a paused GSAP timeline.
+Import the parts of a Figma design that should survive into the project: assets,
+brand values, editable components, motion, or storyboard states. HyperFrames
+stores the result locally so the render does not depend on Figma.
 
 ## What you can import
 
 | Capability | What you get | Surface |
 | --- | --- | --- |
 | **Static assets** | A frame/layer rendered to SVG/PNG/JPG/PDF, frozen under `.media/` | `hyperframes figma asset` |
-| **Brand tokens** | Figma variables/styles as composition brand variables | `hyperframes figma tokens` (Enterprise) or the `/figma` skill via MCP (any plan) |
+| **Brand tokens** | Figma variables/styles as composition brand variables | `hyperframes figma tokens` or the `/figma` skill via a Figma connector |
 | **Components** | A frame as editable HTML with brand-linked colors | `hyperframes figma component` |
 | **Motion** | A Figma Motion timeline as an editable, paused GSAP timeline | `/figma` skill (agent, MCP) |
 | **Shaders** | A shader fill/effect as a frozen still or clip | `/figma` skill (agent, MCP) |
-| **Storyboards** | Scene frames reconstructed as motion — frames read as states, not slides | `/figma` skill (agent) |
+| **Storyboards** | Scene frames reconstructed as motion — frames read as states, not slides | `/figma` skill (agent; REST assets are enough) |
 
-Two transports, split by what Figma exposes: assets, tokens, and components run over the **REST API** (headless, works in CI, generous per-minute rate limits). Motion and shaders exist only on Figma's **MCP server**, so an agent drives those. Every path freezes files locally — **renders never call Figma**.
+Assets, tokens, and components use Figma's **REST API** and can run headlessly.
+Motion and shader data can come through a compatible **Figma connector**; if
+that surface is unavailable, provide a native export instead. Storyboard
+reconstruction uses ordinary frame exports plus the agent's analysis.
 
 ## One-time setup
 
-There are two credentials, and most people only need to set up one to start:
+Most people only need one connection:
 
 | You want to import… | Set up |
 | --- | --- |
 | A logo, image, or a whole frame as HTML (assets, components) | A **token** — Step A below |
 | Brand colors (tokens) | Either works, but on a non-Enterprise plan the **MCP connector** (Step B) gets you there in one click — the token path needs an Enterprise plan for this specific pull |
-| Motion, shaders, or a storyboard | The **MCP connector** only — no token, no setup beyond connecting it |
+| Motion or shaders | A compatible **Figma connector**, or a native export |
+| Storyboard frames | A token for frame exports; no connector is required |
 
 Do both if your project needs everything; each is independent, so it doesn't matter which you set up first.
 
@@ -52,15 +58,20 @@ Needed for anything you run from the `hyperframes figma` CLI.
     export FIGMA_TOKEN="figd_…"
     ```
 
-    Add the line to your shell profile or the project's `.env` so future sessions skip this step. The same token covers every Figma file your account can view.
+    Add the line to your shell profile or the project's `.env` so future
+    sessions skip this step. The token can read files that its Figma account
+    and scopes allow.
   </Step>
 </Steps>
 
-### Step B — Figma MCP connector (motion, shaders, storyboards — and an easier token-free path to brand colors)
+### Step B — Figma connector (motion, shaders, and a token-free path to brand colors)
 
 No token, no scopes to pick — connect it once when your agent asks (a one-click OAuth) and it stays connected.
 
-This is also the easiest way to pull brand colors on **any** Figma plan, including free: the connector's variable-reading tool isn't Enterprise-gated, only rate-limited by plan — Starter/free caps at **6 calls/month**, a paid Full/Dev seat gets 200–600/day. Fine for an occasional brand pull; not for iterating call-by-call.
+This is also a convenient way to read the brand values used by a selection when
+the REST variables endpoint is unavailable on your plan. Connector
+availability and usage limits depend on Figma's current plan and client rules,
+so the agent should batch requests and cache the result.
 
 ## Import an asset
 
@@ -85,7 +96,10 @@ imported image_007 → .media/images/image_007.svg
 hyperframes figma tokens KEY
 ```
 
-Reads the file's variables (or published styles), writes a `figma-tokens.json` sidecar plus a binding index, and prints entries for the composition's `data-composition-variables`. Every scene that references a brand role — instead of a hard-coded hex — is on-brand automatically, and stays on-brand when the file changes.
+Reads the file's variables (or published style metadata), writes a
+`figma-tokens.json` sidecar plus a binding index, and prints entries for the
+composition's `data-composition-variables`. Scenes that reference those roles
+use the same local values. Run `tokens` again when the Figma file changes.
 
 <Tip>
 Import tokens **before** components. That's what lets an imported component's colors link to your brand variables instead of baking duplicate literals.
@@ -112,7 +126,9 @@ These run through the `/figma` agent skill:
 
 - **Motion** — a Figma Motion timeline (keyframes, easing, repeats) translates structurally into a paused, finite GSAP timeline registered on `window.__timelines`, seekable frame-by-frame like any hand-authored animation, and editable afterward. Tracks that can't translate faithfully fall back to a baked video clip — the agent tells you which path it took and why.
 - **Shaders** — Figma's export path doesn't execute shaders, so the default is a native Figma export (PNG or Motion MP4) imported as an asset/clip.
-- **Storyboards** — a section of scene frames is decoded, not slideshowed: frames sharing an element are treated as that element's keyframes over time, diffed into element chains and tweened, with text under the strip read as director notes. When the frames depict one product UI in successive states, the agent escalates further — rebuilds the UI as live DOM and performs each frame delta as a real interaction (cursor, click, navigation), so the result reads as a continuous screen recording. See the `/figma` skill for the full grammar.
+- **Storyboards** — a section of scene frames is decoded, not slideshowed:
+  repeated elements become continuity clues and the differences between frames
+  become motion or interaction. A connector is not required for this path.
 
 ## Provenance and refresh
 
@@ -129,3 +145,9 @@ Every import records where it came from (`fileKey`, `nodeId`, `version`) in `.me
 | `RATE_LIMITED` (429) | Figma's per-minute limit | The client retries with backoff automatically (honoring `Retry-After`); if it still surfaces, wait a minute or batch fewer nodes |
 | "Render timeout" on batch export | Too many large frames in one `/v1/images` call | Chunk to ~4 ids per call |
 | `ref has no node id` | Link points at a file, not a node | Copy the link with `?node-id=…` (right-click layer → Copy link) |
+
+## Related topics
+
+- [Bring a design into a project](/guides/design-tools)
+- [Work on the imported project in Studio](/studio)
+- [Manage project media](/guides/media)

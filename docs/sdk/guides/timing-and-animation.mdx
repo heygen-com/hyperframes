@@ -3,7 +3,7 @@ title: "Timing & Animation"
 description: "Set clip timing, elastic holds, GSAP tweens, and keyframed animations on composition elements."
 ---
 
-Every clip in a HyperFrames composition has a position on the timeline (`data-start`, `data-duration`) and an optional animation attached to it. The SDK exposes typed helpers for both: the timing API controls *when* an element appears and how long it stays on screen; the animation API controls *how* it moves through that window.
+Every clip in a HyperFrames composition has a position on the timeline (`data-start`, `data-duration`) and an optional animation attached to it. The SDK exposes typed helpers for both: the timing API controls _when_ an element appears and how long it stays on screen; the animation API controls _how_ it moves through that window.
 
 ## Clip Timing
 
@@ -31,11 +31,14 @@ Each `ElementTimingSnapshot` contains:
   Absolute timeline position (seconds) at which the element exits.
 </ResponseField>
 <ResponseField name="labels" type="string[]">
-  GSAP timeline label names whose numeric position falls within `[enterAt, exitAt]`. Parsed fresh from the GSAP script on every `getElementTimings()` call — never stale.
+  GSAP timeline label names whose numeric position falls within `[enterAt, exitAt]`. Parsed fresh
+  from the GSAP script on every `getElementTimings()` call — never stale.
 </ResponseField>
 
 <Note>
-  `getElementTimings()` only includes elements that have `data-start` and either `data-duration` or `data-end` attributes. Untimed elements are omitted. The method prefers `data-duration` over `data-end − data-start` when both exist, matching the behavior of `setTiming`.
+  `getElementTimings()` only includes elements that have `data-start` and either `data-duration` or
+  `data-end` attributes. Untimed elements are omitted. The method prefers `data-duration` over
+  `data-end − data-start` when both exist, matching the behavior of `setTiming`.
 </Note>
 
 ### Setting timing on one element
@@ -64,8 +67,8 @@ All three fields are optional — pass only what you want to change:
 ```typescript
 comp.setElementTiming({
   "hf-title": { start: 0.5, duration: 2.0 },
-  "hf-logo":  { start: 0.0, duration: 5.0, trackIndex: 1 },
-  "hf-cta":   { start: 3.0, duration: 2.5 },
+  "hf-logo": { start: 0.0, duration: 5.0, trackIndex: 1 },
+  "hf-cta": { start: 3.0, duration: 2.5 },
 });
 ```
 
@@ -77,9 +80,9 @@ An elastic hold freezes or loops a portion of an element's timeline window. Use 
 
 ```typescript
 comp.setHold("hf-card", {
-  start: 1.5,   // hold begins at this time within the composition
-  end: 4.0,     // hold ends at this time
-  fill: "freeze",  // "freeze" | "loop"
+  start: 1.5, // hold begins at this time within the composition
+  end: 4.0, // hold ends at this time
+  fill: "freeze", // "freeze" | "loop"
 });
 ```
 
@@ -92,7 +95,8 @@ comp.setHold("hf-card", {
   Absolute composition time at which the hold ends.
 </ParamField>
 <ParamField path="fill" type='"freeze" | "loop"'>
-  `"freeze"` holds the last frame until `end`; `"loop"` repeats the segment from `start` back to `start`.
+  `"freeze"` holds the last frame until `end`; `"loop"` repeats the segment from `start` back to
+  `start`.
 </ParamField>
 
 ---
@@ -122,7 +126,9 @@ const animId = comp.addGsapTween("hf-title", {
   The GSAP timeline method to call.
 </ParamField>
 <ParamField path="position" type="number | string">
-  Timeline position: a number (seconds) or a label-relative string (e.g. `"intro+=0.3"`). Number-only is required for `addWithKeyframes` / `replaceWithKeyframes` — see [Keyframes](#keyframes) below.
+  Timeline position: a number (seconds) or a label-relative string (e.g. `"intro+=0.3"`).
+  Number-only is required for `addWithKeyframes` / `replaceWithKeyframes` — see
+  [Keyframes](#keyframes) below.
 </ParamField>
 <ParamField path="duration" type="number">
   Tween duration in seconds.
@@ -195,17 +201,21 @@ if (!check.ok) {
   return;
 }
 
-comp.dispatch({ type: "setGsapTween", animationId: firstAnimId, properties: { ease: "power3.inOut" } });
+comp.dispatch({
+  type: "setGsapTween",
+  animationId: firstAnimId,
+  properties: { ease: "power3.inOut" },
+});
 ```
 
 Stable error codes returned by `can()`:
 
-| Code | Meaning |
-|------|---------|
-| `E_TARGET_NOT_FOUND` | The target `HfId` does not exist in the document. |
-| `E_NO_ROOT` | The document has no root element. |
+| Code                 | Meaning                                                         |
+| -------------------- | --------------------------------------------------------------- |
+| `E_TARGET_NOT_FOUND` | The target `HfId` does not exist in the document.               |
+| `E_NO_ROOT`          | The document has no root element.                               |
 | `E_NO_GSAP_TIMELINE` | Op requires the GSAP parser engine, which is not yet available. |
-| `E_NO_GSAP_SCRIPT` | The composition has no embedded GSAP script. |
+| `E_NO_GSAP_SCRIPT`   | The composition has no embedded GSAP script.                    |
 
 ---
 
@@ -217,12 +227,12 @@ For keyframe-based animations, use `addWithKeyframes` and `replaceWithKeyframes`
 
 ```typescript
 const animId = comp.addWithKeyframes(
-  "#hf-badge",   // CSS selector targeting the element
-  1.0,           // timeline position in seconds (number only)
-  0.8,           // duration in seconds
+  "#hf-badge", // CSS selector targeting the element
+  1.0, // timeline position in seconds (number only)
+  0.8, // duration in seconds
   [
-    { percentage: 0,   properties: { opacity: 0, scale: 0.8 } },
-    { percentage: 60,  properties: { opacity: 1, scale: 1.05 }, ease: "power2.out" },
+    { percentage: 0, properties: { opacity: 0, scale: 0.8 } },
+    { percentage: 60, properties: { opacity: 1, scale: 1.05 }, ease: "power2.out" },
     { percentage: 100, properties: { scale: 1 } },
   ],
   "power2.inOut", // optional overall ease
@@ -234,21 +244,18 @@ Returns the new animation ID string, or `""` if the op was rejected.
 ### Replacing an existing keyframed tween
 
 ```typescript
-const newAnimId = comp.replaceWithKeyframes(
-  oldAnimId,
-  "#hf-badge",
-  1.0,
-  1.2,
-  [
-    { percentage: 0,   properties: { x: -60, opacity: 0 } },
-    { percentage: 100, properties: { x: 0, opacity: 1 }, ease: "back.out(1.7)" },
-  ],
-);
+const newAnimId = comp.replaceWithKeyframes(oldAnimId, "#hf-badge", 1.0, 1.2, [
+  { percentage: 0, properties: { x: -60, opacity: 0 } },
+  { percentage: 100, properties: { x: 0, opacity: 1 }, ease: "back.out(1.7)" },
+]);
 // newAnimId !== oldAnimId — position-derived IDs renumber after the remove
 ```
 
 <Warning>
-  `replaceWithKeyframes` is equivalent to `removeGsapTween` + `addWithKeyframes` in one atomic op. Because position-derived tween IDs renumber after the removal step, the returned ID is always a **new** ID and must not be assumed equal to the input `animationId`. Re-query `element.animationIds` after a replace to get the current set.
+  `replaceWithKeyframes` is equivalent to `removeGsapTween` + `addWithKeyframes` in one atomic op.
+  Because position-derived tween IDs renumber after the removal step, the returned ID is always a
+  **new** ID and must not be assumed equal to the input `animationId`. Re-query
+  `element.animationIds` after a replace to get the current set.
 </Warning>
 
 ### KeyframeSpec fields
@@ -263,7 +270,8 @@ const newAnimId = comp.replaceWithKeyframes(
   Per-keyframe ease applied *from* this keyframe to the next.
 </ParamField>
 <ParamField path="auto" type="boolean">
-  GSAP endpoint flag — when `true`, this keyframe picks up the element's current value automatically.
+  GSAP endpoint flag — when `true`, this keyframe picks up the element's current value
+  automatically.
 </ParamField>
 
 ### Lower-level keyframe and label ops
@@ -274,7 +282,8 @@ For lower-level operations — individual keyframe mutations (`addGsapKeyframe`,
 
 <CardGroup cols={2}>
   <Card title="Edit Operations" icon="code" href="/sdk/reference/edit-operations">
-    Full reference for every op type in the `EditOp` union, including lower-level keyframe and arc ops.
+    Full reference for every op type in the `EditOp` union, including lower-level keyframe and arc
+    ops.
   </Card>
   <Card title="Types" icon="brackets-curly" href="/sdk/reference/types">
     `GsapTweenSpec`, `KeyframeSpec`, `ElasticHold`, `ElementTimingSnapshot`, and all related types.
@@ -282,8 +291,7 @@ For lower-level operations — individual keyframe mutations (`addGsapKeyframe`,
   <Card title="GSAP Animation Guide" icon="wand-magic-sparkles" href="/guides/gsap-animation">
     Authoring GSAP timelines in composition HTML.
   </Card>
-  <Card title="Keyframes Guide" icon="film" href="/guides/keyframes">
+  <Card title="Animation in Studio" icon="film" href="/studio/animation">
     Keyframe authoring patterns and best practices.
   </Card>
 </CardGroup>
-

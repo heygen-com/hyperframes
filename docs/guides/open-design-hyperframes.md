@@ -414,7 +414,7 @@ as the canonical reference and follow its patterns verbatim:
 - HDR / wide-gamut color handling
 - Audio-reactive animation (`hf-seek` + `window.__hfAudio`)
 - Captions / TTS integration
-- The `hyperframes add` registry (50+ blocks and components)
+- The `hyperframes add` registry of blocks and components
 
 This skill stays focused on what Open Design needs at emission time — the
 structural rules, the active-`DESIGN.md` binding, and the 5-dim self-critique

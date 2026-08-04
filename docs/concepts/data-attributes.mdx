@@ -1,111 +1,69 @@
 ---
-title: Data Attributes
-description: "Core attributes for controlling element timing and behavior."
+title: "Time elements with data attributes"
+sidebarTitle: "Data attributes"
+description: "Place clips on the HyperFrames timeline without putting timing logic in JavaScript."
 ---
 
-Hyperframes uses HTML data attributes to control timing, media playback, and [composition](/concepts/compositions) structure. These are the declarative building blocks of every video.
+HyperFrames keeps timing in HTML. A timed element normally needs a stable ID,
+a start, a duration, and a track:
 
-## Timing Attributes
-
-| Attribute | Example | Description |
-|-----------|---------|-------------|
-| `data-start` | `"0"` or `"intro"` | Start time in seconds, or a clip ID reference for [relative timing](#relative-timing) |
-| `data-duration` | `"5"` | Duration in seconds. Required for images and sub-compositions. Optional for video/audio (defaults to source duration). On the **root** composition it sets the total render length (see [Composition Attributes](#composition-attributes)). |
-| `data-track-index` | `"0"` | Timeline track number. Temporal ordering — groups clips into rows on the timeline. Clips on the same track cannot overlap. Does **not** control z-ordering (use CSS `z-index` for that). |
-
-## Media Attributes
-
-| Attribute | Example | Description |
-|-----------|---------|-------------|
-| `data-media-start` | `"2"` | Media playback offset / trim point in seconds. Default: `0` |
-| `data-playback-start` | `"2"` | Source-time offset in seconds for media wrappers and nested composition hosts. Missing values default to `0`; Studio writes this attribute when a composition is trimmed or split. |
-| `data-playback-rate` | `"1.5"` | Source playback multiplier, clamped to `0.1`–`5`. Source time advances by timeline elapsed time multiplied by the canonical rate; invalid values default to `1`. |
-| `data-volume` | `"0.8"` | Audio/video volume, 0 to 1 |
-| `data-has-audio` | `"true"` | Indicates video has an audio track |
-
-## Composition Attributes
-
-| Attribute | Example | Description |
-|-----------|---------|-------------|
-| `data-composition-id` | `"root"` | Unique ID for [composition](/concepts/compositions) wrapper (required on every composition) |
-| `data-width` | `"1920"` | Composition width in pixels |
-| `data-height` | `"1080"` | Composition height in pixels |
-| `data-duration` (root) | `"30"` | On the **root** composition, the total render length / frame count in seconds. Read once from the source HTML at compile time, like `data-width` / `data-height`, so a script or `hyperframes render --variables` cannot change it (author it directly, one value per output). If the root omits `data-duration`, and only then, the renderer derives the total length from the live DOM / timeline after scripts run. |
-| `data-composition-src` | `"./intro.html"` | Path to external [composition](/concepts/compositions) HTML file |
-| `data-variable-values` | `'{"title":"Hello"}'` | JSON object of values passed to a nested composition. Inside the sub-composition, read them via `window.__hyperframes.getVariables()` — the runtime layers these over the sub-comp's own `data-composition-variables` defaults and exposes the merged result on a per-instance basis (the same source can be embedded multiple times with different values). |
-| `data-composition-variables` | `'[{"id":"title","type":"string","label":"Title","default":"Hello"}]'` | JSON array of declared variables (`id`, `type`, `label`, `default`). Drives Studio editing UI and provides defaults read by `window.__hyperframes.getVariables()`. The CLI flag `hyperframes render --variables '<json>'` overrides these defaults at top-level render time; host elements override them per-instance via `data-variable-values`. |
-| `data-var-src` | `"heroImage"` | Binds the element's `src` to a declared variable — the runtime substitutes the value (URL string or image `{url}`) in preview and render; the authored `src` stays as the fallback. |
-| `data-var-text` | `"title"` | Binds the element's own text to a scalar variable. Element children (nested clips, animated spans) are preserved. Scalar variables are also applied as `--{id}` CSS custom properties on the composition root, so `color: var(--accent)` responds to overrides. |
-
-## Element Visibility
-
-Add `class="clip"` to all timed elements so the runtime can manage their visibility lifecycle:
-
-```html index.html
-<h1 id="title" class="clip"
-    data-start="0" data-duration="5" data-track-index="0">
-  Hello World
-</h1>
+```html
+<section id="headline" class="clip" data-start="0" data-duration="3" data-track-index="1">
+  Launch day
+</section>
 ```
 
-## Relative Timing
+| Attribute          | What it controls                                 |
+| ------------------ | ------------------------------------------------ |
+| `data-start`       | When the element enters the composition timeline |
+| `data-duration`    | How long its timeline slot lasts                 |
+| `data-track-index` | Which timeline lane owns that slot               |
 
-Instead of calculating absolute start times, a clip can reference another clip's `id` in its `data-start` attribute. This means "start when that clip ends":
+Add `class="clip"` to timed DOM and image elements so the runtime can control
+their visibility. Video visibility is managed by the media runtime; audio has
+no visual lifecycle.
 
-```html index.html
-<video id="intro" data-start="0" data-duration="10" data-track-index="0" src="..."></video>
-<video id="main" data-start="intro" data-duration="20" data-track-index="0" src="..."></video>
-<video id="outro" data-start="main" data-duration="5" data-track-index="0" src="..."></video>
+## Tracks are not layers
+
+Tracks prevent time ranges from colliding. They do not decide which element is
+in front. Use CSS `z-index` for paint order.
+
+Two clips on one track cannot overlap. Put an intentional overlap, such as a
+crossfade, on separate tracks:
+
+```html
+<video
+  id="intro"
+  data-start="0"
+  data-duration="4"
+  data-track-index="0"
+  src="./intro.mp4"
+  muted
+  playsinline
+></video>
+<section id="result" class="clip" data-start="intro - 0.5" data-duration="3" data-track-index="1">
+  The result
+</section>
 ```
 
-`main` resolves to second 10, `outro` resolves to second 30. If `intro`'s duration changes, downstream clips shift automatically.
+## Start relative to another clip
 
-### Offsets (Gaps and Overlaps)
+A numeric `data-start` is an absolute time in seconds. A clip ID means “start
+when that clip ends.” Add or subtract seconds for a gap or overlap:
 
-Add `+ N` or `- N` after the ID to offset from the end of the referenced clip:
-
-```html index.html
-<!-- 2-second gap after intro -->
-<video id="scene-a" data-start="intro + 2" data-duration="20"
-       data-track-index="0" src="..."></video>
-
-<!-- 0.5-second overlap with intro (crossfade) -->
-<video id="scene-b" data-start="intro - 0.5" data-duration="20"
-       data-track-index="1" src="..."></video>
+```html
+data-start="intro" data-start="intro + 0.5" data-start="intro - 0.5"
 ```
 
-<Note>
-  Overlapping clips must be on different tracks -- clips on the same track cannot overlap in time.
-</Note>
+References resolve only inside the same composition. The referenced clip must
+have a known duration, and reference chains cannot contain a cycle.
 
-<Accordion title="Relative timing rules and constraints">
-  **Same composition only** -- references resolve within the clip's parent [composition](/concepts/compositions). You cannot reference a clip in a sibling or parent composition.
+## Media and nested compositions
 
-  **No circular references** -- A cannot start after B if B starts after A. The resolver detects cycles and throws an error.
+Media can also declare a source offset, playback rate, and volume. A nested
+composition adds a source path and its own fixed timeline window. These are
+exact contracts rather than new timing models.
 
-  **Referenced clip must have a known duration** -- either an explicit `data-duration` or a duration inferred from source media. If the referenced clip has no known duration, the reference cannot resolve.
-
-  **Parsing rules** -- if the value is a valid number, it is treated as absolute seconds. Otherwise it is parsed as one of:
-  - `<id>` -- start when that clip ends
-  - `<id> + <number>` -- start N seconds after that clip ends
-  - `<id> - <number>` -- start N seconds before that clip ends
-
-  **Chain length** -- references can chain (`A` -> `B` -> `C`), but deeply nested chains make the timeline harder to reason about. Keep chains under 3-4 levels for readability.
-</Accordion>
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
-    How compositions use data attributes to define video structure
-  </Card>
-  <Card title="HTML Schema Reference" icon="book" href="/reference/html-schema">
-    Complete attribute reference with per-element details
-  </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
-    Animate elements alongside data-attribute-driven timing
-  </Card>
-  <Card title="Common Mistakes" icon="triangle-exclamation" href="/guides/common-mistakes">
-    Pitfalls to avoid when setting up timing and attributes
-  </Card>
-</CardGroup>
+Use the [HTML schema reference](/reference/html-schema) for every supported
+attribute and element-specific rule. Use [Compositions](/concepts/compositions)
+to decide when a scene should become a separate composition.

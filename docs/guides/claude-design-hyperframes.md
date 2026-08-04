@@ -523,7 +523,7 @@ composition with `-c` rather than as a bare path.
 npx hyperframes render -o output.mp4
 ```
 
-1920x1080 / 30fps by default. Use `--fps 60` or `--resolution 3840x2160` to override.
+1920x1080 / 30fps by default. Use `--fps 60` or `--resolution 4k` to override.
 ````
 
 ### Skeleton A -- Social Reel (1080x1920, 15s, 6 scenes)
@@ -1231,8 +1231,8 @@ tl.to("#s5-headline", { backgroundSize: "100% 30%", duration: 0.6, ease: "power2
 Everything critical is inlined above. These are for edge cases:
 
 - Core composition contract (data attributes, sub-comp wiring): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/SKILL.md
-- Motion theory (easing as emotion, direction rules): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/motion-principles.md
-- Typography (full banned list, weight contrast, OpenType): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/typography.md
-- Transitions (shader catalog, CSS transition patterns): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/transitions.md
-- Captions synced to audio: https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/captions.md
+- Motion theory (easing as emotion, direction rules): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-creative/references/motion-principles.md
+- Typography (full banned list, weight contrast, OpenType): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-creative/references/typography.md
+- Transitions (shader catalog, CSS transition patterns): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-animation/transitions/overview.md
+- Captions synced to audio: https://github.com/heygen-com/hyperframes/blob/main/skills/embedded-captions/SKILL.md
 - Full docs: https://hyperframes.heygen.com/

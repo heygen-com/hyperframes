@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.90",
+  "version": "0.7.91",
   "description": "",
   "repository": {
     "type": "git",
@@ -28,6 +28,18 @@
       "types": "./src/index.ts"
     },
     "./package.json": "./package.json",
+    "./canary": {
+      "bun": "./src/canary.ts",
+      "node": "./dist/canary.js",
+      "import": "./src/canary.ts",
+      "types": "./src/canary.ts"
+    },
+    "./canary-registry": {
+      "bun": "./src/canaryRegistry.ts",
+      "node": "./dist/canaryRegistry.js",
+      "import": "./src/canaryRegistry.ts",
+      "types": "./src/canaryRegistry.ts"
+    },
     "./beats": {
       "bun": "./src/beats/index.ts",
       "node": "./dist/beats/index.js",
@@ -298,6 +310,14 @@
         "types": "./dist/index.d.ts"
       },
       "./package.json": "./package.json",
+      "./canary": {
+        "import": "./dist/canary.js",
+        "types": "./dist/canary.d.ts"
+      },
+      "./canary-registry": {
+        "import": "./dist/canaryRegistry.js",
+        "types": "./dist/canaryRegistry.d.ts"
+      },
       "./beats": {
         "import": "./dist/beats/index.js",
         "types": "./dist/beats/index.d.ts"

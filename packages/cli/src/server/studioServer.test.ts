@@ -77,3 +77,46 @@ describe("createStudioServer autoProxy plumbing", () => {
     await expect(response.json()).resolves.toMatchObject({ browserGpuMode: "software" });
   });
 });
+
+describe("host guarding on identity-bearing responses", () => {
+  const dirs: string[] = [];
+  let server: StudioServer | undefined;
+
+  function tmpProject(): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-studio-host-test-"));
+    dirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    server?.watcher.close();
+    server = undefined;
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // NOTE: the SPA-injection branch itself is covered in telemetryIdentity.test.ts
+  // via buildStudioHeadScriptsForHost. It cannot be asserted here: this route
+  // only reaches the injection branch when packages/studio/dist is built,
+  // which is true locally and false in the CI test lane, so a route-level
+  // assertion on the returned HTML passes on a dev box and fails in CI.
+
+  it("refuses the identity endpoint for a hostile Host", async () => {
+    server = createStudioServer({ projectDir: tmpProject() });
+    const res = await server.app.request("/api/telemetry-identity", {
+      headers: { host: "evil.example.com" },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('distinctId":"');
+  });
+
+  it("serves the identity endpoint on a loopback Host", async () => {
+    server = createStudioServer({ projectDir: tmpProject() });
+    const res = await server.app.request("/api/telemetry-identity", {
+      headers: { host: "127.0.0.1:5173" },
+    });
+    expect(res.status).toBe(200);
+    // The seed is no longer served here at all — Studio gets decisions
+    // injected instead, so nothing needs it over HTTP.
+    expect(Object.keys((await res.json()) as object)).toEqual(["distinctId"]);
+  });
+});

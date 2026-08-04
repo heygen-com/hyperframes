@@ -57,9 +57,9 @@ const recordResolverParity = vi.fn<(...args: unknown[]) => Promise<void>>(async 
 const capturedOnReorderShadow: { fn: ((targets: string[]) => void) | undefined } = {
   fn: undefined,
 };
-
 const domEditSelectionRef: { current: DomEditSelection | null } = { current: null };
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
+
 vi.mock("../utils/sdkResolverShadow", () => ({
   runResolverShadow: vi.fn(),
   recordResolverParity: (...args: unknown[]) => recordResolverParity(...args),

@@ -9,9 +9,11 @@
  */
 
 import {
+  rewriteAssetPath,
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
+  type AssetExists,
 } from "./rewriteSubCompPaths";
 import { queryByAttr } from "../utils/cssSelector";
 import {
@@ -102,6 +104,15 @@ export interface InlineSubCompositionsOptions {
   scriptErrorLabel?: string;
 
   /**
+   * Probe for "does this project-root-relative path exist?". Supplied by
+   * callers that can see the filesystem so a sub-composition's SIBLING asset
+   * refs (`<link href="_shared.css">` next to the composition) resolve against
+   * its own directory instead of 404ing at the project root. Omit it and plain
+   * relative paths pass through unchanged. See `AssetExists`.
+   */
+  assetExists?: AssetExists;
+
+  /**
    * Log a warning when a composition file cannot be resolved. `reason` is a
    * short, human-readable explanation (e.g. "the file is empty (0 bytes or
    * whitespace-only)") from `checkSubCompositionUsability` — present for
@@ -169,6 +180,7 @@ export function inlineSubCompositions(
     buildScopeSelector = defaultBuildScopeSelector,
     scriptErrorLabel = "[HyperFrames] composition script error:",
     onMissingComposition,
+    assetExists,
   } = options;
 
   const styles: string[] = [];
@@ -264,11 +276,17 @@ export function inlineSubCompositions(
       }
     }
 
+    // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
+    // need the same directory rewrite the body's [src]/[href] pass applies —
+    // without it even the documented `../` form escapes the project and 404s.
+    const resolveSubAssetPath = (raw: string | null): string =>
+      rewriteAssetPath(src, (raw || "").trim(), assetExists);
+
     // Scope one sub-composition <style> body. scopeRootSelectors keeps the
     // sub-comp's html/body/:root rules from clobbering the host document (they
     // are remapped to the composition box); see compositionScoping.
     const scopeSubStyle = (raw: string): string => {
-      const css = rewriteCssAssetUrls(raw, src);
+      const css = rewriteCssAssetUrls(raw, src, assetExists);
       return scopeCompId
         ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
             compoundAuthoredRoot: compoundAuthoredRoot === true,
@@ -286,7 +304,7 @@ export function inlineSubCompositions(
         styles.push(scopeSubStyle(s.textContent || ""));
       }
       for (const s of [...compDoc.head.querySelectorAll("script")]) {
-        const externalSrc = (s.getAttribute("src") || "").trim();
+        const externalSrc = resolveSubAssetPath(s.getAttribute("src"));
         if (externalSrc) {
           if (!externalScriptSrcs.includes(externalSrc)) {
             externalScriptSrcs.push(externalSrc);
@@ -297,7 +315,7 @@ export function inlineSubCompositions(
       for (const link of [
         ...compDoc.head.querySelectorAll('link[rel="stylesheet"], link[rel="preconnect"]'),
       ]) {
-        const href = (link.getAttribute("href") || "").trim();
+        const href = resolveSubAssetPath(link.getAttribute("href"));
         if (href && !seenLinkHrefs.has(href)) {
           seenLinkHrefs.add(href);
           const rel = (link.getAttribute("rel") || "").trim();
@@ -317,7 +335,7 @@ export function inlineSubCompositions(
 
     // Extract scripts from content
     for (const s of [...contentDoc.querySelectorAll("script")]) {
-      const externalSrc = (s.getAttribute("src") || "").trim();
+      const externalSrc = resolveSubAssetPath(s.getAttribute("src"));
       if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
@@ -352,6 +370,7 @@ export function inlineSubCompositions(
       (el: Element, attr: string, val: string) => {
         el.setAttribute(attr, val);
       },
+      assetExists,
     );
 
     if (rewriteInlineStyles) {
@@ -365,6 +384,7 @@ export function inlineSubCompositions(
         (el: Element, val: string) => {
           el.setAttribute("style", val);
         },
+        assetExists,
       );
     }
 

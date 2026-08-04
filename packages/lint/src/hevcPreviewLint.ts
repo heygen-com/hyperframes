@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import {
@@ -92,7 +94,9 @@ export function collectLocalVideoCandidates(
       const src = cleanAssetUrl(rawSrc);
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
-      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      const rootRelative = compSrcPath
+        ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
+        : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (!resolvedAsset) continue;
       if (!candidates.has(resolvedAsset.resolved)) candidates.set(resolvedAsset.resolved, src);

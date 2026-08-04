@@ -602,6 +602,55 @@ describe("POST /projects/:id/render — telemetryDistinctId forwarding", () => {
     }
   });
 
+  // Explicit suppression, forwarded so the CLI can honour a browser opt-out
+  // it has no other way to observe.
+  it("forwards an explicit telemetryOptOut", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          telemetryOptOut: true,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].telemetryOptOut).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // An old client omits the flag, and a non-boolean is not a signal either.
+  // Defaulting those to "opted out" would silently drop every pre-upgrade
+  // render outcome.
+  it.each([undefined, false, "true"])(
+    "treats telemetryOptOut %s as not opted out",
+    async (flag) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            fps: 30,
+            quality: "standard",
+            format: "mp4",
+            telemetryOptOut: flag,
+          }),
+        });
+        expect(spy.mock.calls[0][0].telemetryOptOut).toBe(false);
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
   it("ignores a non-string telemetryDistinctId", async () => {
     const spy = vi.fn();
     const { app, cleanup } = buildApp(spy);

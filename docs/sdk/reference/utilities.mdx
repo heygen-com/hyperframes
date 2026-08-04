@@ -289,10 +289,13 @@ import { readVariableDefault } from "@hyperframes/sdk";
 ### readVariableDefault
 
 ```typescript
-function readVariableDefault(document: Document, id: string): unknown;
+function readVariableDefault(declarationElement: Element | null, id: string): unknown;
 ```
 
-Read a declared variable's current `default` value directly from the document's `data-composition-variables` schema attribute, bypassing the session layer. This is the same function `comp.getVariableValue()` calls internally; prefer the typed `Composition` method in session code — use this only when you're working against a raw `Document` outside of an open session (matching `buildDocument`/`buildRoots`'s "same functions the SDK uses internally" pattern above).
+Read a declared variable's current `default` value from the element that carries
+`data-composition-variables`: normally `<html>` for a full document or the composition root for a
+template/fragment. Prefer the typed `Composition` method in session code; use this helper when you
+already have the declaration element.
 
 ---
 
@@ -393,4 +396,3 @@ Determines which editing operations are available for a live element given its c
     Wiring a PersistAdapter, handling errors, and restoring from version history.
   </Card>
 </CardGroup>
-

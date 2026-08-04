@@ -15,7 +15,6 @@ import {
 } from "../utils/sdkCutover";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
-import { idFromSelector } from "./gsapShared";
 import {
   clearKeyframeCacheForElement,
   readKeyframeSnapshot,
@@ -336,11 +335,9 @@ export function useGsapKeyframeOps({
   const removeAllKeyframes = useCallback(
     async (selection: DomEditSelection, animationId: string) => {
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      // remove-all-keyframes collapses the tween to a static hold and the commit
-      // path doesn't return parsed animations, so the keyframe cache is never
-      // refreshed — clear it here so the timeline diamonds disappear immediately.
-      const elementId = selection.id ?? idFromSelector(selection.selector);
-      if (elementId) clearKeyframeCacheForElement(targetPath, elementId);
+      // A class/descendant selector can resolve a live element whose selection
+      // deliberately has no id. The cache is still keyed by that DOM id.
+      const cacheElementId = selection.id || selection.element?.id;
       if (sdkSession && sdkDeps) {
         const handled = await sdkGsapRemoveAllKeyframesPersist(
           targetPath,
@@ -349,12 +346,26 @@ export function useGsapKeyframeOps({
           sdkDeps,
           { label: "Remove all keyframes" },
         );
-        if (cutoverCommittedOrThrow(handled)) return;
+        if (cutoverCommittedOrThrow(handled)) {
+          if (cacheElementId) clearKeyframeCacheForElement(targetPath, cacheElementId);
+          return;
+        }
       }
-      commitMutationSafely(
+      await commitMutationSafely(
         selection,
         { type: "remove-all-keyframes", animationId },
-        { label: "Remove all keyframes", softReload: true },
+        {
+          label: "Remove all keyframes",
+          softReload: true,
+          // The committed result is the single success boundary: clearing
+          // before it makes failed saves lie, while waiting for the reload leaves
+          // stale diamonds visible during the source round-trip.
+          onResult: (result) => {
+            if (result.changed !== false && cacheElementId) {
+              clearKeyframeCacheForElement(targetPath, cacheElementId);
+            }
+          },
+        },
       );
     },
     [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],

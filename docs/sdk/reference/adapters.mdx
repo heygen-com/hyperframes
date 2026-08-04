@@ -271,7 +271,9 @@ const comp = await openComposition(html, {
 ```
 
 <Note>
-  `openComposition` defaults to a headless preview adapter when none is supplied, so you rarely need to pass it explicitly. The main use case is making the intent clear in code that runs in both headless and browser environments.
+  `openComposition` does not create a preview adapter automatically. Omit `preview` when no preview
+  surface is needed, or pass `createHeadlessAdapter()` when an explicit no-op adapter makes shared
+  code clearer.
 </Note>
 
 ---
@@ -299,20 +301,22 @@ Returns a `PreviewAdapter` that bridges the SDK to a same-origin `<iframe>` cont
 import { openComposition, createIframePreviewAdapter } from "@hyperframes/sdk";
 
 const iframe = document.querySelector<HTMLIFrameElement>("#preview-frame")!;
-
-const comp = await openComposition(html);
-
-const preview = createIframePreviewAdapter(iframe, (op) => comp.dispatch(op));
+// Optional, and dispatched with `?.` — the callback cannot fire before
+// openComposition() resolves, but strict TypeScript cannot prove that and
+// rejects a definite `let` captured before assignment (TS2454).
+let comp: Awaited<ReturnType<typeof openComposition>> | undefined;
+const preview = createIframePreviewAdapter(iframe, (op) => comp?.dispatch(op));
+comp = await openComposition(html, { preview });
 
 // Hit-test at pointer position
 const hit = preview.elementAtPoint(pointerX, pointerY);
 if (hit) {
   preview.select([hit.id]);
-}
 
-// Drag: call applyDraft at 60fps, commitPreview on pointer-up
-preview.applyDraft(hit.id, { dx: 12, dy: -5 });
-preview.commitPreview();
+  // Drag: call applyDraft at 60fps, commitPreview on pointer-up
+  preview.applyDraft(hit.id, { dx: 12, dy: -5 });
+  preview.commitPreview();
+}
 ```
 
 ---

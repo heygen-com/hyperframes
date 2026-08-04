@@ -53,6 +53,82 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("focused ease requests", () => {
+    it("stamps the current project session and only lets its nonce clear it", () => {
+      const store = usePlayerStore.getState();
+      store.beginTimelineSession("project-a");
+      store.setSelectedElementId("index.html#hero");
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "animation-a",
+        tweenPercentage: 50,
+      });
+      const first = usePlayerStore.getState().focusedEaseSegment;
+      if (!first) throw new Error("expected focused ease request");
+      expect(first.projectId).toBe("project-a");
+      expect(first.sessionEpoch).toBeGreaterThan(0);
+      expect(first.nonce).toBeGreaterThan(0);
+
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "animation-a",
+        tweenPercentage: 75,
+      });
+      const second = usePlayerStore.getState().focusedEaseSegment;
+      if (!second) throw new Error("expected replacement request");
+      expect(second.nonce).toBe(first.nonce + 1);
+
+      store.clearFocusedEaseSegment(first.nonce);
+      expect(usePlayerStore.getState().focusedEaseSegment).toBe(second);
+      store.clearFocusedEaseSegment(second.nonce);
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    });
+
+    it("clears a pending request when the project session changes", () => {
+      const store = usePlayerStore.getState();
+      store.beginTimelineSession("project-a");
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "animation-a",
+        tweenPercentage: 50,
+      });
+
+      store.beginTimelineSession("project-b");
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    });
+
+    it("does not revive an old request after selecting away and back", () => {
+      const store = usePlayerStore.getState();
+      store.setSelectedElementId("index.html#a");
+      store.setFocusedEaseSegment({
+        elementId: "index.html#a",
+        animationId: "animation-a",
+        tweenPercentage: 50,
+      });
+
+      store.setSelectedElementId("index.html#b");
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+      store.setSelectedElementId("index.html#a");
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    });
+
+    it("invalidates on a genuine selection-anchor change but not a same-anchor echo", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(new Set(["index.html#a", "index.html#b"]), "index.html#a");
+      store.setFocusedEaseSegment({
+        elementId: "index.html#a",
+        animationId: "animation-a",
+        tweenPercentage: 50,
+      });
+      const request = usePlayerStore.getState().focusedEaseSegment;
+
+      store.setSelectionAnchor("index.html#a");
+      expect(usePlayerStore.getState().focusedEaseSegment).toBe(request);
+      store.setSelectionAnchor("index.html#b");
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    });
+  });
+
   describe("setIsPlaying", () => {
     it("sets isPlaying to true", () => {
       usePlayerStore.getState().setIsPlaying(true);

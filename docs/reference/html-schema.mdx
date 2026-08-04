@@ -1,270 +1,309 @@
 ---
-title: HTML Schema Reference
-description: "Complete reference for authoring Hyperframes HTML compositions."
+title: "HTML schema reference"
+description: "The current contract for a HyperFrames composition."
 ---
 
-This is the full schema reference for Hyperframes compositions. For a gentler introduction, see [Compositions](/concepts/compositions) and [Data Attributes](/concepts/data-attributes).
+HyperFrames uses normal HTML and CSS for appearance. A small set of attributes
+declares the frame size, duration, clips, media, and nested compositions.
 
-## Overview
+For a gentler explanation, start with [Compositions](/concepts/compositions) and
+[Data attributes](/concepts/data-attributes).
 
-Hyperframes uses HTML as the source of truth for describing a video:
-
-- **HTML clips** = video, image, audio, composition
-- **[Data attributes](/concepts/data-attributes)** = timing, metadata, styling
-- **CSS** = positioning and appearance
-- **GSAP timeline** = animations and playback sync (see [GSAP Animation](/guides/gsap-animation))
-
-## Framework-Managed Behavior
-
-The framework reads data attributes and automatically manages:
-
-- **Primitive clip timeline entries** — reads `data-start`, `data-duration`, and `data-track-index` from clips and adds them to the GSAP timeline
-- **Media playback** (play, pause, seek) for `<video>` and `<audio>`
-- **Clip lifecycle** — clips are mounted/unmounted based on `data-start` and `data-duration`
-- **Timeline synchronization** — keeps media in sync with the GSAP master timeline
-- **Media loading** — waits for all media to load before resolving timing
-
-Mounting/unmounting controls **presence**, not appearance. Transitions (fade in, slide in) are animated in scripts.
-
-<Warning>
-  Do not manually call `video.play()`, `video.pause()`, set `audio.currentTime`, or mount/unmount clips in scripts. The framework owns media playback and clip lifecycle. See [Common Mistakes](/guides/common-mistakes) for more details.
-</Warning>
-
-## Viewport
-
-Every composition must include `data-width` and `data-height` on the root element:
+## Minimal composition
 
 ```html
-<div id="main" data-composition-id="my-video"
-     data-start="0" data-width="1920" data-height="1080">
-  <!-- clips -->
-</div>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      body { margin: 0; }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="title-card"
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="1"
+      >
+        <h1 id="title">Hello HyperFrames</h1>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const timeline = gsap.timeline({ paused: true });
+      timeline.fromTo(
+        "#title",
+        { y: 48, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" },
+        0.2,
+      );
+      window.__timelines.main = timeline;
+    </script>
+  </body>
+</html>
 ```
 
-Common sizes:
-- **Landscape**: `data-width="1920" data-height="1080"`
-- **Portrait**: `data-width="1080" data-height="1920"`
+The root is a real, explicitly sized box. Its `data-composition-id` matches the
+timeline registry key.
 
-## All Clip Attributes
+## Composition root
 
-| Attribute | Applies To | Required | Description |
-|-----------|-----------|----------|-------------|
-| `id` | All | Yes | Unique identifier (e.g., `"el-1"`). Used for relative timing references and CSS targeting. |
-| `class="clip"` | Visible elements | Yes | Enables runtime visibility management. Omit for audio-only clips. |
-| `data-start` | All | Yes | Start time in seconds (e.g., `"0"`, `"5.5"`), or a clip ID reference for [relative timing](#relative-timing) (e.g., `"intro"`). |
-| `data-duration` | video, img, audio, nested composition hosts | See below | Timeline slot duration in seconds. **Required** for images and nested composition hosts. Optional for video/audio (defaults to source duration). |
-| `data-track-index` | All | Yes | Timeline track number. Controls z-ordering (higher = in front). Clips on the same track cannot overlap. |
-| `data-media-start` | video, audio | No | Playback offset / trim point in source file (seconds). Default: `0`. See [Data Attributes](/concepts/data-attributes). |
-| `data-playback-start` | video, audio, composition | No | Source-time offset in seconds. On a nested composition, this is the child timeline time shown at the host's `data-start`. Default: `0`. |
-| `data-playback-rate` | video, audio, composition | No | Source playback multiplier clamped to `0.1`–`5`. Invalid values default to `1`. |
-| `data-volume` | audio, video | No | Volume level from `0` to `1`. Default: `1`. |
-| `data-composition-id` | div | On compositions | Unique composition ID. Must match the key used in `window.__timelines`. |
-| `data-composition-src` | div | No | Path to external composition HTML file (for [nested compositions](#composition-clips)). |
-| `data-variable-values` | div | No | JSON object of values passed to a nested composition. Read via `getVariables()` in scripts, or consumed automatically by declarative bindings. |
-| `data-var-src` | img, video, audio | No | Binds the element's `src` to a declared variable id — the runtime substitutes the value (URL string or image `{url}`); the authored `src` is the fallback. |
-| `data-var-text` | any | No | Binds the element's own text to a scalar variable id. Element children are preserved. |
-| `data-color-grading` | img, video | No | Validated JSON payload for media-level correction, grading, LUT, finishing, and shader effects. Prefer Studio or `hyperframes media-treatment` to author it. |
-| `data-width` | div | On compositions | Composition width in pixels. |
-| `data-height` | div | On compositions | Composition height in pixels. |
+| Attribute | Required | Meaning |
+| --- | --- | --- |
+| `data-composition-id` | Yes | Unique composition ID |
+| `data-start="0"` | Yes on the top-level root | Start of the composition |
+| `data-width` and `data-height` | Yes | Authored frame dimensions in pixels |
+| `data-duration` | Usually | Total render duration in seconds |
+| `data-no-timeline` | Only for a timeline-free composition | Tells the runtime not to wait for a timeline |
 
-## Clip Types
+An explicit root `data-duration` is the render length. The compiler reads it
+before composition scripts run, so a script or variable override cannot change
+that value for the same render.
 
-<AccordionGroup>
-  <Accordion title="Video Clips">
-    Video clips embed `<video>` elements with timing and playback attributes.
+The root may omit `data-duration` only when HyperFrames can infer a finite
+duration from the registered animation runtime or timed media. Three.js,
+unbounded animation, and timeline-free compositions need an explicit duration.
 
-    ```html
-    <video
-      id="el-1"
-      data-start="0"
-      data-duration="15"
-      data-track-index="0"
-      data-media-start="0"
-      src="./assets/video.mp4"
-    ></video>
-    ```
+## Timed clips
 
-    **Key behavior:**
-    - `data-duration` is **optional** — defaults to the remaining duration of the source file from `data-media-start`
-    - If source media runs out before `data-duration`, the clip shows the last frame (freeze frame)
-    - `data-media-start` trims the beginning of the source video — `data-media-start="5"` starts playback 5 seconds into the source file
-    - `data-volume` controls the audio volume of the video — set to `"0"` for silent video
-    - Do **not** add `class="clip"` to video elements — the framework manages their visibility directly
+| Attribute | Required | Meaning |
+| --- | --- | --- |
+| `id` | Yes | Stable identifier for timing, editing, and animation |
+| `data-start` | Yes | Start in seconds or a relative timing expression |
+| `data-duration` | Yes for DOM, image, and nested-composition clips | Visible slot length in seconds |
+| `data-track-index` | Yes | Timeline lane used to prevent temporal overlap |
+| `class="clip"` | Yes for authored timed DOM and image elements | Lets the runtime own their visibility window |
 
-    <Warning>
-      Do not animate `width`, `height`, `top`, or `left` directly on `<video>` elements with GSAP. This can cause Chrome to stop rendering video frames. Wrap the video in a `<div>` and animate the wrapper instead. See [Common Mistakes](/guides/common-mistakes).
-    </Warning>
-  </Accordion>
+`data-track-index` does not control paint order. Use CSS `z-index` for
+front-to-back layering. Two clips on the same track must not overlap in time.
 
-  <Accordion title="Image Clips">
-    Image clips display static images with controlled timing.
+Video visibility is managed as media and does not require `class="clip"`.
+Audio has no visual lifecycle.
 
-    ```html
-    <img
-      id="el-2"
-      class="clip"
-      data-start="5"
-      data-duration="4"
-      data-track-index="1"
-      src="./assets/overlay.png"
-    />
-    ```
+## Media
 
-    **Key behavior:**
-    - `data-duration` is **required** for images (unlike video/audio, there is no source duration to default to)
-    - `class="clip"` is **required** — this enables the runtime to show/hide the image based on timing
-    - Supported formats: PNG, JPG, WebP, SVG, GIF. Animated GIFs are prepared as timeline-synced video for preview and render; `data-loop` can override GIF loop metadata.
-    - Position and size with CSS — the image renders at its natural size unless styled otherwise
-  </Accordion>
-
-  <Accordion title="Audio Clips">
-    Audio clips add sound to the composition without any visual element.
-
-    ```html
-    <audio
-      id="el-4"
-      data-start="0"
-      data-duration="30"
-      data-track-index="2"
-      src="./assets/music.mp3"
-    ></audio>
-    ```
-
-    **Key behavior:**
-    - `data-duration` is **optional** — defaults to the remaining duration of the source file from `data-media-start`
-    - Audio clips are invisible — do not add `class="clip"` (there is nothing to show/hide)
-    - `data-volume` controls volume — use `"0.5"` for background music at 50% volume
-    - `data-media-start` trims the beginning of the audio source, just like video
-    - Multiple audio clips can overlap on different tracks for layered sound design
-  </Accordion>
-
-  <Accordion title="Composition Clips (Nested)">
-    Composition clips embed one composition inside another, enabling modular, reusable video building blocks.
-
-    ```html
-    <div
-      id="el-5"
-      data-composition-id="intro-anim"
-      data-composition-src="compositions/intro-anim.html"
-      data-start="0"
-      data-track-index="3"
-    ></div>
-    ```
-
-    **Key behavior:**
-    - Compositions do **not** use `data-duration` — duration is determined by the composition's GSAP timeline (`tl.duration()`)
-    - External compositions are loaded from `data-composition-src` and wrapped in `<template>` tags
-    - Each nested composition has its own `window.__timelines` entry, registered by its own `<script>` block
-    - The framework automatically nests sub-timelines — do not manually add them to the parent timeline
-    - Any composition can be nested inside any other — there is no special "root" type
-    - Per-instance values can be passed with `data-variable-values`; sub-composition scripts read them via `getVariables()`, and `data-var-*` bindings / `var(--id)` CSS resolve them automatically
-
-    For more on how compositions work, see [Compositions](/concepts/compositions).
-  </Accordion>
-</AccordionGroup>
-
-## Media Treatments
-
-Real `<img>` and `<video>` elements may carry a `data-color-grading` payload:
-
-```html index.html
+```html
 <video
-  id="hero"
-  src="assets/hero.mp4"
+  id="demo"
+  src="./assets/demo.mp4"
   data-start="0"
+  data-duration="8"
   data-track-index="0"
   muted
   playsinline
+></video>
+```
+
+| Attribute | Applies to | Meaning |
+| --- | --- | --- |
+| `data-media-start` | Video and audio | Offset into the source file |
+| `data-playback-start` | Video, audio, nested composition | Source-time offset used by trim and split operations |
+| `data-playback-rate` | Video, audio, nested composition | Playback multiplier from `0.1` to `5` |
+| `data-volume` | Video and audio | Static volume from `0` to `1` |
+| `data-has-audio="true"` | Video | Declares that the video contributes audio |
+
+Video and audio may omit `data-duration` when their intrinsic duration is known
+and the whole remaining source should play.
+
+Do not imperatively call `play()`, `pause()`, or set `currentTime`.
+HyperFrames owns media playback and seeking. A video should be `muted` unless it
+is intentionally audible and declares `data-has-audio="true"`.
+
+Media can live inside nested composition markup. Keep element IDs unique across
+the assembled project because render-time frame injection targets those IDs.
+
+## Color grading and media effects
+
+Studio and the CLI store color correction, grading, finishing controls, LUTs,
+and media effects on an image or video with `data-color-grading`:
+
+```html
+<video
+  id="demo"
+  src="./assets/demo.mp4"
   data-color-grading='{
-    "preset":"clean-studio",
-    "intensity":0.8,
-    "adjust":{"highlights":-0.08,"shadows":0.06},
-    "effects":{"bloom":0.12},
-    "colorSpace":"rec709"
+    "preset": "clean-studio",
+    "intensity": 0.8,
+    "adjust": { "highlights": -0.08, "shadows": 0.06 },
+    "details": { "grain": 0.12, "vignette": 0.08 },
+    "effects": { "bloom": 0.12 },
+    "colorSpace": "rec709"
   }'
 ></video>
 ```
 
-The runtime renders the complete payload on a sibling WebGL canvas. It does not
-apply to text, SVG, arbitrary DOM, or CSS background images. Use Studio or
+The current effect families include essentials, retro and glitch, print, and
+art treatments. Run
+`npx hyperframes media-treatment --capabilities --json` for the current
+machine-readable surface instead of hard-coding an old effect list.
+
+The grading pipeline applies to real `<img>` and `<video>` elements. It does
+not grade a complete HTML scene. Use Studio or
 [`media-treatment`](/packages/cli#media-treatment) for normal authoring; see
 [Color Grading](/guides/color-grading) and [Media Effects](/guides/media-effects)
-for the supported workflow and current SDR/HDR boundary.
+for the workflow and current SDR/HDR boundary.
 
-## Relative Timing
+## Relative timing
 
-Reference another clip's ID in `data-start` to mean "start when that clip ends":
-
-```html
-<video id="intro" data-start="0" data-duration="10" data-track-index="0" src="..."></video>
-<video id="main" data-start="intro" data-duration="20" data-track-index="0" src="..."></video>
-```
-
-`main` starts at second 10 (when `intro` ends).
-
-**Offsets** let you add gaps or overlaps:
+A non-numeric `data-start` refers to the end of another clip in the same
+composition:
 
 ```html
-<!-- 2-second gap after intro -->
-<video id="main" data-start="intro + 2" data-duration="20" data-track-index="0" src="..."></video>
+<video
+  id="intro"
+  data-start="0"
+  data-duration="4"
+  data-track-index="0"
+  src="./intro.mp4"
+  muted
+  playsinline
+></video>
 
-<!-- 0.5-second overlap with intro -->
-<video id="main" data-start="intro - 0.5" data-duration="20" data-track-index="0" src="..."></video>
+<section
+  id="result"
+  class="clip"
+  data-start="intro + 0.5"
+  data-duration="3"
+  data-track-index="0"
+>
+  Result
+</section>
 ```
 
-For a deeper explanation, see the [relative timing section](/concepts/data-attributes#relative-timing) in the Data Attributes concept page.
+Supported forms are `clip-id`, `clip-id + seconds`, and
+`clip-id - seconds`. References stay within one composition, must resolve to a
+known duration, and cannot form a cycle. Put intentional overlaps on different
+tracks.
 
-## Timeline Contract
+## Nested compositions
 
-The framework initializes `window.__timelines = {}` before any scripts run. Every composition must register a GSAP timeline at the key matching its `data-composition-id`:
-
-```javascript
-const tl = gsap.timeline({ paused: true });
-
-// Add animations
-tl.to("#title", { opacity: 1, duration: 0.5 }, 0);
-tl.to("#title", { opacity: 0, duration: 0.5 }, 4.5);
-
-// Register the timeline
-window.__timelines["<data-composition-id>"] = tl;
-```
-
-### Rules
-
-- Every composition needs a `<script>` block that creates and registers its timeline
-- All timelines must start paused (`{ paused: true }`)
-- The framework auto-nests sub-timelines into the parent — do **not** manually add them
-- Duration comes from `tl.duration()` — do **not** add `data-duration` on composition elements
-- Timelines must be finite (no infinite loops or repeats)
-- The timeline ID must exactly match the `data-composition-id` attribute on the root element
-
-For a complete guide to working with GSAP timelines, see [GSAP Animation](/guides/gsap-animation).
-
-## Caption Discoverability
-
-For caption compositions, add these attributes to the root node so the framework can identify and special-case caption rendering:
+The host declares a fixed timeline window:
 
 ```html
 <div
-  data-composition-id="captions"
-  data-timeline-role="captions"
-  data-caption-root="true"
-  ...
+  id="pricing-scene"
+  data-composition-id="pricing"
+  data-composition-src="./compositions/pricing.html"
+  data-start="4"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+The host `data-composition-id` must match the ID inside the source file and its
+timeline registry key. The host `data-duration` controls how long the nested
+composition remains visible. A shorter inner timeline holds its final state;
+a shorter host duration cuts the slot.
+
+A nested composition file transports its live markup through `<template>`.
+Styles and scripts needed by that composition must be inside the template:
+
+```html
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="pricing"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- scene content -->
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const timeline = gsap.timeline({ paused: true });
+    // scene animation
+    window.__timelines.pricing = timeline;
+  </script>
+</template>
+```
+
+HyperFrames seeks nested timelines independently. Do not add a child timeline
+manually to the parent GSAP timeline.
+
+## Variables
+
+Declare the schema with `data-composition-variables`, then pass values through a
+render or a nested host:
+
+```html
+<html
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"Title","default":"Hello"}
+  ]'
 >
 ```
 
-## Output Checklist
+```html
+<div
+  data-composition-id="pricing"
+  data-composition-src="./compositions/pricing.html"
+  data-variable-values='{"title":"Built for teams"}'
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
 
-<Check>
-  Before rendering, verify your composition meets these requirements:
+Use `data-var-text`, `data-var-src`, or CSS `var(--variableId)` for direct
+bindings. Use `getVariables()` when the value affects logic.
 
-  - Every composition has `data-width` and `data-height` on the root element
-  - Each reusable composition is in its own HTML file
-  - External compositions are loaded via `data-composition-src`
-  - Each external composition file uses a `<template>` wrapper
-  - All GSAP timelines are registered in `window.__timelines` with the correct ID
-  - Timed visible elements (images, divs) have `class="clip"`
-  - Video elements do **not** have `class="clip"` (framework manages them directly)
-  - All `data-start` references point to existing clip IDs
-  - Run `npx hyperframes lint` to catch structural issues automatically
-</Check>
+## Animation contract
+
+A composition using GSAP must:
+
+- create one finite timeline with `{ paused: true }`;
+- register it synchronously on `window.__timelines`;
+- use the same key as `data-composition-id`;
+- avoid wall-clock state, unseeded randomness, and infinite repeats.
+
+HyperFrames controls seeking. Composition code describes how the visual state
+looks at a given time.
+
+## Validate
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+```
+
+`lint` checks the static contract. `check` opens the project in a browser and
+checks runtime behavior, layout, motion, and contrast. Watch representative
+snapshots and the finished render as the final visual gate.

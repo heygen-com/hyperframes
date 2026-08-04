@@ -47,3 +47,9 @@ registry/**/*.html linguist-vendored
 .claude/skills/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
 .agents/skills/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
 .agents/skills/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+
+# The documentation Reference Project ships real voice and music. Only the WAV
+# masters exceed the repository's 500 KB non-LFS limit, so only those are routed
+# through LFS — the small MP3 stings stay plain so the example still clones and
+# renders without `git lfs pull`.
+examples/docs-reference-project/**/*.wav filter=lfs diff=lfs merge=lfs -text

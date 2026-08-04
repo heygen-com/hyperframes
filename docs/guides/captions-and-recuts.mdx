@@ -1,0 +1,70 @@
+---
+title: "Add captions or repackage talking-head footage"
+sidebarTitle: "Captions and talking head"
+description: "Add captions, add designed overlays, or change the spoken edit."
+---
+
+<Frame caption="One source clip, three caption treatments. The spoken edit stays untouched.">
+  <video
+    autoPlay
+    loop
+    muted
+    playsInline
+    preload="metadata"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-captions.jpg"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-captions.mp4"
+  />
+</Frame>
+
+## Make the request
+
+Name the file and the change you want:
+
+```text
+Using /hyperframes, add clear animated captions to assets/interview.mp4.
+Keep the footage and its spoken edit unchanged.
+```
+
+Ask for designed information cards instead when the footage needs titles,
+quotes, statistics, lower thirds, or picture-in-picture.
+
+## What should change?
+
+- **Add captions** — keep the original clip and audio unchanged; add readable, timed words over it.
+- **Add designed overlays** — keep the clip underneath and add titles, quotes, statistics, lower thirds, or picture-in-picture.
+- **Change the footage** — use General Video when pauses, selected moments, or the spoken order must change.
+
+Captions and designed overlays work best on a clear, single-subject clip with audible speech. Both keep the original footage and audio intact.
+
+If you need to remove pauses, choose different moments, or reorder the speech, use [General Video](/guides/general-video).
+
+## Before it builds
+
+Confirm:
+
+- **Captions:** the intended format and any names or terms the transcript may miss. HyperFrames can recommend a visual treatment after it sees the clip.
+- **Designed overlays:** the format, layout, visual style, and how often a title, quote, statistic, or side panel should appear.
+- **Either path:** where the speaker, existing text, and important action leave safe room for graphics.
+
+## Review what matters
+
+- Names, product terms, and numbers are correct.
+- Captions follow the spoken words.
+- Graphics avoid faces and important parts of the footage.
+- The video works with sound and muted.
+- The final caption or graphic clears before the video ends.
+
+For direct placement changes, use [Captions in Studio](/studio/captions) to
+inspect synchronization and save position, scale, or rotation corrections. Ask
+the agent or edit the caption source for corrected words and durable timing or
+style changes.
+
+<Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
+  Review the chosen caption, overlay, or recut path, then render and watch the final file.
+</Card>
+
+## Related topics
+
+- [Edit captions in Studio](/studio/captions)
+- [Work with voice, music, sound, and captions](/guides/voice-and-audio)
+- [Change the spoken edit with a custom video workflow](/guides/general-video)

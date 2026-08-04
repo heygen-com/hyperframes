@@ -352,7 +352,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
 
-  ...createKeyframeSlice(set),
+  ...createKeyframeSlice(set, () => ({
+    timelineProjectId: get().timelineProjectId,
+    timelineSessionEpoch: get().timelineSessionEpoch,
+  })),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
@@ -541,6 +544,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             selectedElementIds,
             activeKeyframePct: null,
             motionPathArmed: false,
+            focusedEaseSegment: null,
           }
         : { selectedElementId: id, selectedElementIds };
     }),
@@ -550,9 +554,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setSelectionAnchor: (id) =>
     set((s) => {
       if (id != null && s.selectedElementIds.size > 1 && s.selectedElementIds.has(id)) {
-        return { selectedElementId: id };
+        return {
+          selectedElementId: id,
+          focusedEaseSegment: id === s.selectedElementId ? s.focusedEaseSegment : null,
+        };
       }
-      return { selectedElementId: id, selectedElementIds: id ? new Set([id]) : new Set<string>() };
+      return {
+        selectedElementId: id,
+        selectedElementIds: id ? new Set([id]) : new Set<string>(),
+        focusedEaseSegment: id === s.selectedElementId ? s.focusedEaseSegment : null,
+      };
     }),
   updateElement: (elementId, updates) =>
     set((state) => ({
@@ -560,9 +571,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         (el.key ?? el.id) === elementId ? { ...el, ...updates } : el,
       ),
     })),
-  // playbackRate, audioMuted, loopEnabled, zoomMode, and manualZoomPercent are
-  // intentionally absent from createTimelineResetState because they are user
-  // preferences that survive both source refreshes and project switches.
+  // UI preferences intentionally survive reset. So do timelineSessionEpoch and
+  // focusedEaseRequestNonce: the epoch advances only when project identity
+  // changes, while a monotonic nonce prevents collisions with stale consumers.
   beginTimelineSession: (projectId) =>
     set((state) => {
       if (state.timelineProjectId === projectId) return state;
@@ -575,18 +586,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   reset: () => set(createTimelineResetState()),
 }));
 
-// Bug-bash aid: expose the store so a reproduction can dump live state from the
-// console, e.g. `__playerStore.getState().selectedElementId`. Harmless read
-// handle; no behavioural effect.
-// Only in dev. `import.meta.env` may be undefined in non-Vite bundlers (Next.js
-// Turbopack), so guard the access like the telemetry client does.
 function isDevBuild(): boolean {
   try {
     return import.meta.env.DEV === true;
   } catch {
+    // Turbopack and other non-Vite bundlers may not provide import.meta.env.
     return false;
   }
 }
 if (isDevBuild() && typeof window !== "undefined") {
+  // Console handle for dumping live Studio state during bug-bash reproduction.
   (window as unknown as { __playerStore?: typeof usePlayerStore }).__playerStore = usePlayerStore;
 }

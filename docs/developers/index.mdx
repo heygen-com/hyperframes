@@ -1,0 +1,93 @@
+---
+title: "Build on HyperFrames"
+sidebarTitle: "Developers"
+description: "Choose the smallest HyperFrames surface for automation, editing, playback, rendering, or generated compositions."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+<div className="hf-docs-video-frame">
+  <DocsVideo
+    title="A HyperFrames composition shown through the CLI, SDK, Player, and rendering infrastructure."
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/journey-developers-v3.mp4"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/journey-developers-v3.jpg"
+  />
+</div>
+
+Use this path when you want to write a composition yourself, automate a project,
+or add HyperFrames to another product. If you only want an agent to make a
+video, start with the [first-video guide](/quickstart).
+
+## Write and render a project yourself
+
+Create a blank project and open it in Studio:
+
+```bash
+npx hyperframes init my-video --example blank
+cd my-video
+npx hyperframes preview
+```
+
+The project is ordinary HTML. The Reference Project used in the beginner path
+starts with this real composition root:
+
+```html
+<div
+  id="root"
+  data-composition-id="main"
+  data-start="0"
+  data-duration="10"
+  data-width="1920"
+  data-height="1080"
+>
+  <div class="clip" data-start="0" data-duration="10" data-track-index="1">
+    <!-- Ordinary HTML, CSS, images, and timed media. -->
+  </div>
+</div>
+```
+
+The project template supplies the composition root, viewport, and duration.
+HTML and CSS control what appears; `data-*` attributes control when it appears.
+You can [inspect the complete project](https://github.com/heygen-com/hyperframes/tree/main/examples/docs-reference-project)
+before choosing an integration surface.
+When the project is ready:
+
+```bash
+npx hyperframes check
+npx hyperframes render --output video.mp4
+```
+
+## Add HyperFrames to an application
+
+Choose the smallest surface that completes the job:
+
+<CardGroup cols={2}>
+  <Card title="CLI" icon="terminal" href="/developers/cli">
+    Run checks and renders from a script or CI job.
+  </Card>
+  <Card title="SDK quickstart" icon="code" href="/sdk/quickstart">
+    Inspect and change composition HTML from an application.
+  </Card>
+  <Card title="Player" icon="circle-play" href="/packages/player">
+    Embed a composition and control playback.
+  </Card>
+  <Card title="Rendering infrastructure" icon="cloud" href="/deploy/overview">
+    Render from a Node service, managed cloud, or infrastructure you operate.
+  </Card>
+</CardGroup>
+
+Start with the CLI for project-level automation. Add the SDK only when code
+must inspect or edit the source, and add the Player only when a page needs live
+playback. Producer and Engine are lower rendering layers, not required setup.
+
+## Understand the architecture
+
+The [developer overview](/developers/overview) explains how the composition,
+CLI, SDK, Player, Producer, and Engine fit together. Use the
+[HTML schema](/reference/html-schema) when generating source directly.
+
+## Related topics
+
+- [Understand the complete application architecture](/developers/overview)
+- [Automate a project with the CLI](/developers/cli)
+- [Edit composition HTML with the SDK](/sdk/quickstart)

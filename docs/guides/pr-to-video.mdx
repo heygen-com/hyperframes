@@ -1,0 +1,72 @@
+---
+title: "Turn a pull request into a video"
+sidebarTitle: "Pull request"
+description: "Show what changed, why it matters, and what happens next."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Give HyperFrames a pull request. It reads the diff, commits, files, and contributors—there is no website capture.
+
+<Frame caption="A real pull request becomes a 32-second explanation with code, before-and-after behavior, and sound.">
+  <DocsVideo
+    title="A pull request explained with code and before-and-after behavior"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/full-prvideo.mp4"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-pr.jpg"
+  />
+</Frame>
+
+## Make the request
+
+Send the pull request and name the audience:
+
+```text
+Using /hyperframes, explain https://github.com/owner/repo/pull/123 to product
+and engineering teammates.
+```
+
+The agent reads the actual pull request, proposes the angle, and confirms its
+release state before presenting a proposed change as shipped behavior.
+
+## Who needs to understand it?
+
+- **Users** — lead with the visible change, show the before and after, and name any action they must take.
+- **Contributors** — explain the architecture change, important tradeoff, and code path reviewers need to understand.
+- **Social audience** — make one clear feature reveal with visible proof and only the implementation detail that explains it.
+
+The same pull request needs a different story for users, contributors, or a social audience.
+
+## Before it builds
+
+Confirm:
+
+- the intended pull request and audience;
+- whether the angle is a changelog, feature reveal, fix, or refactor;
+- whether the change is proposed, merged, or released;
+- the visible before and after;
+- any breaking change or migration step.
+
+The video should explain the change, not read the pull request description aloud.
+
+## Verify the proof
+
+- The pull request and target branch are correct.
+- Proposed, merged, and released are not confused.
+- User-facing claims match the actual behavior.
+- Code excerpts show only the relevant lines and remain readable.
+- Tests and refactoring are not presented as product features.
+- Contributor names and release details are accurate.
+
+Ask the agent when the explanation or evidence must change. Use Storyboard to
+inspect the sequence directly, or Studio for a precise timing, code-framing, or
+caption correction.
+
+<Card title="Finish and share" icon="circle-check" href="/guides/export-and-share">
+  Check the final project, render through your preferred surface, and review the file.
+</Card>
+
+## Related topics
+
+- [Prompt for code changes and pull requests](/prompting/code-and-prs)
+- [Review the storyboard](/studio/storyboard)
+- [Create a custom video from several sources](/guides/general-video)

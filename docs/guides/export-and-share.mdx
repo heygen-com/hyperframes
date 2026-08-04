@@ -1,0 +1,153 @@
+---
+title: "Finish and share a video"
+sidebarTitle: "Finish and share"
+description: "Review the project, run its checks, render through an agent, Studio, or the CLI, and deliver the right file or link."
+---
+
+Finish the same editable project through your agent, Studio, or the command
+line. The route can change; the quality gate does not.
+
+## 1. Approve the project, not one good frame
+
+Watch the complete preview from the beginning. Check the message and sequence
+before spending time on small visual details.
+
+- Does the opening make the subject clear soon enough?
+- Does every scene add something?
+- Can text, captions, and product screens be read at delivery size?
+- Do narration, visuals, music, and sound effects arrive together?
+- Does the ending finish cleanly and make the next action clear?
+
+## 2. Run the project checks
+
+Run the checks in Studio, ask your agent to run them, or use:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+```
+
+`lint` catches composition-structure mistakes. `check` runs lint plus browser,
+runtime, layout, motion, and WCAG contrast verification.
+
+Checks cannot judge the story for you. Fix technical failures, then watch the
+project again if a fix changed what the viewer sees.
+
+## 3. Render from where you are working
+
+All three paths render the same source.
+
+### Ask the agent
+
+```text
+Run the HyperFrames checks, fix any failures, and show me the final preview.
+When I approve it, render an MP4 to renders/final.mp4.
+```
+
+Use the agent when a failed check may require a source change or when you want
+one person to manage the complete finish. HyperFrames creation workflows wait
+for render approval after the final preview.
+
+### Use Studio
+
+Open **Export**, choose the destination's format and size, and start the render.
+The Renders panel shows progress and keeps completed files available to
+download.
+
+<div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
+  <Frame caption="Studio checking and rendering the same project shown in its editor.">
+    <video
+      src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.mp4"
+      poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-check-render-loop-v2.jpg"
+      autoPlay
+      muted
+      loop
+      playsInline
+    />
+  </Frame>
+</div>
+
+### Use the CLI
+
+```bash
+npx hyperframes render --output renders/final.mp4
+```
+
+Use the CLI for a direct local render, a script, CI, or a repeatable batch. The
+installed version remains authoritative: run
+`npx hyperframes render --help` for every available option.
+
+## 4. Choose what the destination needs
+
+MP4 at the project's authored size is the normal delivery choice. Ask for
+another format or resolution only when the next tool or platform requires it.
+
+| Need                                       | Start with                                |
+| ------------------------------------------ | ----------------------------------------- |
+| Watch, upload, or publish a normal video   | MP4                                       |
+| Place a transparent overlay on the web     | WebM with an alpha-compatible composition |
+| Continue in a professional editing tool    | MOV, usually ProRes                       |
+| Deliver a specified high-resolution master | The matching 4K preset                    |
+
+Higher output resolution does not add detail to low-resolution media. A higher
+frame rate creates more frames; it does not improve motion authored for a lower
+cadence.
+
+Use [Studio export](/studio/export) for its visible controls or the
+[rendering reference](/guides/rendering) for formats, Docker, batch output, and
+advanced CLI behavior.
+
+## 5. Watch the rendered file
+
+Open the output itself instead of relying on the preview.
+
+- Watch the first and final seconds.
+- Check captions, cuts, and the most complex transition.
+- Listen for clipped narration, late sound effects, or an abrupt music ending.
+- Confirm duration, dimensions, format, and audio.
+- Use a filename that identifies the project and version.
+
+The preview proves the project can play. The exported file proves the delivery
+is correct.
+
+## 6. Share the right form
+
+| The recipient needs                   | Send                              |
+| ------------------------------------- | --------------------------------- |
+| A video to watch or upload            | The rendered MP4, WebM, or MOV    |
+| A browser link to the current project | A published project URL           |
+| The ability to continue editing       | The source project and its assets |
+
+Publish the project when a browser link is more useful than a file:
+
+```bash
+npx hyperframes publish
+```
+
+The command uploads the project and returns a stable URL. An anonymous first
+publish creates a claimable link. Sign in when the CLI should own the project
+immediately, update an existing link, or publish into a shared space.
+
+Before sharing source, remove secrets and confirm that every included media file
+can be shared. Tell a reviewer whether you need feedback on story, visuals,
+timing, facts, or final approval.
+
+## If the finish fails
+
+Keep the first exact error and run:
+
+```bash
+npx hyperframes doctor
+npx hyperframes lint
+npx hyperframes check
+```
+
+Use [Troubleshooting](/guides/troubleshooting) for project and render failures,
+or [Studio troubleshooting](/studio/troubleshooting) when the problem is in the
+editor or its render queue.
+
+## Related topics
+
+- [Export and manage renders in Studio](/studio/export)
+- [Use advanced rendering options](/guides/rendering)
+- [Diagnose a project or render failure](/guides/troubleshooting)

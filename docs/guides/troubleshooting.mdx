@@ -1,185 +1,229 @@
 ---
-title: Troubleshooting
-description: "Solutions for common Hyperframes issues."
+title: "Troubleshooting"
+description: "Solve common Studio, project, media, animation, preview, and rendering problems."
 ---
 
-If your issue is about a specific coding mistake (animations not working, video cutting off early), see [Common Mistakes](/guides/common-mistakes) first. This page covers environment, tooling, and rendering issues.
+Start with the symptom you can see. Keep the exact error and note whether the problem happens in Studio, validation, or only in the final render.
 
-<AccordionGroup>
-  <Accordion title='"No composition found"'>
-    Your directory needs an `index.html` with a valid [composition](/concepts/compositions). The root element must have a [`data-composition-id`](/concepts/data-attributes#composition-attributes) attribute.
+## Start here
 
-    **Fix:** Run `npx hyperframes init` to create a composition from an [example](/examples), or verify your `index.html` has the correct structure:
-
-    ```html index.html
-    <div id="root" data-composition-id="my-video"
-         data-width="1920" data-height="1080">
-      <!-- elements here -->
-    </div>
-    ```
-  </Accordion>
-
-  <Accordion title='"FFmpeg not found"'>
-    Local [rendering](/guides/rendering) requires FFmpeg installed on your system. Install it for your platform:
-
-    <CodeGroup>
-    ```bash macOS
-    brew install ffmpeg
+<Steps>
+  <Step title="Check the machine">
+    ```bash
+    npx hyperframes doctor
     ```
 
-    ```bash Ubuntu/Debian
-    sudo apt install ffmpeg
+    This checks the runtime, browser, FFmpeg, and other local requirements.
+  </Step>
+  <Step title="Check the project">
+    ```bash
+    npx hyperframes lint
+    npx hyperframes check
     ```
+  </Step>
+  <Step title="Inspect the visible result">
+    Open Studio or capture important frames:
 
-    ```bash Windows
-    # Download from https://ffmpeg.org/download.html
-    # Add the bin directory to your PATH
+    ```bash
+    npx hyperframes snapshot --at 0,3,8
     ```
+  </Step>
+  <Step title="Give the agent useful context">
+    Copy the complete error and add what you did, what you expected, and what must not change.
+  </Step>
+</Steps>
 
-    ```bash Verify installation
-    ffmpeg -version
-    ```
-    </CodeGroup>
+For selection, canvas, timeline, autosave, and Studio-only failures, use
+[Studio troubleshooting](/studio/troubleshooting).
 
-    After installing, run `npx hyperframes doctor` to verify the CLI can find it.
+## Project and environment problems
 
-    <Tip>
-      If you cannot install FFmpeg, use [Docker mode](/guides/rendering) instead — it bundles FFmpeg inside the container: `npx hyperframes render --docker --output output.mp4`
-    </Tip>
-  </Accordion>
+### "No composition found"
 
-  <Accordion title="Lint errors">
-    Run `npx hyperframes lint` to check for common structural issues (see [CLI: lint](/packages/cli#lint)):
+The project needs an `index.html` containing a valid composition root with `data-composition-id`, width, and height.
 
-    | Error | Meaning |
-    |-------|---------|
-    | Missing `data-composition-id` | Root element needs this attribute. See [Compositions](/concepts/compositions). |
-    | Missing `class="clip"` | Timed visible elements need this class. See [Data Attributes](/concepts/data-attributes#element-visibility). |
-    | Overlapping timelines | Clips on the same [`data-track-index`](/concepts/data-attributes#timing-attributes) cannot overlap in time. |
-    | Unmuted video elements | Video elements should be `muted` unless `data-has-audio="true"` is set. |
-    | Deprecated attribute names | `data-layer` and `data-end` have been replaced. Check the [HTML Schema Reference](/reference/html-schema). |
-  </Accordion>
+Create a new project:
 
-  <Accordion title="Preview not updating">
-    Make sure you are editing the `index.html` in the project directory. The [preview server](/packages/cli#preview) watches for file changes and auto-reloads.
-
-    If changes still do not appear:
-
-    1. Check the terminal for errors from the preview server
-    2. Stop and restart `npx hyperframes preview`
-    3. Hard-refresh the browser: **Ctrl+Shift+R** (Windows/Linux) or **Cmd+Shift+R** (macOS)
-    4. Clear the browser cache if CSS changes are not reflected
-  </Accordion>
-
-  <Accordion title="Preview stutters or plays at a low frame rate">
-    **Symptom:** Preview playback is jerky or skips frames, but the rendered mp4 looks fine.
-
-    **Cause:** Individual frames are taking longer than 16-33ms to paint. Render hides this (it captures frames one at a time), preview does not.
-
-    **Common culprits, most to least frequent:**
-
-    - Stacked `backdrop-filter: blur()` layers, especially at radii above 32px
-    - Source images at very high resolution (above 4K) displayed in small regions
-    - `filter: blur()` or `filter: drop-shadow()` on large elements
-    - Many elements with `box-shadow` or `text-shadow` that also animate
-
-    **First thing to check:** does the stutter happen only during specific scenes, or throughout? Scene-specific stutter usually points at an element, often a blur overlay, that becomes visible in that scene.
-
-    **How to diagnose:** open Chrome DevTools, switch to the Performance tab, record a few seconds of playback, and look for long tasks labeled "Composite Layers" or "Paint". See [Performance: Measuring a slow composition](/guides/performance#measuring-a-slow-composition) for the full walkthrough.
-
-    **Temporary workaround:** render to mp4 and watch the output. Render is accurate regardless of per-frame cost.
-
-    ```bash Terminal
-    npx hyperframes render --quality draft --output preview.mp4
-    ```
-
-    See [Performance](/guides/performance) for the full guide on expensive CSS patterns and how to fix them.
-  </Accordion>
-
-  <Accordion title="Render looks different from preview">
-    Use `--docker` mode for [deterministic output](/concepts/determinism). Local renders may differ due to:
-
-    - **Font availability** — different fonts on different platforms cause text reflow
-    - **Chrome version** — local Chromium vs. Docker's pinned version can render slightly differently
-    - **System-specific rendering** — GPU compositing, subpixel antialiasing, etc.
-
-    ```bash Terminal
-    npx hyperframes render --docker --output output.mp4
-    ```
-
-    See [Rendering: When to Use Each Mode](/guides/rendering#when-to-use-each-mode) for guidance on choosing between local and Docker rendering.
-  </Accordion>
-
-  <Accordion title="Docker mode fails to start">
-    Verify Docker is installed and the daemon is running:
-
-    ```bash Terminal
-    docker info
-    ```
-
-    Common issues:
-    - **Docker not running:** Start Docker Desktop or the Docker daemon
-    - **Permission denied:** Add your user to the `docker` group (`sudo usermod -aG docker $USER`) and restart your shell
-    - **Image pull fails:** Check your internet connection; the first render downloads the Hyperframes Docker image
-  </Accordion>
-
-  <Accordion title="Render is slow">
-    Try these optimizations:
-
-    1. Use `--quality draft` during development for faster encoding
-    2. Run `npx hyperframes benchmark` to find the optimal worker count for your system
-    3. Local Chrome/WebGL GPU capture is enabled automatically; compare with `--no-browser-gpu` if troubleshooting
-    4. Use `--gpu` for hardware-accelerated encoding (local mode only)
-    5. Reduce `--fps` to 24 if 30fps is not needed
-    6. Check that your composition does not have unnecessary elements or overly complex animations
-
-    See [Rendering: Options](/guides/rendering#options) for all available flags.
-  </Accordion>
-
-  <Accordion title="Video asset plays black in preview but renders fine (HEVC/H.265)">
-    Rendering decodes video assets with FFmpeg, so HEVC (H.265) inputs render correctly on every platform. Live preview is different: `preview`, `play`, Studio, and published player pages play the file in your browser, and not every browser decodes HEVC (Chrome 107+, Edge, and Safari do on most modern hardware; Firefox does not). This is now self-healing: preview detects an undecodable asset and automatically swaps in a cached H.264 proxy, so this should no longer show as a persistent black frame.
-
-    If a hostile asset is still stuck black in preview:
-
-    1. Confirm auto-proxying is not disabled: no `--no-proxy` flag, and `media.autoProxy` is not `false` in `hyperframes.json`.
-    2. Run `npx hyperframes doctor` to confirm ffmpeg/ffprobe are installed; the proxy transcode needs both.
-    3. Run `npx hyperframes lint --verbose`: the info-level `hevc_preview_codec` finding names every affected asset.
-
-    See [Rendering: Input Video Codecs](/guides/rendering#input-video-codecs).
-  </Accordion>
-</AccordionGroup>
-
-## System Diagnostics
-
-Run `npx hyperframes doctor` to check your environment:
-
-```bash Terminal
-npx hyperframes doctor
+```bash
+npx hyperframes init my-video
 ```
 
-This checks for Node.js version, FFmpeg availability, Docker status, and other requirements. If `doctor` reports issues, address them before rendering.
+Or compare the current source with [Compositions](/concepts/compositions).
 
-## Still Stuck?
+### "FFmpeg not found"
 
-If none of the above resolves your issue:
+FFmpeg is required for local video encoding.
 
-1. Run `npx hyperframes info` to gather system and project details
-2. Check [GitHub Issues](https://github.com/heygen-com/hyperframes/issues) for similar reports
-3. Open a new issue with the output of `npx hyperframes info` and steps to reproduce
+<CodeGroup>
+```bash macOS
+brew install ffmpeg
+```
 
-## Next Steps
+```bash Ubuntu or Debian
+sudo apt install ffmpeg
+```
 
-<CardGroup cols={2}>
-  <Card title="Common Mistakes" icon="triangle-exclamation" href="/guides/common-mistakes">
-    Coding pitfalls that break compositions
-  </Card>
-  <Card title="Rendering" icon="film" href="/guides/rendering">
-    Rendering modes, options, and tips
-  </Card>
-  <Card title="CLI Reference" icon="terminal" href="/packages/cli">
-    Full list of CLI commands
-  </Card>
-  <Card title="Contributing" icon="code-branch" href="/contributing">
-    Report bugs and contribute fixes
-  </Card>
-</CardGroup>
+```powershell Windows
+# Download a 64-bit Windows build from:
+# https://ffmpeg.org/download.html#build-windows
+# Then add its bin directory to PATH.
+```
+</CodeGroup>
+
+Verify with `ffmpeg -version`, then rerun `npx hyperframes doctor`.
+
+### Docker render will not start
+
+Run `docker info`.
+
+Confirm Docker is installed, its daemon is running, your user has permission, and the first image download can reach the registry.
+
+## Media problems
+
+### Video is black in preview but renders
+
+The browser may not decode the source codec even though FFmpeg can.
+
+HyperFrames normally creates and uses a compatible preview proxy. If the frame remains black:
+
+1. confirm automatic proxying is not disabled;
+2. run `npx hyperframes doctor`;
+3. run `npx hyperframes lint --verbose` to identify affected files;
+4. confirm the source file exists and can be read.
+
+### Video, image, or audio is missing
+
+Prefer a local project asset. Confirm its path, filename capitalization, and whether it was moved or renamed.
+
+Remote media can fail because of permissions, expiring URLs, or cross-origin restrictions.
+
+### Preview stutters
+
+Common causes:
+
+- very large source images;
+- several large `backdrop-filter` blurs;
+- expensive shadows or filters on animated elements;
+- too many large overlapping layers.
+
+Check whether the slowdown occurs in one scene. Resize oversized media and simplify the expensive element before reducing the whole project’s quality.
+
+## Animation and composition mistakes
+
+These problems often appear in agent-written or manually edited source.
+
+### A video freezes while its box animates
+
+Do not animate `width`, `height`, `top`, or `left` directly on a `<video>` element.
+
+Put the video inside a wrapper and animate the wrapper:
+
+```html
+<div id="video-wrapper">
+  <video src="./assets/video.mp4" style="width:100%;height:100%"></video>
+</div>
+```
+
+```javascript
+tl.to("#video-wrapper", { width: 500, height: 280, x: 1200 }, 2);
+```
+
+### Media plays out of sync
+
+Do not call `play()`, `pause()`, or set `currentTime` from composition scripts.
+
+HyperFrames owns media playback. Use timing and media attributes to describe when the file should play.
+
+### The composition ends too early
+
+Check the resolved composition duration:
+
+```bash
+npx hyperframes compositions
+```
+
+A short animation timeline can make a project end before the underlying media. Extend the authored root duration or timeline using the correct pattern for that composition.
+
+### A timed element is always visible
+
+Timed visible elements need `class="clip"` as well as their timing attributes.
+
+```html
+<h1 class="clip" data-start="2" data-duration="5" data-track-index="0">
+  Hello
+</h1>
+```
+
+`npx hyperframes lint` normally catches this.
+
+### Animation is static
+
+Check that the animation is paused and registered using the exact composition ID.
+
+```javascript
+const timeline = gsap.timeline({ paused: true });
+window.__timelines = window.__timelines || {};
+window.__timelines["my-video"] = timeline;
+```
+
+`my-video` must match `data-composition-id="my-video"`.
+
+### Changing root duration from a variable does nothing
+
+The root render length is determined before composition scripts run. Author or generate the intended root `data-duration` directly.
+
+Clip durations can still vary. See [Variables](/concepts/variables) for what may be changed safely.
+
+## Render problems
+
+### The render looks different from preview
+
+Check fonts, remote media, browser-specific effects, and the actual exported file.
+
+Use Docker when you need a pinned rendering environment:
+
+```bash
+npx hyperframes render --docker --output output.mp4
+```
+
+### The render is slow
+
+During iteration:
+
+- use draft quality;
+- inspect snapshots before starting another full render;
+- resize large source media;
+- simplify expensive filters;
+- avoid increasing resolution or frame rate before needed.
+
+Run `npx hyperframes benchmark` when tuning worker settings.
+
+### Expected HDR but received SDR
+
+HDR needs a supported output and correct source color metadata. MP4 is the normal HDR output path; WebM and MOV may fall back to SDR.
+
+Use `--hdr` only when the whole source and delivery workflow is intended for HDR. Read [HDR rendering](/guides/hdr) before delivery.
+
+## Still stuck?
+
+Run:
+
+```bash
+npx hyperframes info
+```
+
+Then search [GitHub issues](https://github.com/heygen-com/hyperframes/issues) or open a report with:
+
+- the exact error;
+- steps to reproduce;
+- HyperFrames version and operating system;
+- whether the issue occurs in preview, checks, or render;
+- a small shareable project when possible.
+
+Do not include secrets, private media, or access tokens.
+
+## Related topics
+
+- [Start with the shortest recovery path](/help)
+- [Recover from a Studio-only problem](/studio/troubleshooting)
+- [Share useful product feedback](/guides/feedback)

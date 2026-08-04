@@ -968,6 +968,9 @@ function inlineSubCompositions(
         return compHtml;
       },
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
+      // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
+      // against its own directory, project-root refs stay as authored.
+      assetExists: (path: string) => existsSync(resolve(projectDir, path)),
       scriptErrorLabel: "[Compiler] Composition script failed",
       // Preserve the authored root wrapper as a child of the host, matching
       // the preview bundler's shape (htmlBundler.ts's prepareFlattenedInnerRoot,

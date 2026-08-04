@@ -17,6 +17,17 @@ vi.mock("../utils/env.js", () => ({
   isDevMode: () => false,
 }));
 
+// Canary enrolment is registry-driven and will change as rollouts ramp; stub
+// it so this asserts the WIRING (does every event carry the cohort?) rather
+// than whichever canaries happen to be live today.
+const canaryProps = vi.fn<() => Record<string, string>>(() => ({
+  "$feature/canary-feat-x": "true",
+  "$feature/canary-feat-y": "false",
+}));
+vi.mock("./canary.js", () => ({
+  canaryEventProperties: () => canaryProps(),
+}));
+
 // Intercept the exit-time child process so flushSync delivery is assertable.
 const spawnMock = vi.fn(() => ({ unref: vi.fn() }));
 vi.mock("node:child_process", () => ({
@@ -31,6 +42,16 @@ function sentBatch(fetchMock: ReturnType<typeof vi.fn>, call = 0): Batch {
   const init = fetchMock.mock.calls[call]?.[1] as { body: string } | undefined;
   if (!init) throw new Error(`expected fetch call #${call} to have been made`);
   return JSON.parse(init.body).batch;
+}
+
+/** Properties of the first event in the first delivered batch. */
+function eventProps(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
+  const init = fetchMock.mock.calls[0]?.[1] as { body: string } | undefined;
+  if (!init) throw new Error("expected a fetch call to have been made");
+  const parsed = JSON.parse(init.body) as {
+    batch: Array<{ properties?: Record<string, unknown> }>;
+  };
+  return parsed.batch[0]?.properties ?? {};
 }
 
 describe("telemetry queue delivery", () => {
@@ -130,5 +151,38 @@ describe("telemetry queue delivery", () => {
     vi.stubGlobal("fetch", fetchMock);
     await flush();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("canary cohort on every event", () => {
+  it("attaches canary assignments as PostHog flag properties", async () => {
+    canaryProps.mockReturnValue({
+      "$feature/canary-feat-x": "true",
+      "$feature/canary-feat-y": "false",
+    });
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    trackEvent("cli_command", { command: "render" });
+    await flush();
+
+    const props = eventProps(fetchMock);
+    // Enrolled AND control are both emitted — absent would mean "this build
+    // predates the canary", a different fact from "not enrolled".
+    expect(props["$feature/canary-feat-x"]).toBe("true");
+    expect(props["$feature/canary-feat-y"]).toBe("false");
+  });
+
+  it("adds no canary properties when the registry is empty", async () => {
+    canaryProps.mockReturnValue({});
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    trackEvent("cli_command", { command: "render" });
+    await flush();
+
+    expect(Object.keys(eventProps(fetchMock)).some((k) => k.startsWith("$feature/canary-"))).toBe(
+      false,
+    );
   });
 });

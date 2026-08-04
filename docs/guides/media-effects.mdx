@@ -1,323 +1,108 @@
 ---
-title: Media Effects
-description: "Apply deterministic shader effects to video and image media, combine them with color grading, and animate supported strengths with GSAP."
+title: "Apply media effects"
+sidebarTitle: "Media effects"
+description: "Apply editable blur, bloom, retro, print, glitch, and art treatments to images and video."
 ---
 
-Use Media Effects to transform real `<video>` and `<img>` pixels with
-deterministic blur, retro, print, and art treatments that can share one payload
-with [Color Grading](/guides/color-grading).
+Media effects transform a selected image or video without baking a new source
+file. They stay editable in Studio and render from the same project data.
 
-## Effect Families
+<Frame caption="Four current HyperFrames renders from one source. Effects stay on the media element, so the original file remains unchanged.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/media-effects-grid-v1.png"
+    alt="One presenter frame shown as the original, pixelated, two-ink print, and ASCII treatments"
+  />
+</Frame>
 
-### Essentials
+## Choose the effect
 
-| Effect | What it does |
-| --- | --- |
-| Blur | Defocuses or softens the complete media layer |
-| Pixelate | Converts the layer into a block mosaic |
-| Bloom | Adds thresholded glow around bright regions |
+| Intent                                                  | Start with                         |
+| ------------------------------------------------------- | ---------------------------------- |
+| Soften, conceal, or lift bright areas                   | Blur, Pixelate, or Bloom           |
+| Add tape, film, CRT, or digital damage                  | Retro & Glitch                     |
+| Turn media into dots, ink, or a limited palette         | Print                              |
+| Create ASCII, engraving, crosshatch, or painted media   | Art                                |
+| Add grain or darkened edges                             | Grain or Vignette in Color Grading |
+| Add a HUD, light leak, flash, or freeze-frame treatment | A [Catalog](/catalog) overlay      |
 
-### Retro & Glitch
+Effects apply to the complete selected media element. They do not track a face,
+screen, or object. Isolate a region into its own cropped or masked media layer
+when only that region should change.
 
-| Effect | What it does |
-| --- | --- |
-| Chroma Softening | Smears chroma while retaining central luma |
-| Tape Damage | Adds deterministic tracking errors, noise, ghosting, and dropouts |
-| Film Artifacts | Adds deterministic dust and short scratches |
-| Scanlines | Adds configurable horizontal display lines |
-| CRT Curvature | Warps media toward curved display geometry |
-| Channel Separation | Offsets color channels along an angle |
-| Digital Glitch | Combines line tears, blocks, displacement, pixelation, and channel split |
+## Try effects in Studio
 
-When authoring JSON directly, **Chroma Softening** uses `chromaBleed` and
-**Channel Separation** uses `chromaticAberration`. Query the capability command
-for the canonical payload keys of all other controls.
+Select an image or video and open **Effects** in the Inspector. The effect
+browser is grouped into:
 
-### Print
+- **Essentials:** Blur, Pixelate, Bloom
+- **Retro & Glitch:** Chroma Softening, Tape Damage, Film Artifacts, Scanlines,
+  CRT Curvature, Channel Separation, Digital Glitch
+- **Print:** Halftone, Two-Ink Print, Ordered Dither, Mono Screen
+- **Art:** ASCII, Engraving, Crosshatch, Kuwahara Paint
 
-| Effect | What it does |
-| --- | --- |
-| Halftone | Renders source color through a print-dot raster |
-| Two-Ink Print | Reduces media to the built-in two-ink treatment |
-| Ordered Dither | Quantizes media into an ordered limited palette |
-| Mono Screen | Builds monochrome dot, shape, or line artwork |
+Choose one effect for the job, adjust its controls, then play or scrub the
+beginning, middle, and end. Some effects are much more expensive to render than
+others, especially Blur, Bloom, and Kuwahara Paint across large media layers.
 
-### Art
+## Ask the agent
 
-| Effect | What it does |
-| --- | --- |
-| ASCII | Renders media as configurable procedural glyph cells |
-| Engraving | Translates luminance into directional engraved lines |
-| Crosshatch | Translates media into layered hand-hatched lines |
-| Kuwahara Paint | Applies edge-preserving painterly smoothing |
+Describe the result instead of guessing control values:
 
-## Quick Start
+```text
+Make this product clip feel like a clean two-ink editorial print.
+Keep the product shape and label readable.
+```
 
-<Tabs>
-  <Tab title="Studio">
-    <Steps>
-      <Step title="Select real media">
-        Select a real `<img>` or `<video>` in the preview, Layers panel, or
-        Timeline. Effects do not appear for arbitrary divs or CSS background
-        images.
-      </Step>
-      <Step title="Choose and tune an effect">
-        Preview an effect preset or open **Effects**. Enabling an effect uses a
-        calibrated default; expand it to adjust only the controls relevant to
-        the intended result.
-      </Step>
-      <Step title="Verify motion and framing">
-        Play and scrub videos at the beginning, middle, and end. Confirm that
-        moving effects and object-fit/object-position framing remain correct.
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="Agent / CLI">
-    Discover the narrow effect contract, then apply the complete treatment in
-    one mutation:
+The agent can inspect the live capability catalog before editing:
 
-    ```bash Terminal
-    npx hyperframes media-treatment --capabilities --json
-    npx hyperframes media-treatment --capability digitalGlitch --json
-
-    npx hyperframes media-treatment \
-      --project . \
-      --file compositions/scene.html \
-      --selector '#hero' \
-      --grading '{"effects":{"digitalGlitch":0.55,"digitalGlitchColorSplit":0.25,"digitalGlitchLineTear":0.25,"digitalGlitchPixelate":0.15,"digitalGlitchBlockAmount":0.5,"digitalGlitchBlockDisplacement":0.25,"digitalGlitchSpeed":0.5}}' \
-      --apply \
-      --json
-    ```
-  </Tab>
-</Tabs>
-
-Project-local media is recommended; remote media requires compatible CORS.
-[Media Overlays](/guides/media-overlays) are separate editable composition
-layers rather than shader properties.
-
-<Warning>
-  Media Effects use the SDR/Rec.709 shader pipeline. Studio can preview that
-  pipeline on browser-decoded HDR media, but native HDR rendering preserves the
-  HDR source separately and does not apply these SDR effects to native HDR
-  layers. Convert or tone-map to SDR when an effect must appear in the final
-  output. See [Color Grading support](/guides/color-grading#support-matrix) and
-  [HDR Rendering](/guides/hdr).
-</Warning>
-
-## Effect Presets
-
-`Creator Camcorder`, `VHS Playback`, `8mm Home Movie`, `Editorial Halftone`, and
-`Two-Ink Print` provide tested combinations of effect, correction, and
-finishing settings. Preview one as a starting point, then tune the underlying
-controls. They are normal shader payloads, not baked media or bundled LUTs.
-
-## Agent Guidance
-
-Agents should discover only the part of the toolbox relevant to the user's
-intent:
-
-The user may simply ask for _"an old home-video feel"_, _"a useful privacy
-reveal"_, or _"something more graphic for this poster."_ The `media-use` skill
-classifies that intent, then queries the narrow effect or recipe details instead
-of loading the exhaustive contract.
-
-```bash Terminal
+```bash
 npx hyperframes media-treatment --capabilities --json
-npx hyperframes media-treatment --capability retro-glitch --json
-npx hyperframes media-treatment --capability digitalGlitch --json
+npx hyperframes media-treatment --capability twoInkPrint --json
 ```
 
-The concise overview lists capability families. A focused query returns the
-effect's calibrated apply payload, controls, render lane, palette support, and
-seek-safe animation path. Use the canonical payload instead of guessing
-sub-control defaults.
+Then it can apply a validated patch:
 
-Recipes are tested shortcuts, not a closed list. An agent may assemble a custom
-payload when the source and intent justify it, but it should:
-
-1. Choose one primary visual intent.
-2. Query the exact effect or family contract.
-3. Add only controls that visibly support that intent.
-4. Avoid stacking several dominant stylizations without a reason.
-5. Verify representative frames and a short render.
-
-## Palettes
-
-`palette` accepts two to six exact `#RRGGBB` colors in authored order.
-Dark-to-light order creates normal luminance mapping; reversing the array
-intentionally inverts that mapping.
-
-```json data-color-grading
-{
-  "effects": {
-    "dither": 1,
-    "ditherSize": 0.5
-  },
-  "palette": ["#080717", "#3c185f", "#d9339f", "#ff6b66", "#aafae0"]
-}
+```bash
+npx hyperframes media-treatment \
+  --selector '#product' \
+  --grading '{"preset":"two-ink-print"}' \
+  --apply --json
 ```
 
-Compatible effects are ASCII, Ordered Dither, Mono Screen, Engraving, and
-Crosshatch. A palette alone does not activate an effect.
+Use `--dry-run` to inspect the exact mutation without writing, `--analyze` for
+bounded source measurements and a suggested primary correction, or `--clear`
+to remove the selected treatment. The command writes the same
+`data-color-grading` contract that Studio uses.
 
-Discover built-in palettes without copying their values into instructions:
+## Keep the treatment useful
 
-```bash Terminal
-npx hyperframes media-treatment --capability palettes --json
-npx hyperframes media-treatment --capability electric-ink --json
-```
+- Use blur or pixelation for a real reveal, focus shift, or privacy need.
+- Use a named stylization strongly enough to read; keep ordinary correction
+  restrained.
+- Compare against the original and inspect representative rendered frames.
+- Remove the treatment when it competes with the story.
 
-## Animation and Keyframes
+## Performance and delivery
 
-The following paths have seek-safe CSS custom properties and may be animated by
-a paused, registered GSAP timeline:
+Several overlapping, full-frame treated layers can slow preview and rendering,
+especially at 4K. Simplify the stack or pre-render a finished layer when
+playback drops frames.
 
-- Global treatment intensity
-- LUT intensity
-- Exposure
-- Blur
-- Bloom
-- Kuwahara Paint
-- Pixelate
-- ASCII
-- Ordered Dither
+Effects use the SDR/Rec.709 shader pipeline. Native HDR delivery preserves HDR
+source pixels through a separate path, so these SDR effects do not appear on
+native HDR layers. Convert or tone-map to SDR when the effect must appear in
+the final result.
 
-Example blur-to-focus reveal:
+Project-local media is the reliable default. Remote media must allow browser
+pixel access through compatible CORS headers.
 
-```html index.html
-<div
-  class="clip"
-  data-composition-id="media-effect-demo"
-  data-start="0"
-  data-duration="4"
->
-  <video
-    id="hero"
-    src="assets/hero.mp4"
-    muted
-    playsinline
-    style="--hf-color-grading-blur: 0.8"
-    data-color-grading='{"effects":{"blur":0.8}}'
-  ></video>
-</div>
+The [Color Grading guide](/guides/color-grading) covers correction, wheels,
+curves, selective color, finishing, and LUTs. The [HTML
+schema](/reference/html-schema#color-grading-and-media-effects) contains the
+persistence contract.
 
-<script>
-  const tl = gsap.timeline({ paused: true });
-  tl.to(
-    "#hero",
-    {
-      "--hf-color-grading-blur": 0,
-      duration: 1.2,
-      ease: "power2.out",
-    },
-    0,
-  );
-  window.__timelines = window.__timelines || {};
-  window.__timelines["media-effect-demo"] = tl;
-</script>
-```
+## Related topics
 
-Author the initial custom-property value inline. Do not use timers, unseeded
-randomness, frame-zero `set()` calls, or `onUpdate` callbacks. Query an effect's
-focused capability to get its exact animation property and range.
-
-Tape damage, digital glitch, film artifacts, and similar effects may contain
-deterministic internal motion even when their overall strength is not one of
-the keyframeable paths above.
-
-## Important Effect Behavior
-
-- **Tape Damage** is the primary analog-tape amount. Tracking controls moving
-  tears, Noise controls row jitter/noise, and Speed controls their deterministic
-  motion. Those subordinate controls do not activate tape damage by themselves.
-- **Film Artifacts** adds sparse deterministic dust and scratches. Grain,
-  vignette, color, and optional wrapper motion such as a subtle gate weave are
-  separate choices.
-- **Halftone** uses fixed print-oriented channel angles and edge behavior.
-  Cell size remains adjustable.
-- **Two-Ink Print** is HyperFrames' own fixed two-ink mapping. Do not describe
-  it as a named commercial print process or stack it with Halftone by default.
-- **ASCII** uses procedural glyph cells. Size, style, ink behavior, rotation,
-  and a compatible palette remain configurable.
-- **Ordered Dither** uses a temporally stable 4x4 Bayer matrix. It is not
-  Floyd-Steinberg or another sequential error-diffusion algorithm.
-- **Bloom** extracts bright regions before blurring them; it is different from
-  raising highlights or whites.
-- **Kuwahara Paint** smooths regions while preserving major edges. Radius,
-  sharpness, and saturation shape the result.
-
-## Deterministic Pipeline Order
-
-HyperFrames evaluates combined treatment stages in one fixed order:
-
-1. Source framing and multipass Blur/Kuwahara preparation
-2. Chromatic and digital-glitch transforms
-3. Primary correction, color grading, and LUT blended by global intensity
-4. Grain and film artifacts
-5. Mono, engraving, crosshatch, halftone, two-ink, dither, and ASCII
-6. Bloom, scanlines, vignette, and CRT display masking
-7. Before/after comparison
-
-The order cannot currently be rearranged. A fixed order keeps Studio,
-playback, seeking, and final rendering deterministic and prevents agents from
-inventing incompatible effect graphs.
-
-## Performance
-
-Performance follows the number of treated pixels and the selected render lane,
-not only the number of elements.
-
-- Blur, Bloom, and Kuwahara use multipass rendering.
-- Several tiled media elements can be cheaper than several overlapping
-  full-frame elements.
-- When more than two full-frame multipass-treated elements are visible
-  together, verify continuous playback on the target machine.
-- Simplify or pre-render a stack when preview frames drop.
-- Kuwahara uses bounded half-float intermediate targets when supported and
-  otherwise reports itself unavailable.
-
-For 4K delivery, verify the effect at the final composition size. Resolution-
-aware effects preserve their intended scale, but 4K still processes more pixels
-than 1080p.
-
-## Low-Level HTML Contract
-
-Media effects live in the same persisted contract as grading:
-
-```html index.html
-<img
-  id="poster"
-  src="assets/poster.jpg"
-  data-color-grading='{
-    "effects":{
-      "ascii":1,
-      "asciiSize":0.066,
-      "asciiStyle":0,
-      "asciiColor":1,
-      "asciiRotation":0
-    },
-    "palette":["#001100","#00ff00"],
-    "colorSpace":"rec709"
-  }'
-/>
-```
-
-Unknown keys are rejected and values are normalized by the Core contract. The
-CLI should remain the primary authoring surface for agents.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Color Grading" icon="palette" href="/guides/color-grading">
-    Correct and grade media with scopes, wheels, curves, selections, and LUTs.
-  </Card>
-  <Card title="Media Overlays" icon="layer-group" href="/guides/media-overlays">
-    Add authored HUD, flash, light-leak, and freeze-frame layers.
-  </Card>
-  <Card title="Keyframes" icon="diamond" href="/guides/keyframes">
-    Edit and verify deterministic GSAP animation in Studio.
-  </Card>
-  <Card title="Performance" icon="gauge-high" href="/guides/performance">
-    Diagnose source resolution, browser, decoder, and composition cost.
-  </Card>
-</CardGroup>
+- [Color grade images and footage](/guides/color-grading)
+- [Use images and video](/guides/video-components)
+- [Browse ready-made visual effects](/catalog)

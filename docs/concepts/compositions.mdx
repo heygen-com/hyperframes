@@ -1,218 +1,76 @@
 ---
-title: Compositions
-description: "The fundamental building block of a Hyperframes video."
+title: "Understand compositions"
+sidebarTitle: "Compositions"
+description: "See how a HyperFrames project divides a video into timed, reusable parts."
 ---
 
-A composition is an HTML document that defines a video timeline. Every clip -- video, image, audio -- lives inside a composition.
+A composition is a piece of a HyperFrames project with its own size and timeline. The main composition is the finished sequence. Other compositions can be scenes, captions, title systems, or reusable visual parts inside it.
 
-## Structure
-
-Every composition needs a root element with `data-composition-id`:
-
-```html index.html
-<div id="root" data-composition-id="root"
-     data-start="0" data-width="1920" data-height="1080">
-  <!-- Elements go here -->
-</div>
+```text
+Main video
+├── Opening
+├── Product demo
+├── Customer quote
+└── Closing
 ```
 
-The `index.html` file is the top-level composition. It can contain nested compositions within it. Any composition can be imported into another -- there is no special "root" type.
+Each part is still HTML. Studio, the agent, and normal code tools all work on the same files.
 
-## Clip Types
+## What a composition controls
 
-A clip is any discrete block on the timeline, represented as an HTML element with [data attributes](/concepts/data-attributes):
+A composition brings three things together:
 
-- `<video>` -- Video clips, B-roll, A-roll
-- `<img>` -- Static images, overlays
-- `<audio>` -- Music, sound effects
-- `<div data-composition-id="...">` -- Nested compositions (animations, grouped sequences)
+- **content** — text, shapes, images, video, audio, or another composition;
+- **time** — when each part starts and how long it remains;
+- **motion** — seekable animation tied to the same playhead.
 
-See the [HTML Schema Reference](/reference/html-schema) for the full list of attributes on each clip type.
+The main composition also defines the output frame and total duration.
 
-## Nested Compositions
+## When to create another composition
 
-You can embed one composition inside another in two ways: loading from an external file or defining it inline. External files are the recommended approach for reusable compositions.
+Separate a part when it has a clear job and can be understood on its own.
 
-<Tabs>
-  <Tab title="External file">
-    Reference another HTML file with `data-composition-src`. The framework automatically fetches the file, extracts the `<template>` content, mounts it, executes scripts, and registers the timeline.
+Good boundaries include:
 
-    `data-composition-src` paths resolve relative to the **project root**, not the referencing file — a nested composition one level deep still writes `compositions/foo.html`, never `../compositions/foo.html`.
+- a complete scene;
+- a repeated title or caption treatment;
+- a product-demo sequence;
+- a visual reused in several places;
+- a complex section that is easier to review separately.
 
-    ```html index.html
-    <div
-      id="el-5"
-      data-composition-id="intro-anim"
-      data-composition-src="compositions/intro-anim.html"
-      data-start="0"
-      data-duration="4"
-      data-playback-start="0"
-      data-track-index="3"
-    ></div>
-    ```
+Do not split every small element into its own file. Extra nesting makes a simple project harder to follow.
 
-    Each external composition file wraps its content in a `<template>` tag:
+## How nesting works
 
-    ```html compositions/intro-anim.html
-    <template id="intro-anim-template">
-      <div data-composition-id="intro-anim" data-width="1920" data-height="1080">
-        <div class="title">Welcome!</div>
+The main composition gives each nested composition a place on its timeline:
 
-        <style>
-          [data-composition-id="intro-anim"] .title {
-            font-size: 72px; color: white; text-align: center;
-          }
-        </style>
-
-        <script>
-          const tl = gsap.timeline({ paused: true });
-          tl.from(".title", { opacity: 0, y: -50, duration: 1 });
-          window.__timelines["intro-anim"] = tl;
-        </script>
-      </div>
-    </template>
-    ```
-
-    `data-playback-start` selects the child timeline time shown when the host begins. It defaults to `0`. A left trim or split advances this source-time offset by the elapsed host time multiplied by `data-playback-rate`, so the nested animation remains continuous instead of restarting.
-  </Tab>
-  <Tab title="Inline">
-    Define a nested composition directly inside the parent. This is simpler for one-off compositions that do not need to be reused.
-
-    ```html index.html
-    <div id="root" data-composition-id="root"
-         data-start="0" data-width="1920" data-height="1080">
-
-      <!-- Inline nested composition -->
-      <div id="el-5" data-composition-id="intro-anim"
-           data-start="0" data-track-index="3"
-           data-width="1920" data-height="1080">
-        <div class="title">Welcome!</div>
-      </div>
-
-      <script>
-        // Timeline for the inline composition
-        const introTl = gsap.timeline({ paused: true });
-        introTl.from(".title", { opacity: 0, y: -50, duration: 1 });
-        window.__timelines["intro-anim"] = introTl;
-      </script>
-    </div>
-    ```
-
-    Inline compositions do not use `<template>` tags or `data-composition-src`.
-  </Tab>
-</Tabs>
-
-### Project Structure
-
-<Tree>
-  <Tree.Folder name="project" defaultOpen>
-    <Tree.File name="index.html" />
-    <Tree.Folder name="compositions" defaultOpen>
-      <Tree.File name="intro-anim.html" />
-      <Tree.File name="caption-overlay.html" />
-      <Tree.File name="outro-title.html" />
-    </Tree.Folder>
-    <Tree.Folder name="assets">
-      <Tree.File name="video.mp4" />
-      <Tree.File name="music.mp3" />
-      <Tree.File name="logo.png" />
-    </Tree.Folder>
-  </Tree.Folder>
-</Tree>
-
-## Two Layers: Primitives and Scripts
-
-Every composition has two layers:
-
-- **HTML** -- primitive clips (`video`, `img`, `audio`, nested compositions). The declarative structure: what plays, when, and on which track. Controlled by [data attributes](/concepts/data-attributes).
-- **Script** -- effects, transitions, dynamic DOM, canvas, SVG -- creative animation via [GSAP](/guides/gsap-animation). Scripts do **not** control media playback or clip visibility.
-
-<Warning>
-  Never use scripts to play/pause/seek media elements or to show/hide clips based on timing. The framework handles this automatically from data attributes. Scripts that duplicate this behavior will conflict with the framework. See [Common Mistakes](/guides/common-mistakes) for examples.
-</Warning>
-
-## Variables
-
-HyperFrames does not automatically bind `data-var-*` attributes into your composition DOM or CSS.
-
-The supported pattern is:
-
-1. Declare the variables once on the sub-comp's composition root with `data-composition-variables` (id + type + default) — the `<html>` element for a full-document composition, or the `[data-composition-id]` root element for a template / fragment sub-composition.
-2. Pass per-instance values on each composition host with `data-variable-values`.
-3. Read the resolved values inside the composition with `window.__hyperframes.getVariables()`. The runtime layers the host's `data-variable-values` over the declared defaults on a per-instance basis, so the same source can be embedded multiple times with different values.
-
-```html index.html
+```html
 <div
-  data-composition-id="card-pro"
-  data-composition-src="compositions/card.html"
-  data-start="0"
+  id="product-demo-host"
+  data-composition-id="product-demo"
+  data-composition-src="compositions/product-demo.html"
+  data-start="4"
+  data-duration="6"
   data-track-index="1"
-  data-variable-values='{"title":"Pro","color":"#ff4d4f"}'
-></div>
-<div
-  data-composition-id="card-enterprise"
-  data-composition-src="compositions/card.html"
-  data-start="card-pro"
-  data-track-index="1"
-  data-variable-values='{"title":"Enterprise","color":"#22c55e"}'
+  data-width="1920"
+  data-height="1080"
 ></div>
 ```
 
-```html compositions/card.html
-<html data-composition-variables='[
-  {"id":"title","type":"string","label":"Title","default":"Fallback"},
-  {"id":"color","type":"color","label":"Color","default":"#111827"}
-]'>
-  <body>
-    <div data-composition-id="card" data-width="1920" data-height="1080">
-      <h1 class="title"></h1>
+`data-composition-src` paths resolve from the project root, even when the referencing composition is inside another folder.
 
-      <style>
-        [data-composition-id="card"] {
-          --card-color: #111827;
-        }
+This tells HyperFrames to mount `product-demo.html` at four seconds and show a six-second window of it. The nested source keeps its own content and animation.
 
-        [data-composition-id="card"] .title {
-          color: var(--card-color);
-        }
-      </style>
+If the same source is mounted more than once, each instance can start at a different time or receive different [variables](/concepts/variables).
 
-      <script>
-        // Inside a sub-comp script, getVariables() returns the per-instance
-        // values: declared defaults < host data-variable-values overrides.
-        const { title, color } = __hyperframes.getVariables();
-        const root = document.querySelector('[data-composition-id="card"]');
-        root.querySelector(".title").textContent = title;
-        root.style.setProperty("--card-color", color);
-      </script>
-    </div>
-  </body>
-</html>
-```
+## Decide where to make a change
 
-If you are building tooling on top of `@hyperframes/core`, the same `data-composition-variables` array is readable via `extractCompositionMetadata()` for Studio editing UI and analysis pipelines.
+- Edit the **nested composition** when the scene itself should change everywhere it is used.
+- Edit the **main composition** when only its placement, duration, or relationship to other scenes should change.
+- Ask the **agent** when a revision changes the story or crosses several compositions.
 
-## Listing Compositions
+In Studio, open or expand a nested scene when you need to work inside it, then use the breadcrumb to return to the parent sequence.
 
-Use the [CLI](/packages/cli) to see all compositions in a project:
+## Continue
 
-```bash
-npx hyperframes compositions
-```
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Data Attributes" icon="code" href="/concepts/data-attributes">
-    Full reference for timing, media, and composition attributes
-  </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
-    Add animations to your compositions with GSAP timelines
-  </Card>
-  <Card title="Examples" icon="grid-2" href="/examples">
-    Start from built-in examples for common video patterns
-  </Card>
-  <Card title="HTML Schema Reference" icon="book" href="/reference/html-schema">
-    Complete schema for authoring compositions
-  </Card>
-</CardGroup>
+Use [Variables](/concepts/variables) when the design should stay fixed while approved content changes. Use the [HTML schema](/reference/html-schema) when you need exact element and attribute rules.

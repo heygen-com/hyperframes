@@ -29,10 +29,10 @@ export function getTimelinePreviewElement(
   element: TimelineElement,
   resizingClip: ResizingClipState | null,
 ): TimelineElement {
-  if (
-    resizingClip &&
-    getTimelineElementIdentity(resizingClip.element) === getTimelineElementIdentity(element)
-  ) {
+  const elementIdentity = getTimelineElementIdentity(element);
+  const groupPreview = resizingClip?.groupPreview?.find((change) => change.key === elementIdentity);
+  if (groupPreview) return { ...element, ...groupPreview };
+  if (resizingClip && getTimelineElementIdentity(resizingClip.element) === elementIdentity) {
     return {
       ...element,
       start: resizingClip.previewStart,

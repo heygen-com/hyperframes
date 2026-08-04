@@ -1,4 +1,5 @@
-import { defineCommand } from "citty";
+import { defineCommand, parseArgs } from "citty";
+import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
@@ -38,6 +39,93 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
   withMeta,
 };
 
+const CHECK_COMMAND_ARGS = {
+  dir: { type: "positional", description: "Project directory", required: false },
+  json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  samples: {
+    type: "string",
+    description: "Number of midpoint samples across the duration (default: 9)",
+    default: "9",
+  },
+  at: {
+    type: "string",
+    description: "Comma-separated timestamps in seconds (e.g., --at 1.5,4,7.25)",
+  },
+  "at-transitions": {
+    type: "boolean",
+    description:
+      "Also sample at every tween start/end boundary (plus segment midpoints) to catch transient overlaps at transition seams",
+    default: false,
+  },
+  "max-transition-samples": {
+    type: "string",
+    description:
+      "Optional cap on transition-derived samples; when it truncates, the omitted count is reported (default: unlimited)",
+  },
+  "max-issues": {
+    type: "string",
+    description: "Maximum issues to print or return after static collapse (default: 80)",
+    default: "80",
+  },
+  "collapse-static": {
+    type: "boolean",
+    description: "Collapse repeated static issues across samples (default: true)",
+    default: true,
+  },
+  tolerance: {
+    type: "string",
+    description: "Allowed pixel overflow before reporting an issue (default: 2)",
+    default: "2",
+  },
+  timeout: {
+    type: "string",
+    description:
+      "Initial render-ready timeout in ms; also sets the navigation minimum (10s floor, default: 3000)",
+    default: "3000",
+  },
+  contrast: {
+    type: "boolean",
+    description: "Run the WCAG AA contrast pass (enabled by default)",
+    default: true,
+  },
+  strict: {
+    type: "boolean",
+    description: "Exit non-zero on warnings too",
+    default: false,
+  },
+  proxy: {
+    type: "boolean",
+    description:
+      "Auto-transcode browser-hostile video codecs (default: hyperframes.json media.autoProxy, which defaults on)",
+    default: undefined,
+  },
+  "browser-gpu": {
+    type: "boolean",
+    description:
+      "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
+    default: undefined,
+  },
+  snapshots: {
+    type: "boolean",
+    description: "Save the five contrast-pass PNGs under snapshots/",
+    default: false,
+  },
+  "caption-zone": {
+    type: "string",
+    description:
+      'Caption band "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" (fractions 0-1; defaults: warning, seek=1)',
+  },
+  "frame-check": {
+    type: "string",
+    description:
+      'Bare --frame-check uses defaults (tol=2px, severity=warning, seek=.5; breach floor=max(120px, 6% of shorter canvas edge)); or pass "severity=error;seek=.25,.75;tol=4" to tune',
+  },
+  layout: {
+    type: "string",
+    description: 'Layout knobs: "proseCoverageFloor=0.05" (0–1; default 0.15).',
+  },
+} satisfies ArgsDef;
+
 export function createCheckCommand(
   dependencies: CheckCommandDependencies = DEFAULT_COMMAND_DEPENDENCIES,
 ) {
@@ -47,93 +135,9 @@ export function createCheckCommand(
       description:
         "Run lint, runtime, layout, motion, and WCAG contrast verification in one browser session",
     },
-    args: {
-      dir: { type: "positional", description: "Project directory", required: false },
-      json: { type: "boolean", description: "Output agent-readable JSON", default: false },
-      samples: {
-        type: "string",
-        description: "Number of midpoint samples across the duration (default: 9)",
-        default: "9",
-      },
-      at: {
-        type: "string",
-        description: "Comma-separated timestamps in seconds (e.g., --at 1.5,4,7.25)",
-      },
-      "at-transitions": {
-        type: "boolean",
-        description:
-          "Also sample at every tween start/end boundary (plus segment midpoints) to catch transient overlaps at transition seams",
-        default: false,
-      },
-      "max-transition-samples": {
-        type: "string",
-        description:
-          "Optional cap on transition-derived samples; when it truncates, the omitted count is reported (default: unlimited)",
-      },
-      "max-issues": {
-        type: "string",
-        description: "Maximum issues to print or return after static collapse (default: 80)",
-        default: "80",
-      },
-      "collapse-static": {
-        type: "boolean",
-        description: "Collapse repeated static issues across samples (default: true)",
-        default: true,
-      },
-      tolerance: {
-        type: "string",
-        description: "Allowed pixel overflow before reporting an issue (default: 2)",
-        default: "2",
-      },
-      timeout: {
-        type: "string",
-        description:
-          "Initial render-ready timeout in ms; also sets the navigation minimum (10s floor, default: 3000)",
-        default: "3000",
-      },
-      contrast: {
-        type: "boolean",
-        description: "Run the WCAG AA contrast pass (enabled by default)",
-        default: true,
-      },
-      strict: {
-        type: "boolean",
-        description: "Exit non-zero on warnings too",
-        default: false,
-      },
-      proxy: {
-        type: "boolean",
-        description:
-          "Auto-transcode browser-hostile video codecs (default: hyperframes.json media.autoProxy, which defaults on)",
-        default: undefined,
-      },
-      "browser-gpu": {
-        type: "boolean",
-        description:
-          "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
-        default: undefined,
-      },
-      snapshots: {
-        type: "boolean",
-        description: "Save the five contrast-pass PNGs under snapshots/",
-        default: false,
-      },
-      "caption-zone": {
-        type: "string",
-        description:
-          'Caption band "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" (fractions 0-1; defaults: warning, seek=1)',
-      },
-      "frame-check": {
-        type: "string",
-        description:
-          'Bare --frame-check uses defaults (tol=2px, severity=warning, seek=.5; breach floor=max(120px, 6% of shorter canvas edge)); or pass "severity=error;seek=.25,.75;tol=4" to tune',
-      },
-      layout: {
-        type: "string",
-        description: 'Layout knobs: "proseCoverageFloor=0.05" (0–1; default 0.15).',
-      },
-    },
-    async run({ args }) {
+    args: CHECK_COMMAND_ARGS,
+    async run({ rawArgs }) {
+      const args = parseArgs(normalizeFrameCheckRawArgs(rawArgs), CHECK_COMMAND_ARGS);
       const asJson = args.json === true;
 
       try {
@@ -161,6 +165,14 @@ export function createCheckCommand(
         setCommandExitCode(1);
       }
     },
+  });
+}
+
+function normalizeFrameCheckRawArgs(rawArgs: string[]): string[] {
+  return rawArgs.map((arg, index) => {
+    if (arg !== "--frame-check") return arg;
+    const next = rawArgs[index + 1];
+    return next === undefined || next.startsWith("-") ? "--frame-check=" : arg;
   });
 }
 
@@ -199,9 +211,10 @@ export function parseFrameCheck(value: unknown): FrameCheckOptions | undefined {
   if (value === undefined || value === null || value === false) return undefined;
   if (value === true || value === "") return {};
   if (typeof value !== "string") throw frameCheckError();
+  if (value.startsWith("-")) throw swallowedOptionError("frame-check", value);
   const fields = parseFrameCheckFields(value);
-  const severity = captionSeverity(fields.get("severity"));
-  const seek = captionSeeks(fields.get("seek"));
+  const severity = captionSeverity(fields.get("severity"), frameCheckError);
+  const seek = captionSeeks(fields.get("seek"), frameCheckError);
   const tol = parseFrameCheckTolerance(fields.get("tol"));
   return {
     ...(severity ? { severity } : {}),
@@ -213,7 +226,7 @@ export function parseFrameCheck(value: unknown): FrameCheckOptions | undefined {
 function parseFrameCheckFields(value: string): Map<string, string> {
   const fields = new Map<string, string>();
   for (const part of value.split(";")) {
-    const { key, entry } = parseCaptionField(part);
+    const { key, entry } = parseCaptionField(part, frameCheckError);
     if (!FRAME_CHECK_FIELDS.has(key) || fields.has(key)) throw frameCheckError();
     fields.set(key, entry);
   }
@@ -230,6 +243,12 @@ function parseFrameCheckTolerance(raw: string | undefined): number | undefined {
 function frameCheckError(): Error {
   return new Error(
     'Invalid --frame-check: use bare --frame-check or "severity=warning|error;seek=.25,.75;tol=4" (all fields optional)',
+  );
+}
+
+function swallowedOptionError(flag: string, value: string): Error {
+  return new Error(
+    `Invalid --${flag}: value "${value}" appears to have swallowed the next option; use --${flag}= or move --${flag} to the end`,
   );
 }
 
@@ -310,9 +329,12 @@ function parseCaptionFields(value: string): Map<string, string> {
   return fields;
 }
 
-function parseCaptionField(part: string): { key: string; entry: string } {
+function parseCaptionField(
+  part: string,
+  errorFactory: () => Error = captionZoneError,
+): { key: string; entry: string } {
   const separator = part.indexOf("=");
-  if (separator <= 0) throw captionZoneError();
+  if (separator <= 0) throw errorFactory();
   return {
     key: part.slice(0, separator).trim(),
     entry: part.slice(separator + 1).trim(),
@@ -345,17 +367,23 @@ function captionFraction(value: string | undefined): number | null {
   return parsed !== null && parsed >= 0 && parsed <= 1 ? parsed : null;
 }
 
-function captionSeverity(value: string | undefined): "error" | "warning" | undefined {
+function captionSeverity(
+  value: string | undefined,
+  errorFactory: () => Error = captionZoneError,
+): "error" | "warning" | undefined {
   if (value === undefined) return undefined;
   if (value === "error" || value === "warning") return value;
-  throw captionZoneError();
+  throw errorFactory();
 }
 
-function captionSeeks(value: string | undefined): number[] | undefined {
+function captionSeeks(
+  value: string | undefined,
+  errorFactory: () => Error = captionZoneError,
+): number[] | undefined {
   if (value === undefined) return undefined;
   if (value === "") return [];
   const values = value.split(",").map(captionFraction);
-  if (values.some((entry) => entry === null)) throw captionZoneError();
+  if (values.some((entry) => entry === null)) throw errorFactory();
   return values.flatMap((entry) => (entry === null ? [] : entry));
 }
 

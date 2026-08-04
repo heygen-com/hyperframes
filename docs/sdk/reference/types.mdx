@@ -1,9 +1,9 @@
 ---
 title: "Types"
-description: "All exported types from @hyperframes/sdk."
+description: "Core types exported from @hyperframes/sdk, with pointers to the adapter, history, and persistence types."
 ---
 
-This page documents every type exported from `@hyperframes/sdk`. Types are verified against `packages/sdk/src/types.ts` and the export barrel at `packages/sdk/src/index.ts`.
+This page documents the core types exported from `@hyperframes/sdk`, verified against `packages/sdk/src/types.ts` and the export barrel at `packages/sdk/src/index.ts`. Adapter, history, and persistence types live with the APIs that take them — see [Adapters](/sdk/reference/adapters), [Utilities](/sdk/reference/utilities), [Composition](/sdk/reference/composition), and [openComposition](/sdk/reference/open-composition).
 
 See also: [`Composition`](/sdk/reference/composition) for the main session interface, [`Edit Operations`](/sdk/reference/edit-operations) for the `EditOp` catalog.
 
@@ -81,7 +81,7 @@ interface HyperFramesElement {
 </ResponseField>
 
 <ResponseField name="trackIndex" type="number | null">
-  Zero-based track index (`data-track`). `null` when not set.
+  Zero-based track index (`data-track-index`). `null` when not set.
 </ResponseField>
 
 <ResponseField name="animationIds" type="readonly string[]">
@@ -213,7 +213,7 @@ interface FindQuery {
 </ResponseField>
 
 <ResponseField name="track" type="number">
-  Match by zero-based track index (`data-track`).
+  Match by zero-based track index (`data-track-index`).
 </ResponseField>
 
 <ResponseField name="composition" type="string">
@@ -677,6 +677,33 @@ title.setTiming({ start: 0.5, duration: 3 });
 
 ---
 
+## CompositionVariableType
+
+```typescript
+type CompositionVariableType =
+  | "string" | "number" | "color" | "boolean" | "enum" | "font" | "image";
+```
+
+The declared type of a composition variable. Re-exported from
+`@hyperframes/parsers`; `VARIABLE_TYPES` is the matching runtime list, useful
+for validators that need the set rather than the union.
+
+## VariableUsageScan
+
+```typescript
+interface VariableUsageScan {
+  usedIds: string[];
+  scanIncomplete: boolean;
+}
+```
+
+The result of statically scanning a composition's script for variable reads.
+`usedIds` is in first-seen order. `scanIncomplete` is `true` when the script
+reaches variables in a way the scan cannot resolve — computed keys, rest
+spreads, the values object escaping into a call — or when it fails to parse;
+`usedIds` is then a lower bound, not a complete list, so treat an unlisted id as
+unknown rather than unused.
+
 ## ORIGIN_APPLY_PATCHES / ORIGIN_LOCAL
 
 ```typescript
@@ -766,4 +793,3 @@ interface PersistErrorEvent {
 <ResponseField name="error.cause" type="unknown">
   Underlying error object, if available.
 </ResponseField>
-

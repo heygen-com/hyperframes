@@ -7,9 +7,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { KeyframeCacheEntry } from "../player/store/playerStore";
+import { usePlayerStore } from "../player/store/playerStore";
 import { useGsapKeyframeOps } from "./useGsapKeyframeOps";
 
 type HookApi = ReturnType<typeof useGsapKeyframeOps>;
+type CommitResult = { ok: boolean; changed: boolean };
+type CommitOptions = { onResult?: (result: CommitResult) => void };
+type CommitCall = [selection: unknown, mutation: unknown, options: CommitOptions];
+
+function readCommitOptions(args: unknown[]): CommitOptions {
+  // The hook accepts the production writer type; these test doubles expose only
+  // the third tuple member they exercise.
+  return (args as unknown as CommitCall)[2];
+}
 
 let cleanup: (() => void) | null = null;
 afterEach(() => {
@@ -21,15 +32,14 @@ const selection: DomEditSelection = { id: "box", selector: "#box" } as DomEditSe
 
 function successfulCommitMutation() {
   return vi.fn<(...args: unknown[]) => Promise<unknown>>(async (...args) => {
-    const options = args[2] as {
-      onResult?: (result: { ok: boolean; changed: boolean }) => void;
-    };
+    const options = readCommitOptions(args);
     options.onResult?.({ ok: true, changed: true });
   });
 }
 
 function renderKeyframeOps(over: {
   commitMutation: (...args: unknown[]) => Promise<unknown>;
+  commitMutationSafely?: (...args: unknown[]) => Promise<void>;
   trackGsapSaveFailure: (...args: unknown[]) => void;
 }) {
   const captured: { api: HookApi | null } = { api: null };
@@ -41,7 +51,7 @@ function renderKeyframeOps(over: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles
       commitMutation: over.commitMutation as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles
-      commitMutationSafely: (() => {}) as any,
+      commitMutationSafely: (over.commitMutationSafely ?? (async () => {})) as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles
       trackGsapSaveFailure: over.trackGsapSaveFailure as any,
       sdkSession: null,
@@ -135,7 +145,7 @@ describe("useGsapKeyframeOps — moveKeyframe settlement", () => {
 
   it("returns false when the writer accepts but does not change the keyframe", async () => {
     const commitMutation = vi.fn(async (...args: unknown[]) => {
-      const options = args[2] as { onResult?: (result: { ok: boolean; changed: boolean }) => void };
+      const options = readCommitOptions(args);
       options.onResult?.({ ok: true, changed: false });
     });
     const { committed, trackGsapSaveFailure } = await moveKeyframeWith(commitMutation);
@@ -201,6 +211,74 @@ describe("useGsapKeyframeOps — keyframe transaction options", () => {
       }),
       { label: "Convert to keyframes", softReload: true },
     );
+  });
+
+  it("clears delete-all cache only when persistence confirms the change", async () => {
+    let finishCommit: (() => void) | undefined;
+    const commitMutationSafely = vi.fn(
+      (...args: unknown[]) =>
+        new Promise<void>((resolve) => {
+          const options = readCommitOptions(args);
+          finishCommit = () => {
+            options.onResult?.({ ok: true, changed: true });
+            resolve();
+          };
+        }),
+    );
+    const api = renderKeyframeOps({
+      commitMutation: successfulCommitMutation(),
+      commitMutationSafely,
+      trackGsapSaveFailure: vi.fn(),
+    });
+    const cached: KeyframeCacheEntry = {
+      format: "percentage",
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 200 } },
+      ],
+    };
+    usePlayerStore.setState({ keyframeCache: new Map([["index.html#box", cached]]) });
+
+    const pending = api.removeAllKeyframes(selection, "box-to-0-position");
+    expect(commitMutationSafely).toHaveBeenCalledWith(
+      selection,
+      { type: "remove-all-keyframes", animationId: "box-to-0-position" },
+      expect.objectContaining({ label: "Remove all keyframes", softReload: true }),
+    );
+    expect(usePlayerStore.getState().keyframeCache.get("index.html#box")).toBe(cached);
+
+    finishCommit?.();
+    await pending;
+    expect(usePlayerStore.getState().keyframeCache.has("index.html#box")).toBe(false);
+  });
+
+  it("clears the live DOM identity for a selector-only selection", async () => {
+    const element = document.createElement("div");
+    element.id = "box";
+    const selectorOnlySelection: DomEditSelection = {
+      ...selection,
+      id: undefined,
+      selector: ".box",
+      element,
+    };
+    const commitMutationSafely = vi.fn(async (...args: unknown[]) => {
+      const options = readCommitOptions(args);
+      options.onResult?.({ ok: true, changed: true });
+    });
+    const api = renderKeyframeOps({
+      commitMutation: successfulCommitMutation(),
+      commitMutationSafely,
+      trackGsapSaveFailure: vi.fn(),
+    });
+    const cached: KeyframeCacheEntry = {
+      format: "percentage",
+      keyframes: [{ percentage: 0, properties: { x: 0 } }],
+    };
+    usePlayerStore.setState({ keyframeCache: new Map([["index.html#box", cached]]) });
+
+    await api.removeAllKeyframes(selectorOnlySelection, "box-to-0-position");
+
+    expect(usePlayerStore.getState().keyframeCache.has("index.html#box")).toBe(false);
   });
 
   it("threads one coalesce key through skipped convert reload and terminal batch edit", async () => {

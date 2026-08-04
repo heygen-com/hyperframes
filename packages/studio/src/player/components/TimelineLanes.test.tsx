@@ -116,7 +116,6 @@ function renderLanes(options: RenderLanesOptions = {}): {
           setResizingClip={vi.fn()}
           setDraggedClip={vi.fn()}
           setSelectedElementId={vi.fn()}
-          syncClipDragAutoScroll={vi.fn()}
           shiftClickClipRef={createRef()}
           getPreviewElement={(el) => el}
           getTrackStyle={getTrackStyle}
