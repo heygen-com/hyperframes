@@ -2,6 +2,7 @@ import {
   getStudioSaveErrorMessage,
   getStudioSaveStatusCode,
   StudioFileConflictError,
+  type StudioSaveDrainResult,
 } from "./studioSaveDiagnostics";
 
 interface DomEditSaveQueueOpenEvent {
@@ -23,10 +24,7 @@ export interface DomEditSaveQueue {
   destroy: () => void;
 }
 
-export type DomEditSaveDrainResult =
-  | { status: "clean" }
-  | { status: "conflict"; error: StudioFileConflictError }
-  | { status: "failed"; error: unknown };
+export type DomEditSaveDrainResult = StudioSaveDrainResult;
 
 const DEFAULT_FAILURE_THRESHOLD = 5;
 
@@ -66,7 +64,10 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
   const run = async <T>(save: () => Promise<T>): Promise<T> => {
     try {
       const result = await save();
-      if (!breakerOpen) consecutiveFailures = 0;
+      if (!breakerOpen) {
+        consecutiveFailures = 0;
+        drainError = null;
+      }
       return result;
     } catch (error) {
       drainError = error;

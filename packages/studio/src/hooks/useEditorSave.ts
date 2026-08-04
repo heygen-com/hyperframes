@@ -2,7 +2,10 @@ import { useCallback, useRef } from "react";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
+import {
+  StudioFileConflictError,
+  type StudioSaveDrainResult,
+} from "../utils/studioSaveDiagnostics";
 
 interface RecordEditInput {
   label: string;
@@ -28,16 +31,16 @@ export interface EditorSaveCandidate {
   content: string;
 }
 
-export type EditorSaveDrainResult =
-  | { status: "clean" }
-  | { status: "conflict"; error: StudioFileConflictError }
-  | { status: "failed"; error: unknown };
+export type EditorSaveDrainResult = StudioSaveDrainResult;
 
 export interface EditorSaveHandle {
   saveRafRef: React.MutableRefObject<number | null>;
   handleContentChange: (content: string) => void;
+  /** Read by the external-reload reconciliation introduced in stack PR #2993. */
   getPendingCandidate: () => EditorSaveCandidate | null;
+  /** Wired into the external-reload drain by stack PR #2993. */
   flushPendingSave: () => Promise<EditorSaveDrainResult>;
+  /** Used by PR #2993 when the external version wins. */
   discardPendingSave: () => void;
 }
 

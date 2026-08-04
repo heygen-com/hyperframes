@@ -36,6 +36,33 @@ describe("studio pending edit flush", () => {
     input.remove();
   });
 
+  it("waits for a post-blur effect to register its pending edit listener", async () => {
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    const persist = vi.fn(async () => undefined);
+    let removeListener: (() => void) | undefined;
+    let registrationDone: Promise<void> | undefined;
+    input.addEventListener("blur", () => {
+      registrationDone = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          removeListener = addStudioPendingEditFlushListener(persist);
+          resolve();
+        }, 0);
+      });
+    });
+    input.focus();
+
+    try {
+      await expect(flushStudioPendingEdits()).resolves.toEqual({ status: "clean" });
+
+      expect(persist).toHaveBeenCalledOnce();
+    } finally {
+      await registrationDone;
+      removeListener?.();
+      input.remove();
+    }
+  });
+
   it("preserves a pending edit failure instead of reporting a clean drain", async () => {
     const failure = new Error("field save failed");
     const remove = addStudioPendingEditFlushListener(async () => {
@@ -70,6 +97,32 @@ describe("studio pending edit flush", () => {
       });
     } finally {
       remove();
+    }
+  });
+
+  it("prioritizes a conflict when pending edits fail with mixed errors", async () => {
+    const failure = new Error("field save failed");
+    const conflict = new StudioFileConflictError({
+      filePath: "index.html",
+      currentVersion: "v2",
+      currentContent: "external",
+      attemptedContent: "studio",
+    });
+    const removeFailure = addStudioPendingEditFlushListener(async () => {
+      throw failure;
+    });
+    const removeConflict = addStudioPendingEditFlushListener(async () => {
+      throw conflict;
+    });
+
+    try {
+      await expect(flushStudioPendingEdits()).resolves.toEqual({
+        status: "conflict",
+        error: conflict,
+      });
+    } finally {
+      removeFailure();
+      removeConflict();
     }
   });
 

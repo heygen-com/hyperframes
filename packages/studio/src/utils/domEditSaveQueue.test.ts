@@ -115,6 +115,23 @@ describe("dom edit save queue", () => {
     queue.destroy();
   });
 
+  it("clears a stale drain failure after a successful save", async () => {
+    const failure = new Error("temporary failure");
+    const queue = createDomEditSaveQueue();
+
+    await expect(
+      queue.enqueue(async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    await expect(queue.waitForIdle()).resolves.toEqual({ status: "failed", error: failure });
+
+    await queue.enqueue(async () => undefined);
+
+    await expect(queue.waitForIdle()).resolves.toEqual({ status: "clean" });
+    queue.destroy();
+  });
+
   it("pauses immediately on a file conflict instead of retrying stale work", async () => {
     const onOpen = vi.fn();
     const queue = createDomEditSaveQueue({ failureThreshold: 5, onOpen });

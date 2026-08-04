@@ -1,4 +1,4 @@
-import { StudioFileConflictError } from "./studioSaveDiagnostics";
+import { StudioFileConflictError, type StudioSaveDrainResult } from "./studioSaveDiagnostics";
 
 const STUDIO_FLUSH_PENDING_EDITS_EVENT = "hf-studio-flush-pending-edits";
 
@@ -6,12 +6,13 @@ interface StudioFlushPendingEditsDetail {
   promises: Array<Promise<unknown>>;
 }
 
-export type StudioPendingEditsDrainResult =
-  | { status: "clean" }
-  | { status: "conflict"; error: StudioFileConflictError }
-  | { status: "failed"; error: unknown };
+export type StudioPendingEditsDrainResult = StudioSaveDrainResult;
 
 const pendingEditPromises = new Set<Promise<unknown>>();
+
+function waitForPostBlurEffects(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 export function trackStudioPendingEdit(
   result: Promise<unknown> | unknown,
@@ -33,28 +34,33 @@ export async function flushStudioPendingEdits(): Promise<StudioPendingEditsDrain
     active.matches('input, textarea, select, [contenteditable="true"], [role="textbox"]')
   ) {
     active.blur();
-    // React blur handlers enqueue their save synchronously, while state-driven
-    // registrations can land in the next microtask.
+    // ponytail: Preserve synchronous/microtask blur commits, then cross one task boundary
+    // so React effects triggered by the blur can register their flush listener.
     await Promise.resolve();
+    await waitForPostBlurEffects();
   }
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
   );
+  let firstFailure: unknown;
+  let hasFailure = false;
   while (detail.promises.length > 0 || pendingEditPromises.size > 0) {
     const promises = [...detail.promises, ...pendingEditPromises];
     detail.promises = [];
     const results = await Promise.allSettled(promises);
-    const rejected = results.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (rejected) {
-      return rejected.reason instanceof StudioFileConflictError
-        ? { status: "conflict", error: rejected.reason }
-        : { status: "failed", error: rejected.reason };
+    for (const result of results) {
+      if (result.status !== "rejected") continue;
+      if (result.reason instanceof StudioFileConflictError) {
+        return { status: "conflict", error: result.reason };
+      }
+      if (!hasFailure) {
+        firstFailure = result.reason;
+        hasFailure = true;
+      }
     }
   }
-  return { status: "clean" };
+  return hasFailure ? { status: "failed", error: firstFailure } : { status: "clean" };
 }
 
 export function addStudioPendingEditFlushListener(

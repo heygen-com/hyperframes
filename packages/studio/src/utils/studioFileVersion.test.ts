@@ -50,4 +50,14 @@ describe("studio write-token echo identity", () => {
     expect(consumeStudioWriteToken("studio-write-1")).toBe(false);
     expect(consumeStudioWriteToken(null)).toBe(false);
   });
+
+  it("keeps a token through a slow write and expires abandoned identity state", () => {
+    resetStudioWriteTokens();
+    markStudioWriteToken("slow-studio-write", 1_000);
+
+    expect(consumeStudioWriteToken("slow-studio-write", 61_000)).toBe(true);
+
+    markStudioWriteToken("abandoned-studio-write", 1_000);
+    expect(consumeStudioWriteToken("abandoned-studio-write", 301_000)).toBe(false);
+  });
 });
