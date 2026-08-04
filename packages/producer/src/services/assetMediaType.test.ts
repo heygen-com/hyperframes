@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import {
   ASSET_MEDIA_TYPE_MISMATCH,
   AssetMediaTypeMismatchError,
@@ -10,10 +9,7 @@ import {
 } from "./assetMediaType.js";
 import { synthesizeMediaFixture } from "./mediaTypeTestFixtures.js";
 
-const HAS_MEDIA_TOOLS =
-  spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
-
-describe.skipIf(!HAS_MEDIA_TOOLS)("preflightCompositionAssetMediaTypes", () => {
+describe("preflightCompositionAssetMediaTypes", () => {
   const fixtureDir = mkdtempSync(join(tmpdir(), "hf-media-type-preflight-"));
   const projectDir = join(fixtureDir, "project");
   const compiledDir = join(fixtureDir, "compiled");

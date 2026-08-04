@@ -367,8 +367,10 @@ async function hasCompletePngStructure(filePath: string, signal?: AbortSignal): 
     file = await openFile(filePath, "r");
     signal?.throwIfAborted();
     const fileSize = (await file.stat()).size;
+    signal?.throwIfAborted();
     const signature = Buffer.alloc(8);
     const signatureRead = await file.read(signature, 0, signature.length, 0);
+    signal?.throwIfAborted();
     if (
       signatureRead.bytesRead !== signature.length ||
       !signature.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
@@ -383,6 +385,7 @@ async function hasCompletePngStructure(filePath: string, signal?: AbortSignal): 
     while (offset + 12 <= fileSize) {
       signal?.throwIfAborted();
       const headerRead = await file.read(chunkHeader, 0, chunkHeader.length, offset);
+      signal?.throwIfAborted();
       if (headerRead.bytesRead !== chunkHeader.length) return false;
       const chunkLength = chunkHeader.readUInt32BE(0);
       const chunkEnd = offset + 12 + chunkLength;

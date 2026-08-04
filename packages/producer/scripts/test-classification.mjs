@@ -20,6 +20,9 @@ const INTEGRATION_TEST_FILES = new Set([
   "src/services/distributed/renderChunk.test.ts",
   "src/services/fileServer.test.ts",
   "src/services/healthWorker.test.ts",
+  "src/services/assetMediaType.test.ts",
+  "src/services/htmlCompiler.mediaType.test.ts",
+  "src/services/render/stages/compileStage.mediaType.test.ts",
   "src/utils/audioRegression.test.ts",
   "src/utils/streamDurationParity.test.ts",
 ]);

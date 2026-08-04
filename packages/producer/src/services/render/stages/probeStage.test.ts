@@ -14,8 +14,10 @@ const capturedOptions: unknown[] = [];
 let mediaPreflightCallCount = 0;
 let mediaPreflightError: Error | null = null;
 let mediaPreflightSignal: AbortSignal | undefined;
+let mediaPreflightComposition: unknown;
 let afterMediaPreflight: (() => void) | null = null;
 let fileServerCloseCallCount = 0;
+let browserMediaResults: unknown[] = [];
 
 type MockSession = {
   id: number;
@@ -63,14 +65,20 @@ function resetRetryMocks() {
   mediaPreflightCallCount = 0;
   mediaPreflightError = null;
   mediaPreflightSignal = undefined;
+  mediaPreflightComposition = undefined;
   afterMediaPreflight = null;
   fileServerCloseCallCount = 0;
+  browserMediaResults = [];
 }
 
 mock.module("../../assetMediaType.js", () => ({
-  preflightCompositionAssetMediaTypes: async (input: { signal?: AbortSignal }) => {
+  preflightCompositionAssetMediaTypes: async (input: {
+    signal?: AbortSignal;
+    composition?: unknown;
+  }) => {
     mediaPreflightCallCount += 1;
     mediaPreflightSignal = input.signal;
+    mediaPreflightComposition = input.composition;
     if (mediaPreflightError) throw mediaPreflightError;
     afterMediaPreflight?.();
   },
@@ -155,7 +163,7 @@ mock.module("../../fileServer.js", () => ({
 }));
 
 mock.module("../../htmlCompiler.js", () => ({
-  discoverMediaFromBrowser: async () => [],
+  discoverMediaFromBrowser: async () => browserMediaResults,
   discoverAudioVolumeAutomationFromTimeline: async () => [],
   discoverVideoVisibilityFromTimeline: async () => [],
   recompileWithResolutions: async (c: unknown) => c,
@@ -322,12 +330,12 @@ describe("hasVariableBoundMedia", () => {
     expect(hasVariableBoundMedia(html, { voice_src: "row-02.wav" })).toBe(true);
   });
 
-  it("does not probe unrelated overrides or image-only bindings", () => {
+  it("ignores unrelated overrides and probes image-bound sources", () => {
     const audio = `<audio src="fallback.wav" data-var-src="voice_src"></audio>`;
     const image = `<img src="fallback.png" data-var-src="hero_src" />`;
 
     expect(hasVariableBoundMedia(audio, { title: "Row 02" })).toBe(false);
-    expect(hasVariableBoundMedia(image, { hero_src: "row-02.png" })).toBe(false);
+    expect(hasVariableBoundMedia(image, { hero_src: "row-02.png" })).toBe(true);
   });
 });
 
@@ -342,6 +350,77 @@ describe("runProbeStage — forceScreenshot threading", () => {
     await runProbeStage(input);
 
     expect(mediaPreflightCallCount).toBe(1);
+  });
+
+  it("reconciles a variable-bound image source before media-type preflight", async () => {
+    resetRetryMocks();
+    browserMediaResults = [
+      {
+        id: "hero",
+        tagName: "image",
+        src: "runtime-video.asset",
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.composition.images.push({ id: "hero", src: "fallback.png", start: 0, end: 5 });
+    input.compiled.html =
+      '<img id="hero" src="fallback.png" data-var-src="hero_src" data-start="0" data-end="5">';
+    input.job.config.variables = { hero_src: "runtime-video.asset" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.images[0]?.src).toBe("runtime-video.asset");
+    expect(mediaPreflightComposition).toBe(input.composition);
+  });
+
+  it("reconciles a nested source's selected runtime URL before media-type preflight", async () => {
+    resetRetryMocks();
+    browserMediaResults = [
+      {
+        id: "clip",
+        tagName: "video",
+        src: "runtime-still.asset",
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.composition.videos.push({
+      id: "clip",
+      src: "fallback.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    input.compiled.html = `<video id="clip" data-start="0" data-end="5">
+      <source src="fallback.mp4" data-var-src="clip_src">
+    </video>`;
+    input.job.config.variables = { clip_src: "runtime-still.asset" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.videos[0]?.src).toBe("runtime-still.asset");
+    expect(mediaPreflightComposition).toBe(input.composition);
   });
 
   it("passes cancellation through and closes probe-owned resources when preflight rejects", async () => {

@@ -14,6 +14,7 @@ import {
   detectRenderModeHints,
   detectShaderTransitionUsage,
   detectThreeDTransformUsage,
+  discoverMediaFromBrowser,
   discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
   localizeRemoteMediaSources,
@@ -22,6 +23,50 @@ import {
   recompileWithResolutions,
 } from "./htmlCompiler.js";
 import { validateNoSystemFonts } from "./render/planValidation.js";
+
+describe("discoverMediaFromBrowser", () => {
+  async function discover(html: string, currentSrcById: Record<string, string>) {
+    const { document } = parseHTML(html);
+    for (const [id, currentSrc] of Object.entries(currentSrcById)) {
+      const element = document.getElementById(id);
+      if (element) Object.defineProperty(element, "currentSrc", { value: currentSrc });
+    }
+    const previousDocument = Reflect.get(globalThis, "document");
+    Reflect.set(globalThis, "document", document);
+    try {
+      return await discoverMediaFromBrowser({ evaluate: async (collect) => collect() } as never);
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+      else Reflect.set(globalThis, "document", previousDocument);
+    }
+  }
+
+  it("uses the selected currentSrc from a variable-bound nested source", async () => {
+    const media = await discover(
+      `<video id="clip" data-start="0" data-end="1">
+        <source src="fallback.mp4" data-var-src="clip_src" />
+      </video>`,
+      { clip: "https://cdn.example/runtime.webm" },
+    );
+
+    expect(media).toHaveLength(1);
+    expect(media[0]).toMatchObject({
+      id: "clip",
+      tagName: "video",
+      src: "https://cdn.example/runtime.webm",
+    });
+  });
+
+  it("discovers variable-bound images with the same generated id as the static parser", async () => {
+    const media = await discover(
+      `<img src="first.png" /><img src="fallback.png" data-var-src="hero_src" />`,
+      {},
+    );
+
+    expect(media).toHaveLength(1);
+    expect(media[0]).toMatchObject({ id: "hf-img-1", tagName: "image" });
+  });
+});
 
 describe("injectSdkPositionEditsRenderScript", () => {
   it("injects before </body> when SDK position-edit markers are present", () => {

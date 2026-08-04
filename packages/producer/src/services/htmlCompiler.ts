@@ -64,6 +64,9 @@ import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-serve
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
+import { Semaphore } from "../utils/semaphore.js";
+
+const MAX_COMPILER_MEDIA_PROBES = 4;
 
 export interface CompiledComposition {
   html: string;
@@ -411,6 +414,8 @@ async function resolveMediaDuration(
   baseDir: string,
   downloadDir: string,
   tagName: string,
+  elementIdentity: string,
+  mediaProbeSemaphore: Semaphore,
 ): Promise<{ duration: number; resolvedPath: string }> {
   let filePath = src;
 
@@ -431,37 +436,42 @@ async function resolveMediaDuration(
     return { duration: 0, resolvedPath: filePath };
   }
 
-  let profile: MediaProbeProfile;
+  const releaseProbe = await mediaProbeSemaphore.acquire();
   try {
-    profile = await probeMediaProfile(filePath);
-  } catch (error) {
-    // Preserve the historical split: invalid video sources surface their
-    // probe failure, while invalid/unreadable audio sources resolve to zero
-    // duration and are excluded by the compiler.
-    if (tagName !== "video") return { duration: 0, resolvedPath: filePath };
-    throw error;
-  }
-  assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, tagName);
-
-  let metadata: { durationSeconds: number };
-  if (tagName === "video") {
-    metadata = await extractMediaMetadata(filePath);
-  } else {
+    let profile: MediaProbeProfile;
     try {
-      metadata = await extractAudioMetadata(filePath);
-    } catch {
-      // Source file has no audio stream (e.g. a silent video used as an audio src).
-      // Return duration 0 so the element is excluded from the composition gracefully,
-      // matching how missing files and failed downloads are already handled above.
-      return { duration: 0, resolvedPath: filePath };
+      profile = await probeMediaProfile(filePath);
+    } catch (error) {
+      // Preserve the historical split: invalid video sources surface their
+      // probe failure, while invalid/unreadable audio sources resolve to zero
+      // duration and are excluded by the compiler.
+      if (tagName !== "video") return { duration: 0, resolvedPath: filePath };
+      throw error;
     }
+    assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, elementIdentity);
+
+    let metadata: { durationSeconds: number };
+    if (tagName === "video") {
+      metadata = await extractMediaMetadata(filePath);
+    } else {
+      try {
+        metadata = await extractAudioMetadata(filePath);
+      } catch {
+        // Source file has no audio stream (e.g. a silent video used as an audio src).
+        // Return duration 0 so the element is excluded from the composition gracefully,
+        // matching how missing files and failed downloads are already handled above.
+        return { duration: 0, resolvedPath: filePath };
+      }
+    }
+
+    const fileDuration = metadata.durationSeconds;
+    const effectiveDuration = fileDuration - mediaStart;
+    const duration = effectiveDuration > 0 ? effectiveDuration : fileDuration;
+
+    return { duration, resolvedPath: filePath };
+  } finally {
+    releaseProbe();
   }
-
-  const fileDuration = metadata.durationSeconds;
-  const effectiveDuration = fileDuration - mediaStart;
-  const duration = effectiveDuration > 0 ? effectiveDuration : fileDuration;
-
-  return { duration, resolvedPath: filePath };
 }
 
 /**
@@ -472,6 +482,7 @@ async function compileHtmlFile(
   html: string,
   baseDir: string,
   downloadDir: string,
+  mediaProbeSemaphore: Semaphore,
   log?: ProducerLogger,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
@@ -485,9 +496,15 @@ async function compileHtmlFile(
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
-      resolveMediaDuration(el.src!, el.mediaStart, baseDir, downloadDir, el.tagName).then(
-        ({ duration }) => ({ id: el.id, duration }),
-      ),
+      resolveMediaDuration(
+        el.src!,
+        el.mediaStart,
+        baseDir,
+        downloadDir,
+        el.tagName,
+        el.id,
+        mediaProbeSemaphore,
+      ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
   const resolutions: ResolvedDuration[] = resolvedResults.filter((r) => r.duration > 0);
@@ -508,6 +525,8 @@ async function compileHtmlFile(
           baseDir,
           downloadDir,
           el.tagName,
+          el.id,
+          mediaProbeSemaphore,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
       }),
@@ -569,6 +588,7 @@ async function parseSubCompositions(
   html: string,
   projectDir: string,
   downloadDir: string,
+  mediaProbeSemaphore: Semaphore,
   parentOffset: number = 0,
   parentEnd: number = Infinity,
   visited: Set<string> = new Set(),
@@ -632,12 +652,14 @@ async function parseSubCompositions(
         item.rawSubHtml,
         dirname(item.filePath),
         downloadDir,
+        mediaProbeSemaphore,
       );
 
       const nested = await parseSubCompositions(
         compiledSub,
         projectDir,
         downloadDir,
+        mediaProbeSemaphore,
         item.absoluteStart,
         item.absoluteEnd,
         item.nestedVisited,
@@ -1834,10 +1856,15 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir);
 
+  // One limiter is shared by both compiler passes and every recursive
+  // sub-composition so nested Promise.all calls cannot multiply ffprobe load.
+  const mediaProbeSemaphore = new Semaphore(MAX_COMPILER_MEDIA_PROBES);
+
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
     downloadDir,
+    mediaProbeSemaphore,
     options.log,
   );
 
@@ -1847,7 +1874,7 @@ export async function compileForRender(
     audios: subAudios,
     images: subImages,
     subCompositions,
-  } = await parseSubCompositions(compiledHtml, projectDir, downloadDir);
+  } = await parseSubCompositions(compiledHtml, projectDir, downloadDir, mediaProbeSemaphore);
 
   // Ensure the HTML is a full document before inlining sub-compositions.
   // When index.html is a fragment (no <html>/<head>/<body>), linkedom.parseHTML()
@@ -2071,7 +2098,7 @@ export async function compileForRender(
  */
 export interface BrowserMediaElement {
   id: string;
-  tagName: "video" | "audio";
+  tagName: "video" | "audio" | "image";
   src: string;
   start: number;
   end: number;
@@ -2105,13 +2132,23 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       muted: boolean;
     }[] = [];
 
-    const mediaEls = document.querySelectorAll("video[data-start], audio[data-start]");
+    const autoImageIds = new Map<Element, string>();
+    let autoImageId = 0;
+    document.querySelectorAll("img[src]").forEach((image) => {
+      if (!image.id) autoImageIds.set(image, `hf-img-${autoImageId++}`);
+    });
+
+    const mediaEls = document.querySelectorAll(
+      "video[data-start], audio[data-start], img[data-var-src]",
+    );
     mediaEls.forEach((el) => {
-      const htmlEl = el as HTMLVideoElement | HTMLAudioElement;
-      const id = htmlEl.id;
+      const htmlEl = el as HTMLVideoElement | HTMLAudioElement | HTMLImageElement;
+      const isImage = htmlEl.tagName.toLowerCase() === "img";
+      const id = htmlEl.id || (isImage ? autoImageIds.get(htmlEl) : undefined);
       if (!id) return;
 
-      const src = htmlEl.src || htmlEl.getAttribute("src") || "";
+      // currentSrc is authoritative for <video>/<audio><source> and responsive images.
+      const src = htmlEl.currentSrc || htmlEl.src || htmlEl.getAttribute("src") || "";
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
       const end = parseFloat(htmlEl.getAttribute("data-end") || "0");
       const duration = parseFloat(htmlEl.getAttribute("data-duration") || "0");
@@ -2119,11 +2156,13 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       const loop = htmlEl.hasAttribute("loop");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");
-      const muted = htmlEl.hasAttribute("muted") || htmlEl.muted;
+      const muted =
+        !isImage &&
+        (htmlEl.hasAttribute("muted") || (htmlEl as HTMLVideoElement | HTMLAudioElement).muted);
 
       results.push({
         id,
-        tagName: htmlEl.tagName.toLowerCase(),
+        tagName: isImage ? "image" : htmlEl.tagName.toLowerCase(),
         src,
         start,
         end,
@@ -2420,6 +2459,7 @@ export async function recompileWithResolutions(
   if (resolutions.length === 0) return compiled;
 
   const html = injectDurations(compiled.html, resolutions);
+  const mediaProbeSemaphore = new Semaphore(MAX_COMPILER_MEDIA_PROBES);
 
   // Re-parse sub-compositions with the updated parent bounds
   const {
@@ -2427,7 +2467,7 @@ export async function recompileWithResolutions(
     audios: subAudios,
     images: subImages,
     subCompositions,
-  } = await parseSubCompositions(html, projectDir, downloadDir);
+  } = await parseSubCompositions(html, projectDir, downloadDir, mediaProbeSemaphore);
 
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);

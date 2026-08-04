@@ -1,15 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { compileForRender } from "./htmlCompiler.js";
 import { synthesizeMediaFixture } from "./mediaTypeTestFixtures.js";
+import { Semaphore } from "../utils/semaphore.js";
 
-const HAS_MEDIA_TOOLS =
-  spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
-
-describe.skipIf(!HAS_MEDIA_TOOLS)("compileForRender media-type ownership", () => {
+describe("compileForRender media-type ownership", () => {
   const projectDir = mkdtempSync(join(tmpdir(), "hf-compiler-media-type-"));
   const downloadDir = join(projectDir, "downloads");
   const stillPath = join(projectDir, "extensionless-still");
@@ -78,5 +75,53 @@ describe.skipIf(!HAS_MEDIA_TOOLS)("compileForRender media-type ownership", () =>
       owner: "user",
       retryable: false,
     });
+  });
+
+  it("shares a four-wide media-probe limiter across parallel sub-compositions", async () => {
+    const originalAcquire = Semaphore.prototype.acquire;
+    const limiterInstances = new Set<Semaphore>();
+    let maxActive = 0;
+    const acquireSpy = vi
+      .spyOn(Semaphore.prototype, "acquire")
+      .mockImplementation(async function (this: Semaphore) {
+        const release = await originalAcquire.call(this);
+        limiterInstances.add(this);
+        maxActive = Math.max(maxActive, this.activeCount);
+        return release;
+      });
+
+    try {
+      const subCompositions: string[] = [];
+      for (let index = 0; index < 8; index += 1) {
+        const name = `probe-${index}.html`;
+        writeFileSync(
+          join(projectDir, name),
+          `<!doctype html><html><body>
+            <div data-composition-id="sub-${index}" data-width="32" data-height="32" data-duration="1">
+              <video id="video-${index}" src="extensionless-video" data-start="0"></video>
+            </div>
+          </body></html>`,
+        );
+        subCompositions.push(
+          `<div data-composition-id="sub-${index}" data-composition-src="${name}" data-start="0" data-duration="1"></div>`,
+        );
+      }
+      const htmlPath = join(projectDir, "index.html");
+      writeFileSync(
+        htmlPath,
+        `<!doctype html><html><body>
+          <div data-composition-id="root" data-width="320" data-height="180" data-duration="1">
+            ${subCompositions.join("\n")}
+          </div>
+        </body></html>`,
+      );
+
+      await compileForRender(projectDir, htmlPath, downloadDir);
+
+      expect(limiterInstances.size).toBe(1);
+      expect(maxActive).toBe(4);
+    } finally {
+      acquireSpy.mockRestore();
+    }
   });
 });
