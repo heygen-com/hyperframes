@@ -58,6 +58,11 @@ export interface TimelineElement {
   playbackRate?: number;
   sourceDuration?: number;
   volume?: number;
+  /** Verbatim `data-fx-chain` / `data-automation`, when set. Kept raw: the lane
+   *  reads and writes the attribute, which is what keeps it, the property panel
+   *  and the running audio graph on one source of truth. */
+  fxChain?: string;
+  automation?: string;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
   /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
