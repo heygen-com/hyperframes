@@ -1,3 +1,5 @@
+import { createJsonStore } from "./jsonStore";
+
 /**
  * Half-typed instructions, kept across reloads.
  *
@@ -14,31 +16,21 @@ const MAX_DRAFTS = 20;
 
 type DraftMap = Record<string, string>;
 
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
+/** Anything that is not a string draft is discarded, not repaired. */
+function parseDrafts(raw: unknown): DraftMap {
+  if (typeof raw !== "object" || raw === null) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
 }
 
-function readAll(storage: Storage | null): DraftMap {
-  if (!storage) return {};
-  try {
-    const raw = storage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
-      ),
-    );
-  } catch {
-    return {};
-  }
-}
+const drafts = createJsonStore<DraftMap>({
+  key: STORAGE_KEY,
+  fallback: {},
+  parse: parseDrafts,
+});
 
 /** Identifies the element a draft belongs to, stable across a reload. */
 export function agentDraftKey(parts: {
@@ -56,30 +48,19 @@ export function agentDraftKey(parts: {
   ].join("|");
 }
 
-export function readAgentDraft(key: string, storage: Storage | null = getStorage()): string {
-  return readAll(storage)[key] ?? "";
+export function readAgentDraft(key: string): string {
+  return drafts.read()[key] ?? "";
 }
 
 /** Writing an empty draft forgets it — an emptied field is not worth restoring. */
-export function writeAgentDraft(
-  key: string,
-  value: string,
-  storage: Storage | null = getStorage(),
-): void {
-  if (!storage) return;
-  const drafts = readAll(storage);
-  if (value.trim()) drafts[key] = value;
-  else delete drafts[key];
-
+export function writeAgentDraft(key: string, value: string): void {
+  const next = drafts.read();
+  if (value.trim()) next[key] = value;
+  else delete next[key];
   // Newest wins when the cap is hit: insertion order is age order here.
-  const entries = Object.entries(drafts).slice(-MAX_DRAFTS);
-  try {
-    storage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
-  } catch {
-    // Quota or a private-mode storage: losing a draft beats breaking the field.
-  }
+  drafts.write(Object.fromEntries(Object.entries(next).slice(-MAX_DRAFTS)));
 }
 
-export function clearAgentDraft(key: string, storage: Storage | null = getStorage()): void {
-  writeAgentDraft(key, "", storage);
+export function clearAgentDraft(key: string): void {
+  writeAgentDraft(key, "");
 }

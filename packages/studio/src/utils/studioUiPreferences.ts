@@ -1,3 +1,5 @@
+import { createJsonStore } from "./jsonStore";
+
 export interface StoredPreviewZoomState {
   zoomPercent: number;
   panX: number;
@@ -59,22 +61,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function getBrowserStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 // fallow-ignore-next-line complexity
-function readStorage(storage: Storage | null): StudioUiPreferences {
-  if (!storage) return {};
-  try {
-    const raw = storage.getItem(STUDIO_UI_PREFERENCES_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
+function parsePreferences(parsed: unknown): StudioUiPreferences {
+  {
     if (!isRecord(parsed)) return {};
 
     const preferences: StudioUiPreferences = {};
@@ -173,27 +162,30 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
       }
     }
     return preferences;
-  } catch {
-    return {};
   }
 }
 
-export function readStudioUiPreferences(storage: Storage | null = getBrowserStorage()) {
-  return readStorage(storage);
+const store = createJsonStore<StudioUiPreferences>({
+  key: STUDIO_UI_PREFERENCES_KEY,
+  fallback: {},
+  parse: parsePreferences,
+});
+
+export function readStudioUiPreferences(storage?: Storage | null) {
+  return storage === undefined ? store.read() : storeFor(storage).read();
 }
 
-export function writeStudioUiPreferences(
-  patch: StudioUiPreferences,
-  storage: Storage | null = getBrowserStorage(),
-) {
-  if (!storage) return;
-  try {
-    const next = {
-      ...readStorage(storage),
-      ...patch,
-    };
-    storage.setItem(STUDIO_UI_PREFERENCES_KEY, JSON.stringify(next));
-  } catch {
-    /* localStorage may be unavailable or full */
-  }
+export function writeStudioUiPreferences(patch: StudioUiPreferences, storage?: Storage | null) {
+  const target = storage === undefined ? store : storeFor(storage);
+  target.update(patch);
+}
+
+/** Tests (and any non-default Storage) get their own store over the same shape. */
+function storeFor(storage: Storage | null) {
+  return createJsonStore<StudioUiPreferences>({
+    key: STUDIO_UI_PREFERENCES_KEY,
+    fallback: {},
+    parse: parsePreferences,
+    storage: () => storage,
+  });
 }
