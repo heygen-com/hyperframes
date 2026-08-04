@@ -205,6 +205,10 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return signature;
     },
 
+    invalidateProjectSignature(projectDir: string): void {
+      projectSignatureCache.delete(resolve(projectDir));
+    },
+
     async lint(html: string, opts?: { filePath?: string }) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");
       return await mod.lintHyperframeHtml(html, opts);

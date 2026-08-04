@@ -45,6 +45,71 @@ const GSAP_CDN_VERSION = "3.15.0";
 const GSAP_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/gsap.min.js"></script>`;
 const GSAP_CUSTOM_EASE_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/CustomEase.min.js"></script>`;
 const GSAP_MOTION_PATH_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/MotionPathPlugin.min.js"></script>`;
+const MEBIBYTE = 1024 * 1024;
+
+interface PreviewDocumentCacheBudgets {
+  maxEntries: number;
+  maxBytes: number;
+}
+
+const PREVIEW_DOCUMENT_CACHE_BUDGETS: Readonly<PreviewDocumentCacheBudgets> = Object.freeze({
+  maxEntries: 16,
+  maxBytes: 16 * MEBIBYTE,
+});
+
+interface PreviewDocumentCacheEntry {
+  html: string;
+  bytes: number;
+}
+
+/**
+ * Remembers built preview documents so a browser without a cached copy — every
+ * first open of a session — doesn't re-pay the linkedom parse, ensureHfIds and
+ * sub-composition inlining. Keyed on the same project signature the ETag uses,
+ * so freshness has exactly one owner: a hit is a document the ETag would have
+ * revalidated to a 304.
+ *
+ * Bounded by entry count AND bytes (a studio session opens many projects, and
+ * an inlined document runs to hundreds of KB); eviction is least-recently-used
+ * via Map insertion order.
+ */
+export class PreviewDocumentCache {
+  private readonly entries = new Map<string, PreviewDocumentCacheEntry>();
+  private totalBytes = 0;
+
+  constructor(
+    private readonly budgets: Readonly<PreviewDocumentCacheBudgets> = PREVIEW_DOCUMENT_CACHE_BUDGETS,
+  ) {}
+
+  get(key: string): string | undefined {
+    const entry = this.entries.get(key);
+    if (entry === undefined) return undefined;
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry.html;
+  }
+
+  set(key: string, html: string): void {
+    const existing = this.entries.get(key);
+    if (existing !== undefined) {
+      this.entries.delete(key);
+      this.totalBytes -= existing.bytes;
+    }
+
+    const entry = { html, bytes: Buffer.byteLength(html) };
+    if (entry.bytes > this.budgets.maxBytes) return;
+    this.entries.set(key, entry);
+    this.totalBytes += entry.bytes;
+
+    while (this.entries.size > this.budgets.maxEntries || this.totalBytes > this.budgets.maxBytes) {
+      const oldestKey = this.entries.keys().next().value;
+      if (oldestKey === undefined) return;
+      const oldest = this.entries.get(oldestKey);
+      this.entries.delete(oldestKey);
+      if (oldest !== undefined) this.totalBytes -= oldest.bytes;
+    }
+  }
+}
 
 function injectProjectSignature(html: string, signature: string): string {
   const tag = `<meta name="${PROJECT_SIGNATURE_META}" content="${signature}">`;
@@ -275,16 +340,12 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 
 function injectStudioPreviewAugmentations(
   html: string,
-  adapter: StudioApiAdapter,
+  signature: string,
   projectDir: string,
   activeCompositionPath: string,
 ): string {
   return injectStudioMotionScript(
-    injectMotionPathPluginIfNeeded(
-      injectGsapCdnFallback(
-        injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
-      ),
-    ),
+    injectMotionPathPluginIfNeeded(injectGsapCdnFallback(injectProjectSignature(html, signature))),
     projectDir,
     activeCompositionPath,
   );
@@ -335,6 +396,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     "Cache-Control": "private, no-cache",
     ETag: etag,
   });
+  const previewDocumentCache = new PreviewDocumentCache();
 
   // One probe cache per server instance (this function runs once per
   // registered API), reused across every preview request so the mtime-cache
@@ -346,20 +408,29 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
   api.get("/projects/:id/preview", async (c) => {
     const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
     if (!resolved) return c.json({ error: "not found" }, 404);
-    const { project, signature } = resolved;
+    const { project, signature: requestSignature } = resolved;
 
     // fallow-ignore-next-line code-duplication
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
 
-    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
+    const etagSalt = variablesEtagSalt(vars.raw);
+    const requestEtag = `"preview:${requestSignature}${etagSalt}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
+    if (ifNoneMatch === requestEtag) {
       return new Response(null, {
         status: 304,
-        headers: previewCacheHeaders(etag),
+        headers: previewCacheHeaders(requestEtag),
       });
+    }
+    // Serve our own remembered bytes when the browser has none. The key carries
+    // the project id because the injected <base href> embeds it, so two projects
+    // with identical content still build different documents.
+    const requestCacheKey = `${project.id}:${requestEtag}`;
+    const cached = previewDocumentCache.get(requestCacheKey);
+    if (cached !== undefined) {
+      return c.html(cached, 200, previewCacheHeaders(requestEtag));
     }
 
     // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
@@ -367,6 +438,25 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const normalizedDisk = diskMain
       ? persistHfIdsIfNeeded(join(project.dir, diskMain.compositionPath), diskMain.html)
       : null;
+    // Re-resolve AFTER the stamp: minting ids rewrites the source file, which
+    // changes the project signature. Everything downstream — the cache key, the
+    // served ETag and the signature meta tag — must use this post-stamp value or
+    // the entry is filed under a signature no later request can ever ask for
+    // (and the ETag we hand back is one the next request already disagrees with).
+    // The adapter memoizes signatures and invalidates from a file watcher, which
+    // has not fired yet for the write persistHfIdsIfNeeded just made. Without
+    // this the "re-resolve" returns the pre-stamp value and the fix above is a
+    // no-op: the served ETag is one the next request already disagrees with.
+    if (normalizedDisk !== null) adapter.invalidateProjectSignature?.(project.dir);
+    const signature = resolveProjectSignature(adapter, project.dir);
+    const etag = `"preview:${signature}${etagSalt}"`;
+    const cacheKey = `${project.id}:${etag}`;
+    if (cacheKey !== requestCacheKey) {
+      const postStampCached = previewDocumentCache.get(cacheKey);
+      if (postStampCached !== undefined) {
+        return c.html(postStampCached, 200, previewCacheHeaders(etag));
+      }
+    }
 
     try {
       let bundled = await adapter.bundle(project.dir);
@@ -404,7 +494,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       // the ids already written to disk by persistHfIdsIfNeeded above.
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
-        adapter,
+        signature,
         project.dir,
         mainCompositionPath,
       );
@@ -416,6 +506,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mainCompositionPath,
         mediaCodecProbeCache,
       );
+      previewDocumentCache.set(cacheKey, bundled);
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
@@ -426,9 +517,16 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           join(project.dir, fallback.compositionPath),
           fallback.html,
         );
+        // Same post-stamp re-resolve as the success path — this branch re-reads
+        // and re-stamps disk. NOT stored in previewDocumentCache: this document
+        // is the degraded, un-inlined one, and memoizing it would pin a
+        // transient bundler failure until the project changes. The fallback is
+        // also the cheap path (no bundle, no inlining), so there is nothing to win.
+        const fallbackSignature = resolveProjectSignature(adapter, project.dir);
+        const fallbackEtag = `"preview:${fallbackSignature}${etagSalt}"`;
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
-          adapter,
+          fallbackSignature,
           project.dir,
           fallback.compositionPath,
         );
@@ -442,7 +540,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           fallback.compositionPath,
           mediaCodecProbeCache,
         );
-        return c.html(fallbackAugmented, 200, previewCacheHeaders(etag));
+        return c.html(fallbackAugmented, 200, previewCacheHeaders(fallbackEtag));
       }
       return c.text("not found", 404);
     }
@@ -515,7 +613,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     );
     if (!html) return c.text("not found", 404);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath);
+    html = injectStudioPreviewAugmentations(
+      html,
+      resolveProjectSignature(adapter, project.dir),
+      project.dir,
+      compPath,
+    );
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
     html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
     return c.html(html, 200, previewCacheHeaders(etag));

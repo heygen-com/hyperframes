@@ -106,6 +106,14 @@ export interface StudioApiAdapter {
 
   /** Optional: cached signature for project files that should invalidate preview frame caches. */
   getProjectSignature?: (projectDir: string) => string;
+  /**
+   * Drop any memoized signature for this project. Adapters cache the signature
+   * and invalidate it from a file watcher, which is asynchronous — so a write
+   * the server itself just made (minting data-hf-id) is not yet visible to the
+   * next getProjectSignature call in the same request. Callers that mutate
+   * project source must invalidate before re-resolving.
+   */
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
   lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
