@@ -37,29 +37,38 @@ export function autoplays(source) {
   return /\bautoPlay(?:=\{|\s|\/?>)/.test(source);
 }
 
-export function findMotionGuardViolations(source) {
-  const problems = [];
+/** The preference must be known on the first render, not after the first effect. */
+export function readsPreferenceLazily(source) {
+  return /useState\(\s*\(\)\s*=>/.test(source) && source.includes("prefers-reduced-motion");
+}
 
-  if (!/useState\(\s*\(\)\s*=>/.test(source) || !source.includes("prefers-reduced-motion")) {
-    problems.push(
-      "reads prefers-reduced-motion after mount instead of in a useState lazy initializer, " +
-        "so the first committed render autoplays before the preference is known",
-    );
-  }
-
-  const stopsPlayback =
+/** React props alone neither pause an element nor abort its resource. */
+export function stopsPlaybackActively(source) {
+  return (
     source.includes(".pause()") &&
     source.includes(".load()") &&
-    /removeAttribute\(\s*"src"/.test(source);
-  if (!stopsPlayback) {
-    problems.push(
-      "never actively stops playback when the preference flips to reduce; " +
-        "dropping src/autoPlay through React props does not pause an element or abort its resource — " +
-        'pause(), removeAttribute("src") and load() are all required',
-    );
-  }
+    /removeAttribute\(\s*"src"/.test(source)
+  );
+}
 
-  return problems;
+const REQUIREMENTS = [
+  {
+    holds: readsPreferenceLazily,
+    problem:
+      "reads prefers-reduced-motion after mount instead of in a useState lazy initializer, " +
+      "so the first committed render autoplays before the preference is known",
+  },
+  {
+    holds: stopsPlaybackActively,
+    problem:
+      "never actively stops playback when the preference flips to reduce; " +
+      "dropping src/autoPlay through React props does not pause an element or abort its resource — " +
+      'pause(), removeAttribute("src") and load() are all required',
+  },
+];
+
+export function findMotionGuardViolations(source) {
+  return REQUIREMENTS.filter((rule) => !rule.holds(source)).map((rule) => rule.problem);
 }
 
 export function auditSnippets(dir = SNIPPETS_DIR) {
