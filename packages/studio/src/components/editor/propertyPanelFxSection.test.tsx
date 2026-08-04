@@ -378,3 +378,32 @@ describe("automation in the panel", () => {
     expect(onChainChange.mock.calls[0][0].nodes[0].id).toBe("n1");
   });
 });
+
+describe("voiceover carve visibility", () => {
+  const carveBlock = (host: HTMLElement) => host.querySelector(".hf-fx-carve");
+
+  it("is hidden when the composition has no other audio track to listen to", () => {
+    // Carve dips this bed where another track's voice sits. Alone, the control
+    // could only offer an empty picker.
+    const { host } = mount({ chain: chainOf("lowpass"), sourceOptions: [] });
+    expect(carveBlock(host)).toBeNull();
+  });
+
+  it("is shown once there is another audio track", () => {
+    const { host } = mount({
+      chain: chainOf("lowpass"),
+      sourceOptions: [{ id: "vo", label: "vo" }],
+    });
+    expect(carveBlock(host)).toBeTruthy();
+  });
+
+  it("stays shown for an existing carve whose voice track has gone", () => {
+    // Otherwise the setting would keep dipping the bed from out of sight.
+    const { host } = mount({
+      chain: chainOf("lowpass"),
+      sourceOptions: [],
+      carve: { ...DEFAULT_CARVE, source: "vo" },
+    });
+    expect(carveBlock(host)).toBeTruthy();
+  });
+});
