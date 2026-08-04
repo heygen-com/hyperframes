@@ -469,3 +469,27 @@ body {
     animation: none;
   }
 }
+
+/* Inline agent composer entrance (InlineAgentComposer) — rises from the
+   element it is attached to, matching the toast/inspector 120-160ms ease-out. */
+@keyframes hf-composer-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.hf-composer-enter {
+  animation: hf-composer-in 140ms ease-out;
+  transform-origin: top center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-composer-enter {
+    animation: none;
+  }
+}

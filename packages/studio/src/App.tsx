@@ -579,8 +579,6 @@ export function StudioApp() {
                     closeLintModal={closeLintModal}
                     consoleErrors={consoleErrors}
                     clearConsoleErrors={() => setConsoleErrors(null)}
-                    domEditSession={domEditSession}
-                    activeCompPath={activeCompPath}
                     dragOverlayActive={dragOverlay.active}
                     toasts={toasts}
                     dismissToast={dismissToast}

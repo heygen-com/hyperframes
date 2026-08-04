@@ -29,6 +29,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
+import { InlineAgentComposerHost } from "./InlineAgentComposer";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 
@@ -516,6 +517,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         onSelectionChangeRef={onSelectionChangeRef}
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
+      <InlineAgentComposerHost
+        rect={overlayRect}
+        canvas={{
+          width: overlayRef.current?.clientWidth ?? 0,
+          height: overlayRef.current?.clientHeight ?? 0,
+        }}
+      />
       {contextMenu && (
         <CanvasContextMenu
           x={contextMenu.x}

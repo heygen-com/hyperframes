@@ -42,7 +42,6 @@ export interface DomEditActionsValue extends Pick<
   | "resolveImportedFontAsset"
   | "setAgentModalOpen"
   | "setAgentPromptSelectionContext"
-  | "setAgentModalAnchorPoint"
   | "handleGsapUpdateProperty"
   | "handleGsapUpdateMeta"
   | "handleGsapDeleteAnimation"
@@ -87,7 +86,6 @@ export interface DomEditSelectionValue extends Pick<
   | "gsapMultipleTimelines"
   | "gsapUnsupportedTimelinePattern"
   | "agentModalOpen"
-  | "agentModalAnchorPoint"
   | "copiedAgentPrompt"
   | "agentPromptSelectionContext"
   | "agentRunLabel"
@@ -112,6 +110,11 @@ export function useDomEditActionsContextOptional(): DomEditActionsValue | null {
   return useContext(DomEditActionsContext);
 }
 
+/** Optional access — mirrors useDomEditActionsContextOptional for player-package mounts. */
+export function useDomEditSelectionContextOptional(): DomEditSelectionValue | null {
+  return useContext(DomEditSelectionContext);
+}
+
 export function useDomEditSelectionContext(): DomEditSelectionValue {
   const ctx = useContext(DomEditSelectionContext);
   if (!ctx) throw new Error("useDomEditSelectionContext must be used within DomEditProvider");
@@ -129,7 +132,6 @@ export function DomEditProvider({
     domEditGroupSelections,
     domEditHoverSelection,
     agentModalOpen,
-    agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
@@ -173,7 +175,6 @@ export function DomEditProvider({
     resolveImportedFontAsset,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -260,7 +261,6 @@ export function DomEditProvider({
       resolveImportedFontAsset,
       setAgentModalOpen,
       setAgentPromptSelectionContext,
-      setAgentModalAnchorPoint,
       handleGsapUpdateProperty,
       handleGsapUpdateMeta,
       handleGsapDeleteAnimation,
@@ -330,7 +330,6 @@ export function DomEditProvider({
       resolveImportedFontAsset,
       setAgentModalOpen,
       setAgentPromptSelectionContext,
-      setAgentModalAnchorPoint,
       handleGsapUpdateProperty,
       handleGsapUpdateMeta,
       handleGsapDeleteAnimation,
@@ -376,7 +375,6 @@ export function DomEditProvider({
       gsapMultipleTimelines,
       gsapUnsupportedTimelinePattern,
       agentModalOpen,
-      agentModalAnchorPoint,
       copiedAgentPrompt,
       agentPromptSelectionContext,
       agentRunLabel,
@@ -392,7 +390,6 @@ export function DomEditProvider({
       gsapMultipleTimelines,
       gsapUnsupportedTimelinePattern,
       agentModalOpen,
-      agentModalAnchorPoint,
       copiedAgentPrompt,
       agentPromptSelectionContext,
       agentRunLabel,

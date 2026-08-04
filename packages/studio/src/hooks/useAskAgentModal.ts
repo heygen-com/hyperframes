@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
-import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/studioHelpers";
+import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
+import type { InlineAgentRunResult } from "../components/editor/InlineAgentComposer";
 import { usePlayerStore } from "../player";
 
 // ── Types ──
@@ -33,9 +34,6 @@ export function useAskAgentModal({
   const [agentPromptSelectionContext, setAgentPromptSelectionContext] = useState<
     string | undefined
   >();
-  const [agentModalAnchorPoint, setAgentModalAnchorPoint] = useState<AgentModalAnchorPoint | null>(
-    null,
-  );
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   // null while unknown — the Run button stays hidden until the server confirms
@@ -89,7 +87,6 @@ export function useAskAgentModal({
     if (!selection) return;
     setAgentPromptTagSnippet(undefined);
     setAgentPromptSelectionContext(undefined);
-    setAgentModalAnchorPoint(null);
     void preloadAgentPromptSnippet(selection);
     setAgentModalOpen(true);
 
@@ -118,12 +115,16 @@ export function useAskAgentModal({
     [activeCompPath, agentPromptSelectionContext, agentPromptTagSnippet, projectDir],
   );
 
-  /** Hand the prompt to the user's own agent CLI; the file watcher reloads the preview. */
+  /**
+   * Hand the prompt to the user's own agent CLI; the file watcher reloads the
+   * preview. The composer stays open on the canvas and reports the outcome
+   * inline, so the next instruction is one keystroke away.
+   */
   const handleAgentModalRun = useCallback(
-    async (userInstruction: string) => {
+    async (userInstruction: string): Promise<InlineAgentRunResult> => {
       const selection = resolveSelection();
       const pid = projectIdRef.current;
-      if (!selection || !pid) return;
+      if (!selection || !pid) return { ok: false, message: "Nothing selected." };
 
       setAgentRunning(true);
       try {
@@ -138,20 +139,16 @@ export function useAskAgentModal({
           label?: string;
         };
         if (!response.ok || data.exitCode) {
-          showToast(data.error ?? `Agent exited with code ${data.exitCode}`, "error");
-          return;
+          return { ok: false, message: data.error ?? `Agent exited with code ${data.exitCode}` };
         }
-        showToast(`${data.label ?? "Agent"} finished.`);
-        setAgentModalOpen(false);
-        setAgentPromptSelectionContext(undefined);
-        setAgentModalAnchorPoint(null);
+        return { ok: true, message: `${data.label ?? "Agent"} finished.` };
       } catch (err) {
-        showToast(err instanceof Error ? err.message : "Agent run failed.", "error");
+        return { ok: false, message: err instanceof Error ? err.message : "Agent run failed." };
       } finally {
         setAgentRunning(false);
       }
     },
-    [buildPrompt, projectIdRef, resolveSelection, showToast],
+    [buildPrompt, projectIdRef, resolveSelection],
   );
 
   const handleAgentModalSubmit = useCallback(
@@ -166,9 +163,6 @@ export function useAskAgentModal({
         return;
       }
 
-      setAgentModalOpen(false);
-      setAgentPromptSelectionContext(undefined);
-      setAgentModalAnchorPoint(null);
       if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
       setCopiedAgentPrompt(true);
       copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
@@ -183,7 +177,6 @@ export function useAskAgentModal({
   useEffect(() => {
     setAgentPromptTagSnippet(undefined);
     setAgentPromptSelectionContext(undefined);
-    setAgentModalAnchorPoint(null);
     setCopiedAgentPrompt(false);
   }, [domEditSelection]);
 
@@ -199,7 +192,6 @@ export function useAskAgentModal({
   return {
     // State
     agentModalOpen,
-    agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
@@ -208,7 +200,6 @@ export function useAskAgentModal({
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
     setAgentModalOpen,
     setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
 
     // Callbacks
     preloadAgentPromptSnippet,

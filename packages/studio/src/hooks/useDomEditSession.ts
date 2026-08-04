@@ -146,14 +146,12 @@ export function useDomEditSession({
 
   const {
     agentModalOpen,
-    agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
     agentRunning,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
     handleAskAgent,
     handleAgentModalSubmit,
     handleAgentModalRun,
@@ -472,7 +470,6 @@ export function useDomEditSession({
     domEditHoverSelection,
     activeGroupElement,
     agentModalOpen,
-    agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
@@ -517,7 +514,6 @@ export function useDomEditSession({
     resolveImportedFontAsset,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
 
     // GSAP script editing
     selectedGsapAnimations,

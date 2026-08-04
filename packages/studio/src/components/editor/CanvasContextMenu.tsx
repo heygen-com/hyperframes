@@ -27,6 +27,7 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
@@ -147,6 +148,9 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   onDelete,
 }: CanvasContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
+  // Null in standalone/test mounts without the studio provider — the agent entry
+  // only exists where there is a project on disk to edit.
+  const domEditActions = useDomEditActionsContextOptional();
 
   // Gate each item group on the presence of its persist handler. Without the
   // handler the action can't be persisted, so showing it would be a dead-end:
@@ -155,13 +159,19 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   // don't render the menu — an empty menu is itself a dead-end.
   const hasZActions = Boolean(onApplyZIndex);
   const hasDelete = Boolean(onDelete);
+  const hasAskAgent = Boolean(domEditActions);
   const hasDivider = hasZActions && hasDelete;
 
   // Overflow correction — match ClipContextMenu approach. Only the rendered
   // groups contribute height (keeps positioning correct when a group is hidden).
   const menuWidth = 200;
   const menuHeight =
-    8 + (hasZActions ? Z_ACTIONS.length * 28 : 0) + (hasDivider ? 1 : 0) + (hasDelete ? 28 : 0) + 8; // padding + items + divider + delete + padding
+    8 +
+    (hasAskAgent ? 29 : 0) +
+    (hasZActions ? Z_ACTIONS.length * 28 : 0) +
+    (hasDivider ? 1 : 0) +
+    (hasDelete ? 28 : 0) +
+    8; // padding + ask agent + items + divider + delete + padding
   const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
@@ -193,7 +203,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     onClose();
   }
 
-  if (!hasZActions && !hasDelete) return null;
+  if (!hasZActions && !hasDelete && !hasAskAgent) return null;
 
   // The menu is portaled to document.body, but in the React tree it is still a
   // child of the DomEditOverlay <div>. React synthetic events bubble through the
@@ -223,6 +233,41 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         e.stopPropagation();
       }}
     >
+      {domEditActions && (
+        <>
+          <button
+            type="button"
+            className="w-full flex items-center px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              e.stopPropagation();
+              // The right-click already applied this selection, so the
+              // composer picks it up from the selection ref.
+              domEditActions.handleAskAgent();
+              onClose();
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mr-2 shrink-0"
+              aria-hidden="true"
+            >
+              <path d="M8 1.5 L9.6 6.4 L14.5 8 L9.6 9.6 L8 14.5 L6.4 9.6 L1.5 8 L6.4 6.4 Z" />
+            </svg>
+            <span>Ask agent</span>
+          </button>
+          <div className="my-1 border-t border-neutral-700/60" />
+        </>
+      )}
+
       {hasZActions &&
         Z_ACTIONS.map(({ action, label }) => {
           const enabled = isZOrderActionEnabled(el, action);

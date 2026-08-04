@@ -1,10 +1,7 @@
 import type { ComponentProps } from "react";
 import { LintModal } from "./LintModal";
-import { AskAgentModal } from "./AskAgentModal";
 import { StudioGlobalDragOverlay } from "./StudioGlobalDragOverlay";
 import { StudioToast } from "./StudioToast";
-import { buildAgentContextPreview } from "./editor/domEditingAgentPrompt";
-import type { useDomEditSession } from "../hooks/useDomEditSession";
 import type { useToast } from "../hooks/useToast";
 
 type LintFindings = ComponentProps<typeof LintModal>["findings"];
@@ -16,8 +13,6 @@ export interface StudioOverlaysProps {
   closeLintModal: () => void;
   consoleErrors: LintFindings | null;
   clearConsoleErrors: () => void;
-  domEditSession: ReturnType<typeof useDomEditSession>;
-  activeCompPath: string | null;
   dragOverlayActive: boolean;
   toasts: ReturnType<typeof useToast>["toasts"];
   dismissToast: (id: number) => void;
@@ -36,8 +31,6 @@ export function StudioOverlays({
   closeLintModal,
   consoleErrors,
   clearConsoleErrors,
-  domEditSession,
-  activeCompPath,
   dragOverlayActive,
   toasts,
   dismissToast,
@@ -62,22 +55,6 @@ export function StudioOverlays({
           title="Console errors in preview"
           promptIntro="Fix these runtime console errors from the composition preview"
           onClose={clearConsoleErrors}
-        />
-      )}
-      {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
-        <AskAgentModal
-          selectionLabel={domEditSession.domEditSelection.label}
-          contextPreview={buildAgentContextPreview(domEditSession.domEditSelection, activeCompPath)}
-          anchorPoint={domEditSession.agentModalAnchorPoint}
-          runLabel={domEditSession.agentRunLabel}
-          running={domEditSession.agentRunning}
-          onRun={domEditSession.handleAgentModalRun}
-          onSubmit={domEditSession.handleAgentModalSubmit}
-          onClose={() => {
-            domEditSession.setAgentModalOpen(false);
-            domEditSession.setAgentPromptSelectionContext(undefined);
-            domEditSession.setAgentModalAnchorPoint(null);
-          }}
         />
       )}
       {dragOverlayActive && <StudioGlobalDragOverlay />}
