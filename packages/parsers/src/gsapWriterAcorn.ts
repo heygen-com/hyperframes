@@ -24,7 +24,7 @@ import {
   type ParsedGsapAcornForWrite,
   type TweenCallInfo,
 } from "./gsapParserAcorn.js";
-import { classifyPropertyGroup } from "./gsapConstants.js";
+import { classifyPropertyGroup, isStudioHoldSet, STUDIO_HOLD_MARKER } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
 import {
   findObjectArrayKeyframeIndex,
@@ -2294,12 +2294,6 @@ function insertInheritedStateSetInScript(
     ms.append("\n" + code);
   }
   return ms.toString();
-}
-
-const STUDIO_HOLD_MARKER = "hf-hold";
-
-function isStudioHoldSet(animation: GsapAnimation): boolean {
-  return animation.method === "set" && animation.properties.data === STUDIO_HOLD_MARKER;
 }
 
 function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): string {

@@ -56,7 +56,7 @@ function detectLanguage(filePath: string): string {
   return map[ext] ?? "html";
 }
 
-interface SourceEditorProps {
+export interface SourceEditorProps {
   content: string;
   filePath?: string;
   language?: string;

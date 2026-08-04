@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { SourceEditor } from "../editor/SourceEditor";
+import { LazySourceEditor } from "../editor/LazySourceEditor";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
 
 export interface SourceFile {
@@ -214,7 +214,7 @@ export function StoryboardSourceEditor({
           {file.loading ? (
             <div className="p-4 text-sm text-neutral-500">Loading {activePath}…</div>
           ) : (
-            <SourceEditor
+            <LazySourceEditor
               content={file.content}
               language="markdown"
               filePath={activePath}

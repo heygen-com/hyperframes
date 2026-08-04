@@ -1,6 +1,8 @@
 import { memo, useState, useRef, useEffect, useLayoutEffect, useId } from "react";
 import { createPortal } from "react-dom";
-import { CANVAS_DIMENSIONS } from "@hyperframes/parsers";
+// Narrow subpath, not the package barrel: the barrel re-exports hfIds.ts, which
+// pulls linkedom (+ htmlparser2 / css-select / domutils / cssom) into the eager bundle.
+import { CANVAS_DIMENSIONS } from "@hyperframes/parsers/types";
 import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";

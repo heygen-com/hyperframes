@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, useEffect, useMemo, useState } from "react";
 import type { StoryboardResponse } from "../../hooks/useStoryboard";
 import { Button } from "../ui/Button";
+import { LazyPanel } from "../LazyPanel";
 import { StoryboardDirection } from "./StoryboardDirection";
 import { StoryboardGrid } from "./StoryboardGrid";
 import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
-import { StoryboardSourceEditor, type SourceFile } from "./StoryboardSourceEditor";
+import type { SourceFile } from "./StoryboardSourceEditor";
 import { StoryboardFrameFocus } from "./StoryboardFrameFocus";
 import { StoryboardReviewGuide } from "./StoryboardReviewGuide";
 import {
@@ -14,6 +15,12 @@ import {
 import { useFrameComments, type CommentsSubmitState } from "./useFrameComments";
 
 type SubView = "board" | "source";
+
+const StoryboardSourceEditor = lazy(() =>
+  import("./StoryboardSourceEditor").then((module) => ({
+    default: module.StoryboardSourceEditor,
+  })),
+);
 
 export interface StoryboardLoadedProps {
   projectId: string;
@@ -162,11 +169,13 @@ export function StoryboardLoaded({
           </div>
         </div>
       ) : (
-        <StoryboardSourceEditor
-          files={sourceFiles}
-          onSaved={reload}
-          onDirtyChange={setSourceDirty}
-        />
+        <LazyPanel label="storyboard source editor">
+          <StoryboardSourceEditor
+            files={sourceFiles}
+            onSaved={reload}
+            onDirtyChange={setSourceDirty}
+          />
+        </LazyPanel>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useCallback, type RefObject } from "react";
-import { SourceEditor } from "./editor/SourceEditor";
+import { LazySourceEditor } from "./editor/LazySourceEditor";
 import { LeftSidebar, type LeftSidebarHandle } from "./sidebar/LeftSidebar";
 import { MediaPreview } from "./MediaPreview";
 import { isMediaFile } from "../utils/mediaTypes";
@@ -133,7 +133,7 @@ export function StudioLeftSidebar({
                 Loading {editingFile.path}…
               </div>
             ) : (
-              <SourceEditor
+              <LazySourceEditor
                 content={editingFile.content}
                 filePath={editingFile.path}
                 onChange={handleContentChange}

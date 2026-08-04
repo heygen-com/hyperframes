@@ -182,6 +182,16 @@ function devProjectApi(): Plugin {
   };
 }
 
+/**
+ * linkedom and everything only it drags in. Kept as one list so the SDK's
+ * HTML-parsing stack stays out of the eager `vendor` chunk — see the
+ * `manualChunks` rule that uses it. Adding a package here is only safe while
+ * nothing on the eager graph imports it; `tests/e2e/studio-bundle-budget.mjs`
+ * is the check that fails if that stops being true.
+ */
+const SDK_PARSE_DEPS =
+  /\/node_modules\/(linkedom|htmlparser2|domhandler|dom-serializer|domelementtype|domutils|css-select|css-what|nth-check|boolbase|entities|cssom|uhyphen)\//;
+
 export default defineConfig({
   plugins: [react(), devProjectApi()],
   define: {
@@ -199,6 +209,42 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("/node_modules/@codemirror/") || id.includes("/node_modules/@lezer/")) {
+            return "source-editor";
+          }
+          if (
+            id.includes("/node_modules/crelt/") ||
+            id.includes("/node_modules/style-mod/") ||
+            id.includes("/node_modules/w3c-keyname/")
+          ) {
+            return "source-editor";
+          }
+          if (id.includes("/node_modules/marked/") || id.includes("/node_modules/dompurify/")) {
+            return "markdown";
+          }
+          if (id.includes("/node_modules/mediabunny/")) return "media-probe";
+          // linkedom + its DOM/CSS parsing deps. Reachable ONLY through the
+          // dynamic `import("@hyperframes/sdk")` in src/utils/sdkLazy.ts, but the
+          // `/node_modules/` catch-all below would still fold them into the
+          // modulepreloaded `vendor` chunk and undo that deferral — moving bytes
+          // between eager chunks is not deferral. Naming them keeps them in a
+          // chunk nothing eager references, so the browser fetches it on the
+          // first edit instead of before first paint.
+          if (SDK_PARSE_DEPS.test(id)) return "sdk-parse";
+          if (
+            id.includes("/node_modules/react/") ||
+            id.includes("/node_modules/react-dom/") ||
+            id.includes("/node_modules/scheduler/")
+          ) {
+            return "react-vendor";
+          }
+          if (id.includes("/node_modules/")) return "vendor";
+        },
+      },
+    },
   },
   optimizeDeps: {
     include: ["bpm-detective"],

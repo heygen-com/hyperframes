@@ -14,6 +14,12 @@
       "types": null,
       "environments": ["browser", "bun", "node"]
     },
+    "./types": {
+      "source": "./src/types.ts",
+      "runtime": "./dist/types.js",
+      "types": "./dist/types.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./gsap-parser": {
       "source": "./src/gsapParserExports.ts",
       "runtime": "./dist/gsapParserExports.js",

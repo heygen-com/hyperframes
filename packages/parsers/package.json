@@ -22,6 +22,12 @@
       "types": "./src/index.ts"
     },
     "./package.json": "./package.json",
+    "./types": {
+      "bun": "./src/types.ts",
+      "node": "./dist/types.js",
+      "import": "./src/types.ts",
+      "types": "./src/types.ts"
+    },
     "./gsap-parser": {
       "bun": "./src/gsapParserExports.ts",
       "node": "./dist/gsapParserExports.js",
@@ -121,6 +127,10 @@
         "types": "./dist/index.d.ts"
       },
       "./package.json": "./package.json",
+      "./types": {
+        "import": "./dist/types.js",
+        "types": "./dist/types.d.ts"
+      },
       "./gsap-parser": {
         "import": "./dist/gsapParserExports.js",
         "types": "./dist/gsapParserExports.d.ts"

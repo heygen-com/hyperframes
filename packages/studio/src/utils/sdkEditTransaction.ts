@@ -1,5 +1,6 @@
 import type { MutableRefObject } from "react";
-import { openComposition, type Composition } from "@hyperframes/sdk";
+import type { Composition } from "@hyperframes/sdk";
+import { openComposition } from "./sdkLazy";
 import type { EditHistoryKind } from "./editHistory";
 import { hashContent, markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { trackStudioEvent } from "./studioTelemetry";
