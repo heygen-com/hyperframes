@@ -106,6 +106,12 @@
       "import": "./src/audioFx.ts",
       "types": "./src/audioFx.ts"
     },
+    "./audio-fx-tail": {
+      "bun": "./src/audio/audioFxTail.ts",
+      "node": "./dist/audio/audioFxTail.js",
+      "import": "./src/audio/audioFxTail.ts",
+      "types": "./src/audio/audioFxTail.ts"
+    },
     "./audio-fx-runtime": {
       "bun": "./src/generated/audio-fx-runtime-inline.ts",
       "node": "./dist/generated/audio-fx-runtime-inline.js",
@@ -385,6 +391,10 @@
       "./audio-fx": {
         "import": "./dist/audioFx.js",
         "types": "./dist/audioFx.d.ts"
+      },
+      "./audio-fx-tail": {
+        "import": "./dist/audio/audioFxTail.js",
+        "types": "./dist/audio/audioFxTail.d.ts"
       },
       "./audio-fx-runtime": {
         "import": "./dist/generated/audio-fx-runtime-inline.js",

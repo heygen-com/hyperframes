@@ -19,6 +19,7 @@ import {
 import { scheduleChainAutomation } from "../src/audio/audioFxAutomation.js";
 import { parseAutomation, resolveAutomation } from "../src/audioAutomation.js";
 import { parseAudioFxChain, type HfAudioFxChain } from "../src/audioFx.js";
+import { chainTailSeconds } from "../src/audio/audioFxTail.js";
 
 declare global {
   interface Window {
@@ -39,11 +40,11 @@ declare global {
  * Channel count is preserved: folding to mono here collapsed a stereo bed's
  * width for the render only, while preview kept it stereo.
  *
- * The context is exactly as long as the input. An effect with a tail — reverb,
- * delay — is still ringing at that point and is cut there, which is the one place
- * the render does not match preview. Extending it would lengthen the clip in the
- * mix, so how far a tail may run past a clip's end is a product decision rather
- * than something to pick here.
+ * The context runs past the input by the chain's own tail, so a reverb or a
+ * delay decays out instead of being cut at the last input sample. The length
+ * comes from the settings (`chainTailSeconds`), capped, and the returned planes
+ * are correspondingly longer than what came in — the mixer decides how much of
+ * that it lets through past the clip's end.
  */
 
 /** The clip's audio as an AudioBuffer, a plane per channel. */
@@ -80,7 +81,11 @@ async function render(
   const chain: HfAudioFxChain = parseAudioFxChain(chainJson);
   const channels = Math.max(1, planes.length);
   const frames = planes[0]?.length ?? 0;
-  const ctx = new OfflineAudioContext(channels, frames, sampleRate);
+  const parsedAutomation = automationJson
+    ? resolveAutomation(parseAutomation(automationJson), chain)
+    : null;
+  const tail = Math.ceil(chainTailSeconds(chain, parsedAutomation ?? undefined) * sampleRate);
+  const ctx = new OfflineAudioContext(channels, frames + tail, sampleRate);
 
   if (chainNeedsWorklets(chain)) await ensureAudioFxWorklets(ctx);
 
@@ -92,9 +97,8 @@ async function render(
   // The input WAV is the clip's own audio from its first sample, so clip-local
   // time is offline time — the envelope needs no offset here. Same scheduler as
   // preview, which is what makes the two agree.
-  if (automationJson) {
-    const automation = resolveAutomation(parseAutomation(automationJson), chain);
-    scheduleChainAutomation(automation, chain, fx.nodes, {
+  if (parsedAutomation) {
+    scheduleChainAutomation(parsedAutomation, chain, fx.nodes, {
       scheduledAt: 0,
       elapsed: 0,
       rate: 1,

@@ -32,6 +32,7 @@ import {
   VOLUME_TARGET,
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
+import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -616,10 +617,14 @@ async function mixAudioTracks(
     const filterParts: string[] = [];
     tracks.forEach((track, i) => {
       const delayMs = Math.round(track.start * 1000);
-      const trimDuration = track.end - track.start;
+      // A clip's own audio ends at `end`, but an FX tail is still decaying past
+      // it. Trimming at the boundary is what cut every reverb short; the final
+      // atrim below still holds the mix to the composition's length, so a tail
+      // can run over what follows but never past the end of the video.
+      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
       filterParts.push(
-        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
+        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
       );
     });
 
@@ -896,11 +901,15 @@ export async function processCompositionAudio(
             )
           : null;
 
+        let tailSeconds = 0;
         if (element.fxChain) {
           // The chain is serialised into the attribute, the same way colour
           // grading carries its config, so there is no side-car file to find,
           // resolve or lose.
           const chain = parseAudioFxChain(element.fxChain);
+          // The rendered WAV is longer than the input by exactly this much, so
+          // the mix has to be told to let it through.
+          tailSeconds = chainTailSeconds(chain, automation ?? undefined);
           audioSrcPath = await applyAudioFxChain(
             audioSrcPath,
             chain,
@@ -944,6 +953,7 @@ export async function processCompositionAudio(
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
           volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
+          ...(tailSeconds > 0 ? { tailSeconds } : {}),
         });
       } catch (err: unknown) {
         // An FX failure is fatal for the whole mix. Every other failure mode
