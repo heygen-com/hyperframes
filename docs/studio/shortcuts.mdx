@@ -39,6 +39,24 @@ implemented by the current Studio player, canvas, and timeline.
 
 The selected area decides what a shared shortcut does. For example, arrow keys nudge a selected canvas element; without a nudgeable selection they step through frames.
 
+## Timeline navigation
+
+Tab into the timeline before using these commands. Studio keeps one logical timeline target in the Tab order and moves that target without requiring every row or clip to stay mounted.
+
+| Shortcut | Action |
+| --- | --- |
+| Left / Right arrow | Move to the previous or next target in the focused row |
+| Up / Down arrow | Move to the nearest target at the same time in the previous or next logical row |
+| Home / End | Move to the start or end of the focused row |
+| Command/Ctrl + Home / End | Move to the first or last logical row |
+| Page Up / Page Down | Move by one visible page of logical rows |
+| Enter / Space | Expand or collapse keyframe property lanes on a focused track row |
+| Context Menu or Shift + F10 | Open the focused target's context menu when available |
+
+On an expandable track row, Right arrow expands collapsed keyframe lanes and Left arrow collapses expanded lanes. From a keyframe property row, Left arrow returns to its parent track row. When no disclosure or parent action applies, those arrows continue moving within the row.
+
+If the destination is outside the virtualized viewport, Studio scrolls it into view and restores focus after it mounts.
+
 ## Keyframes and recording
 
 | Shortcut | Action |
