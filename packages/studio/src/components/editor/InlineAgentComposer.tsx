@@ -15,7 +15,12 @@ import {
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
 import { CANVAS_OVERLAY_CONTROL_Z, FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
-import { agentDraftKey, clearAgentDraft, readAgentDraft, writeAgentDraft } from "../../utils/agentDrafts";
+import {
+  agentDraftKey,
+  clearAgentDraft,
+  readAgentDraft,
+  writeAgentDraft,
+} from "../../utils/agentDrafts";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 

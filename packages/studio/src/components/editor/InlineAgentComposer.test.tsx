@@ -89,7 +89,7 @@ describe("resolveComposerPosition", () => {
 const AGENTS = [
   { id: "claude", kind: "claude" as const, label: "Claude Code", available: true },
   { id: "codex", kind: "codex" as const, label: "Codex", available: true },
-  { id: "hermes", kind: "hermes" as const, label: "Hermes", available: false },
+  { id: "hermes", kind: "hermes" as const, label: "Hermes Agent", available: false },
 ];
 
 describe("harness picker", () => {
@@ -116,7 +116,7 @@ describe("harness picker", () => {
       host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
     const hermes = [...host.querySelectorAll("li button")].find((b) =>
-      b.textContent?.includes("Hermes"),
+      b.textContent?.includes("Hermes Agent"),
     ) as HTMLButtonElement | undefined;
     expect(hermes?.disabled).toBe(true);
     act(() => root.unmount());

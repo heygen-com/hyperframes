@@ -145,7 +145,7 @@ describe("resolveAgentCommand", () => {
     // Each preset must take the prompt on stdin — see the module comment.
     expect(resolveAgentCommand({ HYPERFRAMES_AGENT: "hermes" })).toEqual({
       kind: "hermes",
-      label: "Hermes",
+      label: "Hermes Agent",
       command: "hermes",
       args: ["-z"],
     });

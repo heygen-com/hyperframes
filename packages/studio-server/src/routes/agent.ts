@@ -61,7 +61,7 @@ const AGENT_PRESETS: Record<string, AgentCommand> = {
   },
   hermes: {
     kind: "hermes",
-    label: "Hermes",
+    label: "Hermes Agent",
     command: "hermes",
     // -z is Hermes' headless mode: prompt in on stdin, final text out.
     args: ["-z"],
