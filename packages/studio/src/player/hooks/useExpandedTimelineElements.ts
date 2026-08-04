@@ -152,6 +152,13 @@ function hostElementState(flat: TimelineElement | undefined): Partial<TimelineEl
     hidden: flat.hidden,
     timelineLocked: flat.timelineLocked,
     timelineRole: flat.timelineRole,
+    // Same reason as the three above: these are read off the host element, which
+    // an expanded child is built without. Missing them, an audio child inside a
+    // sub-composition reserved no automation height and drew no lanes, while the
+    // property panel — reading the live DOM selection rather than this row —
+    // still showed the chain and its toggles.
+    fxChain: flat.fxChain,
+    automation: flat.automation,
   };
 }
 

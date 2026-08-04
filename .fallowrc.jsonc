@@ -160,6 +160,22 @@
       "file": "packages/core/src/audio/audioFxGraph.ts",
       "exports": ["ensureAudioFxWorklets"],
     },
+    // automationLaneGeometry is the bottom of the audio-automation stack: its
+    // consumer is the lane component one PR upstack, so a per-PR audit diffing
+    // against the merge base sees these as unused. Consumed for real once the
+    // stack merges; safe to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationLaneGeometry.ts",
+      "exports": [
+        "POINT_MERGE_SEC",
+        "GRAB_PX",
+        "DRAW_SAMPLES",
+        "PAD_X",
+        "formatValue",
+        "laneFor",
+        "withLane",
+      ],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
@@ -656,6 +672,12 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // audio-fx-runtime-entry.ts: the browser-side IIFE entry for the offline FX
+      // render. It runs only inside the headless page the engine drives, so unit
+      // coverage cannot reach it and its CRAP score is coverage-driven rather
+      // than complexity-driven (5 cyclomatic). Its behaviour is covered by the
+      // engine's real-browser render tests.
+      "packages/core/stubs/audio-fx-runtime-entry.ts",
       // useGestureRecording.ts: readBasePosition/connectGsapRuntime/tick are
       // inherited gesture-runtime control flow. This stack only changes
       // recordSample to coalesce display-rate events onto authored frames;
