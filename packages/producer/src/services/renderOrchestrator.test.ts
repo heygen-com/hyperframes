@@ -1436,6 +1436,21 @@ describe("capture calibration safeguards", () => {
       ),
     ).toBe(true);
   });
+
+  it("falls back after Page.captureScreenshot times out during drawElement calibration", () => {
+    expect(
+      shouldFallbackToScreenshotAfterCalibrationError(
+        new Error(
+          "Page.captureScreenshot timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      shouldFallbackToScreenshotAfterCalibrationError(
+        new Error("Protocol error (Page.captureScreenshot): Could not capture screenshot"),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("adaptive missing-frame retry helpers", () => {

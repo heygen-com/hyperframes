@@ -339,7 +339,7 @@ export function createFailedCaptureCalibrationEstimate(reason: CaptureCalibratio
 
 export interface CaptureCalibrationOutcome {
   calibration: { estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] } | undefined;
-  /** Flipped to `true` if BeginFrame calibration timed out and the screenshot retry fired. */
+  /** Flipped to `true` if non-screenshot calibration timed out and the screenshot retry fired. */
   forceScreenshot: boolean;
   /** Closed and nulled when the screenshot fallback fires; passthrough otherwise. */
   probeSession: CaptureSession | null;
@@ -349,7 +349,7 @@ export interface CaptureCalibrationOutcome {
 
 /**
  * Run the auto-worker capture-cost calibration, including the
- * BeginFrame → screenshot fallback on timeout. Owns the calibration
+ * capture-protocol → screenshot fallback on timeout. Owns the calibration
  * session lifecycle and may close the caller-owned `probeSession` when
  * the fallback fires (BeginFrame is no longer the active capture mode,
  * so the probe session is no longer reusable).
@@ -447,7 +447,7 @@ export async function runCaptureCalibration(input: {
         error: error instanceof Error ? error.message : String(error),
       });
     } else {
-      // BeginFrame failed on this host's Chrome build; switch the rest
+      // The active capture protocol failed on this host's Chrome build; switch the rest
       // of the pipeline to screenshot capture. Flip only the local
       // boolean — `cfg` stays the compile-time view; downstream stages
       // receive the new value via the explicit `forceScreenshot` param.
@@ -468,7 +468,7 @@ export async function runCaptureCalibration(input: {
       }
 
       log.warn(
-        "[Render] BeginFrame auto-worker calibration timed out; retrying calibration in screenshot capture mode.",
+        "[Render] Auto-worker calibration timed out; retrying calibration in screenshot capture mode.",
         {
           protocolTimeout: calibrationCfg.protocolTimeout,
           error: error instanceof Error ? error.message : String(error),
@@ -505,12 +505,12 @@ export async function runCaptureCalibration(input: {
 /**
  * Same as `runCaptureCalibration`'s error-classification check, but
  * exported separately because the sequencer also calls it from the
- * disk-capture retry loop. Returns `true` for the BeginFrame-specific
- * protocol errors that recover cleanly under screenshot mode.
+ * disk-capture retry loop. Returns `true` for protocol timeouts that
+ * should get a fresh screenshot-mode calibration session.
  */
 export function shouldFallbackToScreenshotAfterCalibrationError(error: unknown): boolean {
   const message = normalizeErrorMessage(error);
-  return /HeadlessExperimental\.beginFrame timed out|beginFrame probe timeout|Another frame is pending|Frame still pending|Protocol error.*HeadlessExperimental\.beginFrame|Runtime\.callFunctionOn timed out|Runtime\.evaluate timed out/i.test(
+  return /HeadlessExperimental\.beginFrame timed out|beginFrame probe timeout|Another frame is pending|Frame still pending|Protocol error.*HeadlessExperimental\.beginFrame|Runtime\.callFunctionOn timed out|Runtime\.evaluate timed out|Page\.captureScreenshot timed out/i.test(
     message,
   );
 }
