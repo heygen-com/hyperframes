@@ -101,21 +101,10 @@ export interface UseDomSelectionReturn {
 
 // ── Hook ──
 
-export function useDomSelection({
-  projectId,
-  activeCompPath,
-  isMasterView,
-  compIdToSrc,
-  captionEditMode,
-  previewIframeRef,
-  timelineElements,
-  setSelectedTimelineElementId,
-  setRightCollapsed,
-  setRightPanelTab,
-  previewIframe,
-  refreshKey,
-  rightPanelTab,
-}: UseDomSelectionParams): UseDomSelectionReturn {
+export function useDomSelection(params: UseDomSelectionParams): UseDomSelectionReturn {
+  const { projectId, activeCompPath, captionEditMode, previewIframe, refreshKey, rightPanelTab } =
+    params;
+
   // ── State ──
 
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
@@ -143,6 +132,22 @@ export function useDomSelection({
   domEditHoverSelectionRef.current = domEditHoverSelection;
   activeGroupElementRef.current = activeGroupElement;
 
+  /**
+   * Every callback below reads its render-scoped inputs from here and is built
+   * once (`[]` deps). That is a retention requirement, not a style choice.
+   *
+   * A `useCallback` whose deps changed is a NEW closure living in the current
+   * render's scope; every callback whose deps did NOT change is the closure
+   * from an earlier render, stored into that same fresh scope. That one edge
+   * chains render scope N to render scope N-1. A project switch changes
+   * `projectId`, `activeCompPath` and `timelineElements` together, so each
+   * switch added a link — and every link pinned that render's element snapshot
+   * plus its cached index for the life of the session. Stable identities leave
+   * nothing to chain.
+   */
+  const latest = useRef(params);
+  latest.current = params;
+
   // ── Callbacks ──
 
   const applyDomSelection = useCallback(
@@ -155,6 +160,12 @@ export function useDomSelection({
         preserveGroup?: boolean;
       },
     ) => {
+      const {
+        timelineElements,
+        setSelectedTimelineElementId,
+        setRightCollapsed,
+        setRightPanelTab,
+      } = latest.current;
       if (!selection) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
@@ -222,7 +233,7 @@ export function useDomSelection({
 
       setSelectedTimelineElementId(null);
     },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
+    [],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -252,6 +263,7 @@ export function useDomSelection({
         activeGroupElement?: HTMLElement | null;
       },
     ) => {
+      const { activeCompPath, isMasterView, projectId } = latest.current;
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
@@ -264,7 +276,7 @@ export function useDomSelection({
         projectId,
       });
     },
-    [activeCompPath, isMasterView, projectId],
+    [],
   );
 
   const resolveDomSelectionFromPreviewPoint = useCallback(
@@ -278,6 +290,7 @@ export function useDomSelection({
         activeGroupElement?: HTMLElement | null;
       },
     ) => {
+      const { previewIframeRef, captionEditMode, activeCompPath } = latest.current;
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
       try {
@@ -301,12 +314,13 @@ export function useDomSelection({
             },
       );
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+    [buildDomSelectionFromTarget],
   );
 
   const resolveAllDomSelectionsFromPreviewPoint = useCallback(
     // fallow-ignore-next-line complexity
     async (clientX: number, clientY: number): Promise<DomEditSelection[]> => {
+      const { previewIframeRef, captionEditMode, activeCompPath } = latest.current;
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return [];
       try {
@@ -322,7 +336,7 @@ export function useDomSelection({
       }
       return results;
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+    [buildDomSelectionFromTarget],
   );
 
   const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
@@ -334,6 +348,7 @@ export function useDomSelection({
   const buildDomSelectionForTimelineElement = useCallback(
     // fallow-ignore-next-line complexity
     async (element: TimelineElement): Promise<DomEditSelection | null> => {
+      const { previewIframeRef, activeCompPath, compIdToSrc, isMasterView } = latest.current;
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
       try {
@@ -356,7 +371,7 @@ export function useDomSelection({
           })
         : null;
     },
-    [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
+    [buildDomSelectionFromTarget],
   );
 
   const handleTimelineElementSelect = useCallback(
@@ -378,6 +393,7 @@ export function useDomSelection({
   const refreshDomEditSelectionFromPreview = useCallback(
     // fallow-ignore-next-line complexity
     async (selection: DomEditSelection) => {
+      const { previewIframeRef, activeCompPath } = latest.current;
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
       try {
@@ -401,12 +417,14 @@ export function useDomSelection({
         });
       }
     },
-    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
+    [applyDomSelection, buildDomSelectionFromTarget],
   );
 
   const refreshDomEditGroupSelectionsFromPreview = useCallback(
     // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]) => {
+      const { previewIframeRef, activeCompPath, timelineElements, setSelectedTimelineElementId } =
+        latest.current;
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
       try {
@@ -444,13 +462,7 @@ export function useDomSelection({
         setSelectedTimelineElementId(null);
       }
     },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      setSelectedTimelineElementId,
-      timelineElements,
-      previewIframeRef,
-    ],
+    [buildDomSelectionFromTarget],
   );
 
   // ── Effects ──
@@ -498,7 +510,11 @@ export function useDomSelection({
   }, [applyDomSelection, captionEditMode]);
 
   // Dev-only headless-QA shortcut (window.__studioTest.selectByDomId). No-op in prod.
-  useStudioTestHooks({ previewIframeRef, buildDomSelectionFromTarget, applyDomSelection });
+  useStudioTestHooks({
+    previewIframeRef: params.previewIframeRef,
+    buildDomSelectionFromTarget,
+    applyDomSelection,
+  });
 
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
@@ -522,6 +538,7 @@ export function useDomSelection({
           if (!domEditSelectionInGroup(nextGroup, s)) nextGroup.push(s);
         }
       }
+      const { timelineElements, setSelectedTimelineElementId } = latest.current;
       const nextSelection = additive && current ? current : selections[0];
       domEditSelectionRef.current = nextSelection;
       domEditGroupSelectionsRef.current = nextGroup;
@@ -536,7 +553,7 @@ export function useDomSelection({
         );
       setSelectedTimelineElementId(nextTimelineId);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
+    [applyDomSelection],
   );
 
   return {

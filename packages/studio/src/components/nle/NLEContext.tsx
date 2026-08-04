@@ -25,6 +25,19 @@ export function shouldDisableTimelineWhileCompositionLoading(compositionLoading:
   return compositionLoading;
 }
 
+/**
+ * Copy a substring off its parent.
+ *
+ * V8 represents a substring of 13+ characters as a SlicedString that keeps the
+ * WHOLE parent alive. A handful of `compositions/*.html` paths cut out of a
+ * 36 KB `index.html` therefore pin that entire document for as long as the map
+ * holding them lives — one document per project opened. Concatenating and
+ * re-slicing re-materialises the value over a throwaway parent its own size.
+ */
+function detachSubstring(value: string | undefined): string | undefined {
+  return value === undefined ? undefined : (" " + value).slice(1);
+}
+
 export interface NLEContextValue {
   projectId: string;
   // player (from useTimelinePlayer — single instance for the whole shell)
@@ -207,8 +220,8 @@ export function NLEProvider({
           /data-composition-id=["']([^"']+)["'][^>]*data-composition-src=["']([^"']+)["']|data-composition-src=["']([^"']+)["'][^>]*data-composition-id=["']([^"']+)["']/g;
         let match;
         while ((match = re.exec(html)) !== null) {
-          const id = match[1] || match[4];
-          const src = match[2] || match[3];
+          const id = detachSubstring(match[1] || match[4]);
+          const src = detachSubstring(match[2] || match[3]);
           if (id && src) map.set(id, src);
         }
         setCompIdToSrc(map);
