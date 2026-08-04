@@ -13,12 +13,15 @@ import {
   defaultAudioFxParams,
   getAudioFxDef,
   HF_AUDIO_FX,
+  mintAudioFxNodeId,
   type HfAudioFxChain,
+  type HfAudioFxDef,
   type HfAudioFxGroup,
   type HfAudioFxNode,
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
+import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParams, FxParamRow } from "./propertyPanelFxControls.js";
 
 const GROUP_ORDER: HfAudioFxGroup[] = ["filter", "dynamics", "nonlinear", "time"];
@@ -37,6 +40,9 @@ export interface AudioTrackOption {
 interface FxNodeRowProps {
   node: HfAudioFxNode;
   index: number;
+  automatedTargets?: ReadonlySet<string>;
+  onAutomateParam?(nodeId: string, paramKey: string): void;
+  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
   open: boolean;
   /** Last in the chain, so it cannot move further down. */
   last: boolean;
@@ -142,10 +148,73 @@ function FxNodeHeader({
   );
 }
 
+/**
+ * Which of an effect's knobs already have a lane.
+ *
+ * A lane addresses a node by id, so a node the panel has not yet given one
+ * cannot be automated at all. Adding an effect mints the id, so this only
+ * affects chains written before ids existed.
+ */
+function automatedKeysOf(
+  node: HfAudioFxNode,
+  params: readonly { key: string }[],
+  automatedTargets: ReadonlySet<string> | undefined,
+): Set<string> {
+  if (!node.id || !automatedTargets) return new Set();
+  const nodeId = node.id;
+  return new Set(
+    params.filter((p) => automatedTargets.has(fxAutomationTarget(nodeId, p.key))).map((p) => p.key),
+  );
+}
+
+/** An open effect's knobs, with whatever automation surface applies to them. */
+function FxNodeParams({
+  node,
+  def,
+  index,
+  disabled,
+  automatedTargets,
+  onUpdate,
+  onPreview,
+  onAutomateParam,
+  onRemoveParamAutomation,
+}: {
+  node: HfAudioFxNode;
+  def: HfAudioFxDef;
+  index: number;
+  disabled: boolean;
+  automatedTargets?: ReadonlySet<string>;
+  onUpdate(index: number, patch: Partial<HfAudioFxNode>): void;
+  onPreview(index: number, params: HfAudioFxParamValues): void;
+  onAutomateParam?(nodeId: string, paramKey: string): void;
+  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
+}) {
+  const nodeId = node.id;
+  return (
+    <FxParams
+      def={def}
+      params={node.params ?? defaultAudioFxParams(node.type)}
+      disabled={disabled}
+      onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
+      onCommit={(params: HfAudioFxParamValues) => onUpdate(index, { params })}
+      automatedKeys={automatedKeysOf(node, def.params, automatedTargets)}
+      onAutomate={nodeId && onAutomateParam ? (key) => onAutomateParam(nodeId, key) : undefined}
+      onRemoveAutomation={
+        nodeId && onRemoveParamAutomation
+          ? (key) => onRemoveParamAutomation(nodeId, key)
+          : undefined
+      }
+    />
+  );
+}
+
 /** One effect in the chain: its header controls, and its knobs when open. */
 function FxNodeRow({
   node,
   index,
+  automatedTargets,
+  onAutomateParam,
+  onRemoveParamAutomation,
   open,
   last,
   disabled,
@@ -176,12 +245,16 @@ function FxNodeRow({
         onRemove={() => onRemove(index)}
       />
       {open ? (
-        <FxParams
+        <FxNodeParams
+          node={node}
           def={def}
-          params={node.params ?? defaultAudioFxParams(node.type)}
-          disabled={disabled || bypassed}
-          onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
-          onCommit={(params: HfAudioFxParamValues) => onUpdate(index, { params })}
+          index={index}
+          disabled={Boolean(disabled) || bypassed}
+          automatedTargets={automatedTargets}
+          onUpdate={onUpdate}
+          onPreview={onPreview}
+          onAutomateParam={onAutomateParam}
+          onRemoveParamAutomation={onRemoveParamAutomation}
         />
       ) : null}
     </div>
@@ -190,12 +263,24 @@ function FxNodeRow({
 
 export interface FxSectionProps {
   chain: HfAudioFxChain;
+  /** Targets this track already automates, as `fx.<nodeId>.<param>` strings. */
+  automatedTargets?: ReadonlySet<string>;
+  /** Add a lane for one effect parameter, seeded at its current value. */
+  onAutomateParam?(nodeId: string, paramKey: string): void;
+  /** Delete one effect parameter's lane. */
+  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
+  /** Delete every lane belonging to a node that is being removed. */
+  onRemoveNodeAutomation?(nodeId: string): void;
   /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
   /** Continuous updates while a control is being dragged. */
   onChainPreview?(chain: HfAudioFxChain): void;
   carve: HfCarveSettings | null;
+  /** Gesture-end write; this is the one that persists. */
   onCarveChange(carve: HfCarveSettings | null): void;
+  /** Continuous updates while a carve slider is dragged. Without this every
+   *  pointermove patched the source file and resynced the selection. */
+  onCarvePreview?(carve: HfCarveSettings): void;
   /** Other audio elements that could act as the carve source. */
   sourceOptions: AudioTrackOption[];
   /** Re-run analysis against the current source audio. */
@@ -206,15 +291,27 @@ export interface FxSectionProps {
 
 export function FxSection({
   chain,
+  automatedTargets,
+  onAutomateParam,
+  onRemoveParamAutomation,
+  onRemoveNodeAutomation,
   onChainChange,
   onChainPreview,
   carve,
   onCarveChange,
+  onCarvePreview,
   sourceOptions,
   onAnalyseCarve,
   analysing,
   disabled,
 }: FxSectionProps) {
+  // Falls back to the persisting write when no preview handler is supplied, which
+  // keeps the control working rather than going dead.
+  const previewCarve = onCarvePreview ?? onCarveChange;
+
+  // Nothing to carve against means nothing to show — see the block below.
+  const showCarve = sourceOptions.length > 0 || carve !== null;
+
   const [adding, setAdding] = useState(false);
   const [openNode, setOpenNode] = useState<number | null>(0);
 
@@ -240,11 +337,14 @@ export function FxSection({
 
   const addEffect = useCallback(
     (type: string) => {
-      mutate([...chain.nodes, { type, enabled: true, params: defaultAudioFxParams(type) }]);
+      mutate([
+        ...chain.nodes,
+        { type, id: mintAudioFxNodeId(chain), enabled: true, params: defaultAudioFxParams(type) },
+      ]);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain.nodes, mutate],
+    [chain, mutate],
   );
 
   const updateNode = useCallback(
@@ -255,10 +355,17 @@ export function FxSection({
 
   const removeNode = useCallback(
     (index: number) => {
+      // The node's lanes go with it. `resolveAutomation` only hides an orphan at
+      // read time; left in the attribute, and with ids minted lowest-free, the
+      // next effect added takes the same id and inherits the dead envelope —
+      // arriving with its control disabled and "Automated" without the author
+      // ever automating it, and baked into the render.
+      const removedId = chain.nodes[index]?.id;
+      if (removedId) onRemoveNodeAutomation?.(removedId);
       mutate(chain.nodes.filter((_, i) => i !== index));
       setOpenNode(null);
     },
-    [chain.nodes, mutate],
+    [chain.nodes, mutate, onRemoveNodeAutomation],
   );
 
   const moveNode = useCallback(
@@ -287,6 +394,9 @@ export function FxSection({
               key={`${node.type}-${i}`}
               node={node}
               index={i}
+              automatedTargets={automatedTargets}
+              onAutomateParam={onAutomateParam}
+              onRemoveParamAutomation={onRemoveParamAutomation}
               open={openNode === i}
               last={i === chain.nodes.length - 1}
               disabled={disabled}
@@ -332,98 +442,109 @@ export function FxSection({
         </button>
       )}
 
-      <div className="hf-fx-carve space-y-1 rounded-[4px] border border-panel-border-input p-1.5">
-        <div className="hf-fx-carve-head flex min-h-6 items-center justify-between">
-          <span className="hf-fx-carve-title text-[11px] font-semibold text-panel-text-1">
-            Voiceover carve
-          </span>
-          <button
-            type="button"
-            className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
-            aria-pressed={carve !== null}
-            disabled={disabled}
-            onClick={() => onCarveChange(carve ? null : { ...DEFAULT_CARVE })}
-          >
-            {carve ? "On" : "Off"}
-          </button>
-        </div>
-        {carve ? (
-          <>
-            <label className="hf-fx-row flex min-h-6 items-center gap-2">
-              <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-4">
-                Listen to
-              </span>
-              <select
-                className="hf-fx-select min-w-0 flex-1 rounded-[3px] bg-panel-surface px-1 py-0.5 font-mono text-[10px] text-panel-text-0"
-                value={carve.source}
-                disabled={disabled}
-                onChange={(e) => onCarveChange({ ...carve, source: e.target.value })}
-              >
-                <option value="">Select a voice track…</option>
-                {sourceOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <FxParamRow
-              param={{
-                kind: "number",
-                key: "maxCutDb",
-                label: "Depth",
-                unit: "dB",
-                min: 0,
-                max: 24,
-                step: 0.5,
-                default: DEFAULT_CARVE.maxCutDb,
-              }}
-              value={carve.maxCutDb}
-              disabled={disabled}
-              onChange={(_k, v) => onCarveChange({ ...carve, maxCutDb: Number(v) })}
-            />
-            <FxParamRow
-              param={{
-                kind: "number",
-                key: "bands",
-                label: "Bands",
-                unit: "",
-                min: 1,
-                max: 6,
-                step: 1,
-                default: DEFAULT_CARVE.bands,
-              }}
-              value={carve.bands}
-              disabled={disabled}
-              onChange={(_k, v) => onCarveChange({ ...carve, bands: Number(v) })}
-            />
-            <FxParamRow
-              param={{
-                kind: "number",
-                key: "intelligibilityBias",
-                label: "Speech bias",
-                unit: "",
-                min: 0,
-                max: 1,
-                step: 0.05,
-                default: DEFAULT_CARVE.intelligibilityBias,
-                hint: "At 0 the deepest cuts follow raw voice energy, which lands on the fundamental. Higher weights selection toward 1-3 kHz, where a bed actually masks a voice.",
-              }}
-              value={carve.intelligibilityBias}
-              disabled={disabled}
-              onChange={(_k, v) => onCarveChange({ ...carve, intelligibilityBias: Number(v) })}
-            />
+      {/* Carve is a relationship between two tracks: it dips this bed where
+          another track's voice sits. With no other audio track in the
+          composition there is nothing to listen to, so the control would only
+          offer an empty picker. Still shown when carve is already configured,
+          so an existing setting cannot be stranded out of sight after its voice
+          track is removed. */}
+      {showCarve ? (
+        <div className="hf-fx-carve space-y-1 rounded-[4px] border border-panel-border-input p-1.5">
+          <div className="hf-fx-carve-head flex min-h-6 items-center justify-between">
+            <span className="hf-fx-carve-title text-[11px] font-semibold text-panel-text-1">
+              Voiceover carve
+            </span>
             <button
               type="button"
-              className="hf-fx-analyse mt-1 w-full rounded-[3px] bg-panel-surface py-1 text-[10px] text-panel-text-1 hover:text-panel-text-0 disabled:opacity-40"
-              disabled={disabled || analysing || !carve.source || !onAnalyseCarve}
-              onClick={() => onAnalyseCarve?.()}
+              className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+              aria-pressed={carve !== null}
+              disabled={disabled}
+              onClick={() => onCarveChange(carve ? null : { ...DEFAULT_CARVE })}
             >
-              {analysing ? "Analysing…" : "Analyse and apply"}
+              {carve ? "On" : "Off"}
             </button>
-          </>
-        ) : null}
-      </div>
+          </div>
+          {carve ? (
+            <>
+              <label className="hf-fx-row flex min-h-6 items-center gap-2">
+                <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-4">
+                  Listen to
+                </span>
+                <select
+                  className="hf-fx-select min-w-0 flex-1 rounded-[3px] bg-panel-surface px-1 py-0.5 font-mono text-[10px] text-panel-text-0"
+                  value={carve.source}
+                  disabled={disabled}
+                  onChange={(e) => onCarveChange({ ...carve, source: e.target.value })}
+                >
+                  <option value="">Select a voice track…</option>
+                  {sourceOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <FxParamRow
+                param={{
+                  kind: "number",
+                  key: "maxCutDb",
+                  label: "Depth",
+                  unit: "dB",
+                  min: 0,
+                  max: 24,
+                  step: 0.5,
+                  default: DEFAULT_CARVE.maxCutDb,
+                }}
+                value={carve.maxCutDb}
+                disabled={disabled}
+                onChange={(_k, v) => previewCarve({ ...carve, maxCutDb: Number(v) })}
+                onCommit={(_k, v) => onCarveChange({ ...carve, maxCutDb: Number(v) })}
+              />
+              <FxParamRow
+                param={{
+                  kind: "number",
+                  key: "bands",
+                  label: "Bands",
+                  unit: "",
+                  min: 1,
+                  max: 6,
+                  step: 1,
+                  default: DEFAULT_CARVE.bands,
+                }}
+                value={carve.bands}
+                disabled={disabled}
+                onChange={(_k, v) => previewCarve({ ...carve, bands: Number(v) })}
+                onCommit={(_k, v) => onCarveChange({ ...carve, bands: Number(v) })}
+              />
+              <FxParamRow
+                param={{
+                  kind: "number",
+                  key: "intelligibilityBias",
+                  label: "Speech bias",
+                  unit: "",
+                  min: 0,
+                  max: 1,
+                  step: 0.05,
+                  default: DEFAULT_CARVE.intelligibilityBias,
+                  hint: "At 0 the deepest cuts follow raw voice energy, which lands on the fundamental. Higher weights selection toward 1-3 kHz, where a bed actually masks a voice.",
+                }}
+                value={carve.intelligibilityBias}
+                disabled={disabled}
+                onChange={(_k, v) => previewCarve({ ...carve, intelligibilityBias: Number(v) })}
+                onCommit={(_k, v) => onCarveChange({ ...carve, intelligibilityBias: Number(v) })}
+              />
+              <button
+                type="button"
+                className="hf-fx-analyse mt-1 w-full rounded-[3px] bg-panel-surface py-1 text-[10px] text-panel-text-1 hover:text-panel-text-0 disabled:opacity-40"
+                disabled={disabled || analysing || !carve.source || !onAnalyseCarve}
+                onClick={() => onAnalyseCarve?.()}
+              >
+                {analysing ? "Analysing…" : "Analyse and apply"}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

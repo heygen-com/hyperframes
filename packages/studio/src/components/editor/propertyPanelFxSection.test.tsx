@@ -45,6 +45,9 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       onAnalyseCarve={overrides.onAnalyseCarve ?? noop}
       analysing={overrides.analysing}
       disabled={overrides.disabled}
+      automatedTargets={overrides.automatedTargets}
+      onAutomateParam={overrides.onAutomateParam}
+      onRemoveParamAutomation={overrides.onRemoveParamAutomation}
     />,
   );
   return { host, onChainChange, onChainPreview, onCarveChange };
@@ -244,5 +247,163 @@ describe("FxSection carve", () => {
     for (const b of Array.from(host.querySelectorAll("button.hf-fx-bypass, .hf-fx-remove"))) {
       expect((b as HTMLButtonElement).disabled).toBe(true);
     }
+  });
+});
+
+describe("automation in the panel", () => {
+  const automatable = (chain: HfAudioFxChain, over = {}) =>
+    mount({
+      chain,
+      automatedTargets: new Set<string>(),
+      onAutomateParam: vi.fn(),
+      onRemoveParamAutomation: vi.fn(),
+      ...over,
+    });
+
+  const idChain = (type: string, id = "n1"): HfAudioFxChain => ({
+    version: 1,
+    nodes: [{ type, id, enabled: true, params: defaultAudioFxParams(type) }],
+  });
+
+  const rowFor = (host: HTMLElement, label: string): HTMLElement | null => {
+    for (const row of Array.from(host.querySelectorAll<HTMLElement>(".hf-fx-row"))) {
+      if (row.querySelector(".hf-fx-label")?.textContent === label) return row;
+    }
+    return null;
+  };
+
+  it("offers an automate button only for parameters an envelope can drive", () => {
+    // Saturate: `output` is a make-up gain, but the curve's type and threshold
+    // are rebuilt wholesale and cannot be scheduled.
+    const { host } = automatable(idChain("saturate"));
+    expect(rowFor(host, "Output")?.querySelector(".hf-fx-automate")).toBeTruthy();
+    expect(rowFor(host, "Threshold")?.querySelector(".hf-fx-automate")).toBeNull();
+  });
+
+  it("offers nothing for a worklet effect, which exposes no AudioParams", () => {
+    const { host } = automatable(idChain("compressor"));
+    expect(host.querySelectorAll(".hf-fx-automate").length).toBe(0);
+  });
+
+  it("asks to automate a parameter by node id and key", () => {
+    const onAutomateParam = vi.fn();
+    const { host } = automatable(idChain("lowpass", "n7"), { onAutomateParam });
+    const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+    expect(button.hasAttribute("title")).toBe(false);
+    act(() => button.click());
+    expect(onAutomateParam).toHaveBeenCalledWith("n7", "frequency");
+  });
+
+  it("disables an automated control, since a value typed here would be overwritten", () => {
+    const { host } = automatable(idChain("lowpass"), {
+      automatedTargets: new Set(["fx.n1.frequency"]),
+    });
+    const row = rowFor(host, "Cutoff")!;
+    expect(row.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(true);
+    expect(row.querySelector<HTMLInputElement>('input[type="number"]')?.disabled).toBe(true);
+    expect(row.hasAttribute("data-automated")).toBe(true);
+    // A sibling parameter on the same effect stays editable.
+    const q = rowFor(host, "Q")!;
+    expect(q.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(false);
+  });
+
+  it("turns the automated parameter's button into a delete", () => {
+    const onRemoveParamAutomation = vi.fn();
+    const { host } = automatable(idChain("lowpass"), {
+      automatedTargets: new Set(["fx.n1.frequency"]),
+      onRemoveParamAutomation,
+    });
+    const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("aria-label")).toMatch(/remove/i);
+    // The wording lives in the Tooltip component, which only renders its bubble
+    // on hover; the button itself carries no native title hover.
+    expect(button.hasAttribute("title")).toBe(false);
+    act(() => button.click());
+    expect(onRemoveParamAutomation).toHaveBeenCalledWith("n1", "frequency");
+  });
+
+  it("shows the wording in a tooltip bubble, not a native browser hover", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host } = automatable(idChain("lowpass"), {
+        automatedTargets: new Set(["fx.n1.frequency"]),
+      });
+      const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+      // Tooltip positions itself from the trigger's box and gives up on a 0x0
+      // one, which is every element in happy-dom.
+      vi.spyOn(button, "getBoundingClientRect").mockReturnValue({
+        x: 100,
+        y: 300,
+        left: 100,
+        top: 300,
+        right: 116,
+        bottom: 316,
+        width: 16,
+        height: 16,
+        toJSON: () => ({}),
+      } as DOMRect);
+      // React synthesises pointer-enter from pointerover and delegates focus via
+      // focusin; focus is also how a keyboard user reaches the same tooltip.
+      act(() => {
+        button.dispatchEvent(new Event("focusin", { bubbles: true }));
+      });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      const bubble = document.querySelector('[role="tooltip"]');
+      expect(bubble?.textContent).toBe("Automated");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cannot automate a node with no id, which a lane could not address", () => {
+    const { host } = automatable({
+      version: 1,
+      nodes: [{ type: "lowpass", enabled: true, params: defaultAudioFxParams("lowpass") }],
+    });
+    expect(host.querySelectorAll(".hf-fx-automate").length).toBe(0);
+  });
+
+  it("gives a newly added effect an id, so its parameters can be automated", () => {
+    const onChainChange = vi.fn();
+    const { host } = mount({ chain: { version: 1, nodes: [] }, onChainChange });
+    const add = host.querySelector(".hf-fx-add") as HTMLButtonElement;
+    act(() => add.click());
+    const item = Array.from(host.querySelectorAll<HTMLButtonElement>(".hf-fx-add-item")).find(
+      (b) => b.textContent === "Low-pass",
+    )!;
+    act(() => item.click());
+    expect(onChainChange.mock.calls[0][0].nodes[0].id).toBe("n1");
+  });
+});
+
+describe("voiceover carve visibility", () => {
+  const carveBlock = (host: HTMLElement) => host.querySelector(".hf-fx-carve");
+
+  it("is hidden when the composition has no other audio track to listen to", () => {
+    // Carve dips this bed where another track's voice sits. Alone, the control
+    // could only offer an empty picker.
+    const { host } = mount({ chain: chainOf("lowpass"), sourceOptions: [] });
+    expect(carveBlock(host)).toBeNull();
+  });
+
+  it("is shown once there is another audio track", () => {
+    const { host } = mount({
+      chain: chainOf("lowpass"),
+      sourceOptions: [{ id: "vo", label: "vo" }],
+    });
+    expect(carveBlock(host)).toBeTruthy();
+  });
+
+  it("stays shown for an existing carve whose voice track has gone", () => {
+    // Otherwise the setting would keep dipping the bed from out of sight.
+    const { host } = mount({
+      chain: chainOf("lowpass"),
+      sourceOptions: [],
+      carve: { ...DEFAULT_CARVE, source: "vo" },
+    });
+    expect(carveBlock(host)).toBeTruthy();
   });
 });
