@@ -17,6 +17,17 @@ import {
 export { getTrackStyle } from "./timelineIcons";
 
 /**
+ * Automation lanes on one clip, or 0 for anything that is not audio.
+ *
+ * An audio clip can be worth expanding without carrying a single tween, so this
+ * counts toward whether a track has anything to disclose. A function rather than
+ * a map so every caller reads the same cached parse and none can drift.
+ */
+export function automationLaneCountOf(element: TimelineElement): number {
+  return isAudioTimelineElement(element) ? elementAutomationLanes(element).length : 0;
+}
+
+/**
  * The single keyframed element whose property lanes a track shows when expanded.
  * A track can hold several elements (same z-index is common), but keyframes are
  * per-element, so we scope to ONE active element — the selected one if it's on
@@ -29,10 +40,15 @@ export function resolveTrackKeyframeClip(
   laneCounts: ReadonlyMap<string, number>,
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  automationLaneCount: (element: TimelineElement) => number = automationLaneCountOf,
 ): TimelineElement | null {
-  const keyframed = elements.filter(
-    (element) => (laneCounts.get(element.key ?? element.id) ?? 0) >= 1,
-  );
+  // Automation counts toward "has something to disclose". Without it an audio
+  // clip carrying envelopes but no tweens resolved to null, so its track got no
+  // caret, no reserved height and no lanes — the automation was unreachable for
+  // exactly the tracks the feature is for.
+  const disclosable = (element: TimelineElement): number =>
+    (laneCounts.get(element.key ?? element.id) ?? 0) + automationLaneCount(element);
+  const keyframed = elements.filter((element) => disclosable(element) >= 1);
   if (keyframed.length === 0) return null;
   const selected = keyframed.find((element) => {
     const key = element.key ?? element.id;
@@ -41,8 +57,9 @@ export function resolveTrackKeyframeClip(
   if (selected) return selected;
   // Most lanes wins, first one on a tie (same as the old stable sort), but as a
   // reduce over the already non-empty list so there's no index to assert on.
-  const lanesOf = (element: TimelineElement) => laneCounts.get(element.key ?? element.id) ?? 0;
-  return keyframed.reduce((best, element) => (lanesOf(element) > lanesOf(best) ? element : best));
+  return keyframed.reduce((best, element) =>
+    disclosable(element) > disclosable(best) ? element : best,
+  );
 }
 
 /** Lanes per clip: the count of distinct property groups whose tween contributes
@@ -91,9 +108,7 @@ function useTimelineRowHeights(
         {
           clipId,
           laneCount: laneCounts.get(clipId) ?? 0,
-          automationLaneCount: isAudioTimelineElement(active)
-            ? elementAutomationLanes(active).length
-            : 0,
+          automationLaneCount: automationLaneCountOf(active),
         },
       ];
     });

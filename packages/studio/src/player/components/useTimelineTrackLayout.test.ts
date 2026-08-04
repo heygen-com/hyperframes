@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { LANE_H, TRACK_H } from "./timelineLayout";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { useTimelineTrackLayout } from "./useTimelineTrackLayout";
+import { resolveTrackKeyframeClip, useTimelineTrackLayout } from "./useTimelineTrackLayout";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -90,5 +90,55 @@ describe("useTimelineTrackLayout", () => {
     expect(layout.laneCounts.get("clip-1")).toBe(2);
     expect(layout.rowHeights).toEqual([TRACK_H + 2 * LANE_H]);
     unmount();
+  });
+});
+const audioClip = (id: string, over: Partial<TimelineElement> = {}): TimelineElement => ({
+  id,
+  key: id,
+  tag: "audio",
+  start: 0,
+  duration: 10,
+  track: 10,
+  ...over,
+});
+
+describe("resolveTrackKeyframeClip", () => {
+  const none = new Map<string, number>();
+
+  it("picks an audio clip that has only automation, no tweens", () => {
+    // Gating on tweens alone left an audio clip's envelopes unreachable: no
+    // clip resolved, so the track got no caret, no height and no lanes.
+    const bgm = audioClip("bgm");
+    const picked = resolveTrackKeyframeClip([bgm], none, null, new Set(), () => 1);
+    expect(picked).toBe(bgm);
+  });
+
+  it("still resolves nothing when a clip has neither", () => {
+    expect(resolveTrackKeyframeClip([audioClip("bgm")], none, null, new Set(), () => 0)).toBeNull();
+  });
+
+  it("prefers the selected clip over the one with more to show", () => {
+    const a = audioClip("a");
+    const b = audioClip("b");
+    const picked = resolveTrackKeyframeClip([a, b], new Map([["b", 4]]), "a", new Set(), (e) =>
+      e.id === "a" ? 1 : 0,
+    );
+    expect(picked).toBe(a);
+  });
+
+  it("counts tweens and automation together when breaking a tie", () => {
+    const a = audioClip("a");
+    const b = audioClip("b");
+    const picked = resolveTrackKeyframeClip(
+      [a, b],
+      new Map([
+        ["a", 1],
+        ["b", 1],
+      ]),
+      null,
+      new Set(),
+      (e) => (e.id === "b" ? 3 : 0),
+    );
+    expect(picked).toBe(b);
   });
 });
