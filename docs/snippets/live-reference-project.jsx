@@ -42,8 +42,17 @@ export const LiveReferenceProject = ({ src, poster }) => {
       .then(markReady)
       .catch(() => !cancelled && setLoadFailed(true));
 
+    // whenDefined() never rejects for a script that failed to load, and a later
+    // mount reuses the existing tag without its error listener. A CSP rule or a
+    // content blocker can also kill the request without firing `error` at all.
+    // Without a deadline every one of those paths sits on "Loading…" forever.
+    const deadline = window.setTimeout(() => {
+      if (!cancelled && !window.customElements?.get("hyperframes-player")) setLoadFailed(true);
+    }, 10000);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(deadline);
     };
   }, [mounted]);
 
@@ -51,7 +60,10 @@ export const LiveReferenceProject = ({ src, poster }) => {
     if (!playerReady || typeof window === "undefined") return undefined;
 
     const controller = new AbortController();
+    let cancelled = false;
     let objectUrl;
+
+    setLoadFailed(false);
 
     fetch(src, { signal: controller.signal })
       .then((response) => {
@@ -81,6 +93,9 @@ export const LiveReferenceProject = ({ src, poster }) => {
         const preparedHtml = html.includes('<base href="../">')
           ? html.replace('<base href="../">', `<base href="${assetBase}">`)
           : html.replace("<head>", `<head><base href="${assetBase}">`);
+        // abort() no longer stops the chain once the body has resolved, so the
+        // blob can be minted after cleanup ran with objectUrl still undefined.
+        if (cancelled) return;
         objectUrl = URL.createObjectURL(new Blob([preparedHtml], { type: "text/html" }));
         setCompositionSrc(objectUrl);
       })
@@ -89,6 +104,7 @@ export const LiveReferenceProject = ({ src, poster }) => {
       });
 
     return () => {
+      cancelled = true;
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
@@ -121,14 +137,20 @@ export const LiveReferenceProject = ({ src, poster }) => {
           type: "hyperframes-docs:variables",
           variables: { title, supportingLine, accent },
         },
-        "*",
+        // The blob inherits this origin, so name it. A wildcard would hand the
+        // payload to third-party HTML the day someone ignores the contract above.
+        window.location.origin,
       );
     };
 
     player.addEventListener("ready", sendVariables);
     sendVariables();
     return () => player.removeEventListener("ready", sendVariables);
-  }, [playerReady, title, supportingLine, accent]);
+  // compositionSrc is load-bearing here, not decoration: playerRef.current is
+  // assigned by the effect above on the commit where compositionSrc lands.
+  // Without it this effect runs once, on a commit where the ref is still null,
+  // and never again — so the initial variables are never sent.
+  }, [playerReady, compositionSrc, title, supportingLine, accent]);
 
   const reset = () => {
     setTitle("Example Domain");

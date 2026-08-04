@@ -95,6 +95,14 @@ project never calls `play()`, `pause()` or seeks.
 | 10    | `#sfx-plate`  | `sfx-whoosh.mp3` | `0.20`   | at `2.62s`, under the plate's travel       |
 | 11    | `#sfx-marker` | `sfx-tick.mp3`   | `0.16`   | at `4.54s`, on the marker draw             |
 
+<!-- The two WAVs are the only assets over the repository's 500 KB non-LFS
+     limit, so they are the only ones stored as pointers. -->
+
+Both WAVs are Git LFS pointers, so **run `git lfs pull` before rendering**. Without
+it the bed and the voiceover are 130-byte stubs and the captions — timed from
+`narration.wav` — play over silence. The two MP3 stings and the capture PNG are
+stored plainly and need no extra step.
+
 The bed is not a static level. Volume is **keyframed on the timeline**, which the runtime
 probes and applies identically in preview and render:
 

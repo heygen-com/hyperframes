@@ -68,11 +68,19 @@ export const WorkflowChooser = () => {
     },
   ];
 
-  const [reducedMotion, setReducedMotion] = useState(false);
+  // Lazy initializer, not a post-mount effect: with useState(false) the first
+  // committed render emits <video src autoPlay loop> and only then drops the
+  // attributes, so a reduce-motion visitor has already started fetching every
+  // tile. autoPlay also overrides preload="metadata", and removing src without
+  // a following load() is not a reliable abort. CSS cannot reach any of this.
+  const [reducedMotion, setReducedMotion] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(query.matches);
     const onChange = (event) => setReducedMotion(event.matches);
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
