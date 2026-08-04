@@ -48,6 +48,7 @@ import { FxSection, type AudioTrackOption } from "./propertyPanelFxSection.js";
 export function AudioFxGroup({
   element,
   onSetAttributeQuiet,
+  onSetAttributeLive,
 }: {
   element: DomEditSelection;
   /**
@@ -61,6 +62,8 @@ export function AudioFxGroup({
    * edit would work from a pre-edit value and appear to do nothing.
    */
   onSetAttributeQuiet: (attr: string, value: string | null) => void | Promise<void>;
+  /** Continuous, non-persisting write for a dial being dragged. */
+  onSetAttributeLive: (attr: string, value: string | null) => void | Promise<void>;
 }) {
   const chain = ((): HfAudioFxChain => {
     const raw = element.dataAttributes?.["fx-chain"];
@@ -106,6 +109,42 @@ export function AudioFxGroup({
   /** Stop automating it, handing the value back to the panel control. */
   const removeParamAutomation = (nodeId: string, paramKey: string): void => {
     writeAutomation(withoutLane(automation, fxAutomationTarget(nodeId, paramKey)));
+  };
+
+  /**
+   * Turn carve on or off.
+   *
+   * Switching off drops the filters it generated — left behind they keep dipping
+   * the bed with nothing in the panel to explain them — but that is a second
+   * attribute, and each write is a read-modify-write against the same source
+   * file. Fired together, both read the same content and the later one drops the
+   * earlier: either the carve settings went and the filters stayed, or the
+   * reverse. Awaiting the first means the second reads the file it produced.
+   *
+   * One commit carrying both would also close the window where a failure of just
+   * the second leaves them half-applied; that needs a multi-attribute quiet
+   * commit, which does not exist yet.
+   */
+  const setCarve = async (next: HfCarveSettings | null): Promise<void> => {
+    if (!next) {
+      const kept = chain.nodes.filter((n) => !n.fromCarve);
+      if (kept.length !== chain.nodes.length) {
+        await onSetAttributeQuiet(
+          HF_AUDIO_FX_ATTR,
+          kept.length ? serializeAudioFxChain({ version: 1, nodes: kept }) : null,
+        );
+      }
+    }
+    await onSetAttributeQuiet(HF_AUDIO_CARVE_ATTR, next ? JSON.stringify(next) : null);
+  };
+
+  /** Every lane belonging to a node that is going away. */
+  const removeNodeAutomation = (nodeId: string): void => {
+    const prefix = `fx.${nodeId}.`;
+    const kept = automation.lanes.filter((lane) => !lane.target.startsWith(prefix));
+    if (kept.length !== automation.lanes.length) {
+      writeAutomation({ version: 1, lanes: kept });
+    }
   };
 
   const carve = ((): HfCarveSettings | null => {
@@ -178,6 +217,7 @@ export function AudioFxGroup({
       automatedTargets={automatedTargets}
       onAutomateParam={automateParam}
       onRemoveParamAutomation={removeParamAutomation}
+      onRemoveNodeAutomation={removeNodeAutomation}
       onChainChange={(next) =>
         // Live for the same reason as automation above: adding, removing or
         // bypassing an effect is applied to the running graph, so a reload would
@@ -188,28 +228,14 @@ export function AudioFxGroup({
         )
       }
       onChainPreview={(next) =>
-        // Live writes skip the preview refresh, so dragging a knob no longer
-        // reloads the composition and restarts playback on every pixel.
-        onSetAttributeQuiet(
-          HF_AUDIO_FX_ATTR,
-          next.nodes.length ? serializeAudioFxChain(next) : null,
-        )
+        // Live writes skip the preview refresh entirely, so dragging a knob no
+        // longer reloads the composition and restarts playback on every pixel.
+        // The gesture-end write above is the one that resyncs.
+        onSetAttributeLive(HF_AUDIO_FX_ATTR, next.nodes.length ? serializeAudioFxChain(next) : null)
       }
       carve={carve}
-      onCarveChange={(next) => {
-        // Turning carve off drops the filters it generated; leaving them behind
-        // would keep dipping the bed with no carve to explain it.
-        if (!next) {
-          const kept = chain.nodes.filter((n) => !n.fromCarve);
-          if (kept.length !== chain.nodes.length) {
-            onSetAttributeQuiet(
-              HF_AUDIO_FX_ATTR,
-              kept.length ? serializeAudioFxChain({ version: 1, nodes: kept }) : null,
-            );
-          }
-        }
-        void onSetAttributeQuiet(HF_AUDIO_CARVE_ATTR, next ? JSON.stringify(next) : null);
-      }}
+      onCarveChange={(next) => void setCarve(next)}
+      onCarvePreview={(next) => onSetAttributeLive(HF_AUDIO_CARVE_ATTR, JSON.stringify(next))}
       sourceOptions={sourceOptions}
       onAnalyseCarve={() => void analyse()}
       analysing={analysing}

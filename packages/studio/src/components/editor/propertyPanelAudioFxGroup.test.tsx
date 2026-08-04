@@ -40,15 +40,20 @@ function mount(dataAttributes: Record<string, string>, alone = false) {
   // restart every playing track, but with a selection resync so the panel sees
   // what it just wrote.
   const onSetAttributeQuiet = vi.fn();
+  const onSetAttributeLive = vi.fn();
   const host = document.createElement("div");
   document.body.append(host);
   const selection = audioSelection(dataAttributes, alone);
   act(() => {
     createRoot(host).render(
-      <AudioFxGroup element={selection} onSetAttributeQuiet={onSetAttributeQuiet} />,
+      <AudioFxGroup
+        element={selection}
+        onSetAttributeQuiet={onSetAttributeQuiet}
+        onSetAttributeLive={onSetAttributeLive}
+      />,
     );
   });
-  return { host, onSetAttributeQuiet };
+  return { host, onSetAttributeQuiet, onSetAttributeLive };
 }
 
 const rowFor = (host: HTMLElement, label: string): HTMLElement | null => {
@@ -182,18 +187,26 @@ describe("AudioFxGroup carve", () => {
     return block.querySelector(".hf-fx-bypass") as HTMLButtonElement;
   };
 
-  it("removes the filters it generated when carve is switched off", () => {
+  it("removes the filters it generated when carve is switched off", async () => {
     // Leaving them behind would keep dipping the bed with no carve to explain it.
     const { host, onSetAttributeQuiet } = mount({
       "fx-chain": carvedChain,
       "fx-carve": carveOn,
     });
-    act(() => carveToggle(host).click());
+    await act(async () => {
+      carveToggle(host).click();
+    });
     const chainWrite = onSetAttributeQuiet.mock.calls.find((c) => c[0] === "data-fx-chain");
     expect(chainWrite).toBeTruthy();
     const kept = JSON.parse(String(chainWrite![1])).nodes;
     expect(kept.map((n: { type: string }) => n.type)).toEqual(["lowpass"]);
-    // And the carve settings themselves go.
+    // And the carve settings themselves go — after the chain write, not
+    // alongside it: both are read-modify-writes of the same file, so fired
+    // together the later one reads pre-edit content and drops the earlier.
+    expect(onSetAttributeQuiet.mock.calls.map((c) => c[0])).toEqual([
+      "data-fx-chain",
+      "data-fx-carve",
+    ]);
     expect(onSetAttributeQuiet.mock.calls.find((c) => c[0] === "data-fx-carve")?.[1]).toBeNull();
   });
 
@@ -205,6 +218,27 @@ describe("AudioFxGroup carve", () => {
     const { host, onSetAttributeQuiet } = mount({ "fx-chain": handBuilt, "fx-carve": carveOn });
     act(() => carveToggle(host).click());
     expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-chain")).toBe(false);
+  });
+
+  it("drags a carve dial live and persists once on release", () => {
+    // Without the split every pointermove patched the source file and resynced
+    // the selection, which is what makes the audio stutter mid-drag.
+    const { host, onSetAttributeQuiet, onSetAttributeLive } = mount({
+      "fx-chain": carvedChain,
+      "fx-carve": carveOn,
+    });
+    const dial = host.querySelector<HTMLInputElement>(".hf-fx-carve input[type=range]");
+    expect(dial).not.toBeNull();
+    act(() => {
+      // React's value tracker swallows a plain assignment, so go through the
+      // prototype setter the way the other panel tests do.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(dial, "0.5");
+      dial?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onSetAttributeLive.mock.calls.map((c) => c[0])).toEqual(["data-fx-carve"]);
+    expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-carve")).toBe(false);
+    act(() => dial?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+    expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-carve")).toBe(true);
   });
 
   it("writes carve settings live, so enabling it does not reload the preview", () => {
@@ -273,5 +307,52 @@ describe("AudioFxGroup carve visibility", () => {
     // Nothing to listen to, so the picker would be empty and Analyse inert.
     const { host } = mount({ "fx-chain": CHAIN }, true);
     expect(host.querySelector(".hf-fx-carve")).toBeNull();
+  });
+});
+
+describe("AudioFxGroup deleting an effect", () => {
+  const twoNodes = JSON.stringify({
+    version: 1,
+    nodes: [
+      { type: "lowpass", id: "n1", params: { frequency: 400, q: 0.9, poles: "2" } },
+      { type: "peaking", id: "n2", params: { frequency: 900, gain: -6, q: 1 } },
+    ],
+  });
+
+  it("takes the deleted node's lanes with it", () => {
+    // resolveAutomation only hides an orphan at read time. Left in the attribute,
+    // and with ids minted lowest-free, the next effect added takes the same id and
+    // inherits the dead envelope — disabled and "Automated" without the author
+    // ever automating it, and baked into the render.
+    const { host, onSetAttributeQuiet } = mount({
+      "fx-chain": twoNodes,
+      automation: JSON.stringify({
+        version: 1,
+        lanes: [
+          { target: "fx.n1.frequency", points: [{ t: 0, v: 400 }] },
+          { target: "fx.n2.gain", points: [{ t: 0, v: -6 }] },
+          { target: "volume", points: [{ t: 0, v: 1 }] },
+        ],
+      }),
+    });
+    const remove = host.querySelectorAll<HTMLButtonElement>(".hf-fx-remove")[0]!;
+    act(() => remove.click());
+    const automationWrite = onSetAttributeQuiet.mock.calls.find((c) => c[0] === "data-automation");
+    expect(automationWrite).toBeTruthy();
+    expect(
+      JSON.parse(String(automationWrite![1])).lanes.map((l: { target: string }) => l.target),
+    ).toEqual(["fx.n2.gain", "volume"]);
+  });
+
+  it("leaves automation alone when the deleted node had none", () => {
+    const { host, onSetAttributeQuiet } = mount({
+      "fx-chain": twoNodes,
+      automation: JSON.stringify({
+        version: 1,
+        lanes: [{ target: "fx.n2.gain", points: [{ t: 0, v: -6 }] }],
+      }),
+    });
+    act(() => host.querySelectorAll<HTMLButtonElement>(".hf-fx-remove")[0]!.click());
+    expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-automation")).toBe(false);
   });
 });

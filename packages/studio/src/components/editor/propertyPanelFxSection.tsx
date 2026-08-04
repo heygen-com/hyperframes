@@ -269,12 +269,18 @@ export interface FxSectionProps {
   onAutomateParam?(nodeId: string, paramKey: string): void;
   /** Delete one effect parameter's lane. */
   onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
+  /** Delete every lane belonging to a node that is being removed. */
+  onRemoveNodeAutomation?(nodeId: string): void;
   /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
   /** Continuous updates while a control is being dragged. */
   onChainPreview?(chain: HfAudioFxChain): void;
   carve: HfCarveSettings | null;
+  /** Gesture-end write; this is the one that persists. */
   onCarveChange(carve: HfCarveSettings | null): void;
+  /** Continuous updates while a carve slider is dragged. Without this every
+   *  pointermove patched the source file and resynced the selection. */
+  onCarvePreview?(carve: HfCarveSettings): void;
   /** Other audio elements that could act as the carve source. */
   sourceOptions: AudioTrackOption[];
   /** Re-run analysis against the current source audio. */
@@ -288,15 +294,21 @@ export function FxSection({
   automatedTargets,
   onAutomateParam,
   onRemoveParamAutomation,
+  onRemoveNodeAutomation,
   onChainChange,
   onChainPreview,
   carve,
   onCarveChange,
+  onCarvePreview,
   sourceOptions,
   onAnalyseCarve,
   analysing,
   disabled,
 }: FxSectionProps) {
+  // Falls back to the persisting write when no preview handler is supplied, which
+  // keeps the control working rather than going dead.
+  const previewCarve = onCarvePreview ?? onCarveChange;
+
   // Nothing to carve against means nothing to show — see the block below.
   const showCarve = sourceOptions.length > 0 || carve !== null;
 
@@ -343,10 +355,17 @@ export function FxSection({
 
   const removeNode = useCallback(
     (index: number) => {
+      // The node's lanes go with it. `resolveAutomation` only hides an orphan at
+      // read time; left in the attribute, and with ids minted lowest-free, the
+      // next effect added takes the same id and inherits the dead envelope —
+      // arriving with its control disabled and "Automated" without the author
+      // ever automating it, and baked into the render.
+      const removedId = chain.nodes[index]?.id;
+      if (removedId) onRemoveNodeAutomation?.(removedId);
       mutate(chain.nodes.filter((_, i) => i !== index));
       setOpenNode(null);
     },
-    [chain.nodes, mutate],
+    [chain.nodes, mutate, onRemoveNodeAutomation],
   );
 
   const moveNode = useCallback(
@@ -478,7 +497,8 @@ export function FxSection({
                 }}
                 value={carve.maxCutDb}
                 disabled={disabled}
-                onChange={(_k, v) => onCarveChange({ ...carve, maxCutDb: Number(v) })}
+                onChange={(_k, v) => previewCarve({ ...carve, maxCutDb: Number(v) })}
+                onCommit={(_k, v) => onCarveChange({ ...carve, maxCutDb: Number(v) })}
               />
               <FxParamRow
                 param={{
@@ -493,7 +513,8 @@ export function FxSection({
                 }}
                 value={carve.bands}
                 disabled={disabled}
-                onChange={(_k, v) => onCarveChange({ ...carve, bands: Number(v) })}
+                onChange={(_k, v) => previewCarve({ ...carve, bands: Number(v) })}
+                onCommit={(_k, v) => onCarveChange({ ...carve, bands: Number(v) })}
               />
               <FxParamRow
                 param={{
@@ -509,7 +530,8 @@ export function FxSection({
                 }}
                 value={carve.intelligibilityBias}
                 disabled={disabled}
-                onChange={(_k, v) => onCarveChange({ ...carve, intelligibilityBias: Number(v) })}
+                onChange={(_k, v) => previewCarve({ ...carve, intelligibilityBias: Number(v) })}
+                onCommit={(_k, v) => onCarveChange({ ...carve, intelligibilityBias: Number(v) })}
               />
               <button
                 type="button"
