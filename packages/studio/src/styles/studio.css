@@ -493,3 +493,25 @@ body {
     animation: none;
   }
 }
+
+/* Agent run progress (AgentRunTray) — an indeterminate sweep: the harness
+   reports what it is doing, never how far along it is. */
+@keyframes hf-run-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.hf-run-sweep {
+  animation: hf-run-sweep 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-run-sweep {
+    animation: none;
+    width: 100%;
+  }
+}

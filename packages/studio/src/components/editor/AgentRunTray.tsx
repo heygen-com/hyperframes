@@ -1,14 +1,6 @@
 import { useState } from "react";
 import { AgentGlyph, type AgentJob, type AgentKind } from "./agentGlyphs";
 
-const STATUS_DOT: Record<AgentJob["status"], string> = {
-  queued: "bg-neutral-500",
-  running: "animate-pulse bg-studio-accent",
-  done: "bg-studio-accent",
-  failed: "bg-red-400",
-  cancelled: "bg-neutral-600",
-};
-
 const ROW_BUTTON_CLASS =
   "rounded-md p-0.5 text-neutral-600 transition-colors duration-150 ease-out " +
   "hover:bg-neutral-800/70 hover:text-neutral-200 active:scale-[0.96] disabled:opacity-25 " +
@@ -40,9 +32,10 @@ function elapsedLabel(job: AgentJob): string {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-/** Live line for a run: the queue position, what the agent is doing, or how it ended. */
-function statusLine(job: AgentJob): string {
-  if (job.status === "queued") return "Queued";
+/** Live line for a run: where it sits in line, what it is doing, or how it ended. */
+function statusLine(job: AgentJob, queuePosition: number): string {
+  if (job.status === "queued")
+    return queuePosition === 0 ? "Next up" : `#${queuePosition + 1} in line`;
   if (job.status === "cancelled") return job.message ?? "Cancelled";
   if (job.status === "running") return job.activity || "Working…";
   return job.message ?? (job.status === "failed" ? "Failed" : "Done");
@@ -155,11 +148,7 @@ export function AgentRunTray({
                 className="group rounded-[10px] px-1.5 py-1.5 transition-colors duration-150 ease-out hover:bg-neutral-900/70"
               >
                 <div className="flex items-center gap-1.5">
-                  <span
-                    aria-hidden="true"
-                    className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT[job.status]}`}
-                  />
-                  <AgentGlyph kind={job.kind} size={11} iconUrl={agentIconUrl} />
+                  <AgentGlyph kind={job.kind} size={12} iconUrl={agentIconUrl} />
                   <span className="min-w-0 flex-1 truncate text-[12px] leading-none text-neutral-200">
                     {job.instruction}
                   </span>
@@ -224,7 +213,7 @@ export function AgentRunTray({
                       job.status === "failed" ? "text-red-400/90" : "text-neutral-500"
                     }`}
                   >
-                    {statusLine(job)}
+                    {statusLine(job, queueIndex)}
                   </span>
                   {job.sessionId && (
                     <span
@@ -235,6 +224,22 @@ export function AgentRunTray({
                     </span>
                   )}
                 </div>
+                {(job.status === "running" || job.status === "queued") && (
+                  <div
+                    aria-hidden="true"
+                    className="mt-1.5 h-[2px] overflow-hidden rounded-full bg-neutral-800/80"
+                  >
+                    {/* Running sweeps; queued sits still — the difference is the
+                        point, and the elapsed timer is the static cue beside it. */}
+                    <div
+                      className={
+                        job.status === "running"
+                          ? "hf-run-sweep h-full w-1/3 rounded-full bg-studio-accent"
+                          : "h-full w-full rounded-full bg-neutral-700/70"
+                      }
+                    />
+                  </div>
+                )}
               </li>
             );
           })}

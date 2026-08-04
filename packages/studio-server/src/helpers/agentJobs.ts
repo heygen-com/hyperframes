@@ -118,6 +118,12 @@ function isLoggedRun(value: unknown): value is {
   );
 }
 
+/** Logs written before runs carried a kind still name their harness. */
+function kindFromLabel(label: string): AgentKind {
+  const known: AgentKind[] = ["claude", "codex", "hermes", "openclaw"];
+  return known.find((kind) => label.toLowerCase().includes(kind)) ?? "custom";
+}
+
 /** Re-seat past runs after a server restart so the history survives it. */
 function hydrateFromRunLog(projectId: string, projectDir: string): void {
   if (HYDRATED_PROJECTS.has(projectId)) return;
@@ -140,7 +146,7 @@ function hydrateFromRunLog(projectId: string, projectDir: string): void {
         {
           id: randomUUID(),
           projectId,
-          kind: entry.kind ?? "custom",
+          kind: entry.kind ?? kindFromLabel(entry.agent),
           label: entry.agent,
           target: entry.target,
           targetRef: entry.targetRef,

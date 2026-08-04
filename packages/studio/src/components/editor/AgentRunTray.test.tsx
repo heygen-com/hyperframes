@@ -64,8 +64,9 @@ describe("AgentRunTray", () => {
     act(() => root.unmount());
   });
 
-  it("shows what the agent is doing right now", () => {
+  it("shows what the agent is doing right now, with a progress rail", () => {
     const { host, root } = renderTray([job({ activity: "Edit · index.html" })]);
+    expect(host.querySelector(".hf-run-sweep")).toBeTruthy();
     expect(host.textContent).toContain("1 running");
     expect(host.textContent).toContain("make the title red");
     expect(host.textContent).toContain("Edit · index.html");
@@ -79,7 +80,8 @@ describe("AgentRunTray", () => {
       job({ id: "c", status: "done", message: "Claude Code finished.", endedAt: Date.now() }),
     ]);
     expect(host.textContent).toContain("2 running");
-    expect(host.textContent).toContain("Queued");
+    // A waiting run says where it sits, not just that it waits.
+    expect(host.textContent).toContain("Next up");
     expect(host.textContent).toContain("Claude Code finished.");
     act(() => root.unmount());
   });
@@ -145,6 +147,12 @@ describe("queue editing", () => {
     const [stop] = buttonLabelled(host, "Stop this run");
     act(() => stop?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onCancelJob).toHaveBeenCalledWith("going");
+    act(() => root.unmount());
+  });
+
+  it("drops the rail once a run is over", () => {
+    const { host, root } = renderTray([job({ status: "done", endedAt: Date.now() })]);
+    expect(host.querySelector(".hf-run-sweep")).toBeNull();
     act(() => root.unmount());
   });
 
