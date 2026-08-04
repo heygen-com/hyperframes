@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { AudioFxGroup } from "./propertyPanelAudioFxGroup.js";
 import type { DomEditSelection } from "./domEditingTypes";
@@ -12,14 +12,37 @@ const CHAIN = JSON.stringify({
   nodes: [{ type: "lowpass", id: "n1", params: { frequency: 900, q: 1.2, poles: "2" } }],
 });
 
-function mount(dataAttributes: Record<string, string>) {
+// Each mount appends its tracks to the document; without clearing, a later
+// "only one audio track" case would still find the previous test's sibling.
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
+/**
+ * A selected `<audio>` with a sibling track, so carve — which needs another
+ * track to listen to — is offered. Pass `alone` for a composition holding just
+ * this one.
+ */
+function audioSelection(dataAttributes: Record<string, string>, alone = false): DomEditSelection {
+  const bed = document.createElement("audio");
+  bed.id = "bed";
+  document.body.append(bed);
+  if (!alone) {
+    const voice = document.createElement("audio");
+    voice.id = "vo";
+    document.body.append(voice);
+  }
+  return { dataAttributes, id: "bed", element: bed } as unknown as DomEditSelection;
+}
+
+function mount(dataAttributes: Record<string, string>, alone = false) {
   // Every write is quiet: persisted without the preview reload that would
   // restart every playing track, but with a selection resync so the panel sees
   // what it just wrote.
   const onSetAttributeQuiet = vi.fn();
   const host = document.createElement("div");
   document.body.append(host);
-  const selection = { dataAttributes, element: null } as unknown as DomEditSelection;
+  const selection = audioSelection(dataAttributes, alone);
   act(() => {
     createRoot(host).render(
       <AudioFxGroup element={selection} onSetAttributeQuiet={onSetAttributeQuiet} />,
@@ -237,5 +260,18 @@ describe("AudioFxGroup successive edits", () => {
     act(() => removeButtons(host)[0]!.click());
     expect(onSetAttributeQuiet).toHaveBeenCalledTimes(1);
     expect(onSetAttributeQuiet.mock.calls[0][0]).toBe("data-fx-chain");
+  });
+});
+
+describe("AudioFxGroup carve visibility", () => {
+  it("offers carve when the composition holds another audio track", () => {
+    const { host } = mount({ "fx-chain": CHAIN });
+    expect(host.querySelector(".hf-fx-carve")).toBeTruthy();
+  });
+
+  it("does not offer carve for the only audio track in the composition", () => {
+    // Nothing to listen to, so the picker would be empty and Analyse inert.
+    const { host } = mount({ "fx-chain": CHAIN }, true);
+    expect(host.querySelector(".hf-fx-carve")).toBeNull();
   });
 });
