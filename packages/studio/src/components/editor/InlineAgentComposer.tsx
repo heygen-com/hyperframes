@@ -15,6 +15,7 @@ import {
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
 import { AgentAnswerBubble } from "./AgentAnswerBubble";
+import { layoutAgentSurfaces } from "./agentSurfaceLayout";
 import { dismissAnswer, isAnswerDismissed } from "../../utils/agentAnswers";
 import { CANVAS_OVERLAY_CONTROL_Z, FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
 import {
@@ -96,6 +97,7 @@ export function InlineAgentComposer({
   draftKey,
   rect,
   canvas,
+  placement,
   runLabel,
   agentKind,
   agentIconUrl,
@@ -117,6 +119,8 @@ export function InlineAgentComposer({
   draftKey: string;
   rect: OverlayRect | null;
   canvas: { width: number; height: number };
+  /** Where the shared layout put this panel, so it never lands on the bubble. */
+  placement?: { left: number; top: number };
   /** Name of the installed agent CLI, or null when none is available to run. */
   runLabel: string | null;
   agentKind: AgentKind | null;
@@ -207,7 +211,7 @@ export function InlineAgentComposer({
       data-inline-agent-composer="true"
       className={`hf-composer-enter absolute ${CANVAS_OVERLAY_CONTROL_Z} w-[320px] ${SURFACE_CLASS}`}
       style={{
-        ...toContainerStyle(resolveComposerPosition(rect, canvas)),
+        ...toContainerStyle(placement ?? resolveComposerPosition(rect, canvas)),
         translate: offset.x || offset.y ? `${offset.x}px ${offset.y}px` : undefined,
       }}
       // The canvas overlay owns pointer gestures — keep clicks and keystrokes
@@ -604,6 +608,19 @@ export function InlineAgentComposerHost({
       )
     : undefined;
 
+  // Both surfaces belong to the same element, so they are placed together —
+  // laid out apart they land on top of each other.
+  const surfaces =
+    rect && (answer || (agentModalOpen && domEditSelection))
+      ? layoutAgentSurfaces({
+          rect,
+          canvas,
+          composer: agentModalOpen && domEditSelection ? { width: 320, height: 84 } : null,
+          bubble: answer ? { width: 268, height: 108 } : null,
+        })
+      : {};
+
+
   return createPortal(
     <>
       {!agentModalOpen && domEditSelection && (
@@ -622,6 +639,7 @@ export function InlineAgentComposerHost({
           job={answer}
           rect={rect}
           canvas={canvas}
+          placement={surfaces.bubble}
           agentIconUrl={agentIconUrlById ?? agentIconUrl}
           toContainerStyle={toViewport}
           onDismiss={() => {
@@ -638,6 +656,7 @@ export function InlineAgentComposerHost({
       {agentModalOpen && domEditSelection && (
         <InlineAgentComposer
           toContainerStyle={toViewport}
+          placement={surfaces.composer}
           selectionLabel={
             domEditGroupSelections.length > 1
               ? `${domEditGroupSelections.length} elements`

@@ -54,6 +54,7 @@ export function AgentAnswerBubble({
   job,
   rect,
   canvas,
+  placement,
   agentIconUrl,
   toContainerStyle = (style) => style,
   onDismiss,
@@ -62,6 +63,8 @@ export function AgentAnswerBubble({
   job: AgentJob;
   rect: OverlayRect;
   canvas: { width: number; height: number };
+  /** Where the shared layout put it, and where its tail should point. */
+  placement?: { left: number; top: number; side: "above" | "below"; tailLeft: number };
   agentIconUrl: string | null;
   toContainerStyle?: (style: CSSProperties) => CSSProperties;
   onDismiss: () => void;
@@ -72,7 +75,10 @@ export function AgentAnswerBubble({
   const message = job.message?.trim();
   if (!message) return null;
 
-  const { style, side, tailLeft } = resolveBubblePosition(rect, canvas, expanded ? 220 : 108);
+  const fallback = resolveBubblePosition(rect, canvas, expanded ? 220 : 108);
+  const { style, side, tailLeft } = placement
+    ? { style: { left: placement.left, top: placement.top }, side: placement.side, tailLeft: placement.tailLeft }
+    : fallback;
   const failed = job.status === "failed" || job.status === "cancelled";
 
   return (
