@@ -146,8 +146,10 @@ export function InlineAgentComposer({
         {...dragHandlers}
       >
         {agentKind && <AgentGlyph kind={agentKind} size={11} iconUrl={agentIconUrl} />}
+        {/* The harness owns the header; the element it edits reads from the
+            field's own placeholder, right where the instruction is written. */}
         <span className="min-w-0 flex-1 truncate text-[11px] leading-none text-neutral-500">
-          {selectionLabel}
+          {runLabel ?? selectionLabel}
         </span>
         {runLabel && (
           <button
@@ -187,7 +189,7 @@ export function InlineAgentComposer({
           ref={inputRef}
           rows={1}
           className="max-h-24 min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-snug text-neutral-200 outline-none placeholder:text-neutral-600"
-          placeholder={runLabel ? `Ask ${runLabel} to change this…` : "Describe a change…"}
+          placeholder={`Describe a change to ${selectionLabel}…`}
           value={value}
           onChange={(e) => {
             setValue(e.target.value);

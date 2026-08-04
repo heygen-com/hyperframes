@@ -113,6 +113,24 @@ describe("InlineAgentComposer", () => {
     act(() => root.unmount());
   });
 
+  it("names the harness in the header and the element in the field", () => {
+    const { host, root } = renderComposer({ selectionLabel: "Card" });
+    const header = host.querySelector<HTMLElement>("[data-inline-agent-composer]")
+      ?.firstElementChild;
+    expect(header?.textContent).toContain("Claude Code");
+    expect(header?.textContent).not.toContain("Card");
+    expect(host.querySelector("textarea")?.placeholder).toBe("Describe a change to Card…");
+    act(() => root.unmount());
+  });
+
+  it("falls back to the element name when no harness is installed", () => {
+    const { host, root } = renderComposer({ runLabel: null, selectionLabel: "Card" });
+    expect(host.querySelector("[data-inline-agent-composer]")?.firstElementChild?.textContent).toContain(
+      "Card",
+    );
+    act(() => root.unmount());
+  });
+
   it("shows the harness mark and drags from the header", () => {
     const { host, root } = renderComposer({ agentKind: "claude" });
     const composer = host.querySelector<HTMLElement>("[data-inline-agent-composer]");
