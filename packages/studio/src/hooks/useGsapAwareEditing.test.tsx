@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   drag: vi.fn(),
   readPosition: vi.fn(),
   setPosition: vi.fn(),
+  commitAnimatedProperty: vi.fn(),
+  commitAnimatedProperties: vi.fn(),
 }));
 
 vi.mock("./gsapResizeIntercept", () => ({ tryGsapResizeIntercept: mocks.resize }));
@@ -28,8 +30,8 @@ vi.mock("./gsapPositionDetection", () => ({
 vi.mock("../utils/elementGsap", () => ({ setElementGsapPosition: mocks.setPosition }));
 vi.mock("./useAnimatedPropertyCommit", () => ({
   useAnimatedPropertyCommit: () => ({
-    commitAnimatedProperty: vi.fn(),
-    commitAnimatedProperties: vi.fn(),
+    commitAnimatedProperty: mocks.commitAnimatedProperty,
+    commitAnimatedProperties: mocks.commitAnimatedProperties,
   }),
 }));
 vi.mock("./useSafeGsapCommitMutation", () => ({
@@ -79,6 +81,46 @@ function mountResizeHandler(animations: GsapAnimation[]) {
 }
 
 describe("useGsapAwareEditing anchored resize", () => {
+  it("reports and rethrows an animated inspector commit rejection", async () => {
+    const error = new Error("source rejected");
+    mocks.commitAnimatedProperty.mockRejectedValue(error);
+    const trackFailure = vi.fn();
+    const selection = {
+      element: document.createElement("div"),
+      id: "clip",
+      selector: "#clip",
+    } as unknown as DomEditSelection;
+    let commit!: (selection: DomEditSelection, property: string, value: number) => Promise<void>;
+    function Harness() {
+      commit = useGsapAwareEditing({
+        domEditSelection: selection,
+        selectedGsapAnimations: [],
+        gsapCommitMutation: vi.fn(),
+        previewIframeRef: { current: null },
+        showToast: vi.fn(),
+        bumpGsapCache: vi.fn(),
+        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+        trackGsapInteractionFailure: trackFailure,
+        handleDomBoxSizeCommit: vi.fn(),
+        addGsapAnimation: vi.fn(),
+        convertToKeyframes: vi.fn(),
+        setArcPath: vi.fn(),
+        updateArcSegment: vi.fn(),
+      }).commitAnimatedProperty;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    await expect(commit(selection, "rotationX", 12)).rejects.toBe(error);
+    expect(trackFailure).toHaveBeenCalledWith(
+      error,
+      selection,
+      "property",
+      "Edit animated property",
+    );
+    act(() => root.unmount());
+  });
+
   it("forwards the anchor offset to the DOM fallback when GSAP does not handle resize", async () => {
     mocks.resize.mockResolvedValue(false);
     const h = mountResizeHandler([]);
@@ -164,9 +206,12 @@ describe("useGsapAwareEditing anchored resize", () => {
           m: unknown,
           o: { coalesceKey?: string; label?: string; softReload?: boolean },
         ) => Promise<void>,
+        _fetch: unknown,
+        options?: { preflightOnly?: boolean },
       ) => {
+        if (options?.preflightOnly) return { status: "persisted" };
         await commit(selection, { type: "move" }, { label: "Move", softReload: true });
-        return true;
+        return { status: "persisted" };
       },
     );
     const commitMutation = vi.fn(
@@ -212,6 +257,63 @@ describe("useGsapAwareEditing anchored resize", () => {
     expect(capturedKeys[0]).toMatch(/^group-drag:\d+$/);
     // Both members share ONE coalesceKey → they fold into a single undo entry.
     expect(capturedKeys[0]).toBe(capturedKeys[1]);
+    act(() => root.unmount());
+  });
+
+  it("preflights every group member before the first mutation", async () => {
+    const commitMutation = vi.fn().mockResolvedValue(undefined);
+    mocks.drag.mockImplementation(
+      async (_selection, _next, _animations, _iframe, _commit, _fetch, options) => {
+        if (options?.preflightOnly) {
+          return _selection.id === "blocked"
+            ? { status: "blocked", reason: "source-uneditable" }
+            : { status: "persisted" };
+        }
+        await _commit(_selection, { type: "move" }, { label: "Move" });
+        return { status: "persisted" };
+      },
+    );
+    let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
+    function Harness() {
+      groupCommit = useGsapAwareEditing({
+        domEditSelection: null,
+        selectedGsapAnimations: [],
+        gsapCommitMutation: commitMutation,
+        previewIframeRef: { current: null },
+        showToast: vi.fn(),
+        bumpGsapCache: vi.fn(),
+        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+        trackGsapInteractionFailure: vi.fn(),
+        handleDomBoxSizeCommit: vi.fn(),
+        addGsapAnimation: vi.fn(),
+        convertToKeyframes: vi.fn(),
+        setArcPath: vi.fn(),
+        updateArcSegment: vi.fn(),
+      }).handleGsapAwareGroupPathOffsetCommit;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+    const updates = [
+      {
+        selection: { element: document.createElement("div"), id: "ok", selector: "#ok" },
+        next: { x: 10, y: 10 },
+      },
+      {
+        selection: {
+          element: document.createElement("div"),
+          id: "blocked",
+          selector: "#blocked",
+        },
+        next: { x: 10, y: 10 },
+      },
+    ] as unknown as DomEditGroupPathOffsetCommit[];
+
+    await expect(groupCommit(updates)).rejects.toMatchObject({
+      name: "GsapEditBlockedError",
+      reason: "source-uneditable",
+    });
+    expect(commitMutation).not.toHaveBeenCalled();
+    expect(mocks.drag).toHaveBeenCalledTimes(2);
     act(() => root.unmount());
   });
 

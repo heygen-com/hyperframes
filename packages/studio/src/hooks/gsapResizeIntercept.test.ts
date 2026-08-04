@@ -115,6 +115,34 @@ it("updates a duration-zero size hold in place instead of converting it to keyfr
   );
 });
 
+it("requires explicit unroll for helper-authored resize before mutating", async () => {
+  const el = document.createElement("div");
+  el.id = "box";
+  document.body.append(el);
+  const selection = { id: "box", selector: "#box", element: el } as DomEditSelection;
+  const helperSize = {
+    id: "#box-to-size",
+    targetSelector: "#box",
+    propertyGroup: "size",
+    method: "to",
+    properties: { width: 150, height: 150 },
+    duration: 1,
+    provenance: { kind: "helper", fn: "grow", callSite: 1 },
+  } as unknown as GsapAnimation;
+  const commitMutation = vi.fn();
+
+  await expect(
+    tryGsapResizeIntercept(
+      selection,
+      { width: 344, height: 344 },
+      [helperSize],
+      null,
+      commitMutation,
+    ),
+  ).rejects.toMatchObject({ reason: "unroll-required" });
+  expect(commitMutation).not.toHaveBeenCalled();
+});
+
 it("computes a finite zero percentage for a zero-duration tween", () => {
   const animation = {
     id: "#box-to-0-size",

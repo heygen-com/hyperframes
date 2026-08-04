@@ -59,6 +59,73 @@ const stalePositionAnim = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("tryGsapDragIntercept — stale-parse guard (no resurrection after delete-all)", () => {
+  it("blocks a live runtime position tween when no editable source mapping exists", async () => {
+    const liveTween = {
+      targets: () => [{ id: "puck-b" }],
+      vars: { y: 18, duration: 1 },
+      duration: () => 1,
+      startTime: () => 0,
+    };
+    const commitMutation = vi.fn();
+
+    const result = await tryGsapDragIntercept(
+      selection,
+      { x: 25, y: -10 },
+      [],
+      fakeIframe("puck-b", [liveTween]),
+      commitMutation,
+      vi.fn().mockResolvedValue([]),
+    );
+
+    expect(result).toEqual({ status: "blocked", reason: "source-uneditable" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+
+  it("blocks a selector that cannot safely address one writable element", async () => {
+    const selectorless = {
+      ...selection,
+      id: undefined,
+      selector: undefined,
+    } as unknown as DomEditSelection;
+    const result = await tryGsapDragIntercept(selectorless, { x: 1, y: 1 }, [], null, vi.fn());
+    expect(result).toEqual({ status: "blocked", reason: "no-selector" });
+  });
+
+  it("requires explicit unroll for helper-authored source and performs no mutation", async () => {
+    const helperTween = {
+      ...stalePositionAnim,
+      provenance: { kind: "helper", fn: "slam", callSite: 1 },
+    } as GsapAnimation;
+    const commitMutation = vi.fn();
+    const result = await tryGsapDragIntercept(
+      selection,
+      { x: 10, y: 10 },
+      [helperTween],
+      fakeIframe("puck-b", []),
+      commitMutation,
+    );
+    expect(result).toEqual({ status: "blocked", reason: "unroll-required" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not let an empty fallback response bypass cached helper provenance", async () => {
+    const helperTween = {
+      ...stalePositionAnim,
+      provenance: { kind: "helper", fn: "slam", callSite: 1 },
+    } as GsapAnimation;
+    const commitMutation = vi.fn();
+    const result = await tryGsapDragIntercept(
+      selection,
+      { x: 10, y: 10 },
+      [helperTween],
+      fakeIframe("puck-b", []),
+      commitMutation,
+      vi.fn().mockResolvedValue([]),
+    );
+    expect(result).toEqual({ status: "blocked", reason: "unroll-required" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+
   it("commits a static set (not the stale tween) when the runtime has no live position motion", async () => {
     const commitMutation = vi.fn();
     // Runtime empty (tween deleted) — readRuntimeKeyframes returns null, so the
@@ -73,7 +140,7 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
       commitMutation,
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     // No existing `set` for the selector → one `add` mutation with `method:"set"`.
     expect(commitMutation).toHaveBeenCalledTimes(1);
     const [, mutation] = commitMutation.mock.calls[0];
@@ -112,7 +179,7 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
       commitMutation,
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     const updates = commitMutation.mock.calls.filter(([, m]) => m.type === "update-properties");
     expect(updates).toHaveLength(1);
     expect(updates[0][1]).toEqual({
@@ -151,7 +218,7 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
       commitMutation,
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     // One atomic in-place update, NOT an `add`/`add-keyframe`.
     const types = commitMutation.mock.calls.map(([, m]) => m.type);
     expect(types).toEqual(["update-properties"]);
@@ -179,6 +246,39 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
 });
 
 describe("tryGsapRotationIntercept — instant holds", () => {
+  it("requires explicit unroll for helper-authored rotation before mutating", async () => {
+    const helperRotation = {
+      id: "#puck-b-to-rotation",
+      targetSelector: "#puck-b",
+      propertyGroup: "rotation",
+      method: "to",
+      properties: { rotation: 45 },
+      position: 0,
+      duration: 1,
+      provenance: { kind: "helper", fn: "spin", callSite: 1 },
+    } as unknown as GsapAnimation;
+    const commitMutation = vi.fn();
+
+    await expect(
+      tryGsapRotationIntercept(selection, 75, [helperRotation], null, commitMutation),
+    ).rejects.toMatchObject({ reason: "unroll-required" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects a selectorless rotation instead of reporting a handled no-op", async () => {
+    const selectorless = {
+      ...selection,
+      id: undefined,
+      selector: undefined,
+    } as unknown as DomEditSelection;
+    const commitMutation = vi.fn();
+
+    await expect(
+      tryGsapRotationIntercept(selectorless, 75, [], null, commitMutation),
+    ).rejects.toMatchObject({ reason: "no-selector" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+
   it("updates a duration-zero fromTo hold instead of converting it to keyframes", async () => {
     const rotationHold = {
       id: "#puck-b-fromTo-0-rotation",
@@ -256,7 +356,7 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
       commitMutation,
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     const types = commitMutation.mock.calls.map(([, m]) => m.type);
     expect(types).toContain("replace-with-keyframes");
     expect(types).not.toContain("add-keyframe");
@@ -275,7 +375,7 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
       commitMutation,
     );
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     const types = commitMutation.mock.calls.map(([, m]) => m.type);
     expect(types).not.toContain("replace-with-keyframes");
   });
@@ -336,7 +436,7 @@ describe("tryGsapDragIntercept — motion paths", () => {
   it("creates a temporal keyframe at the exact playhead instead of redistributing path waypoints", async () => {
     const { commitMutation, handled } = await dragMotionPath(null);
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     expect(commitMutation).toHaveBeenCalledWith(
       selection,
       {
@@ -363,7 +463,7 @@ describe("tryGsapDragIntercept — motion paths", () => {
   it("keeps an explicitly selected path waypoint as a spatial edit", async () => {
     const { commitMutation, handled } = await dragMotionPath(50);
 
-    expect(handled).toBe(true);
+    expect(handled).toEqual({ status: "persisted" });
     expect(commitMutation).toHaveBeenCalledWith(
       selection,
       {

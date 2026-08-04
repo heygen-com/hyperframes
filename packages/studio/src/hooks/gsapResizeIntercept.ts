@@ -24,11 +24,12 @@ import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
-import { isInstantHold, selectorFromSelection } from "./gsapShared";
+import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 import { resolveGroupTween, POSITION_CHANNELS } from "./gsapRuntimeBridge";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { logResize } from "../utils/resizeDebug";
+import { assertGsapAnimationDirectlyEditable, GsapEditBlockedError } from "./gsapEditOutcome";
 
 const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
 
@@ -60,6 +61,16 @@ export async function tryGsapResizeIntercept(
   // Otherwise, use the size group (width/height).
   const hasScaleGroup = animations.some((a) => a.propertyGroup === "scale");
   const resizeGroup: PropertyGroupName = hasScaleGroup ? "scale" : "size";
+  const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
+  const resizeProperties =
+    resizeGroup === "scale" ? new Set(["scale", "scaleX", "scaleY"]) : new Set(["width", "height"]);
+  for (const animation of [...animations, ...fetchedAnimations].filter(
+    (candidate) =>
+      candidate.propertyGroup === resizeGroup ||
+      Object.keys(candidate.properties).some((property) => resizeProperties.has(property)),
+  )) {
+    assertGsapAnimationDirectlyEditable(animation);
+  }
   const resolved = await resolveGroupTween(
     resizeGroup,
     animations,
@@ -77,8 +88,8 @@ export async function tryGsapResizeIntercept(
     size,
   });
   if (!anim || isInstantHold(anim)) {
-    const sel = selectorFromSelection(selection);
-    if (!sel) return false;
+    const sel = selectorFromSelection(selection) ?? writeTargetSelector(selection);
+    if (!sel) throw new GsapEditBlockedError("no-selector");
     const sizeSet = anim ?? findSizeSetAnimation(animations, sel, selection.element);
 
     // If the element is animated (has a real tween, not just a static size

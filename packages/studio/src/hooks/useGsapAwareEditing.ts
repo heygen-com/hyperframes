@@ -30,6 +30,7 @@ import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { runGestureTransaction } from "./gestureTransaction";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import { assertGsapEditPersisted } from "./gsapEditOutcome";
 
 // Distinct coalesceKey per group drag so consecutive group drags don't fold
 // into one another's undo entry (module-local counter, not Date.now()).
@@ -112,7 +113,7 @@ export function useGsapAwareEditing({
     ) => {
       if (gsapCommitMutation) {
         try {
-          await tryGsapDragIntercept(
+          const outcome = await tryGsapDragIntercept(
             selection,
             next,
             selectedGsapAnimations,
@@ -121,6 +122,7 @@ export function useGsapAwareEditing({
             makeFetchFallback(selection),
             modifiers,
           );
+          assertGsapEditPersisted(outcome);
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
           throw error;
@@ -155,9 +157,30 @@ export function useGsapAwareEditing({
           coalesceKey,
           coalesceMs: Number.POSITIVE_INFINITY,
         });
+      // Editability is user-atomic: prove every member can be written before
+      // the first source mutation. Network failures after this point retain the
+      // existing multi-request semantics, but a blocked member can never leave
+      // earlier siblings partially moved.
+      for (const { selection } of updates) {
+        try {
+          const outcome = await tryGsapDragIntercept(
+            selection,
+            { x: 0, y: 0 },
+            [],
+            previewIframeRef.current,
+            coalescedCommit,
+            makeFetchFallback(selection),
+            { preflightOnly: true },
+          );
+          assertGsapEditPersisted(outcome);
+        } catch (error) {
+          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
+          throw error;
+        }
+      }
       for (const { selection, next } of updates) {
         try {
-          await tryGsapDragIntercept(
+          const outcome = await tryGsapDragIntercept(
             selection,
             next,
             [],
@@ -165,6 +188,7 @@ export function useGsapAwareEditing({
             coalescedCommit,
             makeFetchFallback(selection),
           );
+          assertGsapEditPersisted(outcome);
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
           throw error;
@@ -233,7 +257,7 @@ export function useGsapAwareEditing({
                 // Scale-route resize persists its residual position internally.
                 // Width/height persists the already-settled anchor through drag.
                 if (offset && !scaleRoute) {
-                  await tryGsapDragIntercept(
+                  const outcome = await tryGsapDragIntercept(
                     selection,
                     offset,
                     selectedGsapAnimations,
@@ -241,6 +265,7 @@ export function useGsapAwareEditing({
                     commitMutation,
                     makeFetchFallback(selection),
                   );
+                  assertGsapEditPersisted(outcome);
                 }
                 logResizeSettle(selection.element, scaleRoute ? "gsap-scale" : "gsap-size");
                 return;
@@ -278,7 +303,8 @@ export function useGsapAwareEditing({
         try {
           // Single source of truth for rotation too: tryGsapRotationIntercept handles
           // tweened elements (keyframes) and static ones (a tl.set), so there's no
-          // CSS-var fallback. It returns false only for a selectorless element (no-op).
+          // CSS-var fallback. Selectorless/computed source rejects so the gesture
+          // transaction can restore its draft instead of reporting a false success.
           await tryGsapRotationIntercept(
             selection,
             next.angle,
@@ -304,7 +330,10 @@ export function useGsapAwareEditing({
 
   // ── Animated property commit ──
 
-  const { commitAnimatedProperty, commitAnimatedProperties } = useAnimatedPropertyCommit({
+  const {
+    commitAnimatedProperty: commitAnimatedPropertyRaw,
+    commitAnimatedProperties: commitAnimatedPropertiesRaw,
+  } = useAnimatedPropertyCommit({
     selectedGsapAnimations,
     gsapCommitMutation,
     addGsapAnimation: (sel, method, time) => addGsapAnimation(sel, method, time),
@@ -312,6 +341,30 @@ export function useGsapAwareEditing({
     previewIframeRef,
     bumpGsapCache,
   });
+
+  const commitAnimatedProperties = useCallback(
+    async (selection: DomEditSelection, properties: Record<string, number | string>) => {
+      try {
+        await commitAnimatedPropertiesRaw(selection, properties);
+      } catch (error) {
+        trackGsapInteractionFailure(error, selection, "property", "Edit animated property");
+        throw error;
+      }
+    },
+    [commitAnimatedPropertiesRaw, trackGsapInteractionFailure],
+  );
+
+  const commitAnimatedProperty = useCallback(
+    async (selection: DomEditSelection, property: string, value: number | string) => {
+      try {
+        await commitAnimatedPropertyRaw(selection, property, value);
+      } catch (error) {
+        trackGsapInteractionFailure(error, selection, "property", "Edit animated property");
+        throw error;
+      }
+    },
+    [commitAnimatedPropertyRaw, trackGsapInteractionFailure],
+  );
 
   // ── Arc path wrappers ──
 
