@@ -3,7 +3,12 @@ import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
-import type { AgentJob, AgentKind, AgentOption } from "../components/editor/agentGlyphs";
+import type {
+  AgentJob,
+  AgentKind,
+  AgentModel,
+  AgentOption,
+} from "../components/editor/agentGlyphs";
 import { findElementForSelection } from "../components/editor/domEditing";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { usePlayerStore } from "../player";
@@ -66,11 +71,18 @@ export function useAskAgentModal({
     setSelectedAgentKindState(kind);
     writeStudioUiPreferences({ agentKind: kind ?? undefined });
   }, []);
+  const [agentModels, setAgentModels] = useState<AgentModel[]>([]);
+  const [modelByKind, setModelByKind] = useState<Partial<Record<AgentKind, string>>>(
+    () => readStudioUiPreferences().agentModelByKind ?? {},
+  );
   const [agentJobs, setAgentJobs] = useState<AgentJob[]>([]);
 
   // ── Refs ──
 
   const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The run POST reads the harness at submit time; a ref keeps that current
+  // without rebuilding the callback on every catalog refresh.
+  const activeKindRef = useRef<AgentKind | null>(null);
 
   // ── Callbacks ──
 
@@ -136,6 +148,34 @@ export function useAskAgentModal({
     }
   }, [projectId, projectIdRef]);
 
+  /** The catalog decides what exists; Studio only asks for the active harness. */
+  const refreshAgentModels = useCallback(
+    async (kind: AgentKind | null) => {
+      const pid = projectId ?? projectIdRef.current;
+      if (!pid) return;
+      try {
+        const query = kind ? `?agent=${encodeURIComponent(kind)}` : "";
+        const response = await fetch(`/api/projects/${pid}/agent/models${query}`);
+        if (!response.ok) return;
+        const data = (await response.json()) as { models?: AgentModel[] };
+        setAgentModels(data.models ?? []);
+      } catch {
+        setAgentModels([]);
+      }
+    },
+    [projectId, projectIdRef],
+  );
+
+  const setSelectedModel = useCallback((kind: AgentKind, model: string | null) => {
+    setModelByKind((current) => {
+      const next = { ...current };
+      if (model) next[kind] = model;
+      else delete next[kind];
+      writeStudioUiPreferences({ agentModelByKind: next });
+      return next;
+    });
+  }, []);
+
   const handleAskAgent = useCallback(() => {
     const selection = resolveSelection();
     if (!selection) return;
@@ -144,7 +184,8 @@ export function useAskAgentModal({
     void preloadAgentPromptSnippet(selection);
     setAgentModalOpen(true);
     void refreshAgentState();
-  }, [preloadAgentPromptSnippet, refreshAgentState, resolveSelection]);
+    void refreshAgentModels(activeKindRef.current);
+  }, [preloadAgentPromptSnippet, refreshAgentModels, refreshAgentState, resolveSelection]);
 
   const buildPrompt = useCallback(
     (selection: DomEditSelection, userInstruction: string) => {
@@ -180,6 +221,7 @@ export function useAskAgentModal({
           instruction: userInstruction,
           target: selection.label,
           agent: selectedAgentKind ?? undefined,
+          model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
           // Selection coordinates travel with the run so the tray can seek back
           // to the moment and re-select the element the agent edited.
           targetRef: {
@@ -203,7 +245,7 @@ export function useAskAgentModal({
           showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
         });
     },
-    [buildPrompt, projectIdRef, resolveSelection, selectedAgentKind, showToast],
+    [buildPrompt, modelByKind, projectIdRef, resolveSelection, selectedAgentKind, showToast],
   );
 
   /** Seek to when a run was asked for and re-select the element it edited. */
@@ -344,6 +386,8 @@ export function useAskAgentModal({
   // else whatever the server auto-detected. Menus, the inspector footer and the
   // composer all read this, so they can never disagree about who will run.
   const activeAgent = agentOptions.find((option) => option.kind === selectedAgentKind);
+  const activeKind = activeAgent?.kind ?? agentRunKind;
+  activeKindRef.current = activeKind;
 
   return {
     // State
@@ -354,6 +398,8 @@ export function useAskAgentModal({
     agentRunKind: activeAgent?.kind ?? agentRunKind,
     agentIconUrl,
     agentOptions,
+    agentModels,
+    selectedModel: activeKind ? (modelByKind[activeKind] ?? null) : null,
     selectedAgentKind,
     agentJobs,
 
@@ -371,5 +417,7 @@ export function useAskAgentModal({
     cancelAgentJob,
     revealAgentJobTarget,
     setSelectedAgentKind,
+    setSelectedModel,
+    refreshAgentModels,
   };
 }

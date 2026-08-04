@@ -17,12 +17,21 @@ export interface AgentTargetRef {
   time?: number;
 }
 
+export interface AgentModel {
+  id: string;
+  name: string;
+  inputCost?: number;
+  outputCost?: number;
+  contextWindow?: number;
+}
+
 export interface AgentJob {
   id: string;
   kind: AgentKind;
   label: string;
   target: string;
   targetRef?: AgentTargetRef;
+  model?: string;
   sessionId?: string;
   instruction: string;
   status: "queued" | "running" | "done" | "failed" | "cancelled";

@@ -285,9 +285,17 @@ export function AgentRunTray({
                   >
                     {statusLine(job, queueIndex)}
                   </span>
+                  {job.model && (
+                    <span
+                      className="ml-auto shrink-0 truncate text-[10px] leading-none text-neutral-600"
+                      title={`Ran with ${job.model}`}
+                    >
+                      {job.model}
+                    </span>
+                  )}
                   {job.sessionId && (
                     <span
-                      className="ml-auto shrink-0 font-mono text-[10px] leading-none text-neutral-700"
+                      className={`shrink-0 font-mono text-[10px] leading-none text-neutral-700 ${job.model ? "" : "ml-auto"}`}
                       title={`Session ${job.sessionId}`}
                     >
                       {job.sessionId.slice(0, 8)}

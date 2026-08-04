@@ -139,7 +139,8 @@
     "hono": "^4.0.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2"
+    "postcss-selector-parser": "^7.1.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

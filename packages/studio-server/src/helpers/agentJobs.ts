@@ -2,25 +2,16 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { loggedRunSchema, type AgentKind, type AgentTargetRef } from "./agentSchemas.js";
 
-/** Which harness the command belongs to — drives the icon Studio shows. */
-export type AgentKind = "claude" | "codex" | "hermes" | "openclaw" | "custom";
+export { AGENT_KINDS } from "./agentSchemas.js";
+export type { AgentKind, AgentTargetRef } from "./agentSchemas.js";
 
 export interface AgentCommand {
   kind: AgentKind;
   label: string;
   command: string;
   args: string[];
-}
-
-/** Where the edited element lives, so the run list can jump back to it. */
-export interface AgentTargetRef {
-  sourceFile?: string;
-  id?: string;
-  selector?: string;
-  selectorIndex?: number;
-  /** Playhead position when the instruction was written. */
-  time?: number;
 }
 
 export interface AgentJob {
@@ -31,6 +22,8 @@ export interface AgentJob {
   /** Element or clip the instruction targets, for the run list. */
   target: string;
   targetRef?: AgentTargetRef;
+  /** Model the harness ran with, when Studio picked one. */
+  model?: string;
   /** The harness' own session id, so a run can be resumed or found in its logs. */
   sessionId?: string;
   instruction: string;
@@ -83,6 +76,7 @@ function appendRunLog(projectDir: string, job: AgentJob): void {
       `${JSON.stringify({
         at: new Date(job.startedAt).toISOString(),
         kind: job.kind,
+        model: job.model,
         target: job.target,
         targetRef: job.targetRef,
         sessionId: job.sessionId,
@@ -97,25 +91,6 @@ function appendRunLog(projectDir: string, job: AgentJob): void {
   } catch {
     // A read-only project directory must not take the run down with it.
   }
-}
-
-function isLoggedRun(value: unknown): value is {
-  at: string;
-  kind?: AgentKind;
-  target: string;
-  targetRef?: AgentTargetRef;
-  sessionId?: string;
-  instruction: string;
-  status: AgentJob["status"];
-  seconds: number;
-  agent: string;
-  result: string;
-} {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { instruction?: unknown }).instruction === "string"
-  );
 }
 
 /** Logs written before runs carried a kind still name their harness. */
@@ -134,26 +109,29 @@ function hydrateFromRunLog(projectId: string, projectDir: string): void {
   try {
     const lines = readFileSync(file, "utf-8").trim().split("\n").slice(-MAX_JOBS_PER_PROJECT);
     const restored = lines.flatMap((line): AgentJob[] => {
-      let entry: unknown;
+      let parsed: unknown;
       try {
-        entry = JSON.parse(line);
+        parsed = JSON.parse(line);
       } catch {
         return [];
       }
-      if (!isLoggedRun(entry)) return [];
+      const result = loggedRunSchema.safeParse(parsed);
+      if (!result.success) return [];
+      const entry = result.data;
       const startedAt = Date.parse(entry.at);
       return [
         {
           id: randomUUID(),
           projectId,
           kind: entry.kind ?? kindFromLabel(entry.agent),
+          model: entry.model,
           label: entry.agent,
           target: entry.target,
           targetRef: entry.targetRef,
           sessionId: entry.sessionId,
           instruction: entry.instruction,
           // Anything that was mid-flight when the server stopped is over now.
-          status: entry.status === "done" ? "done" : entry.status,
+          status: entry.status === "queued" || entry.status === "running" ? "failed" : entry.status,
           activity: "",
           message: entry.result || undefined,
           startedAt,
@@ -374,6 +352,7 @@ export function enqueueAgentJob(opts: {
   instruction: string;
   target: string;
   targetRef?: AgentTargetRef;
+  model?: string;
 }): AgentJob {
   const job: AgentJob = {
     id: randomUUID(),
@@ -382,6 +361,7 @@ export function enqueueAgentJob(opts: {
     label: opts.agent.label,
     target: opts.target,
     targetRef: opts.targetRef,
+    model: opts.model,
     instruction: opts.instruction,
     status: "queued",
     activity: "",

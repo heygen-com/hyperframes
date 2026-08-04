@@ -5,7 +5,7 @@ import {
   useDomEditActionsContextOptional,
   useDomEditSelectionContextOptional,
 } from "../../contexts/DomEditContext";
-import { AgentGlyph, type AgentKind, type AgentOption } from "./agentGlyphs";
+import { AgentGlyph, type AgentKind, type AgentModel, type AgentOption } from "./agentGlyphs";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -62,7 +62,10 @@ export function InlineAgentComposer({
   agentKind,
   agentIconUrl,
   agentOptions = [],
+  agentModels = [],
+  selectedModel = null,
   onSelectAgent,
+  onSelectModel,
   onRun,
   onCopy,
   onClose,
@@ -77,7 +80,11 @@ export function InlineAgentComposer({
   agentIconUrl: string | null;
   /** Every harness Studio knows about, installed or not. */
   agentOptions?: AgentOption[];
+  /** Tool-capable models for the active harness, cheapest first. */
+  agentModels?: AgentModel[];
+  selectedModel?: string | null;
   onSelectAgent?: (kind: AgentKind) => void;
+  onSelectModel?: (model: string | null) => void;
   onRun: (instruction: string) => void;
   onCopy: (instruction: string) => void;
   onClose: () => void;
@@ -216,28 +223,76 @@ export function InlineAgentComposer({
       </div>
 
       {pickerOpen && onSelectAgent && (
-        <ul className="mb-1.5 space-y-0.5 rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
-          {agentOptions.map((option) => (
-            <li key={option.kind}>
-              <button
-                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70 disabled:opacity-35 disabled:hover:bg-transparent"
-                disabled={!option.available}
-                onClick={() => {
-                  onSelectAgent(option.kind);
-                  setPickerOpen(false);
-                  inputRef.current?.focus();
-                }}
-                title={option.available ? undefined : `${option.label} is not installed`}
-              >
-                <AgentGlyph kind={option.kind} size={11} />
-                <span className="truncate">{option.label}</span>
-                {option.label === runLabel && (
-                  <span className="ml-auto text-[10px] text-studio-accent">in use</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="mb-1.5 max-h-64 overflow-y-auto overscroll-contain rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
+          <ul className="space-y-0.5">
+            {agentOptions.map((option) => (
+              <li key={option.kind}>
+                <button
+                  className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70 disabled:opacity-35 disabled:hover:bg-transparent"
+                  disabled={!option.available}
+                  onClick={() => {
+                    onSelectAgent(option.kind);
+                    setPickerOpen(false);
+                    inputRef.current?.focus();
+                  }}
+                  title={option.available ? undefined : `${option.label} is not installed`}
+                >
+                  <AgentGlyph kind={option.kind} size={11} />
+                  <span className="truncate">{option.label}</span>
+                  {option.label === runLabel && (
+                    <span className="ml-auto text-[10px] text-studio-accent">in use</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {agentModels.length > 0 && onSelectModel && (
+            <>
+              <div className="mt-1 flex items-center justify-between px-1.5 pb-1 pt-1.5 text-[10px] leading-none text-neutral-600">
+                <span>Model</span>
+                <span>cheapest first</span>
+              </div>
+              <ul className="space-y-0.5">
+                <li>
+                  <button
+                    className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
+                    onClick={() => {
+                      onSelectModel(null);
+                      setPickerOpen(false);
+                    }}
+                  >
+                    <span className="truncate">Cheapest that can run</span>
+                    {!selectedModel && (
+                      <span className="ml-auto text-[10px] text-studio-accent">in use</span>
+                    )}
+                  </button>
+                </li>
+                {agentModels.map((model) => (
+                  <li key={model.id}>
+                    <button
+                      className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
+                      onClick={() => {
+                        onSelectModel(model.id);
+                        setPickerOpen(false);
+                      }}
+                      title={model.id}
+                    >
+                      <span className="truncate">{model.name}</span>
+                      {model.inputCost !== undefined && (
+                        <span className="ml-auto shrink-0 text-[10px] text-neutral-600 tabular-nums">
+                          ${model.inputCost}/M
+                        </span>
+                      )}
+                      {selectedModel === model.id && (
+                        <span className="ml-1 shrink-0 text-[10px] text-studio-accent">in use</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
 
       <div className="flex items-end gap-1.5 rounded-[10px] bg-neutral-900/70 px-2 py-1.5 ring-1 ring-white/10 transition-[box-shadow] duration-150 ease-out focus-within:ring-studio-accent/40">
@@ -315,6 +370,8 @@ export function InlineAgentComposerHost({
     agentRunKind,
     agentIconUrl,
     agentOptions,
+    agentModels,
+    selectedModel,
     agentJobs,
   } = selectionValue;
 
@@ -329,7 +386,15 @@ export function InlineAgentComposerHost({
           agentKind={agentRunKind}
           agentIconUrl={agentIconUrl}
           agentOptions={agentOptions}
-          onSelectAgent={actions.setSelectedAgentKind}
+          agentModels={agentModels}
+          selectedModel={selectedModel}
+          onSelectAgent={(kind) => {
+            actions.setSelectedAgentKind(kind);
+            void actions.refreshAgentModels(kind);
+          }}
+          onSelectModel={(model) => {
+            if (agentRunKind) actions.setSelectedModel(agentRunKind, model);
+          }}
           onRun={actions.handleAgentModalRun}
           onCopy={(instruction) => void actions.handleAgentModalSubmit(instruction)}
           onClose={() => {

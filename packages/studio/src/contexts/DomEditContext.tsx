@@ -35,6 +35,8 @@ export interface DomEditActionsValue extends Pick<
   | "cancelAgentJob"
   | "revealAgentJobTarget"
   | "setSelectedAgentKind"
+  | "setSelectedModel"
+  | "refreshAgentModels"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
@@ -97,6 +99,8 @@ export interface DomEditSelectionValue extends Pick<
   | "agentRunKind"
   | "agentIconUrl"
   | "agentOptions"
+  | "agentModels"
+  | "selectedModel"
   | "selectedAgentKind"
   | "agentJobs"
 > {}
@@ -147,6 +151,8 @@ export function DomEditProvider({
     agentRunKind,
     agentIconUrl,
     agentOptions,
+    agentModels,
+    selectedModel,
     selectedAgentKind,
     agentJobs,
     domEditSelectionRef,
@@ -180,6 +186,8 @@ export function DomEditProvider({
     cancelAgentJob,
     revealAgentJobTarget,
     setSelectedAgentKind,
+    setSelectedModel,
+    refreshAgentModels,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -272,6 +280,8 @@ export function DomEditProvider({
       cancelAgentJob,
       revealAgentJobTarget,
       setSelectedAgentKind,
+      setSelectedModel,
+      refreshAgentModels,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -346,6 +356,8 @@ export function DomEditProvider({
       cancelAgentJob,
       revealAgentJobTarget,
       setSelectedAgentKind,
+      setSelectedModel,
+      refreshAgentModels,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -409,6 +421,8 @@ export function DomEditProvider({
       agentRunKind,
       agentIconUrl,
       agentOptions,
+      agentModels,
+      selectedModel,
       selectedAgentKind,
       agentJobs,
     }),
@@ -428,6 +442,8 @@ export function DomEditProvider({
       agentRunKind,
       agentIconUrl,
       agentOptions,
+      agentModels,
+      selectedModel,
       selectedAgentKind,
       agentJobs,
     ],

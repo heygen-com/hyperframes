@@ -45,6 +45,8 @@ export interface StudioUiPreferences {
   agentTrayCollapsed?: boolean;
   /** Where the user parked the run tray, in viewport pixels. */
   agentTrayPosition?: { x: number; y: number };
+  /** Model chosen per harness; unset means "the cheapest one that can run". */
+  agentModelByKind?: Partial<Record<StudioAgentKind, string>>;
 }
 
 const AGENT_KINDS: StudioAgentKind[] = ["claude", "codex", "hermes", "openclaw", "custom"];
@@ -145,6 +147,14 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.agentTrayCollapsed === "boolean") {
       preferences.agentTrayCollapsed = parsed.agentTrayCollapsed;
+    }
+    if (isRecord(parsed.agentModelByKind)) {
+      const models: Partial<Record<StudioAgentKind, string>> = {};
+      for (const kind of AGENT_KINDS) {
+        const value = parsed.agentModelByKind[kind];
+        if (typeof value === "string" && value) models[kind] = value;
+      }
+      if (Object.keys(models).length > 0) preferences.agentModelByKind = models;
     }
     if (isRecord(parsed.agentTrayPosition)) {
       const { x, y } = parsed.agentTrayPosition;

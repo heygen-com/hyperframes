@@ -3,6 +3,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { delimiter, extname, join } from "node:path";
 import { Readable } from "node:stream";
 import type { StudioApiAdapter } from "../types.js";
+import { listAgentModels, resolveDefaultModel, withModelArgs } from "../helpers/agentModels.js";
 import {
   cancelAgentJob,
   clearFinishedAgentJobs,
@@ -10,7 +11,6 @@ import {
   listAgentJobs,
   moveAgentJob,
   type AgentCommand,
-  type AgentTargetRef,
 } from "../helpers/agentJobs.js";
 
 /**
@@ -25,6 +25,12 @@ import {
  */
 
 export type { AgentCommand, AgentKind, AgentTargetRef } from "../helpers/agentJobs.js";
+export type { AgentModel } from "../helpers/agentModels.js";
+import {
+  agentKindSchema,
+  agentQueueMoveSchema,
+  agentRunRequestSchema,
+} from "../helpers/agentSchemas.js";
 
 /**
  * Prompts always arrive on stdin — never as an argv or shell string — so a
@@ -159,6 +165,17 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     });
   });
 
+  api.get("/projects/:id/agent/models", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const url = new URL(c.req.url, "http://localhost");
+    const requested = agentKindSchema.safeParse(url.searchParams.get("agent"));
+    const kind = requested.success ? requested.data : resolveAgentCommand()?.kind;
+    if (!kind) return c.json({ models: [], defaultModel: null });
+    const models = await listAgentModels(kind);
+    return c.json({ models, defaultModel: models[0]?.id ?? null });
+  });
+
   api.get("/projects/:id/agent/icon", async (c) => {
     const iconPath = resolveAgentIconPath();
     if (!iconPath) return c.json({ error: "not found" }, 404);
@@ -173,17 +190,16 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const body = (await c.req.json().catch(() => null)) as {
-      prompt?: unknown;
-      instruction?: unknown;
-      target?: unknown;
-      targetRef?: unknown;
-      agent?: unknown;
-    } | null;
-    const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
-    if (!prompt) return c.json({ error: "prompt required" }, 400);
-
-    const requested = typeof body?.agent === "string" ? body.agent : undefined;
+    const parsed = agentRunRequestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "prompt required" }, 400);
+    const {
+      prompt,
+      instruction,
+      target,
+      targetRef,
+      agent: requested,
+      model: requestedModel,
+    } = parsed.data;
     const agent = resolveAgentCommand(process.env, requested);
     if (!agent) {
       if (requested) return c.json({ error: `${requested} is not installed.` }, 501);
@@ -196,19 +212,19 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       );
     }
 
+    // No model named? Take the cheapest one the catalog says can drive tools —
+    // a run should not quietly cost frontier money because nobody chose.
+    const model = requestedModel ?? (await resolveDefaultModel(agent.kind)) ?? undefined;
+
     const job = enqueueAgentJob({
       projectId: project.id,
       projectDir: project.dir,
-      agent,
+      agent: { ...agent, args: withModelArgs(agent.kind, agent.args, model) },
+      model,
       prompt,
-      instruction: typeof body?.instruction === "string" ? body.instruction : prompt.slice(0, 120),
-      target: typeof body?.target === "string" ? body.target : "composition",
-      // Opaque to the server: Studio hands back its own selection coordinates
-      // so the run list can re-select the element it edited.
-      targetRef:
-        typeof body?.targetRef === "object" && body.targetRef !== null
-          ? (body.targetRef as AgentTargetRef)
-          : undefined,
+      instruction: instruction ?? prompt.slice(0, 120),
+      target: target ?? "composition",
+      targetRef,
     });
 
     return c.json({ job });
@@ -219,9 +235,9 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const body = (await c.req.json().catch(() => null)) as { position?: unknown } | null;
-    const position = typeof body?.position === "number" ? Math.trunc(body.position) : null;
-    if (position === null) return c.json({ error: "position required" }, 400);
+    const move = agentQueueMoveSchema.safeParse(await c.req.json().catch(() => null));
+    if (!move.success) return c.json({ error: "position required" }, 400);
+    const position = Math.trunc(move.data.position);
 
     if (!moveAgentJob(project.id, c.req.param("jobId"), position)) {
       return c.json({ error: "job is not queued" }, 409);
