@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 import { defaultAudioFxParams, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { applyAudioFxChain, AudioFxRenderError, readWav, writeWav } from "./audioFxRender.js";
 
@@ -34,14 +35,59 @@ const rms = (s: Float32Array): number =>
 const db = (x: number): number => 20 * Math.log10(x + 1e-30);
 
 describe("readWav / writeWav", () => {
-  it("round-trips float samples", () => {
+  it("round-trips samples as 16-bit PCM, the format the volume bake requires", () => {
     const p = join(dir, "rt.wav");
     const src = new Float32Array([0, 0.5, -0.5, 0.25]);
     writeWav(p, src, SR);
     const back = readWav(p);
     expect(back.sampleRate).toBe(SR);
     expect(back.channels).toBe(1);
-    expect(Array.from(back.samples)).toEqual(Array.from(src));
+    // Quantised, not bit-exact: one 16-bit step is the tolerance.
+    for (let i = 0; i < src.length; i++) {
+      expect(back.samples[i]).toBeCloseTo(src[i] as number, 4);
+    }
+  });
+
+  it("preserves the channel count, interleaved", () => {
+    // Folding to mono collapsed a stereo bed's width for the render only.
+    const p = join(dir, "stereo.wav");
+    writeWav(p, new Float32Array([0.5, -0.5, 0.25, -0.25]), SR, 2);
+    const back = readWav(p);
+    expect(back.channels).toBe(2);
+    expect(back.samples.length).toBe(4);
+    expect(back.samples[0]).toBeCloseTo(0.5, 4);
+    expect(back.samples[1]).toBeCloseTo(-0.5, 4);
+  });
+
+  it("writes a file the volume envelope baker will accept", () => {
+    // This is why the writer emits 16-bit: the mixer bakes the envelope into the
+    // samples immediately after, and that baker refuses anything else — so float
+    // output silently downgraded a track to the 32-segment ffmpeg path.
+    const p = join(dir, "bakeable.wav");
+    writeWav(p, new Float32Array(4800).fill(0.5), SR);
+    const baked = applyVolumeEnvelopeToWav(
+      p,
+      [
+        { time: 0, volume: 1 },
+        { time: 0.1, volume: 0 },
+      ],
+      0,
+      1,
+    );
+    expect(baked).toBe(true);
+    const after = readWav(p);
+    // Faded within the clip: the tail is quieter than the head.
+    expect(Math.abs(after.samples[4700] as number)).toBeLessThan(
+      Math.abs(after.samples[10] as number),
+    );
+  });
+
+  it("clamps past full scale rather than wrapping it into a click", () => {
+    const p = join(dir, "hot.wav");
+    writeWav(p, new Float32Array([1.8, -1.8]), SR);
+    const back = readWav(p);
+    expect(back.samples[0]).toBeCloseTo(1, 3);
+    expect(back.samples[1]).toBeCloseTo(-1, 3);
   });
 
   it("reads 16-bit PCM, which the trim step can emit", () => {

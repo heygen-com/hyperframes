@@ -38,79 +38,135 @@ interface WavData {
  * and 32-bit float, the two formats the trim/extract steps emit; anything else
  * is refused rather than silently misread as noise.
  */
-export function readWav(path: string): WavData {
-  const buf = readFileSync(path);
-  if (buf.length < 44 || buf.toString("ascii", 0, 4) !== "RIFF") {
-    throw new AudioFxRenderError(`Not a WAV file: ${path}`);
-  }
+/** Walk the chunks for the format and the payload, in whatever order they sit. */
+function readWavChunks(buf: Buffer): {
+  format: number;
+  channels: number;
+  sampleRate: number;
+  bits: number;
+  data?: Buffer;
+} {
   let offset = 12;
-  let format = 1;
-  let channels = 1;
-  let sampleRate = 48000;
-  let bits = 16;
+  const head = { format: 1, channels: 1, sampleRate: 48000, bits: 16 };
   let data: Buffer | undefined;
   while (offset + 8 <= buf.length) {
     const id = buf.toString("ascii", offset, offset + 4);
     const size = buf.readUInt32LE(offset + 4);
     if (id === "fmt ") {
-      format = buf.readUInt16LE(offset + 8);
-      channels = buf.readUInt16LE(offset + 10);
-      sampleRate = buf.readUInt32LE(offset + 12);
-      bits = buf.readUInt16LE(offset + 22);
+      head.format = buf.readUInt16LE(offset + 8);
+      head.channels = buf.readUInt16LE(offset + 10);
+      head.sampleRate = buf.readUInt32LE(offset + 12);
+      head.bits = buf.readUInt16LE(offset + 22);
     } else if (id === "data") {
       data = buf.subarray(offset + 8, Math.min(buf.length, offset + 8 + size));
       break;
     }
     offset += 8 + size + (size % 2);
   }
-  if (!data) throw new AudioFxRenderError(`WAV has no data chunk: ${path}`);
-
-  let samples: Float32Array;
-  if (format === 3 && bits === 32) {
-    samples = new Float32Array(data.buffer, data.byteOffset, Math.floor(data.length / 4));
-  } else if (format === 1 && bits === 16) {
-    const n = Math.floor(data.length / 2);
-    samples = new Float32Array(n);
-    for (let i = 0; i < n; i++) samples[i] = data.readInt16LE(i * 2) / 32768;
-  } else {
-    throw new AudioFxRenderError(`Unsupported WAV format ${format}/${bits}-bit: ${path}`);
-  }
-  return { samples, sampleRate, channels };
+  return { ...head, data };
 }
 
-export function writeWav(path: string, samples: Float32Array, sampleRate: number): void {
+export function readWav(path: string): WavData {
+  const buf = readFileSync(path);
+  if (buf.length < 44 || buf.toString("ascii", 0, 4) !== "RIFF") {
+    throw new AudioFxRenderError(`Not a WAV file: ${path}`);
+  }
+  const { format, channels, sampleRate, bits, data } = readWavChunks(buf);
+  if (!data) throw new AudioFxRenderError(`WAV has no data chunk: ${path}`);
+  return { samples: decodeSamples(data, format, bits, path), sampleRate, channels };
+}
+
+/** Interleaved samples as floats, for the two formats the mixer emits upstream. */
+function decodeSamples(data: Buffer, format: number, bits: number, path: string): Float32Array {
+  if (format === 3 && bits === 32) {
+    const n = Math.floor(data.length / 4);
+    // A Float32Array view demands a 4-aligned offset, and chunk layouts that put
+    // `data` on an odd boundary (an 18-byte fmt plus a fact chunk, which
+    // ffmpeg's pcm_f32le writes) would otherwise throw RangeError. Copy then.
+    if (data.byteOffset % 4 === 0) return new Float32Array(data.buffer, data.byteOffset, n);
+    const copied = new Float32Array(n);
+    for (let i = 0; i < n; i++) copied[i] = data.readFloatLE(i * 4);
+    return copied;
+  }
+  if (format === 1 && bits === 16) {
+    const n = Math.floor(data.length / 2);
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = data.readInt16LE(i * 2) / 32768;
+    return out;
+  }
+  throw new AudioFxRenderError(`Unsupported WAV format ${format}/${bits}-bit: ${path}`);
+}
+
+/**
+ * Write 16-bit PCM, interleaved, preserving the channel count.
+ *
+ * 16-bit rather than the float32 this used to emit: the very next step in the
+ * mixer bakes the volume envelope into the samples, and that baker accepts only
+ * 16-bit PCM. Emitting float meant enabling any effect silently downgraded a
+ * track's volume automation to the ffmpeg expression path, which is capped at 32
+ * straight segments — so a curved envelope was quantised and a dense one could
+ * fall back to rendering at base volume.
+ */
+export function writeWav(
+  path: string,
+  samples: Float32Array,
+  sampleRate: number,
+  channels = 1,
+): void {
   const n = samples.length;
-  const buf = Buffer.alloc(44 + n * 4);
+  const bytes = n * 2;
+  const buf = Buffer.alloc(44 + bytes);
   buf.write("RIFF", 0, "ascii");
-  buf.writeUInt32LE(36 + n * 4, 4);
+  buf.writeUInt32LE(36 + bytes, 4);
   buf.write("WAVE", 8, "ascii");
   buf.write("fmt ", 12, "ascii");
   buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(3, 20); // IEEE float
-  buf.writeUInt16LE(1, 22);
+  buf.writeUInt16LE(1, 20); // WAVE_FORMAT_PCM
+  buf.writeUInt16LE(channels, 22);
   buf.writeUInt32LE(sampleRate, 24);
-  buf.writeUInt32LE(sampleRate * 4, 28);
-  buf.writeUInt16LE(4, 32);
-  buf.writeUInt16LE(32, 34);
+  buf.writeUInt32LE(sampleRate * channels * 2, 28);
+  buf.writeUInt16LE(channels * 2, 32);
+  buf.writeUInt16LE(16, 34);
   buf.write("data", 36, "ascii");
-  buf.writeUInt32LE(n * 4, 40);
-  Buffer.from(samples.buffer, samples.byteOffset, n * 4).copy(buf, 44);
+  buf.writeUInt32LE(bytes, 40);
+  for (let i = 0; i < n; i++) {
+    // Clamp before scaling: a limiter set to 0 dB or a resonant filter can push
+    // past full scale, and wrapping would turn that into a click.
+    const v = Math.max(-1, Math.min(1, samples[i] ?? 0));
+    buf.writeInt16LE(Math.round(v * 32767), 44 + i * 2);
+  }
   writeFileSync(path, buf);
 }
 
 /**
- * Mix a multi-channel interleaved buffer down to mono. The FX graph is mono —
- * the mixer lays tracks out and handles stereo placement downstream — so a
- * stereo source is folded rather than having one channel silently dropped.
+ * Split an interleaved buffer into one array per channel.
+ *
+ * The graph used to fold everything to mono, which collapsed a stereo bed's
+ * width for the render only — and cost ~3 dB through the very mono-to-stereo
+ * rematrix that `prepareAudioTrack`'s pan filter exists to avoid. Preview kept
+ * the track stereo, so the two diverged the moment any effect was enabled.
  */
-function toMono(samples: Float32Array, channels: number): Float32Array {
-  if (channels <= 1) return samples;
+function deinterleave(samples: Float32Array, channels: number): Float32Array[] {
+  if (channels <= 1) return [samples];
   const frames = Math.floor(samples.length / channels);
-  const out = new Float32Array(frames);
+  const out = Array.from({ length: channels }, () => new Float32Array(frames));
   for (let i = 0; i < frames; i++) {
-    let sum = 0;
-    for (let c = 0; c < channels; c++) sum += samples[i * channels + c] ?? 0;
-    out[i] = sum / channels;
+    for (let c = 0; c < channels; c++) {
+      (out[c] as Float32Array)[i] = samples[i * channels + c] ?? 0;
+    }
+  }
+  return out;
+}
+
+/** Re-interleave per-channel arrays for the WAV writer. */
+function interleave(planes: readonly Float32Array[]): Float32Array {
+  if (planes.length === 1) return planes[0] as Float32Array;
+  const frames = planes[0]?.length ?? 0;
+  const out = new Float32Array(frames * planes.length);
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < planes.length; c++) {
+      out[i * planes.length + c] = (planes[c] as Float32Array)[i] ?? 0;
+    }
   }
   return out;
 }
@@ -136,7 +192,7 @@ export async function applyAudioFxChain(
   }
 
   const { samples, sampleRate, channels } = readWav(inputWav);
-  const mono = toMono(samples, channels);
+  const planes = deinterleave(samples, channels);
 
   // Audio processing needs no GPU or special capture mode; a plain sandboxed
   // browser is enough, and the lease pool reuses one across tracks.
@@ -160,40 +216,53 @@ export async function applyAudioFxChain(
       await page.addScriptTag({ content: getAudioFxRuntimeScript() });
 
       const rendered = (await page.evaluate(
-        async ([b64, rate, chainJson]: [string, number, string]) => {
-          const bin = atob(b64);
-          const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          const pcm = new Float32Array(bytes.buffer);
+        async ([channelB64, rate, chainJson]: [string[], number, string]) => {
+          const decode = (b64: string): Float32Array => {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return new Float32Array(bytes.buffer);
+          };
           const api = (
             window as unknown as {
               __HF_AUDIO_FX?: {
-                render(p: Float32Array, r: number, c: string): Promise<Float32Array>;
+                render(p: Float32Array[], r: number, c: string): Promise<Float32Array[]>;
               };
             }
           ).__HF_AUDIO_FX;
           if (!api) throw new Error("audio FX runtime failed to load");
-          const out = await api.render(pcm, rate, chainJson);
-          const u8 = new Uint8Array(out.buffer, out.byteOffset, out.length * 4);
-          let s = "";
-          const CHUNK = 0x8000;
-          for (let i = 0; i < u8.length; i += CHUNK) {
-            s += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + CHUNK)));
-          }
-          return btoa(s);
+          const out = await api.render(channelB64.map(decode), rate, chainJson);
+          const encode = (plane: Float32Array): string => {
+            const u8 = new Uint8Array(plane.buffer, plane.byteOffset, plane.length * 4);
+            let s = "";
+            const CHUNK = 0x8000;
+            for (let i = 0; i < u8.length; i += CHUNK) {
+              s += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + CHUNK)));
+            }
+            return btoa(s);
+          };
+          return out.map(encode);
         },
         [
-          Buffer.from(mono.buffer, mono.byteOffset, mono.length * 4).toString("base64"),
+          planes.map((plane) =>
+            Buffer.from(plane.buffer, plane.byteOffset, plane.length * 4).toString("base64"),
+          ),
           sampleRate,
           JSON.stringify(chain),
-        ] as [string, number, string],
-      )) as string;
+        ] as [string[], number, string],
+      )) as string[];
 
-      const out = new Float32Array(Buffer.from(rendered, "base64").buffer);
-      if (out.length === 0) {
+      // byteOffset and byteLength matter: Node pools small allocations, so a
+      // short payload decodes into an 8 KiB pool and a view over the whole
+      // ArrayBuffer would read kilobytes of unrelated memory at the wrong length.
+      const outPlanes = rendered.map((b64) => {
+        const buf = Buffer.from(b64, "base64");
+        return new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+      });
+      if (outPlanes.length === 0 || (outPlanes[0]?.length ?? 0) === 0) {
         throw new AudioFxRenderError(`Audio FX produced no samples for track ${options.trackId}`);
       }
-      writeWav(outputWav, out, sampleRate);
+      writeWav(outputWav, interleave(outPlanes), sampleRate, outPlanes.length);
       return outputWav;
     } finally {
       await page.close().catch(() => undefined);
