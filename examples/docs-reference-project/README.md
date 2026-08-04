@@ -150,20 +150,6 @@ The project keeps only the assets used by the composition:
 Generated capture folders, frame dumps, contact sheets, and compiled docs embeds are not
 committed. The docs copy of the verified render is served from the HyperFrames media CDN.
 
-### Rebuilding the docs embed
-
-The Introduction page embeds this project live. That embed is a single self-contained
-HTML file produced from this directory and uploaded to the CDN — regenerate it from the
-repository root whenever the composition changes:
-
-```bash
-bun run docs:bundle-reference
-```
-
-It writes `examples/docs-reference-project/live/index.html` (git-ignored). Upload that
-file to `docs/reference-project/live/` on the media CDN under a new version suffix, then
-point `LiveReferenceProject` in `docs/introduction.mdx` at the new name.
-
 ## Learning path through the composition
 
 Read `index.html` top to bottom; it is ordered deliberately:
