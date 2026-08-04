@@ -99,12 +99,20 @@ export default defineCommand({
 });
 
 function isRemoteOrHeadless(): boolean {
+  const remoteEnvironment = [
+    "CODESPACES",
+    "GITHUB_CODESPACES",
+    "REMOTE_CONTAINERS",
+    "GITPOD_WORKSPACE_ID",
+    "container",
+  ].some(envFlagEnabled);
   return Boolean(
     process.env["SSH_CONNECTION"] ||
     process.env["SSH_CLIENT"] ||
     process.env["SSH_TTY"] ||
     process.env["BROWSER"] === "none" ||
     process.env["HF_NO_BROWSER"] === "1" ||
+    remoteEnvironment ||
     process.stdout.isTTY !== true,
   );
 }
@@ -135,9 +143,9 @@ async function runDeviceLogin(): Promise<void> {
   let tokens;
   try {
     tokens = await startDeviceAuthorizationFlow({
-      onChallenge: ({ verificationUri, userCode }) => {
-        console.log(`Open ${c.accent(verificationUri)} in a browser.`);
-        console.log(`Enter code ${c.bold(userCode)}.`);
+      onChallenge: ({ verificationUri, verificationUriComplete, userCode }) => {
+        console.log(`Open ${c.accent(verificationUriComplete ?? verificationUri)} in a browser.`);
+        if (!verificationUriComplete) console.log(`Enter code ${c.bold(userCode)}.`);
         console.log(c.dim("Waiting for approval…"));
       },
     });

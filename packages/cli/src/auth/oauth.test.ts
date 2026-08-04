@@ -37,6 +37,20 @@ function tokenFetch(body: Record<string, unknown>): typeof fetch {
     })) as unknown as typeof fetch;
 }
 
+function deviceAuthorizationResponse(overrides: Record<string, unknown> = {}): Response {
+  return new Response(
+    JSON.stringify({
+      device_code: "secret-device-code",
+      user_code: "ABCD-2345",
+      verification_uri: "https://app.heygen.com/oauth/device",
+      expires_in: 600,
+      interval: 5,
+      ...overrides,
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
 async function loginWithTokens(body: Record<string, unknown>) {
   await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
   return (await readStore()).credentials;
@@ -406,6 +420,23 @@ describe("auth/oauth", () => {
       expect(onDisk.future_root_field).toEqual({ keep: true });
     });
 
+    it("recovers a corrupt credential file before installing a verified session", async () => {
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(path, "{not-json", { mode: 0o600 });
+
+      await persistVerifiedOAuthSession(
+        { access_token: "device-at", refresh_token: "device-rt" },
+        { email: "new@example.com" },
+      );
+
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.oauth).toMatchObject({
+        access_token: "device-at",
+        refresh_token: "device-rt",
+      });
+      expect(onDisk.user).toEqual({ email: "new@example.com" });
+    });
+
     it("polls pending and slow_down responses without persisting before identity verification", async () => {
       const requests: Array<{ url: string; body: URLSearchParams }> = [];
       const responses = [
@@ -480,6 +511,138 @@ describe("auth/oauth", () => {
       expect((await readStore()).credentials.oauth?.access_token).toBe("device-at");
     });
 
+    it("uses the RFC default interval and presents a safe complete verification URL", async () => {
+      const responses = [
+        deviceAuthorizationResponse({
+          interval: undefined,
+          verification_uri_complete: "https://app.heygen.com/oauth/device?user_code=ABCD-2345",
+        }),
+        new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
+      ];
+      const fetchImpl = (async () => {
+        const next = responses.shift();
+        if (!next) throw new Error("unexpected fetch");
+        return next;
+      }) as typeof fetch;
+      const sleeps: number[] = [];
+      const challenges: Array<{
+        userCode: string;
+        verificationUri: string;
+        verificationUriComplete?: string;
+      }> = [];
+
+      await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async (ms) => {
+          sleeps.push(ms);
+        },
+        now: () => 1_000,
+        onChallenge: (challenge) => {
+          challenges.push(challenge);
+        },
+      });
+
+      expect(sleeps).toEqual([5_000]);
+      expect(challenges).toEqual([
+        {
+          userCode: "ABCD-2345",
+          verificationUri: "https://app.heygen.com/oauth/device",
+          verificationUriComplete: "https://app.heygen.com/oauth/device?user_code=ABCD-2345",
+        },
+      ]);
+    });
+
+    it("treats HTTP 429 without an OAuth body as slow_down and honors Retry-After", async () => {
+      const responses = [
+        deviceAuthorizationResponse(),
+        new Response("rate limited", { status: 429, headers: { "retry-after": "20" } }),
+        new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
+      ];
+      const fetchImpl = (async () => {
+        const next = responses.shift();
+        if (!next) throw new Error("unexpected fetch");
+        return next;
+      }) as typeof fetch;
+      const sleeps: number[] = [];
+
+      await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async (ms) => {
+          sleeps.push(ms);
+        },
+        now: () => 1_000,
+      });
+
+      expect(sleeps).toEqual([5_000, 20_000]);
+    });
+
+    it("canonicalizes an internationalized verification host before displaying it", async () => {
+      const unicodeUri = "https://rаypal.example/oauth/device";
+      const responses = [
+        deviceAuthorizationResponse({ verification_uri: unicodeUri }),
+        new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
+      ];
+      const fetchImpl = (async () => {
+        const next = responses.shift();
+        if (!next) throw new Error("unexpected fetch");
+        return next;
+      }) as typeof fetch;
+      const challenges: Array<{ verificationUri: string }> = [];
+
+      await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async () => {},
+        now: () => 1_000,
+        onChallenge: (challenge) => {
+          challenges.push(challenge);
+        },
+      });
+
+      expect(challenges[0]?.verificationUri).toBe(new URL(unicodeUri).href);
+      expect(challenges[0]?.verificationUri).not.toBe(unicodeUri);
+    });
+
+    it("times out while reading a slow authorization response body", async () => {
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")), {
+              once: true,
+            });
+          },
+        });
+        return new Response(body, { status: 200 });
+      }) as typeof fetch;
+
+      await expect(
+        startDeviceAuthorizationFlow({ fetchImpl, requestTimeoutMs: 5 }),
+      ).rejects.toThrow(/request timed out/);
+    });
+
+    it("times out a stalled token poll", async () => {
+      let call = 0;
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        call += 1;
+        if (call === 1) {
+          return deviceAuthorizationResponse({ interval: undefined });
+        }
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        });
+      }) as typeof fetch;
+
+      await expect(
+        startDeviceAuthorizationFlow({
+          fetchImpl,
+          sleepImpl: async () => {},
+          now: () => 1_000,
+          requestTimeoutMs: 5,
+        }),
+      ).rejects.toThrow(/request timed out/);
+    });
+
     it.each(["access_denied", "expired_token"])(
       "fails with a bounded error for %s without echoing the device code",
       async (oauthError) => {
@@ -519,6 +682,7 @@ describe("auth/oauth", () => {
 
     it.each([
       ["credential-bearing URL", "https://user:pass@app.heygen.com/oauth/device", 600, 5],
+      ["control-character URL", "https://app.heygen.com/oauth/\u001b[31m", 600, 5],
       ["prefix-parsed expiry", "https://app.heygen.com/oauth/device", "600seconds", 5],
       ["prefix-parsed interval", "https://app.heygen.com/oauth/device", 600, "5seconds"],
     ])("rejects an unsafe or malformed %s response", async (_name, uri, expiresIn, interval) => {

@@ -78,6 +78,7 @@ const MAX_DEVICE_FLOW_SECONDS = 30 * 60;
 const MIN_DEVICE_POLL_SECONDS = 5;
 const MAX_DEVICE_POLL_SECONDS = 60;
 const MAX_DEVICE_RESPONSE_BYTES = 64 * 1024;
+const DEVICE_REQUEST_TIMEOUT_MS = 15_000;
 
 function authorizeEndpoint(): string {
   return process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] || DEFAULT_AUTHORIZE_URL;
@@ -114,6 +115,7 @@ export interface RefreshOptions {
 export interface DeviceAuthorizationChallenge {
   userCode: string;
   verificationUri: string;
+  verificationUriComplete?: string;
 }
 
 export interface DeviceAuthorizationFlowOptions {
@@ -125,6 +127,8 @@ export interface DeviceAuthorizationFlowOptions {
   sleepImpl?: (ms: number) => Promise<void>;
   /** Inject a monotonic-enough clock in epoch milliseconds (used by tests). */
   now?: () => number;
+  /** Bound each authorization-server request, including its response body (default 15s). */
+  requestTimeoutMs?: number;
   /** Present the user code and verification URI without exposing device_code. */
   onChallenge?: (challenge: DeviceAuthorizationChallenge) => void | Promise<void>;
 }
@@ -220,11 +224,15 @@ export async function startDeviceAuthorizationFlow(
     sleepImpl:
       opts.sleepImpl ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))),
     now: opts.now ?? Date.now,
+    requestTimeoutMs: opts.requestTimeoutMs ?? DEVICE_REQUEST_TIMEOUT_MS,
   };
   const issuance = await requestDeviceAuthorization(runtime, opts.scope ?? DEFAULT_SCOPES);
   await opts.onChallenge?.({
     userCode: issuance.userCode,
     verificationUri: issuance.verificationUri,
+    ...(issuance.verificationUriComplete
+      ? { verificationUriComplete: issuance.verificationUriComplete }
+      : {}),
   });
   return await pollDeviceToken(runtime, issuance);
 }
@@ -234,29 +242,32 @@ interface DeviceFlowRuntime {
   fetchImpl: typeof fetch;
   sleepImpl: (ms: number) => Promise<void>;
   now: () => number;
+  requestTimeoutMs: number;
 }
 
 async function requestDeviceAuthorization(
   runtime: DeviceFlowRuntime,
   scope: string,
 ): Promise<ParsedDeviceAuthorization> {
-  let response: Response;
-  try {
-    response = await runtime.fetchImpl(deviceAuthorizationEndpoint(), {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        accept: "application/json",
-      },
-      body: new URLSearchParams({ client_id: runtime.clientId, scope }).toString(),
-    });
-  } catch {
-    throw ErrDeviceAuthFailed("could not reach the authorization server");
-  }
-  if (!response.ok) {
-    throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
-  }
-  return parseDeviceAuthorizationResponse(await readJsonOrDeviceError(response));
+  return await withDeviceRequestTimeout(
+    runtime,
+    "could not reach the authorization server",
+    async (signal) => {
+      const response = await runtime.fetchImpl(deviceAuthorizationEndpoint(), {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          accept: "application/json",
+        },
+        body: new URLSearchParams({ client_id: runtime.clientId, scope }).toString(),
+        signal,
+      });
+      if (!response.ok) {
+        throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
+      }
+      return parseDeviceAuthorizationResponse(await readJsonOrDeviceError(response));
+    },
+  );
 }
 
 async function pollDeviceToken(
@@ -270,12 +281,13 @@ async function pollDeviceToken(
     if (remainingMs <= 0) break;
     await runtime.sleepImpl(Math.min(intervalSeconds * 1000, remainingMs));
 
-    const result = await evaluateDevicePollResponse(
-      await requestDeviceToken(runtime, issuance.deviceCode),
-    );
+    const result = await requestDeviceToken(runtime, issuance.deviceCode);
     if (result.tokens) return result.tokens;
     if (result.slowDown) {
-      intervalSeconds = Math.min(intervalSeconds + 5, MAX_DEVICE_POLL_SECONDS);
+      intervalSeconds = Math.min(
+        Math.max(intervalSeconds + 5, result.retryAfterSeconds ?? 0),
+        MAX_DEVICE_POLL_SECONDS,
+      );
     }
   }
   throw ErrDeviceAuthFailed("the code expired");
@@ -284,28 +296,39 @@ async function pollDeviceToken(
 async function requestDeviceToken(
   runtime: DeviceFlowRuntime,
   deviceCode: string,
-): Promise<Response> {
-  try {
-    return await runtime.fetchImpl(tokenEndpoint(), {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        accept: "application/json",
-      },
-      body: new URLSearchParams({
-        grant_type: DEVICE_CODE_GRANT_TYPE,
-        device_code: deviceCode,
-        client_id: runtime.clientId,
-      }).toString(),
-    });
-  } catch {
-    throw ErrDeviceAuthFailed("lost contact with the authorization server");
-  }
+): Promise<DevicePollResult> {
+  return await withDeviceRequestTimeout(
+    runtime,
+    "lost contact with the authorization server",
+    async (signal) => {
+      const response = await runtime.fetchImpl(tokenEndpoint(), {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          accept: "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: DEVICE_CODE_GRANT_TYPE,
+          device_code: deviceCode,
+          client_id: runtime.clientId,
+        }).toString(),
+        signal,
+      });
+      return await evaluateDevicePollResponse(response, runtime.now());
+    },
+  );
+}
+
+interface DevicePollResult {
+  tokens?: OAuthTokens;
+  slowDown?: boolean;
+  retryAfterSeconds?: number;
 }
 
 async function evaluateDevicePollResponse(
   response: Response,
-): Promise<{ tokens?: OAuthTokens; slowDown?: boolean }> {
+  nowMs: number,
+): Promise<DevicePollResult> {
   if (response.ok) {
     return { tokens: parseTokenResponse(await readJsonOrDeviceError(response)) };
   }
@@ -315,14 +338,46 @@ async function evaluateDevicePollResponse(
     case "authorization_pending":
       return {};
     case "slow_down":
-      return { slowDown: true };
+      return { slowDown: true, retryAfterSeconds: retryAfterSeconds(response, nowMs) };
     case "access_denied":
       throw ErrDeviceAuthFailed("access was denied");
     case "expired_token":
       throw ErrDeviceAuthFailed("the code expired");
     default:
+      if (response.status === 429) {
+        return { slowDown: true, retryAfterSeconds: retryAfterSeconds(response, nowMs) };
+      }
       throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
   }
+}
+
+async function withDeviceRequestTimeout<T>(
+  runtime: DeviceFlowRuntime,
+  networkError: string,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), runtime.requestTimeoutMs);
+  try {
+    return await operation(controller.signal);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw ErrDeviceAuthFailed("authorization server request timed out");
+    }
+    if (isAuthError(err)) throw err;
+    throw ErrDeviceAuthFailed(networkError);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function retryAfterSeconds(response: Response, nowMs: number): number | undefined {
+  const value = response.headers.get("retry-after")?.trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Math.min(Number(value), MAX_DEVICE_POLL_SECONDS);
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.min(Math.max(Math.ceil((retryAt - nowMs) / 1000), 0), MAX_DEVICE_POLL_SECONDS);
 }
 
 export async function refreshTokens(
@@ -592,7 +647,14 @@ export async function persistVerifiedOAuthSession(
   tokens: OAuthTokens,
   user: StoredUserInfo,
 ): Promise<void> {
-  const { credentials } = await readStore();
+  let credentials: Credentials = {};
+  try {
+    ({ credentials } = await readStore());
+  } catch {
+    // Match the other fresh-login path: a corrupt prior file must not prevent
+    // installing a newly verified session.
+    credentials = {};
+  }
   const next: Credentials = {
     ...credentials,
     oauth: { ...tokens },
@@ -619,6 +681,7 @@ interface ParsedDeviceAuthorization {
   deviceCode: string;
   userCode: string;
   verificationUri: string;
+  verificationUriComplete?: string;
   expiresIn: number;
   interval: number;
 }
@@ -627,31 +690,47 @@ function parseDeviceAuthorizationResponse(payload: unknown): ParsedDeviceAuthori
   const data = requireDeviceAuthorizationRecord(payload);
   const deviceCode = stringField(data, "device_code");
   const userCode = stringField(data, "user_code");
-  const verificationUri = stringField(data, "verification_uri");
+  const verificationUri = requiredSafeVerificationUri(data, "verification_uri");
+  const verificationUriComplete = optionalSafeVerificationUri(data, "verification_uri_complete");
   const expiresIn = strictNumericField(data, "expires_in");
   const interval = strictNumericField(data, "interval");
   if (!deviceCode || !isHeaderSafe(deviceCode)) {
     throw ErrDeviceAuthFailed("authorization server returned an invalid response");
   }
-  if (!userCode || !verificationUri) {
+  if (!userCode || !isHeaderSafe(userCode)) {
     throw ErrDeviceAuthFailed("authorization server returned an invalid response");
   }
-  if (!isSafeVerificationUri(verificationUri)) {
-    throw ErrDeviceAuthFailed("authorization server returned an unsafe verification URL");
-  }
-  if (!isPositiveNumber(expiresIn) || !isPositiveNumber(interval)) {
+  if (
+    !isPositiveNumber(expiresIn) ||
+    (data["interval"] !== undefined && !isPositiveNumber(interval))
+  ) {
     throw ErrDeviceAuthFailed("authorization server returned invalid timing values");
   }
   return {
     deviceCode,
     userCode,
     verificationUri,
+    ...(verificationUriComplete ? { verificationUriComplete } : {}),
     expiresIn,
     interval: Math.min(
-      Math.max(Math.ceil(interval), MIN_DEVICE_POLL_SECONDS),
+      Math.max(Math.ceil(interval ?? MIN_DEVICE_POLL_SECONDS), MIN_DEVICE_POLL_SECONDS),
       MAX_DEVICE_POLL_SECONDS,
     ),
   };
+}
+
+function requiredSafeVerificationUri(data: Record<string, unknown>, key: string): string {
+  const value = normalizeSafeVerificationUri(stringField(data, key));
+  if (!value) throw ErrDeviceAuthFailed("authorization server returned an unsafe verification URL");
+  return value;
+}
+
+function optionalSafeVerificationUri(
+  data: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  if (data[key] === undefined) return undefined;
+  return requiredSafeVerificationUri(data, key);
 }
 
 function requireDeviceAuthorizationRecord(payload: unknown): Record<string, unknown> {
@@ -665,16 +744,17 @@ function isPositiveNumber(value: number | undefined): value is number {
   return value !== undefined && value > 0;
 }
 
-function isSafeVerificationUri(value: string): boolean {
+function normalizeSafeVerificationUri(value: string | undefined): string | undefined {
+  if (!value || !isHeaderSafe(value)) return undefined;
   try {
     const url = new URL(value);
-    if (url.username || url.password) return false;
-    return (
+    if (url.username || url.password) return undefined;
+    const allowed =
       url.protocol === "https:" ||
-      (url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname))
-    );
+      (url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname));
+    return allowed ? url.href : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

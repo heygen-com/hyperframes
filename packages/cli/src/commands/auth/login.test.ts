@@ -29,10 +29,17 @@ const telemetry = vi.hoisted(() => ({
 }));
 vi.mock("../../telemetry/index.js", () => telemetry);
 
+const deviceChallenge = vi.hoisted(() => ({
+  verificationUriComplete: undefined as string | undefined,
+}));
+
 const deviceAuth = vi.hoisted(() => ({
   start: vi.fn(async (options?: { onChallenge?: (value: unknown) => void }) => {
     options?.onChallenge?.({
       verificationUri: "https://app.heygen.com/oauth/device",
+      ...(deviceChallenge.verificationUriComplete
+        ? { verificationUriComplete: deviceChallenge.verificationUriComplete }
+        : {}),
       userCode: "ABCD-2345",
     });
     return {
@@ -74,10 +81,19 @@ describe("auth login", () => {
 
   beforeEach(async () => {
     runtimeEnv = Object.fromEntries(
-      ["CI", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "BROWSER", "HF_NO_BROWSER"].map((key) => [
-        key,
-        process.env[key],
-      ]),
+      [
+        "CI",
+        "SSH_CONNECTION",
+        "SSH_CLIENT",
+        "SSH_TTY",
+        "BROWSER",
+        "HF_NO_BROWSER",
+        "CODESPACES",
+        "GITHUB_CODESPACES",
+        "REMOTE_CONTAINERS",
+        "GITPOD_WORKSPACE_ID",
+        "container",
+      ].map((key) => [key, process.env[key]]),
     );
     for (const key of Object.keys(runtimeEnv)) delete process.env[key];
     stdinTTYDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -94,6 +110,7 @@ describe("auth login", () => {
     dir = envFixture.dir;
     verifyState.reject = false;
     verifyState.user = { email: "alice@example.com" };
+    deviceChallenge.verificationUriComplete = undefined;
     for (const fn of Object.values(telemetry)) fn.mockClear();
     for (const fn of Object.values(deviceAuth)) fn.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -264,6 +281,30 @@ describe("auth login", () => {
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("hyperframes auth login --device"),
     );
+  });
+
+  it.each([
+    "CODESPACES",
+    "GITHUB_CODESPACES",
+    "REMOTE_CONTAINERS",
+    "GITPOD_WORKSPACE_ID",
+    "container",
+  ])("requires --device in the %s remote environment", async (name) => {
+    process.env[name] = "true";
+    await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);
+    expect(deviceAuth.start).not.toHaveBeenCalled();
+  });
+
+  it("opens verification_uri_complete without asking the user to re-enter the code", async () => {
+    deviceChallenge.verificationUriComplete =
+      "https://app.heygen.com/oauth/device?user_code=ABCD-2345";
+
+    await runCommand({ device: true });
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("https://app.heygen.com/oauth/device?user_code=ABCD-2345"),
+    );
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining("Enter code"));
   });
 
   it("verifies the device token before persisting it", async () => {
