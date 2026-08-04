@@ -58,6 +58,11 @@ export interface PropertyPanelProps {
     value: string | null,
     onSettled?: (ok: boolean) => void,
   ) => void | Promise<void>;
+  /** Persists without reloading the preview, but re-reads the selection after —
+   *  for attributes the runtime applies to the live graph itself, where a reload
+   *  would only interrupt playback, and where the panel still has to see the
+   *  value it just wrote to compute the next edit from. */
+  onSetAttributeQuiet?: (attr: string, value: string | null) => void | Promise<void>;
   onApplyColorGradingScope?: (
     scope: "source-file" | "project",
     value: string | null,

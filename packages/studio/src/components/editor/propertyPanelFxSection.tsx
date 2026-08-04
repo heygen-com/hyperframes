@@ -13,12 +13,15 @@ import {
   defaultAudioFxParams,
   getAudioFxDef,
   HF_AUDIO_FX,
+  mintAudioFxNodeId,
   type HfAudioFxChain,
+  type HfAudioFxDef,
   type HfAudioFxGroup,
   type HfAudioFxNode,
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
+import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParams, FxParamRow } from "./propertyPanelFxControls.js";
 
 const GROUP_ORDER: HfAudioFxGroup[] = ["filter", "dynamics", "nonlinear", "time"];
@@ -37,6 +40,9 @@ export interface AudioTrackOption {
 interface FxNodeRowProps {
   node: HfAudioFxNode;
   index: number;
+  automatedTargets?: ReadonlySet<string>;
+  onAutomateParam?(nodeId: string, paramKey: string): void;
+  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
   open: boolean;
   /** Last in the chain, so it cannot move further down. */
   last: boolean;
@@ -142,10 +148,73 @@ function FxNodeHeader({
   );
 }
 
+/**
+ * Which of an effect's knobs already have a lane.
+ *
+ * A lane addresses a node by id, so a node the panel has not yet given one
+ * cannot be automated at all. Adding an effect mints the id, so this only
+ * affects chains written before ids existed.
+ */
+function automatedKeysOf(
+  node: HfAudioFxNode,
+  params: readonly { key: string }[],
+  automatedTargets: ReadonlySet<string> | undefined,
+): Set<string> {
+  if (!node.id || !automatedTargets) return new Set();
+  const nodeId = node.id;
+  return new Set(
+    params.filter((p) => automatedTargets.has(fxAutomationTarget(nodeId, p.key))).map((p) => p.key),
+  );
+}
+
+/** An open effect's knobs, with whatever automation surface applies to them. */
+function FxNodeParams({
+  node,
+  def,
+  index,
+  disabled,
+  automatedTargets,
+  onUpdate,
+  onPreview,
+  onAutomateParam,
+  onRemoveParamAutomation,
+}: {
+  node: HfAudioFxNode;
+  def: HfAudioFxDef;
+  index: number;
+  disabled: boolean;
+  automatedTargets?: ReadonlySet<string>;
+  onUpdate(index: number, patch: Partial<HfAudioFxNode>): void;
+  onPreview(index: number, params: HfAudioFxParamValues): void;
+  onAutomateParam?(nodeId: string, paramKey: string): void;
+  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
+}) {
+  const nodeId = node.id;
+  return (
+    <FxParams
+      def={def}
+      params={node.params ?? defaultAudioFxParams(node.type)}
+      disabled={disabled}
+      onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
+      onCommit={(params: HfAudioFxParamValues) => onUpdate(index, { params })}
+      automatedKeys={automatedKeysOf(node, def.params, automatedTargets)}
+      onAutomate={nodeId && onAutomateParam ? (key) => onAutomateParam(nodeId, key) : undefined}
+      onRemoveAutomation={
+        nodeId && onRemoveParamAutomation
+          ? (key) => onRemoveParamAutomation(nodeId, key)
+          : undefined
+      }
+    />
+  );
+}
+
 /** One effect in the chain: its header controls, and its knobs when open. */
 function FxNodeRow({
   node,
   index,
+  automatedTargets,
+  onAutomateParam,
+  onRemoveParamAutomation,
   open,
   last,
   disabled,
@@ -176,12 +245,16 @@ function FxNodeRow({
         onRemove={() => onRemove(index)}
       />
       {open ? (
-        <FxParams
+        <FxNodeParams
+          node={node}
           def={def}
-          params={node.params ?? defaultAudioFxParams(node.type)}
-          disabled={disabled || bypassed}
-          onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
-          onCommit={(params: HfAudioFxParamValues) => onUpdate(index, { params })}
+          index={index}
+          disabled={Boolean(disabled) || bypassed}
+          automatedTargets={automatedTargets}
+          onUpdate={onUpdate}
+          onPreview={onPreview}
+          onAutomateParam={onAutomateParam}
+          onRemoveParamAutomation={onRemoveParamAutomation}
         />
       ) : null}
     </div>
@@ -190,6 +263,12 @@ function FxNodeRow({
 
 export interface FxSectionProps {
   chain: HfAudioFxChain;
+  /** Targets this track already automates, as `fx.<nodeId>.<param>` strings. */
+  automatedTargets?: ReadonlySet<string>;
+  /** Add a lane for one effect parameter, seeded at its current value. */
+  onAutomateParam?(nodeId: string, paramKey: string): void;
+  /** Delete one effect parameter's lane. */
+  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
   /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
   /** Continuous updates while a control is being dragged. */
@@ -206,6 +285,9 @@ export interface FxSectionProps {
 
 export function FxSection({
   chain,
+  automatedTargets,
+  onAutomateParam,
+  onRemoveParamAutomation,
   onChainChange,
   onChainPreview,
   carve,
@@ -240,11 +322,14 @@ export function FxSection({
 
   const addEffect = useCallback(
     (type: string) => {
-      mutate([...chain.nodes, { type, enabled: true, params: defaultAudioFxParams(type) }]);
+      mutate([
+        ...chain.nodes,
+        { type, id: mintAudioFxNodeId(chain), enabled: true, params: defaultAudioFxParams(type) },
+      ]);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain.nodes, mutate],
+    [chain, mutate],
   );
 
   const updateNode = useCallback(
@@ -287,6 +372,9 @@ export function FxSection({
               key={`${node.type}-${i}`}
               node={node}
               index={i}
+              automatedTargets={automatedTargets}
+              onAutomateParam={onAutomateParam}
+              onRemoveParamAutomation={onRemoveParamAutomation}
               open={openNode === i}
               last={i === chain.nodes.length - 1}
               disabled={disabled}
