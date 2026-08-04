@@ -1,5 +1,6 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import type { Hono } from "hono";
+import { z } from "zod";
 import {
   collectFontFileEntries,
   fontDirectories,
@@ -7,6 +8,10 @@ import {
   locateSystemFont,
   SYSTEM_FONT_SIZE_LIMIT,
 } from "@hyperframes/core/fonts/system-locator";
+
+const googleFontsMetadataSchema = z.object({
+  familyMetadataList: z.array(z.object({ family: z.string() }).loose()),
+});
 
 const MAX_FONT_RESULTS = 2000;
 const GOOGLE_FONTS_METADATA_URL = "https://fonts.google.com/metadata/fonts";
@@ -37,10 +42,6 @@ const GOOGLE_FONT_FALLBACKS = [
   "JetBrains Mono",
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function collectFontsFromDir(dir: string): string[] {
   return collectFontFileEntries(dir).map((e) => e.family);
 }
@@ -66,14 +67,12 @@ function listInstalledFontFamilies(): string[] {
   return cachedFonts;
 }
 
-function parseGoogleFontMetadata(value: unknown): string[] {
-  if (!isRecord(value) || !Array.isArray(value.familyMetadataList)) return [];
-  const families: string[] = [];
-  for (const entry of value.familyMetadataList) {
-    if (!isRecord(entry) || typeof entry.family !== "string") continue;
-    families.push(entry.family);
-  }
-  return families;
+function readGoogleFontFamilies(value: unknown): string[] {
+  // Google's metadata carries far more than families; take the one field and
+  // let anything malformed fall through to the bundled fallback list.
+  const parsed = googleFontsMetadataSchema.safeParse(value);
+  if (!parsed.success) return [];
+  return parsed.data.familyMetadataList.map((entry) => entry.family);
 }
 
 function stripGoogleJsonGuard(raw: string): string {
@@ -109,7 +108,7 @@ async function listGoogleFontFamilies(): Promise<string[]> {
     }
     const raw = await response.text();
     const jsonText = stripGoogleJsonGuard(raw);
-    const families = parseGoogleFontMetadata(JSON.parse(jsonText));
+    const families = readGoogleFontFamilies(JSON.parse(jsonText));
     cachedGoogleFonts = families.length > 0 ? families : GOOGLE_FONT_FALLBACKS;
   } catch {
     cachedGoogleFonts = GOOGLE_FONT_FALLBACKS;

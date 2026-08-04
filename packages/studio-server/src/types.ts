@@ -52,42 +52,13 @@ export interface LintResult {
   }>;
 }
 
-export interface StudioSelectionTextField {
-  key: string;
-  label: string;
-  value: string;
-  tagName: string;
-  source: "self" | "child" | "text-node";
-}
-
-export interface StudioSelectionSnapshot {
-  schemaVersion: 1;
-  projectId: string;
-  compositionPath: string;
-  sourceFile: string;
-  currentTime: number;
-  target: {
-    id?: string | null;
-    hfId?: string;
-    selector?: string;
-    selectorIndex?: number;
-  };
-  label: string;
-  tagName: string;
-  boundingBox: { x: number; y: number; width: number; height: number };
-  textContent: string | null;
-  dataAttributes: Record<string, string>;
-  inlineStyles: Record<string, string>;
-  computedStyles: Record<string, string>;
-  textFields: StudioSelectionTextField[];
-  capabilities: Record<string, boolean | string | undefined>;
-  thumbnailUrl: string;
-}
-
-export interface StudioSelectionResponse {
-  selection: StudioSelectionSnapshot | null;
-  updatedAt: string | null;
-}
+// The selection payload is declared as a schema (helpers/selectionSchema) so
+// the validator and these types are one definition, not two that can drift.
+export type {
+  StudioSelectionResponse,
+  StudioSelectionSnapshot,
+  StudioSelectionTextField,
+} from "./helpers/selectionSchema.js";
 
 /**
  * Adapter interface — injected by each consumer to handle host-specific behavior.
