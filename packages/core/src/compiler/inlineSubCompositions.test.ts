@@ -553,3 +553,71 @@ describe("inlineSubCompositions – recursive host discovery", () => {
     ]);
   });
 });
+
+describe("inlineSubCompositions – sub-composition asset paths", () => {
+  // Every asset ref a sub-composition in a subdirectory carries has to be
+  // re-pointed when its content moves into the project-root document. Hoisted
+  // <head> <link>/<script src> used to bypass the rewrite entirely (so even the
+  // documented `../` form escaped the project), and sibling refs (`_shared.css`)
+  // silently 404'd. Both render the frame unstyled.
+  const SUB_COMP = `<!doctype html>
+<html><head>
+  <link rel="stylesheet" href="_shared.css">
+  <link rel="stylesheet" href="../shared/theme.css">
+  <script src="helper.js"></script>
+  <style>.badge { background-image: url("frame.png"); }</style>
+</head><body>
+  <div data-composition-id="frame" data-width="1920" data-height="1080">
+    <img src="frame.png" alt="">
+    <div style="background-image: url('frame.png')"></div>
+  </div>
+</body></html>`;
+
+  const PROJECT_FILES = [
+    "design/styleframes/_shared.css",
+    "design/styleframes/frame.png",
+    "design/styleframes/helper.js",
+    "design/shared/theme.css",
+  ];
+
+  function inlineFrame() {
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-id="frame" data-composition-src="design/styleframes/frame-01.html"
+         data-start="0" data-duration="4" data-track-index="0"></div>
+  </div>
+</body></html>`);
+    const host = document.querySelector("[data-composition-src]")!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP,
+      parseHtml: (html) => parseHTML(html).document,
+      rewriteInlineStyles: true,
+      assetExists: (path: string) => PROJECT_FILES.includes(path),
+    });
+    return { document, result };
+  }
+
+  it("rewrites hoisted <link> hrefs against the sub-composition dir", () => {
+    const { result } = inlineFrame();
+    const hrefs = result.externalLinks.map((l) => l.href);
+    expect(hrefs).toContain("design/styleframes/_shared.css");
+    expect(hrefs).toContain("design/shared/theme.css");
+    expect(hrefs).not.toContain("_shared.css");
+    expect(hrefs).not.toContain("../shared/theme.css");
+  });
+
+  it("rewrites hoisted external script srcs", () => {
+    const { result } = inlineFrame();
+    expect(result.externalScriptSrcs).toContain("design/styleframes/helper.js");
+  });
+
+  it("rewrites sibling refs in markup, hoisted CSS, and inline styles", () => {
+    const { document, result } = inlineFrame();
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("design/styleframes/frame.png");
+    expect(result.styles.join("\n")).toContain("design/styleframes/frame.png");
+    expect(document.querySelector("[style]")?.getAttribute("style")).toContain(
+      "design/styleframes/frame.png",
+    );
+  });
+});

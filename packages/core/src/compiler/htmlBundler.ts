@@ -898,6 +898,13 @@ export async function bundleToSingleHtml(
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,
+    // A sub-composition's SIBLING assets (`_shared.css` next to it) must be
+    // re-pointed at its own directory when its content moves to the root
+    // document; project-root refs with no such sibling stay as authored.
+    assetExists: (path: string) => {
+      const resolved = resolveEntryPath(path);
+      return resolved !== null && existsSync(resolved);
+    },
     flattenInnerRoot: prepareFlattenedInnerRoot,
     readVariableDefaults: readDeclaredDefaults,
     parseHostVariables: parseHostVariableValues,

@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, posix } from "node:path";
+import { join } from "node:path";
 import { parseHTML } from "linkedom";
-import { CSS_URL_RE, isNonRelativeUrl, rewriteAssetPath } from "@hyperframes/core";
+import {
+  rewriteAssetPaths,
+  rewriteCssAssetUrls,
+  rewriteInlineStyleAssetUrls,
+} from "@hyperframes/core";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
 
 /**
@@ -15,69 +19,34 @@ function isFullHtmlDocument(html: string): boolean {
 }
 
 /**
- * Resolve one relative asset reference authored inside a sub-composition into a
- * path that is correct under the preview's project-root `<base>`.
- *
- * The browser resolves a relative URL against the document the markup came
- * from, but this page borrows the project-root base — so a composition at
- * `design/styleframes/frame-01.html` referencing its sibling `_shared.css` used
- * to be served as-is and requested as `/preview/_shared.css` (404). The frame
- * then rendered unstyled, which the thumbnailer's transparent-body fallback
- * painted dark navy — the "illegible styleframe thumbnail" bug.
- *
- * Two rules, in order:
- *   1. `../` paths resolve against the composition dir (shared with the
- *      producer's inliner, so preview and render agree).
- *   2. Any other relative path is re-pointed at the composition's own directory
- *      ONLY when that sibling file actually exists. Registry blocks installed
- *      into a subdirectory reference project-root assets (`assets/logo.png`)
- *      that are already correct under the root base — those must stay put, and
- *      a disk check is what tells the two conventions apart.
- */
-function resolvePreviewAssetPath(projectDir: string, compPath: string, rawValue: string): string {
-  const value = rawValue.trim();
-  if (isNonRelativeUrl(value)) return value;
-  if (value.startsWith("../") || value === "..") return rewriteAssetPath(compPath, value);
-  const compDir = posix.dirname(compPath);
-  if (!compDir || compDir === ".") return value;
-  const filePart = value.split(/[?#]/)[0] ?? "";
-  if (!filePart) return value;
-  const sibling = posix.join(compDir, filePart);
-  if (!existsSync(join(projectDir, sibling))) return value;
-  return posix.join(compDir, value);
-}
-
-function rewriteCssUrls(cssText: string, resolvePath: (value: string) => string): string {
-  if (!cssText) return cssText;
-  return cssText.replace(CSS_URL_RE, (full: string, quote: string, rawUrl: string) => {
-    const url = (rawUrl || "").trim();
-    const resolved = resolvePath(url);
-    return resolved === url ? full : `url(${quote || ""}${resolved}${quote || ""})`;
-  });
-}
-
-/**
  * Rewrite relative asset paths in a parsed DOM tree. Shared across all
  * three dispatch branches (template, full-doc, fragment) to avoid drift.
+ *
+ * The preview page borrows the project-root `<base>`, so a composition at
+ * `design/styleframes/frame-01.html` referencing its sibling `_shared.css` was
+ * requested as `/preview/_shared.css` (404). The frame then rendered unstyled,
+ * which the thumbnailer's transparent-body fallback painted dark navy — the
+ * "illegible styleframe thumbnail" bug. The `assetExists` probe re-points such
+ * refs at the composition's own directory; see `rewriteAssetPath`.
  */
 function rewriteRelativePaths(root: ParentNode, compPath: string, projectDir: string): void {
-  const resolvePath = (value: string) => resolvePreviewAssetPath(projectDir, compPath, value);
-  for (const el of root.querySelectorAll("[src], [href]")) {
-    for (const attr of ["src", "href"]) {
-      const value = (el.getAttribute(attr) || "").trim();
-      if (!value) continue;
-      const resolved = resolvePath(value);
-      if (resolved !== value) el.setAttribute(attr, resolved);
-    }
-  }
-  for (const el of root.querySelectorAll("[style]")) {
-    const style = el.getAttribute("style");
-    if (!style) continue;
-    const resolved = rewriteCssUrls(style, resolvePath);
-    if (resolved !== style) el.setAttribute("style", resolved);
-  }
+  const assetExists = (path: string) => existsSync(join(projectDir, path));
+  rewriteAssetPaths(
+    root.querySelectorAll("[src], [href]"),
+    compPath,
+    (el: Element, attr: string) => el.getAttribute(attr),
+    (el: Element, attr: string, value: string) => el.setAttribute(attr, value),
+    assetExists,
+  );
+  rewriteInlineStyleAssetUrls(
+    root.querySelectorAll("[style]"),
+    compPath,
+    (el: Element) => el.getAttribute("style"),
+    (el: Element, value: string) => el.setAttribute("style", value),
+    assetExists,
+  );
   for (const styleEl of root.querySelectorAll("style")) {
-    styleEl.textContent = rewriteCssUrls(styleEl.textContent || "", resolvePath);
+    styleEl.textContent = rewriteCssAssetUrls(styleEl.textContent || "", compPath, assetExists);
   }
 }
 

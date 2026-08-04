@@ -25,6 +25,7 @@
  * structured manifest rather than silently shipping an unplayable asset.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { parseHTML } from "linkedom";
@@ -147,7 +148,9 @@ export async function bakeMediaProxies(
         // (rewriteAssetPath to root-relative, then decodeUrlPathVariants via
         // resolveLocalAssetCandidates) so percent-encoded and root-absolute
         // srcs match the map keys the scan produced.
-        const rootRelativeSrc = rewriteAssetPath(entryPath, cleaned);
+        const rootRelativeSrc = rewriteAssetPath(entryPath, cleaned, (path) =>
+          existsSync(resolve(absProjectDir, path)),
+        );
         for (const candidate of resolveLocalAssetCandidates(absProjectDir, rootRelativeSrc)) {
           const archivePath = proxyByAbsolutePath.get(candidate);
           if (archivePath) return archivePath;
