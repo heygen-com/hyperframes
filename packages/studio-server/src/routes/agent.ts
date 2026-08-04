@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { createReadStream, existsSync } from "node:fs";
 import { delimiter, extname, join } from "node:path";
 import { Readable } from "node:stream";
@@ -30,7 +30,10 @@ import {
   agentKindSchema,
   agentQueueMoveSchema,
   agentRunRequestSchema,
+  customAgentRequestSchema,
+  type CustomAgent,
 } from "../helpers/agentSchemas.js";
+import { deleteCustomAgent, listCustomAgents, saveCustomAgent } from "../helpers/customAgents.js";
 
 /**
  * Prompts always arrive on stdin — never as an argv or shell string — so a
@@ -85,6 +88,16 @@ function resolveAgentIconPath(env: NodeJS.ProcessEnv = process.env): string | nu
   return path && existsSync(path) ? path : null;
 }
 
+/** Stream a harness' own mark from disk, refusing anything that is not an image. */
+function sendIconFile(c: Context, iconPath: string): Response {
+  if (!existsSync(iconPath)) return c.json({ error: "not found" }, 404);
+  const mime = ICON_MIME[extname(iconPath).toLowerCase()];
+  if (!mime) return c.json({ error: "unsupported icon type" }, 415);
+  return new Response(Readable.toWeb(createReadStream(iconPath)) as ReadableStream, {
+    headers: { "content-type": mime, "cache-control": "no-cache" },
+  });
+}
+
 const ICON_MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
@@ -100,19 +113,42 @@ function isOnPath(command: string): boolean {
   return paths.some((dir) => existsSync(join(dir, command)));
 }
 
+/** A harness the picker can offer, with whether its CLI is actually installed. */
+export interface AgentChoice extends AgentCommand {
+  /** Built-in kind, or the custom agent's own id. */
+  id: string;
+  available: boolean;
+  icon?: string;
+}
+
+function toChoice(agent: CustomAgent): AgentChoice {
+  return {
+    id: agent.id,
+    kind: "custom",
+    label: agent.label,
+    command: agent.command,
+    args: agent.args,
+    icon: agent.icon,
+    available: isOnPath(agent.command),
+  };
+}
+
 /**
- * Every harness Studio knows about, with whether it is actually installed. The
- * picker needs the unavailable ones too, so it can say why they are greyed out.
+ * Every harness Studio knows about: the env override, the built-in presets, and
+ * whatever the project registered itself. The picker needs the unavailable ones
+ * too, so it can say why they are greyed out.
  */
 export function listAgentCommands(
   env: NodeJS.ProcessEnv = process.env,
-): Array<AgentCommand & { available: boolean }> {
-  const custom = resolveCustomAgentCommand(env);
+  projectDir?: string,
+): AgentChoice[] {
+  const envAgent = resolveCustomAgentCommand(env);
   return [
-    ...(custom ? [{ ...custom, available: true }] : []),
+    ...(envAgent ? [{ ...envAgent, id: envAgent.kind, available: true }] : []),
     ...Object.values(AGENT_PRESETS)
-      .filter((preset) => preset.command !== custom?.command)
-      .map((preset) => ({ ...preset, available: isOnPath(preset.command) })),
+      .filter((preset) => preset.command !== envAgent?.command)
+      .map((preset) => ({ ...preset, id: preset.kind, available: isOnPath(preset.command) })),
+    ...(projectDir ? listCustomAgents(projectDir).map(toChoice) : []),
   ];
 }
 
@@ -130,10 +166,13 @@ export function resolveAgentCommand(
   env: NodeJS.ProcessEnv = process.env,
   /** A harness the user picked for this run, overriding the default. */
   requested?: string,
+  projectDir?: string,
 ): AgentCommand | null {
   if (requested) {
     return (
-      listAgentCommands(env).find((agent) => agent.kind === requested && agent.available) ?? null
+      listAgentCommands(env, projectDir).find(
+        (agent) => agent.id === requested && agent.available,
+      ) ?? null
     );
   }
 
@@ -155,11 +194,17 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       available: agent !== null,
       label: agent?.label ?? null,
       kind: agent?.kind ?? null,
-      agents: listAgentCommands().map(({ kind, label, available }) => ({
-        kind,
-        label,
-        available,
-      })),
+      agents: listAgentCommands(process.env, project.dir).map(
+        ({ id, kind, label, available, icon }) => ({
+          id,
+          kind,
+          label,
+          available,
+          iconUrl: icon
+            ? `/api/projects/${project.id}/agent/icon?agent=${encodeURIComponent(id)}`
+            : null,
+        }),
+      ),
       iconUrl: resolveAgentIconPath() ? `/api/projects/${project.id}/agent/icon` : null,
       jobs: listAgentJobs(project.id, project.dir),
     });
@@ -169,21 +214,50 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const url = new URL(c.req.url, "http://localhost");
-    const requested = agentKindSchema.safeParse(url.searchParams.get("agent"));
-    const kind = requested.success ? requested.data : resolveAgentCommand()?.kind;
+    const requestedId = url.searchParams.get("agent") ?? undefined;
+    const requestedKind = agentKindSchema.safeParse(requestedId);
+    const kind = requestedKind.success
+      ? requestedKind.data
+      : (resolveAgentCommand(process.env, requestedId, project.dir)?.kind ??
+        resolveAgentCommand()?.kind);
     if (!kind) return c.json({ models: [], defaultModel: null });
     const models = await listAgentModels(kind);
     return c.json({ models, defaultModel: models[0]?.id ?? null });
   });
 
+  // Register a harness of your own: same fields the built-in presets carry.
+  api.post("/projects/:id/agent/custom", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const parsed = customAgentRequestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: "label and command are required" }, 400);
+    }
+    const agent = saveCustomAgent(project.dir, parsed.data);
+    return c.json({ agent, agents: listCustomAgents(project.dir) });
+  });
+
+  api.delete("/projects/:id/agent/custom/:agentId", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    return c.json({ agents: deleteCustomAgent(project.dir, c.req.param("agentId")) });
+  });
+
   api.get("/projects/:id/agent/icon", async (c) => {
+    const url = new URL(c.req.url, "http://localhost");
+    const requested = url.searchParams.get("agent");
+    if (requested) {
+      const project = await adapter.resolveProject(c.req.param("id"));
+      const custom = project
+        ? listCustomAgents(project.dir).find((agent) => agent.id === requested)
+        : undefined;
+      if (custom?.icon) return sendIconFile(c, custom.icon);
+      return c.json({ error: "not found" }, 404);
+    }
     const iconPath = resolveAgentIconPath();
     if (!iconPath) return c.json({ error: "not found" }, 404);
-    const mime = ICON_MIME[extname(iconPath).toLowerCase()];
-    if (!mime) return c.json({ error: "unsupported icon type" }, 415);
-    return new Response(Readable.toWeb(createReadStream(iconPath)) as ReadableStream, {
-      headers: { "content-type": mime, "cache-control": "no-cache" },
-    });
+    return sendIconFile(c, iconPath);
   });
 
   api.post("/projects/:id/agent", async (c) => {
@@ -200,7 +274,7 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       agent: requested,
       model: requestedModel,
     } = parsed.data;
-    const agent = resolveAgentCommand(process.env, requested);
+    const agent = resolveAgentCommand(process.env, requested, project.dir);
     if (!agent) {
       if (requested) return c.json({ error: `${requested} is not installed.` }, 501);
       return c.json(

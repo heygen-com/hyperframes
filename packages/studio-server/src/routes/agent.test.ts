@@ -168,7 +168,7 @@ describe("resolveAgentCommand", () => {
 describe("listAgentCommands", () => {
   it("lists every harness with whether it is installed", () => {
     const agents = listAgentCommands({});
-    expect(agents.map((agent) => agent.kind)).toEqual(["claude", "codex", "hermes", "openclaw"]);
+    expect(agents.map((agent) => agent.id)).toEqual(["claude", "codex", "hermes", "openclaw"]);
     // Availability is a PATH lookup, so it just has to be a boolean here.
     expect(agents.every((agent) => typeof agent.available === "boolean")).toBe(true);
   });
@@ -407,6 +407,54 @@ describe("registerAgentRoutes", () => {
       time: 1.25,
     });
     await waitForIdle(app, "p9");
+  });
+
+  it("registers a custom harness and runs it by id", async () => {
+    const projectDir = createProjectDir();
+    const script = createFakeAgent();
+    const app = createApp(projectDir);
+
+    const added = await app.request("/projects/c1/agent/custom", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label: "Fake", command: process.execPath, args: [script] }),
+    });
+    expect(added.status).toBe(200);
+    const { agent } = (await added.json()) as { agent: { id: string } };
+    expect(agent.id).toBe("custom:fake");
+
+    // It shows up in the picker as an available harness…
+    const state = (await (await app.request("/projects/c1/agent")).json()) as {
+      agents: Array<{ id: string; label: string; available: boolean }>;
+    };
+    expect(state.agents).toContainEqual(
+      expect.objectContaining({ id: "custom:fake", label: "Fake", available: true }),
+    );
+
+    // …and a run can name it.
+    const res = await app.request("/projects/c1/agent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "do it", agent: "custom:fake" }),
+    });
+    expect(res.status).toBe(200);
+    const settled = await waitForIdle(app, "c1");
+    expect(settled[0]?.status).toBe("done");
+    expect(readFileSync(join(projectDir, "edited.txt"), "utf-8")).toContain("do it");
+
+    const removed = await app.request(`/projects/c1/agent/custom/${agent.id}`, {
+      method: "DELETE",
+    });
+    expect(((await removed.json()) as { agents: unknown[] }).agents).toEqual([]);
+  });
+
+  it("refuses a custom harness with no command", async () => {
+    const res = await createApp(createProjectDir()).request("/projects/c2/agent/custom", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label: "Nameless" }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("rejects an empty prompt", async () => {

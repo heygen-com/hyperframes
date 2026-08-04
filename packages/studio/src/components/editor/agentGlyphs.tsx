@@ -4,9 +4,22 @@ import { HERMES_MARK_DATA_URI } from "./agentMarkAssets";
 export type AgentKind = "claude" | "codex" | "hermes" | "openclaw" | "custom";
 
 export interface AgentOption {
+  /** Built-in kind, or a custom harness' own id. */
+  id: string;
   kind: AgentKind;
   label: string;
   available: boolean;
+  /** A mark the harness supplied, served by the studio server. */
+  iconUrl?: string | null;
+}
+
+/** The fields a user-registered harness carries — the presets' own shape. */
+export interface CustomAgentDraft {
+  label: string;
+  command: string;
+  args: string[];
+  icon?: string;
+  modelFlag?: string;
 }
 
 export interface AgentTargetRef {

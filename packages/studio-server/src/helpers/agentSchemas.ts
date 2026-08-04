@@ -25,12 +25,39 @@ export const agentTargetRefSchema = z.object({
 });
 export type AgentTargetRef = z.infer<typeof agentTargetRefSchema>;
 
+/**
+ * A harness the user registered themselves: the same fields Studio's built-in
+ * presets carry, so a custom CLI is a first-class option rather than an
+ * environment variable that only one machine knows about.
+ */
+export const customAgentSchema = z.object({
+  /** Stable id within a project, derived from the label when it is created. */
+  id: z.string().min(1),
+  label: z.string().min(1),
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  /** Absolute path or URL to the harness' own mark. */
+  icon: z.string().optional(),
+  /** Flag this CLI takes its model on, when it accepts one (e.g. `--model`). */
+  modelFlag: z.string().optional(),
+});
+export type CustomAgent = z.infer<typeof customAgentSchema>;
+
+/** POST body when registering one: the id is derived, not supplied. */
+export const customAgentRequestSchema = customAgentSchema.omit({ id: true });
+export type CustomAgentRequest = z.infer<typeof customAgentRequestSchema>;
+
+export const customAgentFileSchema = z.object({
+  agents: z.array(customAgentSchema).default([]),
+});
+
 export const agentRunRequestSchema = z.object({
   prompt: z.string().trim().min(1),
   instruction: z.string().optional(),
   target: z.string().optional(),
   targetRef: agentTargetRefSchema.optional(),
-  agent: agentKindSchema.optional(),
+  /** Harness id: a built-in kind, or a custom agent's id. */
+  agent: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
 });
 export type AgentRunRequest = z.infer<typeof agentRunRequestSchema>;

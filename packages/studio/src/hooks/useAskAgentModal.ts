@@ -8,6 +8,7 @@ import type {
   AgentKind,
   AgentModel,
   AgentOption,
+  CustomAgentDraft,
 } from "../components/editor/agentGlyphs";
 import { findElementForSelection } from "../components/editor/domEditing";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
@@ -64,12 +65,12 @@ export function useAskAgentModal({
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
   // Null means "whatever the server resolves"; a pick sticks for later runs, so
   // a queue can mix harnesses without re-choosing every time.
-  const [selectedAgentKind, setSelectedAgentKindState] = useState<AgentKind | null>(
-    () => readStudioUiPreferences().agentKind ?? null,
+  const [selectedAgentId, setSelectedAgentIdState] = useState<string | null>(
+    () => readStudioUiPreferences().agentId ?? null,
   );
-  const setSelectedAgentKind = useCallback((kind: AgentKind | null) => {
-    setSelectedAgentKindState(kind);
-    writeStudioUiPreferences({ agentKind: kind ?? undefined });
+  const setSelectedAgentId = useCallback((id: string | null) => {
+    setSelectedAgentIdState(id);
+    writeStudioUiPreferences({ agentId: id ?? undefined });
   }, []);
   const [agentModels, setAgentModels] = useState<AgentModel[]>([]);
   const [modelByKind, setModelByKind] = useState<Partial<Record<AgentKind, string>>>(
@@ -150,11 +151,11 @@ export function useAskAgentModal({
 
   /** The catalog decides what exists; Studio only asks for the active harness. */
   const refreshAgentModels = useCallback(
-    async (kind: AgentKind | null) => {
+    async (agent: string | null) => {
       const pid = projectId ?? projectIdRef.current;
       if (!pid) return;
       try {
-        const query = kind ? `?agent=${encodeURIComponent(kind)}` : "";
+        const query = agent ? `?agent=${encodeURIComponent(agent)}` : "";
         const response = await fetch(`/api/projects/${pid}/agent/models${query}`);
         if (!response.ok) return;
         const data = (await response.json()) as { models?: AgentModel[] };
@@ -220,7 +221,7 @@ export function useAskAgentModal({
           prompt: buildPrompt(selection, userInstruction),
           instruction: userInstruction,
           target: selection.label,
-          agent: selectedAgentKind ?? undefined,
+          agent: selectedAgentId ?? undefined,
           model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
           // Selection coordinates travel with the run so the tray can seek back
           // to the moment and re-select the element the agent edited.
@@ -245,7 +246,7 @@ export function useAskAgentModal({
           showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
         });
     },
-    [buildPrompt, modelByKind, projectIdRef, resolveSelection, selectedAgentKind, showToast],
+    [buildPrompt, modelByKind, projectIdRef, resolveSelection, selectedAgentId, showToast],
   );
 
   /** Seek to when a run was asked for and re-select the element it edited. */
@@ -319,6 +320,32 @@ export function useAskAgentModal({
     [patchAgentJobs],
   );
 
+  /** Register a harness of the user's own; it lands in the picker immediately. */
+  const addCustomAgent = useCallback(
+    async (draft: CustomAgentDraft): Promise<boolean> => {
+      const pid = projectId ?? projectIdRef.current;
+      if (!pid) return false;
+      try {
+        const response = await fetch(`/api/projects/${pid}/agent/custom`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(draft),
+        });
+        const data = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          showToast(data.error ?? "Could not add that harness.", "error");
+          return false;
+        }
+        await refreshAgentState();
+        return true;
+      } catch {
+        showToast("Could not add that harness.", "error");
+        return false;
+      }
+    },
+    [projectId, projectIdRef, refreshAgentState, showToast],
+  );
+
   const clearFinishedAgentJobs = useCallback(() => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -385,7 +412,7 @@ export function useAskAgentModal({
   // What every agent affordance should say: the user's pick when they made one,
   // else whatever the server auto-detected. Menus, the inspector footer and the
   // composer all read this, so they can never disagree about who will run.
-  const activeAgent = agentOptions.find((option) => option.kind === selectedAgentKind);
+  const activeAgent = agentOptions.find((option) => option.id === selectedAgentId);
   const activeKind = activeAgent?.kind ?? agentRunKind;
   activeKindRef.current = activeKind;
 
@@ -400,7 +427,8 @@ export function useAskAgentModal({
     agentOptions,
     agentModels,
     selectedModel: activeKind ? (modelByKind[activeKind] ?? null) : null,
-    selectedAgentKind,
+    selectedAgentId,
+    agentIconUrlById: activeAgent?.iconUrl ?? null,
     agentJobs,
 
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
@@ -416,8 +444,9 @@ export function useAskAgentModal({
     moveAgentJob,
     cancelAgentJob,
     revealAgentJobTarget,
-    setSelectedAgentKind,
+    setSelectedAgentId,
     setSelectedModel,
     refreshAgentModels,
+    addCustomAgent,
   };
 }

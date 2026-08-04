@@ -5,7 +5,14 @@ import {
   useDomEditActionsContextOptional,
   useDomEditSelectionContextOptional,
 } from "../../contexts/DomEditContext";
-import { AgentGlyph, type AgentKind, type AgentModel, type AgentOption } from "./agentGlyphs";
+import {
+  AgentGlyph,
+  type AgentKind,
+  type AgentModel,
+  type AgentOption,
+  type CustomAgentDraft,
+} from "./agentGlyphs";
+import { CustomAgentForm } from "./CustomAgentForm";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -41,6 +48,25 @@ export function resolveComposerPosition(
   };
 }
 
+function Chevron() {
+  return (
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0 opacity-70"
+      aria-hidden="true"
+    >
+      <path d="M4 6.5 L8 10.5 L12 6.5" />
+    </svg>
+  );
+}
+
 // Depth from layered shadow, not a border; the hairline ring only keeps the
 // edge legible against arbitrary composition content underneath. Radii are
 // concentric: 16px outer, 6px padding, 10px field.
@@ -65,6 +91,7 @@ export function InlineAgentComposer({
   agentModels = [],
   selectedModel = null,
   onSelectAgent,
+  onAddCustomAgent,
   onSelectModel,
   onRun,
   onCopy,
@@ -83,7 +110,8 @@ export function InlineAgentComposer({
   /** Tool-capable models for the active harness, cheapest first. */
   agentModels?: AgentModel[];
   selectedModel?: string | null;
-  onSelectAgent?: (kind: AgentKind) => void;
+  onSelectAgent?: (id: string) => void;
+  onAddCustomAgent?: (draft: CustomAgentDraft) => Promise<boolean>;
   onSelectModel?: (model: string | null) => void;
   onRun: (instruction: string) => void;
   onCopy: (instruction: string) => void;
@@ -91,6 +119,8 @@ export function InlineAgentComposer({
 }) {
   const [value, setValue] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [addingAgent, setAddingAgent] = useState(false);
   // Drag offset from the anchored position — the composer can cover the very
   // element being edited, so the header doubles as a drag handle.
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -162,33 +192,42 @@ export function InlineAgentComposer({
             field's placeholder) and doubles as the picker: a queue can mix
             harnesses, so the choice belongs next to the instruction. */}
         <button
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 -mx-1 text-[11px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 disabled:hover:bg-transparent"
-          disabled={!onSelectAgent || agentOptions.length < 2}
+          className="-mx-1 flex min-w-0 shrink items-center gap-1.5 rounded-md px-1 py-0.5 text-[11px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 disabled:hover:bg-transparent"
+          disabled={!onSelectAgent}
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => setPickerOpen((open) => !open)}
-          aria-haspopup={agentOptions.length > 1 ? "menu" : undefined}
+          onClick={() => {
+            setModelPickerOpen(false);
+            setPickerOpen((open) => !open);
+          }}
+          aria-haspopup="menu"
           aria-expanded={pickerOpen}
-          title={agentOptions.length > 1 ? "Run with a different harness" : undefined}
+          title="Run with a different harness"
         >
           {agentKind && <AgentGlyph kind={agentKind} size={11} iconUrl={agentIconUrl} />}
           <span className="truncate">{runLabel ?? selectionLabel}</span>
-          {onSelectAgent && agentOptions.length > 1 && (
-            <svg
-              width="9"
-              height="9"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0 opacity-70"
-              aria-hidden="true"
-            >
-              <path d="M4 6.5 L8 10.5 L12 6.5" />
-            </svg>
-          )}
+          {onSelectAgent && <Chevron />}
         </button>
+        {/* The model sits beside the harness, not inside its menu: which model
+            ran is the other half of "who will do this", and it changes often. */}
+        {onSelectModel && agentModels.length > 0 && (
+          <button
+            className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-0.5 text-[10px] leading-none text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              setPickerOpen(false);
+              setModelPickerOpen((open) => !open);
+            }}
+            aria-haspopup="menu"
+            aria-expanded={modelPickerOpen}
+            title={selectedModel ? `Runs with ${selectedModel}` : "Runs with the cheapest model"}
+          >
+            <span className="truncate">
+              {selectedModel ??
+                (agentModels[0]?.id ? `${agentModels[0].id} · cheapest` : "cheapest")}
+            </span>
+            <Chevron />
+          </button>
+        )}
         {runLabel && (
           <button
             className="rounded-md px-1.5 py-0.5 text-[10px] leading-none text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 active:scale-[0.96] disabled:opacity-40"
@@ -224,75 +263,89 @@ export function InlineAgentComposer({
 
       {pickerOpen && onSelectAgent && (
         <div className="mb-1.5 max-h-64 overflow-y-auto overscroll-contain rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
-          <ul className="space-y-0.5">
-            {agentOptions.map((option) => (
-              <li key={option.kind}>
-                <button
-                  className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70 disabled:opacity-35 disabled:hover:bg-transparent"
-                  disabled={!option.available}
-                  onClick={() => {
-                    onSelectAgent(option.kind);
-                    setPickerOpen(false);
-                    inputRef.current?.focus();
-                  }}
-                  title={option.available ? undefined : `${option.label} is not installed`}
-                >
-                  <AgentGlyph kind={option.kind} size={11} />
-                  <span className="truncate">{option.label}</span>
-                  {option.label === runLabel && (
-                    <span className="ml-auto text-[10px] text-studio-accent">in use</span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {agentModels.length > 0 && onSelectModel && (
-            <>
-              <div className="mt-1 flex items-center justify-between px-1.5 pb-1 pt-1.5 text-[10px] leading-none text-neutral-600">
-                <span>Model</span>
-                <span>cheapest first</span>
-              </div>
-              <ul className="space-y-0.5">
-                <li>
+          {addingAgent && onAddCustomAgent ? (
+            <CustomAgentForm
+              onSubmit={onAddCustomAgent}
+              onCancel={() => {
+                setAddingAgent(false);
+                setPickerOpen(false);
+              }}
+            />
+          ) : (
+            <ul className="space-y-0.5">
+              {agentOptions.map((option) => (
+                <li key={option.id}>
                   <button
-                    className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
+                    className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70 disabled:opacity-35 disabled:hover:bg-transparent"
+                    disabled={!option.available}
                     onClick={() => {
-                      onSelectModel(null);
+                      onSelectAgent(option.kind);
                       setPickerOpen(false);
+                      inputRef.current?.focus();
                     }}
+                    title={option.available ? undefined : `${option.label} is not installed`}
                   >
-                    <span className="truncate">Cheapest that can run</span>
-                    {!selectedModel && (
+                    <AgentGlyph kind={option.kind} size={11} iconUrl={option.iconUrl} />
+                    <span className="truncate">{option.label}</span>
+                    {option.label === runLabel && (
                       <span className="ml-auto text-[10px] text-studio-accent">in use</span>
                     )}
                   </button>
                 </li>
-                {agentModels.map((model) => (
-                  <li key={model.id}>
-                    <button
-                      className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
-                      onClick={() => {
-                        onSelectModel(model.id);
-                        setPickerOpen(false);
-                      }}
-                      title={model.id}
-                    >
-                      <span className="truncate">{model.name}</span>
-                      {model.inputCost !== undefined && (
-                        <span className="ml-auto shrink-0 text-[10px] text-neutral-600 tabular-nums">
-                          ${model.inputCost}/M
-                        </span>
-                      )}
-                      {selectedModel === model.id && (
-                        <span className="ml-1 shrink-0 text-[10px] text-studio-accent">in use</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
+              ))}
+            </ul>
+          )}
+          {onAddCustomAgent && !addingAgent && (
+            <button
+              className="mt-0.5 flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/70 hover:text-neutral-300"
+              onClick={() => setAddingAgent(true)}
+            >
+              <span className="text-[13px] leading-none">+</span>
+              <span>Add a harness…</span>
+            </button>
           )}
         </div>
+      )}
+
+      {modelPickerOpen && onSelectModel && agentModels.length > 0 && (
+        <ul className="mb-1.5 max-h-64 space-y-0.5 overflow-y-auto overscroll-contain rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
+          <li>
+            <button
+              className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
+              onClick={() => {
+                onSelectModel(null);
+                setModelPickerOpen(false);
+              }}
+            >
+              <span className="truncate">Cheapest that can run</span>
+              {!selectedModel && (
+                <span className="ml-auto text-[10px] text-studio-accent">in use</span>
+              )}
+            </button>
+          </li>
+          {agentModels.map((model) => (
+            <li key={model.id}>
+              <button
+                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
+                onClick={() => {
+                  onSelectModel(model.id);
+                  setModelPickerOpen(false);
+                }}
+                title={model.id}
+              >
+                <span className="truncate">{model.name}</span>
+                {model.inputCost !== undefined && (
+                  <span className="ml-auto shrink-0 text-[10px] text-neutral-600 tabular-nums">
+                    ${model.inputCost}/M
+                  </span>
+                )}
+                {selectedModel === model.id && (
+                  <span className="ml-1 shrink-0 text-[10px] text-studio-accent">in use</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
       <div className="flex items-end gap-1.5 rounded-[10px] bg-neutral-900/70 px-2 py-1.5 ring-1 ring-white/10 transition-[box-shadow] duration-150 ease-out focus-within:ring-studio-accent/40">
@@ -369,6 +422,7 @@ export function InlineAgentComposerHost({
     agentRunLabel,
     agentRunKind,
     agentIconUrl,
+    agentIconUrlById,
     agentOptions,
     agentModels,
     selectedModel,
@@ -384,14 +438,15 @@ export function InlineAgentComposerHost({
           canvas={canvas}
           runLabel={agentRunLabel}
           agentKind={agentRunKind}
-          agentIconUrl={agentIconUrl}
+          agentIconUrl={agentIconUrlById ?? agentIconUrl}
           agentOptions={agentOptions}
           agentModels={agentModels}
           selectedModel={selectedModel}
-          onSelectAgent={(kind) => {
-            actions.setSelectedAgentKind(kind);
-            void actions.refreshAgentModels(kind);
+          onSelectAgent={(id) => {
+            actions.setSelectedAgentId(id);
+            void actions.refreshAgentModels(id);
           }}
+          onAddCustomAgent={actions.addCustomAgent}
           onSelectModel={(model) => {
             if (agentRunKind) actions.setSelectedModel(agentRunKind, model);
           }}

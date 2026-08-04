@@ -85,9 +85,9 @@ describe("resolveComposerPosition", () => {
 });
 
 const AGENTS = [
-  { kind: "claude" as const, label: "Claude Code", available: true },
-  { kind: "codex" as const, label: "Codex", available: true },
-  { kind: "hermes" as const, label: "Hermes", available: false },
+  { id: "claude", kind: "claude" as const, label: "Claude Code", available: true },
+  { id: "codex", kind: "codex" as const, label: "Codex", available: true },
+  { id: "hermes", kind: "hermes" as const, label: "Hermes", available: false },
 ];
 
 describe("harness picker", () => {
@@ -120,12 +120,88 @@ describe("harness picker", () => {
     act(() => root.unmount());
   });
 
-  it("stays a plain label when only one harness exists", () => {
-    const { host, root } = renderComposer({ agentOptions: [AGENTS[0]!], onSelectAgent: vi.fn() });
+  it("still opens with one harness, so another can be added", () => {
+    const onAddCustomAgent = vi.fn();
+    const { host, root } = renderComposer({
+      agentOptions: [AGENTS[0]!],
+      onSelectAgent: vi.fn(),
+      onAddCustomAgent,
+    });
     act(() =>
       host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
-    expect(host.querySelectorAll("li button")).toHaveLength(0);
+    expect(host.textContent).toContain("Add a harness…");
+    act(() => root.unmount());
+  });
+
+  it("registers a harness of your own from the picker", async () => {
+    const onAddCustomAgent = vi.fn().mockResolvedValue(true);
+    const { host, root } = renderComposer({
+      agentOptions: AGENTS,
+      onSelectAgent: vi.fn(),
+      onAddCustomAgent,
+    });
+    act(() =>
+      host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    const addRow = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Add a harness"),
+    );
+    act(() => addRow?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    const fields = [...host.querySelectorAll("[data-custom-agent-form] input")];
+    const setValue = (input: Element, value: string) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    act(() => {
+      setValue(fields[0]!, "Pi");
+      setValue(fields[1]!, "pi");
+      setValue(fields[2]!, "--headless run");
+      setValue(fields[4]!, "--model");
+    });
+    const submit = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Add harness",
+    );
+    await act(async () => {
+      submit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onAddCustomAgent).toHaveBeenCalledWith({
+      label: "Pi",
+      command: "pi",
+      args: ["--headless", "run"],
+      icon: undefined,
+      modelFlag: "--model",
+    });
+    act(() => root.unmount());
+  });
+
+  it("puts the model beside the harness, not inside its menu", () => {
+    const onSelectModel = vi.fn();
+    const { host, root } = renderComposer({
+      agentOptions: AGENTS,
+      onSelectAgent: vi.fn(),
+      onSelectModel,
+      agentModels: [
+        { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", inputCost: 1, outputCost: 5 },
+        { id: "claude-opus-4-6", name: "Claude Opus 4.6", inputCost: 15, outputCost: 75 },
+      ],
+      selectedModel: "claude-haiku-4-5",
+    });
+
+    const header = host.querySelector("[data-inline-agent-composer]")?.firstElementChild;
+    expect(header?.textContent).toContain("claude-haiku-4-5");
+
+    const modelChip = [...(header?.querySelectorAll("button") ?? [])].find((b) =>
+      b.textContent?.includes("claude-haiku-4-5"),
+    );
+    act(() => modelChip?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const opus = [...host.querySelectorAll("li button")].find((b) =>
+      b.textContent?.includes("Claude Opus"),
+    );
+    act(() => opus?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSelectModel).toHaveBeenCalledWith("claude-opus-4-6");
     act(() => root.unmount());
   });
 });

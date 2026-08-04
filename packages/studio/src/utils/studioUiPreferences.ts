@@ -41,6 +41,8 @@ export interface StudioUiPreferences {
    * Undefined means "let the server decide".
    */
   agentKind?: StudioAgentKind;
+  /** Harness id (a built-in kind, or a custom harness' id). */
+  agentId?: string;
   /** Run tray left collapsed. */
   agentTrayCollapsed?: boolean;
   /** Where the user parked the run tray, in viewport pixels. */
@@ -141,6 +143,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
       Number.isFinite(parsed.timelineManualZoomPercent)
     ) {
       preferences.timelineManualZoomPercent = parsed.timelineManualZoomPercent;
+    }
+    if (typeof parsed.agentId === "string" && parsed.agentId) {
+      preferences.agentId = parsed.agentId;
     }
     if (AGENT_KINDS.includes(parsed.agentKind as StudioAgentKind)) {
       preferences.agentKind = parsed.agentKind as StudioAgentKind;

@@ -34,7 +34,8 @@ export interface DomEditActionsValue extends Pick<
   | "moveAgentJob"
   | "cancelAgentJob"
   | "revealAgentJobTarget"
-  | "setSelectedAgentKind"
+  | "setSelectedAgentId"
+  | "addCustomAgent"
   | "setSelectedModel"
   | "refreshAgentModels"
   | "handleBlockedDomMove"
@@ -98,10 +99,11 @@ export interface DomEditSelectionValue extends Pick<
   | "agentRunLabel"
   | "agentRunKind"
   | "agentIconUrl"
+  | "agentIconUrlById"
   | "agentOptions"
   | "agentModels"
   | "selectedModel"
-  | "selectedAgentKind"
+  | "selectedAgentId"
   | "agentJobs"
 > {}
 
@@ -150,10 +152,11 @@ export function DomEditProvider({
     agentRunLabel,
     agentRunKind,
     agentIconUrl,
+    agentIconUrlById,
     agentOptions,
     agentModels,
     selectedModel,
-    selectedAgentKind,
+    selectedAgentId,
     agentJobs,
     domEditSelectionRef,
     handleTimelineElementSelect,
@@ -185,7 +188,8 @@ export function DomEditProvider({
     moveAgentJob,
     cancelAgentJob,
     revealAgentJobTarget,
-    setSelectedAgentKind,
+    setSelectedAgentId,
+    addCustomAgent,
     setSelectedModel,
     refreshAgentModels,
     handleBlockedDomMove,
@@ -279,7 +283,8 @@ export function DomEditProvider({
       moveAgentJob,
       cancelAgentJob,
       revealAgentJobTarget,
-      setSelectedAgentKind,
+      setSelectedAgentId,
+      addCustomAgent,
       setSelectedModel,
       refreshAgentModels,
       handleBlockedDomMove,
@@ -355,7 +360,8 @@ export function DomEditProvider({
       moveAgentJob,
       cancelAgentJob,
       revealAgentJobTarget,
-      setSelectedAgentKind,
+      setSelectedAgentId,
+      addCustomAgent,
       setSelectedModel,
       refreshAgentModels,
       handleBlockedDomMove,
@@ -420,10 +426,11 @@ export function DomEditProvider({
       agentRunLabel,
       agentRunKind,
       agentIconUrl,
+      agentIconUrlById,
       agentOptions,
       agentModels,
       selectedModel,
-      selectedAgentKind,
+      selectedAgentId,
       agentJobs,
     }),
     [
@@ -441,10 +448,11 @@ export function DomEditProvider({
       agentRunLabel,
       agentRunKind,
       agentIconUrl,
+      agentIconUrlById,
       agentOptions,
       agentModels,
       selectedModel,
-      selectedAgentKind,
+      selectedAgentId,
       agentJobs,
     ],
   );
