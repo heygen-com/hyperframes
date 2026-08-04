@@ -1546,6 +1546,15 @@
     return (Math.atan2(b, a) * 180) / Math.PI;
   }
 
+  function ancestorTransformSignature(element, root) {
+    const transforms = [];
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      transforms.push(getComputedStyle(ancestor).transform || "none");
+      if (ancestor === root) break;
+    }
+    return transforms.join("|");
+  }
+
   window.__hyperframesRotationSample = function collectRotationSample() {
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
@@ -1572,6 +1581,7 @@
         w: round(box.width),
         h: round(box.height),
         angle: round(angle),
+        ancestorTransformSignature: ancestorTransformSignature(element, root),
       });
     }
     return samples;

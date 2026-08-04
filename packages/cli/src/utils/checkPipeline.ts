@@ -717,13 +717,20 @@ function isSizableRotation(group: RotationSample[]): boolean {
   return median(group.map((s) => s.w * s.h)) >= ROTATION_MIN_MEDIAN_AREA_PX;
 }
 
+/** Viewport-center motion is ambiguous while an ancestor transform changes:
+ * it may be carrying an otherwise correctly pivoted child across the canvas. */
+function hasStableAncestorTransforms(group: RotationSample[]): boolean {
+  return new Set(group.map((sample) => sample.ancestorTransformSignature)).size === 1;
+}
+
 /** Size/motion FP gates before the viewport-dependent center-drift test. */
 function isRotationDriftCandidate(group: RotationSample[]): boolean {
   return (
     hasEnoughRotationSamples(group) &&
     isActuallySpinning(group) &&
     isRotationSizeStable(group) &&
-    isSizableRotation(group)
+    isSizableRotation(group) &&
+    hasStableAncestorTransforms(group)
   );
 }
 
