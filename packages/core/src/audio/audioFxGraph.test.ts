@@ -341,3 +341,67 @@ describe("levels and per-channel state", () => {
     expect(buildFxChain(ctx, twoPole(300)).update(twoPole(2000))).toBe(true);
   });
 });
+
+describe("automatable parameters", () => {
+  /**
+   * The registry's `automatable` flag is what the panel and the scheduler both
+   * trust, and it is written by hand. Build every effect and check that each
+   * flagged knob really does reach an AudioParam — a flag that lies would
+   * offer an automation lane that silently does nothing.
+   */
+  it("exposes an AudioParam for every knob the registry marks automatable", () => {
+    for (const def of HF_AUDIO_FX) {
+      const ctx = new FakeCtx() as unknown as BaseAudioContext;
+      const handle = buildFxNode(ctx, def.id, defaultAudioFxParams(def.id));
+      const flagged = def.params
+        .filter((p) => p.kind === "number" && p.automatable)
+        .map((p) => p.key);
+      for (const key of flagged) {
+        const targets = handle.automation?.[key];
+        expect(
+          targets,
+          `${def.id}.${key} is flagged automatable but exposes no AudioParam`,
+        ).toBeTruthy();
+        expect(targets?.length, `${def.id}.${key} exposes an empty target list`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("exposes nothing the registry has not flagged", () => {
+    for (const def of HF_AUDIO_FX) {
+      const ctx = new FakeCtx() as unknown as BaseAudioContext;
+      const handle = buildFxNode(ctx, def.id, defaultAudioFxParams(def.id));
+      const flagged = new Set(
+        def.params.filter((p) => p.kind === "number" && p.automatable).map((p) => p.key),
+      );
+      for (const key of Object.keys(handle.automation ?? {})) {
+        expect(flagged.has(key), `${def.id}.${key} is exposed but not flagged automatable`).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it("maps a knob's own unit onto the AudioParam it drives", () => {
+    const ctx = new FakeCtx() as unknown as BaseAudioContext;
+    const delay = buildFxNode(ctx, "delay", { ...defaultAudioFxParams("delay"), time: 250 });
+    // The knob reads milliseconds; delayTime is in seconds.
+    expect(delay.automation?.time?.[0]?.map?.(250)).toBeCloseTo(0.25, 10);
+    // A wet/dry mix is two gains moving in opposition, not one.
+    const mix = delay.automation?.mix ?? [];
+    expect(mix.length).toBe(2);
+    expect(mix[0]?.map?.(0.3) ?? 0.3).toBeCloseTo(0.3, 10);
+    expect(mix[1]?.map?.(0.3)).toBeCloseTo(0.7, 10);
+  });
+
+  it("leaves a one-pole filter unexposed, since its coefficients are fixed", () => {
+    const ctx = new FakeCtx() as unknown as BaseAudioContext;
+    const twoPole = buildFxNode(ctx, "highpass", defaultAudioFxParams("highpass"));
+    expect(twoPole.automation?.frequency?.length).toBe(1);
+    const onePole = buildFxNode(ctx, "highpass", {
+      ...defaultAudioFxParams("highpass"),
+      poles: "1",
+    });
+    expect(onePole.automation?.frequency).toBeUndefined();
+  });
+});

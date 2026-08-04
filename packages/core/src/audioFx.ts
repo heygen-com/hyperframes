@@ -33,6 +33,15 @@ export interface HfAudioFxNumberParam {
   default: number;
   /** Frequency-style controls need a log knob to be usable. */
   scale?: "linear" | "log";
+  /**
+   * The knob is backed by an AudioParam, so an automation lane can drive it.
+   *
+   * Not every knob can be: a WaveShaper curve, a convolution impulse and a
+   * worklet's `processorOptions` are all set wholesale rather than scheduled.
+   * A graph builder must expose an AudioParam for every parameter flagged here
+   * — `audioFxGraph.test.ts` builds each effect and checks it.
+   */
+  automatable?: boolean;
   /** One line explaining what turning this does, shown on the control. */
   hint?: string;
 }
@@ -81,6 +90,7 @@ const freq = (
   step: 1,
   default: def,
   scale: "log",
+  automatable: true,
 });
 
 const qParam = (def = 0.707, hint = "Bandwidth — higher is narrower."): HfAudioFxNumberParam => ({
@@ -93,6 +103,7 @@ const qParam = (def = 0.707, hint = "Bandwidth — higher is narrower."): HfAudi
   step: 0.01,
   default: def,
   scale: "log",
+  automatable: true,
   hint,
 });
 
@@ -105,6 +116,7 @@ const gainDb = (min = -40, max = 40, def = 0): HfAudioFxNumberParam => ({
   max,
   step: 0.1,
   default: def,
+  automatable: true,
 });
 
 const poles: HfAudioFxEnumParam = {
@@ -411,6 +423,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "output",
+        automatable: true,
         label: "Output",
         unit: "dB",
         min: -24,
@@ -482,6 +495,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "time",
+        automatable: true,
         label: "Time",
         unit: "ms",
         min: 1,
@@ -495,6 +509,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "feedback",
+        automatable: true,
         label: "Feedback",
         unit: "",
         min: 0.01,
@@ -505,6 +520,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "mix",
+        automatable: true,
         label: "Mix",
         unit: "",
         min: 0,
@@ -524,6 +540,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "delay",
+        automatable: true,
         label: "Delay",
         unit: "ms",
         min: 1,
@@ -534,6 +551,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "depth",
+        automatable: true,
         label: "Depth",
         unit: "ms",
         min: 0,
@@ -544,6 +562,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "speed",
+        automatable: true,
         label: "Rate",
         unit: "Hz",
         min: 0.01,
@@ -554,6 +573,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "mix",
+        automatable: true,
         label: "Mix",
         unit: "",
         min: 0,
@@ -573,6 +593,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "in_gain",
+        automatable: true,
         label: "Input",
         unit: "",
         min: 0,
@@ -583,6 +604,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "out_gain",
+        automatable: true,
         label: "Output",
         unit: "",
         min: 0,
@@ -615,6 +637,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "speed",
+        automatable: true,
         label: "Rate",
         unit: "Hz",
         min: 0.1,
@@ -666,6 +689,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "wet",
+        automatable: true,
         label: "Wet",
         unit: "",
         min: 0,
@@ -676,6 +700,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "dry",
+        automatable: true,
         label: "Dry",
         unit: "",
         min: 0,
@@ -735,6 +760,14 @@ export function normalizeAudioFxParams(
 export interface HfAudioFxNode {
   /** Effect id from HF_AUDIO_FX. */
   type: string;
+  /**
+   * Stable handle for this node within its chain, minted when the node is
+   * added. Automation lanes address nodes by id (`fx.<id>.<param>`) so that
+   * reordering the chain never re-points a lane at a different effect. Older
+   * chains have no ids; they load fine and simply cannot be automated until
+   * the panel touches them.
+   */
+  id?: string;
   /** Set on nodes the carve analysis generated, so re-running replaces them
    *  instead of stacking another set on top of hand-added effects. */
   fromCarve?: boolean;
@@ -781,12 +814,19 @@ export function parseAudioFxChain(json: string): HfAudioFxChain {
     if (typeof n !== "object" || n === null) {
       throw new AudioFxChainError(`Node ${i} is not an object.`);
     }
-    const node = n as { type?: unknown; enabled?: unknown; params?: unknown; fromCarve?: unknown };
+    const node = n as {
+      type?: unknown;
+      id?: unknown;
+      enabled?: unknown;
+      params?: unknown;
+      fromCarve?: unknown;
+    };
     if (typeof node.type !== "string" || !BY_ID.has(node.type)) {
       throw new AudioFxChainError(`Node ${i} has unknown effect type: ${String(node.type)}`);
     }
     return {
       type: node.type,
+      ...(typeof node.id === "string" && node.id ? { id: node.id } : {}),
       ...(node.fromCarve === true ? { fromCarve: true as const } : {}),
       enabled: node.enabled !== false,
       params: normalizeAudioFxParams(
@@ -809,9 +849,23 @@ export function serializeAudioFxChain(chain: HfAudioFxChain): string {
     version: HF_AUDIO_FX_CHAIN_VERSION,
     nodes: chain.nodes.map((node) => ({
       type: node.type,
+      ...(node.id ? { id: node.id } : {}),
       ...(node.fromCarve === true ? { fromCarve: true } : {}),
       ...(node.enabled === false ? { enabled: false } : {}),
       params: normalizeAudioFxParams(node.type, node.params),
     })),
   });
+}
+
+/**
+ * Next free node id for a chain, as `n1`, `n2`, … — counted rather than random
+ * so that adding an effect produces the same document on every machine, which
+ * compositions require.
+ */
+export function mintAudioFxNodeId(chain: HfAudioFxChain): string {
+  const taken = new Set(chain.nodes.map((n) => n.id).filter(Boolean));
+  for (let i = 1; ; i += 1) {
+    const id = `n${i}`;
+    if (!taken.has(id)) return id;
+  }
 }

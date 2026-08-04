@@ -104,6 +104,12 @@
       "types": "./dist/audioCarve.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-automation": {
+      "source": "./src/audioAutomation.ts",
+      "runtime": "./dist/audioAutomation.js",
+      "types": "./dist/audioAutomation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",
