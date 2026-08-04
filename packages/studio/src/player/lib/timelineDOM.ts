@@ -138,6 +138,10 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const fxChain = hostEl.getAttribute("data-fx-chain");
+    if (fxChain) entry.fxChain = fxChain;
+    const automation = hostEl.getAttribute("data-automation");
+    if (automation) entry.automation = automation;
     entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
