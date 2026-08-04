@@ -552,7 +552,7 @@ export function TimelineLanes({
                               isSelected={isSelected}
                               lanes={automationLanes}
                               pps={pps}
-                              laneCount={(gsapAnimations.get(elementKey) ?? []).length}
+                              laneCount={laneCounts.get(elementKey) ?? 0}
                               accentColor={clipStyle.accent}
                               currentTime={currentTime}
                             />

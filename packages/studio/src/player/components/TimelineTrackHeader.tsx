@@ -4,6 +4,7 @@ import { Music } from "../../icons/SystemIcons";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
+import { automationLaneCountOf } from "./useTimelineTrackLayout";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LayerDisclosureRow } from "./LayerDisclosureRow";
 import { TrackClipCount } from "./TrackClipCount";
@@ -310,7 +311,11 @@ export function TimelineTrackHeader({
   // Label mode = keyframe view; the label column stays LABEL_COL_W (Timeline.tsx
   // owns the gutter past it, so a 0% diamond isn't clipped by this panel).
   const showTrackLabel = contentOrigin >= LABEL_COL_W;
-  const isKeyframeLayer = !!keyframeClip && lanes.length > 0;
+  // Automation counts as something to disclose: gating the caret on tweens alone
+  // left an audio clip's envelopes unreachable, since the track could not expand.
+  const disclosable =
+    lanes.length > 0 || (keyframeClip ? automationLaneCountOf(keyframeClip) : 0) > 0;
+  const isKeyframeLayer = !!keyframeClip && disclosable;
 
   return (
     <div
@@ -327,7 +332,7 @@ export function TimelineTrackHeader({
         borderRight: `1px solid ${theme.gutterBorder}`,
       }}
     >
-      {!keyframeClip || lanes.length === 0 ? (
+      {!keyframeClip || !disclosable ? (
         <PlainTrackHeader
           trackNumber={trackNumber}
           trackDisplayNumber={trackDisplayNumber}
