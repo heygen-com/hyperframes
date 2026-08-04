@@ -91,10 +91,17 @@ describe("FlatRow", () => {
   });
 
   it("restores its durable value when an async commit rejects", async () => {
-    const onCommit = vi.fn().mockRejectedValue(new Error("save failed"));
-    const { host, root } = renderInto(
-      <FlatRow label="X" value="22px" tier="explicitDefault" onCommit={onCommit} />,
+    let rejectCommit: ((error: Error) => void) | null = null;
+    const onCommit = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCommit = reject;
+        }),
     );
+    const row = (value: string) => (
+      <FlatRow label="X" value={value} tier="explicitDefault" onCommit={onCommit} />
+    );
+    const { host, root } = renderInto(row("22px"));
     const input = host.querySelector<HTMLInputElement>("input");
     if (!input) throw new Error("expected an input");
     act(() => {
@@ -106,7 +113,13 @@ describe("FlatRow", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("focusout", { bubbles: true }));
     });
-    await act(async () => Promise.resolve());
+    // The parent can echo the preview before persistence settles. That is not a
+    // durable acknowledgement and must not invalidate the pending rollback.
+    act(() => root.render(row("99px")));
+    await act(async () => {
+      rejectCommit?.(new Error("save failed"));
+      await Promise.resolve();
+    });
 
     expect(onCommit).toHaveBeenCalledWith("99px");
     expect(input.value).toBe("22px");

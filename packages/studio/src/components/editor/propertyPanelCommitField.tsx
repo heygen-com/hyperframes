@@ -30,6 +30,18 @@ export function CommitField({
   const focusedRef = useRef(false);
   const dirtyRef = useRef(false);
   const commitGenerationRef = useRef(0);
+  const pendingCommitRef = useRef<{
+    baseline: string;
+    optimistic: string;
+  } | null>(null);
+  const lastValueRef = useRef(value);
+  if (!Object.is(lastValueRef.current, value)) {
+    lastValueRef.current = value;
+    if (!Object.is(pendingCommitRef.current?.optimistic, value)) {
+      commitGenerationRef.current += 1;
+      pendingCommitRef.current = null;
+    }
+  }
   valueRef.current = value;
   draftRef.current = draft;
 
@@ -79,13 +91,22 @@ export function CommitField({
     onPreview?.(nextValue);
     if (nextValue !== valueRef.current) {
       const baseline = valueRef.current;
-      void Promise.resolve(onCommit(nextValue)).catch(() => {
+      pendingCommitRef.current = { baseline, optimistic: nextValue };
+      const rollback = () => {
         if (generation !== commitGenerationRef.current) return;
+        pendingCommitRef.current = null;
         // The source write is authoritative. A rejected mutation must not leave
         // the field showing an optimistic value that will disappear on seek.
         setDraft(baseline);
         onPreview?.(baseline);
-      });
+      };
+      try {
+        void Promise.resolve(onCommit(nextValue)).then(() => {
+          if (generation === commitGenerationRef.current) pendingCommitRef.current = null;
+        }, rollback);
+      } catch {
+        rollback();
+      }
     }
   };
   const cancelGestureFromKeyEvent = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -124,7 +145,6 @@ export function CommitField({
   };
 
   useEffect(() => {
-    commitGenerationRef.current += 1;
     if (focusedRef.current && dirtyRef.current) return;
     setDraft(value);
   }, [value]);

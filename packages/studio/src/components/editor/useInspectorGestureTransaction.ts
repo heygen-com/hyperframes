@@ -15,7 +15,20 @@ export function useInspectorGestureTransaction<T>({
   const previewRef = useRef(onPreview);
   const commitRef = useRef(onCommit);
   const generationRef = useRef(0);
-  if (!activeRef.current) sourceRef.current = sourceValue;
+  const pendingRef = useRef<{ before: T; latest: T } | null>(null);
+  const lastSourceValueRef = useRef(sourceValue);
+  if (!Object.is(lastSourceValueRef.current, sourceValue)) {
+    lastSourceValueRef.current = sourceValue;
+    const matchesOptimisticValue =
+      (activeRef.current && Object.is(activeRef.current.latest, sourceValue)) ||
+      (pendingRef.current && Object.is(pendingRef.current.latest, sourceValue));
+    if (!matchesOptimisticValue) {
+      generationRef.current += 1;
+      activeRef.current = null;
+      pendingRef.current = null;
+      sourceRef.current = sourceValue;
+    }
+  }
   previewRef.current = onPreview;
   commitRef.current = onCommit;
 
@@ -41,20 +54,23 @@ export function useInspectorGestureTransaction<T>({
     if (active && !Object.is(active.before, active.latest)) {
       const generation = ++generationRef.current;
       sourceRef.current = active.latest;
-      // Restore the captured baseline before the persistent commit captures
-      // rollback state. The commit owner remains responsible for applying its
-      // durable/optimistic value; some controls intentionally leave the
-      // baseline preview in place until their source value advances.
-      previewRef.current(active.before);
+      pendingRef.current = active;
       try {
         const result = commitRef.current(active.latest);
-        void Promise.resolve(result).catch(() => {
-          if (generation !== generationRef.current) return;
-          sourceRef.current = active.before;
-          previewRef.current(active.before);
-        });
+        void Promise.resolve(result).then(
+          () => {
+            if (generation === generationRef.current) pendingRef.current = null;
+          },
+          () => {
+            if (generation !== generationRef.current) return;
+            pendingRef.current = null;
+            sourceRef.current = active.before;
+            previewRef.current(active.before);
+          },
+        );
       } catch {
         if (generation !== generationRef.current) return;
+        pendingRef.current = null;
         sourceRef.current = active.before;
         previewRef.current(active.before);
       }
@@ -70,10 +86,6 @@ export function useInspectorGestureTransaction<T>({
       previewRef.current(active.before);
     }
   }, []);
-
-  useEffect(() => {
-    generationRef.current += 1;
-  }, [sourceValue]);
 
   useEffect(() => cancel, [cancel]);
 

@@ -25,9 +25,10 @@ describe("useInspectorGestureTransaction", () => {
       gesture?.preview(25);
       gesture?.settle();
     });
+    expect(onPreview.mock.calls.map(([value]) => value)).toEqual([25]);
     await act(async () => Promise.resolve());
 
-    expect(onPreview.mock.calls.map(([value]) => value)).toEqual([25, 10, 10]);
+    expect(onPreview.mock.calls.map(([value]) => value)).toEqual([25, 10]);
     act(() => root.unmount());
   });
 

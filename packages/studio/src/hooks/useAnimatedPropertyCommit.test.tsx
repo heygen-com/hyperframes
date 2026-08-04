@@ -44,13 +44,38 @@ function renderHookWith(
   onMutation: (mutation: Record<string, unknown>, label: string) => unknown | Promise<unknown>,
   onReady: (commit: Commit) => void,
   bumpGsapCache = vi.fn(),
+  onBatch?: (
+    calls: Array<{ mutation: Record<string, unknown>; options: { label: string } }>,
+    label: string,
+  ) => unknown | Promise<unknown>,
 ) {
   function Harness() {
-    const { commitAnimatedProperties } = useAnimatedPropertyCommit({
-      selectedGsapAnimations: animations,
-      gsapCommitMutation: async (_sel, mutation, options) => {
+    const gsapCommitMutation = Object.assign(
+      async (
+        _sel: DomEditSelection,
+        mutation: Record<string, unknown>,
+        options: { label: string },
+      ) => {
         await onMutation(mutation, options.label);
       },
+      onBatch
+        ? {
+            batch: async (
+              calls: Array<{
+                selection: DomEditSelection;
+                mutation: Record<string, unknown>;
+                options: { label: string };
+              }>,
+              options: { label: string },
+            ) => {
+              await onBatch(calls, options.label);
+            },
+          }
+        : {},
+    );
+    const { commitAnimatedProperties } = useAnimatedPropertyCommit({
+      selectedGsapAnimations: animations,
+      gsapCommitMutation,
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
       previewIframeRef: { current: null },
@@ -103,6 +128,30 @@ describe("useAnimatedPropertyCommit — ownership and rejection propagation", ()
 
     await expect(commit(selection, { x: 50 })).rejects.toMatchObject({
       reason: "source-uneditable",
+    });
+    expect(mutations).toHaveLength(0);
+    act(() => root.unmount());
+  });
+
+  it("rejects every property before a mixed-group commit can partially persist", async () => {
+    const helperOpacity = {
+      id: "#box-to-visual",
+      targetSelector: "#box",
+      propertyGroup: "visual",
+      method: "to",
+      properties: { opacity: 0.5 },
+      provenance: { kind: "helper", fn: "fade", callSite: 1 },
+    } as unknown as GsapAnimation;
+    const mutations: Array<Record<string, unknown>> = [];
+    let commit!: Commit;
+    const root = renderHookWith(
+      [helperOpacity],
+      (mutation) => mutations.push(mutation),
+      (ready) => (commit = ready),
+    );
+
+    await expect(commit(selection, { x: 50, opacity: 0.8 })).rejects.toMatchObject({
+      reason: "unroll-required",
     });
     expect(mutations).toHaveLength(0);
     act(() => root.unmount());
@@ -259,5 +308,57 @@ describe("commitStaticSet group routing", () => {
     expect(committed[0]!.label).toBe("Resize layer");
     expect(committed.some(({ mutation }) => mutation.type === "add")).toBe(false);
     expect(committed[0]!.mutation.animationId).not.toBe(positionSet.id);
+  });
+
+  it("persists multiple property groups in one atomic batch", async () => {
+    const committed: Array<{ mutation: Record<string, unknown>; label: string }> = [];
+    const batches: Array<{
+      calls: Array<{ mutation: Record<string, unknown>; options: { label: string } }>;
+      label: string;
+    }> = [];
+    let commit!: Commit;
+    const root = renderHookWith(
+      [positionSet],
+      (mutation, label) => committed.push({ mutation, label }),
+      (ready) => (commit = ready),
+      vi.fn(),
+      (calls, label) => batches.push({ calls, label }),
+    );
+
+    await act(async () => {
+      await commit(selection, { x: 400, width: 500 });
+    });
+
+    expect(committed).toHaveLength(0);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.label).toBe("Set properties");
+    expect(batches[0]!.calls.map(({ mutation }) => mutation)).toEqual([
+      {
+        type: "update-properties",
+        animationId: positionSet.id,
+        properties: { x: 400 },
+      },
+      {
+        type: "add",
+        targetSelector: "#box",
+        method: "set",
+        position: 0,
+        properties: { width: 500 },
+        global: true,
+      },
+    ]);
+    act(() => root.unmount());
+  });
+
+  it("fails before sending anything when an atomic multi-group batch is unavailable", async () => {
+    const committed: Array<{ mutation: Record<string, unknown>; label: string }> = [];
+    let commit!: Commit;
+    const root = renderStaticHook(committed, (ready) => (commit = ready));
+
+    await expect(commit(selection, { x: 400, width: 500 })).rejects.toThrow(
+      "Atomic GSAP property batch is unavailable",
+    );
+    expect(committed).toHaveLength(0);
+    act(() => root.unmount());
   });
 });
