@@ -3,6 +3,8 @@ import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
+import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
+import { useAutomationLanes } from "./useAutomationLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
@@ -106,6 +108,7 @@ export function TimelineLanes({
   // a CSS `#id` selector, so they come out here and the prefix stays plain.
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
+  const automationLanes = useAutomationLanes();
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
   const toggleClipExpandedTracked = (key: string) => {
     const willExpand = !expandedClipIds.has(key);
@@ -542,8 +545,22 @@ export function TimelineLanes({
                           Promise.resolve(false)
                         }
                         suppressClickRef={suppressClickRef}
+                        footer={
+                          showsLanes && isAudioTimelineElement(el) ? (
+                            <TimelineAutomationLaneSlot
+                              element={previewElement}
+                              isSelected={isSelected}
+                              lanes={automationLanes}
+                              pps={pps}
+                              laneCount={(gsapAnimations.get(elementKey) ?? []).length}
+                              accentColor={clipStyle.accent}
+                              currentTime={currentTime}
+                            />
+                          ) : null
+                        }
                       />
                     );
+
                     // Keep one keyed top-level child per element. Returning an
                     // array here makes React reconcile the outer array by
                     // position, so a window shift remounts otherwise stable
