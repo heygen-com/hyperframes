@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { basename } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 /** Which harness the command belongs to — drives the icon Studio shows. */
 export type AgentKind = "claude" | "codex" | "hermes" | "openclaw" | "custom";
@@ -20,7 +21,7 @@ export interface AgentJob {
   /** Element or clip the instruction targets, for the run list. */
   target: string;
   instruction: string;
-  status: "queued" | "running" | "done" | "failed";
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
   /** Latest thing the agent did — the tool call or line it is on right now. */
   activity: string;
   message?: string;
@@ -28,27 +29,182 @@ export interface AgentJob {
   endedAt?: number;
 }
 
+/** Everything needed to start a queued job once its turn comes. */
+interface PendingRun {
+  job: AgentJob;
+  agent: AgentCommand;
+  prompt: string;
+  cwd: string;
+}
+
 /**
  * Runs live on the server, not in the tab: a reload re-reads them from here, so
  * in-flight work is never lost behind a refresh. Per project the queue is
  * serial — two agents rewriting the same composition would clobber each other.
+ *
+ * The waiting jobs are an explicit array rather than a promise chain, because
+ * the queue is editable: entries can be reordered or dropped before they start.
  */
 const jobsByProject = new Map<string, AgentJob[]>();
-const queueByProject = new Map<string, Promise<void>>();
+const pendingByProject = new Map<string, PendingRun[]>();
+const runningByProject = new Map<string, ChildProcess>();
 
 const MAX_JOBS_PER_PROJECT = 24;
+/** Where a project's run history lives, next to the rest of Studio's state. */
+const RUN_LOG_PATH = join(".hyperframes", "agent-runs.jsonl");
+const HYDRATED_PROJECTS = new Set<string>();
 const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 
-export function listAgentJobs(projectId: string): AgentJob[] {
+/**
+ * Append a settled run to the project's log. The tray only keeps the recent
+ * ones in memory; this file is the durable record of what was asked for, on
+ * which element, and how it went — one JSON object per line, so it is greppable
+ * by hand and re-readable by Studio.
+ */
+function appendRunLog(projectDir: string, job: AgentJob): void {
+  const file = join(projectDir, RUN_LOG_PATH);
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(
+      file,
+      `${JSON.stringify({
+        at: new Date(job.startedAt).toISOString(),
+        target: job.target,
+        instruction: job.instruction,
+        status: job.status,
+        seconds: Math.round(((job.endedAt ?? Date.now()) - job.startedAt) / 1000),
+        agent: job.label,
+        result: job.message ?? "",
+      })}\n`,
+      "utf-8",
+    );
+  } catch {
+    // A read-only project directory must not take the run down with it.
+  }
+}
+
+function isLoggedRun(value: unknown): value is {
+  at: string;
+  target: string;
+  instruction: string;
+  status: AgentJob["status"];
+  seconds: number;
+  agent: string;
+  result: string;
+} {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { instruction?: unknown }).instruction === "string"
+  );
+}
+
+/** Re-seat past runs after a server restart so the history survives it. */
+function hydrateFromRunLog(projectId: string, projectDir: string): void {
+  if (HYDRATED_PROJECTS.has(projectId)) return;
+  HYDRATED_PROJECTS.add(projectId);
+
+  const file = join(projectDir, RUN_LOG_PATH);
+  if (!existsSync(file)) return;
+  try {
+    const lines = readFileSync(file, "utf-8").trim().split("\n").slice(-MAX_JOBS_PER_PROJECT);
+    const restored = lines.flatMap((line): AgentJob[] => {
+      let entry: unknown;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        return [];
+      }
+      if (!isLoggedRun(entry)) return [];
+      const startedAt = Date.parse(entry.at);
+      return [
+        {
+          id: randomUUID(),
+          projectId,
+          kind: "custom",
+          label: entry.agent,
+          target: entry.target,
+          instruction: entry.instruction,
+          // Anything that was mid-flight when the server stopped is over now.
+          status: entry.status === "done" ? "done" : entry.status,
+          activity: "",
+          message: entry.result || undefined,
+          startedAt,
+          endedAt: startedAt + entry.seconds * 1000,
+        },
+      ];
+    });
+    jobsByProject.set(projectId, [...restored, ...(jobsByProject.get(projectId) ?? [])]);
+  } catch {
+    // A corrupt log is history, not state — start the tray empty instead.
+  }
+}
+
+export function listAgentJobs(projectId: string, projectDir?: string): AgentJob[] {
+  if (projectDir) hydrateFromRunLog(projectId, projectDir);
   return [...(jobsByProject.get(projectId) ?? [])].reverse();
 }
 
+function isActive(job: AgentJob): boolean {
+  return job.status === "queued" || job.status === "running";
+}
+
 export function clearFinishedAgentJobs(projectId: string): void {
+  jobsByProject.set(projectId, (jobsByProject.get(projectId) ?? []).filter(isActive));
+}
+
+/**
+ * Drop a run. A queued one never starts; a running one is killed, which is the
+ * only way to stop an agent that is off doing the wrong thing.
+ */
+export function cancelAgentJob(projectId: string, jobId: string, dir?: string): AgentJob | null {
+  const job = (jobsByProject.get(projectId) ?? []).find((candidate) => candidate.id === jobId);
+  if (!job || !isActive(job)) return null;
+
+  if (job.status === "queued") {
+    pendingByProject.set(
+      projectId,
+      (pendingByProject.get(projectId) ?? []).filter((pending) => pending.job.id !== jobId),
+    );
+    job.status = "cancelled";
+    job.message = "Cancelled before it started.";
+    job.endedAt = Date.now();
+    if (dir) appendRunLog(dir, job);
+    return job;
+  }
+
+  // Running: mark first so the close handler doesn't overwrite the reason.
+  job.status = "cancelled";
+  job.message = "Stopped mid-run.";
+  runningByProject.get(projectId)?.kill("SIGTERM");
+  return job;
+}
+
+/**
+ * Move a queued run to a new slot. Positions index the queue itself (0 is next
+ * up), so the caller never has to reason about finished or running entries.
+ */
+export function moveAgentJob(projectId: string, jobId: string, toIndex: number): boolean {
+  const pending = pendingByProject.get(projectId) ?? [];
+  const from = pending.findIndex((entry) => entry.job.id === jobId);
+  if (from === -1) return false;
+
+  const to = Math.max(0, Math.min(pending.length - 1, toIndex));
+  if (to === from) return true;
+
+  const [entry] = pending.splice(from, 1);
+  pending.splice(to, 0, entry!);
+  pendingByProject.set(projectId, pending);
+
+  // The visible list is newest-first; keep it consistent with the run order by
+  // re-seating the queued jobs in their new sequence.
   const jobs = jobsByProject.get(projectId) ?? [];
-  jobsByProject.set(
-    projectId,
-    jobs.filter((job) => job.status === "queued" || job.status === "running"),
-  );
+  const queuedSlots = jobs.flatMap((job, index) => (job.status === "queued" ? [index] : []));
+  const reordered = [...pending].reverse().map((item) => item.job);
+  queuedSlots.forEach((slot, index) => {
+    jobs[slot] = reordered[index]!;
+  });
+  return true;
 }
 
 /** Compact "what is it doing right now" line from one stdout chunk. */
@@ -104,11 +260,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function runAgent(job: AgentJob, agent: AgentCommand, prompt: string, cwd: string): Promise<void> {
-  return new Promise((resolve) => {
+function runAgent(projectId: string, { job, agent, prompt, cwd }: PendingRun): Promise<void> {
+  const settle = (resolve: () => void) => {
+    appendRunLog(cwd, job);
+    resolve();
+  };
+  return new Promise<void>((resolve) => {
     job.status = "running";
     job.activity = "Starting…";
     const child = spawn(agent.command, agent.args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    runningByProject.set(projectId, child);
     let output = "";
     let pending = "";
 
@@ -130,13 +291,21 @@ function runAgent(job: AgentJob, agent: AgentCommand, prompt: string, cwd: strin
     child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
     child.on("error", (err) => {
       clearTimeout(timer);
+      runningByProject.delete(projectId);
       job.status = "failed";
       job.message = err.message;
       job.endedAt = Date.now();
-      resolve();
+      settle(resolve);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      runningByProject.delete(projectId);
+      if (job.status === "cancelled") {
+        job.activity = "";
+        job.endedAt = Date.now();
+        settle(resolve);
+        return;
+      }
       const failed = code !== 0;
       job.status = failed ? "failed" : "done";
       job.message =
@@ -146,7 +315,7 @@ function runAgent(job: AgentJob, agent: AgentCommand, prompt: string, cwd: strin
           : (readResultMessage(agent.kind, output) ?? `${agent.label} finished.`));
       job.activity = "";
       job.endedAt = Date.now();
-      resolve();
+      settle(resolve);
     });
 
     child.stdin.end(prompt);
@@ -181,11 +350,21 @@ export function enqueueAgentJob(opts: {
   jobs.push(job);
   jobsByProject.set(opts.projectId, jobs.slice(-MAX_JOBS_PER_PROJECT));
 
-  const tail = queueByProject.get(opts.projectId) ?? Promise.resolve();
-  queueByProject.set(
-    opts.projectId,
-    tail.then(() => runAgent(job, opts.agent, opts.prompt, opts.projectDir)),
-  );
+  const pending = pendingByProject.get(opts.projectId) ?? [];
+  pending.push({ job, agent: opts.agent, prompt: opts.prompt, cwd: opts.projectDir });
+  pendingByProject.set(opts.projectId, pending);
+  void pump(opts.projectId);
 
   return job;
+}
+
+/** Start the next queued run for a project, one at a time. */
+async function pump(projectId: string): Promise<void> {
+  if (runningByProject.has(projectId)) return;
+  const next = (pendingByProject.get(projectId) ?? []).shift();
+  if (!next) return;
+  if (next.job.status !== "queued") return pump(projectId);
+
+  await runAgent(projectId, next);
+  await pump(projectId);
 }

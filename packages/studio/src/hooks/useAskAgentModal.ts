@@ -170,6 +170,41 @@ export function useAskAgentModal({
     [buildPrompt, projectIdRef, resolveSelection, showToast],
   );
 
+  const patchAgentJobs = useCallback(
+    (path: string, init: RequestInit) => {
+      const pid = projectId ?? projectIdRef.current;
+      if (!pid) return;
+      void fetch(`/api/projects/${pid}/agent/jobs${path}`, init)
+        .then(async (response) => {
+          const data = (await response.json()) as { error?: string; jobs?: AgentJob[] };
+          if (!response.ok) {
+            showToast(data.error ?? "Could not update the queue.", "error");
+            return;
+          }
+          setAgentJobs(data.jobs ?? []);
+        })
+        .catch(() => showToast("Could not update the queue.", "error"));
+    },
+    [projectId, projectIdRef, showToast],
+  );
+
+  /** Reorder a waiting run; `position` indexes the queue, 0 is next up. */
+  const moveAgentJob = useCallback(
+    (jobId: string, position: number) =>
+      patchAgentJobs(`/${jobId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ position }),
+      }),
+    [patchAgentJobs],
+  );
+
+  /** Drop a queued run, or stop one that is already going. */
+  const cancelAgentJob = useCallback(
+    (jobId: string) => patchAgentJobs(`/${jobId}`, { method: "DELETE" }),
+    [patchAgentJobs],
+  );
+
   const clearFinishedAgentJobs = useCallback(() => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -207,12 +242,12 @@ export function useAskAgentModal({
     void refreshAgentState();
   }, [refreshAgentState]);
 
-  // Poll only while something is queued or running — an idle tray costs nothing.
+  // Fast while something is in flight, slow otherwise — a run can also be
+  // started from another tab or the CLI, and the tray should still notice.
   const hasActiveJob = agentJobs.some((job) => job.status === "queued" || job.status === "running");
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!hasActiveJob) return;
-    const timer = setInterval(() => void refreshAgentState(), 1200);
+    const timer = setInterval(() => void refreshAgentState(), hasActiveJob ? 1200 : 8000);
     return () => clearInterval(timer);
   }, [hasActiveJob, refreshAgentState]);
 
@@ -253,5 +288,7 @@ export function useAskAgentModal({
     handleAgentModalSubmit,
     handleAgentModalRun,
     clearFinishedAgentJobs,
+    moveAgentJob,
+    cancelAgentJob,
   };
 }

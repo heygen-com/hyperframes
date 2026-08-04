@@ -7,7 +7,7 @@ export interface AgentJob {
   label: string;
   target: string;
   instruction: string;
-  status: "queued" | "running" | "done" | "failed";
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
   activity: string;
   message?: string;
   startedAt: number;

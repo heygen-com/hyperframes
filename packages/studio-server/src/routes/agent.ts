@@ -4,9 +4,11 @@ import { delimiter, extname, join } from "node:path";
 import { Readable } from "node:stream";
 import type { StudioApiAdapter } from "../types.js";
 import {
+  cancelAgentJob,
   clearFinishedAgentJobs,
   enqueueAgentJob,
   listAgentJobs,
+  moveAgentJob,
   type AgentCommand,
 } from "../helpers/agentJobs.js";
 
@@ -117,7 +119,7 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       label: agent?.label ?? null,
       kind: agent?.kind ?? null,
       iconUrl: resolveAgentIconPath() ? `/api/projects/${project.id}/agent/icon` : null,
-      jobs: listAgentJobs(project.id),
+      jobs: listAgentJobs(project.id, project.dir),
     });
   });
 
@@ -166,10 +168,34 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     return c.json({ job });
   });
 
+  // Reorder a waiting run. `position` indexes the queue (0 is next up).
+  api.patch("/projects/:id/agent/jobs/:jobId", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const body = (await c.req.json().catch(() => null)) as { position?: unknown } | null;
+    const position = typeof body?.position === "number" ? Math.trunc(body.position) : null;
+    if (position === null) return c.json({ error: "position required" }, 400);
+
+    if (!moveAgentJob(project.id, c.req.param("jobId"), position)) {
+      return c.json({ error: "job is not queued" }, 409);
+    }
+    return c.json({ jobs: listAgentJobs(project.id, project.dir) });
+  });
+
+  api.delete("/projects/:id/agent/jobs/:jobId", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    if (!cancelAgentJob(project.id, c.req.param("jobId"), project.dir)) {
+      return c.json({ error: "job already finished" }, 409);
+    }
+    return c.json({ jobs: listAgentJobs(project.id, project.dir) });
+  });
+
   api.delete("/projects/:id/agent/jobs", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     clearFinishedAgentJobs(project.id);
-    return c.json({ jobs: listAgentJobs(project.id) });
+    return c.json({ jobs: listAgentJobs(project.id, project.dir) });
   });
 }

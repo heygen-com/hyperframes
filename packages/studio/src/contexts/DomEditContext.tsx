@@ -31,6 +31,8 @@ export interface DomEditActionsValue extends Pick<
   | "handleAgentModalSubmit"
   | "handleAgentModalRun"
   | "clearFinishedAgentJobs"
+  | "moveAgentJob"
+  | "cancelAgentJob"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
@@ -168,6 +170,8 @@ export function DomEditProvider({
     handleAgentModalSubmit,
     handleAgentModalRun,
     clearFinishedAgentJobs,
+    moveAgentJob,
+    cancelAgentJob,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -256,6 +260,8 @@ export function DomEditProvider({
       handleAgentModalSubmit,
       handleAgentModalRun,
       clearFinishedAgentJobs,
+      moveAgentJob,
+      cancelAgentJob,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -326,6 +332,8 @@ export function DomEditProvider({
       handleAgentModalSubmit,
       handleAgentModalRun,
       clearFinishedAgentJobs,
+      moveAgentJob,
+      cancelAgentJob,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,

@@ -158,6 +158,8 @@ export function useDomEditSession({
     handleAgentModalSubmit,
     handleAgentModalRun,
     clearFinishedAgentJobs,
+    moveAgentJob,
+    cancelAgentJob,
   } = useAskAgentModal({
     projectId,
     activeCompPath,
@@ -507,6 +509,8 @@ export function useDomEditSession({
     handleAgentModalSubmit,
     handleAgentModalRun,
     clearFinishedAgentJobs,
+    moveAgentJob,
+    cancelAgentJob,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,

@@ -115,8 +115,9 @@ describe("InlineAgentComposer", () => {
 
   it("names the harness in the header and the element in the field", () => {
     const { host, root } = renderComposer({ selectionLabel: "Card" });
-    const header = host.querySelector<HTMLElement>("[data-inline-agent-composer]")
-      ?.firstElementChild;
+    const header = host.querySelector<HTMLElement>(
+      "[data-inline-agent-composer]",
+    )?.firstElementChild;
     expect(header?.textContent).toContain("Claude Code");
     expect(header?.textContent).not.toContain("Card");
     expect(host.querySelector("textarea")?.placeholder).toBe("Describe a change to Card…");
@@ -125,9 +126,9 @@ describe("InlineAgentComposer", () => {
 
   it("falls back to the element name when no harness is installed", () => {
     const { host, root } = renderComposer({ runLabel: null, selectionLabel: "Card" });
-    expect(host.querySelector("[data-inline-agent-composer]")?.firstElementChild?.textContent).toContain(
-      "Card",
-    );
+    expect(
+      host.querySelector("[data-inline-agent-composer]")?.firstElementChild?.textContent,
+    ).toContain("Card");
     act(() => root.unmount());
   });
 

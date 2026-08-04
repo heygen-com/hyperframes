@@ -277,6 +277,8 @@ export function InlineAgentComposerHost({
         jobs={agentJobs}
         agentIconUrl={agentIconUrl}
         onClearFinished={actions.clearFinishedAgentJobs}
+        onMoveJob={actions.moveAgentJob}
+        onCancelJob={actions.cancelAgentJob}
       />
     </>
   );
