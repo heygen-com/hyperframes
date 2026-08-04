@@ -265,11 +265,27 @@ export function AgentRunTray({
                 </div>
                 <div className="mt-1 flex items-center gap-1.5 pl-[18px]">
                   {job.targetRef && onRevealTarget ? (
+                    // Reads as a control, not a caption: a target glyph, a
+                    // resting fill and a pointer, because nobody clicks a label
+                    // that looks like the text beside it.
                     <button
-                      className="-mx-1 shrink-0 rounded px-1 py-0.5 text-[10px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/70 hover:text-studio-accent active:scale-[0.96]"
+                      className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] leading-none text-neutral-400 ring-1 ring-inset ring-white/10 transition-colors duration-150 ease-out hover:bg-studio-accent/15 hover:text-studio-accent hover:ring-studio-accent/30 active:scale-[0.96]"
                       onClick={() => onRevealTarget(job)}
-                      title="Seek here and select the element this run edited"
+                      aria-label={`Show ${job.target}, the element this run edited`}
                     >
+                      <svg
+                        width="9"
+                        height="9"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                      >
+                        <circle cx="8" cy="8" r="3.25" />
+                        <path d="M8 1.5 V3.5 M8 12.5 V14.5 M1.5 8 H3.5 M12.5 8 H14.5" />
+                      </svg>
                       {job.target}
                     </button>
                   ) : (

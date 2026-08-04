@@ -14,6 +14,8 @@ import {
   type CustomAgentDraft,
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
+import { AgentAnswerBubble } from "./AgentAnswerBubble";
+import { dismissAnswer, isAnswerDismissed } from "../../utils/agentAnswers";
 import { CANVAS_OVERLAY_CONTROL_Z, FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
 import {
   agentDraftKey,
@@ -555,6 +557,7 @@ export function InlineAgentComposerHost({
   /** The canvas overlay these coordinates are relative to. */
   overlayEl: HTMLElement | null;
 }) {
+  const [dismissedAnswers, setDismissedAnswers] = useState<string[]>([]);
   const actions = useDomEditActionsContextOptional();
   const selectionValue = useDomEditSelectionContextOptional();
   if (!actions || !selectionValue) return null;
@@ -587,6 +590,20 @@ export function InlineAgentComposerHost({
     agentJobs,
   } = selectionValue;
 
+  // The newest finished run about the element in front of the user: an answer
+  // belongs next to what it is about, not only in a list they may never open.
+  const answer = domEditSelection
+    ? agentJobs.find(
+        (job) =>
+          (job.status === "done" || job.status === "failed") &&
+          Boolean(job.message) &&
+          !dismissedAnswers.includes(job.id) &&
+          !isAnswerDismissed(job.id) &&
+          job.targetRef?.selector === domEditSelection.selector &&
+          (job.targetRef?.sourceFile ?? "") === (domEditSelection.sourceFile ?? ""),
+      )
+    : undefined;
+
   return createPortal(
     <>
       {!agentModalOpen && domEditSelection && (
@@ -598,6 +615,24 @@ export function InlineAgentComposerHost({
           agentIconUrl={agentIconUrlById ?? agentIconUrl}
           label={agentRunLabel ?? "the agent"}
           onOpen={actions.handleAskAgent}
+        />
+      )}
+      {answer && rect && (
+        <AgentAnswerBubble
+          job={answer}
+          rect={rect}
+          canvas={canvas}
+          agentIconUrl={agentIconUrlById ?? agentIconUrl}
+          toContainerStyle={toViewport}
+          onDismiss={() => {
+            dismissAnswer(answer.id);
+            setDismissedAnswers((ids) => [...ids, answer.id]);
+          }}
+          onFollowUp={() => {
+            dismissAnswer(answer.id);
+            setDismissedAnswers((ids) => [...ids, answer.id]);
+            actions.handleAskAgent();
+          }}
         />
       )}
       {agentModalOpen && domEditSelection && (

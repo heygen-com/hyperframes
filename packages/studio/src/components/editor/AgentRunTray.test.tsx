@@ -198,7 +198,12 @@ describe("run detail", () => {
 
     expect(host.textContent).toContain("9acb64fb");
     expect(host.textContent).not.toContain("287e-4c45");
-    const reveal = [...host.querySelectorAll("button")].find((b) => b.textContent === "Chip");
+    const reveal = [...host.querySelectorAll("button")].find((b) =>
+      b.getAttribute("aria-label")?.startsWith("Show Chip"),
+    );
+    // It has to look pressable: a fill and a ring at rest, not bare text.
+    expect(reveal?.className).toContain("bg-white/[0.06]");
+    expect(reveal?.querySelector("svg")).toBeTruthy();
     act(() => reveal?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onRevealTarget).toHaveBeenCalledWith(target);
     act(() => root.unmount());
