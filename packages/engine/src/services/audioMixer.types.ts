@@ -12,6 +12,8 @@ export interface AudioElement {
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
+  /** Serialised FX chain JSON from `data-fx-chain`, when set. */
+  fxChain?: string;
   type: "audio" | "video";
 }
 

@@ -23,6 +23,8 @@ import type {
   MixResult,
 } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
+import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
+import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -338,6 +340,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
+    const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
     return {
       id,
       src: el.getAttribute("src") as string,
@@ -346,6 +349,7 @@ export function parseAudioElements(html: string): AudioElement[] {
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
+      ...(fxChain ? { fxChain } : {}),
       type,
     };
   };
@@ -689,9 +693,21 @@ export async function processCompositionAudio(
 
   if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
 
+  // Every element's work races under Promise.all, which rejects on the first
+  // failure without waiting for its siblings. A fatal FX error therefore has to
+  // be able to abort the in-flight ffmpeg runs before the finally-block removes
+  // workDir out from under them. Chained off the caller's signal so external
+  // cancellation still behaves as before.
+  const internalController = new AbortController();
+  const effectiveSignal = internalController.signal;
+  if (signal) {
+    if (signal.aborted) internalController.abort();
+    else signal.addEventListener("abort", () => internalController.abort(), { once: true });
+  }
+
   await Promise.all(
     elements.map(async (element) => {
-      if (signal?.aborted) {
+      if (effectiveSignal.aborted) {
         failures.push({
           stage: "cancelled",
           reason: "cancelled",
@@ -806,6 +822,24 @@ export async function processCompositionAudio(
           audioSrcPath = trimmedPath;
         }
 
+        // Apply the track's FX chain to the dry, trimmed audio, before volume
+        // automation is baked in: effects should see the raw signal, and the
+        // envelope belongs on their output. A missing or broken chain is fatal
+        // for the whole mix rather than a per-track warning — quietly rendering
+        // the dry signal ships a mix that sounds plausible and is wrong.
+        if (element.fxChain) {
+          // The chain is serialised into the attribute, the same way colour
+          // grading carries its config, so there is no side-car file to find,
+          // resolve or lose.
+          const chain = parseAudioFxChain(element.fxChain);
+          audioSrcPath = await applyAudioFxChain(
+            audioSrcPath,
+            chain,
+            join(workDir, `${element.id}-fx.wav`),
+            { trackId: element.id, signal: effectiveSignal },
+          );
+        }
+
         // Primary volume-automation path: bake the envelope into the PCM samples
         // (sample-accurate, no keyframe ceiling). If the WAV isn't the expected
         // 16-bit PCM, fall back to the ffmpeg expression path by leaving the
@@ -831,6 +865,11 @@ export async function processCompositionAudio(
           volumeKeyframes: bakedEnvelope ? undefined : element.volumeKeyframes,
         });
       } catch (err: unknown) {
+        // An FX failure is fatal for the whole mix. Every other failure mode
+        // degrades gracefully — the track drops and siblings continue — but
+        // substituting the dry signal for a processed one ships a render that
+        // sounds plausible and is not what was authored.
+        if (err instanceof AudioFxRenderError) throw err;
         failures.push({
           stage: "internal",
           reason: "internal",
@@ -845,7 +884,17 @@ export async function processCompositionAudio(
         });
       }
     }),
-  );
+  ).catch((err: unknown) => {
+    // Promise.all rejected on the first fatal failure without waiting for its
+    // siblings; abort them so their ffmpeg stops before workDir disappears.
+    internalController.abort();
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  });
 
   // Never turn a per-track preparation failure into a successful partial mix.
   // The producer only surfaces audio failures when `success` is false; mixing
