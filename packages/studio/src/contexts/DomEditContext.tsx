@@ -30,6 +30,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleAskAgent"
   | "handleAgentModalSubmit"
   | "handleAgentModalRun"
+  | "clearFinishedAgentJobs"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
@@ -90,7 +91,8 @@ export interface DomEditSelectionValue extends Pick<
   | "agentPromptSelectionContext"
   | "agentRunLabel"
   | "agentRunKind"
-  | "agentRunning"
+  | "agentIconUrl"
+  | "agentJobs"
 > {}
 
 const DomEditActionsContext = createContext<DomEditActionsValue | null>(null);
@@ -137,7 +139,8 @@ export function DomEditProvider({
     agentPromptSelectionContext,
     agentRunLabel,
     agentRunKind,
-    agentRunning,
+    agentIconUrl,
+    agentJobs,
     domEditSelectionRef,
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
@@ -164,6 +167,7 @@ export function DomEditProvider({
     handleAskAgent,
     handleAgentModalSubmit,
     handleAgentModalRun,
+    clearFinishedAgentJobs,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -251,6 +255,7 @@ export function DomEditProvider({
       handleAskAgent,
       handleAgentModalSubmit,
       handleAgentModalRun,
+      clearFinishedAgentJobs,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -320,6 +325,7 @@ export function DomEditProvider({
       handleAskAgent,
       handleAgentModalSubmit,
       handleAgentModalRun,
+      clearFinishedAgentJobs,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -381,7 +387,8 @@ export function DomEditProvider({
       agentPromptSelectionContext,
       agentRunLabel,
       agentRunKind,
-      agentRunning,
+      agentIconUrl,
+      agentJobs,
     }),
     [
       domEditSelection,
@@ -397,7 +404,8 @@ export function DomEditProvider({
       agentPromptSelectionContext,
       agentRunLabel,
       agentRunKind,
-      agentRunning,
+      agentIconUrl,
+      agentJobs,
     ],
   );
   return (

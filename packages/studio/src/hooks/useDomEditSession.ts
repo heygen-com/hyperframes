@@ -150,12 +150,14 @@ export function useDomEditSession({
     agentPromptSelectionContext,
     agentRunLabel,
     agentRunKind,
-    agentRunning,
+    agentIconUrl,
+    agentJobs,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     handleAskAgent,
     handleAgentModalSubmit,
     handleAgentModalRun,
+    clearFinishedAgentJobs,
   } = useAskAgentModal({
     projectId,
     activeCompPath,
@@ -475,7 +477,8 @@ export function useDomEditSession({
     agentPromptSelectionContext,
     agentRunLabel,
     agentRunKind,
-    agentRunning,
+    agentIconUrl,
+    agentJobs,
     // Refs
     domEditSelectionRef,
     // Callbacks
@@ -503,6 +506,7 @@ export function useDomEditSession({
     handleAskAgent,
     handleAgentModalSubmit,
     handleAgentModalRun,
+    clearFinishedAgentJobs,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,

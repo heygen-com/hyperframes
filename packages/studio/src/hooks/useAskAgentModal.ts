@@ -3,7 +3,7 @@ import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
-import type { AgentKind, InlineAgentRunResult } from "../components/editor/InlineAgentComposer";
+import type { AgentJob, AgentKind } from "../components/editor/agentGlyphs";
 import { usePlayerStore } from "../player";
 
 // ── Types ──
@@ -21,6 +21,7 @@ export interface UseAskAgentModalParams {
 // ── Hook ──
 
 export function useAskAgentModal({
+  projectId,
   activeCompPath,
   projectDir,
   projectIdRef,
@@ -40,7 +41,8 @@ export function useAskAgentModal({
   // a harness CLI (claude / codex / HYPERFRAMES_AGENT_CMD) is installed.
   const [agentRunLabel, setAgentRunLabel] = useState<string | null>(null);
   const [agentRunKind, setAgentRunKind] = useState<AgentKind | null>(null);
-  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentIconUrl, setAgentIconUrl] = useState<string | null>(null);
+  const [agentJobs, setAgentJobs] = useState<AgentJob[]>([]);
 
   // ── Refs ──
 
@@ -83,6 +85,31 @@ export function useAskAgentModal({
     [domEditSelection, domEditSelectionRef],
   );
 
+  /** One read for both the installed harness and this project's run list. */
+  const refreshAgentState = useCallback(async () => {
+    // The prop, not just the ref: on a page load the ref is still null when the
+    // first read fires, and the tray would come up empty despite live runs.
+    const pid = projectId ?? projectIdRef.current;
+    if (!pid) return;
+    try {
+      const response = await fetch(`/api/projects/${pid}/agent`);
+      if (!response.ok) return;
+      const data = (await response.json()) as {
+        available?: boolean;
+        label?: string | null;
+        kind?: AgentKind;
+        iconUrl?: string | null;
+        jobs?: AgentJob[];
+      };
+      setAgentRunLabel(data.available ? (data.label ?? "agent") : null);
+      setAgentRunKind(data.available ? (data.kind ?? "custom") : null);
+      setAgentIconUrl(data.iconUrl ?? null);
+      setAgentJobs(data.jobs ?? []);
+    } catch {
+      // Server not reachable — leave the last known state on screen.
+    }
+  }, [projectId, projectIdRef]);
+
   const handleAskAgent = useCallback(() => {
     const selection = resolveSelection();
     if (!selection) return;
@@ -90,20 +117,8 @@ export function useAskAgentModal({
     setAgentPromptSelectionContext(undefined);
     void preloadAgentPromptSnippet(selection);
     setAgentModalOpen(true);
-
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    void fetch(`/api/projects/${pid}/agent`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { available?: boolean; label?: string | null; kind?: AgentKind } | null) => {
-        setAgentRunLabel(data?.available ? (data.label ?? "agent") : null);
-        setAgentRunKind(data?.available ? (data.kind ?? "claude") : null);
-      })
-      .catch(() => {
-        setAgentRunLabel(null);
-        setAgentRunKind(null);
-      });
-  }, [preloadAgentPromptSnippet, projectIdRef, resolveSelection]);
+    void refreshAgentState();
+  }, [preloadAgentPromptSnippet, refreshAgentState, resolveSelection]);
 
   const buildPrompt = useCallback(
     (selection: DomEditSelection, userInstruction: string) => {
@@ -121,40 +136,48 @@ export function useAskAgentModal({
   );
 
   /**
-   * Hand the prompt to the user's own agent CLI; the file watcher reloads the
-   * preview. The composer stays open on the canvas and reports the outcome
-   * inline, so the next instruction is one keystroke away.
+   * Queue a run and return — the server owns the job, so the composer accepts
+   * the next instruction immediately and the tray (and a page reload) keeps
+   * showing everything in flight.
    */
   const handleAgentModalRun = useCallback(
-    async (userInstruction: string): Promise<InlineAgentRunResult> => {
+    (userInstruction: string) => {
       const selection = resolveSelection();
       const pid = projectIdRef.current;
-      if (!selection || !pid) return { ok: false, message: "Nothing selected." };
+      if (!selection || !pid) return;
 
-      setAgentRunning(true);
-      try {
-        const response = await fetch(`/api/projects/${pid}/agent`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ prompt: buildPrompt(selection, userInstruction) }),
+      void fetch(`/api/projects/${pid}/agent`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prompt: buildPrompt(selection, userInstruction),
+          instruction: userInstruction,
+          target: selection.label,
+        }),
+      })
+        .then(async (response) => {
+          const data = (await response.json()) as { error?: string; job?: AgentJob };
+          if (!response.ok || !data.job) {
+            showToast(data.error ?? "Could not start the agent.", "error");
+            return;
+          }
+          setAgentJobs((jobs) => [data.job as AgentJob, ...jobs]);
+        })
+        .catch((err: unknown) => {
+          showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
         });
-        const data = (await response.json()) as {
-          error?: string;
-          exitCode?: number;
-          label?: string;
-        };
-        if (!response.ok || data.exitCode) {
-          return { ok: false, message: data.error ?? `Agent exited with code ${data.exitCode}` };
-        }
-        return { ok: true, message: `${data.label ?? "Agent"} finished.` };
-      } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : "Agent run failed." };
-      } finally {
-        setAgentRunning(false);
-      }
     },
-    [buildPrompt, projectIdRef, resolveSelection],
+    [buildPrompt, projectIdRef, resolveSelection, showToast],
   );
+
+  const clearFinishedAgentJobs = useCallback(() => {
+    const pid = projectIdRef.current;
+    if (!pid) return;
+    void fetch(`/api/projects/${pid}/agent/jobs`, { method: "DELETE" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { jobs?: AgentJob[] } | null) => setAgentJobs(data?.jobs ?? []))
+      .catch(() => undefined);
+  }, [projectIdRef]);
 
   const handleAgentModalSubmit = useCallback(
     async (userInstruction: string) => {
@@ -176,6 +199,22 @@ export function useAskAgentModal({
   );
 
   // ── Effects ──
+
+  // Runs live on the server, so read them once on mount: a reload lands back on
+  // whatever is still in flight instead of an empty tray.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    void refreshAgentState();
+  }, [refreshAgentState]);
+
+  // Poll only while something is queued or running — an idle tray costs nothing.
+  const hasActiveJob = agentJobs.some((job) => job.status === "queued" || job.status === "running");
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!hasActiveJob) return;
+    const timer = setInterval(() => void refreshAgentState(), 1200);
+    return () => clearInterval(timer);
+  }, [hasActiveJob, refreshAgentState]);
 
   // Clear agent-prompt state when selection changes
   // eslint-disable-next-line no-restricted-syntax
@@ -201,7 +240,8 @@ export function useAskAgentModal({
     agentPromptSelectionContext,
     agentRunLabel,
     agentRunKind,
-    agentRunning,
+    agentIconUrl,
+    agentJobs,
 
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
     setAgentModalOpen,
@@ -212,5 +252,6 @@ export function useAskAgentModal({
     handleAskAgent,
     handleAgentModalSubmit,
     handleAgentModalRun,
+    clearFinishedAgentJobs,
   };
 }

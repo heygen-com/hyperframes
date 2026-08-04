@@ -28,7 +28,7 @@ function renderComposer(overrides: Partial<Parameters<typeof InlineAgentComposer
         canvas={{ width: 800, height: 600 }}
         runLabel="Claude Code"
         agentKind="claude"
-        running={false}
+        agentIconUrl={null}
         onRun={vi.fn()}
         onCopy={vi.fn()}
         onClose={vi.fn()}
@@ -52,78 +52,62 @@ function type(host: HTMLElement, value: string) {
   });
 }
 
-function buttonLabelled(host: HTMLElement, label: string): HTMLButtonElement | undefined {
-  return [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(label));
+function pressEnter(host: HTMLElement) {
+  act(() => {
+    host
+      .querySelector("textarea")
+      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
 }
 
 const CANVAS = { width: 800, height: 600 };
 
 describe("resolveComposerPosition", () => {
   it("centers under the selection", () => {
-    expect(resolveComposerPosition(rect({ left: 300, top: 100, width: 200 }), CANVAS, 112)).toEqual(
-      {
-        left: 220, // 300 + 100 - 180
-        top: 150, // 100 + 40 + 10
-      },
-    );
+    expect(resolveComposerPosition(rect({ left: 300, top: 100, width: 200 }), CANVAS, 84)).toEqual({
+      left: 240, // 300 + 100 - 160
+      top: 150, // 100 + 40 + 10
+    });
   });
 
   it("flips above when the composer would fall off the bottom", () => {
-    const position = resolveComposerPosition(rect({ top: 520 }), CANVAS, 112);
-    expect(position.top).toBe(398); // 520 - 112 - 10
+    expect(resolveComposerPosition(rect({ top: 540 }), CANVAS, 84).top).toBe(446); // 540 - 84 - 10
   });
 
   it("clamps horizontally inside the canvas", () => {
-    expect(resolveComposerPosition(rect({ left: 780 }), CANVAS, 112).left).toBe(430);
-    expect(resolveComposerPosition(rect({ left: -200 }), CANVAS, 112).left).toBe(10);
+    expect(resolveComposerPosition(rect({ left: 780 }), CANVAS, 84).left).toBe(470);
+    expect(resolveComposerPosition(rect({ left: -200 }), CANVAS, 84).left).toBe(10);
   });
 
   it("pins to the bottom when the element has no rect", () => {
-    expect(resolveComposerPosition(null, CANVAS, 112)).toEqual({ left: 220, bottom: 10 });
+    expect(resolveComposerPosition(null, CANVAS, 84)).toEqual({ left: 240, bottom: 10 });
   });
 });
 
 describe("InlineAgentComposer", () => {
-  it("runs on Enter, clears the input, and reports the result inline", async () => {
-    const onRun = vi.fn().mockResolvedValue({ ok: true, message: "Claude Code finished." });
+  it("queues the run on Enter and clears the field for the next one", () => {
+    const onRun = vi.fn();
     const { host, root } = renderComposer({ onRun });
+
     type(host, "  make the title red  ");
-
-    const textarea = host.querySelector("textarea");
-    await act(async () => {
-      textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
-
+    pressEnter(host);
     expect(onRun).toHaveBeenCalledWith("make the title red");
-    expect(textarea?.value).toBe("");
-    expect(host.textContent).toContain("Claude Code finished.");
+    expect(host.querySelector("textarea")?.value).toBe("");
+
+    type(host, "now round the corners");
+    pressEnter(host);
+    expect(onRun).toHaveBeenCalledTimes(2);
+    expect(onRun).toHaveBeenLastCalledWith("now round the corners");
     act(() => root.unmount());
   });
 
-  it("keeps the instruction and shows the failure when the agent errors", async () => {
-    const onRun = vi.fn().mockResolvedValue({ ok: false, message: "Agent exited with code 1" });
-    const { host, root } = renderComposer({ onRun });
-    type(host, "break it");
-    await act(async () => {
-      buttonLabelled(host, "Run")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(host.querySelector("textarea")?.value).toBe("break it");
-    expect(host.textContent).toContain("Agent exited with code 1");
-    act(() => root.unmount());
-  });
-
-  it("falls back to copying when no agent CLI is installed", () => {
+  it("copies instead of running when no agent CLI is installed", () => {
     const onCopy = vi.fn();
     const onRun = vi.fn();
     const { host, root } = renderComposer({ runLabel: null, onCopy, onRun });
-    type(host, "make it pop");
-    act(() => {
-      buttonLabelled(host, "Copy prompt")?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
-      );
-    });
 
+    type(host, "make it pop");
+    pressEnter(host);
     expect(onCopy).toHaveBeenCalledWith("make it pop");
     expect(onRun).not.toHaveBeenCalled();
     act(() => root.unmount());
@@ -147,14 +131,6 @@ describe("InlineAgentComposer", () => {
     });
 
     expect(composer?.style.translate).toBe("40px 30px");
-    act(() => root.unmount());
-  });
-
-  it("locks input and both actions while the agent is running", () => {
-    const { host, root } = renderComposer({ running: true });
-    expect(host.querySelector("textarea")?.disabled).toBe(true);
-    expect(buttonLabelled(host, "Running…")?.disabled).toBe(true);
-    expect(host.textContent).toContain("Claude Code is editing…");
     act(() => root.unmount());
   });
 

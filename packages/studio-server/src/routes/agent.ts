@@ -1,8 +1,14 @@
 import type { Hono } from "hono";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { createReadStream, existsSync } from "node:fs";
+import { delimiter, extname, join } from "node:path";
+import { Readable } from "node:stream";
 import type { StudioApiAdapter } from "../types.js";
+import {
+  clearFinishedAgentJobs,
+  enqueueAgentJob,
+  listAgentJobs,
+  type AgentCommand,
+} from "../helpers/agentJobs.js";
 
 /**
  * Run the user's own coding-agent CLI against the open project.
@@ -10,19 +16,12 @@ import type { StudioApiAdapter } from "../types.js";
  * Studio already knows how to describe a selected element or timeline clip as a
  * prompt (`buildElementAgentPrompt`); this route hands that prompt to whichever
  * harness CLI the user has installed instead of making them paste it into a
- * terminal. The agent edits files on disk and the existing file watcher
- * (`/api/events`) reloads the preview.
+ * terminal. Runs are queued server-side (see helpers/agentJobs), so a browser
+ * reload keeps showing in-flight work, and the existing file watcher
+ * (`/api/events`) reloads the preview as the agent edits.
  */
 
-/** Which harness the command belongs to — drives the icon Studio shows. */
-export type AgentKind = "claude" | "codex";
-
-export interface AgentCommand {
-  kind: AgentKind;
-  label: string;
-  command: string;
-  args: string[];
-}
+export type { AgentCommand, AgentKind } from "../helpers/agentJobs.js";
 
 /**
  * Prompts always arrive on stdin — never as an argv or shell string — so a
@@ -33,7 +32,9 @@ const AGENT_PRESETS: Record<string, AgentCommand> = {
     kind: "claude",
     label: "Claude Code",
     command: "claude",
-    args: ["-p", "--permission-mode", "acceptEdits"],
+    // stream-json is what makes the run legible while it happens: every tool
+    // call arrives as its own event instead of one silent block at exit.
+    args: ["-p", "--permission-mode", "acceptEdits", "--output-format", "stream-json", "--verbose"],
   },
   codex: {
     kind: "codex",
@@ -41,9 +42,48 @@ const AGENT_PRESETS: Record<string, AgentCommand> = {
     command: "codex",
     args: ["exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "-"],
   },
+  hermes: {
+    kind: "hermes",
+    label: "Hermes",
+    command: "hermes",
+    // -z is Hermes' headless mode: prompt in on stdin, final text out.
+    args: ["-z"],
+  },
+  openclaw: {
+    kind: "openclaw",
+    label: "OpenClaw",
+    command: "openclaw",
+    // exec is already the headless profile; --message-file - is how it takes stdin.
+    args: ["agent", "exec", "--message-file", "-"],
+  },
 };
 
-const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
+/** Name a custom command after the harness it points at, so its mark is right. */
+function sniffKind(command: string): AgentCommand["kind"] {
+  const match = Object.values(AGENT_PRESETS).find((preset) =>
+    new RegExp(preset.command, "i").test(command),
+  );
+  return match?.kind ?? "custom";
+}
+
+/**
+ * Any harness can supply its own mark: point HYPERFRAMES_AGENT_ICON at an SVG
+ * or PNG and Studio shows that instead of a built-in glyph. This is the path
+ * for agents we do not ship a preset for (pi, an in-house wrapper, anything).
+ */
+function resolveAgentIconPath(env: NodeJS.ProcessEnv = process.env): string | null {
+  const path = env.HYPERFRAMES_AGENT_ICON?.trim();
+  return path && existsSync(path) ? path : null;
+}
+
+const ICON_MIME: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
 
 function isOnPath(command: string): boolean {
   if (command.includes("/")) return existsSync(command);
@@ -56,46 +96,15 @@ export function resolveAgentCommand(env: NodeJS.ProcessEnv = process.env): Agent
   const custom = env.HYPERFRAMES_AGENT_CMD?.trim();
   if (custom) {
     const [command, ...args] = custom.split(/\s+/);
-    // A custom command names no harness. Sniff it, and when that is
-    // inconclusive show the Claude mark rather than no icon at all.
-    if (command) {
-      return { kind: /codex/i.test(custom) ? "codex" : "claude", label: command, command, args };
-    }
+    // A custom command names no harness of its own: sniff the known ones out of
+    // it, else it renders as "custom" (and can supply HYPERFRAMES_AGENT_ICON).
+    if (command) return { kind: sniffKind(custom), label: command, command, args };
   }
 
   const named = env.HYPERFRAMES_AGENT?.trim();
   if (named) return AGENT_PRESETS[named] ?? null;
 
   return Object.values(AGENT_PRESETS).find((preset) => isOnPath(preset.command)) ?? null;
-}
-
-function runAgent(
-  agent: AgentCommand,
-  prompt: string,
-  cwd: string,
-): Promise<{ output: string; exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(agent.command, agent.args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
-    let output = "";
-
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`${agent.label} timed out after ${AGENT_TIMEOUT_MS / 60000} minutes`));
-    }, AGENT_TIMEOUT_MS);
-
-    child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ output: output.trim(), exitCode: code ?? 0 });
-    });
-
-    child.stdin.end(prompt);
-  });
 }
 
 export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -107,6 +116,18 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       available: agent !== null,
       label: agent?.label ?? null,
       kind: agent?.kind ?? null,
+      iconUrl: resolveAgentIconPath() ? `/api/projects/${project.id}/agent/icon` : null,
+      jobs: listAgentJobs(project.id),
+    });
+  });
+
+  api.get("/projects/:id/agent/icon", async (c) => {
+    const iconPath = resolveAgentIconPath();
+    if (!iconPath) return c.json({ error: "not found" }, 404);
+    const mime = ICON_MIME[extname(iconPath).toLowerCase()];
+    if (!mime) return c.json({ error: "unsupported icon type" }, 415);
+    return new Response(Readable.toWeb(createReadStream(iconPath)) as ReadableStream, {
+      headers: { "content-type": mime, "cache-control": "no-cache" },
     });
   });
 
@@ -114,24 +135,41 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const body = (await c.req.json().catch(() => null)) as { prompt?: unknown } | null;
+    const body = (await c.req.json().catch(() => null)) as {
+      prompt?: unknown;
+      instruction?: unknown;
+      target?: unknown;
+    } | null;
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) return c.json({ error: "prompt required" }, 400);
 
     const agent = resolveAgentCommand();
     if (!agent) {
       return c.json(
-        { error: "No agent CLI found. Install claude or codex, or set HYPERFRAMES_AGENT_CMD." },
+        {
+          error:
+            "No agent CLI found. Install claude, codex, hermes or openclaw, or set HYPERFRAMES_AGENT_CMD.",
+        },
         501,
       );
     }
 
-    try {
-      const { output, exitCode } = await runAgent(agent, prompt, project.dir);
-      return c.json({ kind: agent.kind, label: agent.label, output, exitCode });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `${agent.label} failed: ${msg}` }, 500);
-    }
+    const job = enqueueAgentJob({
+      projectId: project.id,
+      projectDir: project.dir,
+      agent,
+      prompt,
+      instruction: typeof body?.instruction === "string" ? body.instruction : prompt.slice(0, 120),
+      target: typeof body?.target === "string" ? body.target : "composition",
+    });
+
+    return c.json({ job });
+  });
+
+  api.delete("/projects/:id/agent/jobs", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    clearFinishedAgentJobs(project.id);
+    return c.json({ jobs: listAgentJobs(project.id) });
   });
 }
