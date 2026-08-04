@@ -224,6 +224,11 @@ const SAFE_DEFAULT_NODES = new Set([
   "UnaryExpression",
 ]);
 
+// ponytail: This allowlist is intentionally load-bearing. Defaults are evaluated
+// while deciding whether a helper declaration can be erased, so admitting calls,
+// assignments, updates, or constructors here could execute author code at a
+// different time (or more than once). Add syntax only with negative-path tests.
+
 /**
  * A default expression is safe only when evaluating it cannot execute author
  * code and every value identifier refers to an earlier parameter. This mirrors
@@ -264,25 +269,29 @@ function isSafeDefaultExpression(node: Node, earlierParams: ReadonlySet<string>)
   return safe;
 }
 
+const SUPPORTED_PARAMS_CACHE = new WeakMap<object, SupportedParam[] | null>();
+
+function supportedParam(param: Node, earlier: ReadonlySet<string>): SupportedParam | null {
+  if (param.type === "Identifier") return { name: param.name };
+  if (param.type !== "AssignmentPattern" || param.left?.type !== "Identifier") return null;
+  if (!isSafeDefaultExpression(param.right, earlier)) return null;
+  return { name: param.left.name, defaultExpression: param.right };
+}
+
 function supportedParams(fn: Node): SupportedParam[] | null {
+  if (SUPPORTED_PARAMS_CACHE.has(fn)) return SUPPORTED_PARAMS_CACHE.get(fn) ?? null;
   const params: SupportedParam[] = [];
   const earlier = new Set<string>();
   for (const param of fn.params ?? []) {
-    if (param.type === "Identifier") {
-      params.push({ name: param.name });
-      earlier.add(param.name);
-      continue;
-    }
-    if (
-      param.type !== "AssignmentPattern" ||
-      param.left?.type !== "Identifier" ||
-      !isSafeDefaultExpression(param.right, earlier)
-    ) {
+    const parsed = supportedParam(param, earlier);
+    if (!parsed) {
+      SUPPORTED_PARAMS_CACHE.set(fn, null);
       return null;
     }
-    params.push({ name: param.left.name, defaultExpression: param.right });
-    earlier.add(param.left.name);
+    params.push(parsed);
+    earlier.add(parsed.name);
   }
+  SUPPORTED_PARAMS_CACHE.set(fn, params);
   return params;
 }
 
@@ -354,6 +363,51 @@ function bump(counts: Map<string, number>, key: string): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
+function undefinedIdentifier(): Node {
+  return { type: "Identifier", name: "undefined" };
+}
+
+function isExplicitUndefined(node: Node | undefined): boolean {
+  return (
+    (node?.type === "Identifier" && node.name === "undefined") ||
+    (node?.type === "UnaryExpression" &&
+      node.operator === "void" &&
+      node.argument?.type === "Literal" &&
+      node.argument.value === 0)
+  );
+}
+
+/** Resolve one call exactly as JavaScript binds identifier/default parameters. */
+function resolveHelperBindings(call: Node, params: SupportedParam[]): Map<string, Node> | null {
+  if (call.arguments?.some((arg: Node) => arg?.type === "SpreadElement")) return null;
+
+  const bindings = new Map<string, Node>();
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]!;
+    const arg = call.arguments?.[i];
+    if (arg && !isExplicitUndefined(arg)) {
+      bindings.set(param.name, arg);
+    } else if (param.defaultExpression) {
+      bindings.set(param.name, substituteParams(cloneNode(param.defaultExpression), bindings));
+    } else {
+      // Omitted required parameters are still bound by JavaScript. Keeping an
+      // explicit undefined node prevents a dropped helper declaration from
+      // leaving its parameter identifier dangling in the synthetic AST.
+      bindings.set(param.name, undefinedIdentifier());
+    }
+  }
+  return bindings;
+}
+
+function statementHelperCall(node: Node, names: ReadonlySet<string>): Node | undefined {
+  if (node.type !== "ExpressionStatement") return undefined;
+  const expression = node.expression;
+  if (expression?.type !== "CallExpression" || expression.callee?.type !== "Identifier") {
+    return undefined;
+  }
+  return names.has(expression.callee.name) ? expression : undefined;
+}
+
 /**
  * Keep only candidates safe to drop: every reference to the name is its
  * declaration or a statement-level call. (1 decl id + 1 callee id per
@@ -363,20 +417,21 @@ function safelyDroppable(program: Node, candidates: Map<string, Node>): Map<stri
   const names = new Set(candidates.keys());
   const totalIds = new Map<string, number>();
   const stmtCalls = new Map<string, number>();
+  const unbindable = new Set<string>();
   walkNodes(program, (n) => {
     if (n.type === "Identifier" && names.has(n.name)) bump(totalIds, n.name);
-    const e = n.type === "ExpressionStatement" ? n.expression : undefined;
-    if (
-      e?.type === "CallExpression" &&
-      e.callee?.type === "Identifier" &&
-      names.has(e.callee.name)
-    ) {
-      bump(stmtCalls, e.callee.name);
-    }
+    const call = statementHelperCall(n, names);
+    if (!call) return;
+    bump(stmtCalls, call.callee.name);
+    const fn = candidates.get(call.callee.name);
+    const params = fn && supportedParams(fn);
+    if (!params || !resolveHelperBindings(call, params)) unbindable.add(call.callee.name);
   });
   const safe = new Map<string, Node>();
   for (const [name, fn] of candidates) {
-    if ((totalIds.get(name) ?? 0) === 1 + (stmtCalls.get(name) ?? 0)) safe.set(name, fn);
+    if (!unbindable.has(name) && (totalIds.get(name) ?? 0) === 1 + (stmtCalls.get(name) ?? 0)) {
+      safe.set(name, fn);
+    }
   }
   return safe;
 }
@@ -434,37 +489,13 @@ function expandBody(
   return [block];
 }
 
-function isExplicitUndefined(node: Node | undefined): boolean {
-  return node?.type === "Identifier" && node.name === "undefined";
-}
-
 function inlineHelper(call: Node, ctx: ExpandCtx): Node[] | null {
   const fn = ctx.helpers.get(call.callee.name);
   if (!fn) return null;
   const params = supportedParams(fn);
   if (!params) return null;
-  const bindings = new Map<string, Node>();
-  for (let i = 0; i < params.length; i++) {
-    const param = params[i]!;
-    const arg = call.arguments?.[i];
-    if (arg && !isExplicitUndefined(arg)) {
-      bindings.set(param.name, arg);
-      continue;
-    }
-    if (param.defaultExpression) {
-      const resolvedDefault = substituteParams(cloneNode(param.defaultExpression), bindings);
-      // An earlier parameter without a binding means the default cannot be
-      // evaluated statically for this call. Leave the helper untouched.
-      let unresolved = false;
-      walkNodes(resolvedDefault, (node) => {
-        if (node.type === "Identifier" && params.slice(0, i).some((p) => p.name === node.name)) {
-          unresolved = true;
-        }
-      });
-      if (unresolved) return null;
-      bindings.set(param.name, resolvedDefault);
-    }
-  }
+  const bindings = resolveHelperBindings(call, params);
+  if (!bindings) return null;
   const prov: GsapProvenance = {
     kind: "helper",
     fn: call.callee.name,

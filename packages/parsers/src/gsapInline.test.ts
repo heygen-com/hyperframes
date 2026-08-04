@@ -103,6 +103,24 @@ const kinds = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.kind);
 const sites = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.callSite);
 const iters = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.iteration);
 
+function hasFunctionDeclaration(ast: any): boolean {
+  return ast.body.some((node: any) => node.type === "FunctionDeclaration");
+}
+
+function expectInlinedPosition(code: string, position: Record<string, unknown>): void {
+  const { ast, tweens } = run(code);
+  expect(hasFunctionDeclaration(ast)).toBe(false);
+  expect(tweens).toHaveLength(1);
+  expect(tweens[0]!.pos).toMatchObject(position);
+}
+
+function expectHelperPreserved(code: string): void {
+  const { ast, tweens } = run(code);
+  expect(hasFunctionDeclaration(ast)).toBe(true);
+  expect(tweens).toHaveLength(1);
+  expect(tweens[0]!.prov).toBeUndefined();
+}
+
 describe("inlineComputedTimelines — helpers", () => {
   it("binds omitted and explicit undefined arguments through identifier defaults", () => {
     const { tweens } = run(`const tl=gsap.timeline();
@@ -112,6 +130,23 @@ describe("inlineComputedTimelines — helpers", () => {
     expect(tweens).toHaveLength(2);
     expect(tweens.map((t) => t.pos.value)).toEqual([1, 2]);
     expect(kinds(tweens)).toEqual(["helper", "helper"]);
+  });
+
+  it("treats void 0 as undefined for default binding", () => {
+    const { tweens } = run(`const tl=gsap.timeline();
+      function slam(selector, at = 7) { tl.to(selector, {}, at); }
+      slam("#a", void 0);`);
+    expect(tweens).toHaveLength(1);
+    expect(tweens[0]!.pos).toMatchObject({ type: "Literal", value: 7 });
+  });
+
+  it("binds omitted required parameters before resolving later defaults", () => {
+    expectInlinedPosition(
+      `const tl=gsap.timeline();
+      function slam(selector, at, end = at) { tl.to(selector, {}, end); }
+      slam("#a");`,
+      { type: "Identifier", name: "undefined" },
+    );
   });
 
   it("keeps null as the explicit argument instead of applying the default", () => {
@@ -134,6 +169,15 @@ describe("inlineComputedTimelines — helpers", () => {
     expect(tweens[0]!.pos).toMatchObject({ type: "Literal", value: 3 });
   });
 
+  it("does not treat object keys as unresolved value identifiers", () => {
+    expectInlinedPosition(
+      `const tl=gsap.timeline();
+      function slam(selector, at, opts = { at: at }) { tl.to(selector, opts, at); }
+      slam("#a", 3);`,
+      { type: "Literal", value: 3 },
+    );
+  });
+
   it("leaves helpers with effectful or forward-reference defaults uninlined", () => {
     const effectful = run(`const tl=gsap.timeline();
       function slam(selector, at = Date.now()) { tl.to(selector, {}, at); }
@@ -144,6 +188,25 @@ describe("inlineComputedTimelines — helpers", () => {
       function slam(selector = later, later = "#a") { tl.to(selector, {}, 0); }
       slam();`);
     expect(forward.ast.body.some((s: any) => s.type === "FunctionDeclaration")).toBe(true);
+  });
+
+  it.each([
+    ["call", "makeOptions()"],
+    ["constructor", "new Options()"],
+    ["assignment", "(seed = 2)"],
+    ["sequence", "(seed, 2)"],
+    ["ambient member", "Math.PI"],
+  ])("leaves a helper with an unsafe %s default uninlined", (_label, unsafeDefault) => {
+    expectHelperPreserved(`const tl=gsap.timeline();
+      function slam(selector, seed, at = ${unsafeDefault}) { tl.to(selector, {}, at); }
+      slam("#a", 1);`);
+  });
+
+  it("keeps a helper declaration when any call uses spread arguments", () => {
+    expectHelperPreserved(`const tl=gsap.timeline();
+      function slam(selector, at = 0) { tl.to(selector, {}, at); }
+      const args = ["#a", 2];
+      slam(...args);`);
   });
 
   it("expands a helper called N times, substituting positions per call", () => {
