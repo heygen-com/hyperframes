@@ -1685,7 +1685,7 @@ export async function extractAllVideoFrames(
       size: keyInput.size,
       mediaStart: keyInput.mediaStart,
       duration: work.videoDuration,
-      fps,
+      fps: fpsKey,
       format: work.format,
       transform,
     });

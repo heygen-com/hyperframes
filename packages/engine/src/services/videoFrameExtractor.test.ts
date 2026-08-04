@@ -1795,6 +1795,49 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     rmSync(CACHE_DIR, { recursive: true, force: true });
   }, 60_000);
 
+  it("does not reuse a decimal-rate VFR cache entry for the exact rational rate", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-cache-ntsc-rate-test-"));
+    const decimalOutputDir = join(FIXTURE_DIR, "out-cache-vfr-ntsc-decimal");
+    const rationalOutputDir = join(FIXTURE_DIR, "out-cache-vfr-ntsc-rational");
+    mkdirSync(decimalOutputDir, { recursive: true });
+    mkdirSync(rationalOutputDir, { recursive: true });
+    try {
+      const decimal = await extractAllVideoFrames(
+        [cfrClipElement("vfr-ntsc-cache", VFR_FIXTURE, 0.125125)],
+        FIXTURE_DIR,
+        { fps: 24000 / 1001, outputDir: decimalOutputDir },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(decimal.errors).toEqual([]);
+      expect(decimal.phaseBreakdown.cacheMisses).toBe(1);
+      expect(decimal.extracted[0]?.totalFrames).toBe(3);
+      // Model the warm v3 entry from before exact-rate extraction: the
+      // decimal path could persist one extra frame at this boundary. If the
+      // rational lookup collides, rehydration below will observe all four.
+      writeFileSync(
+        join(decimal.extracted[0]!.outputDir, "frame_00004.jpg"),
+        "stale-decimal-boundary-frame",
+        "utf-8",
+      );
+
+      const rational = await extractAllVideoFrames(
+        [cfrClipElement("vfr-ntsc-cache", VFR_FIXTURE, 0.125125)],
+        FIXTURE_DIR,
+        { fps: { num: 24000, den: 1001 }, outputDir: rationalOutputDir },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(rational.errors).toEqual([]);
+      expect(rational.phaseBreakdown.cacheHits).toBe(0);
+      expect(rational.phaseBreakdown.cacheMisses).toBe(1);
+      expect(rational.extracted[0]?.totalFrames).toBe(3);
+      expect(cacheEntryNames(cacheDir)).toHaveLength(2);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("reuses one-cycle loop extraction across different authored starts", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-loop-phase-cache-test-"));
     const src = await synthCfrClip("cache-loop-phase-src.mp4", 3);
