@@ -661,6 +661,12 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // audio-fx-runtime-entry.ts: the browser-side IIFE entry for the offline FX
+      // render. It runs only inside the headless page the engine drives, so unit
+      // coverage cannot reach it and its CRAP score is coverage-driven rather
+      // than complexity-driven (5 cyclomatic). Its behaviour is covered by the
+      // engine's real-browser render tests.
+      "packages/core/stubs/audio-fx-runtime-entry.ts",
       // useGestureRecording.ts: readBasePosition/connectGsapRuntime/tick are
       // inherited gesture-runtime control flow. This stack only changes
       // recordSample to coalesce display-rate events onto authored frames;

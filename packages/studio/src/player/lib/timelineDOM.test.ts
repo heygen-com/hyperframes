@@ -296,3 +296,36 @@ describe("mergeTimelineElementsPreservingDowngrades — genuine removal vs trans
     ).toEqual(["a", "c"]);
   });
 });
+
+describe("audio FX attributes on parsed elements", () => {
+  const CHAIN = '{"version":1,"nodes":[{"type":"lowpass","id":"n1","params":{}}]}';
+  const LANE = '{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1}]}]}';
+
+  it("carries data-fx-chain and data-automation off the element", () => {
+    // The timeline row is what reserves automation height and draws the lanes;
+    // parsed straight from the DOM it used to arrive without either attribute,
+    // so the panel showed a chain the timeline could not.
+    const doc = new DOMParser().parseFromString(
+      `<div data-composition-id="main" data-start="0" data-duration="10">
+         <audio id="bgm" data-start="0" data-duration="10" data-fx-chain='${CHAIN}'
+           data-automation='${LANE}'></audio>
+       </div>`,
+      "text/html",
+    );
+    const [bgm] = parseTimelineFromDOM(doc, 10).filter((e) => e.domId === "bgm");
+    expect(bgm?.fxChain).toBe(CHAIN);
+    expect(bgm?.automation).toBe(LANE);
+  });
+
+  it("leaves them unset on a track that carries neither", () => {
+    const doc = new DOMParser().parseFromString(
+      `<div data-composition-id="main" data-start="0" data-duration="10">
+         <audio id="bgm" data-start="0" data-duration="10"></audio>
+       </div>`,
+      "text/html",
+    );
+    const [bgm] = parseTimelineFromDOM(doc, 10).filter((e) => e.domId === "bgm");
+    expect(bgm?.fxChain).toBeUndefined();
+    expect(bgm?.automation).toBeUndefined();
+  });
+});

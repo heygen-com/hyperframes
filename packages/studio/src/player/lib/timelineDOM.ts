@@ -338,6 +338,14 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       if (resolvedSrc) entry.src = resolvedSrc;
     }
 
+    // Read from the element, like the manifest path does: without these an audio
+    // clip parsed straight from the DOM reserved no automation height and drew no
+    // lanes, while the property panel still showed its chain.
+    const domFxChain = el.getAttribute("data-fx-chain");
+    if (domFxChain) entry.fxChain = domFxChain;
+    const domAutomation = el.getAttribute("data-automation");
+    if (domAutomation) entry.automation = domAutomation;
+
     if (el.hasAttribute("data-timeline-locked")) {
       entry.timelineLocked = true;
     }
