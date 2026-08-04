@@ -16,6 +16,7 @@ export type PropertyPanelFlatProps = Pick<
   | "onSetAttribute"
   | "onSetAttributes"
   | "onSetAttributeLive"
+  | "onSetAttributeQuiet"
   | "onApplyColorGradingScope"
   | "onSetHtmlAttribute"
   | "onRemoveBackground"

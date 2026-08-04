@@ -148,6 +148,7 @@ export function useDomEditTextCommits({
   const {
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
   } = useDomEditAttributeCommits({
@@ -474,6 +475,7 @@ export function useDomEditTextCommits({
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
