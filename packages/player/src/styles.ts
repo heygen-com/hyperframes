@@ -124,6 +124,18 @@ export const PLAYER_STYLES = /* css */ `
     animation: hfp-shader-loader-sheen 1.9s linear infinite;
   }
 
+  /*
+   * The loader hides with visibility/opacity so it can transition out, and
+   * visibility: hidden does NOT stop an animation on a descendant. Without
+   * this the sheen keeps ticking for the life of the page: measured at 60
+   * style recalculations per second in an otherwise idle Studio, for a
+   * shimmer nobody can see.
+   */
+  .hfp-shader-loader:not(.hfp-visible):not(.hfp-hiding)
+    .hfp-shader-loader-title-text {
+    animation-play-state: paused;
+  }
+
   .hfp-shader-loader-detail {
     width: 100%;
     height: 26px;
