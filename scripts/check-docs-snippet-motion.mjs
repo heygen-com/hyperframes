@@ -40,7 +40,7 @@ const SNIPPETS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "doc
  * one's guard.
  */
 export function splitComponents(source) {
-  const starts = [...source.matchAll(/^export\s+(?:const|function)\s+(\w+)/gm)];
+  const starts = [...source.matchAll(/^(?:export\s+)?(?:const|function)\s+(\w+)\s*[=(]/gm)];
   return starts.map((match, index) => ({
     name: match[1],
     body: source.slice(match.index, starts[index + 1]?.index ?? source.length),
@@ -55,8 +55,12 @@ export function splitComponents(source) {
  * whoever passes the prop is.
  */
 export function autoplays(source) {
-  const withoutPassthrough = source.replace(/autoPlay=\{\s*autoPlay\s*\}/g, "");
-  return /autoPlay=\{/.test(withoutPassthrough) || /^\s*autoPlay\s*$/m.test(withoutPassthrough);
+  const decidedElsewhere = source
+    // Forwarding the caller's prop.
+    .replace(/autoPlay=\{\s*autoPlay\s*\}/g, "")
+    // The prop's own default in the signature, which is a declaration, not a use.
+    .replace(/\bautoPlay\s*=\s*(?:true|false)\s*(?=[,}])/g, "");
+  return /\bautoPlay(?=[\s/>=])/.test(decidedElsewhere);
 }
 
 /** The text between the parentheses of one `useState(` call. */

@@ -84,9 +84,36 @@ export const OtherGrid = () => {
   assert.equal(findMotionGuardViolations(components[1].body).length, 2);
 });
 
+// Both below were found by running these functions rather than reading them,
+// on the approval pass for #2977. Each fails silently: a component that
+// `autoplays` misses is filtered out before any requirement runs, so the gate
+// reports zero problems instead of a violation.
+
+test("a bare autoPlay attribute counts, however the element is wrapped", () => {
+  assert.equal(autoplays("<video autoPlay muted />"), true);
+  assert.equal(autoplays("<video src={s} autoPlay/>"), true);
+  assert.equal(autoplays("<video\n  autoPlay\n/>"), true);
+});
+
+test("a component that is not exported cannot inherit the one above it", () => {
+  const sneaky = `${GUARDED}
+const Sneaky = () => <video autoPlay={true} />;
+`;
+  const components = splitComponents(sneaky);
+  assert.deepEqual(
+    components.map((component) => component.name),
+    ["Grid", "Sneaky"],
+  );
+  assert.equal(findMotionGuardViolations(components[1].body).length, 2);
+});
+
 test("forwarding a caller's autoPlay prop does not make a component owe the guard", () => {
   assert.equal(autoplays('<video autoPlay={autoPlay} preload="metadata" />'), false);
   assert.equal(autoplays("({ autoPlay = false }) => <video autoPlay={autoPlay} />"), false);
+  assert.equal(
+    autoplays("({ autoPlay = false, loop = false }) => <video autoPlay={autoPlay} />"),
+    false,
+  );
   assert.equal(autoplays("<video autoPlay={!reduced} />"), true);
   assert.equal(autoplays('<video controls muted preload="metadata" />'), false);
 });
