@@ -34,9 +34,166 @@ export interface AudioTrackOption {
   label: string;
 }
 
+interface FxNodeRowProps {
+  node: HfAudioFxNode;
+  index: number;
+  open: boolean;
+  /** Last in the chain, so it cannot move further down. */
+  last: boolean;
+  disabled?: boolean;
+  onToggleOpen(): void;
+  onUpdate(index: number, patch: Partial<HfAudioFxNode>): void;
+  onMove(index: number, delta: number): void;
+  onRemove(index: number): void;
+  onPreview(index: number, params: HfAudioFxParamValues): void;
+}
+
+/** Reorder arrow. Disabled at the end of the chain it would move past. */
+function FxMoveButton({
+  label,
+  glyph,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  glyph: string;
+  disabled: boolean;
+  onClick(): void;
+}) {
+  return (
+    <button
+      type="button"
+      className="hf-fx-move px-1 font-mono text-[10px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-25"
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {glyph}
+    </button>
+  );
+}
+
+/** Name, bypass, reorder and remove for one effect. */
+function FxNodeHeader({
+  label,
+  open,
+  bypassed,
+  first,
+  last,
+  disabled,
+  onToggleOpen,
+  onToggleBypass,
+  onMove,
+  onRemove,
+}: {
+  label: string;
+  open: boolean;
+  bypassed: boolean;
+  first: boolean;
+  last: boolean;
+  disabled?: boolean;
+  onToggleOpen(): void;
+  onToggleBypass(): void;
+  onMove(delta: number): void;
+  onRemove(): void;
+}) {
+  return (
+    <div className="hf-fx-node-head flex min-h-7 items-center gap-1 px-1.5">
+      <button
+        type="button"
+        className="hf-fx-node-name flex-1 truncate text-left text-[11px] font-semibold text-panel-text-1 hover:text-panel-text-0"
+        aria-expanded={open}
+        onClick={onToggleOpen}
+      >
+        {label}
+      </button>
+      <button
+        type="button"
+        className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+        aria-pressed={bypassed}
+        title={bypassed ? "Enable" : "Bypass"}
+        disabled={disabled}
+        onClick={onToggleBypass}
+      >
+        {bypassed ? "Off" : "On"}
+      </button>
+      <FxMoveButton
+        label="Move up"
+        glyph="&uarr;"
+        disabled={Boolean(disabled) || first}
+        onClick={() => onMove(-1)}
+      />
+      <FxMoveButton
+        label="Move down"
+        glyph="&darr;"
+        disabled={Boolean(disabled) || last}
+        onClick={() => onMove(1)}
+      />
+      <button
+        type="button"
+        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-4 hover:text-red-400 disabled:opacity-40"
+        title="Remove"
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        &times;
+      </button>
+    </div>
+  );
+}
+
+/** One effect in the chain: its header controls, and its knobs when open. */
+function FxNodeRow({
+  node,
+  index,
+  open,
+  last,
+  disabled,
+  onToggleOpen,
+  onUpdate,
+  onMove,
+  onRemove,
+  onPreview,
+}: FxNodeRowProps) {
+  const def = getAudioFxDef(node.type);
+  if (!def) return null;
+  const bypassed = node.enabled === false;
+  return (
+    <div
+      className={`hf-fx-node rounded-[4px] border border-panel-border-input${bypassed ? " opacity-50" : ""}`}
+      data-fx-node={node.type}
+    >
+      <FxNodeHeader
+        label={def.label}
+        open={open}
+        bypassed={bypassed}
+        first={index === 0}
+        last={last}
+        disabled={disabled}
+        onToggleOpen={onToggleOpen}
+        onToggleBypass={() => onUpdate(index, { enabled: bypassed })}
+        onMove={(delta) => onMove(index, delta)}
+        onRemove={() => onRemove(index)}
+      />
+      {open ? (
+        <FxParams
+          def={def}
+          params={node.params ?? defaultAudioFxParams(node.type)}
+          disabled={disabled || bypassed}
+          onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
+          onCommit={(params: HfAudioFxParamValues) => onUpdate(index, { params })}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export interface FxSectionProps {
   chain: HfAudioFxChain;
+  /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
+  /** Continuous updates while a control is being dragged. */
+  onChainPreview?(chain: HfAudioFxChain): void;
   carve: HfCarveSettings | null;
   onCarveChange(carve: HfCarveSettings | null): void;
   /** Other audio elements that could act as the carve source. */
@@ -50,6 +207,7 @@ export interface FxSectionProps {
 export function FxSection({
   chain,
   onChainChange,
+  onChainPreview,
   carve,
   onCarveChange,
   sourceOptions,
@@ -68,6 +226,16 @@ export function FxSection({
   const mutate = useCallback(
     (nodes: HfAudioFxNode[]) => onChainChange({ ...chain, nodes }),
     [chain, onChainChange],
+  );
+
+  // Dragging a knob previews without persisting; releasing it commits once.
+  const previewNode = useCallback(
+    (index: number, params: HfAudioFxParamValues) =>
+      onChainPreview?.({
+        ...chain,
+        nodes: chain.nodes.map((n, i) => (i === index ? { ...n, params } : n)),
+      }),
+    [chain, onChainPreview],
   );
 
   const addEffect = useCallback(
@@ -114,75 +282,21 @@ export function FxSection({
             No effects on this track.
           </p>
         ) : (
-          chain.nodes.map((node, i) => {
-            const def = getAudioFxDef(node.type);
-            if (!def) return null;
-            const bypassed = node.enabled === false;
-            const open = openNode === i;
-            return (
-              <div
-                key={`${node.type}-${i}`}
-                className={`hf-fx-node rounded-[4px] border border-panel-border-input${bypassed ? " opacity-50" : ""}`}
-                data-fx-node={node.type}
-              >
-                <div className="hf-fx-node-head flex min-h-7 items-center gap-1 px-1.5">
-                  <button
-                    type="button"
-                    className="hf-fx-node-name flex-1 truncate text-left text-[11px] font-semibold text-panel-text-1 hover:text-panel-text-0"
-                    aria-expanded={open}
-                    onClick={() => setOpenNode(open ? null : i)}
-                  >
-                    {def.label}
-                  </button>
-                  <button
-                    type="button"
-                    className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
-                    aria-pressed={bypassed}
-                    title={bypassed ? "Enable" : "Bypass"}
-                    disabled={disabled}
-                    onClick={() => updateNode(i, { enabled: bypassed })}
-                  >
-                    {bypassed ? "Off" : "On"}
-                  </button>
-                  <button
-                    type="button"
-                    className="hf-fx-move px-1 font-mono text-[10px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-25"
-                    title="Move up"
-                    disabled={disabled || i === 0}
-                    onClick={() => moveNode(i, -1)}
-                  >
-                    &uarr;
-                  </button>
-                  <button
-                    type="button"
-                    className="hf-fx-move px-1 font-mono text-[10px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-25"
-                    title="Move down"
-                    disabled={disabled || i === chain.nodes.length - 1}
-                    onClick={() => moveNode(i, 1)}
-                  >
-                    &darr;
-                  </button>
-                  <button
-                    type="button"
-                    className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-4 hover:text-red-400 disabled:opacity-40"
-                    title="Remove"
-                    disabled={disabled}
-                    onClick={() => removeNode(i)}
-                  >
-                    &times;
-                  </button>
-                </div>
-                {open ? (
-                  <FxParams
-                    def={def}
-                    params={node.params ?? defaultAudioFxParams(node.type)}
-                    disabled={disabled || bypassed}
-                    onChange={(params: HfAudioFxParamValues) => updateNode(i, { params })}
-                  />
-                ) : null}
-              </div>
-            );
-          })
+          chain.nodes.map((node, i) => (
+            <FxNodeRow
+              key={`${node.type}-${i}`}
+              node={node}
+              index={i}
+              open={openNode === i}
+              last={i === chain.nodes.length - 1}
+              disabled={disabled}
+              onToggleOpen={() => setOpenNode(openNode === i ? null : i)}
+              onUpdate={updateNode}
+              onMove={moveNode}
+              onRemove={removeNode}
+              onPreview={previewNode}
+            />
+          ))
         )}
       </div>
 

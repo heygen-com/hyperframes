@@ -735,6 +735,9 @@ export function normalizeAudioFxParams(
 export interface HfAudioFxNode {
   /** Effect id from HF_AUDIO_FX. */
   type: string;
+  /** Set on nodes the carve analysis generated, so re-running replaces them
+   *  instead of stacking another set on top of hand-added effects. */
+  fromCarve?: boolean;
   /** Absent means enabled — chain files written before the field existed still load. */
   enabled?: boolean;
   params?: HfAudioFxParamValues;
@@ -778,12 +781,13 @@ export function parseAudioFxChain(json: string): HfAudioFxChain {
     if (typeof n !== "object" || n === null) {
       throw new AudioFxChainError(`Node ${i} is not an object.`);
     }
-    const node = n as { type?: unknown; enabled?: unknown; params?: unknown };
+    const node = n as { type?: unknown; enabled?: unknown; params?: unknown; fromCarve?: unknown };
     if (typeof node.type !== "string" || !BY_ID.has(node.type)) {
       throw new AudioFxChainError(`Node ${i} has unknown effect type: ${String(node.type)}`);
     }
     return {
       type: node.type,
+      ...(node.fromCarve === true ? { fromCarve: true as const } : {}),
       enabled: node.enabled !== false,
       params: normalizeAudioFxParams(
         node.type,
@@ -805,6 +809,7 @@ export function serializeAudioFxChain(chain: HfAudioFxChain): string {
     version: HF_AUDIO_FX_CHAIN_VERSION,
     nodes: chain.nodes.map((node) => ({
       type: node.type,
+      ...(node.fromCarve === true ? { fromCarve: true } : {}),
       ...(node.enabled === false ? { enabled: false } : {}),
       params: normalizeAudioFxParams(node.type, node.params),
     })),

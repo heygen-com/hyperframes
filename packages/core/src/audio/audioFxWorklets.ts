@@ -9,7 +9,7 @@
  * Kept as a source string so it can be registered from a Blob URL without a
  * separate bundled asset, which keeps the studio's build unchanged.
  */
-export const AUDIO_FX_WORKLET_SOURCE = `
+const AUDIO_FX_WORKLET_SOURCE = `
 const dbToLin = (db) => Math.pow(10, db / 20);
 
 /**
@@ -47,6 +47,13 @@ function kneeGain(envDb, thresholdDb, ratio, kneeDb) {
   return over > 0 ? -(over * (1 - 1 / ratio)) : 0;
 }
 
+// log10/exp per sample is the single most expensive thing a dynamics processor
+// can do on the audio thread, and every sample below the knee needs neither:
+// its gain is exactly unity. Comparing envelopes in the linear domain lets the
+// quiet majority of samples skip the transcendentals entirely.
+const LN10_OVER_20 = Math.LN10 / 20;
+const dbToLinFast = (db) => Math.exp(db * LN10_OVER_20);
+
 class HfCompressor extends AudioWorkletProcessor {
   constructor(o) {
     super();
@@ -65,14 +72,26 @@ class HfCompressor extends AudioWorkletProcessor {
     const mix = p.mix ?? 1;
     // Knee is expressed as a ratio in FFmpeg; convert to dB width.
     const kneeDb = 20 * Math.log10(Math.max(1.0001, p.knee ?? 2.83));
+    const thresholdDb = p.threshold ?? -24;
+    const ratio = p.ratio ?? 4;
+    // Below this the gain computer returns unity, so the sample needs no
+    // logarithm at all.
+    const kneeStartLin = dbToLin(thresholdDb - kneeDb);
+    const dry = 1 - mix;
     for (let ch = 0; ch < i.length; ch++) {
       const inp = i[ch], out = o[ch];
       for (let n = 0; n < inp.length; n++) {
         const x = inp[n];
+        // Per-channel follower, and the sub-knee shortcut: below the knee the
+        // gain is exactly unity, so the sample needs no logarithm at all.
         const env = this.env.push(ch, x);
-        const envDb = env > 1e-9 ? 20 * Math.log10(env) : -200;
-        const g = dbToLin(kneeGain(envDb, p.threshold ?? -24, p.ratio ?? 4, kneeDb));
-        out[n] = x * g * makeup * mix + x * (1 - mix);
+        if (env <= kneeStartLin) {
+          out[n] = x * makeup * mix + x * dry;
+          continue;
+        }
+        const envDb = 20 * Math.log10(env);
+        const g = dbToLinFast(kneeGain(envDb, thresholdDb, ratio, kneeDb));
+        out[n] = x * g * makeup * mix + x * dry;
       }
     }
     return true;
@@ -139,6 +158,7 @@ class HfGate extends AudioWorkletProcessor {
         const x = inp[n];
         const env = this.env.push(ch, x);
         let target = 1;
+        // Above the threshold the gate is fully open; skip the pow entirely.
         if (env < threshold) {
           const under = env > 1e-9 ? threshold / env : 1e9;
           target = Math.max(floor, 1 / Math.pow(under, ratio - 1));
@@ -191,31 +211,40 @@ class HfBitcrush extends AudioWorkletProcessor {
 registerProcessor("hf-bitcrush", HfBitcrush);
 `;
 
-let modulePromise: Promise<void> | undefined;
+// Registration is per context, not per module: a processor registered on one
+// AudioContext does not exist on another, so caching a single promise made
+// every context after the first believe it was ready when it was not.
+const registered = new WeakMap<BaseAudioContext, Promise<void>>();
+
+/** True once the processors are usable on this context. */
+export function audioFxWorkletsReady(ctx: BaseAudioContext): boolean {
+  return readyContexts.has(ctx);
+}
+const readyContexts = new WeakSet<BaseAudioContext>();
 
 /**
- * Register the processors on a context. Idempotent per module instance, since
+ * Register the processors on a context. Idempotent per context, since
  * addModule throws if the same processor name is registered twice.
  */
 export function ensureAudioFxWorklets(ctx: BaseAudioContext): Promise<void> {
-  modulePromise ??= (async () => {
-    if (!ctx.audioWorklet) {
-      throw new Error(
-        "AudioWorklet is unavailable — the page needs a secure context (https, localhost or file://)",
-      );
-    }
-    // A data: URL rather than a blob:, because a blob inherits the page origin
-    // and is treated as opaque on a file:// page, where the module then fails
-    // to load with an unhelpful AbortError.
-    const url = `data:text/javascript;base64,${btoa(
-      String.fromCharCode(...new TextEncoder().encode(AUDIO_FX_WORKLET_SOURCE)),
-    )}`;
-    await ctx.audioWorklet.addModule(url);
-  })();
+  let modulePromise = registered.get(ctx);
+  if (!modulePromise) {
+    modulePromise = (async () => {
+      if (!ctx.audioWorklet) {
+        throw new Error(
+          "AudioWorklet is unavailable — the page needs a secure context (https, localhost or file://)",
+        );
+      }
+      // A data: URL rather than a blob:, because a blob inherits the page origin
+      // and is treated as opaque on a file:// page, where the module then fails
+      // to load with an unhelpful AbortError.
+      const url = `data:text/javascript;base64,${btoa(
+        String.fromCharCode(...new TextEncoder().encode(AUDIO_FX_WORKLET_SOURCE)),
+      )}`;
+      await ctx.audioWorklet.addModule(url);
+      readyContexts.add(ctx);
+    })();
+    registered.set(ctx, modulePromise);
+  }
   return modulePromise;
-}
-
-/** Test seam: forget the cached registration so a fresh context can register. */
-export function __resetAudioFxWorkletsForTests(): void {
-  modulePromise = undefined;
 }

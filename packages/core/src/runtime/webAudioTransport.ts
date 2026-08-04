@@ -1,3 +1,4 @@
+import { attachElementFxChain } from "./audioFx.js";
 import { swallow } from "./diagnostics";
 import { getDebugSurface } from "./globals.js";
 
@@ -60,6 +61,8 @@ export type ScheduledSource = {
   el: HTMLMediaElement;
   sourceNode: AudioBufferSourceNode;
   gainNode: GainNode;
+  /** FX chain spliced between source and gain, when the element carries one. */
+  fx?: { dispose(): void } | null;
   compositionStart: number;
   mediaStart: number;
   scheduledAt: number;
@@ -184,7 +187,12 @@ export class WebAudioTransport {
 
       const gainNode = this._ctx.createGain();
       gainNode.gain.value = volume;
-      sourceNode.connect(gainNode);
+
+      // Splice the element's FX chain between the decoded source and its gain,
+      // so effects see the raw signal and volume automation rides on their
+      // output — the same order the offline render uses. Preview and render run
+      // the identical graph builders, so what is heard here is what is written.
+      const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode);
       gainNode.connect(this._masterGain);
 
       const elapsed = compositionTime - compositionStart;
@@ -204,6 +212,7 @@ export class WebAudioTransport {
       ) {
         // Playhead already past the clip end — discard the nodes we built.
         sourceNode.disconnect();
+        fx?.dispose();
         gainNode.disconnect();
         return null;
       }
@@ -213,6 +222,7 @@ export class WebAudioTransport {
       logFallbackHandoff(el, priorMuted);
 
       const scheduled: ScheduledSource = {
+        fx,
         el,
         sourceNode,
         gainNode,
@@ -277,6 +287,7 @@ export class WebAudioTransport {
       try {
         source.sourceNode.stop();
         source.sourceNode.disconnect();
+        source.fx?.dispose();
         source.gainNode.disconnect();
       } catch {
         // already stopped
