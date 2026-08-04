@@ -14,6 +14,19 @@ function waitForPostBlurEffects(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function inspectDrainFailures(results: PromiseSettledResult<unknown>[]): {
+  conflict?: StudioFileConflictError;
+  firstFailure?: PromiseRejectedResult;
+} {
+  let firstFailure: PromiseRejectedResult | undefined;
+  for (const result of results) {
+    if (result.status !== "rejected") continue;
+    if (result.reason instanceof StudioFileConflictError) return { conflict: result.reason };
+    firstFailure ??= result;
+  }
+  return { firstFailure };
+}
+
 export function trackStudioPendingEdit(
   result: Promise<unknown> | unknown,
 ): Promise<unknown> | undefined {
@@ -43,24 +56,16 @@ export async function flushStudioPendingEdits(): Promise<StudioPendingEditsDrain
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
   );
-  let firstFailure: unknown;
-  let hasFailure = false;
+  let firstFailure: PromiseRejectedResult | undefined;
   while (detail.promises.length > 0 || pendingEditPromises.size > 0) {
     const promises = [...detail.promises, ...pendingEditPromises];
     detail.promises = [];
     const results = await Promise.allSettled(promises);
-    for (const result of results) {
-      if (result.status !== "rejected") continue;
-      if (result.reason instanceof StudioFileConflictError) {
-        return { status: "conflict", error: result.reason };
-      }
-      if (!hasFailure) {
-        firstFailure = result.reason;
-        hasFailure = true;
-      }
-    }
+    const batchFailures = inspectDrainFailures(results);
+    if (batchFailures.conflict) return { status: "conflict", error: batchFailures.conflict };
+    firstFailure ??= batchFailures.firstFailure;
   }
-  return hasFailure ? { status: "failed", error: firstFailure } : { status: "clean" };
+  return firstFailure ? { status: "failed", error: firstFailure.reason } : { status: "clean" };
 }
 
 export function addStudioPendingEditFlushListener(
