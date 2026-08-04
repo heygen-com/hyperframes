@@ -1,7 +1,12 @@
 /**
  * Breakpoint automation over an audio clip, edited the way a DAW edits it:
  * double-click the line to add a point, drag one to shape it, right-click a
- * point to remove it.
+ * point to remove it, Alt-drag the line between two points to bend it, and
+ * double-click a point to type an exact value.
+ *
+ * Modifiers follow Ableton's, because that is the muscle memory an automation
+ * lane inherits: Shift locks a drag to one axis and fines the value down, Alt
+ * over a segment curves it, and Alt during a point drag ignores the grid.
  *
  * The lane knows nothing about any particular effect. Which parameters it can
  * offer, their ranges, units and whether they read logarithmically all come
@@ -9,14 +14,7 @@
  * same principle the property panel's controls follow.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   resolveAutomationRange,
   sampleAutomationLane,
@@ -26,20 +24,26 @@ import {
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
 import {
-  DRAW_SAMPLES,
-  formatValue,
+  envelopePath,
   fromUnit,
   GRAB_PX,
   laneFor,
   PAD_X,
-  POINT_MERGE_SEC,
   toUnit,
   withLane,
 } from "./automationLaneGeometry";
+import { useAutomationLaneGestures } from "./useAutomationLaneGestures";
+import { AutomationValueInput } from "./AutomationValueInput";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineElement } from "../store/playerStore";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
+
+/** Pointer shape: a read-only lane can only be selected, a live one edited. */
+function laneCursor(readOnly: boolean | undefined, dragging: boolean): string {
+  if (readOnly) return "pointer";
+  return dragging ? "grabbing" : "crosshair";
+}
 
 export interface TimelineAutomationLaneProps {
   /** Clip-local duration the lane spans. */
@@ -59,6 +63,11 @@ export interface TimelineAutomationLaneProps {
   onPreview(automation: HfAutomation): void;
   /** Gesture-end write; this is the one that persists and lands in undo. */
   onCommit(automation: HfAutomation): void;
+  /**
+   * Clip-local times a dragged point snaps to — the beat grid, shifted into this
+   * clip's frame. Its own neighbouring points are added on top.
+   */
+  snapTimes?: readonly number[];
   /** Editing writes to the selected element, so an unselected clip is read-only. */
   readOnly?: boolean;
   /** Called when a read-only lane is pressed: selects the clip so it goes live. */
@@ -77,14 +86,13 @@ export function TimelineAutomationLane({
   playheadSec,
   onPreview,
   onCommit,
+  snapTimes,
   readOnly,
   onSelect,
 }: TimelineAutomationLaneProps) {
   const stored = laneFor(automation, target);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
 
   /**
    * Points as the user is shaping them, before the edit has come back around.
@@ -144,37 +152,10 @@ export function TimelineAutomationLane({
     [duration, inner, range, widthPx],
   );
 
-  /**
-   * The line the lane draws. A flat line at the current value stands in for a
-   * lane with no points, so the first click has something to land on.
-   */
-  const path = useMemo(() => {
-    if (lane.points.length === 0) {
-      const y = yOf(range.default ?? (range.min + range.max) / 2);
-      return `M ${PAD_X} ${y} L ${PAD_X + widthPx} ${y}`;
-    }
-    const pts: string[] = [];
-    const first = lane.points[0]!;
-    pts.push(`M ${PAD_X} ${yOf(first.v)}`);
-    pts.push(`L ${xOf(first.t)} ${yOf(first.v)}`);
-    for (let i = 0; i + 1 < lane.points.length; i += 1) {
-      const a = lane.points[i]!;
-      const b = lane.points[i + 1]!;
-      if (!a.curve && range.scale === "linear") {
-        pts.push(`L ${xOf(b.t)} ${yOf(b.v)}`);
-        continue;
-      }
-      // Curved or log-read: sample it, or the drawing would lie about the
-      // envelope the audio thread is going to play.
-      for (let k = 1; k <= DRAW_SAMPLES; k += 1) {
-        const t = a.t + ((b.t - a.t) * k) / DRAW_SAMPLES;
-        pts.push(`L ${xOf(t)} ${yOf(sampleAutomationLane(lane, t, range.scale))}`);
-      }
-    }
-    const last = lane.points[lane.points.length - 1]!;
-    pts.push(`L ${PAD_X + widthPx} ${yOf(last.v)}`);
-    return pts.join(" ");
-  }, [lane, range, widthPx, xOf, yOf]);
+  const path = useMemo(
+    () => envelopePath({ lane, range, widthPx, xOf, yOf }),
+    [lane, range, widthPx, xOf, yOf],
+  );
 
   const commitPoints = useCallback(
     (points: HfAutomationLane["points"], persist: boolean): void => {
@@ -187,90 +168,23 @@ export function TimelineAutomationLane({
     [automation, target, onCommit, onPreview],
   );
 
-  /** Index of a point under the pointer, or null. */
-  const hitIndex = useCallback(
-    (clientX: number, clientY: number): number | null => {
-      const box = svgRef.current?.getBoundingClientRect();
-      if (!box) return null;
-      const px = clientX - box.left;
-      const py = clientY - box.top;
-      for (let i = 0; i < lane.points.length; i += 1) {
-        const p = lane.points[i]!;
-        if (Math.hypot(xOf(p.t) - px, yOf(p.v) - py) <= GRAB_PX * 1.6) return i;
-      }
-      return null;
-    },
-    [lane, xOf, yOf],
+  const getBox = useCallback(
+    (): DOMRect | null => svgRef.current?.getBoundingClientRect() ?? null,
+    [],
   );
-
-  const onPointerDown = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (e.button !== 0) return;
-      // The lane owns this region either way. Letting a press through starts the
-      // timeline's own gesture (scrub / marquee / clip drag), which then eats the
-      // rest of the sequence — including the second half of a double-click.
-      e.stopPropagation();
-      if (readOnly) {
-        // The lane sits below the clip bar, so the timeline's selection handler
-        // never sees this press; selecting here is the only way in.
-        onSelect?.();
-        return;
-      }
-      const index = hitIndex(e.clientX, e.clientY);
-      if (index === null) return;
-      e.preventDefault();
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      setDragIndex(index);
-    },
-    [hitIndex, readOnly, onSelect],
-  );
-
-  const onPointerMove = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (dragIndex === null) return;
-      e.stopPropagation();
-      const { t, v } = pointAt(e.clientX, e.clientY);
-      const next = lane.points.map((p, i) => (i === dragIndex ? { ...p, t, v } : p));
-      // Re-sort so dragging a point past a neighbour behaves, and keep the
-      // dragged one addressable by following where it landed.
-      const moved = next[dragIndex]!;
-      next.sort((a, b) => a.t - b.t);
-      setDragIndex(next.indexOf(moved));
-      setHint(`${formatValue(range, v)} @ ${t.toFixed(2)}s`);
-      commitPoints(next, false);
-    },
-    [dragIndex, lane, pointAt, range, commitPoints],
-  );
-
-  const endDrag = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (dragIndex === null) return;
-      e.stopPropagation();
-      setDragIndex(null);
-      setHint(null);
-      commitPoints(lane.points, true);
-    },
-    [dragIndex, lane, commitPoints],
-  );
-
-  const onDoubleClick = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (readOnly) return;
-      e.stopPropagation();
-      e.preventDefault();
-      const { t, v } = pointAt(e.clientX, e.clientY);
-      const kept = lane.points.filter((p) => Math.abs(p.t - t) > POINT_MERGE_SEC);
-      // A lane's first point alone would be a constant, which is not what
-      // clicking an empty lane means: seed the far end at the same value so the
-      // envelope has somewhere to go.
-      const seeded = lane.points.length === 0 && t > POINT_MERGE_SEC ? [{ t: 0, v }] : [];
-      commitPoints(
-        [...seeded, ...kept, { t, v }].sort((a, b) => a.t - b.t),
-        true,
-      );
-    },
-    [lane, pointAt, commitPoints, readOnly],
-  );
+  const gestures = useAutomationLaneGestures({
+    getBox,
+    lane,
+    range,
+    pointAt,
+    xOf,
+    yOf,
+    commitPoints,
+    snapTimes,
+    readOnly,
+    onSelect,
+  });
+  const { dragIndex, curveIndex, hint, editing } = gestures;
 
   const removeAt = useCallback(
     (index: number): void => {
@@ -312,24 +226,24 @@ export function TimelineAutomationLane({
           top: 0,
           width: widthPx + PAD_X * 2,
           height: h,
-          cursor: readOnly ? "pointer" : dragIndex !== null ? "grabbing" : "crosshair",
+          cursor: laneCursor(readOnly, dragIndex !== null || curveIndex !== null),
           opacity: readOnly ? 0.55 : 1,
           touchAction: "none",
         }}
         width={widthPx + PAD_X * 2}
         height={h}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onDoubleClick={onDoubleClick}
+        onPointerDown={gestures.onPointerDown}
+        onPointerMove={gestures.onPointerMove}
+        onPointerUp={gestures.endDrag}
+        onPointerCancel={gestures.endDrag}
+        onDoubleClick={gestures.onDoubleClick}
         role="group"
         aria-label={`${range.label} automation`}
       >
         <title>
           {readOnly
             ? "Click to select this clip, then double-click to add a point"
-            : "Double-click to add a point, drag to shape, right-click a point to remove"}
+            : "Double-click to add a point, drag to shape, double-click a point to type a value, right-click to remove. Alt-drag the line to curve it. Shift locks an axis; Alt ignores the grid."}
         </title>
         <rect x={PAD_X} y={0} width={widthPx} height={h} fill="rgba(0,0,0,0.18)" rx={3} />
         {/* Mid rail, so a value reads against something. */}
@@ -379,6 +293,17 @@ export function TimelineAutomationLane({
         ) : null}
       </svg>
 
+      {editing ? (
+        <AutomationValueInput
+          text={editing.text}
+          leftPx={leftPx + xOf(lane.points[editing.index]?.t ?? 0) - PAD_X - 18}
+          label={range.label}
+          onChange={gestures.setEditingText}
+          onCommit={gestures.commitEdit}
+          onCancel={gestures.cancelEdit}
+        />
+      ) : null}
+
       {hint ? (
         <div
           className="hf-automation-hint pointer-events-none absolute rounded-[3px] bg-black/80 px-1 py-0.5 font-mono text-[9px] text-white"
@@ -401,6 +326,8 @@ export interface TimelineAutomationLaneSlotProps {
   accentColor: string;
   /** Composition-time playhead; the slot converts it to clip-local. */
   currentTime: number;
+  /** Composition-time beat grid; the slot converts it to clip-local too. */
+  beatTimes?: readonly number[];
 }
 
 /**
@@ -416,7 +343,17 @@ export function TimelineAutomationLaneSlot({
   laneCount,
   accentColor,
   currentTime,
+  beatTimes,
 }: TimelineAutomationLaneSlotProps) {
+  // Beats inside this clip, in the clip's own frame — the lane's times are
+  // clip-local, and a beat outside the clip can never be snapped to anyway.
+  const snapTimes = useMemo(
+    () =>
+      (beatTimes ?? [])
+        .filter((t) => t >= element.start && t <= element.start + element.duration)
+        .map((t) => t - element.start),
+    [beatTimes, element.start, element.duration],
+  );
   const bound = lanes.bind(element, isSelected);
   if (bound.lanes.length === 0) return null;
   const inClip = currentTime >= element.start && currentTime <= element.start + element.duration;
@@ -443,6 +380,7 @@ export function TimelineAutomationLaneSlot({
             onPreview={bound.onPreview}
             onCommit={bound.onCommit}
             onSelect={bound.onSelect}
+            snapTimes={snapTimes}
             readOnly={bound.readOnly}
           />
         );
