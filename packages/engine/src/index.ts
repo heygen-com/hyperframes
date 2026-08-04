@@ -120,6 +120,7 @@ export {
   getCapturePerfSummary,
   percentileOf,
   prepareCaptureSessionForReuse,
+  deriveBeginFrameProbeTimeTicks,
   type CaptureSession,
   isTransientBrowserError,
   isMemoryExhaustionError,
