@@ -110,4 +110,32 @@ describe("runAudioStage", () => {
     expect(result.audioError).toBeUndefined();
     expect(result.audioFailures).toBeUndefined();
   });
+
+  it("reports a rejection as audioError instead of letting it escape the stage", async () => {
+    // An FX failure the mixer cannot degrade past rejects rather than returning a
+    // result. Escaping here would reach the orchestrator as an unclassified
+    // pipeline exception, losing the stage/owner/retryable classification — and
+    // skipping the abort check this stage runs.
+    processCompositionAudioMock.mockRejectedValue(
+      new Error("Audio FX failed for track bgm: browser launch failed"),
+    );
+    const result = await runAudioStage(makeInput());
+    expect(result.hasAudio).toBe(false);
+    expect(result.audioError).toMatch(/Audio FX failed for track bgm/);
+    expect(result.audioFailures).toBeUndefined();
+  });
+
+  it("lets an abort keep its own shape rather than becoming an audio error", async () => {
+    processCompositionAudioMock.mockRejectedValue(new Error("boom"));
+    const aborted = new Error("render aborted");
+    await expect(
+      runAudioStage(
+        makeInput({
+          assertNotAborted: () => {
+            throw aborted;
+          },
+        }),
+      ),
+    ).rejects.toBe(aborted);
+  });
 });
