@@ -176,6 +176,13 @@
         "withLane",
       ],
     },
+    // propertyPanelAutomation is the shared reader for both panel sections; the
+    // FX group that consumes these two lands one PR upstack, so a per-PR audit
+    // against the merge base sees them as unused.
+    {
+      "file": "packages/studio/src/components/editor/propertyPanelAutomation.ts",
+      "exports": ["automatedTargetsOf", "resolveAutomationRange"],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as

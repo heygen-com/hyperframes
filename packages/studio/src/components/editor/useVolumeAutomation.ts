@@ -24,15 +24,22 @@ export interface VolumeAutomationBinding {
 
 export function useVolumeAutomation(
   element: DomEditSelection,
-  onSetAttribute: (attr: string, value: string) => void | Promise<void>,
+  onSetAttributeQuiet: (attr: string, value: string | null) => void | Promise<void>,
 ): VolumeAutomationBinding {
   // The chain is not needed to resolve a volume lane — volume is always a valid
   // target — so this deliberately does not parse it.
   const automation = readPanelAutomation(element.dataAttributes?.["automation"], undefined);
   const write = (next: Parameters<typeof automationAttrValue>[0]): void => {
-    void onSetAttribute(HF_AUDIO_AUTOMATION_ATTR, automationAttrValue(next));
+    // Quiet: clicking the toggle used to reload the preview and restart every
+    // playing track, while the same click on an effect parameter did not.
+    void onSetAttributeQuiet(HF_AUDIO_AUTOMATION_ATTR, automationAttrValue(next) || null);
   };
-  const current = Number(element.dataAttributes?.["volume"] ?? "1");
+  // `??` alone would let an empty `data-volume` through as Number("") === 0, so
+  // automating the track would seed its lane at silence. The engine reads the same
+  // empty value as unity.
+  const raw = element.dataAttributes?.["volume"];
+  const parsed = raw ? Number(raw) : 1;
+  const current = Number.isFinite(parsed) ? parsed : 1;
   return {
     volumeAutomated: automation.lanes.some((lane) => lane.target === VOLUME_TARGET),
     // Seeded at the level the slider already shows, so automating the track does

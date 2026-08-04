@@ -58,7 +58,11 @@ export function useAutomationLanes(): UseAutomationLanesResult {
       const write = (next: HfAutomation, persist: boolean): void => {
         if (!domEdit || !isSelected) return;
         const value = next.lanes.length > 0 ? serializeAutomation(next) : "";
-        if (persist) void domEdit.handleDomAttributeCommit(HF_AUDIO_AUTOMATION_ATTR, value);
+        // Quiet, not the refreshing commit: releasing a dragged point used to
+        // reload the preview, which restarts every playing track — the same chop
+        // the live write during the drag exists to avoid. Quiet still persists
+        // and still resyncs the selection, so the next edit sees this one.
+        if (persist) void domEdit.handleDomAttributeQuietCommit(HF_AUDIO_AUTOMATION_ATTR, value);
         // Dragging a point writes live: no preview refresh, so the composition
         // does not reload and restart playback on every pixel.
         else void domEdit.handleDomAttributeLiveCommit(HF_AUDIO_AUTOMATION_ATTR, value || null);
