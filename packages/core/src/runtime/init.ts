@@ -51,7 +51,12 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
-import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
+import {
+  PAUSED_TRANSPORT_SLOW_WORK_EVERY_TICKS,
+  PAUSED_TRANSPORT_TICK_INTERVAL_MS,
+  shouldAttemptPeriodicTimelineBind,
+  TIMELINE_REBIND_INTERVAL_FRAMES,
+} from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseNumeric } from "./startExpression";
 
@@ -2353,6 +2358,9 @@ export function initSandboxRuntimeModular(): void {
       syncMediaForCurrentState();
       colorGrading.redraw();
       postState(true);
+      // Re-arm the frame loop now, not on the next slow tick — otherwise the
+      // first half-second of playback runs at 2fps.
+      scheduleNextTransportTick();
     },
     pause: () => {
       if (!clock.isPlaying()) return;
@@ -2637,6 +2645,7 @@ export function initSandboxRuntimeModular(): void {
   }
   let transportTickCount = 0;
   let inTransportTick = false;
+  let pausedTickTimerId: number | null = null;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -2855,20 +2864,68 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  // Function declarations, not consts: `transport.play()` is reachable from the
+  // control bridge before this point in the module body is evaluated.
+  function cancelScheduledTransportTick() {
+    if (state.transportRafId != null) {
+      window.cancelAnimationFrame(state.transportRafId);
+      state.transportRafId = null;
+    }
+    if (pausedTickTimerId != null) {
+      window.clearTimeout(pausedTickTimerId);
+      pausedTickTimerId = null;
+    }
+  }
+
+  /**
+   * Schedule the next transport tick on the schedule the current play state
+   * calls for: the frame loop while playing, a slow timer while paused.
+   *
+   * A paused tick still re-seeks the timeline, and GSAP answers that by
+   * rewriting inline styles — at 60fps that alone was ~120 style recalcs per
+   * idle second, plus every Studio overlay watching those mutations. But the
+   * loop cannot simply stop: periodic timeline rebind is the only way a GSAP
+   * timeline that registers on `window.__timelines` after runtime init is ever
+   * discovered, and both the Studio preview and the renderer sit paused at
+   * load. The passengers survive on the slow timer; only the frame cadence goes.
+   *
+   * Exception: once the producer's capture protocol is driving frames, nothing
+   * else may touch the timeline. Its virtual-time shim replaces rAF but leaves
+   * setTimeout on the real clock, so a paused tick landing between `renderSeek`
+   * and the screenshot would re-seek WITHOUT `activateChildren` and could
+   * change exported pixels. renderSeek does its own seek and media sync, so
+   * there is nothing left for the paused schedule to do there.
+   */
+  function scheduleNextTransportTick() {
+    cancelScheduledTransportTick();
+    if (state.tornDown) return;
+    if (clock.isPlaying()) {
+      state.transportRafId = window.requestAnimationFrame(transportTick);
+      return;
+    }
+    if (renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG) return;
+    pausedTickTimerId = window.setTimeout(transportTick, PAUSED_TRANSPORT_TICK_INTERVAL_MS);
+  }
+
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
     try {
-      state.transportRafId = window.requestAnimationFrame(transportTick);
+      const onPausedSchedule = !clock.isPlaying();
+      scheduleNextTransportTick();
       transportTickCount += 1;
 
-      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps)
+      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps,
+      // and every ~1s of the paused schedule too).
       if (
         shouldAttemptPeriodicTimelineBind({
           tick: transportTickCount,
           isPlaying: clock.isPlaying(),
           hasCapturedTimeline: state.capturedTimeline != null,
           currentTimeSeconds: clock.now(),
+          intervalTicks: onPausedSchedule
+            ? PAUSED_TRANSPORT_SLOW_WORK_EVERY_TICKS
+            : TIMELINE_REBIND_INTERVAL_FRAMES,
         })
       ) {
         const prevTimeline = state.capturedTimeline;
@@ -2884,10 +2941,16 @@ export function initSandboxRuntimeModular(): void {
           postTimeline();
         }
       }
-      if (transportTickCount % 20 === 0) {
+      if (
+        transportTickCount % (onPausedSchedule ? PAUSED_TRANSPORT_SLOW_WORK_EVERY_TICKS : 20) ===
+        0
+      ) {
         postTimeline();
       }
-      if (transportTickCount % 30 === 0) {
+      if (
+        transportTickCount % (onPausedSchedule ? PAUSED_TRANSPORT_SLOW_WORK_EVERY_TICKS : 30) ===
+        0
+      ) {
         bindMediaMetadataListeners();
       }
 
@@ -3223,10 +3286,7 @@ export function initSandboxRuntimeModular(): void {
   const teardown = () => {
     if (state.tornDown) return;
     state.tornDown = true;
-    if (state.transportRafId != null) {
-      window.cancelAnimationFrame(state.transportRafId);
-      state.transportRafId = null;
-    }
+    cancelScheduledTransportTick();
     state.transportClock = null;
     webAudio.destroy();
     if (metadataRebindDebounceTimerId != null) {

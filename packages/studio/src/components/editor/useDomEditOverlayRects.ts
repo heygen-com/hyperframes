@@ -2,8 +2,13 @@
  * RAF-driven hook that tracks overlay, hover, and group rects from the iframe DOM.
  * Runs a requestAnimationFrame loop and writes React state only when rects change.
  */
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import {
+  createOverlayFrameLoop,
+  type GestureActiveRef,
+  type OverlayFrameLoop,
+} from "./overlayFrameLoop";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import {
@@ -35,7 +40,10 @@ interface UseDomEditOverlayRectsOptions {
   activeCompositionPathRef: RefObject<string | null>;
   groupSelectionsRef: RefObject<DomEditSelection[]>;
   hoverSelectionRef: RefObject<DomEditSelection | null>;
-  rafPausedRef: RefObject<boolean>;
+  /** True while a canvas gesture drives the overlay imperatively. */
+  gestureActiveRef: GestureActiveRef;
+  /** Filled with this loop so the overlay can re-arm it; see DomEditOverlay. */
+  loopRef: MutableRefObject<OverlayFrameLoop | null>;
 }
 
 interface UseDomEditOverlayRectsResult {
@@ -58,7 +66,8 @@ export function useDomEditOverlayRects({
   activeCompositionPathRef,
   groupSelectionsRef,
   hoverSelectionRef,
-  rafPausedRef,
+  gestureActiveRef,
+  loopRef,
 }: UseDomEditOverlayRectsOptions): UseDomEditOverlayRectsResult {
   const [overlayRect, setOverlayRectState] = useState<OverlayRect | null>(null);
   const [hoverRect, setHoverRectState] = useState<OverlayRect | null>(null);
@@ -105,9 +114,22 @@ export function useDomEditOverlayRects({
     return next;
   };
 
-  useMountEffect(() => {
-    let frame = 0;
+  // The selection, hover and group inputs arrive as refs (the gesture code
+  // needs them without a re-render), so a change in them announces itself to
+  // nobody. This signature does: it is read during render, right after
+  // DomEditOverlay assigns those refs, and re-arms the loop only when the
+  // resolved identities actually differ.
+  const inputsKey = [
+    activeCompositionPathRef.current ?? "",
+    selectionRef.current ? selectionCacheKey(selectionRef.current) : "",
+    hoverSelectionRef.current ? selectionCacheKey(hoverSelectionRef.current) : "",
+    groupSelectionsRef.current.map(selectionCacheKey).join("|"),
+  ].join("~");
+  useEffect(() => {
+    loopRef.current?.arm();
+  }, [inputsKey, loopRef]);
 
+  useMountEffect(() => {
     const clearAll = () => {
       setOverlayRect(null);
       setHoverRect(null);
@@ -115,8 +137,7 @@ export function useDomEditOverlayRects({
     };
 
     const update = () => {
-      frame = requestAnimationFrame(update);
-      if (rafPausedRef.current) {
+      if (gestureActiveRef.current) {
         if (childRectsRef.current.length > 0) {
           childRectsRef.current = [];
           setChildRectsState([]);
@@ -252,8 +273,22 @@ export function useDomEditOverlayRects({
       setHoverRect(orientedGroupAwareOverlayRect(overlayEl, iframe, hoverEl));
     };
 
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    // One pass per arm, then park. The arming signals are: a gesture starting
+    // or ending (below), the selection/hover/group signature above, and
+    // `refreshOverlayGeometry` in DomEditOverlay — which every preview-DOM
+    // mutation, zoom/pan, resize and iframe swap routes through.
+    const loop = createOverlayFrameLoop(() => {
+      update();
+      return false;
+    });
+    loopRef.current = loop;
+    const unsubscribe = gestureActiveRef.subscribe(loop.arm);
+    loop.arm();
+    return () => {
+      unsubscribe();
+      loop.stop();
+      loopRef.current = null;
+    };
   });
 
   return {

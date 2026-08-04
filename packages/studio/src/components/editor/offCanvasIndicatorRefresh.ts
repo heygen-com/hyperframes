@@ -1,6 +1,7 @@
 import type React from "react";
 import type { OffCanvasRect } from "./OffCanvasIndicators";
 import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
+import { createOverlayFrameLoop, type OverlayFrameLoop } from "./overlayFrameLoop";
 
 interface OffCanvasIndicatorRefreshOptions {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -9,9 +10,10 @@ interface OffCanvasIndicatorRefreshOptions {
   activeCompositionPathRef: React.MutableRefObject<string | null>;
   dirtyRef: React.MutableRefObject<boolean>;
   sigRef: React.MutableRefObject<string>;
-  observerRef: React.MutableRefObject<MutationObserver | null>;
   observedDocRef: React.MutableRefObject<Document | null>;
   elementsRef: React.MutableRefObject<Map<string, HTMLElement>>;
+  /** Filled with this loop so the overlay can re-arm it; see DomEditOverlay. */
+  loopRef: React.MutableRefObject<OverlayFrameLoop | null>;
   setRects: (rects: OffCanvasRect[]) => void;
 }
 
@@ -26,57 +28,38 @@ function clearIndicators(options: OffCanvasIndicatorRefreshOptions): void {
   options.setRects([]);
 }
 
-function observeDoc(doc: Document, markDirty: () => void): MutationObserver | null {
-  const Observer = doc.defaultView?.MutationObserver ?? globalThis.MutationObserver;
-  if (!Observer) return null;
-  const observer = new Observer(markDirty);
-  observer.observe(doc.documentElement, {
-    attributes: true,
-    // data-hidden is included explicitly: hiding an element writes data-hidden, and
-    // although the runtime honoring also writes display:"none" (a style mutation we'd
-    // catch anyway), keying on the attribute directly makes the coupling robust to any
-    // future throttling of that runtime sync.
-    attributeFilter: ["style", "class", "transform", "width", "height", "data-hidden"],
-    childList: true,
-    subtree: true,
-  });
-  return observer;
-}
-
+/**
+ * Recomputes the off-canvas indicators when the preview DOM has moved.
+ *
+ * The loop parks as soon as it has caught up; it is re-armed by
+ * `refreshOverlayGeometry` in DomEditOverlay, which is what the shared
+ * preview-document observer, a composition switch and a composition-rect change
+ * all route through.
+ */
 export function startOffCanvasIndicatorRefresh(
   options: OffCanvasIndicatorRefreshOptions,
 ): () => void {
-  let frame = 0;
   let lastCompSig = "";
-  const markDirty = () => {
-    options.dirtyRef.current = true;
-  };
-  const attachObserver = (doc: Document | null) => {
-    options.observerRef.current?.disconnect();
-    options.observerRef.current = doc?.documentElement ? observeDoc(doc, markDirty) : null;
-    options.observedDocRef.current = doc;
-    options.sigRef.current = "";
-  };
-  const update = () => {
-    frame = requestAnimationFrame(update);
+  const update = (): boolean => {
     const iframe = options.iframeRef.current;
     const overlayEl = options.overlayRef.current;
     const doc = iframe?.contentDocument ?? null;
     if (doc !== options.observedDocRef.current) {
-      attachObserver(doc);
-      markDirty();
+      options.observedDocRef.current = doc;
+      options.sigRef.current = "";
+      options.dirtyRef.current = true;
     }
     const comp = options.compRectRef.current;
     const nextCompSig = compSignature(comp);
     if (nextCompSig !== lastCompSig) {
       lastCompSig = nextCompSig;
-      markDirty();
+      options.dirtyRef.current = true;
     }
     if (!iframe || !overlayEl) {
       if (options.dirtyRef.current) clearIndicators(options);
-      return;
+      return false;
     }
-    if (!options.dirtyRef.current) return;
+    if (!options.dirtyRef.current) return false;
     options.dirtyRef.current = false;
     recomputeOffCanvasIndicators(
       iframe,
@@ -88,12 +71,14 @@ export function startOffCanvasIndicatorRefresh(
       options.elementsRef,
       options.setRects,
     );
+    return false;
   };
-  frame = requestAnimationFrame(update);
+  const loop = createOverlayFrameLoop(update);
+  options.loopRef.current = loop;
+  loop.arm();
   return () => {
-    cancelAnimationFrame(frame);
-    options.observerRef.current?.disconnect();
-    options.observerRef.current = null;
+    loop.stop();
+    options.loopRef.current = null;
     options.observedDocRef.current = null;
   };
 }

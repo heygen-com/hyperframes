@@ -1,6 +1,7 @@
 import { memo, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { resolveGuideLineRect, type SnapGuide, type SpacingGuide } from "./snapEngine";
+import { createOverlayFrameLoop, type GestureActiveRef } from "./overlayFrameLoop";
 
 export interface SnapGuidesState {
   guides: SnapGuide[];
@@ -16,6 +17,12 @@ const SPACING_BG = "rgba(255, 68, 204, 0.15)";
 
 interface SnapGuideOverlayProps {
   snapGuidesRef: RefObject<SnapGuidesState | null>;
+  /**
+   * True while a canvas gesture runs. Guides exist only during one, so this is
+   * both what starts the loop and what keeps it running: a guide crossed
+   * mid-drag has no other signal to announce itself with.
+   */
+  gestureActiveRef: GestureActiveRef;
   /** Composition rect in overlay space — guide lines span exactly this rect. */
   compositionLeft: number;
   compositionTop: number;
@@ -25,6 +32,7 @@ interface SnapGuideOverlayProps {
 
 export const SnapGuideOverlay = memo(function SnapGuideOverlay({
   snapGuidesRef,
+  gestureActiveRef,
   compositionLeft,
   compositionTop,
   compositionWidth,
@@ -47,15 +55,25 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
   };
 
   useMountEffect(() => {
-    let frame = 0;
+    // Guides only exist while a drag is snapping. Idle — which is almost
+    // always — this loop still wrote display/left/top/width/height for all ten
+    // slots every frame, invalidating style 60 times a second to draw nothing,
+    // and rescheduled itself even once it stopped writing.
+    //
+    // It now runs only across a gesture: the gesture flag starting arms it, it
+    // keeps running while that flag is set (so a guide crossed mid-drag is
+    // drawn), and one final pass after the gesture ends clears the last drawn
+    // set before it parks.
+    let hasDrawnGuides = false;
 
     // fallow-ignore-next-line complexity
-    const update = () => {
-      frame = requestAnimationFrame(update);
-
+    const update = (): boolean => {
       const state = snapGuidesRef.current;
       const guides = state?.guides ?? [];
       const spacingGuides = state?.spacingGuides ?? [];
+      const hasGuides = guides.length > 0 || spacingGuides.length > 0;
+      if (!hasGuides && !hasDrawnGuides) return gestureActiveRef.current;
+      hasDrawnGuides = hasGuides;
       const composition = compositionRectRef.current;
 
       for (let i = 0; i < MAX_GUIDES; i++) {
@@ -114,10 +132,17 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
           label.textContent = `${Math.round(sg.size)}`;
         }
       }
+
+      return gestureActiveRef.current || hasDrawnGuides;
     };
 
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    const loop = createOverlayFrameLoop(update);
+    const unsubscribe = gestureActiveRef.subscribe(loop.arm);
+    loop.arm();
+    return () => {
+      unsubscribe();
+      loop.stop();
+    };
   });
 
   return (
