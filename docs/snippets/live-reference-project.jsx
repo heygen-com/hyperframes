@@ -59,6 +59,24 @@ export const LiveReferenceProject = ({ src, poster }) => {
         return response.text();
       })
       .then((html) => {
+        // ISOLATION CONTRACT — read before pointing `src` anywhere new.
+        //
+        // A blob: URL inherits this page's origin, and <hyperframes-player>
+        // sandboxes its iframe with allow-scripts + allow-same-origin
+        // (packages/player/src/iframe-dom.ts). The composition therefore runs
+        // with script access to the docs origin, not in a hostile-content
+        // sandbox.
+        //
+        // That is deliberate, not an oversight: the player drives seeking
+        // through the iframe's document, which a cross-origin frame does not
+        // expose. Serving the CDN URL directly would isolate the frame and
+        // break playback.
+        //
+        // The guard is the source, so keep it a guard: `src` must stay a
+        // first-party path we publish
+        // (static.heygen.ai/hyperframes-oss/docs/reference-project/...).
+        // Never point this component at user-supplied, community-supplied, or
+        // third-party HTML.
         const assetBase = new URL("../", src).toString();
         const preparedHtml = html.includes('<base href="../">')
           ? html.replace('<base href="../">', `<base href="${assetBase}">`)
