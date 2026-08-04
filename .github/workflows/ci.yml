@@ -511,6 +511,66 @@ jobs:
 
           kill $SERVER_PID 2>/dev/null || true
 
+  studio-runtime-cost:
+    name: "Studio: runtime cost gate"
+    needs: [changes]
+    if: needs.changes.outputs.studio == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      # vite.config.ts is loaded by Node and resolves workspace packages through
+      # their "node" export condition, so the dists must exist first.
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --cwd packages/core build:hyperframes-runtime
+
+      # No browser, runs on every studio PR. Enforces the ratchet and reports
+      # the remaining gap to the 600KiB target.
+      - name: Eager bundle byte budget
+        run: |
+          bun run --cwd packages/studio build
+          node packages/studio/tests/e2e/studio-bundle-budget.mjs
+
+      - name: Runtime cost gate
+        run: |
+          set -euo pipefail
+          SERVER_PID=""
+          stop_server() {
+            if [[ -n "$SERVER_PID" ]]; then
+              kill "$SERVER_PID" 2>/dev/null || true
+              wait "$SERVER_PID" 2>/dev/null || true
+              SERVER_PID=""
+            fi
+          }
+          trap stop_server EXIT
+
+          # Production React: the gate must measure shipped rendering behaviour,
+          # not the development runtime. The gate generates its own fixtures.
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5192 --strictPort &
+          SERVER_PID=$!
+          for i in $(seq 1 60); do
+            curl -sf "http://localhost:5192/" >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          STUDIO_URL="http://localhost:5192" \
+            STUDIO_RUNTIME_TIER=ci \
+            bun packages/studio/tests/e2e/studio-runtime-cost.mjs | tee studio-runtime-cost-evidence.txt
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: studio-runtime-cost-evidence
+          path: studio-runtime-cost-evidence.txt
+          if-no-files-found: ignore
+
   studio-timeline-viewport:
     name: "Studio: timeline viewport gate"
     needs: [changes]
