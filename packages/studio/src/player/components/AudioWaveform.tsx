@@ -1,4 +1,5 @@
-import { memo, useRef, useState, useCallback, useEffect } from "react";
+import { memo, useRef, useState, useCallback, useEffect, useMemo } from "react";
+import { mediaCacheKey, waveformResolver } from "../lib/mediaResolver";
 
 interface AudioWaveformProps {
   audioUrl: string;
@@ -60,9 +61,32 @@ function fakePeaks(url: string, count: number): number[] {
   return peaks;
 }
 
-// Module-level cache so decoded audio persists across re-renders and re-mounts
-const peaksCache = new Map<string, number[]>();
-const decodeInFlight = new Map<string, Promise<number[]>>();
+const PEAK_COUNT = 4000;
+
+/**
+ * Fetch + decode one source into peaks. Never rejects: a failed decode falls
+ * back to the deterministic fake pattern, which is a legitimate result worth
+ * caching rather than a failure worth retrying.
+ */
+async function decodeWaveformPeaks(
+  audioUrl: string,
+  waveformUrl: string | undefined,
+  seed: string,
+): Promise<number[]> {
+  try {
+    if (waveformUrl) {
+      const data: { peaks?: number[] } = await fetch(waveformUrl).then((r) => r.json());
+      if (!Array.isArray(data.peaks)) throw new Error("bad response");
+      return data.peaks;
+    }
+    const buf = await fetch(audioUrl).then((r) => r.arrayBuffer());
+    const ctx = new AudioContext();
+    const decoded = await ctx.decodeAudioData(buf).finally(() => ctx.close());
+    return extractPeaks(decoded.getChannelData(0), PEAK_COUNT);
+  } catch {
+    return fakePeaks(seed, PEAK_COUNT);
+  }
+}
 
 /**
  * Audio waveform rendered from real PCM data via Web Audio API.
@@ -80,45 +104,20 @@ export const AudioWaveform = memo(function AudioWaveform({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const barsRef = useRef<HTMLDivElement | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
-  const cacheKey = waveformUrl ?? audioUrl;
-  const [peaks, setPeaks] = useState<number[] | null>(peaksCache.get(cacheKey) ?? null);
+  const source = waveformUrl ?? audioUrl;
+  const cacheKey = useMemo(() => (source ? mediaCacheKey(source) : ""), [source]);
+  const [peaks, setPeaks] = useState<number[] | null>(
+    () => (cacheKey ? waveformResolver.peek(cacheKey) : undefined) ?? null,
+  );
 
   useEffect(() => {
     if (peaks || !cacheKey) return;
-
     let cancelled = false;
-
-    let promise = decodeInFlight.get(cacheKey);
-    if (!promise) {
-      promise = (
-        waveformUrl
-          ? fetch(waveformUrl)
-              .then((r) => r.json())
-              .then((d: { peaks?: number[] }) => {
-                if (!Array.isArray(d.peaks)) throw new Error("bad response");
-                return d.peaks;
-              })
-          : fetch(audioUrl)
-              .then((r) => r.arrayBuffer())
-              .then((buf) => {
-                const ctx = new AudioContext();
-                return ctx.decodeAudioData(buf).finally(() => ctx.close());
-              })
-              .then((decoded) => extractPeaks(decoded.getChannelData(0), 4000))
-      )
-        .catch(() => fakePeaks(cacheKey, 4000))
-        .then((p) => {
-          peaksCache.set(cacheKey, p);
-          return p;
-        })
-        .finally(() => decodeInFlight.delete(cacheKey));
-
-      decodeInFlight.set(cacheKey, promise);
-    }
-
-    promise.then((p) => {
-      if (!cancelled) setPeaks(p);
-    });
+    waveformResolver
+      .resolve(cacheKey, () => decodeWaveformPeaks(audioUrl, waveformUrl, cacheKey))
+      .then((p) => {
+        if (!cancelled) setPeaks(p);
+      });
     return () => {
       cancelled = true;
     };

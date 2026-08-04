@@ -1,5 +1,11 @@
-import { memo, useRef, useState, useCallback, useEffect } from "react";
+import { memo, useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import {
+  extractVideoFrames,
+  mediaCacheKey,
+  thumbnailResolver,
+  type VideoFrames,
+} from "../lib/mediaResolver";
 import { computeThumbnailStrip, THUMBNAIL_CLIP_HEIGHT } from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
@@ -11,6 +17,19 @@ interface VideoThumbnailProps {
 
 const CLIP_HEIGHT = THUMBNAIL_CLIP_HEIGHT;
 const MAX_UNIQUE_FRAMES: number = 6;
+const EMPTY: VideoFrames = { frames: [], aspect: 16 / 9 };
+
+/** Evenly spaced stops across the *clip's* duration, nudged off a black frame 0. */
+function stripTimestamps(duration: number): number[] {
+  const minSeek = Math.min(0.4, duration * 0.05);
+  const stops: number[] = [];
+  for (let i = 0; i < MAX_UNIQUE_FRAMES; i++) {
+    const raw =
+      MAX_UNIQUE_FRAMES === 1 ? duration * 0.15 : (i / (MAX_UNIQUE_FRAMES - 1)) * duration;
+    stops.push(Math.max(raw, minSeek));
+  }
+  return stops;
+}
 
 /**
  * Renders a film-strip of video frames extracted client-side via a hidden
@@ -23,14 +42,17 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   labelColor,
   duration = 5,
 }: VideoThumbnailProps) {
+  // Keyed on (source, clip duration): two clips trimmed differently from one
+  // source derive different timestamps and must not share an entry. Memoised so
+  // scrub re-renders don't re-parse the URL.
+  const cacheKey = useMemo(() => mediaCacheKey(videoSrc, "strip", duration), [videoSrc, duration]);
   const [containerWidth, setContainerWidth] = useState(0);
   const [visible, setVisible] = useState(false);
-  const [frames, setFrames] = useState<string[]>([]);
+  const [strip, setStrip] = useState<VideoFrames>(() => thumbnailResolver.peek(cacheKey) ?? EMPTY);
   const [failed, setFailed] = useState(false);
-  const [aspect, setAspect] = useState(16 / 9);
+  const { frames, aspect } = strip;
   const ioRef = useRef<IntersectionObserver | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
-  const extractingRef = useRef(false);
 
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     ioRef.current?.disconnect();
@@ -64,104 +86,48 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     roRef.current?.disconnect();
   });
 
-  // Extract frames progressively — each frame appears as soon as it's ready.
-  // Note: useEffect with deps is acceptable — syncs with external video element API,
-  // requires cleanup (cancel extraction, revoke URLs) when inputs change.
+  // One extraction per (source, duration) across every mounted consumer; each
+  // frame still appears as soon as it's ready, via the resolver's partials.
+  // Note: useEffect with deps is acceptable — syncs with an external resolver,
+  // requires cleanup (ignore late results) when inputs change.
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!visible || extractingRef.current) return;
-    extractingRef.current = true;
-
-    const video = document.createElement("video");
-    video.crossOrigin = "anonymous";
-    video.muted = true;
-    video.preload = "auto";
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      extractingRef.current = false;
-      return;
-    }
-
-    const timestamps: number[] = [];
-    const minSeek = Math.min(0.4, duration * 0.05);
-    for (let i = 0; i < MAX_UNIQUE_FRAMES; i++) {
-      const raw =
-        MAX_UNIQUE_FRAMES === 1 ? duration * 0.15 : (i / (MAX_UNIQUE_FRAMES - 1)) * duration;
-      timestamps.push(Math.max(raw, minSeek));
-    }
-
-    let idx = 0;
+    if (!visible) return;
     let cancelled = false;
 
-    const extractNext = () => {
-      if (cancelled || idx >= timestamps.length) {
-        if (!cancelled) {
-          video.src = "";
-          video.load();
-        }
-        return;
-      }
-      video.currentTime = timestamps[idx];
+    // Reset for the new inputs, seeding from cache so a re-mount or a re-keyed
+    // clip doesn't flash the shimmer for frames we already hold.
+    setStrip(thumbnailResolver.peek(cacheKey) ?? EMPTY);
+    setFailed(false);
+
+    const apply = (result: VideoFrames) => {
+      if (!cancelled) setStrip(result);
     };
 
-    video.addEventListener("loadedmetadata", () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setAspect(video.videoWidth / video.videoHeight);
-        const h = CLIP_HEIGHT * 2;
-        const w = Math.round(h * (video.videoWidth / video.videoHeight));
-        canvas.width = w;
-        canvas.height = h;
-      }
-      extractNext();
-    });
-
-    video.addEventListener("seeked", () => {
-      if (cancelled) return;
-      let dataUrl: string;
-      try {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        dataUrl = canvas.toDataURL("image/jpeg", 0.6);
-      } catch {
-        // An external http(s) video served without CORS headers taints the
-        // canvas, so toDataURL throws a SecurityError. Stop the extractor
-        // cleanly and fall back to the no-thumbnail rendering (plain clip
-        // background), matching ImageThumbnail's error path — otherwise the
-        // shimmer placeholder would spin forever.
-        cancelled = true;
-        setFailed(true);
-        video.src = "";
-        video.load();
-        return;
-      }
-      // Stream each frame immediately
-      setFrames((prev) => [...prev, dataUrl]);
-      idx++;
-      extractNext();
-    });
-
-    video.addEventListener("error", () => {
-      // A no-CORS load fails outright (crossOrigin="anonymous" rejects a video
-      // served without CORS headers), firing this instead of the taint path in
-      // "seeked" — so 0 frames are ever extracted. Keep whatever frames we have,
-      // but mark failed so the shimmer placeholder stops spinning forever and we
-      // fall back to the plain clip background (#2214).
-      setFailed(true);
-    });
-
-    video.src = videoSrc;
-    video.load();
+    thumbnailResolver
+      .resolve(
+        cacheKey,
+        (emit) =>
+          extractVideoFrames(
+            videoSrc,
+            stripTimestamps(duration),
+            { frameHeight: CLIP_HEIGHT * 2, quality: 0.6 },
+            emit,
+          ),
+        apply,
+      )
+      .then(apply)
+      .catch(() => {
+        // A tainted canvas or a no-CORS load failure yields no usable strip.
+        // Mark failed so the shimmer stops spinning and the clip falls back to
+        // its plain background (#2214) instead of loading forever.
+        if (!cancelled) setFailed(true);
+      });
 
     return () => {
       cancelled = true;
-      extractingRef.current = false;
-      setFrames([]);
-      setFailed(false);
-      video.src = "";
-      video.load();
     };
-  }, [visible, videoSrc, duration]);
+  }, [visible, videoSrc, duration, cacheKey]);
 
   const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
 

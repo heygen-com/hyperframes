@@ -1,8 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  extractVideoFrames,
+  mediaCacheKey,
+  thumbnailResolver,
+} from "../../player/lib/mediaResolver";
+
+/** Seek to ~10% of the *source's* duration to avoid black opening frames. */
+const posterTimestamps = (sourceDuration: number) => [Math.min(2, sourceDuration * 0.1 || 2)];
 
 /**
- * Extracts a representative JPEG frame from a video URL using a hidden
- * video + canvas. Seeks to ~10% of duration to avoid black opening frames.
+ * Extracts a representative JPEG frame from a video URL, sharing the one
+ * document-wide extractor and its cache with the timeline strip thumbnails.
  * Used by AssetThumbnail (assets tab) and RenderQueueItem (renders tab).
  */
 export function VideoFrameThumbnail({
@@ -13,47 +21,28 @@ export function VideoFrameThumbnail({
   /** Shown instead of an endless shimmer when the video can't be decoded. */
   fallbackLabel?: string;
 }) {
-  const [frame, setFrame] = useState<string | null>(null);
+  const cacheKey = useMemo(() => mediaCacheKey(src, "poster"), [src]);
+  const [frame, setFrame] = useState<string | null>(
+    () => thumbnailResolver.peek(cacheKey)?.frames[0] ?? null,
+  );
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setFailed(false);
-    const video = document.createElement("video");
-    video.crossOrigin = "anonymous";
-    video.muted = true;
-    video.preload = "metadata";
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    const cleanup = () => {
-      video.src = "";
-      video.load();
+    let cancelled = false;
+    thumbnailResolver
+      .resolve(cacheKey, () => extractVideoFrames(src, posterTimestamps, { quality: 0.7 }))
+      .then((result) => {
+        if (!cancelled) setFrame(result.frames[0] ?? null);
+      })
+      .catch(() => {
+        // Resolve the loading state — a permanent shimmer reads as "still loading".
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
     };
-
-    video.addEventListener("loadedmetadata", () => {
-      video.currentTime = Math.min(2, video.duration * 0.1 || 2);
-    });
-
-    video.addEventListener("seeked", () => {
-      if (!ctx) return;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      setFrame(canvas.toDataURL("image/jpeg", 0.7));
-      cleanup();
-    });
-
-    video.addEventListener("error", () => {
-      // Resolve the loading state — a permanent shimmer reads as "still loading".
-      setFailed(true);
-      cleanup();
-    });
-    video.src = src;
-    video.load();
-
-    return cleanup;
-  }, [src]);
+  }, [src, cacheKey]);
 
   if (failed && !frame) {
     return (

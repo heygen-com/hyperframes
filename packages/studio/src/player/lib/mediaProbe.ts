@@ -1,16 +1,9 @@
-interface MediaProbeResult {
-  duration: number;
-  width?: number;
-  height?: number;
-  hasVideo: boolean;
-  hasAudio: boolean;
-}
-
-const cache = new Map<string, MediaProbeResult>();
-const inflight = new Map<string, Promise<MediaProbeResult | null>>();
-// URLs whose probe failed (CORS, 404, non-media). Remembered so the rAF-driven
-// timeline re-derive doesn't re-fetch them every frame and flood the console.
-const failed = new Set<string>();
+import {
+  mediaCacheKey,
+  metadataResolver,
+  normalizeMediaUrl,
+  type MediaProbeResult,
+} from "./mediaResolver";
 
 let mediabunnyModule: typeof import("mediabunny") | null | false = null;
 
@@ -26,17 +19,14 @@ async function loadMediabunny() {
   }
 }
 
-function normalizeUrl(url: string): string {
-  try {
-    return new URL(url, window.location.href).href;
-  } catch {
-    return url;
-  }
-}
-
-async function probeOne(url: string): Promise<MediaProbeResult | null> {
+/**
+ * Throws on anything that is not usable media. The resolver turns that into an
+ * expiring failure record, so a transient error is retried after the TTL
+ * instead of being remembered for the life of the tab.
+ */
+async function probeOne(url: string): Promise<MediaProbeResult> {
   const mb = await loadMediabunny();
-  if (!mb) return null;
+  if (!mb) throw new Error("mediaProbe: mediabunny unavailable");
 
   const input = new mb.Input({
     source: new mb.UrlSource(url),
@@ -44,28 +34,27 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
   });
   try {
     const duration = await input.getDurationFromMetadata();
-    if (duration == null || !Number.isFinite(duration) || duration <= 0) return null;
+    if (duration == null || !Number.isFinite(duration) || duration <= 0) {
+      throw new Error(`mediaProbe: no usable duration for ${url}`);
+    }
 
     const videoTrack = await input.getPrimaryVideoTrack();
     const audioTracks = await input.getAudioTracks();
 
-    const result: MediaProbeResult = {
+    return {
       duration,
       width: videoTrack?.displayWidth,
       height: videoTrack?.displayHeight,
       hasVideo: videoTrack != null,
       hasAudio: audioTracks.length > 0,
     };
-    return result;
-  } catch {
-    return null;
   } finally {
     input.dispose();
   }
 }
 
 function getCachedProbe(url: string): MediaProbeResult | undefined {
-  return cache.get(normalizeUrl(url));
+  return metadataResolver.peek(mediaCacheKey(url));
 }
 
 /**
@@ -90,7 +79,8 @@ export function applyCachedSourceDurations<
 /**
  * Probe (header-only, cheap) any media elements still missing sourceDuration
  * after the cache pass, applying each resolved duration via `apply(key, secs)`.
- * Skips already-cached srcs.
+ * Skips already-cached srcs and srcs whose last probe failed within the TTL, so
+ * the rAF-driven timeline re-derive neither re-fetches nor floods the console.
  */
 export async function probeMissingSourceDurations<
   T extends { src?: string; tag: string; sourceDuration?: number; key?: string; id: string },
@@ -101,7 +91,7 @@ export async function probeMissingSourceDurations<
       el.sourceDuration == null &&
       ["video", "audio"].includes(el.tag.toLowerCase()) &&
       !getCachedProbe(el.src) &&
-      !failed.has(normalizeUrl(el.src)),
+      !metadataResolver.hasFreshFailure(mediaCacheKey(el.src)),
   );
   if (needs.length === 0) return;
   await Promise.allSettled(
@@ -113,20 +103,11 @@ export async function probeMissingSourceDurations<
 }
 
 async function probeMediaUrl(url: string): Promise<MediaProbeResult | null> {
-  const key = normalizeUrl(url);
-  const cached = cache.get(key);
-  if (cached) return cached;
-  if (failed.has(key)) return null;
-
-  let pending = inflight.get(key);
-  if (pending) return pending;
-
-  pending = probeOne(key).then((result) => {
-    inflight.delete(key);
-    if (result) cache.set(key, result);
-    else failed.add(key);
-    return result;
-  });
-  inflight.set(key, pending);
-  return pending;
+  try {
+    return await metadataResolver.resolve(mediaCacheKey(url), () =>
+      probeOne(normalizeMediaUrl(url)),
+    );
+  } catch {
+    return null;
+  }
 }
