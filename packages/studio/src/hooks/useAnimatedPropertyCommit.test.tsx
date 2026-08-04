@@ -43,6 +43,7 @@ function renderHookWith(
   animations: GsapAnimation[],
   onMutation: (mutation: Record<string, unknown>, label: string) => unknown | Promise<unknown>,
   onReady: (commit: Commit) => void,
+  bumpGsapCache = vi.fn(),
 ) {
   function Harness() {
     const { commitAnimatedProperties } = useAnimatedPropertyCommit({
@@ -53,7 +54,7 @@ function renderHookWith(
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
       previewIframeRef: { current: null },
-      bumpGsapCache: vi.fn(),
+      bumpGsapCache,
     });
     onReady(commitAnimatedProperties);
     return null;
@@ -87,8 +88,29 @@ describe("useAnimatedPropertyCommit — ownership and rejection propagation", ()
     act(() => root.unmount());
   });
 
+  it("rejects runtime-computed property ownership before sending a mutation", async () => {
+    const runtimePosition = {
+      ...keyframedAnim,
+      hasUnresolvedKeyframes: true,
+    } as GsapAnimation;
+    const mutations: Array<Record<string, unknown>> = [];
+    let commit!: Commit;
+    const root = renderHookWith(
+      [runtimePosition],
+      (mutation) => mutations.push(mutation),
+      (ready) => (commit = ready),
+    );
+
+    await expect(commit(selection, { x: 50 })).rejects.toMatchObject({
+      reason: "source-uneditable",
+    });
+    expect(mutations).toHaveLength(0);
+    act(() => root.unmount());
+  });
+
   it("rethrows a persistence failure to the telemetry wrapper", async () => {
     const failure = new Error("save failed");
+    const bumpGsapCache = vi.fn();
     let commit!: Commit;
     const root = renderHookWith(
       [keyframedAnim],
@@ -96,9 +118,11 @@ describe("useAnimatedPropertyCommit — ownership and rejection propagation", ()
         throw failure;
       },
       (ready) => (commit = ready),
+      bumpGsapCache,
     );
 
     await expect(commit(selection, { x: 50 })).rejects.toBe(failure);
+    expect(bumpGsapCache).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
 });
@@ -107,7 +131,13 @@ function renderCommitHook(
   mutations: Array<Record<string, unknown>>,
   onReady: (commit: Commit) => void,
 ) {
-  return renderHookWith([keyframedAnim], (mutation) => mutations.push(mutation), onReady);
+  return renderHookWith(
+    [keyframedAnim],
+    (mutation) => {
+      mutations.push(mutation);
+    },
+    onReady,
+  );
 }
 
 // Regression (#1808): a "3D transform" / design-panel property edit on an
@@ -160,7 +190,9 @@ describe("commitStaticSet group routing", () => {
   ) {
     return renderHookWith(
       [positionSet],
-      (mutation, label) => committed.push({ mutation, label }),
+      (mutation, label) => {
+        committed.push({ mutation, label });
+      },
       onReady,
     );
   }
@@ -208,7 +240,9 @@ describe("commitStaticSet group routing", () => {
     let commit!: Commit;
     renderHookWith(
       [positionSet, instantSizeHold],
-      (mutation, label) => committed.push({ mutation, label }),
+      (mutation, label) => {
+        committed.push({ mutation, label });
+      },
       (c) => (commit = c),
     );
 

@@ -29,14 +29,14 @@ export function MetricField({
   scrub?: boolean;
   suffix?: string;
   tooltip?: string;
-  onCommit: (nextValue: string) => void;
+  onCommit: (nextValue: string) => void | Promise<void>;
 }) {
   const track = useTrackDesignInput();
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
   const commit = useCallback(
     (nextValue: string) => {
       if (nextValue !== value) track("metric", label);
-      onCommit(nextValue);
+      return onCommit(nextValue);
     },
     [label, onCommit, track, value],
   );

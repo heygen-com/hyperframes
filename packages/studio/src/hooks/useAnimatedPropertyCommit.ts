@@ -24,7 +24,11 @@ import {
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
-import { assertGsapEditPersisted, directEditOutcomeForProperties } from "./gsapEditOutcome";
+import {
+  assertGsapEditPersisted,
+  directEditOutcomeForProperties,
+  GsapEditBlockedError,
+} from "./gsapEditOutcome";
 
 interface CommitAnimatedPropertyDeps {
   selectedGsapAnimations: GsapAnimation[];
@@ -180,7 +184,6 @@ async function commitStaticSet(
   animations: GsapAnimation[],
   commit: Commit,
 ): Promise<void> {
-  if (!selector) return;
   // One commit per PROPERTY GROUP, each into a static write that owns that group —
   // never a live tween, and never a foreign-group write (a width edit used to
   // merge into the element's position set, producing a mixed write the split
@@ -194,9 +197,12 @@ async function commitStaticSet(
     batch.push(entry);
     byGroup.set(group, batch);
   }
-  const staticWrites = animations.filter(
-    (a) => isInstantHold(a) && tweenTargetsElement(a.targetSelector, selector, selection.element),
-  );
+  const staticWrites = selector
+    ? animations.filter(
+        (a) =>
+          isInstantHold(a) && tweenTargetsElement(a.targetSelector, selector, selection.element),
+      )
+    : [];
   // Resolve every group's target BEFORE committing anything, and coalesce
   // groups that land on the SAME write into one commit: the snapshot is captured
   // once, so if two groups resolved to one legacy mixed write, a first
@@ -257,7 +263,7 @@ async function addGlobalStaticSet(
   // selector is the bare class an id-less element yields, which would hold every
   // sibling. No one-element form means no write at all (see writeTargetSelector).
   const target = writeTargetSelector(selection);
-  if (!target) return;
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await commit(
     selection,
     {
@@ -418,6 +424,9 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         selector,
         primaryProp,
       );
+      if (!anim && !writeTargetSelector(selection)) {
+        throw new GsapEditBlockedError("no-selector");
+      }
       // Whether the element is animated at all. A 3D edit only creates/edits
       // keyframes when it IS — a static element (no keyframes on any of its tweens)
       // gets a `tl.set`, never new keyframes (matches manual drag / resize / rotate).
@@ -509,7 +518,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // one-element form the edit is dropped rather than written onto every
         // class sibling (see writeTargetSelector).
         const newTweenTarget = writeTargetSelector(selection);
-        if (selector && newTweenTarget) {
+        if (newTweenTarget) {
           const template = selectedGsapAnimations.find((a) => !!a.keyframes);
           const tStart = template ? (resolveTweenStart(template) ?? 0) : 0;
           const tDur = template ? resolveTweenDuration(template) || 1 : 1;
@@ -539,7 +548,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           );
           return;
         }
-        bumpGsapCache();
+        throw new GsapEditBlockedError("no-selector");
       } catch (error) {
         bumpGsapCache();
         throw error;
