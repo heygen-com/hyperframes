@@ -51,6 +51,18 @@ function deviceAuthorizationResponse(overrides: Record<string, unknown> = {}): R
   );
 }
 
+function queuedFetch(
+  responses: Response[],
+  onRequest?: (url: string | URL | Request, init?: RequestInit) => void,
+): typeof fetch {
+  return (async (url: string | URL | Request, init?: RequestInit) => {
+    onRequest?.(url, init);
+    const next = responses.shift();
+    if (!next) throw new Error("unexpected fetch");
+    return next;
+  }) as typeof fetch;
+}
+
 async function loginWithTokens(body: Record<string, unknown>) {
   await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
   return (await readStore()).credentials;
@@ -469,15 +481,12 @@ describe("auth/oauth", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
       ];
-      const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const fetchImpl = queuedFetch(responses, (url, init) => {
         requests.push({
           url: String(url),
           body: new URLSearchParams(String(init?.body ?? "")),
         });
-        const next = responses.shift();
-        if (!next) throw new Error("unexpected fetch");
-        return next;
-      }) as typeof fetch;
+      });
       const sleeps: number[] = [];
       const challenges: Array<{ userCode: string; verificationUri: string }> = [];
 
@@ -519,11 +528,7 @@ describe("auth/oauth", () => {
         }),
         new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
       ];
-      const fetchImpl = (async () => {
-        const next = responses.shift();
-        if (!next) throw new Error("unexpected fetch");
-        return next;
-      }) as typeof fetch;
+      const fetchImpl = queuedFetch(responses);
       const sleeps: number[] = [];
       const challenges: Array<{
         userCode: string;
@@ -558,11 +563,7 @@ describe("auth/oauth", () => {
         new Response("rate limited", { status: 429, headers: { "retry-after": "20" } }),
         new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
       ];
-      const fetchImpl = (async () => {
-        const next = responses.shift();
-        if (!next) throw new Error("unexpected fetch");
-        return next;
-      }) as typeof fetch;
+      const fetchImpl = queuedFetch(responses);
       const sleeps: number[] = [];
 
       await startDeviceAuthorizationFlow({
@@ -582,11 +583,7 @@ describe("auth/oauth", () => {
         deviceAuthorizationResponse({ verification_uri: unicodeUri }),
         new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
       ];
-      const fetchImpl = (async () => {
-        const next = responses.shift();
-        if (!next) throw new Error("unexpected fetch");
-        return next;
-      }) as typeof fetch;
+      const fetchImpl = queuedFetch(responses);
       const challenges: Array<{ verificationUri: string }> = [];
 
       await startDeviceAuthorizationFlow({

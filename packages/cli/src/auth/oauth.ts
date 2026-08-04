@@ -694,12 +694,29 @@ function parseDeviceAuthorizationResponse(payload: unknown): ParsedDeviceAuthori
   const verificationUriComplete = optionalSafeVerificationUri(data, "verification_uri_complete");
   const expiresIn = strictNumericField(data, "expires_in");
   const interval = strictNumericField(data, "interval");
-  if (!deviceCode || !isHeaderSafe(deviceCode)) {
+  requireSafeDeviceCode(deviceCode);
+  requireSafeDeviceCode(userCode);
+  const timing = normalizeDeviceAuthorizationTiming(data, expiresIn, interval);
+  return {
+    deviceCode,
+    userCode,
+    verificationUri,
+    ...(verificationUriComplete ? { verificationUriComplete } : {}),
+    ...timing,
+  };
+}
+
+function requireSafeDeviceCode(value: string | undefined): asserts value is string {
+  if (!value || !isHeaderSafe(value)) {
     throw ErrDeviceAuthFailed("authorization server returned an invalid response");
   }
-  if (!userCode || !isHeaderSafe(userCode)) {
-    throw ErrDeviceAuthFailed("authorization server returned an invalid response");
-  }
+}
+
+function normalizeDeviceAuthorizationTiming(
+  data: Record<string, unknown>,
+  expiresIn: number | undefined,
+  interval: number | undefined,
+): Pick<ParsedDeviceAuthorization, "expiresIn" | "interval"> {
   if (
     !isPositiveNumber(expiresIn) ||
     (data["interval"] !== undefined && !isPositiveNumber(interval))
@@ -707,10 +724,6 @@ function parseDeviceAuthorizationResponse(payload: unknown): ParsedDeviceAuthori
     throw ErrDeviceAuthFailed("authorization server returned invalid timing values");
   }
   return {
-    deviceCode,
-    userCode,
-    verificationUri,
-    ...(verificationUriComplete ? { verificationUriComplete } : {}),
     expiresIn,
     interval: Math.min(
       Math.max(Math.ceil(interval ?? MIN_DEVICE_POLL_SECONDS), MIN_DEVICE_POLL_SECONDS),
