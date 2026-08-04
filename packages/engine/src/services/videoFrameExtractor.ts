@@ -97,22 +97,44 @@ export function extractionFrameCountForDuration(
 ): number {
   if (!Number.isFinite(durationSeconds) || !Number.isFinite(fps)) return 0;
   if (durationSeconds <= 0 || fps <= 0) return 0;
-  // FFmpeg parses `-t` on its AV_TIME_BASE (microsecond) clock and ignores
-  // fractional digits beyond that precision. Quantize the same way before
-  // translating duration to frames. Besides matching the command FFmpeg
-  // actually executes, this removes subtraction artifacts whose magnitude is
-  // determined by the absolute authored timestamps rather than the short
-  // duration itself (for example, 4.03 - 3.53).
-  const ffmpegDurationSeconds = Math.trunc(durationSeconds * 1_000_000) / 1_000_000;
-  const rawFrames = ffmpegDurationSeconds * fps;
-  const nearestInteger = Math.round(rawFrames);
-  // Multiplication can still introduce a few ULPs after the microsecond
-  // quantization. Snap only that remaining arithmetic noise to an integer.
-  const integerTolerance = Number.EPSILON * Math.max(1, Math.abs(rawFrames)) * 4;
-  const quantizedFrames =
-    Math.abs(rawFrames - nearestInteger) <= integerTolerance ? nearestInteger : rawFrames;
-  const frames = isVFR ? Math.ceil(quantizedFrames) : Math.round(quantizedFrames);
-  return Math.max(1, frames);
+  // FFmpeg receives `String(durationSeconds)` and parses at microsecond
+  // precision. Derive the integer microseconds from that same decimal text:
+  // multiplying the binary float first is not equivalent (`2.05 * 1e6` is
+  // 2049999.9999999998 in JS and would incorrectly truncate one microsecond).
+  const serialized = String(durationSeconds).toLowerCase();
+  const decimal = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(serialized);
+  if (!decimal) return 0;
+  const whole = decimal[1] ?? "0";
+  const fraction = decimal[2] ?? "";
+  const exponent = Number.parseInt(decimal[3] ?? "0", 10);
+  const digits = BigInt(`${whole}${fraction}`);
+  const microsecondScale = exponent + 6 - fraction.length;
+  const microseconds =
+    microsecondScale >= 0
+      ? digits * 10n ** BigInt(microsecondScale)
+      : digits / 10n ** BigInt(-microsecondScale);
+
+  // Keep the frame-boundary calculation rational too. Converting the exact
+  // microseconds back to a binary float recreates the same problem at .5-frame
+  // boundaries (`2.05 * 30` is 61.49999999999999 in JS).
+  const serializedFps = String(fps).toLowerCase();
+  const fpsDecimal = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(serializedFps);
+  if (!fpsDecimal) return 0;
+  const fpsWhole = fpsDecimal[1] ?? "0";
+  const fpsFraction = fpsDecimal[2] ?? "";
+  const fpsExponent = Number.parseInt(fpsDecimal[3] ?? "0", 10);
+  const fpsDigits = BigInt(`${fpsWhole}${fpsFraction}`);
+  const fpsScale = fpsExponent - fpsFraction.length;
+  const fpsNumerator = fpsScale >= 0 ? fpsDigits * 10n ** BigInt(fpsScale) : fpsDigits;
+  const fpsDenominator = fpsScale >= 0 ? 1n : 10n ** BigInt(-fpsScale);
+
+  const frameNumerator = microseconds * fpsNumerator;
+  const frameDenominator = 1_000_000n * fpsDenominator;
+  const frameCount = isVFR
+    ? (frameNumerator + frameDenominator - 1n) / frameDenominator
+    : (2n * frameNumerator + frameDenominator) / (2n * frameDenominator);
+  const frames = Number(frameCount);
+  return Math.max(1, Number.isSafeInteger(frames) ? frames : Number.MAX_SAFE_INTEGER);
 }
 
 export interface ExtractionOptions {

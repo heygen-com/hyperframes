@@ -336,6 +336,7 @@ describe("extractionFrameCountForDuration", () => {
   it("matches FFmpeg's six-digit duration parsing", () => {
     expect(extractionFrameCountForDuration(0.6000009, 30, true)).toBe(18);
     expect(extractionFrameCountForDuration(0.600001, 30, true)).toBe(19);
+    expect(extractionFrameCountForDuration(2.05, 30, false)).toBe(62);
   });
 
   it("fails closed for invalid durations and emits one frame for positive sub-frame work", () => {
@@ -2105,6 +2106,57 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     ).toBe(true);
     expect(supersetDirNames(outputDir)).toEqual([]);
   }, 60_000);
+
+  it.each([
+    { label: "decimal underflow half-frame", duration: 2.05, offset: 1, expectedFrames: 62 },
+    {
+      label: "non-half-integer boundary",
+      duration: 0.616666,
+      offset: 0.1,
+      expectedFrames: 18,
+    },
+  ])(
+    "keeps direct and superset CFR extraction equal at a $label",
+    async ({ label, duration, offset, expectedFrames }) => {
+      const fixtureKey = label.replaceAll(" ", "-");
+      const src = await synthCfrClip(`superset-cfr-${fixtureKey}.mp4`, 4);
+      const groupedOutputDir = join(FIXTURE_DIR, `out-superset-cfr-${fixtureKey}`);
+      const directOutputDir = join(FIXTURE_DIR, `out-direct-cfr-${fixtureKey}`);
+      mkdirSync(groupedOutputDir, { recursive: true });
+      mkdirSync(directOutputDir, { recursive: true });
+
+      const grouped = await extractAllVideoFrames(
+        [
+          cfrClipElement(`${fixtureKey}-base`, src, duration, 0),
+          cfrClipElement(`${fixtureKey}-member`, src, duration, offset),
+        ],
+        FIXTURE_DIR,
+        { fps: 30, outputDir: groupedOutputDir },
+      );
+      const direct = await extractVideoFramesRange(src, `${fixtureKey}-direct`, offset, duration, {
+        fps: 30,
+        outputDir: directOutputDir,
+        format: "jpg",
+      });
+
+      expect(grouped.errors).toEqual([]);
+      expect(direct.totalFrames).toBe(expectedFrames);
+      expect(extractedFor(grouped, `${fixtureKey}-base`).totalFrames).toBe(expectedFrames);
+      expect(extractedFor(grouped, `${fixtureKey}-member`).totalFrames).toBe(expectedFrames);
+      expect(statSync(framePath(grouped, `${fixtureKey}-base`, Math.round(offset * 30))).ino).toBe(
+        statSync(framePath(grouped, `${fixtureKey}-member`, 0)).ino,
+      );
+      for (let frame = 0; frame < expectedFrames; frame += 1) {
+        expect(
+          readFileSync(framePath(grouped, `${fixtureKey}-member`, frame)).equals(
+            readFileSync(direct.framePaths.get(frame)!),
+          ),
+        ).toBe(true);
+      }
+      expect(supersetDirNames(groupedOutputDir)).toEqual([]);
+    },
+    60_000,
+  );
 
   it("does not superset disjoint trims", async () => {
     const SRC = await synthCfrClip("superset-disjoint-src.mp4", 10);
