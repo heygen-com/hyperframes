@@ -24,6 +24,7 @@ function renderComposer(overrides: Partial<Parameters<typeof InlineAgentComposer
     root.render(
       <InlineAgentComposer
         selectionLabel="#title"
+        draftKey="test-draft"
         rect={rect({})}
         canvas={{ width: 800, height: 600 }}
         runLabel="Claude Code"
@@ -300,5 +301,34 @@ describe("canvas stacking", () => {
     const { host, root } = renderComposer({});
     expect(host.querySelector("[data-inline-agent-composer]")?.className).toContain("z-50");
     act(() => root.unmount());
+  });
+});
+
+describe("draft persistence", () => {
+  it("restores what was being typed and forgets it once submitted", () => {
+    const onRun = vi.fn();
+    const first = renderComposer({ draftKey: "p|index.html|title|0", onRun });
+    type(first.host, "make it bolder");
+    act(() => first.root.unmount());
+
+    // A reload takes React state with it; the field comes back with the words.
+    const second = renderComposer({ draftKey: "p|index.html|title|0", onRun });
+    expect(second.host.querySelector("textarea")?.value).toBe("make it bolder");
+    pressEnter(second.host);
+    act(() => second.root.unmount());
+
+    const third = renderComposer({ draftKey: "p|index.html|title|0", onRun });
+    expect(third.host.querySelector("textarea")?.value).toBe("");
+    act(() => third.root.unmount());
+  });
+
+  it("keeps one element's draft off another's", () => {
+    const a = renderComposer({ draftKey: "p|index.html|title|0" });
+    type(a.host, "for the title");
+    act(() => a.root.unmount());
+
+    const b = renderComposer({ draftKey: "p|index.html|chip|0" });
+    expect(b.host.querySelector("textarea")?.value).toBe("");
+    act(() => b.root.unmount());
   });
 });

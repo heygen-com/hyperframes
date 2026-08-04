@@ -85,6 +85,7 @@ export interface DomEditActionsValue extends Pick<
 
 export interface DomEditSelectionValue extends Pick<
   DomEditValue,
+  | "projectId"
   | "domEditSelection"
   | "domEditGroupSelections"
   | "domEditHoverSelection"
@@ -143,6 +144,7 @@ export function useDomEditContext(): DomEditValue {
 
 export function DomEditProvider({
   value: {
+    projectId,
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
@@ -412,6 +414,7 @@ export function DomEditProvider({
 
   const selection = useMemo<DomEditSelectionValue>(
     () => ({
+      projectId,
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
@@ -434,6 +437,7 @@ export function DomEditProvider({
       agentJobs,
     }),
     [
+      projectId,
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,

@@ -14,6 +14,7 @@ import {
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
 import { CANVAS_OVERLAY_CONTROL_Z, FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
+import { agentDraftKey, clearAgentDraft, readAgentDraft, writeAgentDraft } from "../../utils/agentDrafts";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -81,6 +82,7 @@ const SURFACE_CLASS = `rounded-2xl p-1.5 ${FLOATING_SURFACE}`;
  */
 export function InlineAgentComposer({
   selectionLabel,
+  draftKey,
   rect,
   canvas,
   runLabel,
@@ -97,6 +99,8 @@ export function InlineAgentComposer({
   onClose,
 }: {
   selectionLabel: string;
+  /** Identifies the element this draft belongs to; see utils/agentDrafts. */
+  draftKey: string;
   rect: OverlayRect | null;
   canvas: { width: number; height: number };
   /** Name of the installed agent CLI, or null when none is available to run. */
@@ -116,7 +120,9 @@ export function InlineAgentComposer({
   onCopy: (instruction: string) => void;
   onClose: () => void;
 }) {
-  const [value, setValue] = useState("");
+  // Seeded from the stored draft: a reload lands mid-sentence otherwise, and
+  // the agent's own edits are what trigger those reloads.
+  const [value, setValue] = useState(() => readAgentDraft(draftKey));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [addingAgent, setAddingAgent] = useState(false);
@@ -134,12 +140,18 @@ export function InlineAgentComposer({
     requestAnimationFrame(() => inputRef.current?.focus());
   });
 
+  const updateValue = (next: string) => {
+    setValue(next);
+    writeAgentDraft(draftKey, next);
+  };
+
   const submit = () => {
     const instruction = value.trim();
     if (!instruction) return;
     if (runLabel) onRun(instruction);
     else onCopy(instruction);
     setValue("");
+    clearAgentDraft(draftKey);
     if (inputRef.current) inputRef.current.style.height = "auto";
     inputRef.current?.focus();
   };
@@ -361,7 +373,7 @@ export function InlineAgentComposer({
           placeholder={`Describe a change to ${selectionLabel}…`}
           value={value}
           onChange={(e) => {
-            setValue(e.target.value);
+            updateValue(e.target.value);
             e.target.style.height = "auto";
             e.target.style.height = `${Math.min(96, e.target.scrollHeight)}px`;
           }}
@@ -477,6 +489,7 @@ export function InlineAgentComposerHost({
   if (!actions || !selectionValue) return null;
 
   const {
+    projectId,
     domEditSelection,
     domEditGroupSelections,
     agentModalOpen,
@@ -509,6 +522,13 @@ export function InlineAgentComposerHost({
               ? `${domEditGroupSelections.length} elements`
               : domEditSelection.label
           }
+          draftKey={agentDraftKey({
+            projectId,
+            sourceFile: domEditSelection.sourceFile,
+            selector: domEditSelection.selector,
+            selectorIndex: domEditSelection.selectorIndex,
+            id: domEditSelection.id,
+          })}
           rect={rect}
           canvas={canvas}
           runLabel={agentRunLabel}

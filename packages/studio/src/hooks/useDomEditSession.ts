@@ -484,6 +484,7 @@ export function useDomEditSession({
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   return {
     // State
+    projectId,
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
