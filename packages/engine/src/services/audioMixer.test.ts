@@ -41,6 +41,21 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
   return { ...actual, runFfmpeg: runFfmpegMock };
 });
 
+// The FX render drives a headless browser; the mix only needs to know the
+// processed file exists and how long a tail the chain asked for.
+const { applyAudioFxChainMock } = vi.hoisted(() => ({
+  applyAudioFxChainMock: vi.fn(async (_src: string, _chain: unknown, outPath: string) => {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(outPath, "stub");
+    return outPath;
+  }),
+}));
+
+vi.mock("./audioFxRender.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./audioFxRender.js")>();
+  return { ...actual, applyAudioFxChain: applyAudioFxChainMock };
+});
+
 vi.mock("../utils/ffprobe.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/ffprobe.js")>();
   return { ...actual, extractAudioMetadata: extractAudioMetadataMock };
@@ -60,6 +75,7 @@ describe("processCompositionAudio", () => {
       channels: 2,
       audioCodec: "aac",
     });
+    applyAudioFxChainMock.mockClear();
     capturedFilterScripts.length = 0;
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
@@ -152,6 +168,81 @@ describe("processCompositionAudio", () => {
     expect(filter).not.toContain("whole_dur");
     expect(filter).not.toContain("normalize=");
     expect(filter).not.toContain("weights=");
+  });
+
+  it("lets an FX tail run past the clip, still bounded by the composition", async () => {
+    // A reverb is still decaying when the clip's own audio stops. Trimming at
+    // the clip boundary is what cut every tail short in the render.
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src: "bed.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+          fxChain: JSON.stringify({
+            version: 1,
+            nodes: [
+              { type: "reverb", id: "r", params: { size: 0.5, damping: 0.5, wet: 0.4, dry: 0.7 } },
+            ],
+          }),
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      8,
+    );
+
+    expect(result.success).toBe(true);
+    expect(applyAudioFxChainMock).toHaveBeenCalledTimes(1);
+    const filter = capturedFilterScripts[capturedFilterScripts.length - 1];
+    // 2 s clip + the 1.9 s tail 0.6 + size * 2.6 generates.
+    expect(filter).toContain("atrim=0:3.9,");
+    // And still cut at the composition's end, so a tail cannot extend the video.
+    expect(filter).toContain("apad,atrim=0:8");
+  });
+
+  it("cuts at the clip boundary when the chain has no tail", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+
+    await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src: "bed.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+          fxChain: JSON.stringify({
+            version: 1,
+            nodes: [{ type: "peaking", id: "n1", params: { frequency: 900, gain: -6, q: 1 } }],
+          }),
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      8,
+    );
+
+    const filter = capturedFilterScripts[capturedFilterScripts.length - 1];
+    expect(filter).toContain("atrim=0:2,");
   });
 
   it("compensates amix normalization so multi-track master gain equals track count", async () => {

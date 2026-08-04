@@ -28,6 +28,12 @@ export interface AudioTrack {
   duration: number;
   volume: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
+  /**
+   * Seconds of FX tail past `end` that the mix should let through — a reverb or
+   * delay still decaying when the clip's own audio stops. Absent means cut at
+   * the clip boundary, which is what every track without an FX chain wants.
+   */
+  tailSeconds?: number;
 }
 
 export type AudioFailureStage =
