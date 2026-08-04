@@ -405,6 +405,52 @@ export function InlineAgentComposer({
 }
 
 /**
+ * The affordance that opens the composer: a small harness mark pinned to the
+ * selection. It replaces auto-opening on every click — the panel used to land
+ * on the canvas whether or not the user wanted to ask for anything — while
+ * keeping the entry point where the eye already is, next to what is selected.
+ */
+function AskAgentHandle({
+  rect,
+  canvas,
+  agentKind,
+  agentIconUrl,
+  label,
+  onOpen,
+}: {
+  rect: OverlayRect | null;
+  canvas: { width: number; height: number };
+  agentKind: AgentKind | null;
+  agentIconUrl: string | null;
+  label: string;
+  onOpen: () => void;
+}) {
+  if (!rect || canvas.width === 0) return null;
+
+  const size = 24;
+  const left = clampNumber(rect.left + rect.width - size, GAP, Math.max(GAP, canvas.width - size - GAP));
+  const top = clampNumber(rect.top - size - 6, GAP, Math.max(GAP, canvas.height - size - GAP));
+
+  return (
+    <button
+      data-ask-agent-handle="true"
+      className="hf-composer-enter absolute z-20 flex size-6 items-center justify-center rounded-full bg-neutral-950/95 ring-1 ring-white/10 backdrop-blur-md transition-[scale,box-shadow] duration-150 ease-out hover:ring-white/25 active:scale-[0.96] shadow-[0_1px_2px_rgba(0,0,0,0.5),0_8px_20px_-8px_rgba(0,0,0,0.7)]"
+      style={{ left, top }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      title={`Ask ${label} about this element (⌘K)`}
+      aria-label={`Ask ${label} about this element`}
+    >
+      <AgentGlyph kind={agentKind ?? "custom"} size={13} iconUrl={agentIconUrl} />
+    </button>
+  );
+}
+
+/**
  * Canvas-side connector: renders the composer over the selected element while
  * the agent session is open, and the run tray whenever this project has runs.
  * Reads the DomEdit contexts directly so the overlay doesn't thread agent props
@@ -438,6 +484,16 @@ export function InlineAgentComposerHost({
 
   return (
     <>
+      {!agentModalOpen && domEditSelection && (
+        <AskAgentHandle
+          rect={rect}
+          canvas={canvas}
+          agentKind={agentRunKind}
+          agentIconUrl={agentIconUrlById ?? agentIconUrl}
+          label={agentRunLabel ?? "the agent"}
+          onOpen={actions.handleAskAgent}
+        />
+      )}
       {agentModalOpen && domEditSelection && (
         <InlineAgentComposer
           selectionLabel={

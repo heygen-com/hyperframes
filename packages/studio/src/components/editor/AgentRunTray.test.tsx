@@ -257,3 +257,14 @@ describe("resolveTrayPosition", () => {
     expect(resolveTrayPosition({ x: -80, y: -80 }, viewport)).toEqual({ x: 16, y: 16 });
   });
 });
+
+describe("tray stacking", () => {
+  it("floats above the app chrome without relying on a generated class", () => {
+    const { host, root } = renderTray([job({})]);
+    const tray = host.querySelector<HTMLElement>("[data-agent-run-tray]");
+    // An inline z-index: the timeline ruler and panels paint over anything that
+    // depends on a utility class surviving the CSS build.
+    expect(tray?.style.zIndex).toBe("80");
+    act(() => root.unmount());
+  });
+});

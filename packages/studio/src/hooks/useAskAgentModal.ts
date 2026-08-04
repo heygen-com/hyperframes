@@ -201,14 +201,6 @@ export function useAskAgentModal({
     resolveSelection,
   ]);
 
-  // Selecting an element is the ask: the composer follows the selection instead
-  // of waiting for a second gesture on the same thing the user just clicked.
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (!domEditSelection) return;
-    handleAskAgent();
-  }, [domEditSelection, handleAskAgent]);
-
   /** Everything the instruction should touch: the anchor plus its co-selection. */
   const resolveGroup = useCallback(
     (anchor: DomEditSelection) =>

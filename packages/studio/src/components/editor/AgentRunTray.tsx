@@ -143,8 +143,9 @@ export function AgentRunTray({
   return createPortal(
     <div
       data-agent-run-tray="true"
-      className="hf-composer-enter fixed z-[60] w-[300px] rounded-2xl bg-neutral-950/95 p-1.5 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
-      style={{ left: position.x, top: position.y }}
+      className="hf-composer-enter fixed w-[300px] rounded-2xl bg-neutral-950/95 p-1.5 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+      // Above the panels and the timeline chrome, below modals and toasts.
+      style={{ left: position.x, top: position.y, zIndex: 80 }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
