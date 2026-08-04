@@ -339,6 +339,12 @@ describe("extractionFrameCountForDuration", () => {
     expect(extractionFrameCountForDuration(2.05, 30, false)).toBe(62);
   });
 
+  it("keeps exact NTSC rationals at short CFR and VFR boundaries", () => {
+    expect(extractionFrameCountForDuration(0.25025, { num: 30000, den: 1001 }, false)).toBe(8);
+    expect(extractionFrameCountForDuration(0.125125, { num: 24000, den: 1001 }, true)).toBe(3);
+    expect(extractionFrameCountForDuration(0.5005, { num: 24000, den: 1001 }, true)).toBe(12);
+  });
+
   it("fails closed for invalid durations and emits one frame for positive sub-frame work", () => {
     expect(extractionFrameCountForDuration(Number.NaN, 30, true)).toBe(0);
     expect(extractionFrameCountForDuration(1, 0, true)).toBe(0);
@@ -1561,6 +1567,20 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(md.isVFR).toBe(true);
   });
 
+  it("passes an exact 24000/1001 rate through VFR normalization", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-vfr-ntsc-boundary");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractVideoFramesRange(VFR_FIXTURE, "vfr-ntsc-boundary", 0, 0.125125, {
+      fps: { num: 24000, den: 1001 },
+      outputDir,
+      format: "jpg",
+    });
+
+    expect(result.metadata.isVFR).toBe(true);
+    expect(result.totalFrames).toBe(3);
+  }, 60_000);
+
   it("produces the expected frame count for a mid-file segment", async () => {
     const outputDir = join(FIXTURE_DIR, "out-mid-segment");
     mkdirSync(outputDir, { recursive: true });
@@ -2157,6 +2177,46 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     },
     60_000,
   );
+
+  it("keeps direct and superset CFR extraction equal at 30000/1001", async () => {
+    const src = await synthCfrClip("superset-cfr-ntsc.mp4", 4);
+    const groupedOutputDir = join(FIXTURE_DIR, "out-superset-cfr-ntsc");
+    const directOutputDir = join(FIXTURE_DIR, "out-direct-cfr-ntsc");
+    const fps = { num: 30000, den: 1001 };
+    const duration = 0.25025;
+    mkdirSync(groupedOutputDir, { recursive: true });
+    mkdirSync(directOutputDir, { recursive: true });
+
+    const grouped = await extractAllVideoFrames(
+      [
+        cfrClipElement("ntsc-base", src, 0.5005, 0),
+        cfrClipElement("ntsc-member", src, duration, 0),
+      ],
+      FIXTURE_DIR,
+      { fps, outputDir: groupedOutputDir },
+    );
+    const direct = await extractVideoFramesRange(src, "ntsc-direct", 0, duration, {
+      fps,
+      outputDir: directOutputDir,
+      format: "jpg",
+    });
+
+    expect(grouped.errors).toEqual([]);
+    expect(direct.totalFrames).toBe(8);
+    expect(extractedFor(grouped, "ntsc-base").totalFrames).toBe(15);
+    expect(extractedFor(grouped, "ntsc-member").totalFrames).toBe(8);
+    expect(statSync(framePath(grouped, "ntsc-base", 0)).ino).toBe(
+      statSync(framePath(grouped, "ntsc-member", 0)).ino,
+    );
+    for (let frame = 0; frame < 8; frame += 1) {
+      expect(
+        readFileSync(framePath(grouped, "ntsc-member", frame)).equals(
+          readFileSync(direct.framePaths.get(frame)!),
+        ),
+      ).toBe(true);
+    }
+    expect(supersetDirNames(groupedOutputDir)).toEqual([]);
+  }, 60_000);
 
   it("does not superset disjoint trims", async () => {
     const SRC = await synthCfrClip("superset-disjoint-src.mp4", 10);

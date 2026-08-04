@@ -48,7 +48,6 @@ import {
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
 } from "@hyperframes/engine";
-import { fpsToNumber } from "@hyperframes/core";
 import {
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
@@ -368,12 +367,11 @@ export async function runExtractVideosStage(
     extractionResult = await extractAllVideoFrames(
       composition.videos,
       projectDir,
-      // extractAllVideoFrames takes fps as a number (decimal). Frames sampled
-      // from a video at 29.97 vs 30 differ by ~1 frame in 1000 — not enough
-      // to break visual parity, and the encoder-side rational keeps the
-      // output framerate exact.
+      // Preserve the configured rational through FFmpeg extraction. NTSC
+      // rates must remain `30000/1001`, not a rounded JavaScript decimal,
+      // because short boundary counts can differ by one frame.
       {
-        fps: fpsToNumber(job.config.fps),
+        fps: job.config.fps,
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
         format: job.config.videoFrameFormat ?? "auto",
         timelineEnd: composition.duration,

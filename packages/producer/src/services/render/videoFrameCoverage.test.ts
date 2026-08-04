@@ -97,6 +97,12 @@ describe("expectedFramesForClip", () => {
     expect(expectedFramesForClip(0, 0.633333, 30, "nearest")).toBe(19);
   });
 
+  it("uses exact NTSC rationals for short CFR and VFR boundaries", () => {
+    expect(expectedFramesForClip(0, 0.25025, { num: 30000, den: 1001 }, "nearest")).toBe(8);
+    expect(expectedFramesForClip(0, 0.125125, { num: 24000, den: 1001 })).toBe(3);
+    expect(expectedFramesForClip(0, 0.5005, { num: 24000, den: 1001 })).toBe(12);
+  });
+
   it("requires one frame for every positive sub-frame clip", () => {
     expect(expectedFramesForClip(0, 0.001, 30)).toBe(1);
     expect(expectedFramesForClip(0, 0.001, 30, "nearest")).toBe(1);
@@ -172,6 +178,18 @@ describe("computeVideoFrameCoverage", () => {
       capturedFrames: 18,
       ratio: 18 / 19,
     });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).not.toThrow();
+  });
+
+  it("does not reject complete 24000/1001 VFR extraction at an exact boundary", () => {
+    const videos = [makeVideo({ id: "ntsc-vfr", start: 0, end: 0.125125 })];
+    const reports = computeVideoFrameCoverage(
+      videos,
+      [makeExtracted("ntsc-vfr", 3, { isVFR: true })],
+      { num: 24000, den: 1001 },
+    );
+
+    expect(reports[0]).toMatchObject({ expectedFrames: 3, capturedFrames: 3, ratio: 1 });
     expect(() => assertVideoFrameCoverage(reports, 0.95)).not.toThrow();
   });
 

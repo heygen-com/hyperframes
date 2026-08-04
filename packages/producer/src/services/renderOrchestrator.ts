@@ -2368,11 +2368,7 @@ async function executeRenderPipeline(input: {
     // Also count authored `[data-start]` clip windows as a coarse proxy
     // for the ts=1784144554 authored-clip-count-scaled failure shape.
     const coverageReports: VideoFrameCoverageReport[] = extractionResult
-      ? computeVideoFrameCoverage(
-          composition.videos,
-          extractionResult.extracted,
-          fpsToNumber(job.config.fps),
-        )
+      ? computeVideoFrameCoverage(composition.videos, extractionResult.extracted, job.config.fps)
       : [];
     const coverageThreshold = resolveVideoCoverageThreshold();
     const authoredTimedClipCount = countAuthoredTimedClips(compiled.html);

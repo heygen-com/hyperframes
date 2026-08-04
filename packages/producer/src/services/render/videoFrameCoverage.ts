@@ -45,6 +45,7 @@
  */
 
 import { parseHTML } from "linkedom";
+import { fpsToNumber, toFps, type FpsInput } from "@hyperframes/core";
 import {
   extractionFrameCountForDuration,
   resolvePlayableVideoDuration,
@@ -135,11 +136,12 @@ export function resolveVideoCoverageThreshold(
 export function expectedFramesForClip(
   start: number,
   end: number,
-  fps: number,
+  fps: FpsInput,
   rounding: "ceil" | "nearest" = "ceil",
 ): number {
-  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(fps)) return 0;
-  if (fps <= 0) return 0;
+  const fpsValue = fpsToNumber(toFps(fps));
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(fpsValue)) return 0;
+  if (fpsValue <= 0) return 0;
   const duration = Math.max(0, end - start);
   if (duration === 0) return 0;
   return extractionFrameCountForDuration(duration, fps, rounding === "ceil");
@@ -161,7 +163,7 @@ function isToleratedShortClipBoundaryMiss(
 function expectedFramesForVideo(
   video: VideoElement,
   entry: ExtractedFrames | undefined,
-  fps: number,
+  fps: FpsInput,
 ): number {
   const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
   const slotFrames = expectedFramesForClip(video.start, video.end, fps, rounding);
@@ -184,7 +186,7 @@ function expectedFramesForVideo(
 export function computeVideoFrameCoverage(
   videos: readonly VideoElement[],
   extracted: readonly ExtractedFrames[],
-  fps: number,
+  fps: FpsInput,
 ): VideoFrameCoverageReport[] {
   const byId = new Map<string, ExtractedFrames>();
   for (const entry of extracted) byId.set(entry.videoId, entry);

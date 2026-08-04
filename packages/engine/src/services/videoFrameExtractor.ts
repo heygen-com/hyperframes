@@ -9,7 +9,14 @@
 import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
-import { decodeUrlPathVariants, MEDIA_DURATION_CLAMP_EPSILON_SECONDS } from "@hyperframes/core";
+import {
+  decodeUrlPathVariants,
+  fpsToFfmpegArg,
+  fpsToNumber,
+  MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
+  toFps,
+  type FpsInput,
+} from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import {
   extractFinalVideoFrameTimestamp,
@@ -92,11 +99,10 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
  */
 export function extractionFrameCountForDuration(
   durationSeconds: number,
-  fps: number,
+  fps: FpsInput,
   isVFR: boolean,
 ): number {
-  if (!Number.isFinite(durationSeconds) || !Number.isFinite(fps)) return 0;
-  if (durationSeconds <= 0 || fps <= 0) return 0;
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return 0;
   // FFmpeg receives `String(durationSeconds)` and parses at microsecond
   // precision. Derive the integer microseconds from that same decimal text:
   // multiplying the binary float first is not equivalent (`2.05 * 1e6` is
@@ -117,16 +123,35 @@ export function extractionFrameCountForDuration(
   // Keep the frame-boundary calculation rational too. Converting the exact
   // microseconds back to a binary float recreates the same problem at .5-frame
   // boundaries (`2.05 * 30` is 61.49999999999999 in JS).
-  const serializedFps = String(fps).toLowerCase();
-  const fpsDecimal = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(serializedFps);
-  if (!fpsDecimal) return 0;
-  const fpsWhole = fpsDecimal[1] ?? "0";
-  const fpsFraction = fpsDecimal[2] ?? "";
-  const fpsExponent = Number.parseInt(fpsDecimal[3] ?? "0", 10);
-  const fpsDigits = BigInt(`${fpsWhole}${fpsFraction}`);
-  const fpsScale = fpsExponent - fpsFraction.length;
-  const fpsNumerator = fpsScale >= 0 ? fpsDigits * 10n ** BigInt(fpsScale) : fpsDigits;
-  const fpsDenominator = fpsScale >= 0 ? 1n : 10n ** BigInt(-fpsScale);
+  let fpsNumerator: bigint;
+  let fpsDenominator: bigint;
+  if (typeof fps === "object") {
+    if (
+      !Number.isSafeInteger(fps.num) ||
+      !Number.isSafeInteger(fps.den) ||
+      fps.num <= 0 ||
+      fps.den <= 0
+    ) {
+      return 0;
+    }
+    fpsNumerator = BigInt(fps.num);
+    fpsDenominator = BigInt(fps.den);
+  } else {
+    if (!Number.isFinite(fps) || fps <= 0) return 0;
+    // Number-only callers retain their decimal FFmpeg argument exactly. The
+    // production render path supplies Fps, so NTSC rates never round-trip
+    // through `String(30000 / 1001)` here.
+    const serializedFps = String(fps).toLowerCase();
+    const fpsDecimal = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(serializedFps);
+    if (!fpsDecimal) return 0;
+    const fpsWhole = fpsDecimal[1] ?? "0";
+    const fpsFraction = fpsDecimal[2] ?? "";
+    const fpsExponent = Number.parseInt(fpsDecimal[3] ?? "0", 10);
+    const fpsDigits = BigInt(`${fpsWhole}${fpsFraction}`);
+    const fpsScale = fpsExponent - fpsFraction.length;
+    fpsNumerator = fpsScale >= 0 ? fpsDigits * 10n ** BigInt(fpsScale) : fpsDigits;
+    fpsDenominator = fpsScale >= 0 ? 1n : 10n ** BigInt(-fpsScale);
+  }
 
   const frameNumerator = microseconds * fpsNumerator;
   const frameDenominator = 1_000_000n * fpsDenominator;
@@ -138,7 +163,8 @@ export function extractionFrameCountForDuration(
 }
 
 export interface ExtractionOptions {
-  fps: number;
+  /** Exact configured rate. Rational rates are passed to FFmpeg verbatim. */
+  fps: FpsInput;
   outputDir: string;
   quality?: number;
   format?: VideoFrameFormat;
@@ -603,7 +629,10 @@ export async function extractVideoFramesRange(
   outputDirOverride?: string,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const { fps, outputDir, quality = 95 } = options;
+  const { outputDir, quality = 95 } = options;
+  const normalizedFps = toFps(options.fps);
+  const fps = fpsToNumber(normalizedFps);
+  const ffmpegFps = fpsToFfmpegArg(normalizedFps);
 
   const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
@@ -674,7 +703,7 @@ export async function extractVideoFramesRange(
     vfFilters.push("format=nv12");
   }
   if (!options.finalFrameOnly && !metadata.isVFR) {
-    vfFilters.push(`fps=${fps}`);
+    vfFilters.push(`fps=${ffmpegFps}`);
   }
   if (options.sdrToHdrTransfer) {
     // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
@@ -688,7 +717,7 @@ export async function extractVideoFramesRange(
   }
   if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
   if (!options.finalFrameOnly && metadata.isVFR) {
-    args.push("-fps_mode", "cfr", "-r", String(fps));
+    args.push("-fps_mode", "cfr", "-r", ffmpegFps);
   }
 
   args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
@@ -1243,6 +1272,7 @@ function sliceSupersetMember(
   superset: ExtractedFrames,
   outputDir: string,
   fps: number,
+  configuredFps: FpsInput,
 ): ExtractedFrames {
   const { work } = member.miss;
   rmSync(outputDir, { recursive: true, force: true });
@@ -1254,7 +1284,7 @@ function sliceSupersetMember(
   // The frame-alignment precondition is what makes offset_i integral.
   const requestedFrames = extractionFrameCountForDuration(
     work.videoDuration,
-    fps,
+    configuredFps,
     work.metadata.isVFR,
   );
   const availableFrames = Math.max(0, superset.totalFrames - member.offsetFrames);
@@ -1348,6 +1378,9 @@ export async function extractAllVideoFrames(
       `Video extraction timelineEnd must be finite; got ${String(options.timelineEnd)}`,
     );
   }
+  const configuredFps = toFps(options.fps);
+  const fps = fpsToNumber(configuredFps);
+  const fpsKey = fpsToFfmpegArg(configuredFps);
   const startTime = Date.now();
   const extracted: ExtractedFrames[] = [];
   const errors: VideoExtractionFailure[] = [];
@@ -1629,7 +1662,7 @@ export async function extractAllVideoFrames(
     const rehydrated = rehydrateCacheEntry(target.entry, {
       videoId: work.video.id,
       srcPath: target.srcPath,
-      fps: options.fps,
+      fps,
       format: work.format,
       metadata: work.metadata,
     });
@@ -1652,7 +1685,7 @@ export async function extractAllVideoFrames(
       size: keyInput.size,
       mediaStart: keyInput.mediaStart,
       duration: work.videoDuration,
-      fps: options.fps,
+      fps,
       format: work.format,
       transform,
     });
@@ -1755,12 +1788,13 @@ export async function extractAllVideoFrames(
         member,
         superset,
         join(options.outputDir, work.video.id),
-        options.fps,
+        fps,
+        configuredFps,
       );
     }
 
     const partialDir = partialCacheEntryDir(cacheTarget.entry);
-    const sliced = sliceSupersetMember(member, superset, partialDir, options.fps);
+    const sliced = sliceSupersetMember(member, superset, partialDir, fps, configuredFps);
     const published = publishCacheEntry(cacheTarget.entry, partialDir);
     if (!published.published) {
       breakdown.cachePublishFailures += 1;
@@ -1867,7 +1901,7 @@ export async function extractAllVideoFrames(
         const format = resolveFrameFormat(metadata, options.format);
         const sdrToHdrTransfer = sdrToHdrTransfers[index];
         const finalFrameOnly = window.finalFrameOnly === true;
-        const dedupeKey = `${videoPath}\0${extractionMediaStart}\0${videoDuration}\0${options.fps}\0${format}\0${sdrToHdrTransfer ?? ""}\0${finalFrameOnly ? "final" : "range"}`;
+        const dedupeKey = `${videoPath}\0${extractionMediaStart}\0${videoDuration}\0${fpsKey}\0${format}\0${sdrToHdrTransfer ?? ""}\0${finalFrameOnly ? "final" : "range"}`;
 
         return {
           work: {
@@ -1907,7 +1941,7 @@ export async function extractAllVideoFrames(
     }
   }
 
-  const supersetPlan = planSupersetGroups(cacheMisses, options.fps);
+  const supersetPlan = planSupersetGroups(cacheMisses, fps);
   const directOutcomes = await Promise.all(
     supersetPlan.direct.map(
       async (miss) =>
