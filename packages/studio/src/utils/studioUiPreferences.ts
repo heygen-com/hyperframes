@@ -6,6 +6,9 @@ export interface StoredPreviewZoomState {
 
 export type TimelineTimeDisplayMode = "time" | "frame";
 
+/** Mirrors the server's AgentKind — see components/editor/agentGlyphs. */
+export type StudioAgentKind = "claude" | "codex" | "hermes" | "openclaw" | "custom";
+
 export interface StudioUiPreferences {
   leftCollapsed?: boolean;
   leftWidth?: number;
@@ -32,7 +35,19 @@ export interface StudioUiPreferences {
   timelineZoomMode?: "fit" | "manual";
   /** Manual timeline zoom percent, paired with `timelineZoomMode: "manual"`. */
   timelineManualZoomPercent?: number;
+  /**
+   * Harness the agent composer runs with. Sticky on purpose: picking Codex once
+   * should not silently revert to whatever auto-detection finds first tomorrow.
+   * Undefined means "let the server decide".
+   */
+  agentKind?: StudioAgentKind;
+  /** Run tray left collapsed. */
+  agentTrayCollapsed?: boolean;
+  /** Where the user parked the run tray, in viewport pixels. */
+  agentTrayPosition?: { x: number; y: number };
 }
+
+const AGENT_KINDS: StudioAgentKind[] = ["claude", "codex", "hermes", "openclaw", "custom"];
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
 
@@ -124,6 +139,23 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
       Number.isFinite(parsed.timelineManualZoomPercent)
     ) {
       preferences.timelineManualZoomPercent = parsed.timelineManualZoomPercent;
+    }
+    if (AGENT_KINDS.includes(parsed.agentKind as StudioAgentKind)) {
+      preferences.agentKind = parsed.agentKind as StudioAgentKind;
+    }
+    if (typeof parsed.agentTrayCollapsed === "boolean") {
+      preferences.agentTrayCollapsed = parsed.agentTrayCollapsed;
+    }
+    if (isRecord(parsed.agentTrayPosition)) {
+      const { x, y } = parsed.agentTrayPosition;
+      if (
+        typeof x === "number" &&
+        Number.isFinite(x) &&
+        typeof y === "number" &&
+        Number.isFinite(y)
+      ) {
+        preferences.agentTrayPosition = { x, y };
+      }
     }
     return preferences;
   } catch {

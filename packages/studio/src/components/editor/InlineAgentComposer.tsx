@@ -315,11 +315,8 @@ export function InlineAgentComposerHost({
     agentRunKind,
     agentIconUrl,
     agentOptions,
-    selectedAgentKind,
     agentJobs,
   } = selectionValue;
-  // A pick overrides what the server auto-detected, for this run and the next.
-  const picked = agentOptions.find((option) => option.kind === selectedAgentKind);
 
   return (
     <>
@@ -328,8 +325,8 @@ export function InlineAgentComposerHost({
           selectionLabel={domEditSelection.label}
           rect={rect}
           canvas={canvas}
-          runLabel={picked?.label ?? agentRunLabel}
-          agentKind={picked?.kind ?? agentRunKind}
+          runLabel={agentRunLabel}
+          agentKind={agentRunKind}
           agentIconUrl={agentIconUrl}
           agentOptions={agentOptions}
           onSelectAgent={actions.setSelectedAgentKind}

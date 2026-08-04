@@ -27,7 +27,11 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
-import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import {
+  useDomEditActionsContextOptional,
+  useDomEditSelectionContextOptional,
+} from "../../contexts/DomEditContext";
+import { AgentGlyph } from "./agentGlyphs";
 import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
@@ -121,7 +125,7 @@ function ZActionIcon({ action }: { action: ZAction }) {
       strokeWidth="1.2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="mr-2 shrink-0"
+      className="shrink-0"
       aria-hidden="true"
     >
       {Z_ACTION_ICONS[action].map((d) => (
@@ -151,6 +155,9 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   // Null in standalone/test mounts without the studio provider — the agent entry
   // only exists where there is a project on disk to edit.
   const domEditActions = useDomEditActionsContextOptional();
+  // Name the harness on the item itself: "Ask Claude Code" reads as a person
+  // you are handing work to, which a generic sparkle never does.
+  const agentState = useDomEditSelectionContextOptional();
 
   // Gate each item group on the presence of its persist handler. Without the
   // handler the action can't be persisted, so showing it would be a dead-end:
@@ -222,7 +229,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className="fixed z-50 min-w-[196px] rounded-xl bg-neutral-950/95 p-1 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
       style={{ left: adjustedX, top: adjustedY }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
@@ -237,7 +244,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         <>
           <button
             type="button"
-            className="w-full flex items-center px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-200 transition-colors duration-150 ease-out hover:bg-neutral-800/80"
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               e.preventDefault();
@@ -248,23 +255,15 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
               onClose();
             }}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mr-2 shrink-0"
-              aria-hidden="true"
-            >
-              <path d="M8 1.5 L9.6 6.4 L14.5 8 L9.6 9.6 L8 14.5 L6.4 9.6 L1.5 8 L6.4 6.4 Z" />
-            </svg>
-            <span>Ask agent</span>
+            <AgentGlyph
+              kind={agentState?.agentRunKind ?? "custom"}
+              size={14}
+              iconUrl={agentState?.agentIconUrl}
+            />
+            <span className="flex-1">Ask {agentState?.agentRunLabel ?? "agent"}</span>
+            <span className="text-[10px] text-neutral-600">⌘K</span>
           </button>
-          <div className="my-1 border-t border-neutral-700/60" />
+          <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />
         </>
       )}
 
@@ -275,10 +274,10 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             <button
               key={action}
               type="button"
-              className={`w-full flex items-center px-3 py-1.5 text-xs text-left ${
+              className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ease-out ${
                 enabled
-                  ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                  : "text-neutral-600 cursor-not-allowed"
+                  ? "cursor-pointer text-neutral-200 hover:bg-neutral-800/80"
+                  : "cursor-not-allowed text-neutral-600"
               }`}
               disabled={!enabled}
               // Act on pointerDown, not click: a pointerDown that reaches the
@@ -300,12 +299,12 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           );
         })}
 
-      {hasDivider && <div className="my-1 border-t border-neutral-700/60" />}
+      {hasDivider && <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />}
 
       {hasDelete && (
         <button
           type="button"
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+          className="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-red-400 transition-colors duration-150 ease-out hover:bg-red-500/10"
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.preventDefault();
@@ -314,7 +313,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
           }}
         >
           <span>Delete</span>
-          <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
+          <span className="ml-3 text-[10px] text-neutral-600">⌫</span>
         </button>
       )}
     </div>,

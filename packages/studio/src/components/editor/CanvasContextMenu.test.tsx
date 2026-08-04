@@ -77,7 +77,7 @@ describe("CanvasContextMenu — handler gating", () => {
     expect(zOrderButtons()).toHaveLength(4);
     expect(hasDeleteItem()).toBe(true);
     // The divider only appears between the two groups.
-    expect(document.body.querySelector(".border-t")).not.toBeNull();
+    expect(document.body.querySelector("[data-menu-divider]")).not.toBeNull();
   });
 
   it("hides every item and does NOT render the menu when no handlers are present", () => {
@@ -106,7 +106,7 @@ describe("CanvasContextMenu — handler gating", () => {
     const buttons = zOrderButtons();
     expect(buttons).toHaveLength(4);
     expect(hasDeleteItem()).toBe(false);
-    expect(document.body.querySelector(".border-t")).toBeNull();
+    expect(document.body.querySelector("[data-menu-divider]")).toBeNull();
 
     // Labels stay the exact industry-standard names (the icons add no text)...
     expect(buttons.map((b) => b.textContent)).toEqual([
@@ -134,7 +134,7 @@ describe("CanvasContextMenu — handler gating", () => {
 
     expect(zOrderButtons()).toHaveLength(0);
     expect(hasDeleteItem()).toBe(true);
-    expect(document.body.querySelector(".border-t")).toBeNull();
+    expect(document.body.querySelector("[data-menu-divider]")).toBeNull();
   });
 });
 

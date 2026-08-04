@@ -263,6 +263,7 @@ export function StudioApp() {
     activeCompPath,
     forceReloadSdkSession: sdkHandle.forceReload,
     onToggleRecording: () => handleToggleRecordingRef.current(),
+    onAskAgent: () => domEditSessionRef.current.handleAskAgent(),
   });
   const sidebarTabRef = useRef({
     select: (t: SidebarTab) => leftSidebarRef.current?.selectTab(t),

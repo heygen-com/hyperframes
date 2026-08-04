@@ -1,7 +1,10 @@
 import { Eye, Layers } from "../../icons/SystemIcons";
+import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
+import { AgentGlyph } from "./agentGlyphs";
 import type { DomEditSelection } from "./domEditingTypes";
 
 function FlatEmptyState() {
+  const agentState = useDomEditSelectionContextOptional();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2.5 px-8 py-10 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-panel-border-input bg-panel-input text-panel-text-3">
@@ -32,8 +35,12 @@ function FlatEmptyState() {
         </span>
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
           <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-accent">✦</span>
-            Describe a change to the agent
+            <AgentGlyph
+              kind={agentState?.agentRunKind ?? "custom"}
+              size={12}
+              iconUrl={agentState?.agentIconUrl}
+            />
+            Describe a change to {agentState?.agentRunLabel ?? "the agent"}
           </span>
           <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             ⌘K

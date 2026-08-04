@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AgentGlyph, type AgentJob, type AgentKind } from "./agentGlyphs";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 const ROW_BUTTON_CLASS =
   "rounded-md p-0.5 text-neutral-600 transition-colors duration-150 ease-out " +
@@ -41,6 +43,24 @@ function statusLine(job: AgentJob, queuePosition: number): string {
   return job.message ?? (job.status === "failed" ? "Failed" : "Done");
 }
 
+const TRAY_WIDTH = 300;
+const TRAY_MARGIN = 16;
+
+/** Where the tray sits: last parked spot, else the bottom-right corner. */
+export function resolveTrayPosition(
+  stored: { x: number; y: number } | undefined,
+  viewport: { width: number; height: number },
+  trayHeight = 120,
+): { x: number; y: number } {
+  const maxX = Math.max(TRAY_MARGIN, viewport.width - TRAY_WIDTH - TRAY_MARGIN);
+  const maxY = Math.max(TRAY_MARGIN, viewport.height - trayHeight - TRAY_MARGIN);
+  if (!stored) return { x: maxX, y: maxY };
+  return {
+    x: Math.min(maxX, Math.max(TRAY_MARGIN, stored.x)),
+    y: Math.min(maxY, Math.max(TRAY_MARGIN, stored.y)),
+  };
+}
+
 /**
  * Every run for this project, live. The list lives on the server, so a reload
  * lands back on the same in-flight work instead of losing it, and firing a
@@ -66,8 +86,47 @@ export function AgentRunTray({
   /** Seek to the run's moment and re-select the element it edited. */
   onRevealTarget?: (job: AgentJob) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => readStudioUiPreferences().agentTrayCollapsed ?? false,
+  );
+  // Parked over the app shell, not the canvas: the composition is the work, and
+  // a panel sitting on top of it hides whatever is in that corner.
+  const [position, setPosition] = useState(() =>
+    resolveTrayPosition(readStudioUiPreferences().agentTrayPosition, {
+      width: typeof window === "undefined" ? 1280 : window.innerWidth,
+      height: typeof window === "undefined" ? 800 : window.innerHeight,
+    }),
+  );
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   if (jobs.length === 0) return null;
+
+  const dragHandlers = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX - position.x,
+        startY: e.clientY - position.y,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      setPosition(
+        resolveTrayPosition(
+          { x: e.clientX - drag.startX, y: e.clientY - drag.startY },
+          { width: window.innerWidth, height: window.innerHeight },
+        ),
+      );
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      if (dragRef.current?.pointerId !== e.pointerId) return;
+      dragRef.current = null;
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      writeStudioUiPreferences({ agentTrayPosition: position });
+    },
+  };
 
   const active = jobs.filter((job) => job.status === "queued" || job.status === "running").length;
   const finished = jobs.length - active;
@@ -81,18 +140,28 @@ export function AgentRunTray({
   // "who worked on this" faster than any label would.
   const kindsUsed: AgentKind[] = [...new Set(jobs.map((job) => job.kind))];
 
-  return (
+  return createPortal(
     <div
       data-agent-run-tray="true"
-      className="hf-composer-enter absolute bottom-3 left-3 z-20 w-[300px] rounded-2xl bg-neutral-950/95 p-1.5 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+      className="hf-composer-enter fixed z-[60] w-[300px] rounded-2xl bg-neutral-950/95 p-1.5 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+      style={{ left: position.x, top: position.y }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between gap-2 px-1.5 py-1">
+      <div
+        className="flex cursor-grab items-center justify-between gap-2 px-1.5 py-1 active:cursor-grabbing"
+        {...dragHandlers}
+      >
         <button
           className="flex min-w-0 items-center gap-1.5 text-[11px] leading-none text-neutral-400 transition-colors duration-150 ease-out hover:text-neutral-200"
-          onClick={() => setCollapsed((value) => !value)}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() =>
+            setCollapsed((value) => {
+              writeStudioUiPreferences({ agentTrayCollapsed: !value });
+              return !value;
+            })
+          }
           aria-expanded={!collapsed}
         >
           <svg
@@ -127,6 +196,7 @@ export function AgentRunTray({
         {finished > 0 && (
           <button
             className="rounded-md px-1.5 py-0.5 text-[11px] leading-none text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 active:scale-[0.96]"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={onClearFinished}
           >
             Clear
@@ -245,6 +315,7 @@ export function AgentRunTray({
           })}
         </ul>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

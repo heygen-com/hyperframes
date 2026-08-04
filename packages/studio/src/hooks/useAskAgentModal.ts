@@ -5,6 +5,7 @@ import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
 import type { AgentJob, AgentKind, AgentOption } from "../components/editor/agentGlyphs";
 import { findElementForSelection } from "../components/editor/domEditing";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { usePlayerStore } from "../player";
 
 // ── Types ──
@@ -58,7 +59,13 @@ export function useAskAgentModal({
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
   // Null means "whatever the server resolves"; a pick sticks for later runs, so
   // a queue can mix harnesses without re-choosing every time.
-  const [selectedAgentKind, setSelectedAgentKind] = useState<AgentKind | null>(null);
+  const [selectedAgentKind, setSelectedAgentKindState] = useState<AgentKind | null>(
+    () => readStudioUiPreferences().agentKind ?? null,
+  );
+  const setSelectedAgentKind = useCallback((kind: AgentKind | null) => {
+    setSelectedAgentKindState(kind);
+    writeStudioUiPreferences({ agentKind: kind ?? undefined });
+  }, []);
   const [agentJobs, setAgentJobs] = useState<AgentJob[]>([]);
 
   // ── Refs ──
@@ -333,13 +340,18 @@ export function useAskAgentModal({
     [],
   );
 
+  // What every agent affordance should say: the user's pick when they made one,
+  // else whatever the server auto-detected. Menus, the inspector footer and the
+  // composer all read this, so they can never disagree about who will run.
+  const activeAgent = agentOptions.find((option) => option.kind === selectedAgentKind);
+
   return {
     // State
     agentModalOpen,
     copiedAgentPrompt,
     agentPromptSelectionContext,
-    agentRunLabel,
-    agentRunKind,
+    agentRunLabel: activeAgent?.label ?? agentRunLabel,
+    agentRunKind: activeAgent?.kind ?? agentRunKind,
     agentIconUrl,
     agentOptions,
     selectedAgentKind,

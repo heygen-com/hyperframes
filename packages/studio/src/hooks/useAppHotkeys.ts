@@ -123,6 +123,8 @@ interface UseAppHotkeysParams {
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: () => void;
   onToggleRecording?: () => void;
+  /** Open the agent composer for the current selection (⌘K / Ctrl+K). */
+  onAskAgent?: () => void;
   /** Group the current multi-selection into a data-hf-group wrapper (⌘G). */
   onGroupSelection?: () => void;
   /** Ungroup the selected group wrapper (⌘⇧G). */
@@ -151,6 +153,7 @@ interface HotkeyCallbacks {
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onToggleRecording?: () => void;
+  onAskAgent?: () => void;
   onGroupSelection?: () => void;
   onUngroupSelection?: () => void;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
@@ -159,6 +162,15 @@ interface HotkeyCallbacks {
 }
 
 function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): boolean {
+  // ⌘K opens the agent composer on the current selection — the same entry the
+  // inspector footer and both context menus offer.
+  if (key === "k" && !event.shiftKey && !event.altKey && cb.onAskAgent) {
+    if (!cb.domEditSelectionRef.current) return false;
+    event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "ask_agent" });
+    cb.onAskAgent();
+    return true;
+  }
   if (
     !shouldIgnoreHistoryShortcut(event.target) &&
     handleUndoRedoKey(
@@ -346,6 +358,7 @@ export function useAppHotkeys({
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
   onToggleRecording,
+  onAskAgent,
   onGroupSelection,
   onUngroupSelection,
   activeCompPath,
@@ -438,6 +451,7 @@ export function useAppHotkeys({
     onResetKeyframes,
     onDeleteSelectedKeyframes,
     onToggleRecording,
+    onAskAgent,
     onGroupSelection,
     onUngroupSelection,
     leftSidebarRef,

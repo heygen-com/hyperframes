@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentRunTray } from "./AgentRunTray";
+import { AgentRunTray, resolveTrayPosition } from "./AgentRunTray";
 import { ownsPreviewPanTarget } from "../nle/previewZoom";
 import type { AgentJob } from "./agentGlyphs";
 
@@ -11,6 +11,9 @@ import type { AgentJob } from "./agentGlyphs";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  // The tray remembers whether it was collapsed; without this the toggle test
+  // leaves every later render collapsed.
+  window.localStorage.clear();
 });
 
 function job(partial: Partial<AgentJob>): AgentJob {
@@ -50,7 +53,8 @@ function renderTray(
       />,
     );
   });
-  return { host, root, onClearFinished };
+  // The tray portals to the body so the canvas can never clip or scroll it.
+  return { host: document.body, root, onClearFinished };
 }
 
 function buttonLabelled(host: HTMLElement, label: string): HTMLButtonElement[] {
@@ -217,14 +221,15 @@ describe("harness marks", () => {
     const { host, root } = renderTray(
       kinds.map((kind, index) => job({ id: `job-${index}`, kind, label: kind })),
     );
-    // Every harness draws its own vendor mark: distinct viewBoxes for the SVG
-    // ones (Claude 248, OpenAI 24, OpenClaw 120, spark 16) and Hermes' own
-    // caduceus glyph, which its favicon ships as type rather than a path.
+    // Every harness draws its own vendor mark: Claude (248 viewBox), the OpenAI
+    // mark (24), OpenClaw's pixel lobster and the fallback spark (both 16), and
+    // Hermes' raster logo, which only exists as an image.
     const viewBoxes = new Set(
       [...host.querySelectorAll("li svg")].map((svg) => svg.getAttribute("viewBox")),
     );
-    expect(viewBoxes).toEqual(new Set(["0 0 248 248", "0 0 24 24", "0 0 120 120", "0 0 16 16"]));
-    expect(host.textContent).toContain("⚕");
+    expect(viewBoxes).toEqual(new Set(["0 0 248 248", "0 0 24 24", "0 0 16 16"]));
+    expect(host.querySelectorAll("li svg[shape-rendering='crispEdges']")).toHaveLength(1);
+    expect(host.querySelector("li img")?.getAttribute("src")).toContain("data:image/png");
     act(() => root.unmount());
 
     const withIcon = renderTray([job({})], vi.fn(), "/api/projects/p1/agent/icon");
@@ -232,5 +237,23 @@ describe("harness marks", () => {
       "/api/projects/p1/agent/icon",
     );
     act(() => withIcon.root.unmount());
+  });
+});
+
+describe("resolveTrayPosition", () => {
+  const viewport = { width: 1200, height: 800 };
+
+  it("parks in the bottom-right corner when nothing is stored", () => {
+    // 1200 - 300 - 16, 800 - 120 - 16
+    expect(resolveTrayPosition(undefined, viewport)).toEqual({ x: 884, y: 664 });
+  });
+
+  it("keeps a stored spot", () => {
+    expect(resolveTrayPosition({ x: 400, y: 200 }, viewport)).toEqual({ x: 400, y: 200 });
+  });
+
+  it("pulls a spot back inside a smaller window", () => {
+    expect(resolveTrayPosition({ x: 5000, y: 5000 }, viewport)).toEqual({ x: 884, y: 664 });
+    expect(resolveTrayPosition({ x: -80, y: -80 }, viewport)).toEqual({ x: 16, y: 16 });
   });
 });

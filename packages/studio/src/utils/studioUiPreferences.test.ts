@@ -93,3 +93,20 @@ describe("timeline zoom pin persistence", () => {
     expect(prefs.timelineManualZoomPercent).toBeUndefined();
   });
 });
+
+describe("agent preferences", () => {
+  it("remembers the harness and the tray state", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ agentKind: "codex", agentTrayCollapsed: true }, storage);
+    expect(readStudioUiPreferences(storage)).toMatchObject({
+      agentKind: "codex",
+      agentTrayCollapsed: true,
+    });
+  });
+
+  it("ignores a harness it does not know", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ agentKind: "not-an-agent" }));
+    expect(readStudioUiPreferences(storage).agentKind).toBeUndefined();
+  });
+});

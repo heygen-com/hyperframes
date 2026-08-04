@@ -3,7 +3,11 @@ import { createPortal } from "react-dom";
 import type { TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
-import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import {
+  useDomEditActionsContextOptional,
+  useDomEditSelectionContextOptional,
+} from "../../contexts/DomEditContext";
+import { AgentGlyph } from "../../components/editor/agentGlyphs";
 
 interface ClipContextMenuProps {
   x: number;
@@ -28,6 +32,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   // Null in standalone player mounts (no studio provider) — the agent entry
   // only exists where there is a project on disk to edit.
   const domEditActions = useDomEditActionsContextOptional();
+  const agentState = useDomEditSelectionContextOptional();
 
   const menuWidth = 200;
   const menuHeight = domEditActions ? 110 : 80;
@@ -48,17 +53,17 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className="fixed z-50 min-w-[196px] rounded-xl bg-neutral-950/95 p-1 ring-1 ring-white/10 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-8px_rgba(0,0,0,0.7)]"
       style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
         <>
           <button
             type="button"
-            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left ${
+            className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors duration-150 ease-out ${
               canSplit
-                ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                : "text-neutral-600 cursor-not-allowed"
+                ? "cursor-pointer text-neutral-200 hover:bg-neutral-800/80"
+                : "cursor-not-allowed text-neutral-600"
             }`}
             disabled={!canSplit}
             onClick={() => {
@@ -71,7 +76,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <span>{splitLabel}</span>
             <span className="text-neutral-500 text-[10px] ml-3">S</span>
           </button>
-          <div className="my-1 border-t border-neutral-700/60" />
+          <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />
         </>
       )}
 
@@ -79,7 +84,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         <>
           <button
             type="button"
-            className="w-full flex items-center px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-neutral-200 transition-colors duration-150 ease-out hover:bg-neutral-800/80"
             onClick={() => {
               // Resolve the clip back to its live DOM element so the agent gets
               // the same rich context a canvas selection produces.
@@ -91,15 +96,21 @@ export const ClipContextMenu = memo(function ClipContextMenu({
               onClose();
             }}
           >
-            Ask agent
+            <AgentGlyph
+              kind={agentState?.agentRunKind ?? "custom"}
+              size={14}
+              iconUrl={agentState?.agentIconUrl}
+            />
+            <span className="flex-1">Ask {agentState?.agentRunLabel ?? "agent"}</span>
+            <span className="text-[10px] text-neutral-600">⌘K</span>
           </button>
-          <div className="my-1 border-t border-neutral-700/60" />
+          <div data-menu-divider="true" className="-mx-1 my-1 h-px bg-white/10" />
         </>
       )}
 
       <button
         type="button"
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+        className="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-red-400 transition-colors duration-150 ease-out hover:bg-red-500/10"
         onClick={() => {
           onDelete(element);
           onClose();
