@@ -1319,3 +1319,46 @@ describe("hfId — find, key, capabilities (R7 fixes)", () => {
     expect(result.canMove).toBe(true);
   });
 });
+
+describe("buildElementAgentPrompt — multi-selection", () => {
+  function selectionFor(id: string): DomEditSelection {
+    // The builder only reads fields off the selection, never the live node.
+    return {
+      element: { outerHTML: `<div id="${id}"></div>` },
+      id,
+      selector: `#${id}`,
+      selectorIndex: 0,
+      tagName: "div",
+      label: id,
+      compositionPath: "index.html",
+      sourceFile: "index.html",
+      boundingBox: { x: 0, y: 0, width: 10, height: 10 },
+      textContent: null,
+      inlineStyles: {},
+      computedStyles: {},
+      dataAttributes: {},
+      textFields: [],
+      capabilities: {},
+    } as unknown as DomEditSelection;
+  }
+
+  it("names every co-selected element and widens the guardrail", () => {
+    const prompt = buildElementAgentPrompt({
+      selection: selectionFor("title"),
+      alsoSelected: [selectionFor("subtitle")],
+      currentTime: 0,
+      userInstruction: "make them blue",
+    });
+
+    expect(prompt).toContain("Also selected (1 more element)");
+    expect(prompt).toContain("selector=#subtitle");
+    expect(prompt).toContain("- Make the targeted change to every selected element");
+    expect(prompt).not.toContain("- Make a targeted change to this element only.");
+  });
+
+  it("keeps the single-element guardrail when nothing else is selected", () => {
+    const prompt = buildElementAgentPrompt({ selection: selectionFor("title"), currentTime: 0 });
+    expect(prompt).toContain("- Make a targeted change to this element only.");
+    expect(prompt).not.toContain("Also selected");
+  });
+});

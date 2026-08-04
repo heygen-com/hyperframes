@@ -262,7 +262,10 @@ export function InlineAgentComposer({
       </div>
 
       {pickerOpen && onSelectAgent && (
-        <div className="mb-1.5 max-h-64 overflow-y-auto overscroll-contain rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
+        <div
+          data-preview-overlay-scroll="true"
+          className="mb-1.5 max-h-44 scroll-py-1 overflow-y-auto overscroll-contain scroll-smooth rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10"
+        >
           {addingAgent && onAddCustomAgent ? (
             <CustomAgentForm
               onSubmit={onAddCustomAgent}
@@ -308,7 +311,10 @@ export function InlineAgentComposer({
       )}
 
       {modelPickerOpen && onSelectModel && agentModels.length > 0 && (
-        <ul className="mb-1.5 max-h-64 space-y-0.5 overflow-y-auto overscroll-contain rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
+        <ul
+          data-preview-overlay-scroll="true"
+          className="mb-1.5 max-h-44 space-y-0.5 scroll-py-1 overflow-y-auto overscroll-contain scroll-smooth rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10"
+        >
           <li>
             <button
               className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
@@ -418,6 +424,7 @@ export function InlineAgentComposerHost({
 
   const {
     domEditSelection,
+    domEditGroupSelections,
     agentModalOpen,
     agentRunLabel,
     agentRunKind,
@@ -433,7 +440,11 @@ export function InlineAgentComposerHost({
     <>
       {agentModalOpen && domEditSelection && (
         <InlineAgentComposer
-          selectionLabel={domEditSelection.label}
+          selectionLabel={
+            domEditGroupSelections.length > 1
+              ? `${domEditGroupSelections.length} elements`
+              : domEditSelection.label
+          }
           rect={rect}
           canvas={canvas}
           runLabel={agentRunLabel}

@@ -24,8 +24,19 @@ function formatTextFields(fields: DomEditTextField[]): string {
     .join("\n");
 }
 
+/** One line per co-selected element, so a multi-select edit names every target. */
+function formatAlsoSelected(selections: DomEditSelection[]): string {
+  return selections
+    .map((selection) => {
+      const text = selection.textContent ? `; text=${JSON.stringify(selection.textContent)}` : "";
+      return `- <${selection.tagName}> id=${selection.id ?? "(none)"}; selector=${selection.selector ?? "(none)"}; index=${selection.selectorIndex ?? 0}; bounds=${formatBoundingBox(selection.boundingBox)}${text}`;
+    })
+    .join("\n");
+}
+
 export function buildElementAgentPrompt({
   selection,
+  alsoSelected = [],
   currentTime,
   tagSnippet,
   selectionContext,
@@ -33,6 +44,8 @@ export function buildElementAgentPrompt({
   sourceFilePath,
 }: {
   selection: DomEditSelection;
+  /** The rest of a multi-selection; the instruction applies to all of them. */
+  alsoSelected?: DomEditSelection[];
   currentTime: number;
   tagSnippet?: string;
   selectionContext?: string;
@@ -84,10 +97,20 @@ export function buildElementAgentPrompt({
     lines.push("", "Target HTML:", tagSnippet);
   }
 
+  if (alsoSelected.length > 0) {
+    lines.push(
+      "",
+      `Also selected (${alsoSelected.length} more element${alsoSelected.length > 1 ? "s" : ""}) — apply the same change to each:`,
+      formatAlsoSelected(alsoSelected),
+    );
+  }
+
   lines.push(
     "",
     "Guardrails:",
-    "- Make a targeted change to this element only.",
+    alsoSelected.length > 0
+      ? "- Make the targeted change to every selected element, and nothing else."
+      : "- Make a targeted change to this element only.",
     "- Preserve the rest of the composition and its timing.",
     "- Do not modify other elements' data-* attributes or positioning.",
     "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",

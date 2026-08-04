@@ -181,6 +181,7 @@ export function useDomEditSession({
     showToast,
     domEditSelectionRef,
     domEditSelection,
+    domEditGroupSelections,
   });
 
   useStudioSelectionPublisher({

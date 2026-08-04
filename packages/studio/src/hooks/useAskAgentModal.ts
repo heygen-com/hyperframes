@@ -13,6 +13,7 @@ import type {
 import { findElementForSelection } from "../components/editor/domEditing";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { usePlayerStore } from "../player";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
 
@@ -33,6 +34,8 @@ export interface UseAskAgentModalParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditSelection: DomEditSelection | null;
+  /** The whole marquee/shift selection; the instruction applies to all of it. */
+  domEditGroupSelections: DomEditSelection[];
 }
 
 // ── Hook ──
@@ -48,6 +51,7 @@ export function useAskAgentModal({
   showToast,
   domEditSelectionRef,
   domEditSelection,
+  domEditGroupSelections,
 }: UseAskAgentModalParams) {
   // ── State ──
 
@@ -69,6 +73,7 @@ export function useAskAgentModal({
     () => readStudioUiPreferences().agentId ?? null,
   );
   const setSelectedAgentId = useCallback((id: string | null) => {
+    trackStudioEvent("agent_harness_selected", { harness: id ?? "auto" });
     setSelectedAgentIdState(id);
     writeStudioUiPreferences({ agentId: id ?? undefined });
   }, []);
@@ -168,6 +173,7 @@ export function useAskAgentModal({
   );
 
   const setSelectedModel = useCallback((kind: AgentKind, model: string | null) => {
+    trackStudioEvent("agent_model_selected", { harness: kind, model: model ?? "cheapest" });
     setModelByKind((current) => {
       const next = { ...current };
       if (model) next[kind] = model;
@@ -184,15 +190,38 @@ export function useAskAgentModal({
     setAgentPromptSelectionContext(undefined);
     void preloadAgentPromptSnippet(selection);
     setAgentModalOpen(true);
+    trackStudioEvent("agent_composer_opened", { elements: domEditGroupSelections.length || 1 });
     void refreshAgentState();
     void refreshAgentModels(activeKindRef.current);
-  }, [preloadAgentPromptSnippet, refreshAgentModels, refreshAgentState, resolveSelection]);
+  }, [
+    domEditGroupSelections.length,
+    preloadAgentPromptSnippet,
+    refreshAgentModels,
+    refreshAgentState,
+    resolveSelection,
+  ]);
+
+  // Selecting an element is the ask: the composer follows the selection instead
+  // of waiting for a second gesture on the same thing the user just clicked.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!domEditSelection) return;
+    handleAskAgent();
+  }, [domEditSelection, handleAskAgent]);
+
+  /** Everything the instruction should touch: the anchor plus its co-selection. */
+  const resolveGroup = useCallback(
+    (anchor: DomEditSelection) =>
+      domEditGroupSelections.filter((entry) => entry.element !== anchor.element),
+    [domEditGroupSelections],
+  );
 
   const buildPrompt = useCallback(
     (selection: DomEditSelection, userInstruction: string) => {
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       return buildElementAgentPrompt({
         selection,
+        alsoSelected: resolveGroup(selection),
         currentTime: usePlayerStore.getState().currentTime,
         tagSnippet: agentPromptTagSnippet ?? selection.element.outerHTML,
         selectionContext: agentPromptSelectionContext,
@@ -200,7 +229,7 @@ export function useAskAgentModal({
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
     },
-    [activeCompPath, agentPromptSelectionContext, agentPromptTagSnippet, projectDir],
+    [activeCompPath, agentPromptSelectionContext, agentPromptTagSnippet, projectDir, resolveGroup],
   );
 
   /**
@@ -214,13 +243,25 @@ export function useAskAgentModal({
       const pid = projectIdRef.current;
       if (!selection || !pid) return;
 
+      const coSelected = resolveGroup(selection).length;
+      // Traction, not content: how often runs are started, with which harness
+      // and model, and whether multi-select is used. No instruction text.
+      trackStudioEvent("agent_run_submitted", {
+        harness: activeKindRef.current ?? "unknown",
+        model: activeKindRef.current
+          ? (modelByKind[activeKindRef.current] ?? "default")
+          : "default",
+        elements: coSelected + 1,
+        instruction_length: userInstruction.length,
+      });
+
       void fetch(`/api/projects/${pid}/agent`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           prompt: buildPrompt(selection, userInstruction),
           instruction: userInstruction,
-          target: selection.label,
+          target: coSelected > 0 ? `${coSelected + 1} elements` : selection.label,
           agent: selectedAgentId ?? undefined,
           model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
           // Selection coordinates travel with the run so the tray can seek back
@@ -246,7 +287,15 @@ export function useAskAgentModal({
           showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
         });
     },
-    [buildPrompt, modelByKind, projectIdRef, resolveSelection, selectedAgentId, showToast],
+    [
+      buildPrompt,
+      modelByKind,
+      projectIdRef,
+      resolveGroup,
+      resolveSelection,
+      selectedAgentId,
+      showToast,
+    ],
   );
 
   /** Seek to when a run was asked for and re-select the element it edited. */
@@ -336,6 +385,9 @@ export function useAskAgentModal({
           showToast(data.error ?? "Could not add that harness.", "error");
           return false;
         }
+        trackStudioEvent("agent_custom_harness_added", {
+          has_model_flag: Boolean(draft.modelFlag),
+        });
         await refreshAgentState();
         return true;
       } catch {
