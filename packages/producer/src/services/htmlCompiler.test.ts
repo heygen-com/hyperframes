@@ -2763,3 +2763,55 @@ describe("duplicate media ids across nested compositions", () => {
     expect(compiled.audios[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
   });
 });
+
+describe("STUDIO-5433 — ffprobe failure includes src URL for attribution", () => {
+  function writeCorruptVideoProject(videoSrc: string, assetBytes: Buffer): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-studio-5433-"));
+    mkdirSync(join(projectDir, "assets"), { recursive: true });
+    writeFileSync(join(projectDir, "assets", "clip.mp4"), assetBytes);
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="root" data-start="0" data-duration="4" data-width="640" data-height="360">
+      <video
+        id="clip"
+        src="${videoSrc}"
+        data-start="0"
+        data-duration="4"
+        data-width="640"
+        data-height="360"
+      ></video>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("wraps the ffprobe error with [src=<relative-path>] when the local video is corrupt", async () => {
+    // 0-byte mp4 — ffprobe reports "Invalid data found when processing input",
+    // the same class as the STUDIO-5433 moov failure. Fail-fast semantics remain
+    // (video branch throws, unlike audio's graceful-degrade to duration=0).
+    const projectDir = writeCorruptVideoProject("assets/clip.mp4", Buffer.alloc(0));
+
+    let thrown: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("[src=assets/clip.mp4]");
+    // Original ffprobe diagnostic must still be present so failure classifiers
+    // downstream (e.g. hyperframes_render_metrics.py) continue to match.
+    expect(message).toMatch(/ffprobe|Invalid data|No video stream/i);
+  });
+});
