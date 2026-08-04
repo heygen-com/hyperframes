@@ -592,9 +592,16 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existing) {
               existing.src = src;
               const runtimeEnd = resolveBrowserMediaEnd(el.start, el.end, el.duration);
-              if (runtimeEnd > el.start) {
-                existing.start = el.start;
-                existing.end = runtimeEnd;
+              const projectedEnd = projectBrowserEndToCompositionTimeline(
+                existing.start,
+                el.start,
+                runtimeEnd,
+              );
+              if (
+                projectedEnd > existing.start &&
+                Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON
+              ) {
+                existing.end = projectedEnd;
               }
             }
           } else {

@@ -64,9 +64,7 @@ import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-serve
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
-import { Semaphore } from "../utils/semaphore.js";
-
-const MAX_COMPILER_MEDIA_PROBES = 4;
+import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
 
 export interface CompiledComposition {
   html: string;
@@ -415,7 +413,6 @@ async function resolveMediaDuration(
   downloadDir: string,
   tagName: string,
   elementIdentity: string,
-  mediaProbeSemaphore: Semaphore,
 ): Promise<{ duration: number; resolvedPath: string }> {
   let filePath = src;
 
@@ -436,8 +433,7 @@ async function resolveMediaDuration(
     return { duration: 0, resolvedPath: filePath };
   }
 
-  const releaseProbe = await mediaProbeSemaphore.acquire();
-  try {
+  return withMediaProbeSlot(async () => {
     let profile: MediaProbeProfile;
     try {
       profile = await probeMediaProfile(filePath);
@@ -469,9 +465,7 @@ async function resolveMediaDuration(
     const duration = effectiveDuration > 0 ? effectiveDuration : fileDuration;
 
     return { duration, resolvedPath: filePath };
-  } finally {
-    releaseProbe();
-  }
+  });
 }
 
 /**
@@ -482,7 +476,6 @@ async function compileHtmlFile(
   html: string,
   baseDir: string,
   downloadDir: string,
-  mediaProbeSemaphore: Semaphore,
   log?: ProducerLogger,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
@@ -496,15 +489,9 @@ async function compileHtmlFile(
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
-      resolveMediaDuration(
-        el.src!,
-        el.mediaStart,
-        baseDir,
-        downloadDir,
-        el.tagName,
-        el.id,
-        mediaProbeSemaphore,
-      ).then(({ duration }) => ({ id: el.id, duration })),
+      resolveMediaDuration(el.src!, el.mediaStart, baseDir, downloadDir, el.tagName, el.id).then(
+        ({ duration }) => ({ id: el.id, duration }),
+      ),
     ),
   );
   const resolutions: ResolvedDuration[] = resolvedResults.filter((r) => r.duration > 0);
@@ -526,7 +513,6 @@ async function compileHtmlFile(
           downloadDir,
           el.tagName,
           el.id,
-          mediaProbeSemaphore,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
       }),
@@ -588,7 +574,6 @@ async function parseSubCompositions(
   html: string,
   projectDir: string,
   downloadDir: string,
-  mediaProbeSemaphore: Semaphore,
   parentOffset: number = 0,
   parentEnd: number = Infinity,
   visited: Set<string> = new Set(),
@@ -652,14 +637,12 @@ async function parseSubCompositions(
         item.rawSubHtml,
         dirname(item.filePath),
         downloadDir,
-        mediaProbeSemaphore,
       );
 
       const nested = await parseSubCompositions(
         compiledSub,
         projectDir,
         downloadDir,
-        mediaProbeSemaphore,
         item.absoluteStart,
         item.absoluteEnd,
         item.nestedVisited,
@@ -1856,15 +1839,10 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir);
 
-  // One limiter is shared by both compiler passes and every recursive
-  // sub-composition so nested Promise.all calls cannot multiply ffprobe load.
-  const mediaProbeSemaphore = new Semaphore(MAX_COMPILER_MEDIA_PROBES);
-
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
     downloadDir,
-    mediaProbeSemaphore,
     options.log,
   );
 
@@ -1874,7 +1852,7 @@ export async function compileForRender(
     audios: subAudios,
     images: subImages,
     subCompositions,
-  } = await parseSubCompositions(compiledHtml, projectDir, downloadDir, mediaProbeSemaphore);
+  } = await parseSubCompositions(compiledHtml, projectDir, downloadDir);
 
   // Ensure the HTML is a full document before inlining sub-compositions.
   // When index.html is a fragment (no <html>/<head>/<body>), linkedom.parseHTML()
@@ -2034,7 +2012,10 @@ export async function compileForRender(
     if (isHttpUrl(video.src)) continue;
     const videoPath = resolve(projectDir, video.src);
     const reencode = `ffmpeg -i "${video.src}" -c:v libx264 -r 30 -g 30 -keyint_min 30 -movflags +faststart -c:a copy output.mp4`;
-    Promise.all([analyzeKeyframeIntervals(videoPath), extractMediaMetadata(videoPath)])
+    Promise.all([
+      withMediaProbeSlot(() => analyzeKeyframeIntervals(videoPath)),
+      withMediaProbeSlot(() => extractMediaMetadata(videoPath)),
+    ])
       .then(([analysis, metadata]) => {
         if (analysis.isProblematic) {
           defaultLogger.warn(
@@ -2138,9 +2119,15 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       if (!image.id) autoImageIds.set(image, `hf-img-${autoImageId++}`);
     });
 
-    const mediaEls = document.querySelectorAll(
-      "video[data-start], audio[data-start], img[data-var-src]",
+    const mediaEls = new Set<Element>(
+      document.querySelectorAll("video[data-start], audio[data-start], img[data-var-src]"),
     );
+    // A variable-bound <picture><source> changes the owning image's currentSrc;
+    // the <img> fallback itself does not necessarily carry data-var-src.
+    document.querySelectorAll("picture source[data-var-src]").forEach((source) => {
+      const image = source.closest("picture")?.querySelector("img");
+      if (image) mediaEls.add(image);
+    });
     mediaEls.forEach((el) => {
       const htmlEl = el as HTMLVideoElement | HTMLAudioElement | HTMLImageElement;
       const isImage = htmlEl.tagName.toLowerCase() === "img";
@@ -2459,7 +2446,6 @@ export async function recompileWithResolutions(
   if (resolutions.length === 0) return compiled;
 
   const html = injectDurations(compiled.html, resolutions);
-  const mediaProbeSemaphore = new Semaphore(MAX_COMPILER_MEDIA_PROBES);
 
   // Re-parse sub-compositions with the updated parent bounds
   const {
@@ -2467,7 +2453,7 @@ export async function recompileWithResolutions(
     audios: subAudios,
     images: subImages,
     subCompositions,
-  } = await parseSubCompositions(html, projectDir, downloadDir, mediaProbeSemaphore);
+  } = await parseSubCompositions(html, projectDir, downloadDir);
 
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);

@@ -172,7 +172,11 @@ mock.module("../../htmlCompiler.js", () => ({
 
 mock.module("../shared.js", () => ({
   BROWSER_MEDIA_EPSILON: 0.0001,
-  projectBrowserEndToCompositionTimeline: () => 0,
+  projectBrowserEndToCompositionTimeline: (
+    existingStart: number,
+    browserStart: number,
+    browserEnd: number,
+  ) => browserEnd + (existingStart - browserStart),
   resolveBrowserMediaEnd: (_start: number, end: number, duration: number) =>
     Number.isFinite(duration) && duration > 0 ? _start + duration : end,
   writeCompiledArtifacts: () => {},
@@ -352,7 +356,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightCallCount).toBe(1);
   });
 
-  it("reconciles a variable-bound image source before media-type preflight", async () => {
+  it("reconciles a sub-composition image without losing its parent timeline offset", async () => {
     resetRetryMocks();
     browserMediaResults = [
       {
@@ -360,8 +364,8 @@ describe("runProbeStage — forceScreenshot threading", () => {
         tagName: "image",
         src: "runtime-video.asset",
         start: 0,
-        end: 5,
-        duration: 5,
+        end: 2,
+        duration: 2,
         mediaStart: 0,
         loop: false,
         hasAudio: false,
@@ -372,14 +376,16 @@ describe("runProbeStage — forceScreenshot threading", () => {
     const { runProbeStage } = await import("./probeStage.js");
     const input = makeProbeInput({});
     input.composition.duration = 5;
-    input.composition.images.push({ id: "hero", src: "fallback.png", start: 0, end: 5 });
+    input.composition.images.push({ id: "hero", src: "fallback.png", start: 4, end: 6 });
     input.compiled.html =
-      '<img id="hero" src="fallback.png" data-var-src="hero_src" data-start="0" data-end="5">';
+      '<img id="hero" src="fallback.png" data-var-src="hero_src" data-start="0" data-end="2">';
     input.job.config.variables = { hero_src: "runtime-video.asset" };
 
     await runProbeStage(input);
 
     expect(input.composition.images[0]?.src).toBe("runtime-video.asset");
+    expect(input.composition.images[0]?.start).toBe(4);
+    expect(input.composition.images[0]?.end).toBe(6);
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 

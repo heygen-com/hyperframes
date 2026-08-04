@@ -66,6 +66,23 @@ describe("discoverMediaFromBrowser", () => {
     expect(media).toHaveLength(1);
     expect(media[0]).toMatchObject({ id: "hf-img-1", tagName: "image" });
   });
+
+  it("discovers the owning image for a variable-bound picture source", async () => {
+    const media = await discover(
+      `<picture>
+        <source src="fallback.webp" data-var-src="hero_src" />
+        <img id="hero" src="fallback.png" />
+      </picture>`,
+      { hero: "https://cdn.example/runtime.avif" },
+    );
+
+    expect(media).toHaveLength(1);
+    expect(media[0]).toMatchObject({
+      id: "hero",
+      tagName: "image",
+      src: "https://cdn.example/runtime.avif",
+    });
+  });
 });
 
 describe("injectSdkPositionEditsRenderScript", () => {

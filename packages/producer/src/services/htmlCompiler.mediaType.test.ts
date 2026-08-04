@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { compileForRender } from "./htmlCompiler.js";
 import { synthesizeMediaFixture } from "./mediaTypeTestFixtures.js";
 import { Semaphore } from "../utils/semaphore.js";
+import { sharedMediaProbeSemaphore } from "../utils/mediaProbeConcurrency.js";
 
 describe("compileForRender media-type ownership", () => {
   const projectDir = mkdtempSync(join(tmpdir(), "hf-compiler-media-type-"));
@@ -117,6 +118,13 @@ describe("compileForRender media-type ownership", () => {
       );
 
       await compileForRender(projectDir, htmlPath, downloadDir);
+      await vi.waitFor(
+        () => {
+          expect(sharedMediaProbeSemaphore.activeCount).toBe(0);
+          expect(sharedMediaProbeSemaphore.waitingCount).toBe(0);
+        },
+        { timeout: 30_000, interval: 5 },
+      );
 
       expect(limiterInstances.size).toBe(1);
       expect(maxActive).toBe(4);

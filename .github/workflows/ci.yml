@@ -262,11 +262,19 @@ jobs:
 
   test:
     name: Test
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, producer-source-tests]
+    # Keep the existing required `Test` context authoritative for producer
+    # failures too. The dedicated producer matrix remains parallel and legible,
+    # while this job fails closed if either lane fails or is cancelled.
+    if: always() && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require producer source tests
+        if: needs.producer-source-tests.result != 'success'
+        run: |
+          echo "::error::Producer unit/integration tests did not succeed."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
