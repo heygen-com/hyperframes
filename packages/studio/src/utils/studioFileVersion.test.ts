@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { studioExpectedFileVersion, studioFileContentVersion } from "./studioFileVersion";
+import {
+  consumeStudioWriteToken,
+  markStudioWriteToken,
+  resetStudioWriteTokens,
+  studioExpectedFileVersion,
+  studioFileContentVersion,
+} from "./studioFileVersion";
 
 describe("studioFileContentVersion", () => {
   it("matches the strong SHA-256 ETag format used by studio-server", async () => {
@@ -32,5 +38,16 @@ describe("studioFileContentVersion", () => {
 
     expect(await studioExpectedFileVersion(versions, "missing.html")).toBeNull();
     expect(await studioExpectedFileVersion(versions, "untracked.html")).toBeUndefined();
+  });
+});
+
+describe("studio write-token echo identity", () => {
+  it("suppresses exactly one matching API write receipt without hiding path-only external writes", () => {
+    resetStudioWriteTokens();
+    markStudioWriteToken("studio-write-1");
+
+    expect(consumeStudioWriteToken("studio-write-1")).toBe(true);
+    expect(consumeStudioWriteToken("studio-write-1")).toBe(false);
+    expect(consumeStudioWriteToken(null)).toBe(false);
   });
 });

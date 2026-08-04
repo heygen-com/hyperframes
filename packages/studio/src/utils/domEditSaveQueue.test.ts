@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDomEditSaveQueue } from "./domEditSaveQueue";
-import { StudioSaveHttpError } from "./studioSaveDiagnostics";
+import { StudioFileConflictError, StudioSaveHttpError } from "./studioSaveDiagnostics";
 
 describe("dom edit save queue", () => {
   afterEach(() => {
@@ -131,6 +131,25 @@ describe("dom edit save queue", () => {
       statusCode: 409,
     });
     await expect(queue.enqueue(async () => {})).rejects.toThrow("Auto-save is paused");
+    queue.destroy();
+  });
+
+  it("returns the original conflict from a drain instead of erasing it", async () => {
+    const conflict = new StudioFileConflictError({
+      filePath: "index.html",
+      currentVersion: "external-v2",
+      currentContent: "external",
+      attemptedContent: "studio",
+    });
+    const queue = createDomEditSaveQueue();
+
+    await expect(
+      queue.enqueue(async () => {
+        throw conflict;
+      }),
+    ).rejects.toBe(conflict);
+
+    await expect(queue.waitForIdle()).resolves.toEqual({ status: "conflict", error: conflict });
     queue.destroy();
   });
 });
