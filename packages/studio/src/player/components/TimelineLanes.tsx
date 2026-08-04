@@ -6,7 +6,7 @@ import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
 import { useAutomationLanes } from "./useAutomationLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
-import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
+import { resolveTrackKeyframeClip, trackShowsBeatStrip } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
@@ -162,11 +162,10 @@ export function TimelineLanes({
           // The beat-dot strip occupies the top of this track's lane (active track,
           // or the music track when nothing is selected). When shown, keyframe
           // diamonds shrink + drop to the bottom half so they don't collide with it.
-          const beatStripOnTrack =
-            (beatAnalysis?.beatTimes?.length ?? 0) >= 2 &&
-            (selectedElementId
-              ? els.some((e) => (e.key ?? e.id) === selectedElementId)
-              : els.some(isMusicTrack));
+          const beatStripOnTrack = trackShowsBeatStrip(els, beatAnalysis?.beatTimes, {
+            selectedElementId,
+            isMusicTrack,
+          });
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
           // The one keyframed element this track shows lanes for (selected, else
@@ -555,6 +554,7 @@ export function TimelineLanes({
                               laneCount={laneCounts.get(elementKey) ?? 0}
                               accentColor={clipStyle.accent}
                               currentTime={currentTime}
+                              beatTimes={beatAnalysis?.beatTimes}
                             />
                           ) : null
                         }

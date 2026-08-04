@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { PAD_X } from "./automationLaneGeometry";
+import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import {
   resolveAutomationRange,
@@ -80,10 +81,24 @@ function renderNested(node: React.ReactElement): {
 function fire(
   el: Element,
   type: string,
-  init: { clientX?: number; clientY?: number; button?: number } = {},
+  init: {
+    clientX?: number;
+    clientY?: number;
+    button?: number;
+    altKey?: boolean;
+    shiftKey?: boolean;
+  } = {},
 ): void {
   const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX: 0, clientY: 0, button: 0, pointerId: 1, ...init });
+  Object.assign(event, {
+    clientX: 0,
+    clientY: 0,
+    button: 0,
+    pointerId: 1,
+    altKey: false,
+    shiftKey: false,
+    ...init,
+  });
   act(() => {
     el.dispatchEvent(event);
   });
@@ -441,5 +456,155 @@ describe("TimelineAutomationLane", () => {
     // the lane's bottom and top.
     const ys = Array.from(circles).map((c) => Number(c.getAttribute("cy")));
     expect(Math.max(...ys)).toBeGreaterThan(Math.min(...ys) + 30);
+  });
+});
+
+describe("TimelineAutomationLane modifiers", () => {
+  /** The lane's own box, so pointer coordinates map to clip time and value. */
+  const BOX = { left: 100, top: 0, width: 400 + PAD * 2, height: AUTOMATION_LANE_H };
+
+  /** x for a clip time, y for a 0..1 unit height, in client coordinates. The
+   *  6px inset and the height have to match the lane's own, or a point sits
+   *  outside the grab radius and a press silently does nothing. */
+  const at = (t: number, unit: number) => ({
+    clientX: BOX.left + PAD + (t / 4) * 400,
+    clientY: BOX.top + 6 + (1 - unit) * (AUTOMATION_LANE_H - 12),
+  });
+
+  const mount = (automation: HfAutomation, over: Record<string, unknown> = {}) => {
+    const base = laneProps({ automation, ...over });
+    // Narrowed once here: laneProps types these as the prop signature, and every
+    // assertion below reads the calls the lane made.
+    const props = {
+      ...base,
+      onPreview: base.onPreview as ReturnType<typeof vi.fn>,
+      onCommit: base.onCommit as ReturnType<typeof vi.fn>,
+    };
+    const { container } = render(<TimelineAutomationLane {...props} />);
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, BOX);
+    return { container, svg, props };
+  };
+
+  it("bends a segment when it is Alt-dragged, and leaves the points where they were", () => {
+    // `curve` was honoured everywhere it is read — drawn, sampled in preview,
+    // baked into the render — with no gesture that could set it.
+    const { svg, props } = mount(ramp);
+    fire(svg, "pointerdown", { ...at(2, 0.5), altKey: true });
+    fire(svg, "pointermove", { ...at(2, 0.85), altKey: true });
+    const previewed = props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
+    const points = previewed?.lanes[0]?.points ?? [];
+    expect(points[0]?.curve).toBeDefined();
+    expect(points[0]?.curve).not.toBe(0);
+    // The breakpoints themselves are untouched: only the shape between them moved.
+    expect(points.map((p) => [p.t, p.v])).toEqual([
+      [0, 1],
+      [4, 0],
+    ]);
+  });
+
+  it("straightens a segment on Alt-double-click", () => {
+    const curved: HfAutomation = {
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1, curve: 0.6 },
+            { t: 4, v: 0 },
+          ],
+        },
+      ],
+    };
+    const { svg, props } = mount(curved);
+    fire(svg, "dblclick", { ...at(2, 0.5), altKey: true });
+    const committed = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
+    expect(committed?.lanes[0]?.points[0]?.curve).toBeUndefined();
+  });
+
+  it("locks a Shift-drag to one axis", () => {
+    const { svg, props } = mount(ramp);
+    // Grab the point at t=0, v=1 (top left) and pull mostly sideways.
+    fire(svg, "pointerdown", at(0, 1));
+    fire(svg, "pointermove", { ...at(2, 0.9), shiftKey: true });
+    const points =
+      (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]?.points ?? [];
+    const moved = points.find((p) => p.t > 0.5);
+    expect(moved).toBeDefined();
+    // Value held at exactly where the drag started, despite the vertical travel.
+    expect(moved?.v).toBe(1);
+  });
+
+  it("snaps a dragged point to the beat grid", () => {
+    // By eye, "on the beat" and "20 ms off the beat" look identical.
+    const { svg, props } = mount(ramp, { snapTimes: [2] });
+    fire(svg, "pointerdown", at(0, 1));
+    fire(svg, "pointermove", at(2.02, 1));
+    const points =
+      (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]?.points ?? [];
+    expect(points.find((p) => p.t > 0.5)?.t).toBe(2);
+  });
+
+  it("ignores the grid while Alt is held", () => {
+    const { svg, props } = mount(ramp, { snapTimes: [2] });
+    fire(svg, "pointerdown", at(0, 1));
+    fire(svg, "pointermove", { ...at(2.02, 1), altKey: true });
+    const points =
+      (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]?.points ?? [];
+    expect(points.find((p) => p.t > 0.5)?.t).toBeCloseTo(2.02, 2);
+  });
+
+  it("takes a second gesture in the same lane, not just the first", () => {
+    // The panel had exactly this bug: one edit worked and every later one was
+    // swallowed, because the live write skips the resync the next edit reads.
+    const { svg, props } = mount(ramp);
+    fire(svg, "pointerdown", at(0, 1));
+    fire(svg, "pointermove", at(1, 0.8));
+    fire(svg, "pointerup", at(1, 0.8));
+    fire(svg, "pointerdown", at(4, 0));
+    fire(svg, "pointermove", at(3, 0.4));
+    const points =
+      (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]?.points ?? [];
+    // Both ends moved: the first gesture's point is off t=0, the second's off t=4.
+    expect(points.map((p) => Number(p.t.toFixed(2)))).toEqual([1, 3]);
+  });
+
+  it("types an exact value into a point", () => {
+    // -6.0 dB is not a pixel you can find by dragging.
+    const { container, svg, props } = mount(ramp);
+    fire(svg, "dblclick", at(0, 1));
+    const input = container.querySelector<HTMLInputElement>(".hf-automation-value");
+    expect(input).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        input,
+        "0.25",
+      );
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    fire(input!, "keydown", {});
+    const key = new Event("keydown", { bubbles: true, cancelable: true });
+    Object.assign(key, { key: "Enter" });
+    act(() => {
+      input?.dispatchEvent(key);
+    });
+    const committed = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
+    expect(committed?.lanes[0]?.points[0]?.v).toBe(0.25);
+  });
+
+  it("clamps a typed value to the parameter's range", () => {
+    const { container, svg, props } = mount(ramp);
+    fire(svg, "dblclick", at(0, 1));
+    const input = container.querySelector<HTMLInputElement>(".hf-automation-value");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "99");
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // React listens for focusout, not blur — blur does not bubble.
+    act(() => {
+      input?.dispatchEvent(new Event("focusout", { bubbles: true }));
+    });
+    const committed = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
+    expect(committed?.lanes[0]?.points[0]?.v).toBe(VOLUME_RANGE.max);
   });
 });

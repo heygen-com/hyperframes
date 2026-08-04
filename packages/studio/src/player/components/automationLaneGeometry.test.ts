@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { automationTargets, fromUnit, toUnit } from "./automationLaneGeometry";
+import {
+  applyShiftConstraint,
+  automationTargets,
+  curveForDrag,
+  fromUnit,
+  snapLaneTime,
+  toUnit,
+} from "./automationLaneGeometry";
+import { applyCurve, sampleAutomationLane } from "@hyperframes/core/audio-automation";
 import { resolveAutomationRange, VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 
@@ -64,5 +72,100 @@ describe("value ↔ lane position", () => {
 
   it("reads a zero-width range as the bottom rather than dividing by zero", () => {
     expect(toUnit({ ...VOLUME_RANGE, min: 1, max: 1 }, 1)).toBe(0);
+  });
+});
+
+describe("curveForDrag", () => {
+  const a = { t: 0, v: 1 };
+  const b = { t: 4, v: 0 };
+
+  it("puts the curved segment through the point that was dragged", () => {
+    // The whole contract: whatever curve comes back, sampling the segment at the
+    // dragged time has to give the dragged value back — otherwise the line runs
+    // away from the pointer.
+    for (const [t, v] of [
+      [1, 0.9],
+      [2, 0.8],
+      [3, 0.15],
+    ] as const) {
+      const curve = curveForDrag({ range: VOLUME_RANGE, a, b, t, v });
+      expect(curve).not.toBeNull();
+      const lane = { target: "volume", points: [{ ...a, curve: curve ?? 0 }, b] };
+      expect(sampleAutomationLane(lane, t, "linear")).toBeCloseTo(v, 2);
+    }
+  });
+
+  it("stays inside the range the model will accept", () => {
+    // Anything outside ±1 is clamped on parse, so a drag past the limit has to
+    // saturate rather than round-trip to something else.
+    const curve = curveForDrag({ range: VOLUME_RANGE, a, b, t: 0.05, v: 0.02 });
+    expect(curve).not.toBeNull();
+    expect(Math.abs(curve ?? 0)).toBeLessThanOrEqual(1);
+    expect(applyCurve(0.5, curve ?? 0)).toBeGreaterThan(0);
+  });
+
+  it("declines a segment with no room to bend", () => {
+    // Flat: every curve draws the same line, so there is nothing to solve.
+    expect(curveForDrag({ range: VOLUME_RANGE, a, b: { t: 4, v: 1 }, t: 2, v: 0.5 })).toBeNull();
+    // At the very ends the exponent divides by zero.
+    expect(curveForDrag({ range: VOLUME_RANGE, a, b, t: 0, v: 1 })).toBeNull();
+    expect(curveForDrag({ range: VOLUME_RANGE, a, b, t: 4, v: 0 })).toBeNull();
+  });
+});
+
+describe("applyShiftConstraint", () => {
+  const origin = { t: 1, v: 0.5 };
+  const xOf = (t: number) => t * 100;
+  const yOf = (v: number) => (1 - v) * 40;
+
+  it("holds the value when the gesture is mostly sideways", () => {
+    const out = applyShiftConstraint({
+      range: VOLUME_RANGE,
+      origin,
+      raw: { t: 3, v: 0.55 },
+      xOf,
+      yOf,
+    });
+    expect(out).toEqual({ t: 3, v: 0.5 });
+  });
+
+  it("holds the time and fines the value when it is mostly vertical", () => {
+    const out = applyShiftConstraint({
+      range: VOLUME_RANGE,
+      origin,
+      raw: { t: 1.05, v: 0.9 },
+      xOf,
+      yOf,
+    });
+    expect(out.t).toBe(1);
+    // A quarter of the travel: 0.5 + (0.9 - 0.5) / 4.
+    expect(out.v).toBeCloseTo(0.6, 5);
+  });
+
+  it("decides which axis won in pixels, not in units", () => {
+    // 0.2 s against 0.2 of a fader are not comparable numbers; at this zoom the
+    // horizontal move is 20px and the vertical one is 8px.
+    const out = applyShiftConstraint({
+      range: VOLUME_RANGE,
+      origin,
+      raw: { t: 1.2, v: 0.7 },
+      xOf,
+      yOf,
+    });
+    expect(out.v).toBe(0.5);
+  });
+});
+
+describe("snapLaneTime", () => {
+  it("takes the nearest target inside the threshold", () => {
+    expect(snapLaneTime(2.02, [1, 2, 3], 0.04)).toBe(2);
+  });
+
+  it("leaves a time alone when nothing is close enough", () => {
+    expect(snapLaneTime(2.5, [1, 2, 3], 0.04)).toBe(2.5);
+  });
+
+  it("has nothing to snap to on an empty grid", () => {
+    expect(snapLaneTime(2.5, [], 0.04)).toBe(2.5);
   });
 });

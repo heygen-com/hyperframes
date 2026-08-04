@@ -17,6 +17,25 @@ import {
 export { getTrackStyle } from "./timelineIcons";
 
 /**
+ * Whether this track draws the beat-dot strip: only where there are beats to
+ * draw, and only on the track the user is working in — the selected clip's, or
+ * the music track's when nothing is selected.
+ */
+export function trackShowsBeatStrip(
+  els: readonly TimelineElement[],
+  beatTimes: readonly number[] | undefined,
+  ctx: {
+    selectedElementId: string | null;
+    isMusicTrack(element: TimelineElement): boolean;
+  },
+): boolean {
+  if ((beatTimes?.length ?? 0) < 2) return false;
+  return ctx.selectedElementId
+    ? els.some((e) => (e.key ?? e.id) === ctx.selectedElementId)
+    : els.some((e) => ctx.isMusicTrack(e));
+}
+
+/**
  * Automation lanes on one clip, or 0 for anything that is not audio.
  *
  * An audio clip can be worth expanding without carrying a single tween, so this
