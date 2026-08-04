@@ -394,6 +394,38 @@ function buildMissingCompositionEntry(params: {
 }
 
 /**
+ * Every element carrying a composition source, keyed on each identity a
+ * manifest clip can arrive under.
+ *
+ * A `TimelineElement.id` is the manifest's stableClipId — the author `id` when
+ * there is one, otherwise `data-hf-id` — and `getElementById` cannot see the
+ * second, which is how most generated clips are identified. Resolving hosts
+ * with it alone therefore missed nearly every clip and fell through to a
+ * whole-document `[data-composition-id]` query per clip: 9,276 of them on a
+ * single open of a 3,000-clip project, essentially all finding nothing.
+ *
+ * Keying on both halves of stableClipId is the fix; restricting the index to
+ * the only elements that can change a caller's outcome is what keeps it to one
+ * document query regardless of clip count.
+ */
+function indexCompositionSourceHosts(doc: Document): Map<string, HTMLElement> {
+  const hostsByIdentity = new Map<string, HTMLElement>();
+  for (const host of doc.querySelectorAll<HTMLElement>(
+    "[data-composition-src], [data-composition-file]",
+  )) {
+    const identities = [
+      host.id,
+      host.getAttribute("data-hf-id"),
+      host.getAttribute("data-composition-id"),
+    ];
+    for (const identity of identities) {
+      if (identity && !hostsByIdentity.has(identity)) hostsByIdentity.set(identity, host);
+    }
+  }
+  return hostsByIdentity;
+}
+
+/**
  * Scan the iframe DOM for composition hosts missing from the current
  * timeline elements and add them.  The CDN runtime often fails to resolve
  * element-reference starts (`data-start="intro"`) so composition hosts
@@ -433,14 +465,12 @@ export function buildMissingCompositionElements(
     if (entry) missing.push(entry);
   }
 
-  // Patch existing elements that are missing compositionSrc
+  // Patch existing elements that are missing compositionSrc.
+  const hostsByIdentity = indexCompositionSourceHosts(doc);
   let patched = false;
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {
     if (existing.compositionSrc) return existing;
-    // Find the matching DOM host by element id or composition id
-    const host =
-      doc.getElementById(existing.id) ??
-      doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
+    const host = hostsByIdentity.get(existing.id);
     if (!host) return existing;
     const compSrc =
       host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");

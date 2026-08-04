@@ -406,20 +406,50 @@ function findTimelineDomNode(doc: Document, id: string): Element | null {
   );
 }
 
+/**
+ * The candidate scan a manifest→DOM derivation pass shares across its clips,
+ * plus the nodes that pass has already claimed.
+ *
+ * Resolving a clip needs the document's whole timeline-node set, and building
+ * that set is expensive: a `[data-start]` query plus a four-selector
+ * `closest()` on every node it returns. Doing it per clip made the pass
+ * quadratic — on a 273-clip project it was the single largest task in the app,
+ * running on every manifest message (~1/s).
+ *
+ * Deliberately PASS-SCOPED, created and dropped inside one synchronous
+ * derivation: the preview document mutates between passes, and a cached scan
+ * that outlived one would hand back detached nodes — resolving a clip to the
+ * wrong element, which is far worse than a slow scan.
+ */
+export interface TimelineDomPass {
+  readonly candidates: Element[];
+  readonly used: Set<Element>;
+}
+
+export function createTimelineDomPass(doc: Document): TimelineDomPass {
+  return { candidates: getTimelineDomNodes(doc), used: new Set() };
+}
+
 export function findTimelineDomNodeForClip(
   doc: Document,
   clip: ClipManifestClip,
   fallbackIndex: number,
-  usedNodes = new Set<Element>(),
+  pass: TimelineDomPass = createTimelineDomPass(doc),
 ): Element | null {
-  const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
-  if (byIdentity && !usedNodes.has(byIdentity)) return byIdentity;
+  const resolve = (): Element | null => {
+    const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+    if (byIdentity && !pass.used.has(byIdentity)) return byIdentity;
 
-  const candidates = getTimelineDomNodes(doc).filter((node) => !usedNodes.has(node));
-  const exact = candidates.find((node) => nodeMatchesManifestClip(node, clip));
-  if (exact) return exact;
+    const candidates = pass.candidates.filter((node) => !pass.used.has(node));
+    const exact = candidates.find((node) => nodeMatchesManifestClip(node, clip));
+    return exact ?? candidates[fallbackIndex] ?? null;
+  };
 
-  return candidates[fallbackIndex] ?? null;
+  // Claiming the node here (rather than leaving it to the caller) is what makes
+  // a shared pass safe to reuse: two clips can never resolve to one node.
+  const node = resolve();
+  if (node) pass.used.add(node);
+  return node;
 }
 
 // ---------------------------------------------------------------------------

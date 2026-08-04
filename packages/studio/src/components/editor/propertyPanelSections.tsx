@@ -48,16 +48,32 @@ export const WEIGHT_LABELS: Record<string, string> = {
   "900": "900 · Black",
 };
 
+/**
+ * `fonts.check()` is nine synchronous font-matching calls per selection, and a
+ * family's available weights only change when a font finishes loading — which
+ * `loadingdone` announces. So: cache per family, clear on that event. Every
+ * selection re-renders this panel, so without the cache the same nine checks
+ * ran on every click.
+ */
+const availableWeightsByFamily = new Map<string, string[]>();
+if (typeof document !== "undefined" && document.fonts) {
+  document.fonts.addEventListener("loadingdone", () => availableWeightsByFamily.clear());
+}
+
 export function detectAvailableWeights(fontFamily: string): string[] {
   const fonts = document.fonts;
   if (!fonts) return ALL_WEIGHTS;
   const family = fontFamily.split(",")[0]?.trim().replace(/['"]/g, "");
   if (!family) return ALL_WEIGHTS;
+  const cached = availableWeightsByFamily.get(family);
+  if (cached) return cached;
   const available: string[] = [];
   for (const w of ALL_WEIGHTS) {
     if (fonts.check(`${w} 16px "${family}"`)) available.push(w);
   }
-  return available.length > 0 ? available : ALL_WEIGHTS;
+  const weights = available.length > 0 ? available : ALL_WEIGHTS;
+  availableWeightsByFamily.set(family, weights);
+  return weights;
 }
 
 export function TextAreaField({

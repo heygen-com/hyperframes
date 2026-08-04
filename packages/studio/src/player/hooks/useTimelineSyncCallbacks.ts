@@ -16,6 +16,7 @@ import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/pla
 import {
   parseTimelineFromDOM,
   createTimelineElementFromManifestClip,
+  createTimelineDomPass,
   findTimelineDomNodeForClip,
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
@@ -215,12 +216,13 @@ export function useTimelineSyncCallbacks({
         // cross-origin or __clipTree not available — maps stay empty
       }
 
-      const usedHostEls = new Set<Element>();
+      // One scan of the preview document for the whole pass, then dropped: the
+      // document mutates between manifests, so this must never be cached across
+      // them (see TimelineDomPass).
+      const domPass = iframeDoc ? createTimelineDomPass(iframeDoc) : null;
       const els: TimelineElement[] = filtered.map((clip, index) => {
-        const hostEl = iframeDoc
-          ? findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostEls)
-          : null;
-        if (hostEl) usedHostEls.add(hostEl);
+        const hostEl =
+          iframeDoc && domPass ? findTimelineDomNodeForClip(iframeDoc, clip, index, domPass) : null;
         return createTimelineElementFromManifestClip({
           clip,
           fallbackIndex: index,
