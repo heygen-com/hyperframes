@@ -1,5 +1,5 @@
 import { memo, useRef, useState, useCallback, useEffect, useMemo } from "react";
-import { mediaCacheKey, waveformResolver } from "../lib/mediaResolver";
+import { decodeAudioFromUrl, mediaCacheKey, waveformResolver } from "../lib/mediaResolver";
 
 interface AudioWaveformProps {
   audioUrl: string;
@@ -79,9 +79,7 @@ async function decodeWaveformPeaks(
       if (!Array.isArray(data.peaks)) throw new Error("bad response");
       return data.peaks;
     }
-    const buf = await fetch(audioUrl).then((r) => r.arrayBuffer());
-    const ctx = new AudioContext();
-    const decoded = await ctx.decodeAudioData(buf).finally(() => ctx.close());
+    const decoded = await decodeAudioFromUrl(audioUrl);
     return extractPeaks(decoded.getChannelData(0), PEAK_COUNT);
   } catch {
     return fakePeaks(seed, PEAK_COUNT);

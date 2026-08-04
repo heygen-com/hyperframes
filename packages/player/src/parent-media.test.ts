@@ -162,3 +162,56 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     expect(mgr.entries[0]).toBe(adopted);
   });
 });
+
+describe("ParentMediaManager adopted-proxy preloading", () => {
+  /** A document holding one timed `<audio>` the runtime has promoted to load. */
+  function iframeDocWithPromotedAudio(src: string): Document {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument!;
+    const audio = doc.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "5");
+    audio.preload = "auto";
+    audio.src = src;
+    doc.body.appendChild(audio);
+    return doc;
+  }
+
+  it("adopts iframe media without preloading a second copy of the file", () => {
+    const mgr = makeManager();
+    mgr.setupFromIframe(iframeDocWithPromotedAudio("https://example.test/track.mp3"));
+
+    expect(mgr.entries).toHaveLength(1);
+    // The iframe is already fetching this file and nothing reads the proxy
+    // until parent ownership; a second download here is pure waste.
+    expect(mgr.entries[0].el.preload).toBe("none");
+  });
+
+  it("loads the adopted proxies when it takes audio ownership", () => {
+    const mgr = makeManager();
+    mgr.setupFromIframe(iframeDocWithPromotedAudio("https://example.test/track.mp3"));
+    expect(mgr.entries[0].el.preload).toBe("none");
+
+    mgr.promoteToParentProxy(null);
+
+    expect(mgr.audioOwner).toBe("parent");
+    expect(mgr.entries[0].el.preload).toBe("auto");
+  });
+
+  it("preloads media adopted while the parent already owns audio", () => {
+    const mgr = makeManager();
+    mgr.promoteToParentProxy(null);
+    mgr.setupFromIframe(iframeDocWithPromotedAudio("https://example.test/late.mp3"));
+
+    // No iframe output to mirror any more — this proxy is the audible one.
+    expect(mgr.entries[0].el.preload).toBe("auto");
+  });
+
+  it("still preloads the audio-src proxy, which has no iframe copy", () => {
+    const mgr = makeManager();
+    mgr.setupFromUrl("https://example.test/soundtrack.mp3");
+
+    expect(mgr.entries[0].el.preload).toBe("auto");
+  });
+});

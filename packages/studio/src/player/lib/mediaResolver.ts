@@ -19,7 +19,7 @@ export type Emit<T> = (partial: T) => void;
 /** Does the actual work. `emit` is optional progress; the resolved value wins. */
 export type Produce<T> = (emit: Emit<T>) => Promise<T>;
 
-export interface MediaResolverConfig {
+interface MediaResolverBounds {
   /** LRU bound on resolved values (and, separately, on failure records). */
   maxEntries: number;
   /** Max `produce` calls running at once. */
@@ -27,6 +27,14 @@ export interface MediaResolverConfig {
   /** How long a rejected key stays rejected before it is retried. */
   failureTtlMs: number;
 }
+
+/**
+ * `maxBytes` and `sizeOf` come as a pair or not at all — a byte bound without a
+ * sizer would silently never evict. Omit both only when every entry is a
+ * fixed-size struct, where the entry count already bounds memory.
+ */
+export type MediaResolverConfig<T> = MediaResolverBounds &
+  ({ maxBytes: number; sizeOf: (value: T) => number } | { maxBytes?: never; sizeOf?: never });
 
 export interface MediaResolver<T> {
   resolve(key: string, produce: Produce<T>, onPartial?: Emit<T>): Promise<T>;
@@ -64,10 +72,12 @@ function trim<K, V>(map: Map<K, V>, max: number): void {
   }
 }
 
-export function createMediaResolver<T>(config: MediaResolverConfig): MediaResolver<T> {
-  const { maxEntries, concurrency, failureTtlMs } = config;
+export function createMediaResolver<T>(config: MediaResolverConfig<T>): MediaResolver<T> {
+  const { maxEntries, concurrency, failureTtlMs, maxBytes, sizeOf } = config;
   // Map iteration order is insertion order, so re-inserting on read gives LRU.
   const cache = new Map<string, T>();
+  const sizes = new Map<string, number>();
+  let cachedBytes = 0;
   const failures = new Map<string, { at: number; error: unknown }>();
   const inflight = new Map<string, Promise<T>>();
   const subscribers = new Map<string, Set<Emit<T>>>();
@@ -88,6 +98,28 @@ export function createMediaResolver<T>(config: MediaResolverConfig): MediaResolv
     if (next) next();
     else active--;
   };
+
+  function forget(key: string): void {
+    if (!cache.delete(key)) return;
+    cachedBytes -= sizes.get(key) ?? 0;
+    sizes.delete(key);
+  }
+
+  /** Insert as most-recently-used, then evict until both bounds hold. */
+  function remember(key: string, value: T): void {
+    forget(key);
+    cache.set(key, value);
+    const size = sizeOf?.(value) ?? 0;
+    sizes.set(key, size);
+    cachedBytes += size;
+    // ponytail: a single value larger than maxBytes is evicted immediately and
+    // recomputed on next use — honouring the bound beats retaining over it.
+    while (cache.size > maxEntries || cachedBytes > (maxBytes ?? Infinity)) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      forget(oldest);
+    }
+  }
 
   function peek(key: string): T | undefined {
     const value = cache.get(key);
@@ -134,9 +166,7 @@ export function createMediaResolver<T>(config: MediaResolverConfig): MediaResolv
       await acquire();
       try {
         const value = await produce(emit);
-        cache.delete(key);
-        cache.set(key, value);
-        trim(cache, maxEntries);
+        remember(key, value);
         return value;
       } catch (error) {
         failures.set(key, { at: Date.now(), error });
@@ -160,6 +190,8 @@ export function createMediaResolver<T>(config: MediaResolverConfig): MediaResolv
     hasFreshFailure,
     reset() {
       cache.clear();
+      sizes.clear();
+      cachedBytes = 0;
       failures.clear();
       inflight.clear();
       subscribers.clear();
@@ -285,6 +317,9 @@ export function extractVideoFrames(
 /** Frame strips and posters — one entry per `(source, timestamps)` pair. */
 export const thumbnailResolver = createMediaResolver<VideoFrames>({
   maxEntries: BUDGETS.thumbnailCacheEntries,
+  maxBytes: BUDGETS.thumbnailCacheBytes,
+  // base64 data URLs are one ASCII char per byte of payload.
+  sizeOf: (value) => value.frames.reduce((total, frame) => total + frame.length, 0),
   concurrency: BUDGETS.concurrentVideoDecodes,
   failureTtlMs: BUDGETS.metadataFailureTtlMs,
 });
@@ -292,9 +327,50 @@ export const thumbnailResolver = createMediaResolver<VideoFrames>({
 /** Decoded audio peaks. */
 export const waveformResolver = createMediaResolver<number[]>({
   maxEntries: BUDGETS.waveformCacheEntries,
+  maxBytes: BUDGETS.waveformCacheBytes,
+  sizeOf: (peaks) => peaks.length * Float64Array.BYTES_PER_ELEMENT,
   concurrency: BUDGETS.concurrentVideoDecodes,
   failureTtlMs: BUDGETS.metadataFailureTtlMs,
 });
+
+/**
+ * Whole media files, shared by every Studio path that decodes one.
+ *
+ * The waveform decoder and the beat analyzer both want the same audio file's
+ * PCM and each used to fetch it for itself — two downloads of one track, which
+ * is what an amplification count sees. This is the single fetch they share.
+ * Bounded by bytes, because one entry is an entire media file.
+ */
+export const mediaBytesResolver = createMediaResolver<ArrayBuffer>({
+  maxEntries: BUDGETS.mediaBytesCacheEntries,
+  maxBytes: BUDGETS.mediaBytesCacheBytes,
+  sizeOf: (bytes) => bytes.byteLength,
+  concurrency: BUDGETS.concurrentVideoDecodes,
+  failureTtlMs: BUDGETS.metadataFailureTtlMs,
+});
+
+/** One download per source. Rejects on a non-2xx so the failure record expires. */
+export function fetchMediaBytes(src: string): Promise<ArrayBuffer> {
+  return mediaBytesResolver.resolve(mediaCacheKey(src), async () => {
+    const response = await fetch(normalizeMediaUrl(src));
+    if (!response.ok) {
+      throw new Error(`mediaResolver: ${response.status} fetching ${src}`);
+    }
+    return response.arrayBuffer();
+  });
+}
+
+/**
+ * Decode a whole audio file to PCM, sharing one download per source.
+ *
+ * `decodeAudioData` DETACHES the buffer it is handed, so each caller decodes a
+ * copy — the cached entry has to survive for the next one.
+ */
+export async function decodeAudioFromUrl(src: string): Promise<AudioBuffer> {
+  const bytes = await fetchMediaBytes(src);
+  const context = new AudioContext();
+  return context.decodeAudioData(bytes.slice(0)).finally(() => void context.close());
+}
 
 export interface MediaProbeResult {
   duration: number;

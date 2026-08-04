@@ -57,6 +57,14 @@ export interface TimelineElement {
   playbackStartAttr?: "media-start" | "playback-start";
   playbackRate?: number;
   sourceDuration?: number;
+  /**
+   * Set by the preview DOM scan when `sourceDuration` is not known yet but the
+   * runtime has already promoted this element to `preload="auto"` — the browser
+   * is fetching the file for the preview, and its duration lands on a later
+   * scan. Marks the element as "do not probe": a probe would fetch the same
+   * bytes a second time to learn the same number.
+   */
+  sourceDurationPending?: boolean;
   volume?: number;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;

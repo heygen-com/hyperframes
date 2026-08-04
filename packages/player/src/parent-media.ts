@@ -128,6 +128,13 @@ export class ParentMediaManager {
     for (const m of this._entries) m.el.playbackRate = rate;
   }
 
+  /** Start fetching a deferred proxy. Idempotent. */
+  private _loadEntry(m: ProxyEntry): void {
+    if (m.el.preload === "auto") return;
+    m.el.preload = "auto";
+    m.el.load();
+  }
+
   private _playEntry(m: ProxyEntry): void {
     if (!m.el.src) return;
     m.el.play().catch((err: unknown) => this._reportPlaybackError(err));
@@ -256,6 +263,10 @@ export class ParentMediaManager {
     if (this._audioOwner === "parent") return;
     this._audioOwner = "parent";
 
+    // Adopted proxies were created unloaded (see `_createEntry`). This is the
+    // moment they become the audible output, so this is where they load.
+    for (const m of this._entries) this._loadEntry(m);
+
     // Synchronously mute iframe media to close the race window.
     if (iframeDoc) {
       for (const el of iframeDoc.querySelectorAll("video, audio")) {
@@ -341,8 +352,19 @@ export class ParentMediaManager {
   }
 
   /**
-   * Create a parent-frame media element and start preloading it. Returns the
-   * new entry, or `null` if a proxy for this src already exists (dedup).
+   * Create a parent-frame media element. Returns the new entry, or `null` if a
+   * proxy for this src already exists (dedup).
+   *
+   * An ADOPTED proxy mirrors a file the iframe is already fetching, and every
+   * path that reads it — playAll, seekAll, scrubAll, mirrorTime — is gated on
+   * parent audio ownership. Preloading it at adopt time therefore fetched every
+   * media file in the composition a second time for a fallback most sessions
+   * never take. It is created unloaded; `promoteToParentProxy` loads the
+   * proxies at the one moment they start mattering.
+   *
+   * A URL-driven proxy (`setupFromUrl`) has no iframe copy — it IS the audio —
+   * so it still preloads eagerly. So does an adoption that happens while the
+   * parent already owns audio: that proxy is needed now.
    */
   private _createEntry(
     src: string,
@@ -354,9 +376,10 @@ export class ParentMediaManager {
     if (this._entries.some((m) => m.el.src === src)) return null;
 
     const el = tag === "video" ? document.createElement("video") : new Audio();
-    el.preload = "auto";
+    const deferred = source != null && this._audioOwner === "runtime";
+    el.preload = deferred ? "none" : "auto";
     el.src = src;
-    el.load();
+    if (!deferred) el.load();
     el.muted = this._getMuted();
     el.volume = this._getVolume();
     const rate = this._getPlaybackRate();

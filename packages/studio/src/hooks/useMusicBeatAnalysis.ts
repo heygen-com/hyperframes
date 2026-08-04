@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveBeatSourceTrack } from "../utils/timelineInspector";
-import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
+import { analyzeMusicFromBuffer, type MusicBeatAnalysis } from "@hyperframes/core/beats";
+import { decodeAudioFromUrl } from "../player/lib/mediaResolver";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
 import {
@@ -13,12 +14,15 @@ import {
 
 // Module-level cache so the same URL isn't re-decoded/analyzed on re-mount.
 // Capped so decoded PCM buffers don't accumulate unbounded across a session.
-const analysisCache = new Map<string, ReturnType<typeof analyzeMusicFromUrl>>();
+// The *download* is not deduped here: `decodeAudioFromUrl` shares one fetch per
+// source with every other Studio consumer of the same file (the waveform
+// decoder, chiefly), which this cache — private to beat analysis — cannot.
+const analysisCache = new Map<string, Promise<MusicBeatAnalysis>>();
 const MAX_ANALYSIS_CACHE = 4;
 
 const PERSIST_DEBOUNCE_MS = 350;
 
-function cacheAnalysis(url: string, promise: ReturnType<typeof analyzeMusicFromUrl>): void {
+function cacheAnalysis(url: string, promise: Promise<MusicBeatAnalysis>): void {
   analysisCache.set(url, promise);
   while (analysisCache.size > MAX_ANALYSIS_CACHE) {
     const oldest = analysisCache.keys().next().value;
@@ -63,8 +67,6 @@ async function readHasSavedBeats(io: ProjectIo, beatPath: string): Promise<boole
   }
 }
 
-type MusicAnalysis = Awaited<ReturnType<typeof analyzeMusicFromUrl>>;
-
 /**
  * Analyze a track (memoized per URL) and fold in any saved beat edits. Null on
  * decode/analysis failure — the caller then clears state and drops the cache
@@ -74,10 +76,10 @@ async function loadBeatAnalysis(
   musicSrc: string,
   beatPath: string,
   io: ProjectIo,
-): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
+): Promise<{ analysis: MusicBeatAnalysis; times: number[]; strengths: number[] } | null> {
   let promise = analysisCache.get(musicSrc);
   if (!promise) {
-    promise = analyzeMusicFromUrl(musicSrc);
+    promise = decodeAudioFromUrl(musicSrc).then(analyzeMusicFromBuffer);
     cacheAnalysis(musicSrc, promise);
   }
   try {

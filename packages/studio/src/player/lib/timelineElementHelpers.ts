@@ -189,6 +189,12 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   const sourceDuration = sourceDurationAttr ? parseFloat(sourceDurationAttr) : mediaEl.duration;
   if (Number.isFinite(sourceDuration) && sourceDuration > 0) {
     entry.sourceDuration = sourceDuration;
+  } else if (mediaEl.preload === "auto") {
+    // The runtime promotes a media element to `preload="auto"` (and calls
+    // load()) exactly when it decides to fetch that file for the preview, so
+    // its duration is already on its way. Marking it keeps `mediaProbe` from
+    // downloading the same file again just to read the same header.
+    entry.sourceDurationPending = true;
   }
 
   const playbackRate = mediaEl.defaultPlaybackRate;

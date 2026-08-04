@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMediaResolver,
   extractVideoFrames,
+  fetchMediaBytes,
+  mediaBytesResolver,
   mediaCacheKey,
   type MediaResolver,
 } from "./mediaResolver";
@@ -28,11 +30,21 @@ function deferredProducer<T>() {
   };
 }
 
-function makeResolver<T>(overrides: Partial<Parameters<typeof createMediaResolver>[0]> = {}) {
+interface ResolverOverrides<T> {
+  maxEntries?: number;
+  concurrency?: number;
+  failureTtlMs?: number;
+  maxBytes?: number;
+  sizeOf?: (value: T) => number;
+}
+
+function makeResolver<T>(overrides: ResolverOverrides<T> = {}) {
   return createMediaResolver<T>({
     maxEntries: 64,
     concurrency: 8,
     failureTtlMs: 30_000,
+    maxBytes: Number.POSITIVE_INFINITY,
+    sizeOf: () => 0,
     ...overrides,
   });
 }
@@ -201,6 +213,29 @@ describe("createMediaResolver", () => {
     expect(calls).toEqual(["a", "b", "c", "b"]);
   });
 
+  it("evicts past the byte bound even when the entry count is nowhere near it", async () => {
+    // 100 entries allowed, but only ~3 of these fit in the byte bound.
+    const bounded = makeResolver<string>({
+      maxEntries: 100,
+      maxBytes: 30,
+      sizeOf: (value) => value.length,
+    });
+    const produceFor = (label: string) => async () => label.repeat(10); // 10 bytes
+
+    await bounded.resolve("a", produceFor("a"));
+    await bounded.resolve("b", produceFor("b"));
+    await bounded.resolve("c", produceFor("c"));
+    expect(bounded.peek("a")).toBe("a".repeat(10));
+
+    // Fourth entry pushes bytes to 40 > 30: the least-recently-used goes, and
+    // "a" survives despite being inserted first, because it was just touched.
+    await bounded.resolve("d", produceFor("d"));
+    expect(bounded.peek("b")).toBeUndefined();
+    expect(bounded.peek("a")).toBe("a".repeat(10));
+    expect(bounded.peek("c")).toBe("c".repeat(10));
+    expect(bounded.peek("d")).toBe("d".repeat(10));
+  });
+
   it("runs at most `concurrency` producers at once", async () => {
     const capped = makeResolver<string>({ concurrency: 2 });
     const src = deferredProducer<string>();
@@ -289,5 +324,70 @@ describe("extractVideoFrames", () => {
     video.dispatchEvent(new Event("loadedmetadata"));
     video.dispatchEvent(new Event("seeked"));
     await expect(done).rejects.toThrow(/Tainted/);
+  });
+});
+
+describe("fetchMediaBytes", () => {
+  let fetches: string[];
+
+  beforeEach(() => {
+    mediaBytesResolver.reset();
+    fetches = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        fetches.push(String(url));
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+        });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mediaBytesResolver.reset();
+  });
+
+  it("downloads a source once however many consumers want its bytes", async () => {
+    // The waveform decoder and the beat analyzer, on the same track.
+    const [waveform, beats] = await Promise.all([
+      fetchMediaBytes("/assets/track.mp3"),
+      fetchMediaBytes("/assets/track.mp3"),
+    ]);
+
+    expect(fetches).toHaveLength(1);
+    expect(waveform).toBe(beats);
+  });
+
+  it("shares the download across consumers that arrive later", async () => {
+    await fetchMediaBytes("/assets/track.mp3");
+    await fetchMediaBytes("/assets/track.mp3");
+
+    expect(fetches).toHaveLength(1);
+  });
+
+  it("treats the same file spelled differently as one source", async () => {
+    await fetchMediaBytes("/assets/track.mp3");
+    await fetchMediaBytes("./assets/track.mp3");
+
+    expect(fetches).toHaveLength(1);
+  });
+
+  it("keeps different sources apart", async () => {
+    await fetchMediaBytes("/assets/a.mp3");
+    await fetchMediaBytes("/assets/b.mp3");
+
+    expect(fetches).toHaveLength(2);
+  });
+
+  it("rejects a non-2xx instead of caching an error page as media", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve({ ok: false, status: 404 })),
+    );
+
+    await expect(fetchMediaBytes("/assets/missing.mp3")).rejects.toThrow(/404/);
   });
 });

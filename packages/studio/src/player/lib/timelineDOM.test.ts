@@ -296,3 +296,43 @@ describe("mergeTimelineElementsPreservingDowngrades — genuine removal vs trans
     ).toEqual(["a", "c"]);
   });
 });
+
+describe("sourceDurationPending", () => {
+  /** The one element in a parsed timeline, by id. */
+  function parseOne(html: string, id: string): TimelineElement {
+    const doc = makeDoc(`<div data-composition-id="root">${html}</div>`);
+    const found = parseTimelineFromDOM(doc, 10).find((e) => e.domId === id);
+    if (!found) throw new Error(`no element ${id} in the parsed timeline`);
+    return found;
+  }
+
+  it("marks media the runtime has promoted to preload, whose duration is on its way", () => {
+    const parsed = parseOne(
+      `<video id="v" class="clip" src="a.mp4" preload="auto" data-start="0" data-duration="2"></video>`,
+      "v",
+    );
+
+    expect(parsed.sourceDuration).toBeUndefined();
+    expect(parsed.sourceDurationPending).toBe(true);
+  });
+
+  it("leaves media the runtime deferred unmarked, so the probe still covers it", () => {
+    const parsed = parseOne(
+      `<video id="v" class="clip" src="a.mp4" preload="metadata" data-start="0" data-duration="2"></video>`,
+      "v",
+    );
+
+    expect(parsed.sourceDurationPending).toBeUndefined();
+  });
+
+  it("does not mark media whose duration is already known", () => {
+    const parsed = parseOne(
+      `<video id="v" class="clip" src="a.mp4" preload="auto" data-source-duration="9"
+         data-start="0" data-duration="2"></video>`,
+      "v",
+    );
+
+    expect(parsed.sourceDuration).toBe(9);
+    expect(parsed.sourceDurationPending).toBeUndefined();
+  });
+});
