@@ -3,8 +3,8 @@ import { Hono } from "hono";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerAgentRoutes, resolveAgentCommand } from "./agent";
-import { readActivity, type AgentJob } from "../helpers/agentJobs";
+import { listAgentCommands, registerAgentRoutes, resolveAgentCommand } from "./agent";
+import { readActivity, readSessionId, type AgentJob } from "../helpers/agentJobs";
 import type { StudioApiAdapter } from "../types";
 
 const tempDirs: string[] = [];
@@ -162,6 +162,29 @@ describe("resolveAgentCommand", () => {
     expect(resolveAgentCommand({ HYPERFRAMES_AGENT_CMD: "my-hermes-wrapper" })?.kind).toBe(
       "hermes",
     );
+  });
+});
+
+describe("listAgentCommands", () => {
+  it("lists every harness with whether it is installed", () => {
+    const agents = listAgentCommands({});
+    expect(agents.map((agent) => agent.kind)).toEqual(["claude", "codex", "hermes", "openclaw"]);
+    // Availability is a PATH lookup, so it just has to be a boolean here.
+    expect(agents.every((agent) => typeof agent.available === "boolean")).toBe(true);
+  });
+
+  it("puts a custom command first and never lists it twice", () => {
+    const agents = listAgentCommands({ HYPERFRAMES_AGENT_CMD: "codex exec -" });
+    expect(agents[0]).toMatchObject({ kind: "codex", label: "codex", available: true });
+    expect(agents.filter((agent) => agent.kind === "codex")).toHaveLength(1);
+  });
+});
+
+describe("readSessionId", () => {
+  it("picks up the harness session id from its stream", () => {
+    expect(readSessionId("claude", '{"type":"system","session_id":"abc-123"}')).toBe("abc-123");
+    expect(readSessionId("claude", "plain text")).toBeNull();
+    expect(readSessionId("codex", '{"session_id":"abc-123"}')).toBeNull();
   });
 });
 
@@ -337,6 +360,53 @@ describe("registerAgentRoutes", () => {
     await waitForIdle(app, "p3");
     const res = await app.request("/projects/p3/agent/jobs", { method: "DELETE" });
     expect(((await res.json()) as { jobs: AgentJob[] }).jobs).toEqual([]);
+  });
+
+  it("runs the harness the caller picked, and refuses one that is missing", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createFakeAgent()}`;
+    const app = createApp(projectDir);
+
+    // The custom command is sniffed as "custom"; asking for it by kind works.
+    const picked = await app.request("/projects/p8/agent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "do it", agent: "custom" }),
+    });
+    expect(picked.status).toBe(200);
+
+    const missing = await app.request("/projects/p8/agent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "do it", agent: "hermes" }),
+    });
+    expect(missing.status).toBe(501);
+    await waitForIdle(app, "p8");
+  });
+
+  it("carries the element reference back out with the job", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createFakeAgent()}`;
+    const app = createApp(projectDir);
+
+    const res = await app.request("/projects/p9/agent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: "make it red",
+        instruction: "make it red",
+        target: "Chip",
+        targetRef: { selector: "#chip", selectorIndex: 0, sourceFile: "index.html", time: 1.25 },
+      }),
+    });
+    const { job } = (await res.json()) as { job: AgentJob };
+    expect(job.targetRef).toEqual({
+      selector: "#chip",
+      selectorIndex: 0,
+      sourceFile: "index.html",
+      time: 1.25,
+    });
+    await waitForIdle(app, "p9");
   });
 
   it("rejects an empty prompt", async () => {

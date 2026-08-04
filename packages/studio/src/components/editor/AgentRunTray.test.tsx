@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentRunTray } from "./AgentRunTray";
+import { ownsPreviewPanTarget } from "../nle/previewZoom";
 import type { AgentJob } from "./agentGlyphs";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,7 +18,7 @@ function job(partial: Partial<AgentJob>): AgentJob {
     id: "job-1",
     kind: "claude",
     label: "Claude Code",
-    target: "#title",
+    target: "Chip",
     instruction: "make the title red",
     status: "running",
     activity: "",
@@ -33,6 +34,7 @@ function renderTray(
   handlers: {
     onMoveJob?: (id: string, position: number) => void;
     onCancelJob?: (id: string) => void;
+    onRevealTarget?: (job: AgentJob) => void;
   } = {},
 ) {
   const host = document.createElement("div");
@@ -159,16 +161,62 @@ describe("queue editing", () => {
   });
 });
 
+describe("run detail", () => {
+  it("stacks one mark per harness used", () => {
+    const { host, root } = renderTray([
+      job({ id: "a", kind: "claude" }),
+      job({ id: "b", kind: "codex" }),
+      job({ id: "c", kind: "claude" }),
+    ]);
+    const header = host.querySelector("[data-agent-run-tray]")?.firstElementChild;
+    // Two harnesses, two marks — the repeat does not add a third.
+    expect(header?.querySelectorAll("svg").length).toBe(3); // chevron + 2 marks
+    act(() => root.unmount());
+  });
+
+  it("shows a short session id and reveals the edited element", () => {
+    const onRevealTarget = vi.fn();
+    const target = job({
+      status: "done",
+      endedAt: Date.now(),
+      sessionId: "9acb64fb-287e-4c45-b766-9d2e0597ddda",
+      targetRef: { selector: "#chip", time: 1.5 },
+    });
+    const { host, root } = renderTray([target], vi.fn(), null, { onRevealTarget });
+
+    expect(host.textContent).toContain("9acb64fb");
+    expect(host.textContent).not.toContain("287e-4c45");
+    const reveal = [...host.querySelectorAll("button")].find((b) => b.textContent === "Chip");
+    act(() => reveal?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onRevealTarget).toHaveBeenCalledWith(target);
+    act(() => root.unmount());
+  });
+
+  it("marks its list as owning its own wheel, so the canvas leaves it alone", () => {
+    const { host, root } = renderTray([job({}), job({ id: "b" })]);
+    const list = host.querySelector("ul");
+    expect(list?.getAttribute("data-preview-overlay-scroll")).toBe("true");
+    expect(list?.className).toContain("overscroll-contain");
+    // The canvas asks ownsPreviewPanTarget before panning; see previewZoom.
+    expect(ownsPreviewPanTarget(list, null)).toBe(false);
+    act(() => root.unmount());
+  });
+});
+
 describe("harness marks", () => {
   it("draws a distinct glyph per harness and prefers a supplied icon", () => {
     const kinds: AgentJob["kind"][] = ["claude", "codex", "hermes", "openclaw", "custom"];
     const { host, root } = renderTray(
       kinds.map((kind, index) => job({ id: `job-${index}`, kind, label: kind })),
     );
-    const glyphs = [...host.querySelectorAll("svg")].filter((svg) => svg.getAttribute("viewBox"));
-    // One mark per run (plus the collapse chevron), all visually different.
-    const shapes = new Set(glyphs.map((svg) => svg.innerHTML));
-    expect(shapes.size).toBeGreaterThanOrEqual(kinds.length);
+    // Every harness draws its own vendor mark: distinct viewBoxes for the SVG
+    // ones (Claude 248, OpenAI 24, OpenClaw 120, spark 16) and Hermes' own
+    // caduceus glyph, which its favicon ships as type rather than a path.
+    const viewBoxes = new Set(
+      [...host.querySelectorAll("li svg")].map((svg) => svg.getAttribute("viewBox")),
+    );
+    expect(viewBoxes).toEqual(new Set(["0 0 248 248", "0 0 24 24", "0 0 120 120", "0 0 16 16"]));
+    expect(host.textContent).toContain("⚕");
     act(() => root.unmount());
 
     const withIcon = renderTray([job({})], vi.fn(), "/api/projects/p1/agent/icon");

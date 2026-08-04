@@ -5,7 +5,7 @@ import {
   useDomEditActionsContextOptional,
   useDomEditSelectionContextOptional,
 } from "../../contexts/DomEditContext";
-import { AgentGlyph, type AgentKind } from "./agentGlyphs";
+import { AgentGlyph, type AgentKind, type AgentOption } from "./agentGlyphs";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -61,6 +61,8 @@ export function InlineAgentComposer({
   runLabel,
   agentKind,
   agentIconUrl,
+  agentOptions = [],
+  onSelectAgent,
   onRun,
   onCopy,
   onClose,
@@ -73,11 +75,15 @@ export function InlineAgentComposer({
   agentKind: AgentKind | null;
   /** A real logo for this harness, supplied via HYPERFRAMES_AGENT_ICON. */
   agentIconUrl: string | null;
+  /** Every harness Studio knows about, installed or not. */
+  agentOptions?: AgentOption[];
+  onSelectAgent?: (kind: AgentKind) => void;
   onRun: (instruction: string) => void;
   onCopy: (instruction: string) => void;
   onClose: () => void;
 }) {
   const [value, setValue] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Drag offset from the anchored position — the composer can cover the very
   // element being edited, so the header doubles as a drag handle.
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -145,12 +151,37 @@ export function InlineAgentComposer({
         className="flex cursor-grab items-center gap-1.5 px-1.5 pb-1.5 pt-0.5 active:cursor-grabbing"
         {...dragHandlers}
       >
-        {agentKind && <AgentGlyph kind={agentKind} size={11} iconUrl={agentIconUrl} />}
-        {/* The harness owns the header; the element it edits reads from the
-            field's own placeholder, right where the instruction is written. */}
-        <span className="min-w-0 flex-1 truncate text-[11px] leading-none text-neutral-500">
-          {runLabel ?? selectionLabel}
-        </span>
+        {/* The harness owns the header (the element it edits reads from the
+            field's placeholder) and doubles as the picker: a queue can mix
+            harnesses, so the choice belongs next to the instruction. */}
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 -mx-1 text-[11px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 disabled:hover:bg-transparent"
+          disabled={!onSelectAgent || agentOptions.length < 2}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setPickerOpen((open) => !open)}
+          aria-haspopup={agentOptions.length > 1 ? "menu" : undefined}
+          aria-expanded={pickerOpen}
+          title={agentOptions.length > 1 ? "Run with a different harness" : undefined}
+        >
+          {agentKind && <AgentGlyph kind={agentKind} size={11} iconUrl={agentIconUrl} />}
+          <span className="truncate">{runLabel ?? selectionLabel}</span>
+          {onSelectAgent && agentOptions.length > 1 && (
+            <svg
+              width="9"
+              height="9"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0 opacity-70"
+              aria-hidden="true"
+            >
+              <path d="M4 6.5 L8 10.5 L12 6.5" />
+            </svg>
+          )}
+        </button>
         {runLabel && (
           <button
             className="rounded-md px-1.5 py-0.5 text-[10px] leading-none text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 active:scale-[0.96] disabled:opacity-40"
@@ -183,6 +214,31 @@ export function InlineAgentComposer({
           </svg>
         </button>
       </div>
+
+      {pickerOpen && onSelectAgent && (
+        <ul className="mb-1.5 space-y-0.5 rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10">
+          {agentOptions.map((option) => (
+            <li key={option.kind}>
+              <button
+                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70 disabled:opacity-35 disabled:hover:bg-transparent"
+                disabled={!option.available}
+                onClick={() => {
+                  onSelectAgent(option.kind);
+                  setPickerOpen(false);
+                  inputRef.current?.focus();
+                }}
+                title={option.available ? undefined : `${option.label} is not installed`}
+              >
+                <AgentGlyph kind={option.kind} size={11} />
+                <span className="truncate">{option.label}</span>
+                {option.label === runLabel && (
+                  <span className="ml-auto text-[10px] text-studio-accent">in use</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="flex items-end gap-1.5 rounded-[10px] bg-neutral-900/70 px-2 py-1.5 ring-1 ring-white/10 transition-[box-shadow] duration-150 ease-out focus-within:ring-studio-accent/40">
         <textarea
@@ -252,8 +308,18 @@ export function InlineAgentComposerHost({
   const selectionValue = useDomEditSelectionContextOptional();
   if (!actions || !selectionValue) return null;
 
-  const { domEditSelection, agentModalOpen, agentRunLabel, agentRunKind, agentIconUrl, agentJobs } =
-    selectionValue;
+  const {
+    domEditSelection,
+    agentModalOpen,
+    agentRunLabel,
+    agentRunKind,
+    agentIconUrl,
+    agentOptions,
+    selectedAgentKind,
+    agentJobs,
+  } = selectionValue;
+  // A pick overrides what the server auto-detected, for this run and the next.
+  const picked = agentOptions.find((option) => option.kind === selectedAgentKind);
 
   return (
     <>
@@ -262,9 +328,11 @@ export function InlineAgentComposerHost({
           selectionLabel={domEditSelection.label}
           rect={rect}
           canvas={canvas}
-          runLabel={agentRunLabel}
-          agentKind={agentRunKind}
+          runLabel={picked?.label ?? agentRunLabel}
+          agentKind={picked?.kind ?? agentRunKind}
           agentIconUrl={agentIconUrl}
+          agentOptions={agentOptions}
+          onSelectAgent={actions.setSelectedAgentKind}
           onRun={actions.handleAgentModalRun}
           onCopy={(instruction) => void actions.handleAgentModalSubmit(instruction)}
           onClose={() => {
@@ -279,6 +347,7 @@ export function InlineAgentComposerHost({
         onClearFinished={actions.clearFinishedAgentJobs}
         onMoveJob={actions.moveAgentJob}
         onCancelJob={actions.cancelAgentJob}
+        onRevealTarget={actions.revealAgentJobTarget}
       />
     </>
   );

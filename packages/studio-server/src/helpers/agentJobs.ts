@@ -13,6 +13,16 @@ export interface AgentCommand {
   args: string[];
 }
 
+/** Where the edited element lives, so the run list can jump back to it. */
+export interface AgentTargetRef {
+  sourceFile?: string;
+  id?: string;
+  selector?: string;
+  selectorIndex?: number;
+  /** Playhead position when the instruction was written. */
+  time?: number;
+}
+
 export interface AgentJob {
   id: string;
   projectId: string;
@@ -20,6 +30,9 @@ export interface AgentJob {
   label: string;
   /** Element or clip the instruction targets, for the run list. */
   target: string;
+  targetRef?: AgentTargetRef;
+  /** The harness' own session id, so a run can be resumed or found in its logs. */
+  sessionId?: string;
   instruction: string;
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   /** Latest thing the agent did — the tool call or line it is on right now. */
@@ -69,7 +82,10 @@ function appendRunLog(projectDir: string, job: AgentJob): void {
       file,
       `${JSON.stringify({
         at: new Date(job.startedAt).toISOString(),
+        kind: job.kind,
         target: job.target,
+        targetRef: job.targetRef,
+        sessionId: job.sessionId,
         instruction: job.instruction,
         status: job.status,
         seconds: Math.round(((job.endedAt ?? Date.now()) - job.startedAt) / 1000),
@@ -85,7 +101,10 @@ function appendRunLog(projectDir: string, job: AgentJob): void {
 
 function isLoggedRun(value: unknown): value is {
   at: string;
+  kind?: AgentKind;
   target: string;
+  targetRef?: AgentTargetRef;
+  sessionId?: string;
   instruction: string;
   status: AgentJob["status"];
   seconds: number;
@@ -121,9 +140,11 @@ function hydrateFromRunLog(projectId: string, projectDir: string): void {
         {
           id: randomUUID(),
           projectId,
-          kind: "custom",
+          kind: entry.kind ?? "custom",
           label: entry.agent,
           target: entry.target,
+          targetRef: entry.targetRef,
+          sessionId: entry.sessionId,
           instruction: entry.instruction,
           // Anything that was mid-flight when the server stopped is over now.
           status: entry.status === "done" ? "done" : entry.status,
@@ -207,6 +228,18 @@ export function moveAgentJob(projectId: string, jobId: string, toIndex: number):
   return true;
 }
 
+/** The harness' session id, when it announces one (Claude Code does, per event). */
+export function readSessionId(kind: AgentKind, line: string): string | null {
+  if (kind !== "claude") return null;
+  try {
+    const event: unknown = JSON.parse(line.trim());
+    if (isRecord(event) && typeof event.session_id === "string") return event.session_id;
+  } catch {
+    // Not a stream-json line.
+  }
+  return null;
+}
+
 /** Compact "what is it doing right now" line from one stdout chunk. */
 export function readActivity(kind: AgentKind, line: string): string | null {
   const trimmed = line.trim();
@@ -284,6 +317,7 @@ function runAgent(projectId: string, { job, agent, prompt, cwd }: PendingRun): P
       const lines = pending.split("\n");
       pending = lines.pop() ?? "";
       for (const line of lines) {
+        job.sessionId ??= readSessionId(agent.kind, line) ?? undefined;
         const activity = readActivity(agent.kind, line);
         if (activity) job.activity = activity;
       }
@@ -333,6 +367,7 @@ export function enqueueAgentJob(opts: {
   prompt: string;
   instruction: string;
   target: string;
+  targetRef?: AgentTargetRef;
 }): AgentJob {
   const job: AgentJob = {
     id: randomUUID(),
@@ -340,6 +375,7 @@ export function enqueueAgentJob(opts: {
     kind: opts.agent.kind,
     label: opts.agent.label,
     target: opts.target,
+    targetRef: opts.targetRef,
     instruction: opts.instruction,
     status: "queued",
     activity: "",

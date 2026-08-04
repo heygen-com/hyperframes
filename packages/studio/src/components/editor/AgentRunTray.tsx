@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AgentGlyph, type AgentJob } from "./agentGlyphs";
+import { AgentGlyph, type AgentJob, type AgentKind } from "./agentGlyphs";
 
 const STATUS_DOT: Record<AgentJob["status"], string> = {
   queued: "bg-neutral-500",
@@ -60,6 +60,7 @@ export function AgentRunTray({
   onClearFinished,
   onMoveJob,
   onCancelJob,
+  onRevealTarget,
 }: {
   jobs: AgentJob[];
   /** A real logo for the active harness, supplied via HYPERFRAMES_AGENT_ICON. */
@@ -69,6 +70,8 @@ export function AgentRunTray({
   onMoveJob?: (jobId: string, position: number) => void;
   /** Drop a queued run, or stop a running one. */
   onCancelJob?: (jobId: string) => void;
+  /** Seek to the run's moment and re-select the element it edited. */
+  onRevealTarget?: (job: AgentJob) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   if (jobs.length === 0) return null;
@@ -81,6 +84,9 @@ export function AgentRunTray({
     .filter((job) => job.status === "queued")
     .map((job) => job.id)
     .reverse();
+  // One mark per harness that shows up in this list — a stack of avatars reads
+  // "who worked on this" faster than any label would.
+  const kindsUsed: AgentKind[] = [...new Set(jobs.map((job) => job.kind))];
 
   return (
     <div
@@ -112,6 +118,19 @@ export function AgentRunTray({
           </svg>
           {active > 0 ? `${active} running` : `${jobs.length} run${jobs.length > 1 ? "s" : ""}`}
         </button>
+        {kindsUsed.length > 1 && (
+          <span className="flex flex-1 items-center pl-1" aria-hidden="true">
+            {kindsUsed.map((kind, index) => (
+              <span
+                key={kind}
+                className={index > 0 ? "-ml-1" : ""}
+                style={{ zIndex: kindsUsed.length - index }}
+              >
+                <AgentGlyph kind={kind} size={12} iconUrl={agentIconUrl} />
+              </span>
+            ))}
+          </span>
+        )}
         {finished > 0 && (
           <button
             className="rounded-md px-1.5 py-0.5 text-[11px] leading-none text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 active:scale-[0.96]"
@@ -123,7 +142,10 @@ export function AgentRunTray({
       </div>
 
       {!collapsed && (
-        <ul className="max-h-56 space-y-0.5 overflow-y-auto">
+        <ul
+          data-preview-overlay-scroll="true"
+          className="max-h-56 space-y-0.5 overflow-y-auto overscroll-contain"
+        >
           {jobs.map((job) => {
             const queueIndex = queueOrder.indexOf(job.id);
             const canReorder = queueIndex !== -1 && queueOrder.length > 1;
@@ -184,9 +206,19 @@ export function AgentRunTray({
                   )}
                 </div>
                 <div className="mt-1 flex items-center gap-1.5 pl-[18px]">
-                  <span className="shrink-0 text-[10px] leading-none text-neutral-600">
-                    {job.target}
-                  </span>
+                  {job.targetRef && onRevealTarget ? (
+                    <button
+                      className="-mx-1 shrink-0 rounded px-1 py-0.5 text-[10px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/70 hover:text-studio-accent active:scale-[0.96]"
+                      onClick={() => onRevealTarget(job)}
+                      title="Seek here and select the element this run edited"
+                    >
+                      {job.target}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 text-[10px] leading-none text-neutral-600">
+                      {job.target}
+                    </span>
+                  )}
                   <span
                     className={`min-w-0 truncate text-[10px] leading-none ${
                       job.status === "failed" ? "text-red-400/90" : "text-neutral-500"
@@ -194,6 +226,14 @@ export function AgentRunTray({
                   >
                     {statusLine(job)}
                   </span>
+                  {job.sessionId && (
+                    <span
+                      className="ml-auto shrink-0 font-mono text-[10px] leading-none text-neutral-700"
+                      title={`Session ${job.sessionId}`}
+                    >
+                      {job.sessionId.slice(0, 8)}
+                    </span>
+                  )}
                 </div>
               </li>
             );

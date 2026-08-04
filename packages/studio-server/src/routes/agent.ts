@@ -10,6 +10,7 @@ import {
   listAgentJobs,
   moveAgentJob,
   type AgentCommand,
+  type AgentTargetRef,
 } from "../helpers/agentJobs.js";
 
 /**
@@ -23,7 +24,7 @@ import {
  * (`/api/events`) reloads the preview as the agent edits.
  */
 
-export type { AgentCommand, AgentKind } from "../helpers/agentJobs.js";
+export type { AgentCommand, AgentKind, AgentTargetRef } from "../helpers/agentJobs.js";
 
 /**
  * Prompts always arrive on stdin — never as an argv or shell string — so a
@@ -93,15 +94,45 @@ function isOnPath(command: string): boolean {
   return paths.some((dir) => existsSync(join(dir, command)));
 }
 
-/** Env override wins, then an explicit preset name, then whatever is installed. */
-export function resolveAgentCommand(env: NodeJS.ProcessEnv = process.env): AgentCommand | null {
+/**
+ * Every harness Studio knows about, with whether it is actually installed. The
+ * picker needs the unavailable ones too, so it can say why they are greyed out.
+ */
+export function listAgentCommands(
+  env: NodeJS.ProcessEnv = process.env,
+): Array<AgentCommand & { available: boolean }> {
+  const custom = resolveCustomAgentCommand(env);
+  return [
+    ...(custom ? [{ ...custom, available: true }] : []),
+    ...Object.values(AGENT_PRESETS)
+      .filter((preset) => preset.command !== custom?.command)
+      .map((preset) => ({ ...preset, available: isOnPath(preset.command) })),
+  ];
+}
+
+function resolveCustomAgentCommand(env: NodeJS.ProcessEnv): AgentCommand | null {
   const custom = env.HYPERFRAMES_AGENT_CMD?.trim();
-  if (custom) {
-    const [command, ...args] = custom.split(/\s+/);
-    // A custom command names no harness of its own: sniff the known ones out of
-    // it, else it renders as "custom" (and can supply HYPERFRAMES_AGENT_ICON).
-    if (command) return { kind: sniffKind(custom), label: command, command, args };
+  if (!custom) return null;
+  const [command, ...args] = custom.split(/\s+/);
+  // A custom command names no harness of its own: sniff the known ones out of
+  // it, else it renders as "custom" (and can supply HYPERFRAMES_AGENT_ICON).
+  return command ? { kind: sniffKind(custom), label: command, command, args } : null;
+}
+
+/** Env override wins, then an explicit preset name, then whatever is installed. */
+export function resolveAgentCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  /** A harness the user picked for this run, overriding the default. */
+  requested?: string,
+): AgentCommand | null {
+  if (requested) {
+    return (
+      listAgentCommands(env).find((agent) => agent.kind === requested && agent.available) ?? null
+    );
   }
+
+  const custom = resolveCustomAgentCommand(env);
+  if (custom) return custom;
 
   const named = env.HYPERFRAMES_AGENT?.trim();
   if (named) return AGENT_PRESETS[named] ?? null;
@@ -118,6 +149,11 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       available: agent !== null,
       label: agent?.label ?? null,
       kind: agent?.kind ?? null,
+      agents: listAgentCommands().map(({ kind, label, available }) => ({
+        kind,
+        label,
+        available,
+      })),
       iconUrl: resolveAgentIconPath() ? `/api/projects/${project.id}/agent/icon` : null,
       jobs: listAgentJobs(project.id, project.dir),
     });
@@ -141,12 +177,16 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       prompt?: unknown;
       instruction?: unknown;
       target?: unknown;
+      targetRef?: unknown;
+      agent?: unknown;
     } | null;
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) return c.json({ error: "prompt required" }, 400);
 
-    const agent = resolveAgentCommand();
+    const requested = typeof body?.agent === "string" ? body.agent : undefined;
+    const agent = resolveAgentCommand(process.env, requested);
     if (!agent) {
+      if (requested) return c.json({ error: `${requested} is not installed.` }, 501);
       return c.json(
         {
           error:
@@ -163,6 +203,12 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       prompt,
       instruction: typeof body?.instruction === "string" ? body.instruction : prompt.slice(0, 120),
       target: typeof body?.target === "string" ? body.target : "composition",
+      // Opaque to the server: Studio hands back its own selection coordinates
+      // so the run list can re-select the element it edited.
+      targetRef:
+        typeof body?.targetRef === "object" && body.targetRef !== null
+          ? (body.targetRef as AgentTargetRef)
+          : undefined,
     });
 
     return c.json({ job });

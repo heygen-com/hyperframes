@@ -309,6 +309,9 @@ export const NLEPreview = memo(function NLEPreview({
         return;
       }
 
+      // An overlay list owns its own wheel, zoom gesture included.
+      if (!ownsPreviewPanTarget(event.target, stageRef.current)) return;
+
       const isZoomGesture = event.ctrlKey || event.metaKey;
 
       if (isZoomGesture) {
@@ -331,8 +334,6 @@ export const NLEPreview = memo(function NLEPreview({
         applyZoom(next);
         return;
       }
-
-      if (!ownsPreviewPanTarget(event.target, stageRef.current)) return;
 
       event.preventDefault();
       event.stopPropagation();

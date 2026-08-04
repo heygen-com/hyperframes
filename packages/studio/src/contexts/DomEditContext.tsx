@@ -33,6 +33,8 @@ export interface DomEditActionsValue extends Pick<
   | "clearFinishedAgentJobs"
   | "moveAgentJob"
   | "cancelAgentJob"
+  | "revealAgentJobTarget"
+  | "setSelectedAgentKind"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
@@ -94,6 +96,8 @@ export interface DomEditSelectionValue extends Pick<
   | "agentRunLabel"
   | "agentRunKind"
   | "agentIconUrl"
+  | "agentOptions"
+  | "selectedAgentKind"
   | "agentJobs"
 > {}
 
@@ -142,6 +146,8 @@ export function DomEditProvider({
     agentRunLabel,
     agentRunKind,
     agentIconUrl,
+    agentOptions,
+    selectedAgentKind,
     agentJobs,
     domEditSelectionRef,
     handleTimelineElementSelect,
@@ -172,6 +178,8 @@ export function DomEditProvider({
     clearFinishedAgentJobs,
     moveAgentJob,
     cancelAgentJob,
+    revealAgentJobTarget,
+    setSelectedAgentKind,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -262,6 +270,8 @@ export function DomEditProvider({
       clearFinishedAgentJobs,
       moveAgentJob,
       cancelAgentJob,
+      revealAgentJobTarget,
+      setSelectedAgentKind,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -334,6 +344,8 @@ export function DomEditProvider({
       clearFinishedAgentJobs,
       moveAgentJob,
       cancelAgentJob,
+      revealAgentJobTarget,
+      setSelectedAgentKind,
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
@@ -396,6 +408,8 @@ export function DomEditProvider({
       agentRunLabel,
       agentRunKind,
       agentIconUrl,
+      agentOptions,
+      selectedAgentKind,
       agentJobs,
     }),
     [
@@ -413,6 +427,8 @@ export function DomEditProvider({
       agentRunLabel,
       agentRunKind,
       agentIconUrl,
+      agentOptions,
+      selectedAgentKind,
       agentJobs,
     ],
   );

@@ -84,6 +84,52 @@ describe("resolveComposerPosition", () => {
   });
 });
 
+const AGENTS = [
+  { kind: "claude" as const, label: "Claude Code", available: true },
+  { kind: "codex" as const, label: "Codex", available: true },
+  { kind: "hermes" as const, label: "Hermes", available: false },
+];
+
+describe("harness picker", () => {
+  it("switches the harness a run will use", () => {
+    const onSelectAgent = vi.fn();
+    const { host, root } = renderComposer({ agentOptions: AGENTS, onSelectAgent });
+
+    const header = host.querySelector("button");
+    act(() => header?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const codex = [...host.querySelectorAll("li button")].find((b) =>
+      b.textContent?.includes("Codex"),
+    );
+    act(() => codex?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(onSelectAgent).toHaveBeenCalledWith("codex");
+    // Picking closes the menu again.
+    expect(host.querySelectorAll("li button")).toHaveLength(0);
+    act(() => root.unmount());
+  });
+
+  it("greys out a harness that is not installed", () => {
+    const { host, root } = renderComposer({ agentOptions: AGENTS, onSelectAgent: vi.fn() });
+    act(() =>
+      host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    const hermes = [...host.querySelectorAll("li button")].find((b) =>
+      b.textContent?.includes("Hermes"),
+    ) as HTMLButtonElement | undefined;
+    expect(hermes?.disabled).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("stays a plain label when only one harness exists", () => {
+    const { host, root } = renderComposer({ agentOptions: [AGENTS[0]!], onSelectAgent: vi.fn() });
+    act(() =>
+      host.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(host.querySelectorAll("li button")).toHaveLength(0);
+    act(() => root.unmount());
+  });
+});
+
 describe("InlineAgentComposer", () => {
   it("queues the run on Enter and clears the field for the next one", () => {
     const onRun = vi.fn();

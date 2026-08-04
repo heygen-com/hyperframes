@@ -30,11 +30,19 @@ export function canStartPreviewPan(button: number): boolean {
   return button === 1;
 }
 
+/**
+ * Floating panels drawn over the stage (the agent run tray, for one) scroll
+ * their own content. A wheel inside them belongs to that list, not to the
+ * canvas underneath — without this the preview pans and the list never moves.
+ */
+export const PREVIEW_OVERLAY_SCROLL_SELECTOR = "[data-preview-overlay-scroll]";
+
 export function ownsPreviewPanTarget(
   target: EventTarget | null,
   stage: HTMLElement | null,
 ): boolean {
   if (!(target instanceof Element)) return false;
+  if (target.closest(PREVIEW_OVERLAY_SCROLL_SELECTOR)) return false;
   if (stage?.contains(target)) return true;
   return !!target.closest(PREVIEW_PAN_SURFACE_SELECTOR);
 }

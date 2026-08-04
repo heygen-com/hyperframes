@@ -3,13 +3,23 @@ import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
-import type { AgentJob, AgentKind } from "../components/editor/agentGlyphs";
+import type { AgentJob, AgentKind, AgentOption } from "../components/editor/agentGlyphs";
+import { findElementForSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 
 // ── Types ──
 
 export interface UseAskAgentModalParams {
   projectId: string | null;
+  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
+  applyDomSelection: (
+    selection: DomEditSelection | null,
+    options?: { revealPanel?: boolean },
+  ) => void;
+  buildDomSelectionFromTarget: (
+    element: HTMLElement,
+    options?: { preferClipAncestor?: boolean },
+  ) => Promise<DomEditSelection | null>;
   activeCompPath: string | null;
   projectDir: string | null;
   projectIdRef: React.MutableRefObject<string | null>;
@@ -22,6 +32,9 @@ export interface UseAskAgentModalParams {
 
 export function useAskAgentModal({
   projectId,
+  previewIframeRef,
+  applyDomSelection,
+  buildDomSelectionFromTarget,
   activeCompPath,
   projectDir,
   projectIdRef,
@@ -42,6 +55,10 @@ export function useAskAgentModal({
   const [agentRunLabel, setAgentRunLabel] = useState<string | null>(null);
   const [agentRunKind, setAgentRunKind] = useState<AgentKind | null>(null);
   const [agentIconUrl, setAgentIconUrl] = useState<string | null>(null);
+  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  // Null means "whatever the server resolves"; a pick sticks for later runs, so
+  // a queue can mix harnesses without re-choosing every time.
+  const [selectedAgentKind, setSelectedAgentKind] = useState<AgentKind | null>(null);
   const [agentJobs, setAgentJobs] = useState<AgentJob[]>([]);
 
   // ── Refs ──
@@ -99,11 +116,13 @@ export function useAskAgentModal({
         label?: string | null;
         kind?: AgentKind;
         iconUrl?: string | null;
+        agents?: AgentOption[];
         jobs?: AgentJob[];
       };
       setAgentRunLabel(data.available ? (data.label ?? "agent") : null);
       setAgentRunKind(data.available ? (data.kind ?? "custom") : null);
       setAgentIconUrl(data.iconUrl ?? null);
+      setAgentOptions(data.agents ?? []);
       setAgentJobs(data.jobs ?? []);
     } catch {
       // Server not reachable — leave the last known state on screen.
@@ -153,6 +172,16 @@ export function useAskAgentModal({
           prompt: buildPrompt(selection, userInstruction),
           instruction: userInstruction,
           target: selection.label,
+          agent: selectedAgentKind ?? undefined,
+          // Selection coordinates travel with the run so the tray can seek back
+          // to the moment and re-select the element the agent edited.
+          targetRef: {
+            sourceFile: selection.sourceFile,
+            id: selection.id ?? undefined,
+            selector: selection.selector,
+            selectorIndex: selection.selectorIndex,
+            time: usePlayerStore.getState().currentTime,
+          },
         }),
       })
         .then(async (response) => {
@@ -167,7 +196,43 @@ export function useAskAgentModal({
           showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
         });
     },
-    [buildPrompt, projectIdRef, resolveSelection, showToast],
+    [buildPrompt, projectIdRef, resolveSelection, selectedAgentKind, showToast],
+  );
+
+  /** Seek to when a run was asked for and re-select the element it edited. */
+  const revealAgentJobTarget = useCallback(
+    (job: AgentJob) => {
+      const ref = job.targetRef;
+      if (!ref) return;
+      if (typeof ref.time === "number") usePlayerStore.getState().setCurrentTime(ref.time);
+
+      let doc: Document | null = null;
+      try {
+        doc = previewIframeRef.current?.contentDocument ?? null;
+      } catch {
+        doc = null;
+      }
+      const element = doc
+        ? findElementForSelection(
+            doc,
+            {
+              sourceFile: ref.sourceFile ?? "",
+              id: ref.id,
+              selector: ref.selector,
+              selectorIndex: ref.selectorIndex,
+            },
+            activeCompPath,
+          )
+        : null;
+      if (!element) {
+        showToast("That element is no longer in the composition.", "error");
+        return;
+      }
+      void buildDomSelectionFromTarget(element, { preferClipAncestor: false }).then((selection) => {
+        if (selection) applyDomSelection(selection);
+      });
+    },
+    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef, showToast],
   );
 
   const patchAgentJobs = useCallback(
@@ -276,6 +341,8 @@ export function useAskAgentModal({
     agentRunLabel,
     agentRunKind,
     agentIconUrl,
+    agentOptions,
+    selectedAgentKind,
     agentJobs,
 
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
@@ -290,5 +357,7 @@ export function useAskAgentModal({
     clearFinishedAgentJobs,
     moveAgentJob,
     cancelAgentJob,
+    revealAgentJobTarget,
+    setSelectedAgentKind,
   };
 }
