@@ -4,6 +4,7 @@ import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
 import { StudioOverlays } from "./components/StudioOverlays";
 import { SaveQueuePausedBanner } from "./components/SaveQueuePausedBanner";
+import { ExternalFileConflictBanner } from "./components/ExternalFileConflictBanner";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
@@ -22,6 +23,7 @@ import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
+import { useStudioExternalFileChanges } from "./hooks/useStudioExternalFileChanges";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
@@ -56,25 +58,19 @@ import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
+import { useStudioSessionStart } from "./hooks/useStudioSessionStart";
 import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
   resolveMasterCompositionPath,
 } from "./utils/studioUrlState";
-import { trackStudioSessionStart } from "./telemetry/events";
-import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
-  useEffect(() => {
-    if (resolving || waitingForServer) return;
-    if (hasFiredSessionStart()) return;
-    markSessionStartFired();
-    trackStudioSessionStart({ has_project: projectId != null });
-  }, [projectId, resolving, waitingForServer]);
+  useStudioSessionStart(projectId, resolving, waitingForServer);
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
     () => initialUrlStateRef.current.activeCompPath == null,
@@ -144,20 +140,24 @@ export function StudioApp() {
     setActiveCompPathHydrated(true);
   }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded]);
   const previewPersistence = usePreviewPersistence({
-    projectId,
     showToast,
     readOptionalProjectFile: fileManager.readOptionalProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
     recordEdit: editHistory.recordEdit,
     previewIframeRef,
     activeCompPathRef,
-    domEditSaveTimestampRef,
     reloadPreview: () => setRefreshKey((k) => k + 1),
+  });
+  const externalFileChanges = useStudioExternalFileChanges({
+    projectId,
+    activeCompPath,
+    masterCompPath,
+    fileManager,
+    previewPersistence,
     pendingTimelineEditPathRef,
+    reloadPreview,
   });
   const invalidateGsapCacheRef = useRef<() => void>(() => {});
-  // Stable identity — what the ref indirection is for. An inline arrow re-created
-  // the memoized timeline handlers (it is in their deps) on every render.
   const invalidateGsapCache = useCallback(() => invalidateGsapCacheRef.current(), []);
   const timelineEditing = useTimelineEditing({
     projectId,
@@ -483,12 +483,13 @@ export function StudioApp() {
                       })();
                     }}
                   />
-                  {previewPersistence.domEditSaveQueuePaused && (
+                  {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
                     <SaveQueuePausedBanner
                       message={previewPersistence.domEditSaveQueuePaused}
                       onRetry={previewPersistence.resetDomEditSaveQueueBreaker}
                     />
                   )}
+                  <ExternalFileConflictBanner coordinator={externalFileChanges} />
                   {viewModeValue.viewMode === "storyboard" && (
                     <StoryboardView
                       projectId={projectId}
