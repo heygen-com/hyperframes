@@ -59,6 +59,8 @@ export const agentRunRequestSchema = z.object({
   /** Harness id: a built-in kind, or a custom agent's id. */
   agent: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
+  /** Reasoning effort, when the model and harness both take one. */
+  effort: z.string().min(1).optional(),
 });
 export type AgentRunRequest = z.infer<typeof agentRunRequestSchema>;
 
@@ -72,6 +74,7 @@ export const loggedRunSchema = z.object({
   at: z.string(),
   kind: agentKindSchema.optional(),
   model: z.string().optional(),
+  effort: z.string().optional(),
   target: z.string().default("composition"),
   targetRef: agentTargetRefSchema.optional(),
   sessionId: z.string().optional(),
@@ -96,6 +99,9 @@ export const catalogModelSchema = z.object({
     .object({ input: z.number().finite().optional(), output: z.number().finite().optional() })
     .optional(),
   limit: z.object({ context: z.number().finite().optional() }).optional(),
+  reasoning_options: z
+    .array(z.object({ type: z.string(), values: z.array(z.string()).optional() }))
+    .optional(),
 });
 
 export const catalogProviderSchema = z.object({

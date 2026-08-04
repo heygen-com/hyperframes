@@ -81,6 +81,9 @@ export function useAskAgentModal({
   const [modelByKind, setModelByKind] = useState<Partial<Record<AgentKind, string>>>(
     () => readStudioUiPreferences().agentModelByKind ?? {},
   );
+  const [effortByKind, setEffortByKind] = useState<Partial<Record<AgentKind, string>>>(
+    () => readStudioUiPreferences().agentEffortByKind ?? {},
+  );
   const [agentJobs, setAgentJobs] = useState<AgentJob[]>([]);
 
   // ── Refs ──
@@ -172,6 +175,17 @@ export function useAskAgentModal({
     [projectId, projectIdRef],
   );
 
+  const setSelectedEffort = useCallback((kind: AgentKind, effort: string | null) => {
+    trackStudioEvent("agent_effort_selected", { harness: kind, effort: effort ?? "lowest" });
+    setEffortByKind((current) => {
+      const next = { ...current };
+      if (effort) next[kind] = effort;
+      else delete next[kind];
+      writeStudioUiPreferences({ agentEffortByKind: next });
+      return next;
+    });
+  }, []);
+
   const setSelectedModel = useCallback((kind: AgentKind, model: string | null) => {
     trackStudioEvent("agent_model_selected", { harness: kind, model: model ?? "cheapest" });
     setModelByKind((current) => {
@@ -256,6 +270,7 @@ export function useAskAgentModal({
           target: coSelected > 0 ? `${coSelected + 1} elements` : selection.label,
           agent: selectedAgentId ?? undefined,
           model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
+          effort: activeKindRef.current ? effortByKind[activeKindRef.current] : undefined,
           // Selection coordinates travel with the run so the tray can seek back
           // to the moment and re-select the element the agent edited.
           targetRef: {
@@ -281,6 +296,7 @@ export function useAskAgentModal({
     },
     [
       buildPrompt,
+      effortByKind,
       modelByKind,
       projectIdRef,
       resolveGroup,
@@ -471,6 +487,7 @@ export function useAskAgentModal({
     agentOptions,
     agentModels,
     selectedModel: activeKind ? (modelByKind[activeKind] ?? null) : null,
+    selectedEffort: activeKind ? (effortByKind[activeKind] ?? null) : null,
     selectedAgentId,
     agentIconUrlById: activeAgent?.iconUrl ?? null,
     agentJobs,
@@ -490,6 +507,7 @@ export function useAskAgentModal({
     revealAgentJobTarget,
     setSelectedAgentId,
     setSelectedModel,
+    setSelectedEffort,
     refreshAgentModels,
     addCustomAgent,
   };

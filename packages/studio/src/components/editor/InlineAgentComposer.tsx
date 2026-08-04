@@ -1,4 +1,5 @@
 import { useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { clampNumber } from "../../utils/studioHelpers";
 import {
@@ -35,7 +36,10 @@ export function resolveComposerPosition(
   composerHeight: number = COMPOSER_HEIGHT,
 ): CSSProperties {
   if (!rect || canvas.width === 0) {
-    return { left: Math.max(GAP, (canvas.width - COMPOSER_WIDTH) / 2), bottom: GAP };
+    return {
+      left: Math.max(GAP, (canvas.width - COMPOSER_WIDTH) / 2),
+      top: Math.max(GAP, canvas.height - composerHeight - GAP),
+    };
   }
 
   const below = rect.top + rect.height + GAP;
@@ -91,12 +95,15 @@ export function InlineAgentComposer({
   agentOptions = [],
   agentModels = [],
   selectedModel = null,
+  selectedEffort = null,
   onSelectAgent,
   onAddCustomAgent,
   onSelectModel,
+  onSelectEffort,
   onRun,
   onCopy,
   onClose,
+  toContainerStyle = (style) => style,
 }: {
   selectionLabel: string;
   /** Identifies the element this draft belongs to; see utils/agentDrafts. */
@@ -113,18 +120,23 @@ export function InlineAgentComposer({
   /** Tool-capable models for the active harness, cheapest first. */
   agentModels?: AgentModel[];
   selectedModel?: string | null;
+  selectedEffort?: string | null;
   onSelectAgent?: (id: string) => void;
+  onSelectEffort?: (effort: string | null) => void;
   onAddCustomAgent?: (draft: CustomAgentDraft) => Promise<boolean>;
   onSelectModel?: (model: string | null) => void;
   onRun: (instruction: string) => void;
   onCopy: (instruction: string) => void;
   onClose: () => void;
+  /** Lifts overlay-local coordinates into whatever space this is drawn in. */
+  toContainerStyle?: (style: CSSProperties) => CSSProperties;
 }) {
   // Seeded from the stored draft: a reload lands mid-sentence otherwise, and
   // the agent's own edits are what trigger those reloads.
   const [value, setValue] = useState(() => readAgentDraft(draftKey));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [addingAgent, setAddingAgent] = useState(false);
   // Drag offset from the anchored position — the composer can cover the very
   // element being edited, so the header doubles as a drag handle.
@@ -156,6 +168,9 @@ export function InlineAgentComposer({
     inputRef.current?.focus();
   };
 
+  const activeModel = agentModels.find((model) => model.id === selectedModel) ?? agentModels[0];
+  const effortOptions = activeModel?.effortOptions ?? [];
+
   const dragHandlers = {
     onPointerDown: (e: React.PointerEvent) => {
       if (e.button !== 0) return;
@@ -185,7 +200,7 @@ export function InlineAgentComposer({
       data-inline-agent-composer="true"
       className={`hf-composer-enter absolute ${CANVAS_OVERLAY_CONTROL_Z} w-[320px] ${SURFACE_CLASS}`}
       style={{
-        ...resolveComposerPosition(rect, canvas),
+        ...toContainerStyle(resolveComposerPosition(rect, canvas)),
         translate: offset.x || offset.y ? `${offset.x}px ${offset.y}px` : undefined,
       }}
       // The canvas overlay owns pointer gestures — keep clicks and keystrokes
@@ -212,7 +227,7 @@ export function InlineAgentComposer({
           }}
           aria-haspopup="menu"
           aria-expanded={pickerOpen}
-          title="Run with a different harness"
+          aria-label={`Harness: ${runLabel ?? selectionLabel}`}
         >
           {agentKind && <AgentGlyph kind={agentKind} size={11} iconUrl={agentIconUrl} />}
           <span className="truncate">{runLabel ?? selectionLabel}</span>
@@ -230,12 +245,31 @@ export function InlineAgentComposer({
             }}
             aria-haspopup="menu"
             aria-expanded={modelPickerOpen}
-            title={selectedModel ? `Runs with ${selectedModel}` : "Runs with the cheapest model"}
+            aria-label={selectedModel ? `Model: ${selectedModel}` : "Model: cheapest that can run"}
           >
             <span className="truncate">
               {selectedModel ??
                 (agentModels[0]?.id ? `${agentModels[0].id} · cheapest` : "cheapest")}
             </span>
+            <Chevron />
+          </button>
+        )}
+        {/* Effort rides beside the model because it is the same decision: how
+            much thinking to buy. The lowest the model offers is the default. */}
+        {onSelectEffort && effortOptions.length > 0 && (
+          <button
+            className="flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 text-[10px] leading-none text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              setPickerOpen(false);
+              setModelPickerOpen(false);
+              setEffortPickerOpen((open) => !open);
+            }}
+            aria-haspopup="menu"
+            aria-expanded={effortPickerOpen}
+            aria-label={`Effort: ${selectedEffort ?? effortOptions[0] ?? "lowest"}`}
+          >
+            <span className="truncate">{selectedEffort ?? effortOptions[0]}</span>
             <Chevron />
           </button>
         )}
@@ -365,6 +399,33 @@ export function InlineAgentComposer({
         </ul>
       )}
 
+      {effortPickerOpen && onSelectEffort && effortOptions.length > 0 && (
+        <ul
+          data-preview-overlay-scroll="true"
+          className="mb-1.5 max-h-44 space-y-0.5 overflow-y-auto overscroll-contain scroll-smooth rounded-[10px] bg-neutral-900/70 p-1 ring-1 ring-white/10"
+        >
+          {effortOptions.map((effort, index) => (
+            <li key={effort}>
+              <button
+                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-none text-neutral-300 transition-colors duration-150 ease-out hover:bg-neutral-800/70"
+                onClick={() => {
+                  onSelectEffort(index === 0 ? null : effort);
+                  setEffortPickerOpen(false);
+                }}
+              >
+                <span className="truncate">{effort}</span>
+                {index === 0 && (
+                  <span className="ml-auto text-[10px] text-neutral-600">lowest</span>
+                )}
+                {(selectedEffort ?? effortOptions[0]) === effort && (
+                  <span className="ml-1 shrink-0 text-[10px] text-studio-accent">in use</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <div className="flex items-end gap-1.5 rounded-[10px] bg-neutral-900/70 px-2 py-1.5 ring-1 ring-white/10 transition-[box-shadow] duration-150 ease-out focus-within:ring-studio-accent/40">
         <textarea
           ref={inputRef}
@@ -428,6 +489,7 @@ function AskAgentHandle({
   agentIconUrl,
   label,
   onOpen,
+  toContainerStyle = (style) => style,
 }: {
   rect: OverlayRect | null;
   canvas: { width: number; height: number };
@@ -435,6 +497,7 @@ function AskAgentHandle({
   agentIconUrl: string | null;
   label: string;
   onOpen: () => void;
+  toContainerStyle?: (style: CSSProperties) => CSSProperties;
 }) {
   if (!rect || canvas.width === 0) return null;
 
@@ -448,7 +511,7 @@ function AskAgentHandle({
     <button
       data-ask-agent-handle="true"
       className={`hf-composer-enter group absolute ${CANVAS_OVERLAY_CONTROL_Z} flex h-[26px] w-[26px] items-center gap-1.5 overflow-hidden rounded-full px-[6px] text-[11px] leading-none text-neutral-300 transition-[width,color,box-shadow] duration-150 ease-out hover:w-[104px] hover:text-neutral-100 hover:ring-white/25 focus-visible:w-[104px] active:scale-[0.96] ${FLOATING_CHIP}`}
-      style={{ left: right - HANDLE_WIDTH, top }}
+      style={toContainerStyle({ left: right - HANDLE_WIDTH, top })}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
@@ -480,13 +543,28 @@ function AskAgentHandle({
 export function InlineAgentComposerHost({
   rect,
   canvas,
+  overlayEl,
 }: {
   rect: OverlayRect | null;
   canvas: { width: number; height: number };
+  /** The canvas overlay these coordinates are relative to. */
+  overlayEl: HTMLElement | null;
 }) {
   const actions = useDomEditActionsContextOptional();
   const selectionValue = useDomEditSelectionContextOptional();
   if (!actions || !selectionValue) return null;
+
+  // Drawn in the document, not inside the canvas overlay: that overlay is a
+  // z-10 stacking context and its sibling motion path sits at z-40, so nothing
+  // rendered within it can come out on top however high its own z-index is.
+  const origin = overlayEl?.getBoundingClientRect();
+  const toViewport = (style: CSSProperties): CSSProperties => ({
+    ...style,
+    position: "fixed",
+    left: typeof style.left === "number" ? style.left + (origin?.left ?? 0) : style.left,
+    top: typeof style.top === "number" ? style.top + (origin?.top ?? 0) : style.top,
+    zIndex: 70,
+  });
 
   const {
     projectId,
@@ -500,13 +578,15 @@ export function InlineAgentComposerHost({
     agentOptions,
     agentModels,
     selectedModel,
+    selectedEffort,
     agentJobs,
   } = selectionValue;
 
-  return (
+  return createPortal(
     <>
       {!agentModalOpen && domEditSelection && (
         <AskAgentHandle
+          toContainerStyle={toViewport}
           rect={rect}
           canvas={canvas}
           agentKind={agentRunKind}
@@ -517,6 +597,7 @@ export function InlineAgentComposerHost({
       )}
       {agentModalOpen && domEditSelection && (
         <InlineAgentComposer
+          toContainerStyle={toViewport}
           selectionLabel={
             domEditGroupSelections.length > 1
               ? `${domEditGroupSelections.length} elements`
@@ -537,6 +618,7 @@ export function InlineAgentComposerHost({
           agentOptions={agentOptions}
           agentModels={agentModels}
           selectedModel={selectedModel}
+          selectedEffort={selectedEffort}
           onSelectAgent={(id) => {
             actions.setSelectedAgentId(id);
             void actions.refreshAgentModels(id);
@@ -544,6 +626,9 @@ export function InlineAgentComposerHost({
           onAddCustomAgent={actions.addCustomAgent}
           onSelectModel={(model) => {
             if (agentRunKind) actions.setSelectedModel(agentRunKind, model);
+          }}
+          onSelectEffort={(effort) => {
+            if (agentRunKind) actions.setSelectedEffort(agentRunKind, effort);
           }}
           onRun={actions.handleAgentModalRun}
           onCopy={(instruction) => void actions.handleAgentModalSubmit(instruction)}
@@ -561,6 +646,7 @@ export function InlineAgentComposerHost({
         onCancelJob={actions.cancelAgentJob}
         onRevealTarget={actions.revealAgentJobTarget}
       />
-    </>
+    </>,
+    document.body,
   );
 }

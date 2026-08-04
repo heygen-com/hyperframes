@@ -3,6 +3,7 @@ import {
   clearModelCatalogCache,
   listAgentModels,
   modelCost,
+  resolveDefaultEffort,
   resolveDefaultModel,
   withModelArgs,
 } from "./agentModels";
@@ -22,11 +23,22 @@ const CATALOG = {
         name: "Claude Haiku 4.5",
         tool_call: true,
         cost: { input: 1, output: 5 },
+        reasoning_options: [{ type: "budget_tokens", min: 1024 }],
       },
       "claude-embed": { id: "claude-embed", name: "Embeddings", tool_call: false },
     },
   },
-  openai: { models: {} },
+  openai: {
+    models: {
+      "gpt-5.6-luna": {
+        id: "gpt-5.6-luna",
+        name: "GPT-5.6 Luna",
+        tool_call: true,
+        cost: { input: 0.5, output: 2 },
+        reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high"] }],
+      },
+    },
+  },
 };
 
 afterEach(() => {
@@ -113,5 +125,41 @@ describe("withModelArgs", () => {
   it("leaves args alone without a model, or for a harness with no flag", () => {
     expect(withModelArgs("claude", ["-p"])).toEqual(["-p"]);
     expect(withModelArgs("custom", ["--run"], "anything")).toEqual(["--run"]);
+  });
+});
+
+describe("effort", () => {
+  it("takes the levels from the catalog, never a list of our own", async () => {
+    stubCatalog(CATALOG);
+    const [luna] = await listAgentModels("codex");
+    expect(luna?.effortOptions).toEqual(["none", "low", "medium", "high"]);
+
+    // Anthropic reasons on a token budget, so there is no effort to offer.
+    const [haiku] = await listAgentModels("claude");
+    expect(haiku?.effortOptions).toBeUndefined();
+  });
+
+  it("defaults to the lowest level the model offers", async () => {
+    stubCatalog(CATALOG);
+    expect(await resolveDefaultEffort("codex")).toBe("none");
+    // A harness with no effort flag carries none, whatever the catalog says.
+    expect(await resolveDefaultEffort("claude")).toBeNull();
+  });
+
+  it("passes effort the way the harness takes it", () => {
+    expect(withModelArgs("codex", ["exec", "-"], "gpt-5.6-luna", "low")).toEqual([
+      "exec",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      'model_reasoning_effort="low"',
+      "-",
+    ]);
+    // Claude Code has no effort flag: the model still lands, the effort does not.
+    expect(withModelArgs("claude", ["-p"], "claude-haiku-4-5", "low")).toEqual([
+      "-p",
+      "--model",
+      "claude-haiku-4-5",
+    ]);
   });
 });

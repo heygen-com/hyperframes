@@ -37,6 +37,7 @@ export interface DomEditActionsValue extends Pick<
   | "setSelectedAgentId"
   | "addCustomAgent"
   | "setSelectedModel"
+  | "setSelectedEffort"
   | "refreshAgentModels"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
@@ -104,6 +105,7 @@ export interface DomEditSelectionValue extends Pick<
   | "agentOptions"
   | "agentModels"
   | "selectedModel"
+  | "selectedEffort"
   | "selectedAgentId"
   | "agentJobs"
 > {}
@@ -158,6 +160,7 @@ export function DomEditProvider({
     agentOptions,
     agentModels,
     selectedModel,
+    selectedEffort,
     selectedAgentId,
     agentJobs,
     domEditSelectionRef,
@@ -193,6 +196,7 @@ export function DomEditProvider({
     setSelectedAgentId,
     addCustomAgent,
     setSelectedModel,
+    setSelectedEffort,
     refreshAgentModels,
     handleBlockedDomMove,
     handleDomManualDragStart,
@@ -288,6 +292,7 @@ export function DomEditProvider({
       setSelectedAgentId,
       addCustomAgent,
       setSelectedModel,
+      setSelectedEffort,
       refreshAgentModels,
       handleBlockedDomMove,
       handleDomManualDragStart,
@@ -365,6 +370,7 @@ export function DomEditProvider({
       setSelectedAgentId,
       addCustomAgent,
       setSelectedModel,
+      setSelectedEffort,
       refreshAgentModels,
       handleBlockedDomMove,
       handleDomManualDragStart,
@@ -433,6 +439,7 @@ export function DomEditProvider({
       agentOptions,
       agentModels,
       selectedModel,
+      selectedEffort,
       selectedAgentId,
       agentJobs,
     }),
@@ -456,6 +463,7 @@ export function DomEditProvider({
       agentOptions,
       agentModels,
       selectedModel,
+      selectedEffort,
       selectedAgentId,
       agentJobs,
     ],

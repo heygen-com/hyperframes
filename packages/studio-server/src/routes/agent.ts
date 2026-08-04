@@ -3,7 +3,12 @@ import { createReadStream, existsSync } from "node:fs";
 import { delimiter, extname, join } from "node:path";
 import { Readable } from "node:stream";
 import type { StudioApiAdapter } from "../types.js";
-import { listAgentModels, resolveDefaultModel, withModelArgs } from "../helpers/agentModels.js";
+import {
+  listAgentModels,
+  resolveDefaultEffort,
+  resolveDefaultModel,
+  withModelArgs,
+} from "../helpers/agentModels.js";
 import {
   cancelAgentJob,
   clearFinishedAgentJobs,
@@ -273,6 +278,7 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       targetRef,
       agent: requested,
       model: requestedModel,
+      effort: requestedEffort,
     } = parsed.data;
     const agent = resolveAgentCommand(process.env, requested, project.dir);
     if (!agent) {
@@ -289,12 +295,16 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     // No model named? Take the cheapest one the catalog says can drive tools —
     // a run should not quietly cost frontier money because nobody chose.
     const model = requestedModel ?? (await resolveDefaultModel(agent.kind)) ?? undefined;
+    // Same rule as the model: the cheapest thing that can do the job, unless
+    // the user said otherwise. For effort that is the lowest level offered.
+    const effort = requestedEffort ?? (await resolveDefaultEffort(agent.kind, model)) ?? undefined;
 
     const job = enqueueAgentJob({
       projectId: project.id,
       projectDir: project.dir,
-      agent: { ...agent, args: withModelArgs(agent.kind, agent.args, model) },
+      agent: { ...agent, args: withModelArgs(agent.kind, agent.args, model, effort) },
       model,
+      effort,
       prompt,
       instruction: instruction ?? prompt.slice(0, 120),
       target: target ?? "composition",

@@ -287,9 +287,10 @@ export function AgentRunTray({
                   {job.model && (
                     <span
                       className="ml-auto shrink-0 truncate text-[10px] leading-none text-neutral-600"
-                      title={`Ran with ${job.model}`}
+                      title={`Ran with ${job.model}${job.effort ? ` · ${job.effort}` : ""}`}
                     >
                       {job.model}
+                      {job.effort ? ` · ${job.effort}` : ""}
                     </span>
                   )}
                   {job.sessionId && (

@@ -33,6 +33,8 @@ export interface AgentTargetRef {
 export interface AgentModel {
   id: string;
   name: string;
+  /** Reasoning levels the model accepts, lowest first. */
+  effortOptions?: string[];
   inputCost?: number;
   outputCost?: number;
   contextWindow?: number;
@@ -45,6 +47,7 @@ export interface AgentJob {
   target: string;
   targetRef?: AgentTargetRef;
   model?: string;
+  effort?: string;
   sessionId?: string;
   instruction: string;
   status: "queued" | "running" | "done" | "failed" | "cancelled";

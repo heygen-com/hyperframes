@@ -24,6 +24,8 @@ export interface AgentJob {
   targetRef?: AgentTargetRef;
   /** Model the harness ran with, when Studio picked one. */
   model?: string;
+  /** Reasoning effort the run asked for, when the harness takes one. */
+  effort?: string;
   /** The harness' own session id, so a run can be resumed or found in its logs. */
   sessionId?: string;
   instruction: string;
@@ -77,6 +79,7 @@ function appendRunLog(projectDir: string, job: AgentJob): void {
         at: new Date(job.startedAt).toISOString(),
         kind: job.kind,
         model: job.model,
+        effort: job.effort,
         target: job.target,
         targetRef: job.targetRef,
         sessionId: job.sessionId,
@@ -125,6 +128,7 @@ function hydrateFromRunLog(projectId: string, projectDir: string): void {
           projectId,
           kind: entry.kind ?? kindFromLabel(entry.agent),
           model: entry.model,
+          effort: entry.effort,
           label: entry.agent,
           target: entry.target,
           targetRef: entry.targetRef,
@@ -353,6 +357,7 @@ export function enqueueAgentJob(opts: {
   target: string;
   targetRef?: AgentTargetRef;
   model?: string;
+  effort?: string;
 }): AgentJob {
   const job: AgentJob = {
     id: randomUUID(),
@@ -362,6 +367,7 @@ export function enqueueAgentJob(opts: {
     target: opts.target,
     targetRef: opts.targetRef,
     model: opts.model,
+    effort: opts.effort,
     instruction: opts.instruction,
     status: "queued",
     activity: "",

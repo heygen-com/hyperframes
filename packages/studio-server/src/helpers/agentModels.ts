@@ -14,6 +14,12 @@ import { catalogProviderSchema, type AgentKind } from "./agentSchemas.js";
 export interface AgentModel {
   id: string;
   name: string;
+  /**
+   * Reasoning levels this model accepts, lowest first, straight from the
+   * catalog. Empty when the model reasons on a token budget instead (Anthropic)
+   * or does not expose the knob at all.
+   */
+  effortOptions?: string[];
   /** USD per million input / output tokens, when the catalog prices them. */
   inputCost?: number;
   outputCost?: number;
@@ -32,6 +38,15 @@ const CATALOG_TIMEOUT_MS = 8000;
 const PROVIDER_BY_KIND: Partial<Record<AgentKind, string>> = {
   claude: "anthropic",
   codex: "openai",
+};
+
+/**
+ * How each harness takes a reasoning effort. Only the ones that actually expose
+ * the knob appear — Claude Code sets thinking by budget, not by a flag, so a
+ * run with it simply carries no effort.
+ */
+const EFFORT_ARGS: Partial<Record<AgentKind, (effort: string) => string[]>> = {
+  codex: (effort) => ["-c", `model_reasoning_effort="${effort}"`],
 };
 
 /** The flag each harness takes its model on. */
@@ -60,6 +75,7 @@ function toAgentModels(provider: unknown): AgentModel[] {
       inputCost: model.cost?.input,
       outputCost: model.cost?.output,
       contextWindow: model.limit?.context,
+      effortOptions: model.reasoning_options?.find((option) => option.type === "effort")?.values,
     }))
     .sort((a, b) => modelCost(a) - modelCost(b));
 }
@@ -122,14 +138,34 @@ export async function resolveDefaultModel(kind: AgentKind): Promise<string | nul
   return cheapest?.id ?? null;
 }
 
-/** Append the harness' own model flag, when it takes one and a model is set. */
-export function withModelArgs(kind: AgentKind, args: readonly string[], model?: string): string[] {
+/** Append the harness' own model and effort flags, for the ones it takes. */
+export function withModelArgs(
+  kind: AgentKind,
+  args: readonly string[],
+  model?: string,
+  effort?: string,
+): string[] {
   const flag = MODEL_FLAG[kind];
-  if (!model || !flag) return [...args];
+  const extra: string[] = [];
+  if (model && flag) extra.push(flag, model);
+  if (effort) extra.push(...(EFFORT_ARGS[kind]?.(effort) ?? []));
+  if (extra.length === 0) return [...args];
+
   // Codex reads the prompt from a trailing `-`; keep flags ahead of it.
   const stdinMarker = args.lastIndexOf("-");
   const insertAt = stdinMarker === -1 ? args.length : stdinMarker;
-  return [...args.slice(0, insertAt), flag, model, ...args.slice(insertAt)];
+  return [...args.slice(0, insertAt), ...extra, ...args.slice(insertAt)];
+}
+
+/** The lowest effort a model offers — what a run uses unless asked otherwise. */
+export async function resolveDefaultEffort(
+  kind: AgentKind,
+  modelId?: string,
+): Promise<string | null> {
+  if (!EFFORT_ARGS[kind]) return null;
+  const models = await listAgentModels(kind);
+  const model = modelId ? models.find((entry) => entry.id === modelId) : models[0];
+  return model?.effortOptions?.[0] ?? null;
 }
 
 /** Test seam: drop the cached catalog. */

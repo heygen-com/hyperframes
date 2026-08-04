@@ -51,6 +51,8 @@ export interface StudioUiPreferences {
   agentTrayPosition?: { x: number; y: number };
   /** Model chosen per harness; unset means "the cheapest one that can run". */
   agentModelByKind?: Partial<Record<StudioAgentKind, string>>;
+  /** Reasoning effort chosen per harness; unset means "the lowest offered". */
+  agentEffortByKind?: Partial<Record<StudioAgentKind, string>>;
 }
 
 const AGENT_KINDS: StudioAgentKind[] = ["claude", "codex", "hermes", "openclaw", "custom"];
@@ -149,6 +151,14 @@ function parsePreferences(parsed: unknown): StudioUiPreferences {
         if (typeof value === "string" && value) models[kind] = value;
       }
       if (Object.keys(models).length > 0) preferences.agentModelByKind = models;
+    }
+    if (isRecord(parsed.agentEffortByKind)) {
+      const efforts: Partial<Record<StudioAgentKind, string>> = {};
+      for (const kind of AGENT_KINDS) {
+        const value = parsed.agentEffortByKind[kind];
+        if (typeof value === "string" && value) efforts[kind] = value;
+      }
+      if (Object.keys(efforts).length > 0) preferences.agentEffortByKind = efforts;
     }
     if (isRecord(parsed.agentTrayPosition)) {
       const { x, y } = parsed.agentTrayPosition;

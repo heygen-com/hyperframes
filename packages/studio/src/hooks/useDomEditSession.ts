@@ -155,6 +155,7 @@ export function useDomEditSession({
     agentOptions,
     agentModels,
     selectedModel,
+    selectedEffort,
     selectedAgentId,
     agentJobs,
     setAgentModalOpen,
@@ -169,6 +170,7 @@ export function useDomEditSession({
     setSelectedAgentId,
     addCustomAgent,
     setSelectedModel,
+    setSelectedEffort,
     refreshAgentModels,
   } = useAskAgentModal({
     projectId,
@@ -499,6 +501,7 @@ export function useDomEditSession({
     agentOptions,
     agentModels,
     selectedModel,
+    selectedEffort,
     selectedAgentId,
     agentJobs,
     // Refs
@@ -535,6 +538,7 @@ export function useDomEditSession({
     setSelectedAgentId,
     addCustomAgent,
     setSelectedModel,
+    setSelectedEffort,
     refreshAgentModels,
     handleBlockedDomMove,
     handleDomManualDragStart,

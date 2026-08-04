@@ -81,7 +81,8 @@ describe("resolveComposerPosition", () => {
   });
 
   it("pins to the bottom when the element has no rect", () => {
-    expect(resolveComposerPosition(null, CANVAS, 84)).toEqual({ left: 240, bottom: 10 });
+    // left/top, never `bottom`: the host maps these into viewport space.
+    expect(resolveComposerPosition(null, CANVAS, 84)).toEqual({ left: 240, top: 506 });
   });
 });
 
@@ -330,5 +331,51 @@ describe("draft persistence", () => {
     const b = renderComposer({ draftKey: "p|index.html|chip|0" });
     expect(b.host.querySelector("textarea")?.value).toBe("");
     act(() => b.root.unmount());
+  });
+});
+
+describe("effort", () => {
+  const MODELS = [
+    {
+      id: "gpt-5.6-luna",
+      name: "GPT-5.6 Luna",
+      inputCost: 0.5,
+      effortOptions: ["none", "low", "high"],
+    },
+  ];
+
+  it("shows the model's lowest level beside it, and switches on pick", () => {
+    const onSelectEffort = vi.fn();
+    const { host, root } = renderComposer({
+      agentModels: MODELS,
+      selectedModel: "gpt-5.6-luna",
+      onSelectModel: vi.fn(),
+      onSelectEffort,
+    });
+
+    const header = host.querySelector("[data-inline-agent-composer]")?.firstElementChild;
+    expect(header?.textContent).toContain("none");
+
+    const chip = [...(header?.querySelectorAll("button") ?? [])].find(
+      (b) => b.getAttribute("aria-label") === "Effort: none",
+    );
+    act(() => chip?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const high = [...host.querySelectorAll("li button")].find((b) =>
+      b.textContent?.startsWith("high"),
+    );
+    act(() => high?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSelectEffort).toHaveBeenCalledWith("high");
+    act(() => root.unmount());
+  });
+
+  it("says nothing when the model has no effort knob", () => {
+    const { host, root } = renderComposer({
+      agentModels: [{ id: "claude-haiku-4-5", name: "Claude Haiku 4.5" }],
+      onSelectModel: vi.fn(),
+      onSelectEffort: vi.fn(),
+    });
+    const header = host.querySelector("[data-inline-agent-composer]")?.firstElementChild;
+    expect(header?.querySelector('[aria-label^="Effort"]')).toBeNull();
+    act(() => root.unmount());
   });
 });

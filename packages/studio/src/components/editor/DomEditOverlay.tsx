@@ -518,6 +518,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
       <InlineAgentComposerHost
+        overlayEl={overlayRef.current}
         rect={overlayRect}
         canvas={{
           width: overlayRef.current?.clientWidth ?? 0,
