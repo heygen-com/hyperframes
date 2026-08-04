@@ -424,6 +424,7 @@ export const ShowcaseWall = () => {
   // attributes, so a reduce-motion visitor has already started fetching every
   // tile. autoPlay also overrides preload="metadata", and removing src without
   // a following load() is not a reliable abort. CSS cannot reach any of this.
+  const wallRef = useRef(null);
   const [reduced, setReduced] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -483,8 +484,23 @@ export const ShowcaseWall = () => {
     );
   }
 
+  // React can drop src/autoPlay/loop from the DOM, but neither pauses a playing
+  // element nor aborts its selected resource: a media element keeps its current
+  // resource until the load algorithm is re-invoked, and `autoplay` only governs
+  // the first play. So a visitor who turns Reduce Motion on mid-session would
+  // otherwise keep every tile playing and downloading. Stop them for real.
+  useEffect(() => {
+    if (!reduced || !wallRef.current) return;
+    for (const video of wallRef.current.querySelectorAll("video")) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+  }, [reduced]);
+
   return (
     <div
+      ref={wallRef}
       style={{
         display: "grid",
         gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",

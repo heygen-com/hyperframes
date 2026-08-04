@@ -73,6 +73,7 @@ export const WorkflowChooser = () => {
   // attributes, so a reduce-motion visitor has already started fetching every
   // tile. autoPlay also overrides preload="metadata", and removing src without
   // a following load() is not a reliable abort. CSS cannot reach any of this.
+  const gridRef = useRef(null);
   const [reducedMotion, setReducedMotion] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -86,8 +87,22 @@ export const WorkflowChooser = () => {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
+  // React can drop src/autoPlay/loop from the DOM, but neither pauses a playing
+  // element nor aborts its selected resource: a media element keeps its current
+  // resource until the load algorithm is re-invoked, and `autoplay` only governs
+  // the first play. So a visitor who turns Reduce Motion on mid-session would
+  // otherwise keep every tile playing and downloading. Stop them for real.
+  useEffect(() => {
+    if (!reducedMotion || !gridRef.current) return;
+    for (const video of gridRef.current.querySelectorAll("video")) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+  }, [reducedMotion]);
+
   return (
-    <div className="hf-workflow-routes">
+    <div className="hf-workflow-routes" ref={gridRef}>
       {routes.map((route) => (
         <a
           key={route.href}
