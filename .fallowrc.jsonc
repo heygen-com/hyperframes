@@ -666,6 +666,11 @@
       // optional fields, but the line-shift fingerprint re-flags the inherited
       // complexity.
       "packages/studio/src/utils/sourcePatcher.ts",
+      // runtime/media.ts: refreshRuntimeMediaCache pre-dates this work and is
+      // untouched by it — this stack only adds a volume-lane branch to
+      // syncRuntimeMedia's author-volume resolution, but touching the file makes
+      // fallow report the inherited function.
+      "packages/core/src/runtime/media.ts",
       // timeline.ts: collectRuntimeTimelinePayload (CRITICAL) pre-dates this PR;
       // only an import line changed here (slideshow/sceneId → slideshow/index),
       // but the line-shift fingerprint makes fallow re-flag inherited complexity.

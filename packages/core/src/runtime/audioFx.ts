@@ -69,18 +69,6 @@ function readChain(el: { getAttribute?(name: string): string | null }): {
 }
 
 /**
- * An element's automation lanes, bound to whatever chain it carries.
- *
- * FX lanes need the chain to resolve their target's range, so they are dropped
- * for an element with no chain; a volume lane is always readable.
- */
-export function readElementAutomation(el: {
-  getAttribute?(name: string): string | null;
-}): HfAutomation {
-  return readAutomation(el, readChain(el).chain);
-}
-
-/**
  * Splice an element's FX chain between a decoded source and its gain stage.
  *
  * The transport plays audio from a decoded AudioBuffer rather than from the
@@ -88,8 +76,8 @@ export function readElementAutomation(el: {
  * point where effects belong — capturing the element would process a stream
  * nothing is listening to.
  *
- * Returns null when the element carries no chain, leaving the original
- * source-to-gain connection in place.
+ * A track with no chain is wired straight through, but still watched: adding its
+ * first effect is then heard without rescheduling the source.
  *
  * With `timing`, the element's automation lanes are scheduled onto the built
  * effects as AudioParam ramps, and rescheduled when the attribute is edited.
@@ -102,10 +90,6 @@ export function attachElementFxChain(
   timing?: AutomationTiming,
 ): { dispose(): void } | null {
   const { chain } = readChain(el);
-  if (chain.nodes.length === 0) {
-    source.connect(destination);
-    return null;
-  }
 
   // An AudioWorkletNode cannot be constructed before its processor is
   // registered — it throws, and the whole chain is lost. So when the chain
@@ -137,21 +121,56 @@ export function attachElementFxChain(
     };
   }
 
-  let handle: FxChainHandle;
-  try {
-    handle = buildFxChain(ctx, chain);
-  } catch {
-    // A chain we cannot realise plays dry rather than silencing the track.
-    source.connect(destination);
-    return null;
-  }
+  // Null means the source runs straight into its gain: an empty chain, or one
+  // that could not be realised. Mutable because a structural edit swaps the
+  // whole graph rather than re-parameterising it.
+  let handle: FxChainHandle | null = null;
+  let automated: FxParamTarget[] = [];
 
-  source.connect(handle.input);
-  handle.output.connect(destination);
+  /** Take the current graph out of the path, leaving the source connected dry. */
+  const detach = (): void => {
+    try {
+      if (handle) {
+        source.disconnect(handle.input);
+        handle.output.disconnect(destination);
+        handle.dispose();
+      } else {
+        source.disconnect(destination);
+      }
+    } catch {
+      // Already disconnected; nothing to unwind.
+    }
+    handle = null;
+  };
 
-  let automated: FxParamTarget[] = timing
-    ? scheduleChainAutomation(readAutomation(el, chain), chain, handle.nodes, timing)
-    : [];
+  /**
+   * Put `next` in the signal path.
+   *
+   * A chain that cannot be realised — an unregistered worklet, an unknown
+   * effect — plays dry rather than silencing the track.
+   */
+  const attach = (next: HfAudioFxChain): void => {
+    if (next.nodes.length === 0) {
+      source.connect(destination);
+      return;
+    }
+    try {
+      const built = buildFxChain(ctx, next);
+      source.connect(built.input);
+      built.output.connect(destination);
+      handle = built;
+    } catch {
+      source.connect(destination);
+    }
+  };
+
+  const scheduleFor = (next: HfAudioFxChain, at: AutomationTiming | null): void => {
+    automated =
+      at && handle ? scheduleChainAutomation(readAutomation(el, next), next, handle.nodes, at) : [];
+  };
+
+  attach(chain);
+  scheduleFor(chain, timing ?? null);
 
   /**
    * Re-aim the envelope at the live playhead. An edit lands mid-playback, so
@@ -171,14 +190,31 @@ export function attachElementFxChain(
     const at = timingNow();
     if (!at) return;
     cancelParamLane(automated, at.scheduledAt);
-    automated = scheduleChainAutomation(readAutomation(el, next), next, handle.nodes, at);
+    scheduleFor(next, at);
   };
 
-  // Follow the attribute while the source plays, so dragging a knob is heard
-  // without rescheduling the track. Values-only changes re-parameterise the
-  // running graph and land on the next 128-sample quantum; a shape change
-  // (effect added, bypassed, pole count) cannot be patched in place and waits
-  // for the next schedule rather than cutting the audio mid-play.
+  /**
+   * Rebuild the graph for a shape change — an effect added, removed, bypassed,
+   * or a filter's pole count switched — while the source keeps playing.
+   *
+   * The source node is untouched, so the audio does not restart; only the
+   * effects between it and its gain are replaced. Doing this here is what keeps
+   * a structural edit from needing a composition reload, which is what made the
+   * audio audibly chop.
+   */
+  const rebuild = (next: HfAudioFxChain): void => {
+    const at = timingNow();
+    cancelParamLane(automated, at?.scheduledAt ?? 0);
+    detach();
+    attach(next);
+    scheduleFor(next, at);
+  };
+
+  // Follow the attribute while the source plays, so editing a chain is heard
+  // without rescheduling the track. A values-only change re-parameterises the
+  // running graph and lands on the next 128-sample quantum; anything structural
+  // swaps the effects between the source and its gain, leaving the source — and
+  // so the playing audio — alone.
   let observer: MutationObserver | null = null;
   const target = el as unknown as Node;
   if (
@@ -187,11 +223,10 @@ export function attachElementFxChain(
   ) {
     observer = new MutationObserver(() => {
       const next = readChain(el);
-      if (next.chain.nodes.length === 0) return;
-      handle.update(next.chain);
-      // Values pushed by `update` would fight a running envelope, so the lanes
-      // are re-scheduled on top of them from the current playhead.
-      rescheduleAutomation(next.chain);
+      // `update` reports false when the change is structural rather than a new
+      // set of values, which is the signal to swap the graph.
+      if (!handle || !handle.update(next.chain)) rebuild(next.chain);
+      else rescheduleAutomation(next.chain);
     });
     observer.observe(target, {
       attributes: true,
@@ -205,7 +240,7 @@ export function attachElementFxChain(
       if (automated.length > 0) {
         cancelParamLane(automated, typeof ctx.currentTime === "number" ? ctx.currentTime : 0);
       }
-      handle.dispose();
+      handle?.dispose();
     },
   };
 }
