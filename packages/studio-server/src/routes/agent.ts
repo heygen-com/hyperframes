@@ -14,7 +14,11 @@ import type { StudioApiAdapter } from "../types.js";
  * (`/api/events`) reloads the preview.
  */
 
+/** Which harness the command belongs to — drives the icon Studio shows. */
+export type AgentKind = "claude" | "codex";
+
 export interface AgentCommand {
+  kind: AgentKind;
   label: string;
   command: string;
   args: string[];
@@ -26,11 +30,13 @@ export interface AgentCommand {
  */
 const AGENT_PRESETS: Record<string, AgentCommand> = {
   claude: {
+    kind: "claude",
     label: "Claude Code",
     command: "claude",
     args: ["-p", "--permission-mode", "acceptEdits"],
   },
   codex: {
+    kind: "codex",
     label: "Codex",
     command: "codex",
     args: ["exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "-"],
@@ -50,7 +56,11 @@ export function resolveAgentCommand(env: NodeJS.ProcessEnv = process.env): Agent
   const custom = env.HYPERFRAMES_AGENT_CMD?.trim();
   if (custom) {
     const [command, ...args] = custom.split(/\s+/);
-    if (command) return { label: command, command, args };
+    // A custom command names no harness. Sniff it, and when that is
+    // inconclusive show the Claude mark rather than no icon at all.
+    if (command) {
+      return { kind: /codex/i.test(custom) ? "codex" : "claude", label: command, command, args };
+    }
   }
 
   const named = env.HYPERFRAMES_AGENT?.trim();
@@ -93,7 +103,11 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const agent = resolveAgentCommand();
-    return c.json({ available: agent !== null, label: agent?.label ?? null });
+    return c.json({
+      available: agent !== null,
+      label: agent?.label ?? null,
+      kind: agent?.kind ?? null,
+    });
   });
 
   api.post("/projects/:id/agent", async (c) => {
@@ -114,7 +128,7 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
 
     try {
       const { output, exitCode } = await runAgent(agent, prompt, project.dir);
-      return c.json({ label: agent.label, output, exitCode });
+      return c.json({ kind: agent.kind, label: agent.label, output, exitCode });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return c.json({ error: `${agent.label} failed: ${msg}` }, 500);

@@ -149,6 +149,7 @@ export function useDomEditSession({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
+    agentRunKind,
     agentRunning,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
@@ -473,6 +474,7 @@ export function useDomEditSession({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
+    agentRunKind,
     agentRunning,
     // Refs
     domEditSelectionRef,

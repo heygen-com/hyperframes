@@ -12,6 +12,53 @@ export interface InlineAgentRunResult {
   message: string;
 }
 
+/** Mirrors the server's AgentKind — the harness whose mark the composer shows. */
+export type AgentKind = "claude" | "codex";
+
+/**
+ * Harness mark. Claude Code gets its coral sunburst; Codex gets a terminal
+ * caret rather than a hand-traced OpenAI knot, which would only ever be a bad
+ * copy of a trademark. Both are drawn with currentColor-independent brand hues
+ * so the running agent is identifiable at a glance.
+ */
+function AgentGlyph({ kind }: { kind: AgentKind }) {
+  if (kind === "codex") {
+    return (
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0 text-neutral-300"
+        aria-hidden="true"
+      >
+        <path d="M4 4.5 L7.5 8 L4 11.5" />
+        <path d="M9 11.5 H12.5" />
+      </svg>
+    );
+  }
+
+  // Eight tapered spokes on 45° steps — the Claude asterisk.
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      className="shrink-0"
+      fill="#d97757"
+      aria-hidden="true"
+    >
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+        <path key={angle} d="M8 1.2 L8.9 6.4 L8 8 L7.1 6.4 Z" transform={`rotate(${angle} 8 8)`} />
+      ))}
+    </svg>
+  );
+}
+
 const COMPOSER_WIDTH = 360;
 const GAP = 10;
 
@@ -63,6 +110,7 @@ export function InlineAgentComposer({
   rect,
   canvas,
   runLabel,
+  agentKind,
   running,
   onRun,
   onCopy,
@@ -73,6 +121,7 @@ export function InlineAgentComposer({
   canvas: { width: number; height: number };
   /** Name of the installed agent CLI, or null when none is available to run. */
   runLabel: string | null;
+  agentKind: AgentKind | null;
   running: boolean;
   onRun: (instruction: string) => Promise<InlineAgentRunResult | undefined>;
   onCopy: (instruction: string) => void;
@@ -80,6 +129,10 @@ export function InlineAgentComposer({
 }) {
   const [value, setValue] = useState("");
   const [result, setResult] = useState<InlineAgentRunResult | null>(null);
+  // Drag offset from the anchored position — the composer can cover the very
+  // element being edited, so the header doubles as a drag handle.
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useMountEffect(() => {
@@ -100,6 +153,30 @@ export function InlineAgentComposer({
     inputRef.current?.focus();
   };
 
+  const dragHandlers = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX - offset.x,
+        startY: e.clientY - offset.y,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      setOffset({ x: e.clientX - drag.startX, y: e.clientY - drag.startY });
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      if (dragRef.current?.pointerId !== e.pointerId) return;
+      dragRef.current = null;
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    },
+  };
+
   const statusText = running
     ? `${runLabel} is editing…`
     : (result?.message ?? (runLabel ? "Enter to run · Esc to close" : "Enter to copy the prompt"));
@@ -108,7 +185,10 @@ export function InlineAgentComposer({
     <div
       data-inline-agent-composer="true"
       className={`hf-composer-enter absolute z-20 w-[360px] p-2 ${SURFACE_CLASS}`}
-      style={resolveComposerPosition(rect, canvas, result || running ? 130 : 112)}
+      style={{
+        ...resolveComposerPosition(rect, canvas, result || running ? 130 : 112),
+        translate: offset.x || offset.y ? `${offset.x}px ${offset.y}px` : undefined,
+      }}
       // The canvas overlay owns pointer gestures — keep clicks and keystrokes
       // inside the composer from reselecting or nudging the element being edited.
       onPointerDown={(e) => e.stopPropagation()}
@@ -116,13 +196,20 @@ export function InlineAgentComposer({
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
-        <span className="truncate text-[11px] leading-none text-neutral-500">
-          {runLabel ? `${runLabel} · ` : ""}
-          {selectionLabel}
+      <div
+        className="flex cursor-grab items-center justify-between gap-2 px-1 pb-1.5 active:cursor-grabbing"
+        {...dragHandlers}
+      >
+        <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-none text-neutral-500">
+          {agentKind && <AgentGlyph kind={agentKind} />}
+          <span className="truncate">
+            {runLabel ? `${runLabel} · ` : ""}
+            {selectionLabel}
+          </span>
         </span>
         <button
           className="rounded-md p-0.5 text-neutral-600 transition-colors duration-150 ease-out hover:text-neutral-300 active:scale-[0.96]"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={onClose}
           aria-label="Close"
         >
@@ -233,6 +320,7 @@ export function InlineAgentComposerHost({
       rect={rect}
       canvas={canvas}
       runLabel={selectionValue.agentRunLabel}
+      agentKind={selectionValue.agentRunKind}
       running={selectionValue.agentRunning}
       onRun={actions.handleAgentModalRun}
       onCopy={(instruction) => void actions.handleAgentModalSubmit(instruction)}

@@ -68,10 +68,17 @@ function createApp(projectDir: string): Hono {
 describe("resolveAgentCommand", () => {
   it("prefers an explicit command over presets", () => {
     expect(resolveAgentCommand({ HYPERFRAMES_AGENT_CMD: "my-agent --run now" })).toEqual({
+      kind: "claude",
       label: "my-agent",
       command: "my-agent",
       args: ["--run", "now"],
     });
+  });
+
+  it("labels a custom command with the harness it names", () => {
+    // An unrecognizable command still gets a mark rather than a blank slot.
+    expect(resolveAgentCommand({ HYPERFRAMES_AGENT_CMD: "codex exec -" })?.kind).toBe("codex");
+    expect(resolveAgentCommand({ HYPERFRAMES_AGENT_CMD: "my-agent" })?.kind).toBe("claude");
   });
 
   it("resolves a named preset", () => {
@@ -110,6 +117,6 @@ describe("registerAgentRoutes", () => {
   it("reports availability without running anything", async () => {
     process.env.HYPERFRAMES_AGENT_CMD = "my-agent";
     const res = await createApp(createProjectDir()).request("/projects/p1/agent");
-    expect(await res.json()).toEqual({ available: true, label: "my-agent" });
+    expect(await res.json()).toEqual({ available: true, label: "my-agent", kind: "claude" });
   });
 });

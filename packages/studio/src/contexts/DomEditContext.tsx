@@ -89,6 +89,7 @@ export interface DomEditSelectionValue extends Pick<
   | "copiedAgentPrompt"
   | "agentPromptSelectionContext"
   | "agentRunLabel"
+  | "agentRunKind"
   | "agentRunning"
 > {}
 
@@ -135,6 +136,7 @@ export function DomEditProvider({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
+    agentRunKind,
     agentRunning,
     domEditSelectionRef,
     handleTimelineElementSelect,
@@ -378,6 +380,7 @@ export function DomEditProvider({
       copiedAgentPrompt,
       agentPromptSelectionContext,
       agentRunLabel,
+      agentRunKind,
       agentRunning,
     }),
     [
@@ -393,6 +396,7 @@ export function DomEditProvider({
       copiedAgentPrompt,
       agentPromptSelectionContext,
       agentRunLabel,
+      agentRunKind,
       agentRunning,
     ],
   );

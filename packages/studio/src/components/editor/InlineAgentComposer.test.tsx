@@ -27,6 +27,7 @@ function renderComposer(overrides: Partial<Parameters<typeof InlineAgentComposer
         rect={rect({})}
         canvas={{ width: 800, height: 600 }}
         runLabel="Claude Code"
+        agentKind="claude"
         running={false}
         onRun={vi.fn()}
         onCopy={vi.fn()}
@@ -125,6 +126,27 @@ describe("InlineAgentComposer", () => {
 
     expect(onCopy).toHaveBeenCalledWith("make it pop");
     expect(onRun).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("shows the harness mark and drags from the header", () => {
+    const { host, root } = renderComposer({ agentKind: "claude" });
+    const composer = host.querySelector<HTMLElement>("[data-inline-agent-composer]");
+    expect(composer?.querySelector('svg[fill="#d97757"]')).toBeTruthy();
+
+    const header = composer?.firstElementChild as HTMLElement;
+    header.setPointerCapture = vi.fn();
+    header.releasePointerCapture = vi.fn();
+    act(() => {
+      header.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
+      header.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 140, clientY: 130 }),
+      );
+    });
+
+    expect(composer?.style.translate).toBe("40px 30px");
     act(() => root.unmount());
   });
 

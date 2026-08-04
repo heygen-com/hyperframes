@@ -3,7 +3,7 @@ import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
-import type { InlineAgentRunResult } from "../components/editor/InlineAgentComposer";
+import type { AgentKind, InlineAgentRunResult } from "../components/editor/InlineAgentComposer";
 import { usePlayerStore } from "../player";
 
 // ── Types ──
@@ -39,6 +39,7 @@ export function useAskAgentModal({
   // null while unknown — the Run button stays hidden until the server confirms
   // a harness CLI (claude / codex / HYPERFRAMES_AGENT_CMD) is installed.
   const [agentRunLabel, setAgentRunLabel] = useState<string | null>(null);
+  const [agentRunKind, setAgentRunKind] = useState<AgentKind | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
 
   // ── Refs ──
@@ -94,10 +95,14 @@ export function useAskAgentModal({
     if (!pid) return;
     void fetch(`/api/projects/${pid}/agent`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { available?: boolean; label?: string | null } | null) => {
+      .then((data: { available?: boolean; label?: string | null; kind?: AgentKind } | null) => {
         setAgentRunLabel(data?.available ? (data.label ?? "agent") : null);
+        setAgentRunKind(data?.available ? (data.kind ?? "claude") : null);
       })
-      .catch(() => setAgentRunLabel(null));
+      .catch(() => {
+        setAgentRunLabel(null);
+        setAgentRunKind(null);
+      });
   }, [preloadAgentPromptSnippet, projectIdRef, resolveSelection]);
 
   const buildPrompt = useCallback(
@@ -195,6 +200,7 @@ export function useAskAgentModal({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
+    agentRunKind,
     agentRunning,
 
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
