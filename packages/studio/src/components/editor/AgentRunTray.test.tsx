@@ -233,6 +233,8 @@ describe("harness marks", () => {
       [...host.querySelectorAll("li svg")].map((svg) => svg.getAttribute("viewBox")),
     );
     expect(viewBoxes).toEqual(new Set(["0 0 248 248", "0 0 24 24", "0 0 16 16"]));
+    // Codex ships a two-path icon with its own gradient, not a flat glyph.
+    expect(host.querySelector('li svg linearGradient')).toBeTruthy();
     expect(host.querySelectorAll("li svg[shape-rendering='crispEdges']")).toHaveLength(1);
     expect(host.querySelector("li img")?.getAttribute("src")).toContain("data:image/png");
     act(() => root.unmount());
