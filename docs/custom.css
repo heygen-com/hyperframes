@@ -761,63 +761,9 @@ samp {
   color: #fff;
   isolation: isolate;
   outline: none;
-}
-
-.hf-agent-action {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.25rem;
-  margin: 2rem 0 1.5rem;
-  padding: 1rem 1.05rem;
-  border: 1px solid rgba(128, 128, 128, 0.26);
-  border-radius: 0.7rem;
-  background: rgba(128, 128, 128, 0.05);
-}
-
-.hf-agent-action > div {
-  display: grid;
-  gap: 0.16rem;
-}
-
-.hf-agent-action strong {
-  font-size: 0.86rem;
-  font-weight: 650;
-}
-
-.hf-agent-action span {
-  opacity: 0.64;
-  font-size: 0.76rem;
-}
-
-.hf-agent-action button {
-  flex: 0 0 auto;
-  padding: 0.52rem 0.78rem;
-  border: 1px solid rgba(128, 128, 128, 0.38);
-  border-radius: 0.48rem;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 620;
-  cursor: pointer;
-}
-
-.hf-agent-action button:hover,
-.hf-agent-action button:focus-visible {
-  border-color: var(--hf-brand);
-  background: var(--hf-brand-soft);
 }@media (max-width: 720px) {}
 
-@media (max-width: 520px) {
-  .hf-agent-action {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .hf-agent-action button {
-    width: 100%;
-  }}
+@media (max-width: 520px) {}
 
 .hf-docs-video:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--hf-video-accent) 78%, transparent);
