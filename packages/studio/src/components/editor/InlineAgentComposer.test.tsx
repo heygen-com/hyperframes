@@ -292,3 +292,13 @@ describe("InlineAgentComposer", () => {
     act(() => root.unmount());
   });
 });
+
+describe("canvas stacking", () => {
+  it("draws above the overlay's own decorations", () => {
+    // The motion path and its keyframe nodes sit at z-40 and used to cross
+    // straight through both the composer and the ask handle.
+    const { host, root } = renderComposer({});
+    expect(host.querySelector("[data-inline-agent-composer]")?.className).toContain("z-50");
+    act(() => root.unmount());
+  });
+});

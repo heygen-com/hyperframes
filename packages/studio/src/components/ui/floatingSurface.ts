@@ -41,3 +41,11 @@ export const GHOST_ICON_BUTTON =
   "rounded-md p-0.5 text-neutral-600 transition-colors duration-150 ease-out " +
   "hover:bg-neutral-800/70 hover:text-neutral-200 active:scale-[0.96] " +
   "disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-neutral-600";
+
+/**
+ * Stacking inside the canvas overlay. The overlay's own decorations climb to
+ * `z-40` (the motion path and its keyframe nodes), so anything the user is
+ * meant to read or click has to sit above them — the composer and the ask
+ * handle both drew under the path before this was pinned down.
+ */
+export const CANVAS_OVERLAY_CONTROL_Z = "z-50";

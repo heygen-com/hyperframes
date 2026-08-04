@@ -13,7 +13,7 @@ import {
   type CustomAgentDraft,
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
-import { FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
+import { CANVAS_OVERLAY_CONTROL_Z, FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
 import { AgentRunTray } from "./AgentRunTray";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -171,7 +171,7 @@ export function InlineAgentComposer({
   return (
     <div
       data-inline-agent-composer="true"
-      className={`hf-composer-enter absolute z-20 w-[320px] ${SURFACE_CLASS}`}
+      className={`hf-composer-enter absolute ${CANVAS_OVERLAY_CONTROL_Z} w-[320px] ${SURFACE_CLASS}`}
       style={{
         ...resolveComposerPosition(rect, canvas),
         translate: offset.x || offset.y ? `${offset.x}px ${offset.y}px` : undefined,
@@ -435,7 +435,7 @@ function AskAgentHandle({
   return (
     <button
       data-ask-agent-handle="true"
-      className={`hf-composer-enter group absolute z-20 flex h-[26px] w-[26px] items-center gap-1.5 overflow-hidden rounded-full px-[6px] text-[11px] leading-none text-neutral-300 transition-[width,color,box-shadow] duration-150 ease-out hover:w-[104px] hover:text-neutral-100 hover:ring-white/25 focus-visible:w-[104px] active:scale-[0.96] ${FLOATING_CHIP}`}
+      className={`hf-composer-enter group absolute ${CANVAS_OVERLAY_CONTROL_Z} flex h-[26px] w-[26px] items-center gap-1.5 overflow-hidden rounded-full px-[6px] text-[11px] leading-none text-neutral-300 transition-[width,color,box-shadow] duration-150 ease-out hover:w-[104px] hover:text-neutral-100 hover:ring-white/25 focus-visible:w-[104px] active:scale-[0.96] ${FLOATING_CHIP}`}
       style={{ left: right - HANDLE_WIDTH, top }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
