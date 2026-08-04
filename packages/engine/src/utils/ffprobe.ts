@@ -1,7 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
 import { createReadStream, readFileSync, statSync } from "fs";
-import { open as openFile } from "node:fs/promises";
 import * as zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
 import { basename } from "path";
@@ -361,18 +360,34 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
 
 class StructurallyIncompletePngError extends Error {}
 
+async function readFileRange(
+  filePath: string,
+  start: number,
+  length: number,
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of createReadStream(filePath, {
+    start,
+    end: start + length - 1,
+    highWaterMark: length,
+    signal,
+  })) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
 async function hasCompletePngStructure(filePath: string, signal?: AbortSignal): Promise<boolean> {
-  let file: Awaited<ReturnType<typeof openFile>> | undefined;
   try {
-    file = await openFile(filePath, "r");
     signal?.throwIfAborted();
-    const fileSize = (await file.stat()).size;
-    signal?.throwIfAborted();
-    const signature = Buffer.alloc(8);
-    const signatureRead = await file.read(signature, 0, signature.length, 0);
+    const fileSize = statSync(filePath).size;
+    // Range streams are read-only and skip large IDAT payloads without loading
+    // the entire image into memory.
+    const signature = await readFileRange(filePath, 0, 8, signal);
     signal?.throwIfAborted();
     if (
-      signatureRead.bytesRead !== signature.length ||
+      signature.length !== 8 ||
       !signature.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
     ) {
       return false;
@@ -381,12 +396,11 @@ async function hasCompletePngStructure(filePath: string, signal?: AbortSignal): 
     let seenHeader = false;
     let seenImageData = false;
     let offset = 8;
-    const chunkHeader = Buffer.alloc(8);
     while (offset + 12 <= fileSize) {
       signal?.throwIfAborted();
-      const headerRead = await file.read(chunkHeader, 0, chunkHeader.length, offset);
+      const chunkHeader = await readFileRange(filePath, offset, 8, signal);
       signal?.throwIfAborted();
-      if (headerRead.bytesRead !== chunkHeader.length) return false;
+      if (chunkHeader.length !== 8) return false;
       const chunkLength = chunkHeader.readUInt32BE(0);
       const chunkEnd = offset + 12 + chunkLength;
       if (chunkEnd > fileSize) return false;
@@ -400,8 +414,6 @@ async function hasCompletePngStructure(filePath: string, signal?: AbortSignal): 
   } catch (error) {
     if (signal?.aborted) throw signal.reason ?? error;
     return false;
-  } finally {
-    await file?.close().catch(() => {});
   }
 }
 
