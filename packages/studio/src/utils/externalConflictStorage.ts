@@ -112,6 +112,11 @@ function createIndexedDbExternalConflictStorage(): ExternalConflictStorage {
 
 const indexedDbStorage = createIndexedDbExternalConflictStorage();
 
+/**
+ * Persist a conflict before offering destructive recovery actions.
+ * Callers must await this promise: rejection means the Studio draft was not saved durably and
+ * must remain available in memory while the storage failure is surfaced to the user.
+ */
 export async function persistExternalConflictSnapshot(
   projectId: string,
   conflict: StudioFileConflictError,
@@ -127,6 +132,11 @@ export async function persistExternalConflictSnapshot(
   });
 }
 
+/**
+ * Persist the final Studio candidate after its file write fails.
+ * Callers must await this promise: rejection means the Studio draft was not saved durably and
+ * must remain available in memory while the storage failure is surfaced to the user.
+ */
 export async function persistExternalFailureSnapshot(
   projectId: string,
   filePath: string,

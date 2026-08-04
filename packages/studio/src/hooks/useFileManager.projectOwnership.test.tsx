@@ -20,11 +20,15 @@ vi.mock("./useEditorSave", () => ({
   useEditorSave: () => ({
     saveRafRef: { current: null },
     handleContentChange: vi.fn(),
+    getPendingCandidate: vi.fn(() => null),
+    flushPendingSave: vi.fn(async () => ({ status: "clean" as const })),
+    discardPendingSave: vi.fn(),
   }),
 }));
 
 import { useFileManager } from "./useFileManager";
-import { resetStudioWriteTokens } from "../utils/studioFileVersion";
+import { resetStudioWriteTokens, studioFileContentVersion } from "../utils/studioFileVersion";
+import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,6 +39,39 @@ function useTestFileManager(projectId: string) {
     recordEdit: vi.fn(async () => {}),
     domEditSaveTimestampRef: { current: 0 },
     setRefreshKey: vi.fn(),
+  });
+}
+
+async function mountTestFileManager(projectId = "project-a") {
+  const captured: { manager: ReturnType<typeof useFileManager> | null } = { manager: null };
+  function Probe() {
+    captured.manager = useTestFileManager(projectId);
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(<Probe />));
+  const manager = captured.manager;
+  if (!manager) throw new Error("file manager did not render");
+  return { manager, root };
+}
+
+async function mountOverwriteRequest(response: Response) {
+  const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+    if (init?.method !== "PUT") {
+      throw new Error("overwrite unexpectedly performed a preflight read");
+    }
+    return Promise.resolve(response);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return { ...(await mountTestFileManager()), fetchMock };
+}
+
+function createOverwriteConflict(currentVersion: string | null, currentContent: string | null) {
+  return new StudioFileConflictError({
+    filePath: "index.html",
+    currentVersion,
+    currentContent,
+    attemptedContent: "STUDIO",
   });
 }
 
@@ -130,16 +167,7 @@ describe("useFileManager project ownership", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const captured: { manager: ReturnType<typeof useFileManager> | null } = { manager: null };
-    function Probe() {
-      captured.manager = useTestFileManager("project-a");
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div"));
-    await act(async () => root.render(<Probe />));
-    const manager = captured.manager;
-    if (!manager) throw new Error("file manager did not render");
+    const { manager, root } = await mountTestFileManager();
     await manager.readProjectFile("index.html");
 
     const write = manager.writeProjectFile("index.html", "AFTER");
@@ -153,6 +181,61 @@ describe("useFileManager project ownership", () => {
     expect(writeTokens[0]).toBeTruthy();
     expect(writeTokens[1]).not.toBe(writeTokens[0]);
 
+    await act(async () => root.unmount());
+  });
+
+  it("overwrites the exact external content version with an If-Match precondition", async () => {
+    const { manager, root, fetchMock } = await mountOverwriteRequest({
+      ok: true,
+      json: async () => ({ version: "v3" }),
+    } as Response);
+    const conflict = createOverwriteConflict("v2", "EXTERNAL");
+
+    await manager.overwriteExternalConflict(conflict);
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+    expect(init).toMatchObject({ method: "PUT", body: "STUDIO" });
+    expect(headers.get("If-Match")).toBe(await studioFileContentVersion("EXTERNAL"));
+    expect(headers.get("If-None-Match")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("preserves a newer third-party edit when a content-less conflict version is stale", async () => {
+    const { manager, root, fetchMock } = await mountOverwriteRequest({
+      ok: false,
+      status: 409,
+      json: async () => ({ currentVersion: "v3", currentContent: "THIRD PARTY" }),
+    } as Response);
+    const conflict = createOverwriteConflict("v2", null);
+
+    await expect(manager.overwriteExternalConflict(conflict)).rejects.toMatchObject({
+      name: "StudioFileConflictError",
+      currentVersion: "v3",
+      currentContent: "THIRD PARTY",
+      attemptedContent: "STUDIO",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("If-Match")).toBe("v2");
+    expect(headers.get("If-None-Match")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("uses create-only semantics when the conflicted file was deleted", async () => {
+    const { manager, root, fetchMock } = await mountOverwriteRequest({
+      ok: true,
+      json: async () => ({ version: "v1" }),
+    } as Response);
+    const conflict = createOverwriteConflict(null, null);
+
+    await manager.overwriteExternalConflict(conflict);
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("If-Match")).toBeNull();
+    expect(headers.get("If-None-Match")).toBe("*");
     await act(async () => root.unmount());
   });
 });
