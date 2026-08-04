@@ -67,9 +67,17 @@ function isPreviewMediaElement(el: Element): el is HTMLMediaElement {
   return tagName === "video" || tagName === "audio";
 }
 
-// Assets are considered ready when every `<video>`/`<audio>` has enough data
-// to play through without buffering, and every registered Lottie animation has
-// finished loading.
+// Assets are considered ready when every `<video>`/`<audio>` the runtime is
+// buffering has enough data to play through without buffering, and every
+// registered Lottie animation has finished loading.
+//
+// "the runtime is buffering" is `preload="auto"`. The preview runtime fetches
+// only the playhead's neighbourhood and deliberately leaves the rest of a
+// composition's media unfetched (applyMediaPreloadPolicy in
+// @hyperframes/core runtime/init.ts), so a clip two minutes away is *expected*
+// to sit below HAVE_FUTURE_DATA forever. Waiting on those would hold the
+// overlay for its full 10 s cap on any project whose media does not all sit
+// under the playhead — and poll the whole document 100 times getting there.
 //
 // Returns whichever value was returned last on cross-origin / transient DOM
 // races so a brief access failure (e.g. an iframe that just swapped src)
@@ -84,6 +92,7 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
     for (const el of doc.querySelectorAll("video, audio")) {
       if (
         isPreviewMediaElement(el) &&
+        el.preload === "auto" &&
         !el.error &&
         el.networkState !== MEDIA_NETWORK_NO_SOURCE &&
         el.readyState < MEDIA_HAVE_FUTURE_DATA

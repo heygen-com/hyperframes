@@ -64,6 +64,130 @@ export type RuntimeMediaClip = {
   volumeKeyframes?: VolumeKeyframe[];
 };
 
+type RuntimeMediaElement = HTMLVideoElement | HTMLAudioElement;
+
+// Every media element in the document, in document order. Rebuilt only when a
+// mutation adds or removes one, not once per seek: the full-document
+// `querySelectorAll("video, audio")` this replaces walked the whole tree on
+// every scrub frame, which on a 273-clip project is the single largest
+// per-frame cost in the preview iframe.
+let mediaRegistry: RuntimeMediaElement[] | null = null;
+let mediaRegistryObserver: MutationObserver | null = null;
+
+function nodesTouchMedia(nodes: NodeList): boolean {
+  for (const node of nodes) {
+    if (!(node instanceof Element)) continue;
+    if (node.tagName === "VIDEO" || node.tagName === "AUDIO") return true;
+    // Element-scoped, so it only walks the added/removed subtree — a
+    // sub-composition being swapped in, not the document.
+    if (node.querySelector("video, audio")) return true;
+  }
+  return false;
+}
+
+function forEachMediaIn(nodes: NodeList, visit: (element: RuntimeMediaElement) => void): boolean {
+  let found = false;
+  for (const node of nodes) {
+    if (!(node instanceof Element)) continue;
+    if (node instanceof HTMLVideoElement || node instanceof HTMLAudioElement) {
+      found = true;
+      visit(node);
+    }
+    // Element-scoped, so it only walks the added subtree.
+    for (const nested of node.querySelectorAll("video, audio")) {
+      if (!(nested instanceof HTMLVideoElement || nested instanceof HTMLAudioElement)) continue;
+      found = true;
+      visit(nested);
+    }
+  }
+  return found;
+}
+
+/**
+ * Whether media is buffered up front instead of following the playhead. True
+ * for render capture, on both of the runtime's render signals: the producer
+ * file server's `RENDER_CAPTURE_MODE_SHIM` (set before any page script, so it
+ * is readable while the document is still parsing) and the export seek
+ * protocol's config (written by the render-mode body script). The renderer
+ * captures whatever the browser has decoded at the instant a frame is taken,
+ * so trading buffered bytes for a faster open there buys nothing and risks a
+ * silent or black export.
+ *
+ * `window.d.ts` declares both globals, but it is outside the package's main
+ * tsconfig program — hence the local shape rather than a bare property read.
+ */
+export function usesEagerMediaPreload(): boolean {
+  const win = window as Window & {
+    __HF_RENDER_CAPTURE_MODE?: boolean;
+    __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown;
+  };
+  return Boolean(win.__HF_RENDER_CAPTURE_MODE || win.__HF_EXPORT_RENDER_SEEK_CONFIG);
+}
+
+/**
+ * Stop a freshly-parsed media element from fetching its source before the
+ * runtime has decided whether the playhead is anywhere near it. The runtime's
+ * neighbourhood policy (`init.ts`) raises it to `metadata` or `auto` once it
+ * can place the element against the current time.
+ *
+ * This has to happen as each element is parsed, not at init: `preload` set
+ * after `DOMContentLoaded` loses the race against the resource-selection task
+ * the parser already queued. Measured on the Studio runtime-cost fixture,
+ * deferring only at init left 30 of 56 elements already fetching; deferring
+ * here left 1.
+ */
+function deferParsedMediaPreload(element: RuntimeMediaElement): void {
+  if (usesEagerMediaPreload()) return;
+  // An authored `preload` or `autoplay` is an explicit instruction about this
+  // element's own buffering — overriding it would be the runtime deciding
+  // against the author rather than for the playhead.
+  if (element.hasAttribute("preload") || element.autoplay) return;
+  element.preload = "none";
+}
+
+function handleMediaMutations(records: MutationRecord[]): void {
+  let touched = false;
+  for (const record of records) {
+    if (forEachMediaIn(record.addedNodes, deferParsedMediaPreload)) touched = true;
+    if (!touched && nodesTouchMedia(record.removedNodes)) touched = true;
+  }
+  if (touched) mediaRegistry = null;
+}
+
+function ensureMediaRegistryObserver(): void {
+  if (mediaRegistryObserver || typeof MutationObserver !== "function") return;
+  mediaRegistryObserver = new MutationObserver(handleMediaMutations);
+  mediaRegistryObserver.observe(document, { childList: true, subtree: true });
+  mediaRegistry = null;
+}
+
+/**
+ * Start observing media at script-evaluation time, while the document is
+ * still parsing, so `deferParsedMediaPreload` sees each element before the
+ * browser acts on it. Called from the runtime entry, not from `init`, which
+ * runs at `DOMContentLoaded` — by then every element has already been parsed.
+ */
+export function installRuntimeMediaObserver(): void {
+  ensureMediaRegistryObserver();
+}
+
+function readMediaRegistry(): RuntimeMediaElement[] {
+  ensureMediaRegistryObserver();
+  if (mediaRegistryObserver) {
+    // Drain synchronously rather than waiting for the observer's microtask:
+    // the runtime injects a sub-composition and seeks in the same task, and a
+    // registry that lagged by a microtask would render that seek without its
+    // media. `takeRecords` is proportional to mutations since the last call —
+    // zero during a scrub, where only inline styles change.
+    handleMediaMutations(mediaRegistryObserver.takeRecords());
+  } else {
+    // ponytail: no observer (non-DOM host), no cache — always re-query.
+    mediaRegistry = null;
+  }
+  mediaRegistry ??= Array.from(document.querySelectorAll("video, audio")) as RuntimeMediaElement[];
+  return mediaRegistry;
+}
+
 export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
@@ -74,9 +198,7 @@ export function refreshRuntimeMediaCache(params?: {
   videoClips: RuntimeMediaClip[];
   maxMediaEnd: number;
 } {
-  const mediaEls = Array.from(document.querySelectorAll("video, audio")) as Array<
-    HTMLVideoElement | HTMLAudioElement
-  >;
+  const mediaEls = readMediaRegistry();
   const timedMediaEls = params?.shouldIncludeElement
     ? mediaEls.filter((el) => params.shouldIncludeElement?.(el))
     : mediaEls.filter((el) => el.hasAttribute("data-start"));
@@ -183,6 +305,54 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
   lastRuntimeAppliedVolume.delete(el);
 }
 
+// Elements inside the previous tick's time window, and every element this
+// module has ever been handed. Together they turn the per-tick visit list into
+// a transition set: clips in window now, plus the ones that just left it.
+// Departures cannot be recovered from a point query at the current time —
+// during playback the playhead crosses a clip's `end` between frames, and the
+// tick that has to call `pause()` on it is the one where it is already out of
+// window. Nothing else pauses it: `hardSyncAllMedia` only assigns
+// `currentTime`, so a missed departure means audio running past its clip edge
+// for the rest of an exported video.
+let lastWindowElements = new Set<HTMLMediaElement>();
+const knownMediaElements = new WeakSet<HTMLMediaElement>();
+
+/**
+ * Split `clips` into the ones whose window contains `timeSeconds` and pause
+ * whatever left the window since the last call. Only in-window (and
+ * newly-departed, and never-before-seen) elements are touched; the pass over
+ * `clips` itself reads plain numbers, no DOM.
+ */
+function selectMediaTransitionSet(
+  clips: RuntimeMediaClip[],
+  timeSeconds: number,
+): RuntimeMediaClip[] {
+  const inWindow: RuntimeMediaClip[] = [];
+  const windowElements = new Set<HTMLMediaElement>();
+  for (const clip of clips) {
+    if (timeSeconds >= clip.start && timeSeconds < clip.end) {
+      inWindow.push(clip);
+      windowElements.add(clip.el);
+      knownMediaElements.add(clip.el);
+      continue;
+    }
+    if (knownMediaElements.has(clip.el)) continue;
+    // First sight, already out of window: an authored `autoplay` element is
+    // running right now and would never be visited again.
+    knownMediaElements.add(clip.el);
+    if (!clip.el.paused) clip.el.pause();
+  }
+  for (const el of lastWindowElements) {
+    if (windowElements.has(el)) continue;
+    // Clip left its active window — drop the offset baseline so the next
+    // activation (e.g. re-entering a sub-composition) gets a hard resync.
+    evictMediaSyncState(el);
+    if (!el.paused) el.pause();
+  }
+  lastWindowElements = windowElements;
+  return inWindow;
+}
+
 /** Test-only seam: whether any per-source sync state is still tracked for `el`. */
 export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   return (
@@ -228,7 +398,7 @@ export function syncRuntimeMedia(params: {
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
-  for (const clip of params.clips) {
+  for (const clip of selectMediaTransitionSet(params.clips, params.timeSeconds)) {
     const { el } = clip;
     if (!el.isConnected) continue;
     let relTime = (params.timeSeconds - clip.start) * clip.playbackRate + clip.mediaStart;
@@ -439,8 +609,9 @@ export function syncRuntimeMedia(params: {
       }
       continue;
     }
-    // Clip left its active window — drop the offset baseline so the next
-    // activation (e.g. re-entering a sub-composition) gets a hard resync.
+    // In window by time but not playable — audio that ended naturally, or a
+    // negative `data-media-start` that puts relTime before zero. Same
+    // treatment as a departure: drop the baseline so re-activation hard-syncs.
     evictMediaSyncState(el);
     if (!el.paused) el.pause();
   }
