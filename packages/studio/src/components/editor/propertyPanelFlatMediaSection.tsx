@@ -12,6 +12,7 @@ import {
 } from "./propertyPanelHelpers";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
+import { AutomationToggle } from "./propertyPanelFxControls";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -22,6 +23,9 @@ export function FlatMediaSection({
   onSetAttribute,
   onSetHtmlAttribute,
   onRemoveBackground,
+  volumeAutomated,
+  onAutomateVolume,
+  onRemoveVolumeAutomation,
 }: {
   projectDir: string | null;
   element: DomEditSelection;
@@ -29,6 +33,10 @@ export function FlatMediaSection({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
+  /** A volume lane in the timeline drives the level; the slider cannot. */
+  volumeAutomated?: boolean;
+  onAutomateVolume?: () => void;
+  onRemoveVolumeAutomation?: () => void;
   onRemoveBackground?: (
     inputPath: string,
     options: {
@@ -197,15 +205,35 @@ export function FlatMediaSection({
       )}
       {(isVideo || isAudio) && (
         <>
-          <FlatSlider
-            label="Volume"
-            value={volumePercent}
-            min={0}
-            max={100}
-            tier={volumePercent === 100 ? "default" : "explicitCustom"}
-            displayValue={`${volumePercent}%`}
-            onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
-          />
+          {/* The slider is disabled while a lane owns the level: a value set
+              here would be overwritten by the envelope on the next tick. The
+              toggle beside it carries the tooltip. */}
+          <div
+            className="hf-volume-row flex items-center gap-1"
+            data-volume-automated={volumeAutomated ? "" : undefined}
+          >
+            <div className="min-w-0 flex-1">
+              <FlatSlider
+                label="Volume"
+                value={volumePercent}
+                min={0}
+                max={100}
+                tier={volumePercent === 100 ? "default" : "explicitCustom"}
+                displayValue={`${volumePercent}%`}
+                disabled={volumeAutomated}
+                onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
+              />
+            </div>
+            <AutomationToggle
+              paramKey="volume"
+              label="Volume"
+              automated={Boolean(volumeAutomated)}
+              onAutomate={onAutomateVolume ? () => onAutomateVolume() : undefined}
+              onRemoveAutomation={
+                onRemoveVolumeAutomation ? () => onRemoveVolumeAutomation() : undefined
+              }
+            />
+          </div>
           <FlatSlider
             label="Rate"
             value={playbackRate * 100}

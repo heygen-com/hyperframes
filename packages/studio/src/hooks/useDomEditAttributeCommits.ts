@@ -284,6 +284,27 @@ export function useDomEditAttributeCommits({
     [commitDataAttribute],
   );
 
+  /**
+   * Persist without reloading the preview, but re-read the selection afterwards.
+   *
+   * For attributes the runtime applies to the live graph itself — an audio FX
+   * chain, its automation — a reload would only interrupt playback to reach the
+   * state the preview already has. The resync is still needed: without it the
+   * panel keeps reading the selection snapshot it was built with, so a second
+   * edit computes from a pre-edit value and appears to do nothing.
+   */
+  const handleDomAttributeQuietCommit = useCallback(
+    async (attr: string, value: string | null) => {
+      await commitDataAttribute(attr, value, {
+        label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
+        coalescePrefix: "attr-quiet",
+        skipRefresh: true,
+        refreshAfter: true,
+      });
+    },
+    [commitDataAttribute],
+  );
+
   const handleDomHtmlAttributeCommit = useCallback(
     async (attr: string, value: string | null) => {
       if (!domEditSelection) return;
@@ -343,6 +364,7 @@ export function useDomEditAttributeCommits({
   return {
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
   };

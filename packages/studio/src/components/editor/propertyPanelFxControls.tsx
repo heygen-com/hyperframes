@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Tooltip } from "../ui/Tooltip";
 import type {
   HfAudioFxDef,
   HfAudioFxNumberParam,
@@ -46,9 +47,66 @@ interface ParamRowProps {
   /** Fires once when the gesture ends — this is the write that persists. */
   onCommit?(key: string, value: number | string): void;
   disabled?: boolean;
+  /**
+   * A lane in the timeline drives this parameter. The control is disabled
+   * because a value typed here would be overwritten by the envelope on the next
+   * tick — the lane is the value now.
+   */
+  automated?: boolean;
+  /** Add a lane for this parameter, seeded at its current value. */
+  onAutomate?(key: string): void;
+  /** Delete this parameter's lane, handing the value back to the control. */
+  onRemoveAutomation?(key: string): void;
 }
 
-export function FxParamRow({ param, value, onChange, onCommit, disabled }: ParamRowProps) {
+/**
+ * The automation toggle for one parameter: adds a lane, or deletes the one that
+ * already owns the value. Absent for parameters no envelope can drive — a
+ * WaveShaper curve, a convolution impulse, or a worklet's options.
+ */
+export function AutomationToggle({
+  paramKey,
+  label,
+  automated,
+  onAutomate,
+  onRemoveAutomation,
+}: {
+  paramKey: string;
+  label: string;
+  automated: boolean;
+  onAutomate?(key: string): void;
+  onRemoveAutomation?(key: string): void;
+}) {
+  if (!onAutomate && !onRemoveAutomation) return null;
+  return (
+    <Tooltip label={automated ? "Automated" : "Automate"}>
+      <button
+        type="button"
+        className={`hf-fx-automate w-[16px] flex-shrink-0 rounded-[3px] border font-mono text-[9px] leading-none ${
+          automated
+            ? "border-panel-accent text-panel-accent"
+            : "border-panel-border-input text-panel-text-4 hover:text-panel-text-0"
+        }`}
+        aria-pressed={automated}
+        aria-label={automated ? `Remove ${label} automation` : `Automate ${label}`}
+        onClick={() => (automated ? onRemoveAutomation?.(paramKey) : onAutomate?.(paramKey))}
+      >
+        A
+      </button>
+    </Tooltip>
+  );
+}
+
+export function FxParamRow({
+  param,
+  value,
+  onChange,
+  onCommit,
+  disabled,
+  automated,
+  onAutomate,
+  onRemoveAutomation,
+}: ParamRowProps) {
   // While dragging, the slider is driven locally. Waiting for the value to come
   // back through the element attribute makes the control feel laggy and fights
   // the pointer.
@@ -105,9 +163,19 @@ export function FxParamRow({ param, value, onChange, onCommit, disabled }: Param
   const numeric = typeof shown === "number" ? shown : Number(shown);
   const current = Number.isFinite(numeric) ? numeric : param.default;
 
+  const locked = Boolean(disabled) || Boolean(automated);
+
   return (
-    <label className="hf-fx-row flex min-h-6 items-center gap-2" title={param.hint}>
-      <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-4">
+    <label
+      className={`hf-fx-row flex min-h-6 items-center gap-2${automated ? " hf-fx-row-automated" : ""}`}
+      title={param.hint}
+      data-automated={automated ? "" : undefined}
+    >
+      <span
+        className={`hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] ${
+          automated ? "text-panel-accent" : "text-panel-text-4"
+        }`}
+      >
         {param.label}
       </span>
       <input
@@ -117,7 +185,7 @@ export function FxParamRow({ param, value, onChange, onCommit, disabled }: Param
         max={param.max}
         step={(param.max - param.min) / 1000}
         value={toSlider(param, current)}
-        disabled={disabled}
+        disabled={locked}
         aria-label={param.label}
         onPointerDown={() => setDragging(true)}
         onChange={(e) => handleNumber(fromSlider(param, Number(e.target.value)))}
@@ -132,7 +200,7 @@ export function FxParamRow({ param, value, onChange, onCommit, disabled }: Param
         max={param.max}
         step={param.step}
         value={display(param, current)}
-        disabled={disabled}
+        disabled={locked}
         onChange={(e) => {
           const next = Number(e.target.value);
           if (Number.isFinite(next)) handleNumber(next);
@@ -147,6 +215,13 @@ export function FxParamRow({ param, value, onChange, onCommit, disabled }: Param
           {param.unit}
         </span>
       ) : null}
+      <AutomationToggle
+        paramKey={param.key}
+        label={param.label}
+        automated={Boolean(automated)}
+        onAutomate={onAutomate}
+        onRemoveAutomation={onRemoveAutomation}
+      />
     </label>
   );
 }
@@ -157,10 +232,24 @@ interface FxParamsProps {
   onChange(params: HfAudioFxParamValues): void;
   onCommit?(params: HfAudioFxParamValues): void;
   disabled?: boolean;
+  /** Parameter keys this effect currently has a lane for. */
+  automatedKeys?: ReadonlySet<string>;
+  /** Absent when the effect cannot be automated at all, or nothing can write. */
+  onAutomate?(key: string): void;
+  onRemoveAutomation?(key: string): void;
 }
 
 /** Every knob the effect declares, in registry order. */
-export function FxParams({ def, params, onChange, onCommit, disabled }: FxParamsProps) {
+export function FxParams({
+  def,
+  params,
+  onChange,
+  onCommit,
+  disabled,
+  automatedKeys,
+  onAutomate,
+  onRemoveAutomation,
+}: FxParamsProps) {
   const set = useCallback(
     (key: string, value: number | string) => onChange({ ...params, [key]: value }),
     [params, onChange],
@@ -171,16 +260,25 @@ export function FxParams({ def, params, onChange, onCommit, disabled }: FxParams
   );
   return (
     <div className="hf-fx-params space-y-0.5 border-t border-panel-border-input px-1.5 py-1.5">
-      {def.params.map((p) => (
-        <FxParamRow
-          key={p.key}
-          param={p}
-          value={params[p.key] ?? p.default}
-          onChange={set}
-          onCommit={commit}
-          disabled={disabled}
-        />
-      ))}
+      {def.params.map((p) => {
+        // Only a parameter the registry marks automatable has an AudioParam
+        // behind it for an envelope to write to.
+        const canAutomate = p.kind === "number" && p.automatable === true;
+        const automated = automatedKeys?.has(p.key) ?? false;
+        return (
+          <FxParamRow
+            key={p.key}
+            param={p}
+            value={params[p.key] ?? p.default}
+            onChange={set}
+            onCommit={commit}
+            disabled={disabled}
+            automated={automated}
+            onAutomate={canAutomate && !automated ? onAutomate : undefined}
+            onRemoveAutomation={canAutomate && automated ? onRemoveAutomation : undefined}
+          />
+        );
+      })}
     </div>
   );
 }
