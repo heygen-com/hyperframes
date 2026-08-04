@@ -438,6 +438,20 @@ export const ShowcaseWall = () => {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
+  // React can drop src/autoPlay/loop from the DOM, but neither pauses a playing
+  // element nor aborts its selected resource: a media element keeps its current
+  // resource until the load algorithm is re-invoked, and `autoplay` only governs
+  // the first play. So a visitor who turns Reduce Motion on mid-session would
+  // otherwise keep every tile playing and downloading. Stop them for real.
+  useEffect(() => {
+    if (!reduced || !wallRef.current) return;
+    for (const video of wallRef.current.querySelectorAll("video")) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+  }, [reduced]);
+
   const open = films.find((film) => film.id === openId) || null;
 
   if (open) {
@@ -484,19 +498,6 @@ export const ShowcaseWall = () => {
     );
   }
 
-  // React can drop src/autoPlay/loop from the DOM, but neither pauses a playing
-  // element nor aborts its selected resource: a media element keeps its current
-  // resource until the load algorithm is re-invoked, and `autoplay` only governs
-  // the first play. So a visitor who turns Reduce Motion on mid-session would
-  // otherwise keep every tile playing and downloading. Stop them for real.
-  useEffect(() => {
-    if (!reduced || !wallRef.current) return;
-    for (const video of wallRef.current.querySelectorAll("video")) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    }
-  }, [reduced]);
 
   return (
     <div
