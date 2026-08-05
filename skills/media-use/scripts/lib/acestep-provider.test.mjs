@@ -52,7 +52,7 @@ test("ACE-Step submits, polls, and resolves a generated audio URL", async () => 
   assert.equal(result.metadata.duration, 42);
   assert.deepEqual(result.downloadHeaders, { authorization: "Bearer secret" });
   assert.equal(calls.length, 3);
-  assert.match(calls[0].options.body, /acestep-v15-xl-sft/);
+  assert.match(calls[0].options.body, /acestep-v15-sft/);
   assert.equal(calls[0].options.headers.authorization, "Bearer secret");
 });
 

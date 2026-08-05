@@ -85,7 +85,7 @@ export async function generateWithAceStep(intent, ctx = {}, deps = {}) {
         audio_duration: duration,
         audio_format: "mp3",
         batch_size: 1,
-        model: "acestep-v15-xl-sft",
+        model: "acestep-v15-sft",
         inference_steps: 50,
       }),
     },
@@ -127,7 +127,7 @@ export async function generateWithAceStep(intent, ctx = {}, deps = {}) {
           provenance: {
             endpoint: new URL(baseUrl).origin,
             task_id: String(taskId),
-            dit_model: result.dit_model || "acestep-v15-xl-sft",
+            dit_model: result.dit_model || "acestep-v15-sft",
             lm_model: result.lm_model || null,
             seed: result.seed_value || null,
           },
