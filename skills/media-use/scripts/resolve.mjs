@@ -43,6 +43,7 @@ import {
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
 import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
+import { configuredBgmProvider } from "./lib/acestep-provider.mjs";
 
 const INGEST_TYPES = listTypes();
 const DEFAULT_EXT = {
@@ -82,6 +83,7 @@ const { values: args } = parseArgs({
     analyze: { type: "boolean", default: false },
     "local-only": { type: "boolean", default: false },
     provider: { type: "string" },
+    duration: { type: "string" },
     "avatar-id": { type: "string" },
     "voice-id": { type: "string" },
     json: { type: "boolean", default: false },
@@ -119,6 +121,7 @@ Options:
   --analyze       Return --for grade evidence without recording a candidate
   --local-only    Offline: skip every network provider
   --provider      Force one generator (e.g. codex, mflux, kokoro, heygen)
+  --duration      Generated BGM duration in seconds (10-600; default: 30)
   --avatar-id     Override the default avatar for heygen.video generation
   --voice-id      Override the default voice for voice/heygen.video generation
   --json          Output JSON instead of one-line result
@@ -130,6 +133,7 @@ const projectDir = resolve(args.project);
 const type = args.type;
 const intent = args.intent;
 const entity = args.entity || null;
+const configuredProvider = args.provider || (type === "bgm" ? configuredBgmProvider() : null);
 
 if (args.adopt) {
   const { adoptExistingAssets } = await import("./lib/adopt.mjs");
@@ -276,9 +280,9 @@ if (!listTypes().includes(args.type)) {
 // Forced-provider validation: reject an unknown/unavailable provider name up
 // front so a typo reads as a typo, not a catalog miss (`no provider could
 // resolve`). Match rule mirrors runProviders (full name or dotted prefix).
-if (args.provider && !providerMatches(args.type, args.provider)) {
+if (configuredProvider && !providerMatches(args.type, configuredProvider)) {
   console.error(
-    `error: unknown provider "${args.provider}" for type ${args.type} (available: ${providerNamesFor(args.type).join(", ")})`,
+    `error: unknown provider "${configuredProvider}" for type ${args.type} (available: ${providerNamesFor(args.type).join(", ")})`,
   );
   process.exit(2);
 }
@@ -390,7 +394,8 @@ async function run() {
     entity,
     projectDir,
     localOnly,
-    provider: args.provider,
+    provider: configuredProvider,
+    duration: args.duration ? Number(args.duration) : undefined,
     avatarId: args["avatar-id"],
     voiceId: args["voice-id"],
   };
@@ -492,7 +497,9 @@ async function run() {
       if (searchResult.localPath) {
         freezeLocalFile(searchResult.localPath, reservation.fullPath);
       } else if (searchResult.url) {
-        await freezeUrl(searchResult.url, reservation.fullPath);
+        await freezeUrl(searchResult.url, reservation.fullPath, {
+          headers: searchResult.downloadHeaders,
+        });
       } else {
         throw new Error("provider returned no url or localPath");
       }
