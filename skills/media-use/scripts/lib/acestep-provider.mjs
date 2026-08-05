@@ -86,6 +86,7 @@ export async function generateWithAceStep(intent, ctx = {}, deps = {}) {
         audio_format: "mp3",
         batch_size: 1,
         model: "acestep-v15-sft",
+        lm_backend: "pt",
         inference_steps: 50,
       }),
     },
