@@ -649,3 +649,40 @@ describe("TimelineAutomationLane range selection", () => {
     expect(props.onCommit).toHaveBeenCalled();
   });
 });
+
+describe("TimelineAutomationLane selection menu", () => {
+  it("right-click inside the selection opens the shape menu", () => {
+    const { container, svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "contextmenu", at(2, 0.5));
+    expect(document.querySelector(".hf-automation-menu")).not.toBeNull();
+    // The menu portals to document.body, outside `container` — dismiss it via
+    // Escape before tearing down, or it leaks into the next test's DOM query.
+    const escape = new Event("keydown", { bubbles: true, cancelable: true });
+    Object.assign(escape, { key: "Escape" });
+    act(() => {
+      document.dispatchEvent(escape);
+    });
+    expect(document.querySelector(".hf-automation-menu")).toBeNull();
+    act(() => container.remove());
+  });
+
+  it("inserting a swell replaces the range and commits once", () => {
+    const { svg, props } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "contextmenu", at(2, 0.5));
+    const swell = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".hf-automation-menu button"),
+    ).find((b) => b.textContent === "Swell");
+    expect(swell).toBeTruthy();
+    act(() => swell?.click());
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+    const points =
+      (props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]?.points ?? [];
+    expect(points.some((p) => p.t === 2 && p.v === 1)).toBe(true); // peak at range.max
+  });
+
+  it("right-click outside the selection does not open it", () => {
+    const { svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "contextmenu", at(3.8, 0.5));
+    expect(document.querySelector(".hf-automation-menu")).toBeNull();
+  });
+});

@@ -176,6 +176,22 @@
         "withLane",
       ],
     },
+    // automationShapes is part of the audio-automation stack: its consumer is
+    // the UI layer that uses shape generators one PR upstack, so a per-PR audit
+    // diffing against the merge base sees these as unused. Consumed for real once
+    // the stack merges; safe to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationShapes.ts",
+      "exports": ["AUTOMATION_SHAPES"],
+    },
+    // automationSimplify is part of the audio-automation stack: its consumer is
+    // the UI layer one PR upstack, so a per-PR audit diffing against the merge
+    // base sees these as unused. Consumed for real once the stack merges; safe
+    // to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationSimplify.ts",
+      "exports": ["simplifyPoints"],
+    },
     // propertyPanelAutomation is the shared reader for both panel sections; the
     // FX group that consumes these two lands one PR upstack, so a per-PR audit
     // against the merge base sees them as unused.
@@ -708,6 +724,11 @@
       "packages/parsers/src/gsapParser.ts",
       // htmlParser.ts has pre-existing complexity (moved from packages/core).
       "packages/parsers/src/htmlParser.ts",
+      // automationSimplify.ts: Ramer–Douglas–Peucker algorithm inherently requires
+      // nested loops and stack-based control flow (12 cyclomatic / 20 cognitive);
+      // this complexity is by design and not refactorable. Consumed by the UI
+      // layer one PR upstack in the audio-automation feature stack.
+      "packages/studio/src/player/components/automationSimplify.ts",
       // studio-server files: pre-existing complexity (moved from packages/core/src/studio-api/).
       // files.ts: executeGsapMutationRecast/Acorn are CRITICAL; excluded as files.ts
       // was already in health.ignore at the old path (packages/core/src/studio-api/routes/files.ts).
