@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.94"
+  description="Released - 2026-08-05"
+  tags={["Release", "CLI"]}
+>
+The CLI now supports explicit RFC 8628 device authorization for attended SSH
+and remote-terminal sessions, so users can sign in without copying API keys or
+exposing a loopback callback. The flow is fail-closed, validates minted tokens
+before atomic persistence, and leaves the existing browser login unchanged.
+
+## Features
+
+- **CLI:** Add device authorization login ([b9233525b](https://github.com/heygen-com/hyperframes/commit/b9233525b2e02ec9329445ab2602ebd557033daf), [#2836](https://github.com/heygen-com/hyperframes/pull/2836))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.93...v0.7.94).
+</Update>
+
+<Update
   label="HyperFrames v0.7.93"
   description="Released - 2026-08-05"
   tags={["Release", "Engine", "Studio", "Parsers"]}
