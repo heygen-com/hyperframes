@@ -176,6 +176,14 @@
         "withLane",
       ],
     },
+    // automationShapes is part of the audio-automation stack: its consumer is
+    // the UI layer that uses shape generators one PR upstack, so a per-PR audit
+    // diffing against the merge base sees these as unused. Consumed for real once
+    // the stack merges; safe to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationShapes.ts",
+      "exports": ["AUTOMATION_SHAPES"],
+    },
     // propertyPanelAutomation is the shared reader for both panel sections; the
     // FX group that consumes these two lands one PR upstack, so a per-PR audit
     // against the merge base sees them as unused.
