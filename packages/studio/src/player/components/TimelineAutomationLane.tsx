@@ -14,7 +14,14 @@
  * same principle the property panel's controls follow.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   resolveAutomationRange,
   sampleAutomationLane,
@@ -34,7 +41,11 @@ import {
 } from "./automationLaneGeometry";
 import { useAutomationLaneGestures } from "./useAutomationLaneGestures";
 import { AutomationValueInput } from "./AutomationValueInput";
+import { AutomationSelectionMenu } from "./AutomationSelectionMenu";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
+import { generateShape, type AutomationShapeId } from "./automationShapes";
+import { simplifyPoints } from "./automationSimplify";
+import { pointsIn, replaceRange } from "./automationLaneSelection";
 import { getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineElement } from "../store/playerStore";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
@@ -207,6 +218,44 @@ export function TimelineAutomationLane({
     [lane, commitPoints, readOnly],
   );
 
+  /** Client-coordinate position of an open selection menu, or null when closed. */
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+
+  const insertShape = useCallback(
+    (shape: AutomationShapeId): void => {
+      if (!rangeSelection) return;
+      const inner = generateShape({
+        shape,
+        lane,
+        range,
+        t0: rangeSelection.t0,
+        t1: rangeSelection.t1,
+      });
+      commitPoints(replaceRange({ lane, range, ...rangeSelection, inner }), true);
+    },
+    [rangeSelection, lane, range, commitPoints],
+  );
+
+  const simplifySelection = useCallback((): void => {
+    if (!rangeSelection) return;
+    const inner = simplifyPoints(pointsIn(lane, rangeSelection.t0, rangeSelection.t1), range);
+    commitPoints(replaceRange({ lane, range, ...rangeSelection, inner }), true);
+  }, [rangeSelection, lane, range, commitPoints]);
+
+  // A point's own right-click already stops propagation and still deletes;
+  // this only fires when the press lands on the background inside the
+  // active selection.
+  const onSvgContextMenu = useCallback(
+    (e: ReactMouseEvent<SVGSVGElement>): void => {
+      if (readOnly || !rangeSelection) return;
+      const { t } = pointAt(e.clientX, e.clientY);
+      if (t < rangeSelection.t0 || t > rangeSelection.t1) return;
+      e.preventDefault();
+      setMenuAt({ x: e.clientX, y: e.clientY });
+    },
+    [readOnly, rangeSelection, pointAt],
+  );
+
   const currentValue =
     lane.points.length > 0 && playheadSec !== null
       ? sampleAutomationLane(lane, playheadSec, range.scale)
@@ -247,6 +296,7 @@ export function TimelineAutomationLane({
         onPointerUp={gestures.endDrag}
         onPointerCancel={gestures.endDrag}
         onDoubleClick={gestures.onDoubleClick}
+        onContextMenu={onSvgContextMenu}
         role="group"
         aria-label={`${range.label} automation`}
       >
@@ -346,6 +396,17 @@ export function TimelineAutomationLane({
         >
           {hint}
         </div>
+      ) : null}
+
+      {menuAt && rangeSelection ? (
+        <AutomationSelectionMenu
+          x={menuAt.x}
+          y={menuAt.y}
+          onClose={() => setMenuAt(null)}
+          onInsertShape={insertShape}
+          onSimplify={simplifySelection}
+          canSimplify={pointsIn(lane, rangeSelection.t0, rangeSelection.t1).length >= 3}
+        />
       ) : null}
     </div>
   );
