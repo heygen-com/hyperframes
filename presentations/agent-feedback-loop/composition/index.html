@@ -10,567 +10,569 @@
         font-family: "TT Norms Pro";
         src: url("assets/fonts/TT_Norms_Pro_Normal.woff2") format("woff2");
         font-weight: 400;
-        font-style: normal;
-      }
-      @font-face {
-        font-family: "TT Norms Pro";
-        src: url("assets/fonts/TT_Norms_Pro_Medium.woff2") format("woff2");
-        font-weight: 500;
-        font-style: normal;
       }
       @font-face {
         font-family: "TT Norms Pro";
         src: url("assets/fonts/TT_Norms_Pro_DemiBold.woff2") format("woff2");
         font-weight: 600;
-        font-style: normal;
       }
       @font-face {
         font-family: "TT Norms Pro";
         src: url("assets/fonts/TT_Norms_Pro_Bold.woff2") format("woff2");
         font-weight: 700;
-        font-style: normal;
       }
 
       :root {
-        --bg: #0a0a0a;
-        --surface: #141414;
-        --surface-alt: #1a1a1a;
-        --heading: #f5f5f5;
-        --text: #e5e5e5;
-        --muted: #a0a0a0;
-        --quiet: #797979;
-        --border: #2a2a2a;
-        --border-light: #3a3a3a;
-        --brand: #3ce6ac;
-        --cyan: #06e3fa;
-        --green: #4fdb5e;
-        --blue: #3b82f6;
-        --purple: #a78bfa;
-        --warning: #fbbf24;
-        --danger: #fb7185;
-        --ink: #101010;
+        --bg: #080b0a;
+        --surface: #111614;
+        --surface-2: #18201d;
+        --line: #2c3732;
+        --paper: #f1f5f3;
+        --muted: #a2afa9;
+        --quiet: #6f7c76;
+        --mint: #51f0b1;
+        --cyan: #13dce8;
+        --lime: #b7ff3c;
+        --amber: #ffc857;
+        --red: #ff6b7a;
+        --ink: #07110d;
       }
 
-      *,
-      *::before,
-      *::after {
+      * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
-
       html,
       body {
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: var(--bg);
-        color: var(--text);
-        font-family: "TT Norms Pro", Arial, sans-serif;
+        color: var(--paper);
+        font-family: "TT Norms Pro", Inter, sans-serif;
       }
-
-      code,
-      .mono {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
+      .mono,
+      code {
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
         font-variant-ligatures: none;
       }
-
       #root {
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
+        background:
+          radial-gradient(circle at 78% 16%, rgba(81, 240, 177, 0.08), transparent 28%), var(--bg);
       }
-
-      .ambient {
-        position: absolute;
-        inset: 0;
-        z-index: 0;
-        overflow: hidden;
-        pointer-events: none;
-      }
-
-      .grid {
-        position: absolute;
-        inset: 0;
-        opacity: 0.18;
-        background-image:
-          linear-gradient(var(--border) 1px, transparent 1px),
-          linear-gradient(90deg, var(--border) 1px, transparent 1px);
-        background-size: 120px 120px;
-        mask-image: radial-gradient(circle at 62% 42%, #0a0a0a 0%, transparent 76%);
-      }
-
-      #signal-ring {
-        position: absolute;
-        width: 760px;
-        height: 760px;
-        right: -250px;
-        top: -260px;
-        border: 2px solid var(--border-light);
-        border-radius: 50%;
-      }
-
-      #signal-ring::before,
-      #signal-ring::after {
+      #root::before {
         content: "";
         position: absolute;
-        border-radius: 50%;
+        inset: 0;
+        opacity: 0.14;
+        background-image: radial-gradient(circle, rgba(255, 255, 255, 0.42) 1px, transparent 1.4px);
+        background-size: 12px 12px;
+        mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
       }
-
-      #signal-ring::before {
-        width: 24px;
-        height: 24px;
-        left: 92px;
-        top: 118px;
-        background: var(--cyan);
-      }
-
-      #signal-ring::after {
-        width: 12px;
-        height: 12px;
-        right: 88px;
-        bottom: 120px;
-        background: var(--green);
-      }
-
       .scene-frame {
         position: absolute;
         inset: 0;
-        width: 1920px;
-        height: 1080px;
-        overflow: hidden;
         opacity: 0;
         visibility: hidden;
-        pointer-events: none;
-        z-index: 1;
+        overflow: hidden;
       }
-
       .slide {
         position: absolute;
         inset: 0;
-        padding: 88px 120px 132px;
+        padding: 62px 94px 68px;
         display: flex;
         flex-direction: column;
       }
-
-      .slide::before {
+      .slide::after {
         content: "";
         position: absolute;
-        inset: 32px;
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        pointer-events: none;
+        inset: 24px;
+        border: 1px solid rgba(81, 240, 177, 0.14);
+        border-radius: 18px;
       }
-
       .topline {
         position: relative;
-        z-index: 2;
+        z-index: 5;
+        min-height: 42px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        min-height: 42px;
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 22px;
-        line-height: 1.2;
+        color: var(--muted);
+        font:
+          20px/1 "IBM Plex Mono",
+          monospace;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: var(--muted);
       }
-
-      .brand-lockup {
+      .brand {
         display: flex;
         align-items: center;
         gap: 14px;
-        color: var(--heading);
-        font-family: "TT Norms Pro", Arial, sans-serif;
-        font-weight: 600;
+        color: var(--paper);
+        font:
+          600 26px/1 "TT Norms Pro",
+          sans-serif;
         letter-spacing: -0.02em;
         text-transform: none;
-        font-size: 28px;
       }
-
-      .brand-lockup img {
-        display: block;
-        width: 44px;
-        height: 44px;
+      .brand img {
+        width: 40px;
+        height: 40px;
       }
-
       .claim {
         position: relative;
-        z-index: 2;
-        margin-top: 64px;
-        max-width: 1500px;
-        color: var(--heading);
-        font-size: 86px;
+        z-index: 5;
+        margin-top: 44px;
+        max-width: 1560px;
+        color: var(--paper);
+        font-size: 74px;
         line-height: 0.98;
         letter-spacing: -0.045em;
         font-weight: 600;
       }
-
       .claim-xl {
+        max-width: 1040px;
         font-size: 104px;
-        max-width: 1560px;
       }
-
-      .claim .accent {
-        color: var(--brand);
+      .accent {
+        color: var(--mint);
       }
-
-      .support {
-        position: relative;
-        z-index: 2;
-        margin-top: 28px;
-        max-width: 1250px;
-        color: var(--muted);
-        font-size: 38px;
-        line-height: 1.28;
-        font-weight: 400;
-      }
-
-      .source {
-        position: absolute;
-        left: 120px;
-        bottom: 72px;
-        z-index: 3;
-        max-width: 1280px;
-        color: var(--quiet);
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 20px;
-        line-height: 1.35;
-      }
-
       .stage {
         position: relative;
-        z-index: 2;
+        z-index: 3;
         flex: 1;
         min-height: 0;
-        margin-top: 48px;
+        margin-top: 34px;
       }
-
-      .panel {
-        background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 12px;
+      .source {
+        position: absolute;
+        z-index: 7;
+        left: 94px;
+        right: 94px;
+        bottom: 48px;
+        color: #7a8881;
+        font:
+          17px/1.25 "IBM Plex Mono",
+          monospace;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
       }
-
-      .label {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 21px;
-        line-height: 1.2;
+      .eyebrow {
+        color: var(--mint);
+        font:
+          19px/1.2 "IBM Plex Mono",
+          monospace;
         letter-spacing: 0.1em;
         text-transform: uppercase;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(8, 11, 10, 0.74);
         color: var(--muted);
+        font:
+          18px/1 "IBM Plex Mono",
+          monospace;
+      }
+      .tag.hot {
+        border-color: var(--mint);
+        color: var(--mint);
       }
 
-      .terminal {
-        background: var(--ink);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
+      .hero-art {
+        position: absolute;
+        z-index: 1;
+        right: 35px;
+        top: 72px;
+        width: 950px;
+        height: 930px;
+        object-fit: cover;
+        object-position: center;
+        opacity: 0.76;
+        mix-blend-mode: screen;
+        mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      }
+      .hero-copy {
+        position: relative;
+        z-index: 5;
+        width: 900px;
+        margin-top: 100px;
+      }
+      .hero-tags {
+        display: flex;
+        gap: 14px;
+        margin-top: 42px;
+      }
+      .hero-pulse {
+        position: absolute;
+        z-index: 2;
+        right: 392px;
+        top: 470px;
+        width: 150px;
+        height: 150px;
+        border: 2px solid var(--mint);
+        border-radius: 50%;
+        box-shadow: 0 0 90px rgba(81, 240, 177, 0.35);
+      }
+
+      .blind-layout {
+        height: 100%;
+        display: grid;
+        grid-template-columns: 0.84fr 1.16fr;
+        gap: 42px;
+      }
+      .pass-orb {
+        position: relative;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: linear-gradient(145deg, rgba(81, 240, 177, 0.18), rgba(17, 22, 20, 0.6));
         overflow: hidden;
       }
-
-      .terminal-bar {
-        height: 52px;
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 20px;
-      }
-
-      .terminal-dot {
-        width: 10px;
-        height: 10px;
+      .pass-orb::before {
+        content: "";
+        width: 380px;
+        height: 380px;
         border-radius: 50%;
-        background: var(--border-light);
+        background: radial-gradient(
+          circle,
+          var(--mint) 0 2%,
+          transparent 2.5% 6%,
+          rgba(81, 240, 177, 0.26) 6.5% 7%,
+          transparent 7.5% 14%,
+          rgba(81, 240, 177, 0.16) 14.5% 15%,
+          transparent 15.5%
+        );
+        box-shadow: 0 0 140px rgba(81, 240, 177, 0.18);
+      }
+      .pass-word {
+        position: absolute;
+        color: var(--mint);
+        font-size: 116px;
+        font-weight: 700;
+        letter-spacing: -0.06em;
+      }
+      .pass-note {
+        position: absolute;
+        bottom: 44px;
+        color: var(--muted);
+        font:
+          21px/1.2 "IBM Plex Mono",
+          monospace;
+      }
+      .blind-art-wrap {
+        position: relative;
+        border-radius: 22px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .blind-art {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.82;
+      }
+      .blind-copy {
+        position: absolute;
+        inset: auto 34px 34px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
       }
 
-      .terminal-body {
-        padding: 28px 34px;
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 26px;
-        line-height: 1.65;
-        color: var(--text);
-      }
-
-      .prompt {
-        color: var(--brand);
-      }
-
-      .diagram {
-        height: 330px;
+      .flow {
+        height: 100%;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 18px;
       }
-
-      .node {
+      .flow-node {
         position: relative;
         flex: 1;
-        min-width: 0;
-        height: 168px;
+        max-width: 290px;
+        height: 220px;
         padding: 28px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(17, 22, 20, 0.92);
       }
-
-      .node strong {
-        font-size: 34px;
-        line-height: 1.05;
-        color: var(--heading);
-        font-weight: 600;
+      .flow-node strong {
+        font-size: 36px;
+        line-height: 1.02;
       }
-
-      .node span {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        color: var(--muted);
-        font-size: 18px;
-        line-height: 1.2;
-        text-transform: uppercase;
+      .flow-node b {
+        color: var(--mint);
+        font:
+          19px/1 "IBM Plex Mono",
+          monospace;
       }
-
-      .node.hot {
-        border: 2px solid var(--brand);
-        background: var(--brand);
+      .flow-node.checkpoint {
+        border-color: var(--mint);
+        box-shadow:
+          0 0 0 1px var(--mint),
+          0 0 60px rgba(81, 240, 177, 0.14);
       }
-
-      .node.hot strong,
-      .node.hot span {
-        color: var(--ink);
-      }
-
-      .arrow {
-        position: relative;
-        flex: 0 0 58px;
+      .flow-arrow {
+        flex: 0 0 54px;
         height: 2px;
-        background: var(--border-light);
+        background: var(--line);
+        position: relative;
       }
-
-      .arrow::after {
+      .flow-arrow::after {
         content: "";
         position: absolute;
         right: 0;
-        top: -7px;
-        border-left: 14px solid var(--border-light);
-        border-top: 8px solid transparent;
-        border-bottom: 8px solid transparent;
+        top: -6px;
+        border-left: 12px solid var(--line);
+        border-top: 7px solid transparent;
+        border-bottom: 7px solid transparent;
+      }
+      .checkpoint-label {
+        position: absolute;
+        left: 50%;
+        top: -54px;
+        transform: translateX(-50%);
+        width: max-content;
+        color: var(--mint);
+        font:
+          17px/1 "IBM Plex Mono",
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
 
-      .split {
-        display: grid;
-        grid-template-columns: 0.9fr 1.1fr;
-        gap: 36px;
+      .before-after {
         height: 100%;
-      }
-
-      .big-pass {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        padding: 44px;
-        border: 2px solid var(--brand);
-        background: var(--brand);
-        border-radius: 12px;
-        color: var(--ink);
-      }
-
-      .big-pass .value {
-        font-size: 130px;
-        line-height: 0.85;
-        font-weight: 700;
-        letter-spacing: -0.06em;
-      }
-
-      .blind-list {
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-      }
-
-      .blind-item {
-        min-height: 108px;
-        padding: 24px 30px;
         display: grid;
-        grid-template-columns: 52px 1fr;
-        align-items: center;
-        gap: 18px;
-        background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
-        color: var(--heading);
-        font-size: 34px;
-        line-height: 1.15;
+        grid-template-columns: 1fr 1fr;
+        gap: 34px;
       }
-
-      .blind-item b {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        color: var(--danger);
-        font-size: 26px;
-      }
-
-      .command-stage {
-        display: grid;
-        grid-template-columns: 1.18fr 0.82fr;
-        gap: 36px;
-        align-items: stretch;
-      }
-
-      .command-card {
-        padding: 44px;
+      .lane {
+        position: relative;
+        padding: 36px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: rgba(17, 22, 20, 0.76);
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 24px;
-        border: 2px solid var(--brand);
-        background: var(--surface);
-        border-radius: 12px;
       }
-
-      .command-line {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 38px;
-        line-height: 1.4;
-        color: var(--heading);
+      .lane.after {
+        border-color: var(--mint);
+        background: linear-gradient(145deg, rgba(81, 240, 177, 0.12), rgba(17, 22, 20, 0.82));
       }
-
-      .command-line .cmd {
-        color: var(--brand);
+      .lane-title {
+        position: absolute;
+        left: 32px;
+        top: 28px;
+        color: var(--muted);
+        font:
+          19px/1 "IBM Plex Mono",
+          monospace;
+        letter-spacing: 0.12em;
       }
-
-      .side-facts {
-        display: grid;
-        grid-template-rows: repeat(3, 1fr);
-        gap: 16px;
-      }
-
-      .side-fact {
-        padding: 24px 28px;
+      .lane-line {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 20px;
+        gap: 12px;
+      }
+      .lane-node {
+        flex: 1;
+        height: 112px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        color: var(--paper);
+        font-size: 27px;
+        line-height: 1.05;
+      }
+      .lane-node.command {
+        flex: 1.45;
+        border: 0;
+        background: var(--mint);
+        color: var(--ink);
+        font:
+          700 23px/1.2 "IBM Plex Mono",
+          monospace;
+        box-shadow: 0 0 50px rgba(81, 240, 177, 0.22);
+      }
+      .lane-plus {
+        color: var(--mint);
+        font:
+          34px/1 "IBM Plex Mono",
+          monospace;
+      }
+      .lane-caption {
+        margin-top: 28px;
+        color: var(--muted);
+        font-size: 26px;
+      }
+
+      .loop-stage {
+        height: 100%;
+        display: grid;
+        place-items: center;
+      }
+      .loop-ring {
+        position: relative;
+        width: 1080px;
+        height: 440px;
+        border: 2px solid var(--line);
+        border-radius: 50%;
+      }
+      .loop-ring::before {
+        content: "";
+        position: absolute;
+        inset: 70px 210px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(81, 240, 177, 0.14), transparent 68%);
+      }
+      .loop-center {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-size: 42px;
+        line-height: 1.04;
+      }
+      .loop-center span {
+        color: var(--mint);
+      }
+      .loop-node {
+        position: absolute;
+        width: 230px;
+        min-height: 106px;
+        padding: 20px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        border: 1px solid var(--line);
+        border-radius: 15px;
         background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
-        color: var(--text);
-        font-size: 28px;
+        font-size: 26px;
+        line-height: 1.04;
+      }
+      .loop-node.hot {
+        border-color: var(--mint);
+        color: var(--mint);
+      }
+      .loop-node.n1 {
+        left: -54px;
+        top: 166px;
+      }
+      .loop-node.n2 {
+        left: 184px;
+        top: -44px;
+      }
+      .loop-node.n3 {
+        right: 184px;
+        top: -44px;
+      }
+      .loop-node.n4 {
+        right: -54px;
+        top: 166px;
+      }
+      .loop-node.n5 {
+        right: 184px;
+        bottom: -44px;
+      }
+      .loop-node.n6 {
+        left: 184px;
+        bottom: -44px;
+      }
+      .orbit-dot {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        left: 520px;
+        top: -10px;
+        border-radius: 50%;
+        background: var(--mint);
+        box-shadow: 0 0 30px var(--mint);
       }
 
-      .side-fact strong {
-        color: var(--brand);
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 30px;
+      .packet-stage {
+        height: 100%;
+        display: grid;
+        grid-template-columns: 1.3fr 0.7fr;
+        gap: 32px;
       }
-
-      .loop-grid {
+      .packet {
+        padding: 32px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--surface);
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        grid-template-rows: repeat(2, 170px);
-        gap: 22px;
-        align-content: center;
+        gap: 14px;
       }
-
-      .loop-node {
-        padding: 26px 30px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
+      .packet-cell {
+        padding: 24px;
+        min-height: 150px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface-2);
       }
-
-      .loop-node:nth-child(2),
-      .loop-node:nth-child(5) {
-        border-color: var(--brand);
-      }
-
-      .loop-node strong {
-        font-size: 34px;
-        color: var(--heading);
-      }
-
-      .loop-node span {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        color: var(--muted);
-        font-size: 19px;
+      .packet-cell b {
+        color: var(--mint);
+        font:
+          17px/1 "IBM Plex Mono",
+          monospace;
         text-transform: uppercase;
       }
-
-      .packet-grid {
-        display: grid;
-        grid-template-columns: 1.28fr 0.72fr;
-        gap: 36px;
-        height: 100%;
+      .packet-cell p {
+        margin-top: 18px;
+        font-size: 25px;
+        line-height: 1.08;
       }
-
-      .packet-lines {
-        padding: 32px 38px;
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 16px;
-      }
-
-      .packet-line {
-        padding: 20px 22px;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--surface-alt);
-      }
-
-      .packet-line .key {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        color: var(--brand);
-        font-size: 18px;
-        text-transform: uppercase;
-      }
-
-      .packet-line .value {
-        margin-top: 8px;
-        color: var(--heading);
-        font-size: 28px;
-        line-height: 1.14;
-      }
-
-      .privacy {
-        padding: 34px;
+      .shield {
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
-        background: var(--brand);
-        border-radius: 12px;
+        justify-content: center;
+        padding: 42px;
+        border-radius: 22px;
+        background: var(--mint);
         color: var(--ink);
+        clip-path: polygon(50% 0, 94% 15%, 88% 76%, 50% 100%, 12% 76%, 6% 15%);
+        text-align: center;
       }
-
-      .privacy h3 {
-        font-size: 48px;
+      .shield strong {
+        font-size: 44px;
         line-height: 1;
       }
-
-      .privacy ul {
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 20px;
-        line-height: 1.25;
+      .shield span {
+        margin-top: 26px;
+        font:
+          19px/1.55 "IBM Plex Mono",
+          monospace;
       }
 
       .timeline {
-        position: relative;
         height: 100%;
+        position: relative;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 22px;
+        gap: 18px;
         align-items: center;
       }
-
       .timeline::before {
         content: "";
         position: absolute;
@@ -578,250 +580,332 @@
         right: 9%;
         top: 50%;
         height: 2px;
-        background: var(--border-light);
+        background: var(--line);
       }
-
       .milestone {
         position: relative;
         z-index: 2;
-        min-height: 260px;
-        padding: 30px;
+        min-height: 290px;
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
         background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
       }
-
+      .milestone::before {
+        content: "";
+        position: absolute;
+        left: 30px;
+        top: -11px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--quiet);
+      }
       .milestone.hot {
-        border: 2px solid var(--brand);
+        border-color: var(--mint);
+        transform: translateY(-24px);
       }
-
-      .milestone .date {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        color: var(--brand);
-        font-size: 22px;
+      .milestone.hot::before {
+        background: var(--mint);
+        box-shadow: 0 0 28px var(--mint);
       }
-
+      .date {
+        color: var(--mint);
+        font:
+          20px/1 "IBM Plex Mono",
+          monospace;
+      }
       .milestone h3 {
-        margin-top: 22px;
-        color: var(--heading);
-        font-size: 34px;
-        line-height: 1.05;
+        margin-top: 34px;
+        font-size: 38px;
+        line-height: 1;
       }
-
       .milestone p {
-        margin-top: 18px;
+        margin-top: 22px;
         color: var(--muted);
-        font-size: 24px;
-        line-height: 1.25;
+        font-size: 23px;
+        line-height: 1.2;
       }
 
-      .metric-grid {
+      .data-stage {
         height: 100%;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
+        grid-template-columns: 1.45fr 0.55fr;
+        gap: 30px;
       }
-
-      .metric {
-        padding: 34px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+      .chart {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 22px;
         background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
       }
-
-      .metric .metric-label {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
+      .chart svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .chart-label {
+        position: absolute;
+        left: 28px;
+        top: 26px;
         color: var(--muted);
-        font-size: 20px;
+        font:
+          18px/1 "IBM Plex Mono",
+          monospace;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
-
-      .metric .metric-value {
-        color: var(--heading);
-        font-size: 78px;
-        line-height: 0.92;
-        font-weight: 600;
+      .metrics {
+        display: grid;
+        gap: 14px;
+      }
+      .metric {
+        padding: 26px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface);
+      }
+      .metric b {
+        color: var(--muted);
+        font:
+          16px/1 "IBM Plex Mono",
+          monospace;
+        text-transform: uppercase;
+      }
+      .metric strong {
+        margin-top: 14px;
+        font-size: 58px;
+        line-height: 0.9;
         letter-spacing: -0.05em;
-        font-variant-numeric: tabular-nums;
       }
-
-      .metric.pending .metric-value {
-        color: var(--warning);
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 34px;
-        letter-spacing: 0;
+      .metric.hot strong {
+        color: var(--mint);
       }
-
-      .metric .metric-note {
+      .metric small {
+        margin-top: 14px;
         color: var(--quiet);
-        font-size: 23px;
-        line-height: 1.25;
+        font-size: 18px;
       }
 
-      .comparison {
+      .compare-stage {
         height: 100%;
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 36px;
+        gap: 30px;
       }
-
-      .compare-panel {
-        padding: 36px;
-        display: flex;
-        flex-direction: column;
-        gap: 28px;
+      .compare-card {
+        padding: 32px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
         background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
-      }
-
-      .bar-group {
         display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+      .compare-card h3 {
+        color: var(--muted);
+        font:
+          18px/1.2 "IBM Plex Mono",
+          monospace;
+        text-transform: uppercase;
+      }
+      .dot-bars {
+        display: grid;
+        gap: 30px;
+        align-content: center;
+      }
+      .dot-row {
+        display: grid;
+        grid-template-columns: 112px 1fr 110px;
         gap: 18px;
-      }
-
-      .bar-row {
-        display: grid;
-        grid-template-columns: 96px 1fr 150px;
-        gap: 16px;
         align-items: center;
       }
-
-      .bar-label,
-      .bar-value {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
+      .dot-row span {
         color: var(--muted);
-        font-size: 20px;
+        font:
+          20px/1 "IBM Plex Mono",
+          monospace;
       }
-
-      .bar-value {
+      .dot-row strong {
+        color: var(--mint);
+        font:
+          27px/1 "IBM Plex Mono",
+          monospace;
         text-align: right;
-        color: var(--warning);
       }
-
-      .bar-track {
-        height: 22px;
-        background: var(--surface-alt);
-        border: 1px solid var(--border);
-        border-radius: 6px;
+      .dot-track {
+        height: 44px;
+        border: 1px solid var(--line);
+        background-image: radial-gradient(circle, rgba(255, 255, 255, 0.18) 2px, transparent 2.5px);
+        background-size: 9px 9px;
         overflow: hidden;
       }
-
-      .bar-fill {
-        display: block;
+      .dot-fill {
+        height: 100%;
         width: 1%;
-        height: 100%;
-        background: var(--border-light);
+        background-color: var(--quiet);
+        background-image: radial-gradient(circle, var(--bg) 2px, transparent 2.5px);
+        background-size: 9px 9px;
       }
-
-      .bar-fill.after {
+      .dot-fill.after {
         width: 100%;
-        background: var(--brand);
+        background-color: var(--mint);
+      }
+      .compare-card footer {
+        color: #7a8881;
+        font:
+          17px/1.25 "IBM Plex Mono",
+          monospace;
       }
 
-      .contract-split {
+      .halves {
         height: 100%;
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 32px;
+        place-items: center;
+      }
+      .venn {
+        position: relative;
+        width: 1180px;
+        height: 480px;
+      }
+      .half {
+        position: absolute;
+        top: 30px;
+        width: 600px;
+        height: 420px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 72px;
+      }
+      .half.left {
+        left: 80px;
+        border: 2px solid var(--cyan);
+        background: rgba(19, 220, 232, 0.1);
+        text-align: left;
+      }
+      .half.right {
+        right: 80px;
+        border: 2px solid var(--mint);
+        background: rgba(81, 240, 177, 0.1);
+        text-align: right;
+        align-items: flex-end;
+      }
+      .half b {
+        font:
+          19px/1 "IBM Plex Mono",
+          monospace;
+        text-transform: uppercase;
+      }
+      .half.left b {
+        color: var(--cyan);
+      }
+      .half.right b {
+        color: var(--mint);
+      }
+      .half strong {
+        margin-top: 20px;
+        max-width: 300px;
+        font-size: 43px;
+        line-height: 1.02;
+      }
+      .venn-center {
+        position: absolute;
+        z-index: 3;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 220px;
+        height: 220px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--paper);
+        color: var(--ink);
+        text-align: center;
+        font-size: 31px;
+        line-height: 1;
+        font-weight: 700;
       }
 
-      .contract-half {
-        padding: 38px;
+      .steps {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+      }
+      .step {
+        flex: 1;
+        height: 330px;
+        padding: 30px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--surface);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
       }
-
-      .contract-half h3 {
-        color: var(--heading);
-        font-size: 48px;
+      .step b {
+        color: var(--mint);
+        font:
+          20px/1 "IBM Plex Mono",
+          monospace;
       }
-
-      .contract-half ul {
-        list-style: none;
-        display: grid;
-        gap: 16px;
-        color: var(--text);
-        font-size: 29px;
+      .step strong {
+        font-size: 50px;
       }
-
-      .contract-half li::before {
-        content: "→";
-        margin-right: 14px;
-        color: var(--brand);
-      }
-
-      .plan {
-        height: 100%;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
-      }
-
-      .plan-step {
-        padding: 34px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        background: var(--surface);
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
-      }
-
-      .plan-step .num {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        color: var(--brand);
-        font-size: 24px;
-      }
-
-      .plan-step h3 {
-        color: var(--heading);
-        font-size: 54px;
-      }
-
-      .plan-step p {
+      .step p {
         color: var(--muted);
-        font-size: 27px;
-        line-height: 1.25;
+        font-size: 24px;
+        line-height: 1.18;
+      }
+      .step-arrow {
+        flex: 0 0 60px;
+        color: var(--mint);
+        font-size: 48px;
+        text-align: center;
+      }
+      .step.active {
+        border-color: var(--mint);
+        box-shadow: 0 0 70px rgba(81, 240, 177, 0.12);
       }
 
-      .closing {
+      .close {
         display: grid;
         place-items: center;
         text-align: center;
       }
-
-      .closing .brand-mark {
-        width: 112px;
-        height: 112px;
-        margin-bottom: 30px;
+      .close img {
+        width: 100px;
+        height: 100px;
       }
-
-      .closing h1 {
+      .close h1 {
+        margin-top: 36px;
         max-width: 1500px;
-        color: var(--heading);
-        font-size: 108px;
-        line-height: 0.94;
-        letter-spacing: -0.05em;
-        font-weight: 600;
+        font-size: 120px;
+        line-height: 0.92;
+        letter-spacing: -0.055em;
+      }
+      .close code {
+        margin-top: 46px;
+        padding: 20px 28px;
+        border: 1px solid var(--mint);
+        border-radius: 999px;
+        color: var(--mint);
+        font-size: 27px;
       }
 
-      .closing .final-command {
-        margin-top: 44px;
-        padding: 22px 28px;
-        border: 1px solid var(--brand);
-        border-radius: 8px;
-        color: var(--brand);
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 30px;
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
       }
     </style>
   </head>
@@ -829,262 +913,558 @@
     <script type="application/hyperframes-slideshow+json">
       {
         "slides": [
-          { "sceneId": "open", "notes": "This is not a survey pitch. It is a systems pitch: put one command at the moment an agent has maximum evidence and context." },
-          { "sceneId": "blind-spot", "notes": "Exit code 0 tells us the pipeline ran. It does not tell us whether the output looked right, whether the workflow was confusing, or whether the agent needed a workaround." },
-          { "sceneId": "existing-loop", "notes": "Walk left to right. Agents already author, lint/check, inspect frames, ask for approval, and render. The feedback insertion point is already present: immediately after verified output." },
-          { "sceneId": "one-command", "notes": "Clean runs can be a rating only. Friction reports carry a compact reproduction packet. The command is anonymous and no-ops when telemetry is disabled." },
-          { "sceneId": "closed-loop", "notes": "Normal feedback goes to an anonymous product event and best-effort backend forwarding. Filing a public GitHub issue is a separate, explicit consent flow." },
-          { "sceneId": "packet", "notes": "The quality of the signal comes from structure. For visual defects, the agent can add a composition census containing counts and presence flags—not content." },
-          { "sceneId": "rollout", "notes": "The behavior changed in stages. v0.7.21 is the agent-policy intervention. v0.7.77 is a schema boundary, not the start of collection, so PostHog must union both event names." },
-          { "sceneId": "volume", "notes": "Authenticated aggregate-only PostHog query for the last seven complete PDT days, July 29 through August 4: 13,370 submissions, 1,910.0 per day, 4,783 unique anonymous installs, and 96.5% of submissions with a detected agent runtime. Daily counts were 2,269; 2,206; 1,682; 1,712; 1,764; 1,865; and 1,872." },
-          { "sceneId": "fair-comparison", "notes": "Equal complete-day windows in America/Los_Angeles: pre June 15–28 and post June 30–July 13, with rollout day excluded. Feedback submissions moved from 4 to 12,541; captured render_complete events moved from 195,473 to 311,506. That is below 0.01 versus 4.03 submissions per 100 renders. Participating anonymous installs moved from 4 of 25,350 active render installs to 4,947 of 33,832: 0.02 versus 14.62 per 100. This is descriptive, not causal; release adoption is staggered." },
-          { "sceneId": "two-halves", "notes": "The CLI makes reporting reliable. The agent skill makes reporting habitual. Either half alone underperforms." },
-          { "sceneId": "experiment", "notes": "The next move is operational: stable dashboard, weekly review, and clear privacy boundaries. Do not add a second primitive or collection surface without observed journey evidence." },
-          { "sceneId": "close", "notes": "Close on the behavior: verify, report, improve. Ask the team to standardize this loop across supported agent runtimes." }
+          {
+            "sceneId": "open",
+            "notes": "This is a systems pitch: place one command where the agent has maximum evidence and context."
+          },
+          {
+            "sceneId": "blind-spot",
+            "notes": "A green pipeline proves execution, not experience. Visual defects, confusion, and hidden workarounds remain invisible."
+          },
+          {
+            "sceneId": "existing-loop",
+            "notes": "Agents already author, check, inspect, approve, and render. Verified output is the natural insertion point."
+          },
+          {
+            "sceneId": "one-command",
+            "notes": "The only workflow change is one feedback command after verification. Telemetry opt-out remains a no-op."
+          },
+          {
+            "sceneId": "closed-loop",
+            "notes": "The product signal moves through anonymous collection, maintainer triage, and a CLI or skill improvement."
+          },
+          {
+            "sceneId": "packet",
+            "notes": "Actionability comes from six bounded fields. Privacy comes from explicit exclusions and aggregate-only review."
+          },
+          {
+            "sceneId": "rollout",
+            "notes": "v0.7.21 is the policy intervention. v0.7.77 renamed the event; queries must union both schemas."
+          },
+          {
+            "sceneId": "volume",
+            "notes": "July 29 through August 4 PDT: 13,370 submissions, 1,910 per day, 4,783 unique anonymous installs, 96.5% with detected agent runtime."
+          },
+          {
+            "sceneId": "fair-comparison",
+            "notes": "Equal 14-day windows: feedback reached 4.03 submissions per 100 captured renders and 14.62 participating installs per 100 active render installs. Descriptive, not causal."
+          },
+          {
+            "sceneId": "two-halves",
+            "notes": "The CLI makes reporting reliable. The skill makes it habitual. Both are necessary."
+          },
+          {
+            "sceneId": "experiment",
+            "notes": "Standardize, observe, then improve. Do not expand collection before observed journey evidence."
+          },
+          { "sceneId": "close", "notes": "Close on the default behavior: verify, report, improve." }
         ]
       }
     </script>
 
-    <div id="root" data-composition-id="root" data-start="0" data-duration="96" data-width="1920" data-height="1080">
-      <div class="ambient" data-layout-ignore>
-        <div class="grid"></div>
-        <div id="signal-ring"></div>
-      </div>
-
-      <section id="scene-open" class="scene-frame clip" data-composition-id="open" data-start="0" data-duration="8" data-track-index="1">
+    <div
+      id="root"
+      data-composition-id="root"
+      data-start="0"
+      data-duration="96"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="scene-open"
+        class="scene-frame clip"
+        data-composition-id="open"
+        data-start="0"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <img class="hero-art" src="assets/hero-loop.png" alt="Abstract luminous feedback loop" />
+        <div class="hero-pulse" data-orbit></div>
         <div class="slide">
-          <div class="topline"><div class="brand-lockup"><img src="assets/hyperframes-symbol.svg" alt="" />HyperFrames</div><span>Internal product loop / 2026</span></div>
-          <h1 class="claim claim-xl" data-anim>Every verified render can become a <span class="accent">learning event.</span></h1>
-          <p class="support" data-anim>The fastest feedback system is the one agents do not have to leave.</p>
-          <div class="source">THESIS · Instrument the existing verification loop, not a parallel survey workflow.</div>
-        </div>
-      </section>
-
-      <section id="scene-blind-spot" class="scene-frame clip" data-composition-id="blind-spot" data-start="8" data-duration="8" data-track-index="1">
-        <div class="slide">
-          <div class="topline"><span>01 / The blind spot</span><span>Execution ≠ experience</span></div>
-          <h2 class="claim" data-anim>Green pipelines can still produce bad experiences.</h2>
-          <div class="stage split" data-anim>
-            <div class="big-pass"><span class="label" style="color: var(--ink)">System evidence</span><div class="value">PASS</div><p style="font-size: 30px; line-height: 1.2"><span style="display: block">Lint clean</span><span style="display: block">Runtime clean</span><span style="display: block">Render complete</span></p></div>
-            <div class="blind-list">
-              <div class="blind-item"><b>01</b><span>The output looks wrong.</span></div>
-              <div class="blind-item"><b>02</b><span>The workflow was confusing.</span></div>
-              <div class="blind-item"><b>03</b><span>A workaround hid the real failure.</span></div>
+          <div class="topline">
+            <div class="brand"><img src="assets/hyperframes-symbol.svg" alt="" />HyperFrames</div>
+            <span>Agent feedback / 2026</span>
+          </div>
+          <div class="hero-copy">
+            <div class="eyebrow" data-reveal>Close the loop</div>
+            <h1 class="claim claim-xl" data-reveal>
+              Verified output should create the <span class="accent">next improvement.</span>
+            </h1>
+            <div class="hero-tags" data-reveal>
+              <span class="tag hot">verify</span><span class="tag">report</span
+              ><span class="tag">improve</span>
             </div>
           </div>
-          <div class="source">SOURCE · docs/guides/feedback.mdx — “a broken file can still count as a success in logs.”</div>
+          <div class="source">Thesis · instrument the workflow agents already complete.</div>
         </div>
       </section>
 
-      <section id="scene-existing-loop" class="scene-frame clip" data-composition-id="existing-loop" data-start="16" data-duration="8" data-track-index="1">
+      <section
+        id="scene-blind-spot"
+        class="scene-frame clip"
+        data-composition-id="blind-spot"
+        data-start="8"
+        data-duration="8"
+        data-track-index="1"
+      >
         <div class="slide">
-          <div class="topline"><span>02 / The loop agents already obey</span><span class="mono">flowchart LR</span></div>
-          <h2 class="claim" data-anim>The existing workflow already has the right checkpoint.</h2>
-          <div class="stage diagram" data-anim>
-            <div class="node"><span>A</span><strong>Author</strong></div><div class="arrow"></div>
-            <div class="node"><span>B</span><strong>Lint + check</strong></div><div class="arrow"></div>
-            <div class="node"><span>C</span><strong>Inspect frames</strong></div><div class="arrow"></div>
-            <div class="node"><span>D</span><strong>User approves</strong></div><div class="arrow"></div>
-            <div class="node"><span>E</span><strong>Render</strong></div>
+          <div class="topline">
+            <span>01 / Why this is needed</span><span>Execution ≠ experience</span>
           </div>
-          <div class="source">SOURCE · skills/hyperframes-cli/SKILL.md — scaffold → author → lint/check → preview → approval → render → verify.</div>
-        </div>
-      </section>
-
-      <section id="scene-one-command" class="scene-frame clip" data-composition-id="one-command" data-start="24" data-duration="8" data-track-index="1">
-        <div class="slide">
-          <div class="topline"><span>03 / The leverage point</span><span>Context is still warm</span></div>
-          <h2 class="claim" data-anim>Add one command immediately after verified output.</h2>
-          <div class="stage command-stage" data-anim>
-            <div class="command-card">
-              <span class="label">Agent action</span>
-              <div class="command-line"><span class="prompt">$</span> npx hyperframes <span class="cmd">feedback</span> --rating 8<br />&nbsp;&nbsp;--comment <span style="color: var(--warning)">"REPRO COMMAND: …"</span></div>
+          <h2 class="claim" data-reveal>
+            A green pipeline still has a <span class="accent">blind spot.</span>
+          </h2>
+          <div class="stage blind-layout">
+            <div class="pass-orb" data-reveal>
+              <div class="pass-word">PASS</div>
+              <div class="pass-note">lint · runtime · render</div>
             </div>
-            <div class="side-facts">
-              <div class="side-fact"><span>Rating scale</span><strong>0–10</strong></div>
-              <div class="side-fact"><span>Clean run</span><strong>1 line</strong></div>
-              <div class="side-fact"><span>Telemetry disabled</span><strong>no-op</strong></div>
-            </div>
-          </div>
-          <div class="source">SOURCE · packages/cli/src/commands/feedback.ts · skills/hyperframes-cli/SKILL.md</div>
-        </div>
-      </section>
-
-      <section id="scene-closed-loop" class="scene-frame clip" data-composition-id="closed-loop" data-start="32" data-duration="8" data-track-index="1">
-        <div class="slide">
-          <div class="topline"><span>04 / The instrumented system</span><span class="mono">flowchart TB</span></div>
-          <h2 class="claim" data-anim>A render can become a reproducible product signal.</h2>
-          <div class="stage loop-grid" data-anim>
-            <div class="loop-node"><span>01 / workflow</span><strong>Verified agent run</strong></div>
-            <div class="loop-node"><span>02 / insertion</span><strong>Feedback command</strong></div>
-            <div class="loop-node"><span>03 / transport</span><strong>Anonymous event + forward</strong></div>
-            <div class="loop-node"><span>06 / next run</span><strong>Better agent behavior</strong></div>
-            <div class="loop-node"><span>05 / product</span><strong>CLI + skill fix</strong></div>
-            <div class="loop-node"><span>04 / team</span><strong>Maintainer triage</strong></div>
-          </div>
-          <div class="source">PRIVACY · Public issue creation is separate and consented; ordinary feedback does not publish the project.</div>
-        </div>
-      </section>
-
-      <section id="scene-packet" class="scene-frame clip" data-composition-id="packet" data-start="40" data-duration="8" data-track-index="1">
-        <div class="slide">
-          <div class="topline"><span>05 / Signal quality</span><span>Actionability &gt; prose volume</span></div>
-          <h2 class="claim" data-anim>Structure turns a complaint into a debuggable packet.</h2>
-          <div class="stage packet-grid" data-anim>
-            <div class="terminal">
-              <div class="terminal-bar"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span></div>
-              <div class="packet-lines">
-                <div class="packet-line"><div class="key">repro command</div><div class="value">Exact rerunnable command</div></div>
-                <div class="packet-line"><div class="key">expected / actual</div><div class="value">Isolated behavior delta</div></div>
-                <div class="packet-line"><div class="key">error</div><div class="value">Sanitized basename + line</div></div>
-                <div class="packet-line"><div class="key">outcome</div><div class="value">Completed, fallback, or failed</div></div>
-                <div class="packet-line"><div class="key">workaround</div><div class="value">What unblocked the run</div></div>
-                <div class="packet-line"><div class="key">composition structure</div><div class="value">Counts + flags for visual defects</div></div>
+            <div class="blind-art-wrap" data-reveal>
+              <img
+                class="blind-art"
+                src="assets/blind-spot.png"
+                alt="Abstract visualization of a hidden defect behind a successful pipeline"
+              />
+              <div class="blind-copy">
+                <span class="tag">looks wrong</span><span class="tag">felt confusing</span
+                ><span class="tag">needed workaround</span>
               </div>
             </div>
-            <aside class="privacy"><h3>Never collected</h3><ul><li>× absolute paths</li><li>× project names</li><li>× composition text</li><li>× media URLs</li><li>× env values</li><li>× account identity</li><li>× IP / precise location</li></ul></aside>
           </div>
-          <div class="source">SOURCE · PR #2498 actionable repros · PR #2599 composition census · PR #2677 anonymization guidance.</div>
+          <div class="source">
+            Source · docs/guides/feedback.mdx — logs can say success while the artifact is broken.
+          </div>
         </div>
       </section>
 
-      <section id="scene-rollout" class="scene-frame clip" data-composition-id="rollout" data-start="48" data-duration="8" data-track-index="1">
+      <section
+        id="scene-existing-loop"
+        class="scene-frame clip"
+        data-composition-id="existing-loop"
+        data-start="16"
+        data-duration="8"
+        data-track-index="1"
+      >
         <div class="slide">
-          <div class="topline"><span>06 / Rollout history</span><span>Behavior + schema boundaries</span></div>
-          <h2 class="claim" data-anim>The mechanism matured in four deliberate steps.</h2>
-          <div class="stage timeline" data-anim>
-            <article class="milestone"><div class="date">2026-05-28</div><h3>Collection exists</h3><p>Post-render and Studio feedback ship.</p></article>
-            <article class="milestone hot"><div class="date">2026-06-29</div><h3>Agents must report</h3><p>v0.7.21 adds one feedback line per verified task.</p></article>
-            <article class="milestone"><div class="date">2026-07-15 → 17</div><h3>Reports become actionable</h3><p>Repro packet and privacy-safe census.</p></article>
-            <article class="milestone"><div class="date">2026-07-27 → 28</div><h3>Event becomes queryable</h3><p>Plain <span class="mono">cli_render_feedback</span> in v0.7.77.</p></article>
+          <div class="topline">
+            <span>02 / Existing behavior</span><span>Context is already warm</span>
           </div>
-          <div class="source">QUERY RULE · Union legacy “survey sent” + new “cli_render_feedback”; the rename is not the behavior launch.</div>
+          <h2 class="claim" data-reveal>The checkpoint already exists.</h2>
+          <div class="stage flow">
+            <div class="flow-node" data-reveal><b>01</b><strong>Author</strong></div>
+            <div class="flow-arrow"></div>
+            <div class="flow-node" data-reveal><b>02</b><strong>Lint + check</strong></div>
+            <div class="flow-arrow"></div>
+            <div class="flow-node" data-reveal><b>03</b><strong>Inspect frames</strong></div>
+            <div class="flow-arrow"></div>
+            <div class="flow-node checkpoint" data-reveal>
+              <span class="checkpoint-label">best insertion point</span><b>04</b
+              ><strong>User approves</strong>
+            </div>
+            <div class="flow-arrow"></div>
+            <div class="flow-node" data-reveal><b>05</b><strong>Render</strong></div>
+          </div>
+          <div class="source">
+            Source · hyperframes-cli skill · scaffold → author → check → preview → approval → render
+            → verify.
+          </div>
         </div>
       </section>
 
-      <section id="scene-volume" class="scene-frame clip" data-composition-id="volume" data-start="56" data-duration="8" data-track-index="1">
+      <section
+        id="scene-one-command"
+        class="scene-frame clip"
+        data-composition-id="one-command"
+        data-start="24"
+        data-duration="8"
+        data-track-index="1"
+      >
         <div class="slide">
-          <div class="topline"><span>07 / Observed adoption</span><span>PostHog aggregate only</span></div>
-          <h2 class="claim" data-anim>PostHog tells us whether the loop changed behavior.</h2>
-          <div class="stage metric-grid" data-anim>
-            <div class="metric"><div class="metric-label">Feedback / day</div><div id="metric-day" class="metric-value">1,910</div><div class="metric-note">Average across seven complete days</div></div>
-            <div class="metric"><div class="metric-label">Feedback / week</div><div id="metric-week" class="metric-value">13,370</div><div class="metric-note">Legacy + current event schemas</div></div>
-            <div class="metric"><div class="metric-label">Participating installs</div><div id="metric-installs" class="metric-value">4,783</div><div class="metric-note">Unique anonymous installations</div></div>
+          <div class="topline"><span>03 / Before → after</span><span>One bounded change</span></div>
+          <h2 class="claim" data-reveal>Add one command after verified output.</h2>
+          <div class="stage before-after">
+            <div class="lane" data-reveal>
+              <span class="lane-title">BEFORE</span>
+              <div class="lane-line">
+                <div class="lane-node">Verify</div>
+                <span class="lane-plus">→</span>
+                <div class="lane-node">Done</div>
+              </div>
+              <p class="lane-caption">Evidence disappears with the task.</p>
+            </div>
+            <div class="lane after" data-reveal>
+              <span class="lane-title">AFTER</span>
+              <div class="lane-line">
+                <div class="lane-node">Verify</div>
+                <span class="lane-plus">+</span>
+                <div class="lane-node command">npx hyperframes<br />feedback</div>
+                <span class="lane-plus">→</span>
+                <div class="lane-node">Done</div>
+              </div>
+              <p class="lane-caption">One event keeps the context.</p>
+            </div>
           </div>
-          <div class="source">LAST 7 COMPLETE DAYS · JUL 29–AUG 4 PDT · 96.5% OF SUBMISSIONS INCLUDE A DETECTED AGENT RUNTIME.</div>
+          <div class="source">
+            0–10 rating · compact repro packet when needed · telemetry-disabled remains a no-op.
+          </div>
         </div>
       </section>
 
-      <section id="scene-fair-comparison" class="scene-frame clip" data-composition-id="fair-comparison" data-start="64" data-duration="8" data-track-index="1">
+      <section
+        id="scene-closed-loop"
+        class="scene-frame clip"
+        data-composition-id="closed-loop"
+        data-start="32"
+        data-duration="8"
+        data-track-index="1"
+      >
         <div class="slide">
-          <div class="topline"><span>08 / Before versus after</span><span>Denominator first</span></div>
-          <h2 class="claim" data-anim>After the agent mandate, feedback reached 4.03 submissions per 100 renders.</h2>
-          <div class="stage comparison" data-anim>
-            <div class="compare-panel"><div class="label">Submissions / 100 captured renders</div><div class="bar-group"><div class="bar-row"><span class="bar-label">Before</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-value">&lt;0.01</span></div><div class="bar-row"><span class="bar-label">After</span><span class="bar-track"><span class="bar-fill after"></span></span><span class="bar-value">4.03</span></div></div><p class="support" style="font-size: 28px; margin-top: auto">4 / 195,473 renders → 12,541 / 311,506 renders.</p></div>
-            <div class="compare-panel"><div class="label">Participating installs / 100 active render installs</div><div class="bar-group"><div class="bar-row"><span class="bar-label">Before</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-value">0.02</span></div><div class="bar-row"><span class="bar-label">After</span><span class="bar-track"><span class="bar-fill after"></span></span><span class="bar-value">14.62</span></div></div><p class="support" style="font-size: 28px; margin-top: auto">4 / 25,350 installs → 4,947 / 33,832 installs.</p></div>
+          <div class="topline">
+            <span>04 / The feedback loop</span><span>Anonymous by default</span>
           </div>
-          <div class="source">EQUAL 14-DAY WINDOWS · PRE JUN 15–28, POST JUN 30–JUL 13 PDT · ROLLOUT DAY EXCLUDED · DESCRIPTIVE, NOT CAUSAL.</div>
+          <h2 class="claim" data-reveal>One verified run can improve the next.</h2>
+          <div class="stage loop-stage">
+            <div class="loop-ring" data-reveal>
+              <span class="orbit-dot" data-orbit></span>
+              <div class="loop-center">A closed loop,<br /><span>not a survey.</span></div>
+              <div class="loop-node n1">Verified run</div>
+              <div class="loop-node n2 hot">Feedback command</div>
+              <div class="loop-node n3">Anonymous signal</div>
+              <div class="loop-node n4">Maintainer triage</div>
+              <div class="loop-node n5 hot">CLI / skill fix</div>
+              <div class="loop-node n6">Better next run</div>
+            </div>
+          </div>
+          <div class="source">Public issue creation is a separate, explicit consent flow.</div>
         </div>
       </section>
 
-      <section id="scene-two-halves" class="scene-frame clip" data-composition-id="two-halves" data-start="72" data-duration="8" data-track-index="1">
+      <section
+        id="scene-packet"
+        class="scene-frame clip"
+        data-composition-id="packet"
+        data-start="40"
+        data-duration="8"
+        data-track-index="1"
+      >
         <div class="slide">
-          <div class="topline"><span>09 / Why it works</span><span>Product surface × agent contract</span></div>
-          <h2 class="claim" data-anim>The CLI makes feedback possible; the skill makes it habitual.</h2>
-          <div class="stage contract-split" data-anim>
-            <article class="contract-half"><div><span class="label">Product surface</span><h3 style="margin-top: 18px">Reliable command</h3></div><ul><li>0–10 rating</li><li>Anonymous event</li><li>Best-effort forwarding</li><li>Joinable render context</li></ul></article>
-            <article class="contract-half" style="border-color: var(--brand)"><div><span class="label">Agent contract</span><h3 style="margin-top: 18px">Repeatable behavior</h3></div><ul><li>Verify first</li><li>Inspect actual frames</li><li>Report once per task</li><li>Sanitize every packet</li></ul></article>
+          <div class="topline">
+            <span>05 / Signal quality</span><span>Actionability &gt; prose</span>
           </div>
-          <div class="source">INSIGHT · A latent command gets little adoption; a policy without a reliable command creates friction.</div>
+          <h2 class="claim" data-reveal>A small packet makes the defect rerunnable.</h2>
+          <div class="stage packet-stage">
+            <div class="packet" data-reveal>
+              <div class="packet-cell">
+                <b>command</b>
+                <p>Exact repro</p>
+              </div>
+              <div class="packet-cell">
+                <b>delta</b>
+                <p>Expected ↔ actual</p>
+              </div>
+              <div class="packet-cell">
+                <b>error</b>
+                <p>Sanitized line</p>
+              </div>
+              <div class="packet-cell">
+                <b>outcome</b>
+                <p>Done / fallback / failed</p>
+              </div>
+              <div class="packet-cell">
+                <b>workaround</b>
+                <p>What unblocked it</p>
+              </div>
+              <div class="packet-cell">
+                <b>structure</b>
+                <p>Counts + flags</p>
+              </div>
+            </div>
+            <aside class="shield" data-reveal>
+              <strong>Private by design</strong
+              ><span
+                >NO PATHS<br />NO PROJECT NAMES<br />NO MEDIA URLS<br />NO ENV VALUES<br />NO
+                ACCOUNT ID<br />NO IP</span
+              >
+            </aside>
+          </div>
+          <div class="source">Source · PR #2498 · PR #2599 · PR #2677.</div>
         </div>
       </section>
 
-      <section id="scene-experiment" class="scene-frame clip" data-composition-id="experiment" data-start="80" data-duration="8" data-track-index="1">
+      <section
+        id="scene-rollout"
+        class="scene-frame clip"
+        data-composition-id="rollout"
+        data-start="48"
+        data-duration="8"
+        data-track-index="1"
+      >
         <div class="slide">
-          <div class="topline"><span>10 / Operating model</span><span>Evidence before expansion</span></div>
-          <h2 class="claim" data-anim>The next decision is an adoption experiment—not another feature.</h2>
-          <div class="stage plan" data-anim>
-            <article class="plan-step"><div class="num">01 / RELEASE</div><h3>Standardize</h3><p>Keep the verified feedback step in every supported agent runtime.</p></article>
-            <article class="plan-step" style="border-color: var(--brand)"><div class="num">02 / OBSERVE</div><h3>Measure</h3><p>Review volume, participation, ratings, and packet completeness weekly.</p></article>
-            <article class="plan-step"><div class="num">03 / IMPROVE</div><h3>Close</h3><p>Fix the CLI or skill contract, then watch the next cohort—not just the next event.</p></article>
+          <div class="topline"><span>06 / Rollout</span><span>Four deliberate steps</span></div>
+          <h2 class="claim" data-reveal>Collection became a habit, then a useful signal.</h2>
+          <div class="stage timeline">
+            <article class="milestone" data-reveal>
+              <div class="date">MAY 28</div>
+              <h3>Collect</h3>
+              <p>Post-render feedback ships.</p>
+            </article>
+            <article class="milestone hot" data-reveal>
+              <div class="date">JUN 29 · v0.7.21</div>
+              <h3>Require</h3>
+              <p>Agents report after verification.</p>
+            </article>
+            <article class="milestone" data-reveal>
+              <div class="date">JUL 15–17</div>
+              <h3>Structure</h3>
+              <p>Repro + composition packet.</p>
+            </article>
+            <article class="milestone" data-reveal>
+              <div class="date">JUL 27 · v0.7.77</div>
+              <h3>Query</h3>
+              <p>Plain event schema lands.</p>
+            </article>
           </div>
-          <div class="source">GUARDRAIL · Do not add primitive two or claim adoption without authorized observed PostHog journey evidence.</div>
+          <div class="source">
+            Query rule · union legacy “survey sent” + current “cli_render_feedback”.
+          </div>
         </div>
       </section>
 
-      <section id="scene-close" class="scene-frame clip" data-composition-id="close" data-start="88" data-duration="8" data-track-index="1">
-        <div class="slide closing">
-          <img class="brand-mark" src="assets/hyperframes-symbol-close.svg" alt="" data-anim />
-          <h1 data-anim>Verify. Report. <span style="color: var(--brand)">Improve.</span></h1>
-          <div class="final-command" data-anim>npx hyperframes feedback --rating &lt;0-10&gt;</div>
-          <div class="source" style="left: 50%; transform: translateX(-50%); text-align: center">DECISION · Make the feedback step the default close-out behavior for HyperFrames agents.</div>
+      <section
+        id="scene-volume"
+        class="scene-frame clip"
+        data-composition-id="volume"
+        data-start="56"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <div class="slide">
+          <div class="topline">
+            <span>07 / Observed adoption</span><span>Aggregate only · PDT</span>
+          </div>
+          <h2 class="claim" data-reveal>The loop now produces a daily signal.</h2>
+          <div class="stage data-stage">
+            <div class="chart" data-reveal>
+              <span class="chart-label">Daily submissions · Jul 29–Aug 4</span
+              ><svg
+                viewBox="0 0 1120 500"
+                role="img"
+                aria-label="Dithered area chart of seven daily feedback submission counts"
+              >
+                <defs>
+                  <pattern id="mintDots" width="10" height="10" patternUnits="userSpaceOnUse">
+                    <circle cx="2" cy="2" r="2.4" fill="#51f0b1" />
+                  </pattern>
+                  <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#51f0b1" stop-opacity=".3" />
+                    <stop offset="1" stop-color="#51f0b1" stop-opacity="0" />
+                  </linearGradient>
+                  <clipPath id="chartReveal">
+                    <rect class="chart-reveal" x="0" y="0" width="1120" height="500" />
+                  </clipPath>
+                </defs>
+                <g opacity=".24">
+                  <path
+                    d="M60 390H1060M60 280H1060M60 170H1060M60 60H1060"
+                    stroke="#5c6963"
+                    stroke-dasharray="3 9"
+                  />
+                </g>
+                <g clip-path="url(#chartReveal)">
+                  <path
+                    d="M70 104 L230 121 L390 254 L550 246 L710 232 L870 203 L1030 201 L1030 430 L70 430 Z"
+                    fill="url(#fade)"
+                  />
+                  <path
+                    d="M70 104 L230 121 L390 254 L550 246 L710 232 L870 203 L1030 201 L1030 430 L70 430 Z"
+                    fill="url(#mintDots)"
+                    opacity=".82"
+                  />
+                  <path
+                    d="M70 104 L230 121 L390 254 L550 246 L710 232 L870 203 L1030 201"
+                    fill="none"
+                    stroke="#51f0b1"
+                    stroke-width="4"
+                  />
+                  <g fill="#51f0b1">
+                    <circle cx="70" cy="104" r="8" />
+                    <circle cx="230" cy="121" r="8" />
+                    <circle cx="390" cy="254" r="8" />
+                    <circle cx="550" cy="246" r="8" />
+                    <circle cx="710" cy="232" r="8" />
+                    <circle cx="870" cy="203" r="8" />
+                    <circle cx="1030" cy="201" r="8" />
+                  </g>
+                </g>
+                <g fill="#8a9690" font-family="IBM Plex Mono" font-size="20">
+                  <text x="65" y="470">29</text>
+                  <text x="225" y="470">30</text>
+                  <text x="385" y="470">31</text>
+                  <text x="545" y="470">01</text>
+                  <text x="705" y="470">02</text>
+                  <text x="865" y="470">03</text>
+                  <text x="1025" y="470">04</text>
+                </g>
+              </svg>
+            </div>
+            <div class="metrics">
+              <div class="metric hot" data-reveal>
+                <b>per day</b><strong>1,910</strong><small>7-day average</small>
+              </div>
+              <div class="metric" data-reveal>
+                <b>per week</b><strong>13,370</strong><small>both schemas</small>
+              </div>
+              <div class="metric" data-reveal>
+                <b>anonymous installs</b><strong>4,783</strong><small>96.5% agent runtime</small>
+              </div>
+            </div>
+          </div>
+          <div class="source">
+            Last seven complete days · Jul 29–Aug 4 PDT · no identities or comment content.
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-fair-comparison"
+        class="scene-frame clip"
+        data-composition-id="fair-comparison"
+        data-start="64"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <div class="slide">
+          <div class="topline">
+            <span>08 / Before vs after</span><span>Equal 14-day windows</span>
+          </div>
+          <h2 class="claim" data-reveal>
+            The mandate changed participation by orders of magnitude.
+          </h2>
+          <div class="stage compare-stage">
+            <article class="compare-card" data-reveal>
+              <h3>Submissions / 100 renders</h3>
+              <div class="dot-bars">
+                <div class="dot-row">
+                  <span>Before</span>
+                  <div class="dot-track"><div class="dot-fill"></div></div>
+                  <strong>&lt;0.01</strong>
+                </div>
+                <div class="dot-row">
+                  <span>After</span>
+                  <div class="dot-track"><div class="dot-fill after"></div></div>
+                  <strong>4.03</strong>
+                </div>
+              </div>
+              <footer>4 / 195,473 → 12,541 / 311,506</footer>
+            </article>
+            <article class="compare-card" data-reveal>
+              <h3>Participating installs / 100 active render installs</h3>
+              <div class="dot-bars">
+                <div class="dot-row">
+                  <span>Before</span>
+                  <div class="dot-track"><div class="dot-fill"></div></div>
+                  <strong>0.02</strong>
+                </div>
+                <div class="dot-row">
+                  <span>After</span>
+                  <div class="dot-track"><div class="dot-fill after"></div></div>
+                  <strong>14.62</strong>
+                </div>
+              </div>
+              <footer>4 / 25,350 → 4,947 / 33,832</footer>
+            </article>
+          </div>
+          <div class="source">
+            Pre Jun 15–28 · post Jun 30–Jul 13 PDT · rollout day excluded · descriptive, not causal.
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-two-halves"
+        class="scene-frame clip"
+        data-composition-id="two-halves"
+        data-start="72"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <div class="slide">
+          <div class="topline"><span>09 / Why it works</span><span>Tool × behavior</span></div>
+          <h2 class="claim" data-reveal>Possible is not enough. It must become habitual.</h2>
+          <div class="stage halves">
+            <div class="venn" data-reveal>
+              <div class="half left"><b>CLI</b><strong>Reliable reporting surface</strong></div>
+              <div class="half right">
+                <b>Agent skill</b><strong>Repeatable close-out behavior</strong>
+              </div>
+              <div class="venn-center">Useful<br />signal</div>
+            </div>
+          </div>
+          <div class="source">
+            A latent command gets little adoption; a policy without a reliable command creates
+            friction.
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-experiment"
+        class="scene-frame clip"
+        data-composition-id="experiment"
+        data-start="80"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <div class="slide">
+          <div class="topline">
+            <span>10 / Operating model</span><span>Evidence before expansion</span>
+          </div>
+          <h2 class="claim" data-reveal>Run the loop before adding another surface.</h2>
+          <div class="stage steps">
+            <article class="step" data-reveal>
+              <b>01 / RELEASE</b><strong>Standardize</strong>
+              <p>One verified feedback step in every supported runtime.</p>
+            </article>
+            <span class="step-arrow">→</span>
+            <article class="step active" data-reveal>
+              <b>02 / OBSERVE</b><strong>Measure</strong>
+              <p>Volume, participation, ratings, packet completeness.</p>
+            </article>
+            <span class="step-arrow">→</span>
+            <article class="step" data-reveal>
+              <b>03 / IMPROVE</b><strong>Close</strong>
+              <p>Fix the CLI or skill, then watch the next cohort.</p>
+            </article>
+          </div>
+          <div class="source">
+            Guardrail · no primitive two and no adoption claim without authorized observed journey
+            evidence.
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-close"
+        class="scene-frame clip"
+        data-composition-id="close"
+        data-start="88"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <div class="slide close">
+          <img src="assets/hyperframes-symbol-close.svg" alt="" data-reveal />
+          <h1 data-reveal>Verify. Report. <span class="accent">Improve.</span></h1>
+          <code data-reveal>npx hyperframes feedback --rating &lt;0-10&gt;</code>
+          <div class="source" style="text-align: center">
+            Decision · make feedback the default close-out behavior for HyperFrames agents.
+          </div>
         </div>
       </section>
     </div>
 
     <script>
       window.__timelines = window.__timelines || {};
-      var rootTimeline = gsap.timeline({ paused: true });
-      rootTimeline.to("#signal-ring", { rotation: 360, duration: 96, ease: "none" }, 0);
-      window.__timelines["root"] = rootTimeline;
-
-      (function () {
-        var scenes = [
-          { id: "scene-open", start: 0, end: 8 },
-          { id: "scene-blind-spot", start: 8, end: 16 },
-          { id: "scene-existing-loop", start: 16, end: 24 },
-          { id: "scene-one-command", start: 24, end: 32 },
-          { id: "scene-closed-loop", start: 32, end: 40 },
-          { id: "scene-packet", start: 40, end: 48 },
-          { id: "scene-rollout", start: 48, end: 56 },
-          { id: "scene-volume", start: 56, end: 64 },
-          { id: "scene-fair-comparison", start: 64, end: 72 },
-          { id: "scene-two-halves", start: 72, end: 80 },
-          { id: "scene-experiment", start: 80, end: 88 },
-          { id: "scene-close", start: 88, end: 96 }
-        ];
-        function updateVisibility(time) {
-          for (var i = 0; i < scenes.length; i += 1) {
-            var scene = scenes[i];
-            var el = document.getElementById(scene.id);
-            if (!el) continue;
-            var active = time >= scene.start && time < scene.end;
-            el.style.opacity = active ? "1" : "0";
-            el.style.visibility = active ? "visible" : "hidden";
-            el.style.pointerEvents = active ? "auto" : "none";
-          }
-        }
-
-        window.__hfSetTime = updateVisibility;
-        updateVisibility(0);
-        rootTimeline.eventCallback("onUpdate", function () {
-          updateVisibility(rootTimeline.time());
-        });
-      })();
-
-      (function () {
-        var timelineScenes = [
-          { id: "open", start: 0, duration: 8 },
-          { id: "blind-spot", start: 8, duration: 8 },
-          { id: "existing-loop", start: 16, duration: 8 },
-          { id: "one-command", start: 24, duration: 8 },
-          { id: "closed-loop", start: 32, duration: 8 },
-          { id: "packet", start: 40, duration: 8 },
-          { id: "rollout", start: 48, duration: 8 },
-          { id: "volume", start: 56, duration: 8 },
-          { id: "fair-comparison", start: 64, duration: 8 },
-          { id: "two-halves", start: 72, duration: 8 },
-          { id: "experiment", start: 80, duration: 8 },
-          { id: "close", start: 88, duration: 8 }
-        ];
-
-        function postTimeline() {
-          parent.postMessage({ source: "hf-preview", type: "timeline", durationInFrames: 2880, scenes: timelineScenes }, "*");
-        }
-
-        if (document.readyState === "complete") setTimeout(postTimeline, 300);
-        else window.addEventListener("load", function () { setTimeout(postTimeline, 300); });
-      })();
     </script>
+    <script src="assets/deck.js"></script>
   </body>
 </html>
