@@ -29,3 +29,7 @@ registry/examples/startup-pitch/index.html
 registry/examples/startup-pitch/demo.html
 registry/examples/slideshow-demo/index.html
 registry/examples/warm-grain/compositions/captions.html
+
+# HyperFrames slideshow composition is intentionally compact so structural lint
+# counts authored slide structure, not formatter-expanded markup.
+presentations/agent-feedback-loop/composition/index.html

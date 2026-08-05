@@ -64,21 +64,21 @@ GROUP BY day
 ORDER BY day
 ```
 
-| Day | Submissions | Unique anonymous installs | Detected agent share | Comment rate |
-| --- | ---: | ---: | ---: | ---: |
-| 2026-07-29 | 2,269 | 1,124 | 97.8% | 74.1% |
-| 2026-07-30 | 2,206 | 1,119 | 96.5% | 74.5% |
-| 2026-07-31 | 1,682 | 925 | 97.2% | 76.3% |
-| 2026-08-01 | 1,712 | 896 | 98.5% | 75.5% |
-| 2026-08-02 | 1,764 | 937 | 96.5% | 74.2% |
-| 2026-08-03 | 1,865 | 960 | 93.8% | 74.6% |
-| 2026-08-04 | 1,872 | 1,016 | 95.2% | 75.9% |
+| Day        | Submissions | Unique anonymous installs | Detected agent share | Comment rate |
+| ---------- | ----------: | ------------------------: | -------------------: | -----------: |
+| 2026-07-29 |       2,269 |                     1,124 |                97.8% |        74.1% |
+| 2026-07-30 |       2,206 |                     1,119 |                96.5% |        74.5% |
+| 2026-07-31 |       1,682 |                       925 |                97.2% |        76.3% |
+| 2026-08-01 |       1,712 |                       896 |                98.5% |        75.5% |
+| 2026-08-02 |       1,764 |                       937 |                96.5% |        74.2% |
+| 2026-08-03 |       1,865 |                       960 |                93.8% |        74.6% |
+| 2026-08-04 |       1,872 |                     1,016 |                95.2% |        75.9% |
 
 Aggregate for the same window:
 
 | Submissions | Per complete day | Unique anonymous installs | Detected agent submissions | Detected agent share |
-| ---: | ---: | ---: | ---: | ---: |
-| 13,370 | 1,910.0 | 4,783 | 12,905 | 96.5% |
+| ----------: | ---------------: | ------------------------: | -------------------------: | -------------------: |
+|      13,370 |          1,910.0 |                     4,783 |                     12,905 |                96.5% |
 
 ## Equal-window before/after
 
@@ -144,10 +144,10 @@ GROUP BY period
 ORDER BY period
 ```
 
-| Period | Feedback submissions | Participating installs | Captured renders | Active render installs | Submissions / 100 renders | Participating installs / 100 active render installs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Pre: Jun 15–28 | 4 | 4 | 195,473 | 25,350 | <0.01 | 0.02 |
-| Post: Jun 30–Jul 13 | 12,541 | 4,947 | 311,506 | 33,832 | 4.03 | 14.62 |
+| Period              | Feedback submissions | Participating installs | Captured renders | Active render installs | Submissions / 100 renders | Participating installs / 100 active render installs |
+| ------------------- | -------------------: | ---------------------: | ---------------: | ---------------------: | ------------------------: | --------------------------------------------------: |
+| Pre: Jun 15–28      |                    4 |                      4 |          195,473 |                 25,350 |                     <0.01 |                                                0.02 |
+| Post: Jun 30–Jul 13 |               12,541 |                  4,947 |          311,506 |                 33,832 |                      4.03 |                                               14.62 |
 
 ## Query provenance
 

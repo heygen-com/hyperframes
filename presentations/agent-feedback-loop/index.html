@@ -47,24 +47,64 @@
     <script type="application/hyperframes-slideshow+json">
       {
         "slides": [
-          { "sceneId": "open", "notes": "This is not a survey pitch. It is a systems pitch: put one command at the moment an agent has maximum evidence and context." },
-          { "sceneId": "blind-spot", "notes": "Exit code 0 tells us the pipeline ran. It does not tell us whether the output looked right, whether the workflow was confusing, or whether the agent needed a workaround." },
-          { "sceneId": "existing-loop", "notes": "Walk left to right. Agents already author, lint/check, inspect frames, ask for approval, and render. The feedback insertion point is already present: immediately after verified output." },
-          { "sceneId": "one-command", "notes": "Clean runs can be a rating only. Friction reports carry a compact reproduction packet. The command is anonymous and no-ops when telemetry is disabled." },
-          { "sceneId": "closed-loop", "notes": "Normal feedback goes to an anonymous product event and best-effort backend forwarding. Filing a public GitHub issue is a separate, explicit consent flow." },
-          { "sceneId": "packet", "notes": "The quality of the signal comes from structure. For visual defects, the agent can add a composition census containing counts and presence flags—not content." },
-          { "sceneId": "rollout", "notes": "The behavior changed in stages. v0.7.21 is the agent-policy intervention. v0.7.77 is a schema boundary, not the start of collection, so PostHog must union both event names." },
-          { "sceneId": "volume", "notes": "Authenticated aggregate-only PostHog query for the last seven complete PDT days, July 29 through August 4: 13,370 submissions, 1,910.0 per day, 4,783 unique anonymous installs, and 96.5% of submissions with a detected agent runtime. Daily counts were 2,269; 2,206; 1,682; 1,712; 1,764; 1,865; and 1,872." },
-          { "sceneId": "fair-comparison", "notes": "Equal complete-day windows in America/Los_Angeles: pre June 15–28 and post June 30–July 13, with rollout day excluded. Feedback submissions moved from 4 to 12,541; captured render_complete events moved from 195,473 to 311,506. That is below 0.01 versus 4.03 submissions per 100 renders. Participating anonymous installs moved from 4 of 25,350 active render installs to 4,947 of 33,832: 0.02 versus 14.62 per 100. This is descriptive, not causal; release adoption is staggered." },
-          { "sceneId": "two-halves", "notes": "The CLI makes reporting reliable. The agent skill makes reporting habitual. Either half alone underperforms." },
-          { "sceneId": "experiment", "notes": "The next move is operational: stable dashboard, weekly review, and clear privacy boundaries. Do not add a second primitive or collection surface without observed journey evidence." },
-          { "sceneId": "close", "notes": "Close on the behavior: verify, report, improve. Ask the team to standardize this loop across supported agent runtimes." }
+          {
+            "sceneId": "open",
+            "notes": "This is not a survey pitch. It is a systems pitch: put one command at the moment an agent has maximum evidence and context."
+          },
+          {
+            "sceneId": "blind-spot",
+            "notes": "Exit code 0 tells us the pipeline ran. It does not tell us whether the output looked right, whether the workflow was confusing, or whether the agent needed a workaround."
+          },
+          {
+            "sceneId": "existing-loop",
+            "notes": "Walk left to right. Agents already author, lint/check, inspect frames, ask for approval, and render. The feedback insertion point is already present: immediately after verified output."
+          },
+          {
+            "sceneId": "one-command",
+            "notes": "Clean runs can be a rating only. Friction reports carry a compact reproduction packet. The command is anonymous and no-ops when telemetry is disabled."
+          },
+          {
+            "sceneId": "closed-loop",
+            "notes": "Normal feedback goes to an anonymous product event and best-effort backend forwarding. Filing a public GitHub issue is a separate, explicit consent flow."
+          },
+          {
+            "sceneId": "packet",
+            "notes": "The quality of the signal comes from structure. For visual defects, the agent can add a composition census containing counts and presence flags—not content."
+          },
+          {
+            "sceneId": "rollout",
+            "notes": "The behavior changed in stages. v0.7.21 is the agent-policy intervention. v0.7.77 is a schema boundary, not the start of collection, so PostHog must union both event names."
+          },
+          {
+            "sceneId": "volume",
+            "notes": "Authenticated aggregate-only PostHog query for the last seven complete PDT days, July 29 through August 4: 13,370 submissions, 1,910.0 per day, 4,783 unique anonymous installs, and 96.5% of submissions with a detected agent runtime. Daily counts were 2,269; 2,206; 1,682; 1,712; 1,764; 1,865; and 1,872."
+          },
+          {
+            "sceneId": "fair-comparison",
+            "notes": "Equal complete-day windows in America/Los_Angeles: pre June 15–28 and post June 30–July 13, with rollout day excluded. Feedback submissions moved from 4 to 12,541; captured render_complete events moved from 195,473 to 311,506. That is below 0.01 versus 4.03 submissions per 100 renders. Participating anonymous installs moved from 4 of 25,350 active render installs to 4,947 of 33,832: 0.02 versus 14.62 per 100. This is descriptive, not causal; release adoption is staggered."
+          },
+          {
+            "sceneId": "two-halves",
+            "notes": "The CLI makes reporting reliable. The agent skill makes reporting habitual. Either half alone underperforms."
+          },
+          {
+            "sceneId": "experiment",
+            "notes": "The next move is operational: stable dashboard, weekly review, and clear privacy boundaries. Do not add a second primitive or collection surface without observed journey evidence."
+          },
+          {
+            "sceneId": "close",
+            "notes": "Close on the behavior: verify, report, improve. Ask the team to standardize this loop across supported agent runtimes."
+          }
         ]
       }
     </script>
 
     <hyperframes-slideshow>
-      <hyperframes-player src="composition/index.html" tabindex="0" interactive></hyperframes-player>
+      <hyperframes-player
+        src="composition/index.html"
+        tabindex="0"
+        interactive
+      ></hyperframes-player>
     </hyperframes-slideshow>
   </body>
 </html>
