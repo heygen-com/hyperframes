@@ -108,12 +108,21 @@ describe("retimeRange", () => {
       target: "volume",
       points: retimeRange({ lane: ramp, range: VOLUME_RANGE, t0: 2, t1: 3, newT0: 2, newT1: 5 }),
     };
-    for (const t of [0, 1, 1.9, 5.1, 6]) {
+    // Nothing to the left of t0=2 moved (newT0 === t0 here), so sampled
+    // continuity holds all the way up to the edited region.
+    for (const t of [0, 1, 1.9]) {
       expect(sampleAutomationLane(after, t, "linear")).toBeCloseTo(
         sampleAutomationLane(before, t, "linear"),
         5,
       );
     }
+    // The next real breakpoint past the edited region keeps its own exact
+    // value — growing past it reshapes the transition INTO it, not the point
+    // itself. (Sampling inside that transition, e.g. at t=5.1, is expected to
+    // differ: one of that segment's endpoints moved from t=3 to t=5, even
+    // though this point at t=6 did not move at all.)
+    const farPoint = after.points.find((p) => p.t === 6);
+    expect(farPoint).toEqual({ t: 6, v: 0 });
   });
 
   it("rejects a degenerate span", () => {
