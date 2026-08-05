@@ -96,7 +96,7 @@ export async function generateWithAceStep(intent, ctx = {}, deps = {}) {
   if (!taskId) throw new Error("ACE-Step did not return a task ID");
 
   const started = now();
-  const timeoutMs = Number(process.env.ACESTEP_POLL_TIMEOUT_MS) || 20 * 60 * 1000;
+  const timeoutMs = Number(process.env.ACESTEP_POLL_TIMEOUT_MS) || 60 * 60 * 1000;
   while (now() - started < timeoutMs) {
     const queried = await requestJson(
       `${baseUrl}/query_result`,
