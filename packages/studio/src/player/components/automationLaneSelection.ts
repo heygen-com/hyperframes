@@ -72,3 +72,33 @@ export function replaceRange(input: {
   const cappedInner = inner.length <= budget ? inner : decimateEvenly(inner, budget);
   return [...outside, ...edges, ...cappedInner].sort((a, b) => a.t - b.t);
 }
+
+/**
+ * Retime a selection: interior points scale proportionally into the new span,
+ * then replaceRange runs over the UNION of old and new spans — growing eats
+ * whatever it covers, shrinking pins anchors where the envelope re-enters.
+ */
+export function retimeRange(input: {
+  lane: HfAutomationLane;
+  range: AutomationRange;
+  t0: number;
+  t1: number;
+  newT0: number;
+  newT1: number;
+}): HfAutomationPoint[] {
+  const { lane, range, t0, t1, newT0, newT1 } = input;
+  const oldSpan = t1 - t0;
+  const newSpan = newT1 - newT0;
+  if (oldSpan <= 0 || newSpan <= 0) return lane.points;
+  const inner = pointsIn(lane, t0, t1).map((p) => ({
+    ...p,
+    t: newT0 + ((p.t - t0) * newSpan) / oldSpan,
+  }));
+  return replaceRange({
+    lane,
+    range,
+    t0: Math.min(t0, newT0),
+    t1: Math.max(t1, newT1),
+    inner,
+  });
+}

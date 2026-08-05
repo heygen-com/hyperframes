@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pointsIn, replaceRange } from "./automationLaneSelection";
+import { pointsIn, replaceRange, retimeRange } from "./automationLaneSelection";
 import { sampleAutomationLane, VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { HfAutomationLane } from "@hyperframes/core/audio-automation";
 
@@ -92,5 +92,33 @@ describe("replaceRange", () => {
     const innerTimes = pts.map((p) => p.t).filter((t) => t > 1.5 && t < 3.5);
     // Evenly spread across the range, not clustered at the start.
     expect(Math.max(...innerTimes)).toBeGreaterThan(3.0);
+  });
+});
+
+describe("retimeRange", () => {
+  it("scales interior points proportionally into the new span", () => {
+    const pts = retimeRange({ lane: ramp, range: VOLUME_RANGE, t0: 2, t1: 3, newT0: 2, newT1: 5 });
+    const moved = pts.find((p) => p.v === 0.4); // the t=3 point
+    expect(moved?.t).toBe(5);
+  });
+
+  it("preserves the envelope outside the union of old and new spans", () => {
+    const before: HfAutomationLane = { target: "volume", points: ramp.points };
+    const after: HfAutomationLane = {
+      target: "volume",
+      points: retimeRange({ lane: ramp, range: VOLUME_RANGE, t0: 2, t1: 3, newT0: 2, newT1: 5 }),
+    };
+    for (const t of [0, 1, 1.9, 5.1, 6]) {
+      expect(sampleAutomationLane(after, t, "linear")).toBeCloseTo(
+        sampleAutomationLane(before, t, "linear"),
+        5,
+      );
+    }
+  });
+
+  it("rejects a degenerate span", () => {
+    expect(
+      retimeRange({ lane: ramp, range: VOLUME_RANGE, t0: 2, t1: 3, newT0: 4, newT1: 4 }),
+    ).toEqual(ramp.points);
   });
 });
