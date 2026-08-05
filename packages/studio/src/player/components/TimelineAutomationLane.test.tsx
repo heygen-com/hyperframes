@@ -459,33 +459,33 @@ describe("TimelineAutomationLane", () => {
   });
 });
 
-describe("TimelineAutomationLane modifiers", () => {
-  /** The lane's own box, so pointer coordinates map to clip time and value. */
-  const BOX = { left: 100, top: 0, width: 400 + PAD * 2, height: AUTOMATION_LANE_H };
+/** The lane's own box, so pointer coordinates map to clip time and value. */
+const BOX = { left: 100, top: 0, width: 400 + PAD * 2, height: AUTOMATION_LANE_H };
 
-  /** x for a clip time, y for a 0..1 unit height, in client coordinates. The
-   *  6px inset and the height have to match the lane's own, or a point sits
-   *  outside the grab radius and a press silently does nothing. */
-  const at = (t: number, unit: number) => ({
-    clientX: BOX.left + PAD + (t / 4) * 400,
-    clientY: BOX.top + 6 + (1 - unit) * (AUTOMATION_LANE_H - 12),
-  });
+/** x for a clip time, y for a 0..1 unit height, in client coordinates. The
+ *  6px inset and the height have to match the lane's own, or a point sits
+ *  outside the grab radius and a press silently does nothing. */
+const at = (t: number, unit: number) => ({
+  clientX: BOX.left + PAD + (t / 4) * 400,
+  clientY: BOX.top + 6 + (1 - unit) * (AUTOMATION_LANE_H - 12),
+});
 
-  const mount = (automation: HfAutomation, over: Record<string, unknown> = {}) => {
-    const base = laneProps({ automation, ...over });
-    // Narrowed once here: laneProps types these as the prop signature, and every
-    // assertion below reads the calls the lane made.
-    const props = {
-      ...base,
-      onPreview: base.onPreview as ReturnType<typeof vi.fn>,
-      onCommit: base.onCommit as ReturnType<typeof vi.fn>,
-    };
-    const { container } = render(<TimelineAutomationLane {...props} />);
-    const svg = container.querySelector("svg")!;
-    stubBox(svg, BOX);
-    return { container, svg, props };
+const mount = (automation: HfAutomation, over: Record<string, unknown> = {}) => {
+  const base = laneProps({ automation, ...over });
+  // Narrowed once here: laneProps types these as the prop signature, and every
+  // assertion below reads the calls the lane made.
+  const props = {
+    ...base,
+    onPreview: base.onPreview as ReturnType<typeof vi.fn>,
+    onCommit: base.onCommit as ReturnType<typeof vi.fn>,
   };
+  const { container } = render(<TimelineAutomationLane {...props} />);
+  const svg = container.querySelector("svg")!;
+  stubBox(svg, BOX);
+  return { container, svg, props };
+};
 
+describe("TimelineAutomationLane modifiers", () => {
   it("bends a segment when it is Alt-dragged, and leaves the points where they were", () => {
     // `curve` was honoured everywhere it is read — drawn, sampled in preview,
     // baked into the render — with no gesture that could set it.
@@ -606,5 +606,46 @@ describe("TimelineAutomationLane modifiers", () => {
     });
     const committed = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
     expect(committed?.lanes[0]?.points[0]?.v).toBe(VOLUME_RANGE.max);
+  });
+});
+
+describe("TimelineAutomationLane range selection", () => {
+  it("drag on the background selects a range, snapped to the grid", () => {
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(ramp, { snapTimes: [1], onRangeSelect });
+    fire(svg, "pointerdown", at(0.98, 0.5)); // background: no point within grab radius
+    fire(svg, "pointermove", at(3, 0.5));
+    fire(svg, "pointerup", at(3, 0.5));
+    const last = onRangeSelect.mock.calls.at(-1);
+    expect(last?.[0]).toBe(1); // snapped to the beat
+    expect(last?.[1]).toBeCloseTo(3, 1);
+  });
+
+  it("a sub-threshold click clears instead of selecting", () => {
+    const onRangeSelect = vi.fn();
+    const onRangeClear = vi.fn();
+    const { svg } = mount(ramp, { onRangeSelect, onRangeClear });
+    fire(svg, "pointerdown", at(1, 0.5));
+    fire(svg, "pointerup", at(1.001, 0.5));
+    expect(onRangeSelect).not.toHaveBeenCalled();
+    expect(onRangeClear).toHaveBeenCalled();
+  });
+
+  it("draws the selection rect between its endpoints", () => {
+    const { container } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    const rect = container.querySelector("[data-automation-selection]");
+    expect(rect).not.toBeNull();
+    expect(Number(rect?.getAttribute("x"))).toBeCloseTo(PAD + 100, 0); // xOf(1) at 400px/4s
+    expect(Number(rect?.getAttribute("width"))).toBeCloseTo(200, 0);
+  });
+
+  it("point drags still win over range selection", () => {
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(ramp, { onRangeSelect });
+    fire(svg, "pointerdown", at(0, 1)); // exactly on a point
+    fire(svg, "pointermove", at(1, 0.8));
+    fire(svg, "pointerup", at(1, 0.8));
+    expect(onRangeSelect).not.toHaveBeenCalled();
+    expect(props.onCommit).toHaveBeenCalled();
   });
 });

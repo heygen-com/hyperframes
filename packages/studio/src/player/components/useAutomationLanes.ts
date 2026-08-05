@@ -19,7 +19,9 @@ import {
 } from "@hyperframes/core/audio-automation";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
-import type { TimelineElement } from "../store/playerStore";
+import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import type { AutomationSelection } from "../store/automationSelectionSlice";
 import { elementAutomation, elementFxChain } from "./automationLaneData";
 
 export interface AutomationLaneBinding {
@@ -39,6 +41,13 @@ export interface AutomationLaneBinding {
    */
   onSelect(): void;
   readOnly: boolean;
+  /** This element's active time selection, or null if none / it belongs to a
+   *  different element. */
+  selection: AutomationSelection | null;
+  /** Live write while dragging a range on the given lane; does not persist —
+   *  the selection is ephemeral store state, not part of the composition. */
+  onRangeSelect(target: string, t0: number, t1: number): void;
+  onRangeClear(): void;
 }
 
 export interface UseAutomationLanesResult {
@@ -49,11 +58,15 @@ export function useAutomationLanes(): UseAutomationLanesResult {
   // Optional: the player also runs outside Studio, where there is no edit
   // session. There the lanes render read-only, which is the right fallback.
   const domEdit = useDomEditActionsContextOptional();
+  const automationSelection = usePlayerStore((s) => s.automationSelection);
+  const setAutomationSelection = usePlayerStore((s) => s.setAutomationSelection);
+  const clearAutomationSelection = usePlayerStore((s) => s.clearAutomationSelection);
 
   const bind = useCallback(
     (element: TimelineElement, isSelected: boolean): AutomationLaneBinding => {
       const chain = elementFxChain(element);
       const automation = elementAutomation(element);
+      const elementKey = getTimelineElementIdentity(element);
 
       const write = (next: HfAutomation, persist: boolean): void => {
         if (!domEdit || !isSelected) return;
@@ -80,9 +93,15 @@ export function useAutomationLanes(): UseAutomationLanesResult {
         // Selecting is its own gesture; the lane goes live after it.
         onSelect: () => void domEdit?.handleTimelineElementSelect(element),
         readOnly: !domEdit || !isSelected,
+        selection: automationSelection?.elementKey === elementKey ? automationSelection : null,
+        onRangeSelect: (target, t0, t1) => {
+          if (!domEdit || !isSelected) return;
+          setAutomationSelection({ elementKey, target, t0, t1 });
+        },
+        onRangeClear: () => clearAutomationSelection(),
       };
     },
-    [domEdit],
+    [domEdit, automationSelection, setAutomationSelection, clearAutomationSelection],
   );
 
   return useMemo(() => ({ bind }), [bind]);

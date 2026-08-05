@@ -72,6 +72,10 @@ export interface TimelineAutomationLaneProps {
   readOnly?: boolean;
   /** Called when a read-only lane is pressed: selects the clip so it goes live. */
   onSelect?(): void;
+  /** Active selection on THIS lane, or null. */
+  rangeSelection?: { t0: number; t1: number } | null | undefined;
+  onRangeSelect?: ((t0: number, t1: number) => void) | undefined;
+  onRangeClear?: (() => void) | undefined;
 }
 
 export function TimelineAutomationLane({
@@ -89,6 +93,9 @@ export function TimelineAutomationLane({
   snapTimes,
   readOnly,
   onSelect,
+  rangeSelection,
+  onRangeSelect,
+  onRangeClear,
 }: TimelineAutomationLaneProps) {
   const stored = laneFor(automation, target);
 
@@ -183,6 +190,9 @@ export function TimelineAutomationLane({
     snapTimes,
     readOnly,
     onSelect,
+    onRangeSelect,
+    onRangeClear,
+    duration,
   });
   const { dragIndex, curveIndex, hint, editing } = gestures;
 
@@ -255,6 +265,31 @@ export function TimelineAutomationLane({
           stroke="rgba(255,255,255,0.08)"
           strokeDasharray="3 4"
         />
+        {rangeSelection ? (
+          <>
+            <rect
+              data-automation-selection=""
+              x={xOf(rangeSelection.t0)}
+              y={0}
+              width={Math.max(0, xOf(rangeSelection.t1) - xOf(rangeSelection.t0))}
+              height={h}
+              fill={accentColor}
+              opacity={0.15}
+              pointerEvents="none"
+            />
+            {[rangeSelection.t0, rangeSelection.t1].map((t) => (
+              <line
+                key={t}
+                x1={xOf(t)}
+                x2={xOf(t)}
+                y1={0}
+                y2={h}
+                stroke={accentColor}
+                opacity={0.5}
+              />
+            ))}
+          </>
+        ) : null}
         <path
           d={path}
           fill="none"
@@ -382,6 +417,13 @@ export function TimelineAutomationLaneSlot({
             onSelect={bound.onSelect}
             snapTimes={snapTimes}
             readOnly={bound.readOnly}
+            rangeSelection={
+              bound.selection?.target === lane.target
+                ? { t0: bound.selection.t0, t1: bound.selection.t1 }
+                : null
+            }
+            onRangeSelect={(t0, t1) => bound.onRangeSelect(lane.target, t0, t1)}
+            onRangeClear={bound.onRangeClear}
           />
         );
       })}
