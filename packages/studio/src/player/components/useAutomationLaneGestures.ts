@@ -3,8 +3,8 @@
  *
  * Its own hook because the lane component sits at the studio's file ceiling and
  * because these are the parts worth testing on their own: which of a press,
- * a drag and a modifier resolves to moving a point, bending a segment, or
- * nothing at all.
+ * a drag and a modifier resolves to moving a point, bending a segment,
+ * stretching a selection's edge, or nothing at all.
  *
  * Modifiers follow Ableton's, since that is the muscle memory an automation lane
  * inherits: Shift locks a drag to one axis and fines the value down, Alt over a
@@ -21,10 +21,16 @@ import {
   POINT_MERGE_SEC,
   snapLaneTime,
 } from "./automationLaneGeometry";
+import { retimeRange } from "./automationLaneSelection";
 
 /** Snap radius in clip seconds. Tight on purpose: a lane is often a few seconds
  *  wide, where a generous radius makes a point unplaceable between two beats. */
 const SNAP_SEC = 0.04;
+
+/** Hit radius for grabbing a selection's edge, in screen px — independent of
+ *  a point's own grab radius so the two zones can be reasoned about on their
+ *  own, even though a point sitting on an edge still wins (see `gestureAt`). */
+const EDGE_GRAB_PX = 8;
 
 /** A point's position, or the origin when the index no longer resolves. */
 function originOf(point: HfAutomationLane["points"][number] | undefined): { t: number; v: number } {
@@ -60,6 +66,8 @@ export interface UseAutomationLaneGesturesInput {
   onRangeSelect?: ((t0: number, t1: number) => void) | undefined;
   onRangeClear?: (() => void) | undefined;
   duration: number; // clamp bound for range endpoints
+  /** Active selection on this lane, so its edges have something to grab. */
+  rangeSelection?: { t0: number; t1: number } | null | undefined;
 }
 
 export interface UseAutomationLaneGesturesResult {
@@ -67,6 +75,11 @@ export interface UseAutomationLaneGesturesResult {
   dragIndex: number | null;
   /** Segment being bent, identified by the point that owns its curve. */
   curveIndex: number | null;
+  /** Edge being stretched, for the cursor. */
+  edgeDrag: "t0" | "t1" | null;
+  /** Whether the pointer sits over a stretch handle with no gesture live —
+   *  the col-resize cursor hint before a press commits to the drag. */
+  edgeHover: boolean;
   /** Value readout to show while a gesture is live. */
   hint: string | null;
   hitIndex(clientX: number, clientY: number): number | null;
@@ -97,6 +110,7 @@ export function useAutomationLaneGestures({
   onRangeSelect,
   onRangeClear,
   duration,
+  rangeSelection,
 }: UseAutomationLaneGesturesInput): UseAutomationLaneGesturesResult {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [curveIndex, setCurveIndex] = useState<number | null>(null);
@@ -110,6 +124,32 @@ export function useAutomationLaneGestures({
   /** Whether the live drag has crossed the pixel threshold that turns a press
    *  into an actual range, rather than a click that should just clear one. */
   const rangeCrossed = useRef(false);
+  /** An edge-stretch drag in progress: which edge, the selection it started
+   *  from (kept fixed as the retime's untouched anchor), and the edge's own
+   *  live position. */
+  const [edgeDrag, setEdgeDrag] = useState<{
+    edge: "t0" | "t1";
+    origin: { t0: number; t1: number };
+    current: number;
+  } | null>(null);
+  /** Cursor hint: hovering a stretch handle with nothing else live. */
+  const [edgeHover, setEdgeHover] = useState(false);
+
+  /** Which edge of the active selection, if any, sits within grab range of the
+   *  pointer's screen x — full lane height, since the handle spans the rect. */
+  const edgeAt = useCallback(
+    (clientX: number): "t0" | "t1" | null => {
+      if (!rangeSelection) return null;
+      const box = getBox();
+      if (!box) return null;
+      const px = clientX - box.left;
+      const d0 = Math.abs(xOf(rangeSelection.t0) - px);
+      const d1 = Math.abs(xOf(rangeSelection.t1) - px);
+      if (d0 <= EDGE_GRAB_PX && d0 <= d1) return "t0";
+      return d1 <= EDGE_GRAB_PX ? "t1" : null;
+    },
+    [rangeSelection, getBox, xOf],
+  );
 
   /** Index of a point under the pointer, or null. */
   const hitIndex = useCallback(
@@ -153,6 +193,38 @@ export function useAutomationLaneGestures({
     [hitIndex, segmentIndex],
   );
 
+  /**
+   * What a press on the lane's empty background arms: an edge grab when it
+   * landed within range of an existing selection's edge, else a new range
+   * selection — only when a caller wants to hear about one; a read-only lane
+   * never reaches here at all.
+   */
+  const armBackgroundGesture = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>): void => {
+      const edge = edgeAt(e.clientX);
+      if (edge && rangeSelection) {
+        e.preventDefault();
+        capturePointer(e);
+        setEdgeHover(false);
+        setEdgeDrag({
+          edge,
+          origin: rangeSelection,
+          current: edge === "t0" ? rangeSelection.t0 : rangeSelection.t1,
+        });
+        return;
+      }
+      if (!onRangeSelect) return;
+      e.preventDefault();
+      capturePointer(e);
+      const raw = pointAt(e.clientX, e.clientY).t;
+      const clamped = Math.min(duration, Math.max(0, raw));
+      const t = e.altKey ? clamped : snapLaneTime(clamped, snapTimes ?? [], SNAP_SEC);
+      rangeCrossed.current = false;
+      setRangeDrag({ from: t, to: t });
+    },
+    [edgeAt, rangeSelection, onRangeSelect, pointAt, duration, snapTimes],
+  );
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
       if (e.button !== 0) return;
@@ -168,23 +240,15 @@ export function useAutomationLaneGestures({
       }
       const gesture = gestureAt(e);
       if (!gesture) {
-        // Neither a point nor an Alt-held segment: the press landed on the
-        // lane's empty background. That is a range selection's gesture, not
-        // nothing — but only when a caller wants to hear about one; a
-        // read-only lane already returned above, so this is a live one with no
-        // range feature wired up.
-        if (!onRangeSelect) return;
-        e.preventDefault();
-        capturePointer(e);
-        const raw = pointAt(e.clientX, e.clientY).t;
-        const clamped = Math.min(duration, Math.max(0, raw));
-        const t = e.altKey ? clamped : snapLaneTime(clamped, snapTimes ?? [], SNAP_SEC);
-        rangeCrossed.current = false;
-        setRangeDrag({ from: t, to: t });
+        armBackgroundGesture(e);
         return;
       }
       e.preventDefault();
       capturePointer(e);
+      // A point can sit close enough to an edge to have set the hover hint
+      // moments ago; winning the press should not leave that stale cursor
+      // showing through the drag that follows.
+      setEdgeHover(false);
       if (gesture.curve) {
         setCurveIndex(gesture.index);
         return;
@@ -192,7 +256,7 @@ export function useAutomationLaneGestures({
       dragOrigin.current = originOf(lane.points[gesture.index]);
       setDragIndex(gesture.index);
     },
-    [gestureAt, lane, readOnly, onSelect, onRangeSelect, pointAt, duration, snapTimes],
+    [gestureAt, lane, readOnly, onSelect, armBackgroundGesture],
   );
 
   /** Bend the segment under the pointer, which is what Alt-dragging the line does. */
@@ -239,46 +303,120 @@ export function useAutomationLaneGestures({
     [dragIndex, lane, pointAt, range, commitPoints, snapTimes, xOf, yOf],
   );
 
+  /** Preview the selection's new bounds as the grabbed edge moves: the other
+   *  edge stays put as the retime's anchor, and the dragged one is clamped so
+   *  it cannot cross its partner (leaving at least a merge-radius of room) nor
+   *  leave the clip's own duration. */
+  const moveEdge = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>): void => {
+      if (edgeDrag === null) return;
+      const { edge, origin } = edgeDrag;
+      const raw = pointAt(e.clientX, e.clientY).t;
+      const clamped = Math.min(duration, Math.max(0, raw));
+      const current =
+        edge === "t0"
+          ? Math.min(clamped, origin.t1 - POINT_MERGE_SEC)
+          : Math.max(clamped, origin.t0 + POINT_MERGE_SEC);
+      setEdgeDrag({ edge, origin, current });
+      const newT0 = edge === "t0" ? current : origin.t0;
+      const newT1 = edge === "t1" ? current : origin.t1;
+      setHint(`${newT0.toFixed(2)}s → ${newT1.toFixed(2)}s`);
+      commitPoints(retimeRange({ lane, range, t0: origin.t0, t1: origin.t1, newT0, newT1 }), false);
+    },
+    [edgeDrag, pointAt, duration, lane, range, commitPoints],
+  );
+
+  /** Update the live range-drag as the pointer moves, firing `onRangeSelect`
+   *  once it has covered enough pixels to count as an actual range rather
+   *  than a click that should just clear one. */
+  const moveRangeDrag = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>): void => {
+      if (rangeDrag === null) return;
+      const raw = pointAt(e.clientX, e.clientY).t;
+      const clamped = Math.min(duration, Math.max(0, raw));
+      const t = e.altKey ? clamped : snapLaneTime(clamped, snapTimes ?? [], SNAP_SEC);
+      setRangeDrag({ from: rangeDrag.from, to: t });
+      if (Math.abs(xOf(t) - xOf(rangeDrag.from)) <= 3) return;
+      rangeCrossed.current = true;
+      onRangeSelect?.(Math.min(rangeDrag.from, t), Math.max(rangeDrag.from, t));
+    },
+    [rangeDrag, pointAt, duration, snapTimes, xOf, onRangeSelect],
+  );
+
+  /** Cursor hint only: whether the pointer sits over a stretch handle with
+   *  nothing else live. Skipped read-only, which never arms a stretch. */
+  const updateEdgeHover = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>): void => {
+      if (!readOnly) setEdgeHover(edgeAt(e.clientX) !== null);
+    },
+    [readOnly, edgeAt],
+  );
+
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (rangeDrag !== null) {
+      if (edgeDrag !== null) {
         e.stopPropagation();
-        const raw = pointAt(e.clientX, e.clientY).t;
-        const clamped = Math.min(duration, Math.max(0, raw));
-        const t = e.altKey ? clamped : snapLaneTime(clamped, snapTimes ?? [], SNAP_SEC);
-        setRangeDrag({ from: rangeDrag.from, to: t });
-        if (Math.abs(xOf(t) - xOf(rangeDrag.from)) > 3) {
-          rangeCrossed.current = true;
-          onRangeSelect?.(Math.min(rangeDrag.from, t), Math.max(rangeDrag.from, t));
-        }
+        moveEdge(e);
         return;
       }
-      if (curveIndex === null && dragIndex === null) return;
+      if (rangeDrag !== null) {
+        e.stopPropagation();
+        moveRangeDrag(e);
+        return;
+      }
+      if (curveIndex === null && dragIndex === null) {
+        updateEdgeHover(e);
+        return;
+      }
       e.stopPropagation();
       if (curveIndex !== null) bendSegment(e.clientX, e.clientY);
       else movePoint(e);
     },
     [
+      edgeDrag,
+      moveEdge,
       rangeDrag,
-      pointAt,
-      duration,
-      snapTimes,
-      xOf,
-      onRangeSelect,
-      bendSegment,
+      moveRangeDrag,
       curveIndex,
       dragIndex,
+      updateEdgeHover,
+      bendSegment,
       movePoint,
     ],
   );
 
+  /** Persist the stretch and hand the selection's new bounds back to the
+   *  caller — the one point in the gesture that both commits and moves the
+   *  selection it grabbed. */
+  const finishEdgeDrag = useCallback((): void => {
+    if (edgeDrag === null) return;
+    const { edge, origin, current } = edgeDrag;
+    const newT0 = edge === "t0" ? current : origin.t0;
+    const newT1 = edge === "t1" ? current : origin.t1;
+    setEdgeDrag(null);
+    setHint(null);
+    commitPoints(lane.points, true);
+    onRangeSelect?.(newT0, newT1);
+  }, [edgeDrag, lane, commitPoints, onRangeSelect]);
+
+  /** A sub-threshold press clears the selection rather than leaving a
+   *  zero-width one behind. */
+  const finishRangeDrag = useCallback((): void => {
+    if (!rangeCrossed.current) onRangeClear?.();
+    rangeCrossed.current = false;
+    setRangeDrag(null);
+  }, [onRangeClear]);
+
   const endDrag = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
+      if (edgeDrag !== null) {
+        e.stopPropagation();
+        finishEdgeDrag();
+        return;
+      }
       if (rangeDrag !== null) {
         e.stopPropagation();
-        if (!rangeCrossed.current) onRangeClear?.();
-        rangeCrossed.current = false;
-        setRangeDrag(null);
+        finishRangeDrag();
         return;
       }
       if (dragIndex === null && curveIndex === null) return;
@@ -289,7 +427,16 @@ export function useAutomationLaneGestures({
       setHint(null);
       commitPoints(lane.points, true);
     },
-    [rangeDrag, onRangeClear, curveIndex, dragIndex, lane, commitPoints],
+    [
+      edgeDrag,
+      finishEdgeDrag,
+      rangeDrag,
+      finishRangeDrag,
+      curveIndex,
+      dragIndex,
+      lane,
+      commitPoints,
+    ],
   );
 
   const onDoubleClick = useCallback(
@@ -352,6 +499,8 @@ export function useAutomationLaneGestures({
   return {
     dragIndex,
     curveIndex,
+    edgeDrag: edgeDrag?.edge ?? null,
+    edgeHover,
     hint,
     hitIndex,
     segmentIndex,

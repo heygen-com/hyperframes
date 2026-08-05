@@ -686,3 +686,134 @@ describe("TimelineAutomationLane selection menu", () => {
     expect(document.querySelector(".hf-automation-menu")).toBeNull();
   });
 });
+
+describe("TimelineAutomationLane stretch", () => {
+  // Edges deliberately off any existing point: the lane's hit-priority rule
+  // (a point always wins) means a selection edge sitting exactly on a
+  // breakpoint would resolve to a point-drag, never a stretch — see the
+  // dedicated priority test below for that case instead.
+
+  /** Press, drag and release the right edge of a stretchable selection — the
+   *  shape most of this block's tests share, differing only in where the
+   *  drag ends up. */
+  function dragRightEdge(svg: Element, from: number, to: number): void {
+    fire(svg, "pointerdown", at(from, 0.5));
+    fire(svg, "pointermove", at(to, 0.5));
+    fire(svg, "pointerup", at(to, 0.5));
+  }
+
+  const stretchable: HfAutomation = {
+    version: 1,
+    lanes: [
+      {
+        target: "volume",
+        points: [
+          { t: 0, v: 1 },
+          { t: 1, v: 0.5 },
+          { t: 2, v: 0.8 },
+          { t: 4, v: 0 },
+        ],
+      },
+    ],
+  };
+
+  it("dragging the right edge retimes the interior and persists on release", () => {
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2.5, 3.3); // off any point, dragged out to 3.3
+
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+    const written = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation;
+    const points = written.lanes[0]?.points ?? [];
+    // Interior points (t=1, t=2) scale by the new/old span ratio (2.8 / 2 = 1.4).
+    expect(points.some((p) => Math.abs(p.t - 1.2) < 0.01 && p.v === 0.5)).toBe(true);
+    expect(points.some((p) => Math.abs(p.t - 2.6) < 0.01 && p.v === 0.8)).toBe(true);
+
+    expect(onRangeSelect).toHaveBeenCalledTimes(1);
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, expect.closeTo(3.3, 1));
+  });
+
+  it("previews the stretch on move without persisting, then commits once on release", () => {
+    const onPreview = vi.fn();
+    const onCommit = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onPreview,
+      onCommit,
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    fire(svg, "pointermove", at(3, 0.5));
+    fire(svg, "pointermove", at(3.3, 0.5));
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(onCommit).not.toHaveBeenCalled();
+    fire(svg, "pointerup", at(3.3, 0.5));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("a point sitting on the selection's edge wins over the edge-stretch gesture", () => {
+    const sel: HfAutomation = {
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 1.5, v: 0.5 },
+            { t: 2, v: 0.8 },
+            { t: 4, v: 0 },
+          ],
+        },
+      ],
+    };
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(sel, {
+      rangeSelection: { t0: 1, t1: 2 },
+      onRangeSelect,
+    });
+    fire(svg, "pointerdown", at(2, 0.8)); // exactly the point at t=2, which is also the right edge
+    fire(svg, "pointermove", at(3, 0.8));
+    fire(svg, "pointerup", at(3, 0.8));
+    // A point-drag moved just that point; the selection itself was untouched.
+    expect(onRangeSelect).not.toHaveBeenCalled();
+    const written = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation;
+    const times = (written.lanes[0]?.points ?? []).map((p) => p.t);
+    expect(times).toContain(3);
+  });
+
+  it("clamps the dragged edge so it cannot cross its partner", () => {
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2.5, 0.3); // dragged past the left edge (t0=0.5)
+    const [, t1] = onRangeSelect.mock.calls.at(-1) as [number, number];
+    expect(t1).toBeGreaterThan(0.5);
+  });
+
+  it("clamps the dragged edge to the lane's own duration", () => {
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2.5, 10); // far past the clip's own duration (4s)
+    const [, t1] = onRangeSelect.mock.calls.at(-1) as [number, number];
+    expect(t1).toBeLessThanOrEqual(4);
+  });
+
+  it("shows a resize cursor when hovering an edge with nothing else live", () => {
+    const { svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "pointermove", at(3, 0.5)); // near the right edge, nothing pressed
+    expect(svg.style.cursor).toBe("col-resize");
+  });
+
+  it("keeps the normal cursor away from the selection's edges", () => {
+    const { svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "pointermove", at(2, 0.5)); // middle of the selection, not an edge
+    expect(svg.style.cursor).not.toBe("col-resize");
+  });
+});
