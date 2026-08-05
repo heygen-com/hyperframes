@@ -74,4 +74,23 @@ describe("replaceRange", () => {
     // Nothing to preserve, nothing to pin: an empty lane stays empty.
     expect(pts).toEqual([]);
   });
+
+  it("keeps the far anchor and every outside point when inner would overflow the cap", () => {
+    const dense = Array.from({ length: 600 }, (_, i) => ({ t: 1.5 + i * 0.001, v: 0.5 }));
+    const pts = replaceRange({ lane: ramp, range: VOLUME_RANGE, t0: 1.5, t1: 3.5, inner: dense });
+    const times = pts.map((p) => p.t);
+    expect(times).toContain(1.5); // near anchor
+    expect(times).toContain(3.5); // far anchor — this is what the bug dropped
+    expect(times).toContain(0); // outside point before the range
+    expect(times).toContain(6); // outside point after the range
+    expect(pts.length).toBeLessThanOrEqual(512);
+  });
+
+  it("thins the interior evenly rather than dropping its tail", () => {
+    const dense = Array.from({ length: 2001 }, (_, i) => ({ t: 1.5 + i * 0.001, v: 0.5 }));
+    const pts = replaceRange({ lane: ramp, range: VOLUME_RANGE, t0: 1.5, t1: 3.5, inner: dense });
+    const innerTimes = pts.map((p) => p.t).filter((t) => t > 1.5 && t < 3.5);
+    // Evenly spread across the range, not clustered at the start.
+    expect(Math.max(...innerTimes)).toBeGreaterThan(3.0);
+  });
 });

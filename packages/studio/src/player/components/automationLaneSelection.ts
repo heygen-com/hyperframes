@@ -38,6 +38,20 @@ function anchor(
   return [{ t, v: sampleAutomationLane(lane, t, range.scale) }];
 }
 
+/** Evenly subsample items to a budget, preserving first and last. */
+function decimateEvenly<T>(items: readonly T[], budget: number): T[] {
+  if (budget <= 0) return [];
+  if (items.length <= budget) return [...items];
+  if (budget === 1) return [items[0]!];
+  const out: T[] = [];
+  const step = (items.length - 1) / (budget - 1);
+  for (let i = 0; i < budget; i += 1) {
+    const item = items[Math.round(i * step)];
+    if (item) out.push(item);
+  }
+  return out;
+}
+
 export function replaceRange(input: {
   lane: HfAutomationLane;
   range: AutomationRange;
@@ -54,5 +68,7 @@ export function replaceRange(input: {
     lane.points.length === 0
       ? []
       : [...anchor(lane, range, t0, inner), ...anchor(lane, range, t1, inner)];
-  return [...outside, ...edges, ...inner].sort((a, b) => a.t - b.t).slice(0, MAX_AUTOMATION_POINTS);
+  const budget = Math.max(0, MAX_AUTOMATION_POINTS - outside.length - edges.length);
+  const cappedInner = inner.length <= budget ? inner : decimateEvenly(inner, budget);
+  return [...outside, ...edges, ...cappedInner].sort((a, b) => a.t - b.t);
 }
