@@ -5,22 +5,21 @@ import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
 import { useAutomationLanes } from "./useAutomationLanes";
+import { useAutomationSelectionKeyboard } from "../../hooks/useAutomationSelectionKeyboard";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { resolveTrackKeyframeClip, trackShowsBeatStrip } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import { CLIP_Y, CLIP_HANDLE_W, TRACK_H } from "./timelineLayout";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
 import {
   isMultiDragActive,
   isMultiDragPassenger,
   multiDragDeltaSeconds,
-  type MultiDragPreviewInput,
   multiDragPassengerOffsetPx,
 } from "./timelineMultiDragPreview";
-import type { TimelineLaneBaseProps } from "./timelineLaneProps";
-import type { TimelineEditCallbacks } from "./timelineCallbacks";
+import type { TimelineLanesProps } from "./timelineLaneProps";
 import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
@@ -29,18 +28,6 @@ import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
-
-interface TimelineLanesProps extends TimelineLaneBaseProps {
-  /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
-  draggedElement: TimelineElement | null;
-  multiDragPreview: MultiDragPreviewInput | null;
-  onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
-  onTogglePropertyGroupKeyframe: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
-  onResizeElement: TimelineEditCallbacks["onResizeElement"];
-  onMoveElement: TimelineEditCallbacks["onMoveElement"];
-  onRazorSplit: TimelineEditCallbacks["onRazorSplit"];
-  onRazorSplitAll: TimelineEditCallbacks["onRazorSplitAll"];
-}
 
 export function TimelineLanes({
   pps,
@@ -109,6 +96,7 @@ export function TimelineLanes({
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const automationLanes = useAutomationLanes();
+  useAutomationSelectionKeyboard({ lanes: automationLanes });
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
   const toggleClipExpandedTracked = (key: string) => {
     const willExpand = !expandedClipIds.has(key);

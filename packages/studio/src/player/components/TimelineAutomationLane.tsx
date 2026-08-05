@@ -390,6 +390,16 @@ export function TimelineAutomationLaneSlot({
     [beatTimes, element.start, element.duration],
   );
   const bound = lanes.bind(element, isSelected);
+  // Stale-selection guard: the selected lane's target can vanish out from under
+  // it (e.g. its effect got deleted from the chain, dropping the lane), leaving
+  // a rectangle selecting nothing. Clear it rather than let it point at a
+  // target that no longer draws.
+  useEffect(() => {
+    const target = bound.selection?.target;
+    if (target !== undefined && !bound.lanes.some((lane) => lane.target === target)) {
+      bound.onRangeClear();
+    }
+  }, [bound]);
   if (bound.lanes.length === 0) return null;
   const inClip = currentTime >= element.start && currentTime <= element.start + element.duration;
   const top = getTimelineLaneTop(laneCount);
