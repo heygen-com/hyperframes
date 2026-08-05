@@ -72,6 +72,10 @@ export interface TimelineAutomationLaneProps {
   readOnly?: boolean;
   /** Called when a read-only lane is pressed: selects the clip so it goes live. */
   onSelect?(): void;
+  /** Active selection on THIS lane, or null. */
+  rangeSelection?: { t0: number; t1: number } | null | undefined;
+  onRangeSelect?: ((t0: number, t1: number) => void) | undefined;
+  onRangeClear?: (() => void) | undefined;
 }
 
 export function TimelineAutomationLane({
@@ -89,6 +93,9 @@ export function TimelineAutomationLane({
   snapTimes,
   readOnly,
   onSelect,
+  rangeSelection,
+  onRangeSelect,
+  onRangeClear,
 }: TimelineAutomationLaneProps) {
   const stored = laneFor(automation, target);
 
@@ -183,6 +190,9 @@ export function TimelineAutomationLane({
     snapTimes,
     readOnly,
     onSelect,
+    onRangeSelect,
+    onRangeClear,
+    duration,
   });
   const { dragIndex, curveIndex, hint, editing } = gestures;
 
@@ -255,6 +265,31 @@ export function TimelineAutomationLane({
           stroke="rgba(255,255,255,0.08)"
           strokeDasharray="3 4"
         />
+        {rangeSelection ? (
+          <>
+            <rect
+              data-automation-selection=""
+              x={xOf(rangeSelection.t0)}
+              y={0}
+              width={Math.max(0, xOf(rangeSelection.t1) - xOf(rangeSelection.t0))}
+              height={h}
+              fill={accentColor}
+              opacity={0.15}
+              pointerEvents="none"
+            />
+            {[rangeSelection.t0, rangeSelection.t1].map((t) => (
+              <line
+                key={t}
+                x1={xOf(t)}
+                x2={xOf(t)}
+                y1={0}
+                y2={h}
+                stroke={accentColor}
+                opacity={0.5}
+              />
+            ))}
+          </>
+        ) : null}
         <path
           d={path}
           fill="none"
@@ -355,6 +390,16 @@ export function TimelineAutomationLaneSlot({
     [beatTimes, element.start, element.duration],
   );
   const bound = lanes.bind(element, isSelected);
+  // Stale-selection guard: the selected lane's target can vanish out from under
+  // it (e.g. its effect got deleted from the chain, dropping the lane), leaving
+  // a rectangle selecting nothing. Clear it rather than let it point at a
+  // target that no longer draws.
+  useEffect(() => {
+    const target = bound.selection?.target;
+    if (target !== undefined && !bound.lanes.some((lane) => lane.target === target)) {
+      bound.onRangeClear();
+    }
+  }, [bound]);
   if (bound.lanes.length === 0) return null;
   const inClip = currentTime >= element.start && currentTime <= element.start + element.duration;
   const top = getTimelineLaneTop(laneCount);
@@ -382,6 +427,13 @@ export function TimelineAutomationLaneSlot({
             onSelect={bound.onSelect}
             snapTimes={snapTimes}
             readOnly={bound.readOnly}
+            rangeSelection={
+              bound.selection?.target === lane.target
+                ? { t0: bound.selection.t0, t1: bound.selection.t1 }
+                : null
+            }
+            onRangeSelect={(t0, t1) => bound.onRangeSelect(lane.target, t0, t1)}
+            onRangeClear={bound.onRangeClear}
           />
         );
       })}

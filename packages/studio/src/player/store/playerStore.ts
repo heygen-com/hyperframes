@@ -10,6 +10,10 @@ import {
 } from "../../utils/studioUiPreferences";
 import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeCacheEntry, type KeyframeSlice } from "./keyframeSlice";
+import {
+  createAutomationSelectionSlice,
+  type AutomationSelectionSlice,
+} from "./automationSelectionSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 
@@ -40,7 +44,7 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState extends KeyframeSlice {
+interface PlayerState extends KeyframeSlice, AutomationSelectionSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -295,6 +299,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     timelineProjectId: get().timelineProjectId,
     timelineSessionEpoch: get().timelineSessionEpoch,
   })),
+
+  ...createAutomationSelectionSlice(set),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
