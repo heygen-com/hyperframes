@@ -50,8 +50,10 @@ import { getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineElement } from "../store/playerStore";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 
-/** Pointer shape: a read-only lane can only be selected, a live one edited. */
-function laneCursor(readOnly: boolean | undefined, dragging: boolean): string {
+/** Pointer shape: a stretch handle wins over everything else it might also
+ *  sit above, a read-only lane can only be selected, a live one edited. */
+function laneCursor(readOnly: boolean | undefined, dragging: boolean, stretching: boolean): string {
+  if (stretching) return "col-resize";
   if (readOnly) return "pointer";
   return dragging ? "grabbing" : "crosshair";
 }
@@ -204,8 +206,9 @@ export function TimelineAutomationLane({
     onRangeSelect,
     onRangeClear,
     duration,
+    rangeSelection,
   });
-  const { dragIndex, curveIndex, hint, editing } = gestures;
+  const { dragIndex, curveIndex, edgeDrag, edgeHover, hint, editing } = gestures;
 
   const removeAt = useCallback(
     (index: number): void => {
@@ -285,7 +288,11 @@ export function TimelineAutomationLane({
           top: 0,
           width: widthPx + PAD_X * 2,
           height: h,
-          cursor: laneCursor(readOnly, dragIndex !== null || curveIndex !== null),
+          cursor: laneCursor(
+            readOnly,
+            dragIndex !== null || curveIndex !== null,
+            edgeDrag !== null || edgeHover,
+          ),
           opacity: readOnly ? 0.55 : 1,
           touchAction: "none",
         }}
