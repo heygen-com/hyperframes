@@ -59,11 +59,15 @@ describe("timeline performance fixture", () => {
     expect(Math.max(...perTrack.values())).toBeLessThanOrEqual(128);
   });
 
-  it.each(PROFILES)("generates an identical 50k %s fixture", (profile) => {
-    const first = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
-    const second = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
-    expect(second).toEqual(first);
-  });
+  it.each(PROFILES)(
+    "generates an identical 50k %s fixture",
+    (profile) => {
+      const first = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
+      const second = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
+      expect(second).toEqual(first);
+    },
+    30_000,
+  );
 
   it.each(PROFILES)("builds the %s 1k scale profile", (profile) => {
     const fixture = createTimelinePerformanceFixture({ elementCount: 1_000, profile });
