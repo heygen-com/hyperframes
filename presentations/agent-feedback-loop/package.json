@@ -1,0 +1,12 @@
+{
+  "name": "agent-feedback-loop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.94 present ./composition",
+    "studio": "npx --yes hyperframes@0.7.94 preview ./composition",
+    "lint": "npx --yes hyperframes@0.7.94 lint ./composition",
+    "check": "npx --yes hyperframes@0.7.94 check ./composition",
+    "snapshot": "npx --yes hyperframes@0.7.94 snapshot ./composition"
+  }
+}
