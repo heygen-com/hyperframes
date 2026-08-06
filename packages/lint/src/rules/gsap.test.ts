@@ -478,6 +478,27 @@ describe("GSAP rules", () => {
     expect(finding?.fixHint).toMatch(/xPercent/);
   });
 
+  it("does NOT warn when GSAP animates a canvas layout subtree with a CSS transform", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <canvas id="preview" layoutsubtree></canvas>
+  </div>
+  <style>
+    #preview { transform: translateX(-50%); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#preview", { x: 20, opacity: 1, duration: 0.4 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(conflict).toBeUndefined();
+  });
+
   it("warns when tl.to animates scale on an element with CSS scale transform", async () => {
     const html = `
 <html><body>
