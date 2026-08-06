@@ -23,6 +23,11 @@ export interface AcpAgentSpec {
   cwd: string;
   /** Overridable so a test does not have to wait out the real deadline. */
   handshakeTimeoutMs?: number;
+  /**
+   * The process, once it exists. Studio stops a run by killing its child, and
+   * that has to keep working for an agent it reaches over a protocol.
+   */
+  onSpawn?: (child: ChildProcess) => void;
 }
 
 /** What the agent said it can do, from its `initialize` response. */
@@ -62,6 +67,8 @@ const HANDSHAKE_TIMEOUT_MS = 15_000;
  * the part worth telling the user, and it arrives on its own schedule.
  */
 const EXIT_REPORT_MS = 200;
+/** How much of an agent's stderr to keep for explaining a failure. */
+const STDERR_KEPT = 2000;
 
 /**
  * What Studio can do for an agent that asks.
@@ -186,6 +193,7 @@ export async function withAcpAgent<T>(
   } catch (error) {
     throw new Error(`${spec.command} could not be started: ${describe(error)}`);
   }
+  spec.onSpawn?.(child);
 
   // An agent that dies takes its stdout with it, and the protocol layer only
   // knows the connection closed. Watching the process is how the reason
@@ -200,6 +208,14 @@ export async function withAcpAgent<T>(
     child.once("exit", (code, signal) =>
       settle(signal ? `was killed by ${signal}` : `exited with code ${code}`),
     );
+  });
+
+  // The protocol carries no diagnostics: an agent that fails answers with a
+  // JSON-RPC error as terse as "Internal error" and explains itself on stderr.
+  // Thrown away, that leaves the user with a failure and no reason for it.
+  let complaints = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    complaints = (complaints + chunk.toString()).slice(-STDERR_KEPT);
   });
 
   const stream = ndJsonStream(
@@ -221,10 +237,39 @@ export async function withAcpAgent<T>(
         endedSoon,
         new Promise<null>((resolve) => setTimeout(() => resolve(null), EXIT_REPORT_MS)),
       ]));
-    throw reason ? new Error(`${spec.command} ${reason} before the ACP run finished`) : error;
+    if (reason) throw new Error(`${spec.command} ${reason} before the ACP run finished`);
+    throw explain(error, complaints);
   } finally {
     child.kill();
   }
+}
+
+/** The agent's own error, with whatever it said on stderr about why. */
+function explain(error: unknown, complaints: string): Error {
+  const said = lastComplaint(complaints);
+  const message = describe(error);
+  return said && !message.includes(said) ? new Error(`${message}: ${said}`) : new Error(message);
+}
+
+/**
+ * Terminal colour codes. Built at runtime: the escape byte cannot be written
+ * into a regex literal without putting a control character in the source.
+ */
+const COLOUR_CODES = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+/**
+ * The last thing of substance on stderr; startup banners are not the reason.
+ *
+ * Agents log to a terminal, so their diagnostics arrive dressed in colour
+ * codes. Those are noise in a run's message, where nothing renders them.
+ */
+function lastComplaint(complaints: string): string {
+  const lines = complaints
+    .replace(COLOUR_CODES, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.at(-1)?.slice(0, 300) ?? "";
 }
 
 function describe(error: unknown): string {
