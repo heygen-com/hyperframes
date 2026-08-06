@@ -307,6 +307,76 @@ export function useDomEditTextCommits({
     ],
   );
 
+  /**
+   * Persist an element's own markup, for a text edit that styled part of it.
+   *
+   * Its own commit rather than a mode of the one above: that one plans a change
+   * to the text-field model, which escapes markup on the way out and refuses a
+   * change in child structure, and both of those are correct for the design
+   * panel. Styling a run of characters is neither of those things. The element
+   * already holds what the user typed, so there is nothing to apply, only
+   * something to save and something to put back if saving fails.
+   */
+  const handleDomRichTextCommit = useCallback(
+    async (html: string) => {
+      if (!domEditSelection) return;
+      if (!isTextEditableSelection(domEditSelection)) return;
+      const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
+      const operations: PatchOperation[] = [{ type: "rich-text", property: "", value: html }];
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      let editedElement: HTMLElement | null = null;
+      let previousInnerHtml: string | null = null;
+
+      await runDomEditCommit({
+        capture: () => {
+          if (!doc) return;
+          const el = findElementForSelection(doc, domEditSelection, activeCompPath);
+          if (!el) return;
+          editedElement = el;
+          previousInnerHtml = el.innerHTML;
+        },
+        apply: () => {
+          // Idempotent: the caret put this there. Assigned anyway so a commit
+          // raised from anywhere but the element itself still lands.
+          if (editedElement) editedElement.innerHTML = html;
+        },
+        persist: async () => {
+          await persistDomEditOperations(domEditSelection, operations, {
+            label: "Edit text",
+            skipRefresh: true,
+            shouldSave: isLatestTextCommit,
+          });
+        },
+        shouldRevert: () => isLatestTextCommit(),
+        revert: () => {
+          if (!editedElement || previousInnerHtml === null) return;
+          editedElement.innerHTML = previousInnerHtml;
+        },
+        onError: (error) =>
+          reportDomEditPersistFailure(domEditSelection, operations, error, showToast),
+        shouldResync: isLatestTextCommit,
+        resync: () =>
+          resyncDomTextSelectionFromPreview(
+            doc,
+            domEditSelection,
+            activeCompPath,
+            buildDomSelectionFromTarget,
+            applyDomSelection,
+          ),
+      });
+    },
+    [
+      activeCompPath,
+      applyDomSelection,
+      buildDomSelectionFromTarget,
+      domEditSelection,
+      persistDomEditOperations,
+      previewIframeRef,
+      showToast,
+    ],
+  );
+
   const commitDomTextFields = useCallback(
     async (
       selection: DomEditSelection,
@@ -477,6 +547,7 @@ export function useDomEditTextCommits({
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomRichTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,

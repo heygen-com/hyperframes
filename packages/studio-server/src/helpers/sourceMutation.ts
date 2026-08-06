@@ -2,6 +2,7 @@ import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
+import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
@@ -136,7 +137,7 @@ export function isHTMLElement(el: Node): el is HTMLElement {
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "html-attribute" | "text-content";
+  type: "inline-style" | "attribute" | "html-attribute" | "text-content" | "rich-text";
   property: string;
   value: string | null;
   childSelector?: string;
@@ -213,6 +214,16 @@ export function patchElementInHtml(
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
           const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
           textTarget.textContent = op.value;
+        }
+        break;
+      // The one operation that can write markup, so the one that has to check
+      // it. Assigned first and sanitised after, rather than sanitising a
+      // string: parsing is what turns a payload into the tree the allowlist
+      // can actually judge, and linkedom never runs anything it parses.
+      case "rich-text":
+        if (op.value != null) {
+          opTarget.innerHTML = op.value;
+          sanitizeRichTextChildren(opTarget);
         }
         break;
     }

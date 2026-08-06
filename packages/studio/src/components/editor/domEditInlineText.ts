@@ -1,3 +1,4 @@
+import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
 import type { DomEditSelection } from "./domEditingTypes";
 import { isTextEditableSelection } from "./domEditingLayers";
 
@@ -19,7 +20,10 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
   // The composition host is the document, not a piece of copy in it.
   if (selection.isCompositionHost) return false;
   if (selection.isInsideLockedComposition) return false;
-  return selection.textFields.length <= 1;
+  if (selection.textFields.length <= 1) return true;
+  // A styled element reports one field per run of characters, but it is still
+  // one piece of copy and the caret edits all of it at once.
+  return canEditElementTextInline(selection.element);
 }
 
 /**
@@ -30,17 +34,33 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
  * selection is asynchronous, and a press has to decide now whether it is a
  * text edit or the start of a drag. This asks the same question of the DOM.
  *
- * One element child is already too many: those are separate text fields, the
+ * A structural child keeps an element out: those are separate text fields, the
  * panel edits them one at a time, and making the whole element editable would
  * flatten them into a single string.
+ *
+ * A formatting child does not. Styling a run of characters puts a span inside
+ * the element, so a rule of "no element children" would have let the editor
+ * lock every element it had ever styled out of itself, permanently, on the
+ * first colour change. What counts as formatting is the sanitiser's allowlist,
+ * so the editor and the thing that writes the file agree on it.
  */
 export function canEditElementTextInline(element: HTMLElement | null): boolean {
   if (!element) return false;
   const tag = element.tagName;
   if (tag === "BODY" || tag === "HTML") return false;
-  if (element.childElementCount > 0) return false;
+  if (!hasOnlyFormattingChildren(element)) return false;
   if (element.isContentEditable) return false;
   return (element.textContent ?? "").trim().length > 0;
+}
+
+function hasOnlyFormattingChildren(element: HTMLElement): boolean {
+  for (const child of Array.from(element.children)) {
+    if (!isRichTextFormattingTag(child.tagName)) return false;
+    // Formatting nests, and a structural child hidden inside a span is still
+    // structural.
+    if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
+  }
+  return true;
 }
 
 /** Where and when a press landed, for recognising the next one as a pair. */

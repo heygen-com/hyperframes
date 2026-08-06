@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -15,14 +16,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * would leave the canvas unable to select anything.
  */
 
-/** `plaintext-only` is what keeps a text edit from becoming a structural one. */
-const EDITABLE = "plaintext-only";
+/**
+ * `true`, not `plaintext-only`.
+ *
+ * `plaintext-only` was what kept a text edit from becoming a structural one,
+ * and it also made it impossible to give three characters a colour, which is
+ * the point of editing in the composition rather than in a field. The guard it
+ * was providing is rebuilt as two narrower ones that do not cost the feature:
+ * paste arrives as plain text, and what leaves the element goes through the
+ * sanitiser before anyone writes it to a file.
+ */
+const EDITABLE = "true";
 /** Studio's accent, so the mark belongs to Studio rather than to the design. */
 const EDITING_OUTLINE = "2px solid #3CE6AC";
 
 export interface InlineTextEditSession {
   element: HTMLElement;
-  /** What the element said when editing started, for putting back on cancel. */
+  /**
+   * The element's markup when editing started, for putting back on cancel.
+   * Markup rather than text: cancelling an edit that recoloured a word has to
+   * restore the colours it replaced, not just the letters.
+   */
   original: string;
   /** The element's own outline, to put back when the session ends. */
   outline: string;
@@ -85,7 +99,7 @@ export function useInlineTextEdit({
 
       const open = {
         element,
-        original: element.textContent ?? "",
+        original: element.innerHTML,
         outline: element.style.outline,
       };
       // Drawn on the element itself, not in Studio's overlay above it. This is
@@ -117,17 +131,20 @@ export function useInlineTextEdit({
   const commit = useCallback(() => {
     const open = openRef.current;
     if (!open) return;
-    const text = open.element.textContent ?? "";
+    // Sanitised here, in the element, so the preview shows exactly what will be
+    // saved rather than something the server will quietly cut down.
+    sanitizeRichTextChildren(open.element);
+    const html = open.element.innerHTML;
     teardown();
     // After teardown, so the commit path's own resync does not fight an
     // element that is still editable.
-    onCommit(text);
+    onCommit(html);
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {
     const open = openRef.current;
     if (!open) return;
-    if (open.element.isConnected) open.element.textContent = open.original;
+    if (open.element.isConnected) open.element.innerHTML = open.original;
     teardown();
   }, [teardown]);
 
@@ -156,14 +173,23 @@ export function useInlineTextEdit({
     // would take a word, but the element IS the field here, and replacing all
     // of it is the common intent once the caret is already in.
     const onDoubleClick = () => selectAll(element);
+    // Dropping `plaintext-only` means the browser would otherwise paste a whole
+    // web page's markup straight in. What arrives is the words.
+    const onPaste = (event: ClipboardEvent) => {
+      event.preventDefault();
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (text) element.ownerDocument.execCommand("insertText", false, text);
+    };
 
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("blur", onBlur);
     element.addEventListener("dblclick", onDoubleClick);
+    element.addEventListener("paste", onPaste);
     return () => {
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("blur", onBlur);
       element.removeEventListener("dblclick", onDoubleClick);
+      element.removeEventListener("paste", onPaste);
     };
   }, [session, commit, cancel]);
 

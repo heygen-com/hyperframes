@@ -61,7 +61,9 @@ describe("useInlineTextEdit", () => {
       controls().start(element);
     });
 
-    expect(element.getAttribute("contenteditable")).toBe("plaintext-only");
+    // Not `plaintext-only`: that would make it impossible to give three
+    // characters a colour, which is the point of editing in the composition.
+    expect(element.getAttribute("contenteditable")).toBe("true");
     expect(controls().session?.element).toBe(element);
     // The frame being edited is the one the user chose to edit on.
     expect(onPause).toHaveBeenCalledTimes(1);
@@ -336,6 +338,89 @@ describe("useInlineTextEdit", () => {
     act(() => element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 
     expect(document.getSelection()?.toString()).toBe("Motion Playground");
+    act(() => root.unmount());
+  });
+});
+
+// Styling a run of characters is what the element is edited in place for, and
+// it only counts once the markup survives the trip out of the element.
+describe("useInlineTextEdit with styled runs", () => {
+  it("hands over the markup, not just the words", () => {
+    const element = heading("hello");
+    const { controls, onCommit, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.innerHTML = 'hell<span style="color: red">o</span>';
+    act(() => controls().commit());
+
+    expect(onCommit).toHaveBeenCalledWith('hell<span style="color: red">o</span>');
+    act(() => root.unmount());
+  });
+
+  it("cleans what it hands over, so the preview shows what will be saved", () => {
+    const element = heading("hello");
+    const { controls, onCommit, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.innerHTML = '<span onclick="steal()" style="position: fixed">hi</span>';
+    act(() => controls().commit());
+
+    expect(onCommit).toHaveBeenCalledWith("<span>hi</span>");
+    // Cleaned in the element too, not only on the way out.
+    expect(element.innerHTML).toBe("<span>hi</span>");
+    act(() => root.unmount());
+  });
+
+  it("puts the styling back on cancel, not just the letters", () => {
+    const element = heading();
+    element.innerHTML = '<span style="color: red">before</span>';
+    const { controls, onCommit, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.innerHTML = "after";
+    act(() => controls().cancel());
+
+    expect(element.innerHTML).toBe('<span style="color: red">before</span>');
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("keeps the element markup-free when nothing was styled", () => {
+    const element = heading("plain words");
+    const { controls, onCommit, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    act(() => controls().commit());
+
+    expect(onCommit).toHaveBeenCalledWith("plain words");
+    act(() => root.unmount());
+  });
+
+  it("pastes the words, not the page they came from", () => {
+    const element = heading("hi");
+    const { controls, root } = mount();
+    act(() => {
+      controls().start(element);
+    });
+
+    const insertText = vi.fn();
+    (document as Document & { execCommand: unknown }).execCommand = insertText;
+    const paste = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(paste, "clipboardData", {
+      value: { getData: (type: string) => (type === "text/plain" ? "pasted" : "<b>pasted</b>") },
+    });
+    act(() => void element.dispatchEvent(paste));
+
+    expect(paste.defaultPrevented).toBe(true);
+    expect(insertText).toHaveBeenCalledWith("insertText", false, "pasted");
     act(() => root.unmount());
   });
 });

@@ -1,4 +1,5 @@
-import { useRef, type RefObject } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
+import { InlineTextToolbar } from "./InlineTextToolbar";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -28,10 +29,17 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
   startFromPress: (event: { clientX: number; clientY: number }) => boolean;
   /** Handle a key on the canvas. Returns true when it opened an edit. */
   handleKeyDown: (event: { key: string; shiftKey: boolean }) => boolean;
+  /**
+   * The styling controls for the current selection, for the caller to render.
+   *
+   * Handed back rather than mounted somewhere central because it belongs to the
+   * session this hook owns, and appears and disappears with it.
+   */
+  toolbar: ReactNode;
 } {
   const actions = useDomEditActionsContextOptional();
   const inlineText = useInlineTextEdit({
-    onCommit: (text) => void actions?.handleDomTextCommit(text),
+    onCommit: (html) => void actions?.handleDomRichTextCommit(html),
     onPause: () => usePlayerStore.getState().setIsPlaying(false),
   });
   const lastPressRef = useRef<PressMark | null>(null);
@@ -72,6 +80,12 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
 
   return {
     editing: inlineText.session !== null,
+    toolbar: (
+      <InlineTextToolbar
+        session={inlineText.session}
+        iframe={actions?.previewIframeRef?.current ?? null}
+      />
+    ),
     // Enter opens the selected element's text, the way every design tool does,
     // and is the dependable way in: a double press has to survive the canvas'
     // gesture machinery, while this is one key on a selection that has settled.

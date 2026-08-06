@@ -52,6 +52,12 @@
       "import": "./src/utils/htmlAttrSafety.ts",
       "types": "./src/utils/htmlAttrSafety.ts"
     },
+    "./rich-text-sanitize": {
+      "bun": "./src/utils/richTextSanitize.ts",
+      "node": "./dist/utils/richTextSanitize.js",
+      "import": "./src/utils/richTextSanitize.ts",
+      "types": "./src/utils/richTextSanitize.ts"
+    },
     "./composition-contract": {
       "bun": "./src/compositionContract.ts",
       "node": "./dist/compositionContract.js",
@@ -325,6 +331,10 @@
       "./html-attr-safety": {
         "import": "./dist/utils/htmlAttrSafety.js",
         "types": "./dist/utils/htmlAttrSafety.d.ts"
+      },
+      "./rich-text-sanitize": {
+        "import": "./dist/utils/richTextSanitize.js",
+        "types": "./dist/utils/richTextSanitize.d.ts"
       },
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
