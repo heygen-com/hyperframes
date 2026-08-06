@@ -20,6 +20,7 @@ import {
   promoteAgentJob,
   steerAgentJob,
   type AgentCommand,
+  type AgentKind,
 } from "../helpers/agentJobs.js";
 
 /**
@@ -44,6 +45,7 @@ import {
 } from "../helpers/agentSchemas.js";
 import { deleteCustomAgent, listCustomAgents, saveCustomAgent } from "../helpers/customAgents.js";
 import { skillsPromptSection } from "../helpers/agentSkills.js";
+import type { HarnessSpec } from "../helpers/harnessModels.js";
 
 /**
  * Prompts always arrive on stdin — never as an argv or shell string — so a
@@ -123,6 +125,17 @@ export function resumedAgentCommand(
   if (!args) return null;
   // Codex rebuilds its args outright; Claude only adds a flag to its own.
   return { ...agent, args: agent.kind === "codex" ? args : [...agent.args, ...args] };
+}
+
+/** What the model list needs to know about a harness: which, how, and where. */
+function harnessSpec(agent: AgentCommand | null, kind: AgentKind, cwd: string): HarnessSpec {
+  return {
+    kind,
+    command: agent?.command ?? "",
+    args: agent?.args ?? [],
+    transport: agent?.transport,
+    cwd,
+  };
 }
 
 /** Name a custom command after the harness it points at, so its mark is right. */
@@ -282,12 +295,13 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const url = new URL(c.req.url, "http://localhost");
     const requestedId = url.searchParams.get("agent") ?? undefined;
     const requestedKind = agentKindSchema.safeParse(requestedId);
-    const kind = requestedKind.success
-      ? requestedKind.data
-      : (resolveAgentCommand(process.env, requestedId, project.dir)?.kind ??
-        resolveAgentCommand()?.kind);
+    // The command matters now, not just the kind: an ACP agent is asked what it
+    // runs over its own protocol, so the list depends on how it is started.
+    const agent =
+      resolveAgentCommand(process.env, requestedId, project.dir) ?? resolveAgentCommand();
+    const kind = requestedKind.success ? requestedKind.data : agent?.kind;
     if (!kind) return c.json({ models: [], defaultModel: null });
-    const models = await listAgentModels(kind);
+    const models = await listAgentModels(harnessSpec(agent, kind, project.dir));
     return c.json({ models, defaultModel: models[0]?.id ?? null });
   });
 
@@ -357,10 +371,11 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
 
     // No model named? Take the cheapest one the catalog says can drive tools —
     // a run should not quietly cost frontier money because nobody chose.
-    const model = requestedModel ?? (await resolveDefaultModel(agent.kind)) ?? undefined;
+    const spec = harnessSpec(agent, agent.kind, project.dir);
+    const model = requestedModel ?? (await resolveDefaultModel(spec)) ?? undefined;
     // Same rule as the model: the cheapest thing that can do the job, unless
     // the user said otherwise. For effort that is the lowest level offered.
-    const effort = requestedEffort ?? (await resolveDefaultEffort(agent.kind, model)) ?? undefined;
+    const effort = requestedEffort ?? (await resolveDefaultEffort(spec, model)) ?? undefined;
 
     // The prompt is built in the browser, which cannot see what is installed on
     // disk. Naming the skills is the server's job, and it is what turns a
@@ -369,7 +384,12 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     const job = enqueueAgentJob({
       projectId: project.id,
       projectDir: project.dir,
-      agent: { ...agent, args: withModelArgs(agent.kind, agent.args, model, effort) },
+      // An ACP agent takes its model over the protocol, not on its command
+      // line; adding flags here would be Studio guessing at its CLI.
+      agent:
+        agent.transport === "acp"
+          ? agent
+          : { ...agent, args: withModelArgs(agent.kind, agent.args, model, effort) },
       model,
       effort,
       prompt: skills.length > 0 ? `${prompt}\n${skills.join("\n")}` : prompt,

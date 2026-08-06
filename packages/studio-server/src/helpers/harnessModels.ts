@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { listAcpModels } from "./acp/models.js";
 import { harnessModelListSchema, type AgentKind } from "./agentSchemas.js";
 
 /**
@@ -16,6 +17,16 @@ import { harnessModelListSchema, type AgentKind } from "./agentSchemas.js";
  * to the catalog.
  */
 
+/** Enough of a harness to ask it anything: which one, and how to start it. */
+export interface HarnessSpec {
+  kind: AgentKind;
+  command: string;
+  args: readonly string[];
+  transport?: "native" | "acp";
+  /** Where an ACP session opens; it takes a working directory. */
+  cwd?: string;
+}
+
 export interface HarnessModel {
   id: string;
   name: string;
@@ -32,7 +43,13 @@ const MODEL_LIST_COMMAND: Partial<Record<AgentKind, { command: string; args: str
 const REQUEST_TIMEOUT_MS = 8000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-const cache = new Map<AgentKind, { at: number; models: HarnessModel[] | null }>();
+const cache = new Map<string, { at: number; models: HarnessModel[] | null }>();
+
+/** One cache entry per harness as invoked, not per kind: two ACP adapters are
+ * two different answers even though both are "custom". */
+function cacheKey(spec: HarnessSpec): string {
+  return `${spec.transport ?? "native"}:${spec.kind}:${spec.command}:${spec.args.join(" ")}`;
+}
 
 /**
  * One JSON-RPC round trip over stdio: initialize, then `model/list`.
@@ -101,14 +118,29 @@ function requestModelList(command: string, args: string[]): Promise<unknown> {
  * Null and an empty list mean different things: "ask the catalog instead" and
  * "this harness reports no models".
  */
-export async function listHarnessModels(kind: AgentKind): Promise<HarnessModel[] | null> {
-  const cached = cache.get(kind);
+export async function listHarnessModels(spec: HarnessSpec): Promise<HarnessModel[] | null> {
+  const key = cacheKey(spec);
+  const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
 
-  const spec = MODEL_LIST_COMMAND[kind];
-  if (!spec) return null;
+  // An ACP agent answers over the protocol it already speaks; there is no
+  // second, harness-specific way in.
+  if (spec.transport === "acp") {
+    const models = await listAcpModels({
+      command: spec.command,
+      args: spec.args,
+      cwd: spec.cwd ?? process.cwd(),
+    });
+    cache.set(key, { at: Date.now(), models });
+    return models;
+  }
 
-  const parsed = harnessModelListSchema.safeParse(await requestModelList(spec.command, spec.args));
+  const listing = MODEL_LIST_COMMAND[spec.kind];
+  if (!listing) return null;
+
+  const parsed = harnessModelListSchema.safeParse(
+    await requestModelList(listing.command, listing.args),
+  );
   const models = parsed.success
     ? parsed.data.data
         .filter((entry) => !entry.hidden)
@@ -121,7 +153,7 @@ export async function listHarnessModels(kind: AgentKind): Promise<HarnessModel[]
         }))
     : null;
 
-  cache.set(kind, { at: Date.now(), models });
+  cache.set(key, { at: Date.now(), models });
   return models;
 }
 

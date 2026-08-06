@@ -1,5 +1,5 @@
 import { catalogProviderSchema, type AgentKind, type CatalogModel } from "./agentSchemas.js";
-import { listHarnessModels } from "./harnessModels.js";
+import { listHarnessModels, type HarnessSpec } from "./harnessModels.js";
 
 /**
  * Which models a harness can be pointed at.
@@ -154,10 +154,10 @@ async function loadCatalog(): Promise<Map<string, AgentModel[]>> {
  * Every model a harness can be pointed at, cheapest first. Empty when neither
  * source knows any, which the picker shows as "the harness decides".
  */
-export async function listAgentModels(kind: AgentKind): Promise<AgentModel[]> {
-  const provider = PROVIDER_BY_KIND[kind];
+export async function listAgentModels(spec: HarnessSpec): Promise<AgentModel[]> {
+  const provider = PROVIDER_BY_KIND[spec.kind];
   const catalog = provider ? ((await loadCatalog()).get(provider) ?? []) : [];
-  const harness = await listHarnessModels(kind);
+  const harness = await listHarnessModels(spec);
   if (!harness) return catalog;
 
   // The harness has the final say on what exists AND on what each model
@@ -185,8 +185,8 @@ export async function listAgentModels(kind: AgentKind): Promise<AgentModel[]> {
  * own default is only consulted when nothing is priced and "cheapest" has no
  * meaning — a harness usually defaults to its flagship.
  */
-export async function resolveDefaultModel(kind: AgentKind): Promise<string | null> {
-  const models = await listAgentModels(kind);
+export async function resolveDefaultModel(spec: HarnessSpec): Promise<string | null> {
+  const models = await listAgentModels(spec);
   const priced = models.some((model) => modelCost(model) !== Number.MAX_SAFE_INTEGER);
   const chosen = priced ? models[0] : (models.find((model) => model.isDefault) ?? models[0]);
   return chosen?.id ?? null;
@@ -211,13 +211,19 @@ export function withModelArgs(
   return [...args.slice(0, insertAt), ...extra, ...args.slice(insertAt)];
 }
 
-/** The lowest effort a model offers — what a run uses unless asked otherwise. */
+/**
+ * The lowest effort a model offers — what a run uses unless asked otherwise.
+ *
+ * Native harnesses only take an effort if they have a flag for it. An ACP agent
+ * needs no flag: the level rides inside the model id, so what the model says it
+ * offers is the whole answer.
+ */
 export async function resolveDefaultEffort(
-  kind: AgentKind,
+  spec: HarnessSpec,
   modelId?: string,
 ): Promise<string | null> {
-  if (!EFFORT_ARGS[kind]) return null;
-  const models = await listAgentModels(kind);
+  if (spec.transport !== "acp" && !EFFORT_ARGS[spec.kind]) return null;
+  const models = await listAgentModels(spec);
   const model = modelId ? models.find((entry) => entry.id === modelId) : models[0];
   return model?.effortOptions?.[0] ?? null;
 }

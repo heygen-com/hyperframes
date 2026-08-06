@@ -918,6 +918,8 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
       args: agent.args,
       cwd,
       prompt,
+      model: job.model,
+      effort: job.effort,
       hooks: {
         onSpawn: (child) => {
           runningByJob.set(job.id, child);

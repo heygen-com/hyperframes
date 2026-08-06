@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listHarnessModels } from "./harnessModels";
+import type { AgentKind } from "./agentSchemas";
 import {
   clearModelCatalogCache,
   listAgentModels,
@@ -54,6 +55,11 @@ vi.mock("./harnessModels", () => ({
 
 const harnessModels = vi.mocked(listHarnessModels);
 
+/** Every call takes a whole harness now, because an ACP one is asked by command. */
+function harness(kind: AgentKind) {
+  return { kind, command: kind, args: [] };
+}
+
 beforeEach(() => {
   harnessModels.mockResolvedValue(null);
 });
@@ -73,18 +79,20 @@ describe("listAgentModels with a harness that can answer", () => {
     harnessModels.mockResolvedValue([
       { id: "gpt-5.6-luna", name: "GPT-5.6-Luna", effortOptions: ["low", "medium"] },
     ]);
-    const [model] = await listAgentModels("codex");
+    const [model] = await listAgentModels(harness("codex"));
     // The catalog says this model also takes "none"; the harness says it does
     // not, and the harness is the thing that has to run it.
     expect(model?.effortOptions).toEqual(["low", "medium"]);
     expect(model?.inputCost).toBe(0.5);
-    expect(await resolveDefaultEffort("codex", "gpt-5.6-luna")).toBe("low");
+    expect(await resolveDefaultEffort(harness("codex"), "gpt-5.6-luna")).toBe("low");
   });
 
   it("never offers a model the harness left out, however good the catalog says it is", async () => {
     stubCatalog(CATALOG);
     harnessModels.mockResolvedValue([{ id: "gpt-5.6-sol", name: "GPT-5.6-Sol" }]);
-    expect((await listAgentModels("codex")).map((model) => model.id)).toEqual(["gpt-5.6-sol"]);
+    expect((await listAgentModels(harness("codex"))).map((model) => model.id)).toEqual([
+      "gpt-5.6-sol",
+    ]);
   });
 
   it("falls back to the harness' own default only when nothing is priced", async () => {
@@ -93,14 +101,14 @@ describe("listAgentModels with a harness that can answer", () => {
       { id: "unpriced-a", name: "A" },
       { id: "unpriced-b", name: "B", isDefault: true },
     ]);
-    expect(await resolveDefaultModel("codex")).toBe("unpriced-b");
+    expect(await resolveDefaultModel(harness("codex"))).toBe("unpriced-b");
   });
 });
 
 describe("listAgentModels", () => {
   it("lists tool-capable models for the harness's provider, cheapest first", async () => {
     stubCatalog(CATALOG);
-    const models = await listAgentModels("claude");
+    const models = await listAgentModels(harness("claude"));
     expect(models.map((model) => model.id)).toEqual(["claude-haiku-4-5", "claude-opus-4-6"]);
     // A model that cannot call tools cannot drive a coding agent.
     expect(models.some((model) => model.id === "claude-embed")).toBe(false);
@@ -109,20 +117,20 @@ describe("listAgentModels", () => {
 
   it("has nothing to offer for provider-agnostic harnesses", async () => {
     stubCatalog(CATALOG);
-    expect(await listAgentModels("hermes")).toEqual([]);
-    expect(await listAgentModels("custom")).toEqual([]);
+    expect(await listAgentModels(harness("hermes"))).toEqual([]);
+    expect(await listAgentModels(harness("custom"))).toEqual([]);
   });
 
   it("falls back to the harness default when the catalog is unreachable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
-    expect(await listAgentModels("claude")).toEqual([]);
-    expect(await resolveDefaultModel("claude")).toBeNull();
+    expect(await listAgentModels(harness("claude"))).toEqual([]);
+    expect(await resolveDefaultModel(harness("claude"))).toBeNull();
   });
 
   it("reads the catalog once per window", async () => {
     stubCatalog(CATALOG);
-    await listAgentModels("claude");
-    await listAgentModels("codex");
+    await listAgentModels(harness("claude"));
+    await listAgentModels(harness("codex"));
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 });
@@ -130,7 +138,7 @@ describe("listAgentModels", () => {
 describe("resolveDefaultModel", () => {
   it("is the cheapest model that can run", async () => {
     stubCatalog(CATALOG);
-    expect(await resolveDefaultModel("claude")).toBe("claude-haiku-4-5");
+    expect(await resolveDefaultModel(harness("claude"))).toBe("claude-haiku-4-5");
   });
 });
 
@@ -178,19 +186,19 @@ describe("withModelArgs", () => {
 describe("effort", () => {
   it("takes the levels from the catalog, never a list of our own", async () => {
     stubCatalog(CATALOG);
-    const [luna] = await listAgentModels("codex");
+    const [luna] = await listAgentModels(harness("codex"));
     expect(luna?.effortOptions).toEqual(["none", "low", "medium", "high"]);
 
     // Anthropic reasons on a token budget, so there is no effort to offer.
-    const [haiku] = await listAgentModels("claude");
+    const [haiku] = await listAgentModels(harness("claude"));
     expect(haiku?.effortOptions).toBeUndefined();
   });
 
   it("defaults to the lowest level the model offers", async () => {
     stubCatalog(CATALOG);
-    expect(await resolveDefaultEffort("codex")).toBe("none");
+    expect(await resolveDefaultEffort(harness("codex"))).toBe("none");
     // A harness with no effort flag carries none, whatever the catalog says.
-    expect(await resolveDefaultEffort("claude")).toBeNull();
+    expect(await resolveDefaultEffort(harness("claude"))).toBeNull();
   });
 
   it("passes effort the way the harness takes it", () => {

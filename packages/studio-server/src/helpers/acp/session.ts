@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { withAcpAgent } from "./connection.js";
+import { acpModelId } from "./models.js";
 import { readAcpUpdate, type AcpUpdate } from "./updates.js";
 
 /**
@@ -40,6 +41,10 @@ export async function runAcpSession(opts: {
   args: readonly string[];
   cwd: string;
   prompt: string;
+  /** The model this run was asked for, when Studio picked one. */
+  model?: string;
+  /** Reasoning level, which this protocol carries inside the model id. */
+  effort?: string;
   hooks?: AcpRunHooks;
 }): Promise<AcpRunOutcome> {
   const hooks = opts.hooks ?? {};
@@ -66,6 +71,14 @@ export async function runAcpSession(opts: {
       const sessionId = readSessionId(session);
       if (!sessionId) throw new Error(`${opts.command} opened a session without an id`);
       hooks.onSessionId?.(sessionId);
+
+      const modelId = acpModelId(opts.model, opts.effort);
+      // Best effort: an agent that does not take this model is better off
+      // running on its own default than not running at all, and the model it
+      // actually used is the agent's to report.
+      if (modelId) {
+        await context.request("session/set_model", { sessionId, modelId }).catch(() => undefined);
+      }
 
       const turn = await context.request("session/prompt", {
         sessionId,
