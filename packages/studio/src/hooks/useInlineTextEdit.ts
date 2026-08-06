@@ -69,7 +69,7 @@ export function useInlineTextEdit({
   // The teardown reads this rather than the state, so an exit path that runs
   // before React re-renders still sees the element it has to clean up.
   const openRef = useRef<InlineTextEditSession | null>(null);
-  /** The pending select-all, so a session that closes first can drop it. */
+  /** The pending caret placement, so a session that closes first can drop it. */
   const framesRef = useRef<number | null>(null);
 
   const teardown = useCallback((): InlineTextEditSession | null => {
@@ -169,10 +169,10 @@ export function useInlineTextEdit({
     // Clicking away keeps the work, which is what every other field in Studio
     // does and what a user who has just typed something expects.
     const onBlur = () => commit();
-    // Double-clicking inside an open edit takes the whole text. The browser
-    // would take a word, but the element IS the field here, and replacing all
-    // of it is the common intent once the caret is already in.
-    const onDoubleClick = () => selectAll(element);
+    // Nothing here for double or triple click: the browser already takes the
+    // word on two and the whole text on three, which is what a text field does
+    // everywhere else. Overriding the double click to take everything cost the
+    // word selection and gained nothing the triple click did not already do.
     // Dropping `plaintext-only` means the browser would otherwise paste a whole
     // web page's markup straight in. What arrives is the words.
     const onPaste = (event: ClipboardEvent) => {
@@ -183,12 +183,10 @@ export function useInlineTextEdit({
 
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("blur", onBlur);
-    element.addEventListener("dblclick", onDoubleClick);
     element.addEventListener("paste", onPaste);
     return () => {
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("blur", onBlur);
-      element.removeEventListener("dblclick", onDoubleClick);
       element.removeEventListener("paste", onPaste);
     };
   }, [session, commit, cancel]);
@@ -262,17 +260,6 @@ function placeCaretAtEnd(element: HTMLElement): void {
     range.selectNodeContents(element);
     range.collapse(false);
   }
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-/** Take the whole text, for a double press inside an open edit. */
-function selectAll(element: HTMLElement): void {
-  const doc = element.ownerDocument;
-  const selection = doc.defaultView?.getSelection();
-  if (!selection) return;
-  const range = doc.createRange();
-  range.selectNodeContents(element);
   selection.removeAllRanges();
   selection.addRange(range);
 }

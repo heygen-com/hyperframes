@@ -325,7 +325,10 @@ describe("useInlineTextEdit", () => {
     act(() => root.unmount());
   });
 
-  it("takes the whole text when it is double-clicked while open", async () => {
+  // Double click takes the word and triple click takes the lot, in this element
+  // exactly as in any other text field, because nothing here interferes with
+  // either. Claiming the double click for select-all cost the word selection.
+  it("leaves double and triple click to the browser", async () => {
     const element = heading("Motion Playground");
     const { controls, root } = mount();
     act(() => {
@@ -334,10 +337,13 @@ describe("useInlineTextEdit", () => {
     await act(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     });
+    const before = document.getSelection()?.toString();
 
     act(() => element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 
-    expect(document.getSelection()?.toString()).toBe("Motion Playground");
+    // No handler ran, so the selection is untouched: the real browser would
+    // have set it to the word under the pointer before this ever fired.
+    expect(document.getSelection()?.toString()).toBe(before);
     act(() => root.unmount());
   });
 });
