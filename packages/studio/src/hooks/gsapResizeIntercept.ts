@@ -27,11 +27,11 @@ import {
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
+import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { isInstantHold, selectorFromSelection } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
-import { resolveGroupTween, POSITION_CHANNELS } from "./gsapRuntimeBridge";
-import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import { resolveGroupTween } from "./gsapRuntimeBridge";
 import { logResize } from "../utils/resizeDebug";
 
 const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
@@ -258,16 +258,6 @@ export async function tryGsapResizeIntercept(
     if (!scaleDraftEl) return;
     clearStudioBoxSize(scaleDraftEl);
     if (!scaleDraftDropPoint || !selector) return;
-    const hasLivePositionTween = hasNonHoldTweenForElement(
-      iframe,
-      selector,
-      undefined,
-      POSITION_CHANNELS,
-    );
-    if (hasLivePositionTween) {
-      logResize("scale-finalize", { skipped: "live-position-tween" });
-      return;
-    }
     // Put the committed scale on the live element before measuring.
     //
     // This step reads where the commit lands the box and shifts the position
@@ -320,20 +310,34 @@ export async function tryGsapResizeIntercept(
     const currentAnimations = fetchFallbackAnimations
       ? await fetchFallbackAnimations()
       : (resolved?.animations ?? animations);
-    const existingSet = findExistingPositionWrite(currentAnimations, selector, selection.element);
     // Delta chosen so the drag-path math composes back to exactly `corrected`
     // (no drag scratch attrs exist during a resize, so base = gsapPos).
-    await commitStaticGsapPosition(
-      selection,
-      { x: corrected.x - gsapPos.x, y: corrected.y - gsapPos.y },
-      gsapPos,
-      selector,
-      existingSet,
-      {
+    const delta = { x: corrected.x - gsapPos.x, y: corrected.y - gsapPos.y };
+    // An element whose position is animated needs the correction written into
+    // that animation, at the playhead, or the tween renders its own value a
+    // frame later and the element leaves the drop point anyway. This used to
+    // stand down here instead, on the grounds that a keyframed path has no
+    // single anchor to preserve. It has one: the frame the user is looking at.
+    // Writing it is the same thing a drag on the same element does, through
+    // the same commit.
+    const positionTween = pickClosestToPlayhead(
+      currentAnimations.filter(
+        (a) => a.propertyGroup === "position" && !isInstantHold(a) && resolveTweenDuration(a) > 0,
+      ),
+    );
+    if (positionTween) {
+      logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });
+      await commitGsapPositionFromDrag(selection, positionTween, delta, gsapPos, iframe, selector, {
         commitMutation,
         fetchAnimations: fetchFallbackAnimations,
-      },
-    );
+      });
+      return;
+    }
+    const existingSet = findExistingPositionWrite(currentAnimations, selector, selection.element);
+    await commitStaticGsapPosition(selection, delta, gsapPos, selector, existingSet, {
+      commitMutation,
+      fetchAnimations: fetchFallbackAnimations,
+    });
   };
 
   // With auto-keyframe off (#1808), `anim` is already a real (non-"set")

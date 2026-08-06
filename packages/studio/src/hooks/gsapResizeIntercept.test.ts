@@ -243,3 +243,53 @@ it("scales from the element's real box, not a hardcoded fallback", async () => {
   expect(scale).toBeCloseTo(2, 1);
   expect(scale).toBeLessThan(3);
 });
+
+/**
+ * The bug: a uniform drag committed the `scale` shorthand into a tween whose
+ * keyframes already stated `scaleX`/`scaleY`. GSAP animates each property name
+ * independently, so the keyframe ran as `{ scaleX: 1, scaleY: 1, scale: 0.61 }`
+ * and the longhands won. The resize computed the right number, wrote it, and
+ * the element snapped straight back to its old size on release.
+ */
+it("does not mix the scale shorthand into a tween that speaks longhands", async () => {
+  const el = document.createElement("div");
+  el.id = "clip";
+  el.setAttribute("data-hf-studio-original-box-width", "630");
+  el.setAttribute("data-hf-studio-original-box-height", "252");
+  document.body.append(el);
+  const selection = { id: "clip", selector: "#clip", element: el } as DomEditSelection;
+  const longhandTween = {
+    ...scaleFromTween(),
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { scaleX: 1, scaleY: 1 } },
+        { percentage: 100, properties: { scaleX: 1.15, scaleY: 1.15 } },
+      ],
+    },
+  } as unknown as GsapAnimation;
+  const commitMutation = vi.fn();
+
+  // A uniform drop, so the old code took the shorthand branch and wrote
+  // `scale` into keyframes that already stated the longhands.
+  await tryGsapResizeIntercept(
+    selection,
+    { width: 384, height: 216 },
+    [longhandTween],
+    fakeIframe(el, { scaleX: 1, scaleY: 1 }),
+    commitMutation,
+  );
+
+  const frames = commitMutation.mock.calls
+    .map((call) => call[1] as { keyframes?: Array<{ properties: Record<string, number> }> })
+    .flatMap((mutation) => mutation.keyframes ?? []);
+  expect(frames.length).toBeGreaterThan(0);
+  for (const frame of frames) {
+    const names = Object.keys(frame.properties);
+    const hasShorthand = names.includes("scale");
+    const hasLonghand = names.includes("scaleX") || names.includes("scaleY");
+    expect(hasShorthand && hasLonghand).toBe(false);
+  }
+  // And the resize still lands: 384/630 is about 0.61.
+  const resized = frames.find((frame) => frame.properties.scaleX != null);
+  expect(resized?.properties.scaleX).toBeCloseTo(0.61, 1);
+});
