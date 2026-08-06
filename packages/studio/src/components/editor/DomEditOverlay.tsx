@@ -30,10 +30,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { InlineAgentComposerHost } from "./InlineAgentComposerHost";
-import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
-import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
-import { usePlayerStore } from "../../player/store/playerStore";
-import { canEditTextInline } from "./domEditInlineText";
+import { useInlineTextEditing } from "./useInlineTextEditing";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 
@@ -154,19 +151,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
 
-  // Double-click to edit text where it sits. The actions context is read here
-  // rather than threaded through this component's props, the same way the
-  // agent surfaces in this overlay read it, and it is absent in standalone
-  // player mounts, which have no project to edit.
-  const editActions = useDomEditActionsContextOptional();
-  const inlineText = useInlineTextEdit({
-    onCommit: (text) => void editActions?.handleDomTextCommit(text),
-    onPause: () => usePlayerStore.getState().setIsPlaying(false),
-  });
-  const editingText = inlineText.session !== null;
-
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+
+  // Double-click an element to edit its text where it sits.
+  const inlineText = useInlineTextEditing(selectionRef);
 
   // Brief highlight on the sibling a forward/backward z step crossed — drawn
   // in this studio overlay, never in the iframe DOM (see useZOrderCrossedFlash).
@@ -333,6 +322,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement) return;
+    // Checked before the post-gesture suppression below, which would otherwise
+    // swallow the press that opens an edit.
+    if (inlineText.startFromPress(event)) {
+      event.preventDefault();
+      return;
+    }
     if (suppressNextOverlayMouseDownRef.current) {
       suppressNextOverlayMouseDownRef.current = false;
       suppressNextBoxMouseDownRef.current = false;
@@ -449,13 +444,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   return (
     <div
       ref={overlayRef}
-      // While text is being edited the overlay stands aside, which is the only
-      // way the caret in the composition below can be reached at all, and is
-      // also what keeps selection, drag and marquee from firing mid-edit.
+      // Standing aside is the only way the caret below can be reached, and is
+      // what keeps selection, drag and marquee from firing mid-edit.
       className={`absolute inset-0 z-10 outline-none ${
-        editingText ? "pointer-events-none" : "pointer-events-auto"
+        inlineText.editing ? "pointer-events-none" : "pointer-events-auto"
       }`}
-      data-editing-text={editingText ? "true" : undefined}
+      data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
       aria-label="Composition canvas"
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
@@ -464,14 +458,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
-        focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+        // Not while editing: taking focus back would send the keystroke nowhere.
+        if (!inlineText.editing) {
+          focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+        }
       }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
-      onDoubleClick={() => {
-        const target = selectionRef.current;
-        if (!editingText && canEditTextInline(target)) inlineText.start(target!.element);
-      }}
       onPointerMove={marquee.onPointerMove}
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
@@ -502,6 +495,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       )}
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
         <DomEditSelectionChrome
+          onBoxDoublePress={inlineText.startFromPress}
           selection={selection}
           overlayRect={overlayRect}
           allowCanvasMovement={allowCanvasMovement}

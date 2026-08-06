@@ -47,10 +47,16 @@ export function useInlineTextEdit({
   // The teardown reads this rather than the state, so an exit path that runs
   // before React re-renders still sees the element it has to clean up.
   const openRef = useRef<InlineTextEditSession | null>(null);
+  /** The pending select-all, so a session that closes first can drop it. */
+  const framesRef = useRef<number | null>(null);
 
   const teardown = useCallback((): InlineTextEditSession | null => {
     const open = openRef.current;
     if (!open) return null;
+    if (framesRef.current !== null) {
+      open.element.ownerDocument.defaultView?.cancelAnimationFrame(framesRef.current);
+      framesRef.current = null;
+    }
     openRef.current = null;
     setSession(null);
     // An element removed from the document mid-session is not an error, it is
@@ -72,8 +78,16 @@ export function useInlineTextEdit({
       onPause?.();
 
       element.setAttribute("contenteditable", EDITABLE);
-      element.focus({ preventScroll: true });
-      selectAll(element);
+      // Focused and selected on the next frame, not now. The press that opened
+      // this is still in flight: the canvas overlay takes focus on its own
+      // pointer-down, and the click that follows puts a caret in the element
+      // and collapses any selection. Doing it after all of that is what lands.
+      const view = element.ownerDocument.defaultView;
+      const raf = view?.requestAnimationFrame(() => {
+        element.focus({ preventScroll: true });
+        selectAll(element);
+      });
+      framesRef.current = raf ?? null;
       return true;
     },
     [onPause],

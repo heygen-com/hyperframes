@@ -126,6 +126,8 @@ interface DomEditSelectionChromeProps {
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;
   onBoxMouseDown: (e: React.MouseEvent) => void;
   onBoxClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+  /** Every press on the box. Returns true when it opened a text edit. */
+  onBoxDoublePress?: (event: React.PointerEvent) => boolean;
 }
 
 // Oriented selection chrome: a rotation wrapper spanning the overlay, rotated by
@@ -149,6 +151,7 @@ export function DomEditSelectionChrome({
   onStyleCommit,
   onBoxMouseDown,
   onBoxClick,
+  onBoxDoublePress,
 }: DomEditSelectionChromeProps) {
   return (
     <>
@@ -186,6 +189,16 @@ export function DomEditSelectionChrome({
                 : "default",
           }}
           onPointerDown={(e) => {
+            // A second press opens the element's text for editing, and must be
+            // caught here rather than on the canvas: this handler prevents the
+            // default on the first press, which suppresses the compatibility
+            // mousedown the canvas would otherwise see, and the pointer capture
+            // it takes stops the browser pairing the presses into a dblclick.
+            if (onBoxDoublePress?.(e)) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
             if (!allowCanvasMovement || e.shiftKey) return;
             if (selection.capabilities.canApplyManualOffset) {
               gestures.startGesture("drag", e);

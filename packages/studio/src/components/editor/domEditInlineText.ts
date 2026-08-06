@@ -21,3 +21,32 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
   if (selection.isInsideLockedComposition) return false;
   return selection.textFields.length <= 1;
 }
+
+/** Where and when a press landed, for recognising the next one as a pair. */
+export interface PressMark {
+  x: number;
+  y: number;
+  at: number;
+}
+
+/** Long enough to be deliberate, short enough not to catch two separate clicks. */
+const DOUBLE_PRESS_MS = 450;
+/** A double press is two presses in the same place, not a tiny drag. */
+const DOUBLE_PRESS_SLOP_PX = 6;
+
+/**
+ * Whether this press pairs with the last one into a double press.
+ *
+ * Studio cannot use `dblclick` or a click count for this. The selection box
+ * takes pointer capture on the first press and prevents its default, which
+ * suppresses the compatibility mouse events and stops the browser pairing the
+ * two presses at all: no `dblclick` is dispatched, and `detail` stays 1.
+ */
+export function isDoublePress(previous: PressMark | null, next: PressMark): boolean {
+  if (!previous) return false;
+  return (
+    next.at - previous.at <= DOUBLE_PRESS_MS &&
+    Math.abs(next.x - previous.x) <= DOUBLE_PRESS_SLOP_PX &&
+    Math.abs(next.y - previous.y) <= DOUBLE_PRESS_SLOP_PX
+  );
+}

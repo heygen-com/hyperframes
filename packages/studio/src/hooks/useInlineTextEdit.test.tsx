@@ -33,7 +33,7 @@ function mount(onCommit = vi.fn(), onPause = vi.fn()) {
 }
 
 describe("useInlineTextEdit", () => {
-  it("makes the element editable, focused, and its text selected", () => {
+  it("makes the element editable, and focuses it once the press has finished", async () => {
     const element = heading();
     const { controls, root, onPause } = mount();
 
@@ -42,10 +42,16 @@ describe("useInlineTextEdit", () => {
     });
 
     expect(element.getAttribute("contenteditable")).toBe("plaintext-only");
-    expect(document.activeElement).toBe(element);
     expect(controls().session?.element).toBe(element);
     // The frame being edited is the one the user chose to edit on.
     expect(onPause).toHaveBeenCalledTimes(1);
+
+    // Focus lands on the next frame, after the press that opened this and the
+    // click that follows it have both been and gone.
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+    expect(document.activeElement).toBe(element);
     act(() => root.unmount());
   });
 
