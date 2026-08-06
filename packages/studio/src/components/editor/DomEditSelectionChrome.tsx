@@ -131,8 +131,6 @@ interface DomEditSelectionChromeProps {
     editing: boolean;
     /** Every press on the box. Returns true when it opened a text edit. */
     startFromPress: (event: React.PointerEvent) => boolean;
-    /** The styling controls, which belong over the selection this box marks. */
-    toolbar?: React.ReactNode;
   };
 }
 
@@ -283,9 +281,6 @@ export function DomEditSelectionChrome({
             onStyleCommit={onStyleCommit}
           />
         )}
-      {/* Outside the rotated plane, and outside the box: it places itself over
-          the selection in viewport coordinates, and would be rotated twice. */}
-      {inlineText?.toolbar}
     </>
   );
 }

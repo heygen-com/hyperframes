@@ -95,6 +95,54 @@ describe("InlineTextToolbar", () => {
     expect(press.defaultPrevented).toBe(true);
   });
 
+  // It renders inside the canvas overlay, so a press it lets through is read as
+  // a click on the composition: the element deselects and the edit commits out
+  // from under the button that was just pressed.
+  it("keeps its presses away from the canvas underneath", () => {
+    const { element, session, iframe } = scene("hello world");
+    const seen: string[] = [];
+    // A stand-in for the canvas overlay: the toolbar renders inside it, and
+    // these are the handlers that would deselect the element.
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <div
+          onPointerDown={() => seen.push("pointerdown")}
+          onMouseDown={() => seen.push("mousedown")}
+          onClick={() => seen.push("click")}
+        >
+          <InlineTextToolbar session={session} iframe={iframe} />
+        </div>,
+      ),
+    );
+    selectAll(element);
+
+    const toolbar = toolbarIn(host)!;
+    act(() => {
+      for (const type of ["pointerdown", "mousedown", "click"]) {
+        toolbar.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+      }
+    });
+
+    expect(seen).toEqual([]);
+  });
+
+  // A colour input has a user-agent minimum width, so an invisible one pinned
+  // only by `inset-0` spills across its neighbours: hovering bold opened the
+  // colour picker.
+  it("keeps the invisible colour input inside its own swatch", () => {
+    const { element, session, iframe } = scene("hello world");
+    const { host } = render(session, iframe);
+    selectAll(element);
+
+    const input = host.querySelector<HTMLInputElement>('input[type="color"]')!;
+    expect(input.className).toContain("w-full");
+    expect(input.className).toContain("h-full");
+    expect(input.className).toContain("min-w-0");
+  });
+
   it("styles the selected characters when a control is used", () => {
     const { element, session, iframe } = scene("hello world");
     const { host } = render(session, iframe);

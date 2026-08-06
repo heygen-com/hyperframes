@@ -69,11 +69,19 @@ export function InlineTextToolbar({
       data-inline-text-toolbar="true"
       className="pointer-events-auto fixed z-[200] flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
       style={{ left: placement.left, top: placement.top, transform: "translate(-50%, -100%)" }}
-      // The text is only styled while it is selected, and a press anywhere in
-      // Studio would take the focus and collapse that selection. This keeps
-      // both, which is why the buttons can act on a selection at all.
-      onPointerDown={(event) => event.preventDefault()}
-      onMouseDown={(event) => event.preventDefault()}
+      // Two different things have to be stopped here, and missing either one
+      // loses the edit the toolbar exists to act on.
+      //
+      // The default, because a press anywhere in Studio moves the focus, and
+      // moving it out of the text collapses the selection being styled.
+      //
+      // The propagation, because this renders inside the canvas overlay: a
+      // press that reaches the canvas is read as a click on the composition,
+      // which deselects the element and commits the edit out from under the
+      // button that was just pressed.
+      onPointerDown={swallow}
+      onMouseDown={swallow}
+      onClick={(event) => event.stopPropagation()}
     >
       <label
         className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-white/10"
@@ -84,10 +92,14 @@ export function InlineTextToolbar({
           className="h-3.5 w-3.5 rounded-full border border-white/25"
           style={{ background: styles.color || DEFAULT_COLOR }}
         />
+        {/* `inset-0` is not enough on its own: a colour input carries a
+            user-agent minimum width, which wins over the right edge and lets
+            the invisible input spill across the buttons beside it. Hovering
+            bold then opened the colour picker. The size is pinned instead. */}
         <input
           type="color"
           aria-label="Text colour"
-          className="absolute inset-0 cursor-pointer opacity-0"
+          className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
           value={toHexColor(styles.color)}
           onChange={(event) => apply({ color: event.target.value })}
         />
@@ -115,6 +127,11 @@ export function InlineTextToolbar({
       />
     </div>
   );
+}
+
+function swallow(event: { preventDefault: () => void; stopPropagation: () => void }): void {
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function ToolbarToggle({

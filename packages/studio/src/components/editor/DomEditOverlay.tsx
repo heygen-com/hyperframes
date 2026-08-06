@@ -15,7 +15,7 @@ import {
   focusDomEditOverlayElement,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
-import { OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
+import { ChildRectOutlines, OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
@@ -521,20 +521,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           onBoxClick={handleBoxClick}
         />
       )}
-      {childRects.length > 0 &&
-        compRect.width > 0 &&
-        childRects.map((cr, i) => (
-          <div
-            key={i}
-            className="pointer-events-none absolute border border-dashed border-white/20 rounded-sm"
-            style={{
-              left: cr.left,
-              top: cr.top,
-              width: cr.width,
-              height: cr.height,
-            }}
-          />
-        ))}
+      <ChildRectOutlines rects={compRect.width > 0 ? childRects : []} />
+      {/* Mounted here rather than with the selection chrome: the chrome does
+          not render for every selection, and the toolbar belongs to the
+          editing session, which does. */}
+      {inlineText.toolbar}
       <OffCanvasIndicators
         rects={offCanvasRects}
         elements={offCanvasElementsRef}
