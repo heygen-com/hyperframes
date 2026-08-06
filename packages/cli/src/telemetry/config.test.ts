@@ -757,6 +757,30 @@ describe("identity-persistence classification (sticky per process)", () => {
     expect(getIdentityPersistence()).toBe("unknown");
   });
 
+  it("does not label a replacement id minted at read time as durable (seed present, no write)", () => {
+    // Hand-edited / image-baked config: file exists with a seed but NO
+    // anonymousId. materializeConfig mints a replacement, nothing persists it
+    // (the seed suppresses the backfill write) — so the install re-mints
+    // every run. Labelling that durable would dress the churn signature in
+    // the one trustworthy label (review finding).
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ telemetryEnabled: true, bucketSeed: "baked-seed" }),
+    );
+    readConfig();
+    expect(getIdentityPersistence()).toBe("process_only");
+  });
+
+  it("classifies a replacement id carried to disk by the seed backfill by its write outcome", () => {
+    // Same hand-edited shape but ALSO missing the seed: the backfill write
+    // persists the whole config, replacement id included — a fresh mint in
+    // all but name, so it classifies like one (unknown, never durable).
+    fsState.files.set(CONFIG_PATH, JSON.stringify({ telemetryEnabled: true }));
+    readConfig();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+
   it("classifies a corrupt-config recovery mint by its write outcome, not as durable", () => {
     fsState.files.set(CONFIG_PATH, "{not json");
     readConfig();

@@ -147,11 +147,12 @@ function warnSeedBackfillFailed(error: string | undefined): void {
  * is exactly when that happens, so it says so once rather than failing
  * invisibly.
  */
-function backfillBucketSeed(config: HyperframesConfig): void {
+function backfillBucketSeed(config: HyperframesConfig): ConfigWriteResult {
   const recorded = readInstallState();
   config.bucketSeed = (isInstallState(recorded) ? recorded.bucketSeed : undefined) ?? randomUUID();
   const write = writeConfigWithResult(config);
   if (!write.ok) warnSeedBackfillFailed(write.error);
+  return write;
 }
 
 // ONLY the positive is cached. The latch is monotonic across processes in one
@@ -692,22 +693,35 @@ export function readConfig(): HyperframesConfig {
 
     const config = materializeConfig(parsed);
 
-    // The id was loaded from a file that predates this process — the one
-    // case where cross-run persistence is already proven. Sticky, so a
+    // `durable` requires the id to have actually COME OFF DISK — a file that
+    // predates this process proves cross-run persistence. materializeConfig
+    // mints a REPLACEMENT id when the parsed file lacks one (hand-edited /
+    // image-baked configs), and that replacement only reaches disk if the
+    // bucket-seed backfill below happens to write; labelling it durable would
+    // dress the exact churn signature this field exists to catch in the one
+    // trustworthy label (review finding). Sticky either way, so a
     // fresh-install process re-reading its own write cannot self-promote.
-    classifyIdentity("durable");
+    const idFromDisk = parseNonEmptyString(parsed.anonymousId) !== undefined;
 
     // One-time backfill for configs predating the bucket seed: prefer the
     // recorded seed if a previous install already wrote one, else mint.
     // Persisted immediately — an unpersisted seed would re-roll every process.
     if (config.bucketSeed === undefined) {
-      backfillBucketSeed(config);
+      const write = backfillBucketSeed(config);
+      // The backfill write carries any replacement id to disk, so a minted id
+      // classifies exactly like a fresh mint: by whether the write landed.
+      if (idFromDisk) classifyIdentity("durable");
+      else classifyIdentity(write.ok ? "unknown" : "process_only", writeOutcomeOf(write));
       // Cache even if the write failed, so the seed is at least stable for
       // the life of this process (a re-roll per readConfigFresh would flip
       // cohorts mid-session).
       cachedConfig = config;
       return { ...config };
     }
+
+    // No write happens on this path: a replacement id lives only in this
+    // process, guaranteed — the definition of process_only.
+    classifyIdentity(idFromDisk ? "durable" : "process_only");
 
     cachedConfig = config;
     return { ...config };
