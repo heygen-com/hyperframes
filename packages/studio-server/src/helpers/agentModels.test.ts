@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { listHarnessModels } from "./harnessModels";
 import {
   clearModelCatalogCache,
   listAgentModels,
@@ -41,6 +42,22 @@ const CATALOG = {
   },
 };
 
+/**
+ * The harness is asked first in production, and it is a real CLI on the
+ * machine — mocked here so these tests measure the catalog path itself rather
+ * than whatever happens to be installed. The harness path has its own tests.
+ */
+vi.mock("./harnessModels", () => ({
+  listHarnessModels: vi.fn(async () => null),
+  clearHarnessModelCache: vi.fn(),
+}));
+
+const harnessModels = vi.mocked(listHarnessModels);
+
+beforeEach(() => {
+  harnessModels.mockResolvedValue(null);
+});
+
 afterEach(() => {
   clearModelCatalogCache();
   vi.unstubAllGlobals();
@@ -49,6 +66,36 @@ afterEach(() => {
 function stubCatalog(payload: unknown, ok = true) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok, json: async () => payload } as Response));
 }
+
+describe("listAgentModels with a harness that can answer", () => {
+  it("takes the list and the efforts from the harness, and only prices from the catalog", async () => {
+    stubCatalog(CATALOG);
+    harnessModels.mockResolvedValue([
+      { id: "gpt-5.6-luna", name: "GPT-5.6-Luna", effortOptions: ["low", "medium"] },
+    ]);
+    const [model] = await listAgentModels("codex");
+    // The catalog says this model also takes "none"; the harness says it does
+    // not, and the harness is the thing that has to run it.
+    expect(model?.effortOptions).toEqual(["low", "medium"]);
+    expect(model?.inputCost).toBe(0.5);
+    expect(await resolveDefaultEffort("codex", "gpt-5.6-luna")).toBe("low");
+  });
+
+  it("never offers a model the harness left out, however good the catalog says it is", async () => {
+    stubCatalog(CATALOG);
+    harnessModels.mockResolvedValue([{ id: "gpt-5.6-sol", name: "GPT-5.6-Sol" }]);
+    expect((await listAgentModels("codex")).map((model) => model.id)).toEqual(["gpt-5.6-sol"]);
+  });
+
+  it("falls back to the harness' own default only when nothing is priced", async () => {
+    stubCatalog(CATALOG);
+    harnessModels.mockResolvedValue([
+      { id: "unpriced-a", name: "A" },
+      { id: "unpriced-b", name: "B", isDefault: true },
+    ]);
+    expect(await resolveDefaultModel("codex")).toBe("unpriced-b");
+  });
+});
 
 describe("listAgentModels", () => {
   it("lists tool-capable models for the harness's provider, cheapest first", async () => {

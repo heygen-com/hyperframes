@@ -1,13 +1,21 @@
-import { catalogProviderSchema, type AgentKind } from "./agentSchemas.js";
+import { catalogProviderSchema, type AgentKind, type CatalogModel } from "./agentSchemas.js";
+import { listHarnessModels } from "./harnessModels.js";
 
 /**
  * Which models a harness can be pointed at.
  *
- * Nothing here is a hardcoded model list: the catalog is models.dev (the same
- * community index opencode and friends read), which publishes ids, names,
- * capabilities and per-million-token pricing for every provider. Studio only
- * decides which provider a harness talks to, and lets the catalog say what
- * exists today — a model shipped next week shows up without a release here.
+ * Nothing here is a hardcoded model list. Two sources answer, in order:
+ *
+ * 1. The harness itself, when it can say (see helpers/harnessModels). This is
+ *    the only source that knows what the user's account may actually run, so a
+ *    model the harness would reject is never offered.
+ * 2. models.dev, the community catalog opencode and friends read, for ids,
+ *    names, capabilities and per-million-token pricing. Its list is everything
+ *    a provider sells, so it is narrowed to the newest release per family:
+ *    superseded models are what "outdated" means, and the catalog dates them.
+ *
+ * The two compose — a harness list is enriched with catalog pricing by id — so
+ * a model shipped next week shows up without a release here.
  */
 
 /** A model Studio can offer for a run. */
@@ -24,6 +32,8 @@ export interface AgentModel {
   inputCost?: number;
   outputCost?: number;
   contextWindow?: number;
+  /** The harness' own default, when it names one. */
+  isDefault?: boolean;
 }
 
 const CATALOG_URL = "https://models.dev/api.json";
@@ -62,14 +72,29 @@ const INPUT_WEIGHT = 3;
 
 // ── Parsing ─────────────────────────────────────────────────────────────────
 
-/** Models a coding agent can actually drive: it has to be able to call tools. */
+/**
+ * Models a coding agent can actually drive: it has to be able to call tools,
+ * and it has to be the current member of its family. The catalog keeps every
+ * generation ever shipped, and offering `gpt-4o mini` beside `gpt-5.6` is how a
+ * picker rots — a family's newest release supersedes its older ones by
+ * definition, and the catalog's own release dates say which that is.
+ */
 function toAgentModels(provider: unknown): AgentModel[] {
   const parsed = catalogProviderSchema.safeParse(provider);
   if (!parsed.success) return [];
 
-  return Object.entries(parsed.data.models)
-    .filter(([, model]) => model.tool_call === true)
-    .map(([key, model]) => ({
+  const newestPerFamily = new Map<string, { key: string; model: CatalogModel }>();
+  for (const [key, model] of Object.entries(parsed.data.models)) {
+    if (model.tool_call !== true) continue;
+    const family = model.family ?? model.id ?? key;
+    const held = newestPerFamily.get(family);
+    if (!held || (model.release_date ?? "") > (held.model.release_date ?? "")) {
+      newestPerFamily.set(family, { key, model });
+    }
+  }
+
+  return [...newestPerFamily.values()]
+    .map(({ key, model }) => ({
       id: model.id ?? key,
       name: model.name ?? key,
       inputCost: model.cost?.input,
@@ -125,17 +150,46 @@ async function loadCatalog(): Promise<Map<string, AgentModel[]>> {
   return byProvider;
 }
 
-/** Every tool-capable model for a harness, cheapest first. Empty when unknown. */
+/**
+ * Every model a harness can be pointed at, cheapest first. Empty when neither
+ * source knows any, which the picker shows as "the harness decides".
+ */
 export async function listAgentModels(kind: AgentKind): Promise<AgentModel[]> {
   const provider = PROVIDER_BY_KIND[kind];
-  if (!provider) return [];
-  return (await loadCatalog()).get(provider) ?? [];
+  const catalog = provider ? ((await loadCatalog()).get(provider) ?? []) : [];
+  const harness = await listHarnessModels(kind);
+  if (!harness) return catalog;
+
+  // The harness has the final say on what exists AND on what each model
+  // accepts; the catalog contributes prices only. Spreading the catalog entry
+  // wholesale would hand back its effort list, which is the provider's API
+  // surface rather than the harness' — and offering an effort the harness
+  // rejects fails the run at the far end.
+  const priced = new Map(catalog.map((model) => [model.id, model]));
+  return harness
+    .map((model) => {
+      const price = priced.get(model.id);
+      return {
+        ...model,
+        inputCost: price?.inputCost,
+        outputCost: price?.outputCost,
+        contextWindow: price?.contextWindow,
+      };
+    })
+    .sort((a, b) => modelCost(a) - modelCost(b));
 }
 
-/** Cheapest tool-capable model for a harness — what a run uses by default. */
+/**
+ * What a run uses when nobody chose: the cheapest model that can do the job, so
+ * a run never quietly costs frontier money because nobody picked. The harness'
+ * own default is only consulted when nothing is priced and "cheapest" has no
+ * meaning — a harness usually defaults to its flagship.
+ */
 export async function resolveDefaultModel(kind: AgentKind): Promise<string | null> {
-  const [cheapest] = await listAgentModels(kind);
-  return cheapest?.id ?? null;
+  const models = await listAgentModels(kind);
+  const priced = models.some((model) => modelCost(model) !== Number.MAX_SAFE_INTEGER);
+  const chosen = priced ? models[0] : (models.find((model) => model.isDefault) ?? models[0]);
+  return chosen?.id ?? null;
 }
 
 /** Append the harness' own model and effort flags, for the ones it takes. */

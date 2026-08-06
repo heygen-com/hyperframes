@@ -2,17 +2,26 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { readPermissionRequest, refusalOption } from "./acp/permissions.js";
 import { runAcpSession } from "./acp/session.js";
 import {
   loggedRunSchema,
   overlayStateSchema,
   type AgentKind,
+  type AgentStatus,
   type AgentTargetRef,
   type OverlayState,
+  type PermissionRequest,
 } from "./agentSchemas.js";
 
 export { AGENT_KINDS } from "./agentSchemas.js";
-export type { AgentKind, AgentTargetRef, OverlayState } from "./agentSchemas.js";
+export type {
+  AgentKind,
+  AgentTargetRef,
+  OverlayState,
+  PermissionOption,
+  PermissionRequest,
+} from "./agentSchemas.js";
 
 export interface AgentCommand {
   kind: AgentKind;
@@ -61,7 +70,9 @@ export interface AgentJob {
   /** The harness' own session id, so a run can be resumed or found in its logs. */
   sessionId?: string;
   instruction: string;
-  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  status: AgentStatus;
+  /** What the run is waiting on the user for, while it is waiting. */
+  permission?: PermissionRequest;
   /** Latest thing the agent did — the tool call or line it is on right now. */
   activity: string;
   /** What the agent said the selection overlay should show, if it said anything. */
@@ -115,6 +126,14 @@ const runningByJob = new Map<string, ChildProcess>();
 const activeRuns = new Map<string, PendingRun>();
 /** Runs whose stdin is still open, and how to say something more to them. */
 const openRuns = new Map<string, (text: string) => void>();
+/** Runs stopped on a question, and how to settle the one they asked. */
+const askedByJob = new Map<string, Asked>();
+
+/** A question a run is stopped on, and the two ways the wait can end. */
+interface Asked {
+  answer: (optionId: string) => void;
+  fail: (error: Error) => void;
+}
 /** Element lanes currently busy, per project. */
 const busyLanes = new Map<string, Set<string>>();
 
@@ -125,6 +144,18 @@ const MAX_JOBS_PER_PROJECT = 24;
 const RUN_LOG_PATH = join(".hyperframes", "agent-runs.jsonl");
 const HYDRATED_PROJECTS = new Set<string>();
 const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
+/**
+ * How long a run waits on an answer before deciding for itself.
+ *
+ * Shorter than the run timeout, because a run that has stopped to ask is not
+ * doing anything: leaving it holding its element for the full ten minutes
+ * blocks every later edit to that element on a question nobody is looking at.
+ * Read per call so a deployment that wants a longer leash can set one.
+ */
+function permissionTimeoutMs(): number {
+  const set = Number(process.env.HYPERFRAMES_AGENT_ASK_TIMEOUT_MS);
+  return Number.isFinite(set) && set > 0 ? set : 5 * 60 * 1000;
+}
 
 /**
  * Append a settled run to the project's log. The tray only keeps the recent
@@ -228,8 +259,22 @@ export function listAgentJobs(projectId: string, projectDir?: string): AgentJob[
   return [...(jobsByProject.get(projectId) ?? [])].reverse();
 }
 
+/**
+ * Whether this run still holds its place.
+ *
+ * A run waiting on permission counts: it is holding its element, it can be
+ * cancelled, and it has not finished. It is only the tray's "how many are
+ * working" count that must tell the two apart, which it does by status.
+ */
 function isActive(job: AgentJob): boolean {
-  return job.status === "queued" || job.status === "running";
+  return (
+    job.status === "queued" || job.status === "running" || job.status === "awaiting-permission"
+  );
+}
+
+/** Whether this run is holding an element, so nothing else may edit it. */
+function holdsLane(job: AgentJob): boolean {
+  return job.status === "running" || job.status === "awaiting-permission";
 }
 
 export function clearFinishedAgentJobs(projectId: string): void {
@@ -261,7 +306,7 @@ export function cancelAgentJob(projectId: string, jobId: string, dir?: string): 
   // Running: mark first so the close handler doesn't overwrite the reason.
   job.status = "cancelled";
   job.message = "Stopped mid-run.";
-  runningByJob.get(jobId)?.kill("SIGTERM");
+  stopRun(jobId, "Cancelled while it was waiting for an answer.");
   return job;
 }
 
@@ -279,7 +324,7 @@ export function promoteAgentJob(projectId: string, jobId: string, dir?: string):
 
   const lane = laneFor(job);
   const blocking = (jobsByProject.get(projectId) ?? []).find(
-    (candidate) => candidate.status === "running" && laneFor(candidate) === lane,
+    (candidate) => holdsLane(candidate) && laneFor(candidate) === lane,
   );
   if (blocking) cancelAgentJob(projectId, blocking.id, dir);
 
@@ -287,6 +332,41 @@ export function promoteAgentJob(projectId: string, jobId: string, dir?: string):
   moveAgentJob(projectId, jobId, 0);
   pump(projectId);
   return job;
+}
+
+/**
+ * Stop a run that is under way.
+ *
+ * A run waiting on permission is asleep inside a promise nothing else will
+ * settle, so killing its process alone would leave that promise pending for
+ * good. The question is ended first, then the process.
+ */
+function stopRun(jobId: string, why: string): void {
+  askedByJob.get(jobId)?.fail(new Error(why));
+  runningByJob.get(jobId)?.kill("SIGTERM");
+}
+
+/**
+ * Answer the question a run is waiting on.
+ *
+ * The options are the agent's own, so the id has to be one of them: forwarding
+ * anything else would be Studio inventing a choice the agent never offered, and
+ * an agent that gets an unknown option id is entitled to do anything with it.
+ */
+export function answerAgentJob(
+  projectId: string,
+  jobId: string,
+  optionId: string,
+): { job: AgentJob } | { refused: "not-waiting" | "not-offered" } {
+  const job = findAgentJob(projectId, jobId);
+  const asked = askedByJob.get(jobId);
+  if (!job || !asked || job.status !== "awaiting-permission") return { refused: "not-waiting" };
+  if (!job.permission?.options.some((option) => option.optionId === optionId)) {
+    return { refused: "not-offered" };
+  }
+
+  asked.answer(optionId);
+  return { job };
 }
 
 /** How a correction is written into a prompt that was already built. */
@@ -343,7 +423,7 @@ export function steerAgentJob(opts: {
 
   job.status = "cancelled";
   job.message = "Steered mid-run.";
-  runningByJob.get(opts.jobId)?.kill("SIGTERM");
+  stopRun(opts.jobId, "Steered while it was waiting for an answer.");
 
   // Resuming means the session already holds the composition and the original
   // request, so the follow-up is the correction alone.
@@ -724,6 +804,8 @@ function markRunning(job: AgentJob): void {
  */
 function closeOut(job: AgentJob, cwd: string): void {
   runningByJob.delete(job.id);
+  askedByJob.delete(job.id);
+  job.permission = undefined;
   activeRuns.delete(job.id);
   openRuns.delete(job.id);
   if (job.overlay && job.overlay.kind !== "done" && job.overlay.kind !== "failed") {
@@ -754,6 +836,68 @@ function settleAcpTurn(job: AgentJob, label: string, stopReason: string, said: s
 }
 
 /**
+ * Stop the run on the agent's question and wait for the user.
+ *
+ * The wait is bounded: an agent held open forever holds its element with it. On
+ * running out, the agent's own refusal is the answer when it offered one, and
+ * the run fails naming the tool when it did not — deciding yes on the user's
+ * behalf is the one thing this must never do.
+ */
+function askForPermission(
+  job: AgentJob,
+  params: Record<string, unknown>,
+  toolTitles: Map<string, string>,
+): Promise<{ optionId: string }> {
+  const request = readPermissionRequest(params, (id) => toolTitles.get(id));
+  if (!request) {
+    return Promise.reject(
+      new Error(`${job.label} asked for permission in a form Studio could not read`),
+    );
+  }
+
+  job.status = "awaiting-permission";
+  job.permission = request;
+  job.activity = `Waiting on you · ${request.tool}`;
+
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      askedByJob.delete(job.id);
+      job.permission = undefined;
+    };
+    const waitMs = permissionTimeoutMs();
+    const timer = setTimeout(() => {
+      done();
+      const refusal = refusalOption(request);
+      if (!refusal) {
+        // Nothing on offer means no, so there is no answer left to give: the
+        // run is over as far as Studio is concerned, and saying so to the agent
+        // is not enough — an agent is free to sit on a refused request, and
+        // this one is holding an element while it does.
+        job.message = `No answer to ${request.tool} within ${waitMs / 1000}s`;
+        reject(new Error(job.message));
+        stopRun(job.id, job.message);
+        return;
+      }
+      markRunning(job);
+      resolve({ optionId: refusal.optionId });
+    }, waitMs);
+
+    askedByJob.set(job.id, {
+      answer: (optionId) => {
+        done();
+        markRunning(job);
+        resolve({ optionId });
+      },
+      fail: (error) => {
+        done();
+        reject(error);
+      },
+    });
+  });
+}
+
+/**
  * Drive a run over ACP.
  *
  * The job's fields are filled from the protocol's own notifications rather than
@@ -766,6 +910,8 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
   activeRuns.set(job.id, { job, agent, prompt, cwd });
 
   let timer: NodeJS.Timeout | undefined;
+  // What the agent called each tool call, for describing the ones it asks about.
+  const toolTitles = new Map<string, string>();
   try {
     const outcome = await runAcpSession({
       command: agent.command,
@@ -781,7 +927,9 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
           }, AGENT_TIMEOUT_MS);
         },
         onSessionId: (sessionId) => (job.sessionId ??= sessionId),
+        onPermission: (params) => askForPermission(job, params, toolTitles),
         onUpdate: (update) => {
+          if (update.tool) toolTitles.set(update.tool.id, update.tool.title);
           if (update.message) {
             const overlay = readOverlayState("custom", update.message);
             if (overlay) job.overlay = overlay;
@@ -799,7 +947,9 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
     // must not overwrite the reason the run was stopped.
     if (job.status !== "cancelled") {
       job.status = "failed";
-      job.message = error instanceof Error ? error.message : String(error);
+      // A message already set is the reason we gave up; the error that follows
+      // is only the process dying because we did.
+      job.message ??= error instanceof Error ? error.message : String(error);
     }
   } finally {
     clearTimeout(timer);
@@ -808,10 +958,6 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
 }
 
 function runNatively({ job, agent, prompt, cwd }: PendingRun): Promise<void> {
-  const settle = (resolve: () => void) => {
-    appendRunLog(cwd, job);
-    resolve();
-  };
   return new Promise<void>((resolve) => {
     job.status = "running";
     job.activity = "Starting…";
@@ -857,40 +1003,25 @@ function runNatively({ job, agent, prompt, cwd }: PendingRun): Promise<void> {
     child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
     child.on("error", (err) => {
       clearTimeout(timer);
-      runningByJob.delete(job.id);
-      activeRuns.delete(job.id);
-      openRuns.delete(job.id);
       job.status = "failed";
       job.message = err.message;
-      job.endedAt = Date.now();
-      settle(resolve);
+      closeOut(job, cwd);
+      resolve();
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      runningByJob.delete(job.id);
-      activeRuns.delete(job.id);
-      openRuns.delete(job.id);
-      // A working state the agent declared is over the moment the process is:
-      // leaving "editing" on the canvas would outlive the edit itself.
-      if (job.overlay && job.overlay.kind !== "done" && job.overlay.kind !== "failed") {
-        job.overlay = undefined;
+      // Cancelling already wrote the reason; the exit it caused is not news.
+      if (job.status !== "cancelled") {
+        const failed = code !== 0;
+        job.status = failed ? "failed" : "done";
+        job.message =
+          job.message ??
+          (failed
+            ? (readFailureMessage(output) ?? `Exited with code ${code}`)
+            : (readResultMessage(agent.kind, output) ?? `${agent.label} finished.`));
       }
-      if (job.status === "cancelled") {
-        job.activity = "";
-        job.endedAt = Date.now();
-        settle(resolve);
-        return;
-      }
-      const failed = code !== 0;
-      job.status = failed ? "failed" : "done";
-      job.message =
-        job.message ??
-        (failed
-          ? (readFailureMessage(output) ?? `Exited with code ${code}`)
-          : (readResultMessage(agent.kind, output) ?? `${agent.label} finished.`));
-      job.activity = "";
-      job.endedAt = Date.now();
-      settle(resolve);
+      closeOut(job, cwd);
+      resolve();
     });
 
     if (streaming) {

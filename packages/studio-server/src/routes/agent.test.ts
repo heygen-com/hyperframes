@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listAgentCommands, registerAgentRoutes, resolveAgentCommand } from "./agent";
-import { readActivity, readSessionId, type AgentJob } from "../helpers/agentJobs";
+import {
+  listAgentCommands,
+  registerAgentRoutes,
+  resolveAgentCommand,
+  resumedAgentCommand,
+} from "./agent";
+import {
+  readActivity,
+  readFailureMessage,
+  readOverlayState,
+  readSessionId,
+  type AgentJob,
+} from "../helpers/agentJobs";
 import type { StudioApiAdapter } from "../types";
 
 const tempDirs: string[] = [];
@@ -66,6 +77,42 @@ function createSlowAgent(): string {
   return script;
 }
 
+/**
+ * A stand-in for a harness that reads streaming input: it keeps stdin open,
+ * appends every message it is handed, and only reports its turn finished once
+ * it has been told to.
+ */
+function createStreamingAgent(): string {
+  const dir = createProjectDir();
+  // Named for the harness it stands in for: a wrapper around a known harness
+  // inherits that harness' prompt format, which is what puts this run on the
+  // streaming path.
+  const script = join(dir, "claude-streaming-agent.mjs");
+  writeFileSync(
+    script,
+    [
+      "import { appendFileSync } from 'node:fs';",
+      "let buf = '';",
+      "process.stdin.on('data', (chunk) => {",
+      "  buf += chunk;",
+      "  let i;",
+      "  while ((i = buf.indexOf('\\n')) !== -1) {",
+      "    const line = buf.slice(0, i).trim();",
+      "    buf = buf.slice(i + 1);",
+      "    if (!line) continue;",
+      "    const text = JSON.parse(line).message.content[0].text;",
+      "    appendFileSync('edited.txt', text + '\\n');",
+      "    if (text.includes('finish')) {",
+      "      console.log(JSON.stringify({ type: 'result', result: 'done after ' + text }));",
+      "    }",
+      "  }",
+      "});",
+    ].join("\n"),
+    "utf-8",
+  );
+  return script;
+}
+
 function createAdapter(projectDir: string): StudioApiAdapter {
   return {
     listProjects: () => [],
@@ -89,12 +136,35 @@ function createApp(projectDir: string): Hono {
   return app;
 }
 
-function enqueue(app: Hono, projectId: string, instruction: string) {
+function enqueue(
+  app: Hono,
+  projectId: string,
+  instruction: string,
+  /** Which element the run edits. Runs sharing one are serial; others are not. */
+  targetRef?: Record<string, unknown>,
+) {
   return app.request(`/projects/${projectId}/agent`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt: `do this: ${instruction}`, instruction, target: "#title" }),
+    body: JSON.stringify({
+      prompt: `do this: ${instruction}`,
+      instruction,
+      target: "#title",
+      targetRef,
+    }),
   });
+}
+
+/**
+ * The instructions the fake agent was handed, in order. It appends each whole
+ * prompt it receives, and a prompt is more than its first line — the server
+ * adds the installed skills to it — so the marker is what identifies each run.
+ */
+function promptsSentTo(projectDir: string): string[] {
+  return readFileSync(join(projectDir, "edited.txt"), "utf-8")
+    .split("do this: ")
+    .slice(1)
+    .map((chunk) => chunk.split("\n")[0]!.trim());
 }
 
 async function readJobs(app: Hono, projectId: string): Promise<AgentJob[]> {
@@ -180,10 +250,45 @@ describe("listAgentCommands", () => {
   });
 });
 
+describe("resumedAgentCommand", () => {
+  it("rebuilds Codex's command as its resume subcommand, flags before the id", () => {
+    const codex = resolveAgentCommand({ HYPERFRAMES_AGENT: "codex" })!;
+    expect(resumedAgentCommand(codex, "abc-123")?.args).toEqual([
+      "exec",
+      "resume",
+      "--json",
+      "--skip-git-repo-check",
+      "abc-123",
+      "-",
+    ]);
+  });
+
+  it("only adds a flag for Claude Code, which keeps its own command", () => {
+    const claude = resolveAgentCommand({ HYPERFRAMES_AGENT: "claude" })!;
+    expect(resumedAgentCommand(claude, "abc-123")?.args).toEqual([
+      ...claude.args,
+      "--resume",
+      "abc-123",
+    ]);
+  });
+
+  it("cannot resume without a session, or a harness that has no resume", () => {
+    const codex = resolveAgentCommand({ HYPERFRAMES_AGENT: "codex" })!;
+    const hermes = resolveAgentCommand({ HYPERFRAMES_AGENT: "hermes" })!;
+    expect(resumedAgentCommand(codex, undefined)).toBeNull();
+    expect(resumedAgentCommand(hermes, "abc-123")).toBeNull();
+  });
+});
+
 describe("readSessionId", () => {
   it("picks up the harness session id from its stream", () => {
     expect(readSessionId("claude", '{"type":"system","session_id":"abc-123"}')).toBe("abc-123");
     expect(readSessionId("claude", "plain text")).toBeNull();
+    // Codex opens its stream with the thread it can be resumed from.
+    expect(
+      readSessionId("codex", '{"type":"thread.started","thread_id":"019fd00d-df1e-7420"}'),
+    ).toBe("019fd00d-df1e-7420");
+    expect(readSessionId("codex", '{"type":"turn.started"}')).toBeNull();
     expect(readSessionId("codex", '{"session_id":"abc-123"}')).toBeNull();
   });
 });
@@ -213,10 +318,115 @@ describe("readActivity", () => {
     expect(readActivity("claude", "   ")).toBeNull();
   });
 
-  it("uses raw lines for Codex", () => {
-    expect(readActivity("codex", "  applying patch to index.html  ")).toBe(
+  it("reads Codex's own items: a file change, a shell command, its words", () => {
+    const item = (payload: object) => JSON.stringify({ type: "item.started", item: payload });
+    expect(
+      readActivity(
+        "codex",
+        item({ type: "file_change", changes: [{ path: "/a/b/index.html", kind: "update" }] }),
+      ),
+    ).toBe("Edit · index.html");
+    // The shell is wrapped in `/bin/zsh -lc '…'`; the command is the payload.
+    expect(
+      readActivity("codex", item({ type: "command_execution", command: "/bin/zsh -lc 'ls -la'" })),
+    ).toBe("Shell · ls -la");
+    expect(readActivity("codex", item({ type: "agent_message", text: "Widening the chip" }))).toBe(
+      "Widening the chip",
+    );
+    // Its warnings channel is not what the run is doing.
+    expect(
+      readActivity("codex", item({ type: "error", message: "stale hooks config" })),
+    ).toBeNull();
+  });
+
+  it("uses raw lines for the harnesses that only print prose", () => {
+    expect(readActivity("hermes", "  applying patch to index.html  ")).toBe(
       "applying patch to index.html",
     );
+  });
+});
+
+describe("readOverlayState", () => {
+  it("reads a declaration out of a prose harness' line", () => {
+    expect(
+      readOverlayState("hermes", '<!-- hf:overlay {"kind":"editing","scope":"text"} -->'),
+    ).toEqual({ kind: "editing", scope: "text" });
+  });
+
+  it("reads one out of a Codex agent message", () => {
+    const line = JSON.stringify({
+      type: "item.completed",
+      item: { type: "agent_message", text: '<!-- hf:overlay {"kind":"reading"} --> looking' },
+    });
+    expect(readOverlayState("codex", line)).toEqual({ kind: "reading" });
+  });
+
+  it("decodes the marker out of Claude's stream-json before reading it", () => {
+    const event = JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: 'hf:overlay {"kind":"reading","label":"Checking the timing"}' },
+        ],
+      },
+    });
+    expect(readOverlayState("claude", event)).toEqual({
+      kind: "reading",
+      label: "Checking the timing",
+    });
+  });
+
+  it("takes the last declaration in a chunk and survives a brace in a label", () => {
+    const line =
+      'hf:overlay {"kind":"reading"} then hf:overlay {"kind":"editing","label":"fixing {x}"}';
+    expect(readOverlayState("hermes", line)).toEqual({ kind: "editing", label: "fixing {x}" });
+  });
+
+  it("keeps the declaration out of the activity line", () => {
+    const event = JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: '<!-- hf:overlay {"kind":"editing"} --> Rewriting the headline',
+          },
+        ],
+      },
+    });
+    expect(readActivity("claude", event)).toBe("Rewriting the headline");
+    // A line that was only a declaration has nothing left to report.
+    expect(readActivity("hermes", '<!-- hf:overlay {"kind":"editing"} -->')).toBeNull();
+  });
+
+  it("ignores a malformed or unknown declaration rather than failing the run", () => {
+    expect(readOverlayState("hermes", "hf:overlay {not json")).toBeNull();
+    expect(readOverlayState("hermes", 'hf:overlay {"kind":"vibing"}')).toBeNull();
+    expect(readOverlayState("hermes", "no marker here")).toBeNull();
+  });
+});
+
+describe("readFailureMessage", () => {
+  it("digs the reason out of a harness' JSON error instead of reporting a brace", () => {
+    const output = [
+      "{",
+      '  "error": {',
+      '    "message": "Unsupported value: \'none\' is not supported with this model.",',
+      '    "param": "reasoning.effort"',
+      "  },",
+      '  "status": 400',
+      "}",
+    ].join("\n");
+    expect(readFailureMessage(output)).toBe(
+      "Unsupported value: 'none' is not supported with this model.",
+    );
+  });
+
+  it("falls back to the last line that says something", () => {
+    expect(readFailureMessage("starting\ncommand not found: codex\n}\n)")).toBe(
+      "command not found: codex",
+    );
+    expect(readFailureMessage("   ")).toBeNull();
   });
 });
 
@@ -241,7 +451,28 @@ describe("registerAgentRoutes", () => {
     );
   });
 
-  it("runs queued jobs one at a time so two agents never rewrite the same file at once", async () => {
+  it("tells the agent which HyperFrames skills it can load", async () => {
+    const projectDir = createProjectDir();
+    // A project with the router installed the way `skills add` leaves it.
+    mkdirSync(join(projectDir, ".claude", "skills", "hyperframes"), { recursive: true });
+    writeFileSync(
+      join(projectDir, ".claude", "skills", "hyperframes", "SKILL.md"),
+      "---\nname: hyperframes\n---\n",
+      "utf-8",
+    );
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createFakeAgent()}`;
+    const app = createApp(projectDir);
+
+    await enqueue(app, "skills", "make it red");
+    await waitForIdle(app, "skills");
+
+    const sent = readFileSync(join(projectDir, "edited.txt"), "utf-8");
+    // A generic edit misses the framework's rules; the skills are what carry them.
+    expect(sent).toContain("/hyperframes first");
+    expect(sent).toContain("determinism");
+  });
+
+  it("runs jobs on one element one at a time, so the second never rewrites what the first is mid-way through", async () => {
     const projectDir = createProjectDir();
     process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createFakeAgent()}`;
     const app = createApp(projectDir);
@@ -255,10 +486,209 @@ describe("registerAgentRoutes", () => {
     expect(settled.map((job) => job.status)).toEqual(["done", "done"]);
     // Newest first, and both prompts reached the agent in order.
     expect(settled.map((job) => job.instruction)).toEqual(["second", "first"]);
-    expect(readFileSync(join(projectDir, "edited.txt"), "utf-8").trim().split("\n")).toEqual([
-      "do this: first",
-      "do this: second",
-    ]);
+    expect(promptsSentTo(projectDir)).toEqual(["first", "second"]);
+  });
+
+  it("runs jobs on different elements at the same time instead of making one wait", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const file = "index.html";
+    await enqueue(app, "lanes", "headline", { sourceFile: file, id: "headline" });
+    await enqueue(app, "lanes", "footer", { sourceFile: file, id: "footer" });
+    // Asking about the footer must not mean waiting out the headline's run.
+    await waitFor(async () => {
+      const jobs = await readJobs(app, "lanes");
+      return jobs.filter((job) => job.status === "running").length === 2;
+    });
+
+    const settled = await waitForIdle(app, "lanes");
+    expect(settled.map((job) => job.status)).toEqual(["done", "done"]);
+  });
+
+  it("still queues a second run on the element that is already being edited", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const ref = { sourceFile: "index.html", selector: ".card", selectorIndex: 2 };
+    await enqueue(app, "same-lane", "bigger", ref);
+    await enqueue(app, "same-lane", "then redder", ref);
+    const inFlight = await readJobs(app, "same-lane");
+    expect(inFlight.filter((job) => job.status === "running").length).toBe(1);
+
+    const settled = await waitForIdle(app, "same-lane");
+    expect(settled.map((job) => job.status)).toEqual(["done", "done"]);
+    expect(promptsSentTo(projectDir)).toEqual(["bigger", "then redder"]);
+  });
+
+  it("takes over: a waiting run stops the one holding its element and starts", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const ref = { sourceFile: "index.html", id: "title" };
+    const first = (await (await enqueue(app, "promote", "the long one", ref)).json()) as {
+      job: AgentJob;
+    };
+    const second = (await (await enqueue(app, "promote", "the urgent one", ref)).json()) as {
+      job: AgentJob;
+    };
+    await waitFor(async () => {
+      const jobs = await readJobs(app, "promote");
+      return jobs.some((job) => job.id === first.job.id && job.status === "running");
+    });
+
+    const res = await app.request(`/projects/promote/agent/jobs/${second.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promote: true }),
+    });
+    expect(res.status).toBe(200);
+
+    const settled = await waitForIdle(app, "promote");
+    const byId = new Map(settled.map((job) => [job.id, job]));
+    expect(byId.get(first.job.id)?.status).toBe("cancelled");
+    expect(byId.get(second.job.id)?.status).toBe("done");
+  });
+
+  it("leaves work on other elements alone when one takes over", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const elsewhere = (await (
+      await enqueue(app, "promote2", "on the footer", { sourceFile: "index.html", id: "footer" })
+    ).json()) as { job: AgentJob };
+    const ref = { sourceFile: "index.html", id: "title" };
+    await enqueue(app, "promote2", "the long one", ref);
+    const urgent = (await (await enqueue(app, "promote2", "the urgent one", ref)).json()) as {
+      job: AgentJob;
+    };
+    await waitFor(async () => {
+      const jobs = await readJobs(app, "promote2");
+      return jobs.filter((job) => job.status === "running").length === 2;
+    });
+
+    await app.request(`/projects/promote2/agent/jobs/${urgent.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promote: true }),
+    });
+
+    const settled = await waitForIdle(app, "promote2");
+    // Taking over an element is no reason to interrupt another one.
+    expect(settled.find((job) => job.id === elsewhere.job.id)?.status).toBe("done");
+  });
+
+  it("reports the queue in the order it will run, after a move", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const ref = { sourceFile: "index.html", id: "title" };
+    await enqueue(app, "order", "blocker", ref);
+    await enqueue(app, "order", "alpha", ref);
+    await enqueue(app, "order", "beta", ref);
+    const gamma = (await (await enqueue(app, "order", "gamma", ref)).json()) as { job: AgentJob };
+
+    // Send the last waiting run to the front of the line.
+    await app.request(`/projects/order/agent/jobs/${gamma.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ position: 0 }),
+    });
+
+    const jobs = await readJobs(app, "order");
+    // The list reads newest-first, so the run order is its reverse.
+    const queue = jobs
+      .filter((job) => job.status === "queued")
+      .map((job) => job.instruction)
+      .reverse();
+    expect(queue).toEqual(["gamma", "alpha", "beta"]);
+
+    // And the agent is actually handed them in that order.
+    await waitForIdle(app, "order");
+    expect(promptsSentTo(projectDir)).toEqual(["blocker", "gamma", "alpha", "beta"]);
+  });
+
+  it("steers a waiting run in place, keeping the element context it was built from", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const ref = { sourceFile: "index.html", id: "title" };
+    await enqueue(app, "steer-q", "first", ref);
+    const waiting = (await (await enqueue(app, "steer-q", "make it red", ref)).json()) as {
+      job: AgentJob;
+    };
+
+    const res = await app.request(`/projects/steer-q/agent/jobs/${waiting.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ steer: "blue, not red" }),
+    });
+    expect(res.status).toBe(200);
+
+    await waitForIdle(app, "steer-q");
+    const sent = readFileSync(join(projectDir, "edited.txt"), "utf-8");
+    // The original request and the correction both reach the agent, in order.
+    expect(sent).toContain("do this: make it red");
+    expect(sent).toContain("blue, not red");
+  });
+
+  it("steers a run that reads streaming input without stopping it", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createStreamingAgent()}`;
+    const app = createApp(projectDir);
+    const started = (await (
+      await enqueue(app, "stream", "first ask", { sourceFile: "index.html", id: "title" })
+    ).json()) as { job: AgentJob };
+    await waitFor(async () => {
+      const jobs = await readJobs(app, "stream");
+      return jobs.some((job) => job.id === started.job.id && job.status === "running");
+    });
+
+    await app.request(`/projects/stream/agent/jobs/${started.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ steer: "actually, finish now" }),
+    });
+
+    const settled = await waitForIdle(app, "stream");
+    // One run, not two: the correction went into the turn already going.
+    expect(settled).toHaveLength(1);
+    expect(settled[0]?.id).toBe(started.job.id);
+    expect(settled[0]?.steers).toEqual(["actually, finish now"]);
+    expect(promptsSentTo(projectDir)).toEqual(["first ask"]);
+    expect(readFileSync(join(projectDir, "edited.txt"), "utf-8")).toContain("actually, finish now");
+  });
+
+  it("steers a running run by stopping it and asking again", async () => {
+    const projectDir = createProjectDir();
+    process.env.HYPERFRAMES_AGENT_CMD = `${process.execPath} ${createSlowAgent()}`;
+    const app = createApp(projectDir);
+
+    const started = (await (
+      await enqueue(app, "steer-r", "wrong thing", { sourceFile: "index.html", id: "title" })
+    ).json()) as { job: AgentJob };
+    await waitFor(async () => {
+      const jobs = await readJobs(app, "steer-r");
+      return jobs.some((job) => job.status === "running");
+    });
+
+    await app.request(`/projects/steer-r/agent/jobs/${started.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ steer: "the other one, actually" }),
+    });
+
+    const settled = await waitForIdle(app, "steer-r");
+    // The first run is stopped and a follow-up carries the correction.
+    expect(settled.map((job) => job.status)).toEqual(["done", "cancelled"]);
+    expect(settled[1]?.message).toBe("Steered mid-run.");
+    expect(settled[0]?.steers).toEqual(["the other one, actually"]);
   });
 
   it("reorders and removes waiting runs", async () => {

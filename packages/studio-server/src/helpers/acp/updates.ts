@@ -15,6 +15,11 @@ export interface AcpUpdate {
   activity?: string;
   /** Text the agent said, to be added to the run's answer. */
   message?: string;
+  /**
+   * A tool call the agent named, so a later permission request about the same
+   * call can be described in the agent's words rather than by its id.
+   */
+  tool?: { id: string; title: string };
 }
 
 /**
@@ -67,7 +72,10 @@ export function readAcpUpdate(params: unknown): AcpUpdate | null {
     case "tool_call":
     case "tool_call_update": {
       const activity = toolActivity(update);
-      return activity ? { activity } : null;
+      if (!activity) return null;
+      const id = update.toolCallId;
+      const title = typeof update.title === "string" ? update.title.trim() : "";
+      return typeof id === "string" && title ? { activity, tool: { id, title } } : { activity };
     }
     // Plans, mode switches and command lists describe the session rather than
     // the work, and saying so would push the real activity off the row.

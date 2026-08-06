@@ -11,7 +11,15 @@ export const AGENT_KINDS = ["claude", "codex", "hermes", "openclaw", "custom"] a
 export const agentKindSchema = z.enum(AGENT_KINDS);
 export type AgentKind = z.infer<typeof agentKindSchema>;
 
-export const agentStatusSchema = z.enum(["queued", "running", "done", "failed", "cancelled"]);
+export const agentStatusSchema = z.enum([
+  "queued",
+  "running",
+  /** Stopped on a question the agent asked, and going nowhere until answered. */
+  "awaiting-permission",
+  "done",
+  "failed",
+  "cancelled",
+]);
 export type AgentStatus = z.infer<typeof agentStatusSchema>;
 
 /** Where the edited element lives, so the run list can jump back to it. */
@@ -24,6 +32,39 @@ export const agentTargetRefSchema = z.object({
   time: z.number().finite().optional(),
 });
 export type AgentTargetRef = z.infer<typeof agentTargetRefSchema>;
+
+/**
+ * What the selection chrome shows while an agent works on that element.
+ *
+ * Studio only ever derives the four states it owns as fact: queued, working,
+ * done and failed. Everything finer, the agent declares — it emits one
+ * `hf:overlay {…}` line at any point during a run and this is what that line
+ * has to parse into. An unrecognised state is not an error downstream: the
+ * renderer falls back to the neutral working treatment.
+ */
+export const overlayStateSchema = z.object({
+  kind: z.enum(["queued", "working", "reading", "thinking", "editing", "done", "failed"]),
+  /** What the work is about, when the agent knows. Drives the finer treatments. */
+  scope: z.enum(["text", "box", "motion", "content"]).optional(),
+  /** One short line for the pill. Studio writes one from the tool call if absent. */
+  label: z.string().trim().min(1).max(60).optional(),
+  /**
+   * Any CSS colour, for a harness or a team that wants its own. This lands in a
+   * custom property the overlay paints from, so it is held to colour syntax: a
+   * `url()` reaching out of the canvas is not a colour.
+   */
+  accent: z
+    .string()
+    .trim()
+    .max(40)
+    .regex(
+      /^(#[0-9a-f]{3,8}|[a-z]+|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([0-9a-z%.,/\s+-]*\))$/i,
+    )
+    .optional(),
+  /** Which element, when it is not the run's own target. */
+  target: z.object({ selector: z.string().optional(), id: z.string().optional() }).optional(),
+});
+export type OverlayState = z.infer<typeof overlayStateSchema>;
 
 /**
  * A harness the user registered themselves: the same fields Studio's built-in
@@ -56,6 +97,10 @@ export const agentRunRequestSchema = z.object({
   instruction: z.string().optional(),
   target: z.string().optional(),
   targetRef: agentTargetRefSchema.optional(),
+  /** The rest of a multi-selection: the instruction applies to these too. */
+  targetRefs: z.array(agentTargetRefSchema).max(64).optional(),
+  /** What the target is: one element, or a stretch of the timeline. */
+  targetKind: z.enum(["element", "range"]).optional(),
   /** Harness id: a built-in kind, or a custom agent's id. */
   agent: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
@@ -64,10 +109,52 @@ export const agentRunRequestSchema = z.object({
 });
 export type AgentRunRequest = z.infer<typeof agentRunRequestSchema>;
 
-export const agentQueueMoveSchema = z.object({
-  /** Index within the queue; 0 is next up. */
-  position: z.number().finite(),
+/**
+ * The two ways a run can be changed after it was asked for: moved in the queue,
+ * or steered — a correction to what it is doing.
+ */
+export const agentJobPatchSchema = z
+  .object({
+    /** Index within the queue; 0 is next up. */
+    position: z.number().finite().optional(),
+    /** A correction. Applied in place while queued, by resuming while running. */
+    steer: z.string().trim().min(1).max(2000).optional(),
+    /** Take over now: stop whatever holds this run's element and start it. */
+    promote: z.literal(true).optional(),
+    /** The id of the option the user picked for a run waiting on permission. */
+    answer: z.string().min(1).max(200).optional(),
+  })
+  .refine(
+    (patch) =>
+      patch.position !== undefined ||
+      patch.steer !== undefined ||
+      patch.promote !== undefined ||
+      patch.answer !== undefined,
+    { message: "position, steer, promote or answer required" },
+  );
+
+/**
+ * One thing the agent will do if allowed, in its own words.
+ *
+ * The label and the id are the agent's, not Studio's: inventing our own
+ * wording for "allow once" versus "allow for this session" would describe a
+ * choice the agent is not offering. `kind` is the protocol's, and is the only
+ * part Studio reads — it is how a timeout knows which option means no.
+ */
+export const permissionOptionSchema = z.object({
+  optionId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  kind: z.enum(["allow_once", "allow_always", "reject_once", "reject_always"]).optional(),
 });
+export type PermissionOption = z.infer<typeof permissionOptionSchema>;
+
+/** What a run is waiting on the user for. */
+export const permissionRequestSchema = z.object({
+  /** The tool call being asked about, titled the way the agent titled it. */
+  tool: z.string().min(1).max(200),
+  options: z.array(permissionOptionSchema).min(1),
+});
+export type PermissionRequest = z.infer<typeof permissionRequestSchema>;
 
 /** One line of `<project>/.hyperframes/agent-runs.jsonl`. */
 export const loggedRunSchema = z.object({
@@ -77,6 +164,9 @@ export const loggedRunSchema = z.object({
   effort: z.string().optional(),
   target: z.string().default("composition"),
   targetRef: agentTargetRefSchema.optional(),
+  targetRefs: z.array(agentTargetRefSchema).optional(),
+  targetKind: z.enum(["element", "range"]).optional(),
+  steers: z.array(z.string()).optional(),
   sessionId: z.string().optional(),
   instruction: z.string().min(1),
   status: agentStatusSchema.default("done"),
@@ -95,6 +185,10 @@ export const catalogModelSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
   tool_call: z.boolean().optional(),
+  /** Generation group, e.g. every `gpt-nano` release. */
+  family: z.string().optional(),
+  /** ISO date; what makes one member of a family supersede another. */
+  release_date: z.string().optional(),
   cost: z
     .object({ input: z.number().finite().optional(), output: z.number().finite().optional() })
     .optional(),
@@ -103,6 +197,29 @@ export const catalogModelSchema = z.object({
     .array(z.object({ type: z.string(), values: z.array(z.string()).optional() }))
     .optional(),
 });
+
+/**
+ * What a harness answers when asked which models it can run. Only the fields
+ * Studio shows are declared; the rest of the harness' payload is ignored, since
+ * it belongs to the harness and changes on its schedule.
+ */
+export const harnessModelListSchema = z.object({
+  data: z
+    .array(
+      z.object({
+        id: z.string(),
+        model: z.string().optional(),
+        displayName: z.string().optional(),
+        hidden: z.boolean().optional(),
+        isDefault: z.boolean().optional(),
+        defaultReasoningEffort: z.string().optional(),
+        supportedReasoningEfforts: z.array(z.object({ reasoningEffort: z.string() })).optional(),
+      }),
+    )
+    .default([]),
+});
+
+export type CatalogModel = z.infer<typeof catalogModelSchema>;
 
 export const catalogProviderSchema = z.object({
   models: z.record(z.string(), catalogModelSchema).default({}),

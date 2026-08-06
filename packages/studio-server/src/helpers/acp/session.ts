@@ -21,6 +21,11 @@ export interface AcpRunHooks {
   /** The session's own id, no scraping required. */
   onSessionId?: (sessionId: string) => void;
   onUpdate?: (update: AcpUpdate) => void;
+  /**
+   * The agent asking before it acts. Left out, the agent's own default applies
+   * and Studio never hears the question.
+   */
+  onPermission?: (params: Record<string, unknown>) => Promise<{ optionId: string }>;
 }
 
 export interface AcpRunOutcome {
@@ -43,6 +48,7 @@ export async function runAcpSession(opts: {
   return withAcpAgent(
     { command: opts.command, args: opts.args, cwd: opts.cwd, onSpawn: hooks.onSpawn },
     {
+      onPermission: hooks.onPermission,
       onUpdate: (params) => {
         const update = readAcpUpdate(params);
         if (!update) return;

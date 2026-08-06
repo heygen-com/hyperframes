@@ -2,9 +2,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Hono } from "hono";
+import { registerAgentRoutes } from "../../routes/agent";
+import type { StudioApiAdapter } from "../../types";
 import { runAcpSession } from "./session";
 import { readAcpUpdate } from "./updates";
-import { enqueueAgentJob, listAgentJobs, type AgentCommand, type AgentJob } from "../agentJobs";
+import {
+  answerAgentJob,
+  cancelAgentJob,
+  enqueueAgentJob,
+  listAgentJobs,
+  type AgentCommand,
+  type AgentJob,
+} from "../agentJobs";
 
 const tempDirs: string[] = [];
 
@@ -23,6 +33,8 @@ function createAcpAgent(
   stopReason = "end_turn",
   /** How long the turn stays open after the updates, for watching it live. */
   holdMs = 0,
+  /** Options to ask about before doing anything, the way a real agent would. */
+  ask: Array<Record<string, unknown>> | null = null,
 ): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-acp-test-"));
   tempDirs.push(dir);
@@ -33,7 +45,15 @@ function createAcpAgent(
       `const updates = ${JSON.stringify(updates)};`,
       `const stopReason = ${JSON.stringify(stopReason)};`,
       `const holdMs = ${JSON.stringify(holdMs)};`,
+      `const ask = ${JSON.stringify(ask)};`,
       "const send = (m) => process.stdout.write(JSON.stringify(m) + '\\n');",
+      "let pending = null;",
+      "const finish = (id) => {",
+      "  for (const update of updates) {",
+      "    send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'sess-42', update } });",
+      "  }",
+      "  setTimeout(() => send({ jsonrpc: '2.0', id, result: { stopReason } }), holdMs);",
+      "};",
       "let buf = '';",
       "process.stdin.on('data', (chunk) => {",
       "  buf += chunk;",
@@ -48,10 +68,22 @@ function createAcpAgent(
       "    } else if (msg.method === 'session/new') {",
       "      send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'sess-42' } });",
       "    } else if (msg.method === 'session/prompt') {",
-      "      for (const update of updates) {",
-      "        send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'sess-42', update } });",
+      "      if (ask) {",
+      "        pending = msg.id;",
+      "        send({ jsonrpc: '2.0', id: 900, method: 'session/request_permission', params: {",
+      "          sessionId: 'sess-42',",
+      "          toolCall: { toolCallId: 'call-1', title: 'Write composition.html', kind: 'edit' },",
+      "          options: ask,",
+      "        } });",
+      "      } else {",
+      "        finish(msg.id);",
       "      }",
-      "      setTimeout(() => send({ jsonrpc: '2.0', id: msg.id, result: { stopReason } }), holdMs);",
+      "    } else if (msg.id === 900 && msg.result) {",
+      "      const chosen = msg.result.outcome && msg.result.outcome.optionId;",
+      "      send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'sess-42', update: {",
+      "        sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'You said ' + chosen + '. ' },",
+      "      } } });",
+      "      finish(pending);",
       "    }",
       "  }",
       "});",
@@ -84,18 +116,28 @@ function createProjectDir(): string {
 let nextProject = 0;
 
 /** Queue a job and hand back how to watch it. */
-function startJob(agent: AgentCommand, projectDir: string, instruction = "make it blue") {
-  const projectId = `acp-project-${nextProject++}`;
+function startJob(opts: {
+  agent: AgentCommand;
+  projectDir: string;
+  instruction?: string;
+  /** Which element it edits. Runs sharing one are serial; others are not. */
+  element?: string;
+  /** Join an existing project, for testing two runs against each other. */
+  projectId?: string;
+}) {
+  const projectId = opts.projectId ?? `acp-project-${nextProject++}`;
+  const instruction = opts.instruction ?? "make it blue";
   const queued = enqueueAgentJob({
     projectId,
-    projectDir,
-    agent,
+    projectDir: opts.projectDir,
+    agent: opts.agent,
     prompt: `do this: ${instruction}`,
     instruction,
-    target: "#title",
+    target: `#${opts.element ?? "title"}`,
+    targetRef: opts.element ? { id: opts.element } : undefined,
   });
   const read = () => listAgentJobs(projectId).find((candidate) => candidate.id === queued.id)!;
-  return { read };
+  return { projectId, jobId: queued.id, read };
 }
 
 async function until(check: () => boolean): Promise<void> {
@@ -106,14 +148,17 @@ async function until(check: () => boolean): Promise<void> {
   throw new Error("the ACP job never got there");
 }
 
+/** Statuses a run can end on. Waiting on permission is not one of them. */
+const SETTLED = ["done", "failed", "cancelled"];
+
 /** Run one job to settlement and hand back what the tray would show. */
 async function runJob(
   agent: AgentCommand,
   projectDir: string,
   instruction = "make it blue",
 ): Promise<AgentJob> {
-  const { read } = startJob(agent, projectDir, instruction);
-  await until(() => read().status !== "queued" && read().status !== "running");
+  const { read } = startJob({ agent, projectDir, instruction });
+  await until(() => SETTLED.includes(read().status));
   return read();
 }
 
@@ -160,6 +205,16 @@ describe("readAcpUpdate", () => {
     ).toEqual({ activity: "Read composition.html" });
   });
 
+  // The title is remembered so a permission request about the same call can be
+  // described in the agent's own words.
+  it("reports the id and title of a tool call it saw", () => {
+    expect(
+      readAcpUpdate({
+        update: { sessionUpdate: "tool_call", toolCallId: "exec-1", title: "Run the linter" },
+      }),
+    ).toEqual({ activity: "Run the linter", tool: { id: "exec-1", title: "Run the linter" } });
+  });
+
   it("ignores updates that describe the session rather than the work", () => {
     expect(readAcpUpdate({ update: { sessionUpdate: "plan", entries: [] } })).toBeNull();
     expect(readAcpUpdate({ update: { sessionUpdate: "current_mode_update" } })).toBeNull();
@@ -198,16 +253,16 @@ describe("a job running over ACP", () => {
   });
 
   it("shows the overlay the agent declared, and keeps it out of what it said", async () => {
-    const { read } = startJob(
-      acpCommand(
+    const { read } = startJob({
+      agent: acpCommand(
         createAcpAgent(
           [said('<!-- hf:overlay {"kind":"editing","scope":"text"} -->\nRewriting the headline.')],
           "end_turn",
           400,
         ),
       ),
-      createProjectDir(),
-    );
+      projectDir: createProjectDir(),
+    });
 
     // While the turn is open, the canvas says what the agent said it is doing.
     await until(() => read().overlay?.kind === "editing");
@@ -221,8 +276,8 @@ describe("a job running over ACP", () => {
   });
 
   it("shows a tool call on the run, the way the tray already draws one", async () => {
-    const { read } = startJob(
-      acpCommand(
+    const { read } = startJob({
+      agent: acpCommand(
         createAcpAgent(
           [
             {
@@ -238,8 +293,8 @@ describe("a job running over ACP", () => {
           400,
         ),
       ),
-      createProjectDir(),
-    );
+      projectDir: createProjectDir(),
+    });
 
     await until(() => read().activity === "Edit · composition.html");
     await until(() => read().status === "done");
@@ -279,5 +334,185 @@ describe("a job running over ACP", () => {
       sessionId: "sess-42",
       result: "Widened the hero.",
     });
+  });
+});
+
+const ASK_OPTIONS = [
+  { optionId: "yes", name: "Allow this once", kind: "allow_once" },
+  { optionId: "no", name: "Don't allow", kind: "reject_once" },
+];
+
+/** A stub that stops to ask before it does anything. */
+function askingAgent(options = ASK_OPTIONS): string {
+  return createAcpAgent([], "end_turn", 0, options);
+}
+
+/** A run already stopped on its question, with the API in front of it. */
+async function parkedRun(agent = acpCommand(askingAgent())) {
+  const projectDir = createProjectDir();
+  const started = startJob({ agent, projectDir, instruction: "write it" });
+  await until(() => started.read().status === "awaiting-permission");
+  return { app: createApp(projectDir), projectDir, ...started };
+}
+
+describe("a run that stops to ask", () => {
+  afterEach(() => {
+    delete process.env.HYPERFRAMES_AGENT_ASK_TIMEOUT_MS;
+  });
+
+  it("parks with the question and the options the agent sent", async () => {
+    const { read } = await parkedRun();
+
+    expect(read().permission).toEqual({
+      tool: "Write composition.html",
+      options: ASK_OPTIONS,
+    });
+    expect(read().activity).toBe("Waiting on you · Write composition.html");
+  });
+
+  it("carries the answer back to the agent and finishes the run", async () => {
+    const { projectId, jobId, read } = await parkedRun();
+
+    expect(answerAgentJob(projectId, jobId, "yes")).toEqual({ job: read() });
+
+    await until(() => read().status === "done");
+    // The agent says which option it was handed, so this is the round trip.
+    expect(read().message).toContain("You said yes.");
+    expect(read().permission).toBeUndefined();
+  });
+
+  // Studio may only forward what the agent put on the table.
+  it("refuses an option the agent never offered", async () => {
+    const { projectId, jobId, read } = await parkedRun();
+
+    expect(answerAgentJob(projectId, jobId, "sudo-yes")).toEqual({ refused: "not-offered" });
+    expect(read().status).toBe("awaiting-permission");
+  });
+
+  // Running out of patience must never mean saying yes.
+  it("declines for the user when the wait runs out and the agent offered a no", async () => {
+    process.env.HYPERFRAMES_AGENT_ASK_TIMEOUT_MS = "200";
+    const job = await runJob(acpCommand(askingAgent()), createProjectDir());
+
+    expect(job.status).toBe("done");
+    expect(job.message).toContain("You said no.");
+  });
+
+  it("fails naming the tool when the wait runs out and there is no way to say no", async () => {
+    process.env.HYPERFRAMES_AGENT_ASK_TIMEOUT_MS = "200";
+    const job = await runJob(
+      acpCommand(askingAgent([{ optionId: "yes", name: "Allow", kind: "allow_once" }])),
+      createProjectDir(),
+    );
+
+    expect(job.status).toBe("failed");
+    expect(job.message).toContain("No answer to Write composition.html");
+  });
+
+  it("lets go of the question and the element when the run is cancelled", async () => {
+    const projectDir = createProjectDir();
+    const { projectId, jobId, read } = startJob({
+      agent: acpCommand(askingAgent()),
+      projectDir,
+      element: "title",
+    });
+
+    await until(() => read().status === "awaiting-permission");
+    cancelAgentJob(projectId, jobId, projectDir);
+    await until(() => read().status === "cancelled");
+    expect(read().permission).toBeUndefined();
+
+    // The element is free again, so the next edit to it runs rather than queues.
+    const next = startJob({
+      agent: acpCommand(createAcpAgent([said("Done")])),
+      projectDir,
+      projectId,
+      element: "title",
+    });
+    await until(() => next.read().status === "done");
+  });
+
+  it("leaves work on another element running while one waits", async () => {
+    const projectDir = createProjectDir();
+    const waiting = startJob({ agent: acpCommand(askingAgent()), projectDir, element: "title" });
+    const elsewhere = startJob({
+      agent: acpCommand(createAcpAgent([said("Done")])),
+      projectDir,
+      projectId: waiting.projectId,
+      element: "footer",
+    });
+
+    await until(() => waiting.read().status === "awaiting-permission");
+    // The other element never had to wait on the question.
+    await until(() => elsewhere.read().status === "done");
+    expect(waiting.read().status).toBe("awaiting-permission");
+    cancelAgentJob(waiting.projectId, waiting.jobId, projectDir);
+  });
+});
+
+/** The API in front of the queue, so the answer can be tested the way the tray sends it. */
+function createApp(projectDir: string): Hono {
+  const adapter: StudioApiAdapter = {
+    listProjects: () => [],
+    resolveProject: async (id: string) => ({ id, dir: projectDir }),
+    bundle: async () => null,
+    lint: async () => ({ findings: [] }),
+    runtimeUrl: "/api/runtime.js",
+    rendersDir: () => "/tmp/renders",
+    startRender: () => ({
+      id: "job-1",
+      status: "rendering",
+      progress: 0,
+      outputPath: "/tmp/out.mp4",
+    }),
+  };
+  const app = new Hono();
+  registerAgentRoutes(app, adapter);
+  return app;
+}
+
+function answerVia(app: Hono, projectId: string, jobId: string, optionId: string) {
+  return app.request(`/projects/${projectId}/agent/jobs/${jobId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ answer: optionId }),
+  });
+}
+
+describe("answering over the API", () => {
+  it("forwards an option the agent offered", async () => {
+    const { app, projectId, jobId, read } = await parkedRun();
+
+    expect((await answerVia(app, projectId, jobId, "yes")).status).toBe(200);
+    await until(() => read().status === "done");
+    expect(read().message).toContain("You said yes.");
+  });
+
+  // A tray showing a stale question must not be able to talk the agent into
+  // something it never put on the table.
+  it("refuses an option the agent never offered with a 409", async () => {
+    const { app, projectId, jobId, read } = await parkedRun();
+
+    const res = await answerVia(app, projectId, jobId, "sudo-yes");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "that option is not one the agent offered" });
+    expect(read().status).toBe("awaiting-permission");
+
+    cancelAgentJob(projectId, jobId, createProjectDir());
+  });
+
+  it("refuses an answer to a run that is not waiting on one", async () => {
+    const projectDir = createProjectDir();
+    const app = createApp(projectDir);
+    const { projectId, jobId, read } = startJob({
+      agent: acpCommand(createAcpAgent([said("Done")])),
+      projectDir,
+      instruction: "write it",
+    });
+
+    await until(() => read().status === "done");
+    const res = await answerVia(app, projectId, jobId, "yes");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "job is not waiting on an answer" });
   });
 });

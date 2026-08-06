@@ -10,11 +10,15 @@ import {
   withModelArgs,
 } from "../helpers/agentModels.js";
 import {
+  answerAgentJob,
   cancelAgentJob,
   clearFinishedAgentJobs,
   enqueueAgentJob,
+  findAgentJob,
   listAgentJobs,
   moveAgentJob,
+  promoteAgentJob,
+  steerAgentJob,
   type AgentCommand,
 } from "../helpers/agentJobs.js";
 
@@ -32,13 +36,14 @@ import {
 export type { AgentCommand, AgentKind, AgentTargetRef } from "../helpers/agentJobs.js";
 export type { AgentModel } from "../helpers/agentModels.js";
 import {
+  agentJobPatchSchema,
   agentKindSchema,
-  agentQueueMoveSchema,
   agentRunRequestSchema,
   customAgentRequestSchema,
   type CustomAgent,
 } from "../helpers/agentSchemas.js";
 import { deleteCustomAgent, listCustomAgents, saveCustomAgent } from "../helpers/customAgents.js";
+import { skillsPromptSection } from "../helpers/agentSkills.js";
 
 /**
  * Prompts always arrive on stdin — never as an argv or shell string — so a
@@ -51,13 +56,30 @@ const AGENT_PRESETS: Record<string, AgentCommand> = {
     command: "claude",
     // stream-json is what makes the run legible while it happens: every tool
     // call arrives as its own event instead of one silent block at exit.
-    args: ["-p", "--permission-mode", "acceptEdits", "--output-format", "stream-json", "--verbose"],
+    // --input-format stream-json holds stdin open, so a correction can be sent
+    // into a run that is already going rather than stopping and resuming it.
+    // Its pair, --output-format stream-json, is what makes the run legible
+    // while it happens: every tool call arrives as its own event.
+    args: [
+      "-p",
+      "--permission-mode",
+      "acceptEdits",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+    ],
+    promptFormat: "stream-json",
   },
   codex: {
     kind: "codex",
     label: "Codex",
     command: "codex",
-    args: ["exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "-"],
+    // --json is the same bargain stream-json is for Claude Code: every step
+    // arrives as an event on stdout. Without it Codex writes its progress, and
+    // its session id, to stderr as prose that would have to be scraped.
+    args: ["exec", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check", "-"],
   },
   hermes: {
     kind: "hermes",
@@ -74,6 +96,34 @@ const AGENT_PRESETS: Record<string, AgentCommand> = {
     args: ["agent", "exec", "--message-file", "-"],
   },
 };
+
+/**
+ * The same harness, told to pick a session back up.
+ *
+ * Only the harnesses whose resume shape is known appear. Everything else steers
+ * by asking again with the original request amended, which costs the session's
+ * context but never loses the instruction.
+ */
+const RESUME_ARGS: Partial<Record<AgentCommand["kind"], (sessionId: string) => string[] | null>> = {
+  // `claude -p --resume <id>` still reads the follow-up on stdin.
+  claude: (sessionId) => ["--resume", sessionId],
+  // Codex resumes through a subcommand with its own, shorter option list —
+  // flags first, then the id, then the stdin marker. It takes no --sandbox:
+  // the resumed session keeps the one it started with.
+  codex: (sessionId) => ["exec", "resume", "--json", "--skip-git-repo-check", sessionId, "-"],
+};
+
+/** A resumed form of this command, or null when the harness has no resume. */
+export function resumedAgentCommand(
+  agent: AgentCommand,
+  sessionId: string | undefined,
+): AgentCommand | null {
+  const build = sessionId ? RESUME_ARGS[agent.kind] : undefined;
+  const args = build?.(sessionId!);
+  if (!args) return null;
+  // Codex rebuilds its args outright; Claude only adds a flag to its own.
+  return { ...agent, args: agent.kind === "codex" ? args : [...agent.args, ...args] };
+}
 
 /** Name a custom command after the harness it points at, so its mark is right. */
 function sniffKind(command: string): AgentCommand["kind"] {
@@ -161,9 +211,20 @@ function resolveCustomAgentCommand(env: NodeJS.ProcessEnv): AgentCommand | null 
   const custom = env.HYPERFRAMES_AGENT_CMD?.trim();
   if (!custom) return null;
   const [command, ...args] = custom.split(/\s+/);
+  if (!command) return null;
   // A custom command names no harness of its own: sniff the known ones out of
   // it, else it renders as "custom" (and can supply HYPERFRAMES_AGENT_ICON).
-  return command ? { kind: sniffKind(custom), label: command, command, args } : null;
+  const kind = sniffKind(custom);
+  return {
+    kind,
+    label: command,
+    command,
+    args,
+    // A wrapper around a known harness speaks that harness' contract, so it
+    // gets its prompt format too — otherwise a wrapped Claude Code would
+    // silently lose streaming input and every steer would restart the run.
+    promptFormat: AGENT_PRESETS[kind]?.promptFormat,
+  };
 }
 
 /** Env override wins, then an explicit preset name, then whatever is installed. */
@@ -276,6 +337,8 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
       instruction,
       target,
       targetRef,
+      targetRefs,
+      targetKind,
       agent: requested,
       model: requestedModel,
       effort: requestedEffort,
@@ -299,31 +362,80 @@ export function registerAgentRoutes(api: Hono, adapter: StudioApiAdapter): void 
     // the user said otherwise. For effort that is the lowest level offered.
     const effort = requestedEffort ?? (await resolveDefaultEffort(agent.kind, model)) ?? undefined;
 
+    // The prompt is built in the browser, which cannot see what is installed on
+    // disk. Naming the skills is the server's job, and it is what turns a
+    // generic edit into one that knows the framework's rules.
+    const skills = skillsPromptSection(project.dir);
     const job = enqueueAgentJob({
       projectId: project.id,
       projectDir: project.dir,
       agent: { ...agent, args: withModelArgs(agent.kind, agent.args, model, effort) },
       model,
       effort,
-      prompt,
+      prompt: skills.length > 0 ? `${prompt}\n${skills.join("\n")}` : prompt,
       instruction: instruction ?? prompt.slice(0, 120),
       target: target ?? "composition",
       targetRef,
+      targetRefs,
+      targetKind,
     });
 
     return c.json({ job });
   });
 
-  // Reorder a waiting run. `position` indexes the queue (0 is next up).
+  // Change a run: `position` reorders a waiting one, `promote` makes it the one
+  // that is happening, `steer` corrects what it was asked to do — in place
+  // while it waits, or by resuming it mid-flight — and `answer` settles a
+  // question the agent stopped to ask.
   api.patch("/projects/:id/agent/jobs/:jobId", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
+    const jobId = c.req.param("jobId");
 
-    const move = agentQueueMoveSchema.safeParse(await c.req.json().catch(() => null));
-    if (!move.success) return c.json({ error: "position required" }, 400);
-    const position = Math.trunc(move.data.position);
+    const patch = agentJobPatchSchema.safeParse(await c.req.json().catch(() => null));
+    if (!patch.success) return c.json({ error: "position or steer required" }, 400);
 
-    if (!moveAgentJob(project.id, c.req.param("jobId"), position)) {
+    // The agent asked something and the run has stopped on it. Answering is
+    // checked against the options the agent itself offered, so a stale tray
+    // cannot forward a choice that is no longer on the table.
+    if (patch.data.answer !== undefined) {
+      const answered = answerAgentJob(project.id, jobId, patch.data.answer);
+      if ("refused" in answered) {
+        return c.json(
+          {
+            error:
+              answered.refused === "not-offered"
+                ? "that option is not one the agent offered"
+                : "job is not waiting on an answer",
+          },
+          409,
+        );
+      }
+      return c.json({ jobs: listAgentJobs(project.id, project.dir) });
+    }
+
+    if (patch.data.promote) {
+      if (!promoteAgentJob(project.id, jobId, project.dir)) {
+        return c.json({ error: "job is not queued" }, 409);
+      }
+      return c.json({ jobs: listAgentJobs(project.id, project.dir) });
+    }
+
+    if (patch.data.steer !== undefined) {
+      const job = findAgentJob(project.id, jobId);
+      const agent = job ? resolveAgentCommand(process.env, job.kind, project.dir) : null;
+      const steered = steerAgentJob({
+        projectId: project.id,
+        jobId,
+        text: patch.data.steer,
+        projectDir: project.dir,
+        resumed: agent ? resumedAgentCommand(agent, job?.sessionId) : null,
+      });
+      if (!steered) return c.json({ error: "job cannot be steered" }, 409);
+      return c.json({ jobs: listAgentJobs(project.id, project.dir) });
+    }
+
+    if (!moveAgentJob(project.id, jobId, Math.trunc(patch.data.position ?? 0))) {
       return c.json({ error: "job is not queued" }, 409);
     }
     return c.json({ jobs: listAgentJobs(project.id, project.dir) });
