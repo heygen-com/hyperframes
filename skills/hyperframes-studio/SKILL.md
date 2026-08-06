@@ -99,6 +99,47 @@ What each one looks like on the canvas:
 - **Ignoring this costs nothing.** Queued, working, done and failed still show. An unrecognised
   `kind` falls back to the neutral working treatment rather than vanishing.
 
+## TimelineSkeleton — say what you are about to add
+
+The timeline can show what exists and what you are editing, but not what is *about to* exist. If
+you spend a minute writing three new clips, the user watches an unchanged timeline until the file
+lands. Say where they are going and Studio draws a skeleton at each spot for the rest of the run:
+
+```
+<!-- hf:timeline {"adding":[{"track":0,"start":1.0,"end":3.0,"label":"Hero card"}]} -->
+```
+
+Read this closely, because one field is easy to get wrong:
+
+- **`track` is a `data-track-index`**, the number you write into the file. It is not a row number
+  on screen. Studio packs authored tracks onto contiguous rows, so a composition using tracks 0, 4
+  and 9 draws them as the first three rows. Give the number you are about to write and Studio does
+  the translation.
+- **A track with no clips yet is fine, and is the most useful case.** Declaring a track that does
+  not exist draws a provisional row, which is how "I am adding a new track" becomes visible.
+- **`start` and `end` are seconds**, and `end` must be after `start`.
+- **`label` is optional**, and shows on the skeleton. Keep it to a few words.
+- **`file` is optional**, and only needed when you are editing a composition other than the one on
+  screen.
+
+The same rules as the overlay marker apply: Studio reads it out of your normal output and strips it
+from the activity line, and the last declaration wins. That last part matters more here, because
+the declaration is the *whole* set. Declaring two clips and then one clip leaves one skeleton, not
+three. `{"adding":[]}` is how you say you are no longer adding anything.
+
+An entry Studio cannot read is dropped on its own, so one bad entry does not cost you the rest,
+and a declaration it cannot parse at all leaves your previous one standing. Skeletons are cleared
+when your run ends, whatever the outcome, so you never have to take them down.
+
+Do not declare a skeleton for a clip you are moving, resizing or deleting. This says one thing:
+here is a clip that does not exist yet and is about to.
+
+## A request may already name a track
+
+An edit request can arrive scoped to a single track, in which case the prompt says so explicitly
+and names the `data-track-index`. When it does, that track is the answer to "where does this go":
+put anything you add on it, and leave the other tracks alone.
+
 ## How Studio is talking to you
 
 Two transports, and which one you are on changes what is possible — not what is expected of you.
@@ -139,6 +180,15 @@ a renderer change:
   from `--hf-overlay-tint`, so a state that carries its own `accent` needs no rule of its own.
 - `packages/studio-server/src/helpers/agentSchemas.ts` — `overlayStateSchema`, the one place the
   vocabulary is declared. Widen it there first or the parser drops the new value.
+
+The timeline declaration has the same shape in a different set of files:
+
+- `packages/studio-server/src/helpers/agentJobs.ts` — `readDeclaration` is shared by both markers,
+  so a third one is a schema and a call, not another parser.
+- `packages/studio/src/player/components/timelineAuthoredTrack.ts` — the authored-to-display
+  translation both features depend on. Nothing outside it should do that arithmetic.
+- `packages/studio/src/player/components/useTimelineSkeletons.ts` and `TimelineSkeletons.tsx` —
+  what gets drawn, and where.
 
 House rules the treatments hold to: one motion at a time, transform and opacity only, and every
 animation collapses to a static coloured outline under `prefers-reduced-motion`.
