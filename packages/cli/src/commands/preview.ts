@@ -70,6 +70,10 @@ import {
   stopBackgroundPreview,
 } from "./previewLifecycle.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
+import {
+  trackPrimitivePreviewFailed,
+  trackPrimitivePreviewSucceeded,
+} from "../telemetry/primitive-funnel-command.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -395,6 +399,7 @@ export default defineCommand({
           browserGpuMode,
         });
       } catch (error) {
+        trackPrimitivePreviewFailed(dir, "preview_failed");
         clack.log.error(errorMessage(error));
         setCommandExitCode(1);
         return;
@@ -417,6 +422,7 @@ export default defineCommand({
         remoteDebuggingPort,
         browserNoGpu,
       });
+      trackPrimitivePreviewSucceeded(dir);
       return;
     }
 
@@ -924,6 +930,7 @@ function attachStudioReadyHandler(
     spinner.stop(c.success("Studio running"));
     printStudioSummary(projectName, url, { footer: "Press Ctrl+C to stop" });
     openStudioBrowser(url, projectName, projectDir, options);
+    trackPrimitivePreviewSucceeded(projectDir);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
@@ -931,6 +938,7 @@ function attachStudioReadyHandler(
   child.stdout.on("data", handleOutput);
   child.stderr.on("data", handleOutput);
   child.on("error", (err) => {
+    trackPrimitivePreviewFailed(projectDir, "preview_failed");
     spinner.stop(c.error("Failed to start studio"));
     console.error(c.dim(err.message));
   });
@@ -1076,6 +1084,7 @@ async function runEmbeddedMode(
       options?.browserGpuMode,
     );
   } catch (err: unknown) {
+    trackPrimitivePreviewFailed(dir, "preview_failed");
     s.stop(c.error("Failed to start studio"));
     console.error();
     console.error(`  ${(err as Error).message}`);
@@ -1091,6 +1100,7 @@ async function runEmbeddedMode(
       details: ["Reusing existing server. Use --force-new to start a fresh instance."],
     });
     openStudioBrowser(url, pName, dir, options);
+    trackPrimitivePreviewSucceeded(dir);
     return;
   }
 
@@ -1109,6 +1119,7 @@ async function runEmbeddedMode(
     footer: "Press Ctrl+C to stop",
   });
   openStudioBrowser(url, pName, dir, options);
+  trackPrimitivePreviewSucceeded(dir);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the

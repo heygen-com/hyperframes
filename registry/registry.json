@@ -706,6 +706,10 @@
     {
       "name": "beat-freeze-cut",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "thread-message-stack",
+      "type": "hyperframes:block"
     }
   ]
 }

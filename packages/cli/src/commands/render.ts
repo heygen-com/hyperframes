@@ -70,6 +70,10 @@ import {
   type HyperframesConfig,
 } from "../telemetry/config.js";
 import { shouldTrack } from "../telemetry/client.js";
+import {
+  trackPrimitiveRenderFailed,
+  trackPrimitiveRenderSucceeded,
+} from "../telemetry/primitive-funnel-command.js";
 import { renderJobObservabilityTelemetryPayload } from "../telemetry/renderObservability.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
@@ -737,6 +741,7 @@ async function renderDocker(
       child.on("error", (err) => reject(err));
     });
   } catch (error: unknown) {
+    trackPrimitiveRenderFailed(projectDir, "render_failed");
     handleRenderError(error, options, startTime, true, "Check Docker is running: docker info");
   }
 
@@ -747,6 +752,7 @@ async function renderDocker(
   // so any late throw here (telemetry flush, feedback prompt) cannot flip
   // the exit code.
   markRenderSucceeded();
+  trackPrimitiveRenderSucceeded(projectDir);
 
   // Track metrics (no job object available from Docker — use a minimal stub)
   runPostRenderStep("trackRenderComplete", () =>
@@ -894,6 +900,7 @@ export async function renderLocal(
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
+    trackPrimitiveRenderFailed(projectDir, "render_failed");
     maybeConsumeDeParallelRouterTrial(deParallelRouterTrialArmed, job, options.quiet);
     handleRenderError(
       error,
@@ -912,6 +919,7 @@ export async function renderLocal(
   // the exit code. Field signal ts=1784169760 / ts=1784171150 / ts=1784172467
   // (win32/x64, CLI 0.7.58): valid MP4 on disk, exited 1 with no error print.
   markRenderSucceeded();
+  trackPrimitiveRenderSucceeded(projectDir);
 
   maybeConsumeDeParallelRouterTrial(deParallelRouterTrialArmed, job, options.quiet);
   const elapsed = Date.now() - startTime;

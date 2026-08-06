@@ -10,12 +10,20 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
 import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
+import {
+  materializeThreadMessageStack,
+  THREAD_MESSAGE_STACK_ITEM_NAME,
+  type ThreadMessageStackData,
+} from "./threadMessageStack.js";
+import { assertHeyGenVerseSourceDigest } from "./heygenverseCatalog.js";
 
 export interface InstallOptions {
   /** Project root where files land. Every target resolves relative to this. */
   destDir: string;
   /** Base URL of the registry. Defaults to the official public registry. */
   baseUrl?: string;
+  /** Structured data materialized into the one source-owned primitive JSON seam. */
+  threadMessageStackData?: ThreadMessageStackData;
 }
 
 export interface InstallResult {
@@ -83,7 +91,13 @@ export async function installItem(
       const destPath = resolve(destDir, file.target);
       await fetchItemFile(item, file, destPath, baseUrl);
       if (isInstalledRegistryBlockComposition(item, file)) {
-        const source = readFileSync(destPath, "utf-8");
+        let source = readFileSync(destPath, "utf-8");
+        if (item.name === THREAD_MESSAGE_STACK_ITEM_NAME && item.provenance) {
+          assertHeyGenVerseSourceDigest(item, source);
+        }
+        if (item.name === THREAD_MESSAGE_STACK_ITEM_NAME && options.threadMessageStackData) {
+          source = materializeThreadMessageStack(source, options.threadMessageStackData);
+        }
         writeFileSync(destPath, addRegistryItemMarker(source, item), "utf-8");
       }
       return destPath;

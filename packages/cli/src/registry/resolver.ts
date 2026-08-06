@@ -5,7 +5,13 @@
  */
 
 import type { ItemType, RegistryItem, RegistryManifestEntry } from "@hyperframes/core";
-import { fetchItemManifest, fetchRegistryManifest, DEFAULT_REGISTRY_URL } from "./remote.js";
+import {
+  fetchHeyGenVerseCatalogProjection,
+  fetchItemManifest,
+  fetchRegistryManifest,
+  DEFAULT_REGISTRY_URL,
+} from "./remote.js";
+import { assertHeyGenVerseProjectedItem } from "./heygenverseCatalog.js";
 
 export interface ResolveOptions {
   baseUrl?: string;
@@ -54,6 +60,7 @@ export async function loadAllItems(
     entries.map((e) => fetchItemManifest(e.name, e.type, baseUrl)),
   );
   const items: RegistryItem[] = [];
+  let projection: Awaited<ReturnType<typeof fetchHeyGenVerseCatalogProjection>> | undefined;
   results.forEach((r, i) => {
     if (r.status === "fulfilled") {
       items.push(r.value);
@@ -62,6 +69,10 @@ export async function loadAllItems(
       warn(`skipped item "${name}": ${String(r.reason)}`);
     }
   });
+  if (items.some((item) => item.name === "thread-message-stack")) {
+    projection = await fetchHeyGenVerseCatalogProjection(baseUrl);
+    for (const item of items) assertHeyGenVerseProjectedItem(item, projection);
+  }
   return items;
 }
 
@@ -165,6 +176,12 @@ export async function resolveItemWithDependencies(
 
     visiting.add(itemName);
     const item = await getItem(itemName);
+    if (item.name === "thread-message-stack") {
+      const projection = await fetchHeyGenVerseCatalogProjection(
+        options.baseUrl ?? DEFAULT_REGISTRY_URL,
+      );
+      assertHeyGenVerseProjectedItem(item, projection);
+    }
     for (const dep of item.registryDependencies ?? []) {
       await visit(dep, [...path, itemName]);
     }

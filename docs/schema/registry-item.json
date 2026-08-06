@@ -128,6 +128,18 @@
     "relatedSkill": {
       "type": "string",
       "minLength": 1
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["kind", "artifactId", "versionId", "canonicalUri", "sourceDigest"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "heygenverse-export" },
+        "artifactId": { "type": "string", "format": "uuid" },
+        "versionId": { "type": "string", "format": "uuid" },
+        "canonicalUri": { "type": "string", "pattern": "^heygenverse://app/" },
+        "sourceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
     }
   },
   "allOf": [

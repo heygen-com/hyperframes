@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "thread-message-stack",
+  "type": "hyperframes:block",
+  "title": "Thread Message Stack",
+  "description": "A source-owned editable conversation stack with arbitrary incoming and outgoing messages",
+  "tags": ["social", "conversation", "messages"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "provenance": {
+    "kind": "heygenverse-export",
+    "artifactId": "21c28523-7487-43e1-927d-43a7fe855859",
+    "versionId": "1aa00c22-b508-4b81-a3a1-4702453d48c2",
+    "canonicalUri": "heygenverse://app/21c28523-7487-43e1-927d-43a7fe855859/version/1aa00c22-b508-4b81-a3a1-4702453d48c2",
+    "sourceDigest": "sha256:5d0c56cbf9dc0af525548acb813a910098de2c902fcc84262fc3100af171f934"
+  },
+  "files": [
+    {
+      "path": "thread-message-stack.html",
+      "target": "compositions/thread-message-stack.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

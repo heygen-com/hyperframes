@@ -1,0 +1,16 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/heygenverse-catalog.json",
+  "schemaVersion": 1,
+  "artifactId": "21c28523-7487-43e1-927d-43a7fe855859",
+  "versionId": "1aa00c22-b508-4b81-a3a1-4702453d48c2",
+  "canonicalUri": "heygenverse://app/21c28523-7487-43e1-927d-43a7fe855859/version/1aa00c22-b508-4b81-a3a1-4702453d48c2",
+  "exportedAt": "2026-08-05T03:56:31Z",
+  "records": [
+    {
+      "name": "thread-message-stack",
+      "type": "hyperframes:block",
+      "sourceDigest": "sha256:5d0c56cbf9dc0af525548acb813a910098de2c902fcc84262fc3100af171f934"
+    }
+  ],
+  "catalogDigest": "sha256:c8c5a26a43564d30f4866b35a0f182820bc6906596afb8bbbf0935d4cef22365"
+}

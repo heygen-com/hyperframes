@@ -94,6 +94,17 @@ export async function tryResolveCredential(
   }
 }
 
+/** Resolve only a HeyGen OAuth session, ignoring generic API-key sources. */
+export async function tryResolveOAuthCredential(
+  opts: ResolveOptions = {},
+): Promise<OAuthCredential | null> {
+  const now = (opts.now ?? (() => new Date()))();
+  const { credentials, source } = await readStore();
+  if (source === "absent" || !credentials.oauth) return null;
+  const fileSource: CredentialSource = source === "file_legacy" ? "file_legacy" : "file_json";
+  return pickOAuth(credentials.oauth, now, fileSource);
+}
+
 function pickOAuth(
   tokens: NonNullable<Awaited<ReturnType<typeof readStore>>["credentials"]["oauth"]>,
   now: Date,

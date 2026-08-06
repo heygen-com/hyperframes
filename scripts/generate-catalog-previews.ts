@@ -31,7 +31,6 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
@@ -46,6 +45,7 @@ import {
 } from "../packages/producer/src/index.js";
 import { compileForRender } from "../packages/producer/src/services/htmlCompiler.js";
 import { resolveContainedCopies } from "./registry-target-paths.mjs";
+import { createCatalogPreviewTempDir } from "./catalog-preview-temp.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -152,9 +152,24 @@ function mirrorRegistryTargets(projectDir: string): void {
   }
 }
 
+/**
+ * Registry primitive payloads are inert text, but HTML formatters may wrap prose
+ * inside JSON strings. Normalize only control-whitespace runs in the temporary
+ * preview copy; the immutable registry source and installed caller payload stay
+ * byte-for-byte untouched.
+ */
+function normalizePrimitiveDataForPreview(content: string): string {
+  return content.replace(
+    /(<div[^>]*data-hf-primitive-data[^>]*>)([\s\S]*?)(<\/div>)/g,
+    (_match, open: string, payload: string, close: string) => {
+      const normalized = payload.replace(/\s*[\r\n]+\s*/g, " ");
+      return `${open}${normalized}${close}`;
+    },
+  );
+}
+
 async function prepareProjectDir(item: CatalogItem): Promise<string> {
-  const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = createCatalogPreviewTempDir(item.name);
   cpSync(item.sourceDir, tmpDir, { recursive: true });
   mirrorRegistryTargets(tmpDir);
 
@@ -163,9 +178,13 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
   // If the entry file is a standalone HTML (has its own timeline registration),
   // just rename it to index.html. Otherwise create a wrapper.
   if (!existsSync(join(tmpDir, "index.html")) && existsSync(join(tmpDir, item.entryFile))) {
-    const entryContent = readFileSync(join(tmpDir, item.entryFile), "utf-8");
+    const entryPath = join(tmpDir, item.entryFile);
+    const rawEntryContent = readFileSync(entryPath, "utf-8");
+    const entryContent = normalizePrimitiveDataForPreview(rawEntryContent);
+    if (entryContent !== rawEntryContent) writeFileSync(entryPath, entryContent, "utf-8");
     const hasTimeline = entryContent.includes("__timelines");
-    if (hasTimeline) {
+    const isTemplateTransport = /<template(?:\s|>)/i.test(entryContent);
+    if (hasTimeline && !isTemplateTransport) {
       // Standalone block — copy to index.html and render directly.
       // For social overlays with transparent backgrounds, inject a dark bg
       // so the overlay card is visible against something.
@@ -274,6 +293,33 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
   const framesDir = join(projectDir, "_thumb_frames");
   mkdirSync(framesDir, { recursive: true });
 
+  const { fileServer, session } = await openThumbnailSession(projectDir, framesDir, width, height);
+  try {
+    let duration: number;
+    try {
+      duration = await getCompositionDuration(session);
+    } catch {
+      duration = 5;
+    }
+
+    // Capture after the treatment appears, capped for long compositions.
+    const captureTime = Math.min(3.0, duration * 0.6);
+    const result = await captureFrame(session, 0, captureTime);
+    cpSync(result.path, join(outDir, `${item.name}.png`));
+    console.log(`  ✓ ${item.name}.png (${result.captureTimeMs}ms)`);
+  } finally {
+    await closeCaptureSession(session).catch(() => undefined);
+    fileServer.close();
+    rmSync(framesDir, { recursive: true, force: true });
+  }
+}
+
+async function openThumbnailSession(
+  projectDir: string,
+  framesDir: string,
+  width: number,
+  height: number,
+) {
   const fileServer = await createFileServer({
     projectDir,
     port: 0,
@@ -287,24 +333,10 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
       format: "png",
     });
     await initializeSession(session);
-
-    let duration: number;
-    try {
-      duration = await getCompositionDuration(session);
-    } catch {
-      duration = 5;
-    }
-
-    // Capture after the treatment appears, capped for long compositions.
-    const captureTime = Math.min(3.0, duration * 0.6);
-    const result = await captureFrame(session, 0, captureTime);
-    cpSync(result.path, join(outDir, `${item.name}.png`));
-    console.log(`  ✓ ${item.name}.png (${result.captureTimeMs}ms)`);
-
-    await closeCaptureSession(session);
-  } finally {
+    return { fileServer, session };
+  } catch (error) {
     fileServer.close();
-    rmSync(framesDir, { recursive: true, force: true });
+    throw error;
   }
 }
 

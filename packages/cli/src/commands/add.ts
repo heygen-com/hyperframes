@@ -11,11 +11,16 @@ export const examples: Example[] = [
   ["Skip the clipboard copy (CI/headless)", "hyperframes add shader-wipe --no-clipboard"],
 ];
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { installItem, resolveItemsByTag } from "../registry/index.js";
+import { installItem } from "../registry/installer.js";
+import { resolveItemsByTag } from "../registry/resolver.js";
+import {
+  validateThreadMessageStackData,
+  type ThreadMessageStackData,
+} from "../registry/threadMessageStack.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
 import {
   gateRegistryItemsCompatibility,
@@ -28,6 +33,7 @@ import {
   writeProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import { authorizeThreadMessageStackInstall } from "../registry/threadMessageStackAuthorization.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
 // `registry-item.json` files specify `target` paths relative to the project
@@ -83,6 +89,8 @@ export interface RunAddArgs {
   skipClipboard?: boolean;
   /** Current CLI version used for registry metadata compatibility checks. */
   cliVersion?: string;
+  /** Caller-owned messages materialized only for thread-message-stack. */
+  threadMessageStackData?: ThreadMessageStackData;
 }
 
 export interface RunAddResult {
@@ -106,7 +114,8 @@ export class AddError extends Error {
       | "wrong-type"
       | "install-failed"
       | "example-type"
-      | "incompatible-cli",
+      | "incompatible-cli"
+      | "oauth-required",
   ) {
     super(message);
     this.name = "AddError";
@@ -134,11 +143,19 @@ async function installAll(
   installPlan: RegistryItem[],
   destDir: string,
   baseUrl: string | undefined,
+  requestedName: string,
+  threadMessageStackData?: ThreadMessageStackData,
 ): Promise<string[]> {
   const written: string[] = [];
   try {
     for (const planItem of installPlan) {
-      const result = await installItem(planItem, { destDir, baseUrl });
+      const result = await installItem(planItem, {
+        destDir,
+        baseUrl,
+        ...(planItem.name === requestedName && threadMessageStackData
+          ? { threadMessageStackData }
+          : {}),
+      });
       written.push(...result.written);
     }
   } catch (err) {
@@ -159,6 +176,19 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   if (!hasConfig && existsSync(resolve(projectDir, "index.html"))) {
     writeProjectConfig(projectDir, DEFAULT_PROJECT_CONFIG);
     config = DEFAULT_PROJECT_CONFIG;
+  }
+
+  // This source-owned primitive is not downloadable through generic registry
+  // credentials. Gate its named command boundary before registry resolution so
+  // an API key, cancellation, or failed OAuth cannot fetch even its manifest.
+  if (opts.name === "thread-message-stack") {
+    const authorization = await authorizeThreadMessageStackInstall();
+    if (authorization !== "authorized") {
+      throw new AddError(
+        `thread-message-stack requires verified HeyGen OAuth (${authorization}); no source was downloaded or materialized.`,
+        "oauth-required",
+      );
+    }
   }
 
   // 2. Resolve the requested item and its transitive registryDependencies.
@@ -195,7 +225,13 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   }));
 
   // 5. Install — dependencies first, requested item last.
-  const written = await installAll(installPlan, projectDir, config.registry);
+  const written = await installAll(
+    installPlan,
+    projectDir,
+    config.registry,
+    item.name,
+    opts.threadMessageStackData,
+  );
 
   // 6. Build include snippet + clipboard copy for the requested item.
   const itemForInstall = installPlan[installPlan.length - 1]!;
@@ -253,7 +289,14 @@ export default defineCommand({
       type: "boolean",
       description: "Print a machine-readable summary (written files + snippet) to stdout",
     },
+    "messages-file": {
+      type: "string",
+      description:
+        "JSON file with {messages, stagger?, hold?}; valid only for thread-message-stack",
+    },
   },
+  // Existing command UX handles item, tag, JSON, clipboard, and file-input modes in one boundary.
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
@@ -262,7 +305,23 @@ export default defineCommand({
 
     // Try single item first. If it fails, check if the name matches a tag.
     try {
-      const result = await runAdd({ name: args.name, projectDir, skipClipboard });
+      let threadMessageStackData: ThreadMessageStackData | undefined;
+      if (args["messages-file"]) {
+        if (args.name !== "thread-message-stack") {
+          throw new AddError(
+            "--messages-file is valid only for thread-message-stack.",
+            "wrong-type",
+          );
+        }
+        const raw = readFileSync(resolve(projectDir, args["messages-file"]), "utf8");
+        threadMessageStackData = validateThreadMessageStackData(JSON.parse(raw));
+      }
+      const result = await runAdd({
+        name: args.name,
+        projectDir,
+        skipClipboard,
+        ...(threadMessageStackData ? { threadMessageStackData } : {}),
+      });
       const wroteConfig = !hasConfigBefore && existsSync(projectConfigPath(projectDir));
 
       if (json) {

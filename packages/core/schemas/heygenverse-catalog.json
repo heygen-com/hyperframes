@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.heygen.com/schema/heygenverse-catalog.json",
+  "title": "HyperFrames HeyGenVerse Catalog Projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "versionId",
+    "canonicalUri",
+    "exportedAt",
+    "records",
+    "catalogDigest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactId": { "type": "string", "format": "uuid" },
+    "versionId": { "type": "string", "format": "uuid" },
+    "canonicalUri": { "type": "string", "pattern": "^heygenverse://app/" },
+    "exportedAt": { "type": "string", "format": "date-time" },
+    "catalogDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "sourceDigest"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "const": "hyperframes:block" },
+          "sourceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        }
+      }
+    }
+  }
+}
