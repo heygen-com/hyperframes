@@ -3,6 +3,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlayerStore } from "../store/playerStore";
 import { formatTime } from "../lib/time";
 import { buildTimelineAgentPrompt } from "./timelineEditing";
+import { useSelectedTimelineTrack } from "./useTimelineTrackSelection";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { InlineAgentComposer } from "../../components/editor/InlineAgentComposer";
 import {
@@ -40,10 +41,27 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
   const start = Math.min(rangeStart, rangeEnd);
   const end = Math.max(rangeStart, rangeEnd);
 
+  // A track selection narrows what the request is about. Without one the range
+  // spans every track, which is what a ruler drag has always meant.
+  const selectedTrack = useSelectedTimelineTrack();
   const elementsInRange = useMemo(
-    () => elements.filter((el) => el.start < end && el.start + el.duration > start),
-    [elements, start, end],
+    () =>
+      elements.filter(
+        (el) =>
+          el.start < end &&
+          el.start + el.duration > start &&
+          (selectedTrack === null || el.track === selectedTrack),
+      ),
+    [elements, start, end, selectedTrack],
   );
+
+  // The number the agent will read and write, which is not the lane the user
+  // clicked: Studio packs authored tracks onto contiguous display lanes.
+  const authoredTrack = useMemo(() => {
+    if (selectedTrack === null) return undefined;
+    const onTrack = elements.find((el) => el.track === selectedTrack);
+    return onTrack?.authoredTrack ?? onTrack?.track ?? selectedTrack;
+  }, [elements, selectedTrack]);
 
   // The canvas fetches these when its composer opens; this is the timeline's
   // equivalent moment, and without it the model and effort chips never appear.
@@ -75,8 +93,9 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
         rangeEnd: end,
         elements: elementsInRange,
         prompt: instruction,
+        track: authoredTrack,
       }),
-    [start, end, elementsInRange],
+    [start, end, elementsInRange, authoredTrack],
   );
 
   const style: React.CSSProperties = {
@@ -89,7 +108,10 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
     zIndex: 200,
   };
 
-  const label = `${formatTime(start)} — ${formatTime(end)}`;
+  const label =
+    authoredTrack === undefined
+      ? `${formatTime(start)} - ${formatTime(end)}`
+      : `Track ${authoredTrack} · ${formatTime(start)} - ${formatTime(end)}`;
 
   return (
     <div ref={popoverRef} style={style} className={`w-[320px] rounded-2xl p-2 ${FLOATING_SURFACE}`}>
@@ -152,6 +174,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
             prompt: buildPrompt(instruction),
             instruction,
             elements: elementsInRange.map((el) => ({ id: el.id })),
+            track: authoredTrack,
           });
           onClose();
         }}

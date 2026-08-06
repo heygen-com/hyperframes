@@ -1,4 +1,3 @@
-import { formatTime } from "../lib/time";
 import { roundToCenti } from "../../utils/rounding";
 import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrder";
 import { resolveTimelineLayerStackingMove } from "./timelineLayerDrag";
@@ -10,6 +9,14 @@ export {
   getTimelineEditCapabilities,
   hasPatchableTimelineTarget,
 } from "./timelineEditCapabilities";
+
+// The prompts an edit request is written into live next door: they are a
+// self-contained group, and this file is close to the studio line cap.
+export {
+  buildPromptCopyText,
+  buildTimelineAgentPrompt,
+  buildTimelineElementAgentPrompt,
+} from "./timelineAgentPrompt";
 export type { TimelineEditCapabilities } from "./timelineEditCapabilities";
 
 import {
@@ -251,7 +258,10 @@ export interface TimelinePromptElement {
   tag: string;
   start: number;
   duration: number;
+  /** Display lane, which is not what the file calls this track. */
   track: number;
+  /** The file's own `data-track-index`, which is what the agent is told. */
+  authoredTrack?: number;
 }
 
 export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end";
@@ -398,79 +408,6 @@ export function buildClipRangeSelection(
     anchorX: anchor.anchorX,
     anchorY: anchor.anchorY,
   };
-}
-export function buildTimelineAgentPrompt({
-  rangeStart,
-  rangeEnd,
-  elements,
-  prompt,
-}: {
-  rangeStart: number;
-  rangeEnd: number;
-  elements: TimelinePromptElement[];
-  prompt: string;
-}): string {
-  const start = Math.min(rangeStart, rangeEnd);
-  const end = Math.max(rangeStart, rangeEnd);
-  const elementLines = elements
-    .map(
-      (el) =>
-        `- #${el.id} (${el.tag}) - ${formatTime(el.start)} to ${formatTime(el.start + el.duration)}, track ${el.track}`,
-    )
-    .join("\n");
-
-  return `Edit the following HyperFrames composition:
-
-Time range: ${formatTime(start)} - ${formatTime(end)}
-
-Elements in range:
-${elementLines || "(none)"}
-
-User request:
-${prompt.trim() || "(no prompt provided)"}
-
-Instructions:
-Modify only the elements listed above within the specified time range.
-The composition uses HyperFrames data attributes (data-start, data-duration, data-track-index) and GSAP for animations.
-Preserve all other elements and timing outside this range.`;
-}
-
-export function buildPromptCopyText(prompt: string): string {
-  return prompt.trim();
-}
-
-export function buildTimelineElementAgentPrompt(element: {
-  id: string;
-  tag: string;
-  start: number;
-  duration: number;
-  track: number;
-  sourceFile?: string;
-  selector?: string;
-  compositionSrc?: string;
-}): string {
-  const lines = [
-    "Studio cannot directly move or resize this timeline clip because its visible timing is not fully controlled by patchable HTML timing attributes.",
-    "",
-    "Please update the source so the clip's actual visible timing stays consistent with the authored timeline.",
-    "",
-    "Clip:",
-    `- id: ${element.id}`,
-    `- tag: ${element.tag}`,
-    `- time: ${formatTime(element.start)} to ${formatTime(element.start + element.duration)}`,
-    `- track: ${element.track}`,
-  ];
-
-  if (element.sourceFile) lines.push(`- source file: ${element.sourceFile}`);
-  if (element.selector) lines.push(`- selector: ${element.selector}`);
-  if (element.compositionSrc) lines.push(`- composition src: ${element.compositionSrc}`);
-
-  lines.push(
-    "",
-    "If this clip is animated with GSAP or another JS timeline, update the authored animation timing there as well instead of only changing data-start/data-duration.",
-  );
-
-  return lines.join("\n");
 }
 export function formatTimelineAttributeNumber(value: number): string {
   return Number(roundToCentiseconds(value).toFixed(2)).toString();

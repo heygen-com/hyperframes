@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildClipRangeSelection,
-  buildPromptCopyText,
-  buildTimelineElementAgentPrompt,
-  buildTimelineAgentPrompt,
   clampTimelineGroupResizeDelta,
   getTimelineEditCapabilities,
   hasPatchableTimelineTarget,
@@ -14,7 +11,6 @@ import {
   resolveTimelineGroupMove,
   resolveTimelineGroupResize,
   snapKeyframePctToBeat,
-  type TimelinePromptElement,
 } from "./timelineEditing";
 import { buildStackingTimelineLayers } from "./timelineTrackOrder";
 
@@ -703,42 +699,6 @@ describe("resolveTimelineAutoScroll", () => {
   });
 });
 
-describe("buildTimelineAgentPrompt", () => {
-  it("includes the selected range, elements, and user request", () => {
-    const elements: TimelinePromptElement[] = [
-      { id: "title", tag: "div", start: 1, duration: 3, track: 0 },
-      { id: "music", tag: "audio", start: 0, duration: 8, track: 2 },
-    ];
-
-    const text = buildTimelineAgentPrompt({
-      rangeStart: 1,
-      rangeEnd: 4,
-      elements,
-      prompt: "Move the title later and lower the music",
-    });
-
-    expect(text).toContain("Time range: 00:01 - 00:04");
-    expect(text).toContain("#title (div)");
-    expect(text).toContain("#music (audio)");
-    expect(text).toContain("Move the title later and lower the music");
-  });
-});
-
-describe("buildTimelineElementAgentPrompt", () => {
-  it("includes the clip context and guidance for agent-based edits", () => {
-    expect(
-      buildTimelineElementAgentPrompt({
-        id: "feature-card",
-        tag: "section",
-        start: 1.4,
-        duration: 1.6,
-        track: 1,
-        sourceFile: "index.html",
-        selector: "#feature-card",
-      }),
-    ).toContain("If this clip is animated with GSAP");
-  });
-});
 describe("resolveTimelineResize", () => {
   it("shrinks clip duration from the right edge", () => {
     expect(
@@ -846,14 +806,6 @@ describe("resolveTimelineResize", () => {
         -200,
       ),
     ).toEqual({ start: 0, duration: 4, playbackStart: undefined });
-  });
-});
-
-describe("buildPromptCopyText", () => {
-  it("returns a trimmed prompt for the copy-prompt action", () => {
-    expect(buildPromptCopyText("  Tighten the headline timing  ")).toBe(
-      "Tighten the headline timing",
-    );
   });
 });
 

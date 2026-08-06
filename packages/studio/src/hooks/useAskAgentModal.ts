@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { useAgentQueue } from "./useAgentQueue";
+import { useTimelineRangeRun } from "./useTimelineRangeRun";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
@@ -14,7 +15,6 @@ import type {
 import { findElementForSelection } from "../components/editor/domEditing";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { usePlayerStore } from "../player";
-import { formatTime } from "../player/lib/time";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
@@ -362,70 +362,16 @@ export function useAskAgentModal({
     [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef, showToast],
   );
 
-  /**
-   * Queue a run for a stretch of the timeline rather than one element.
-   *
-   * Same queue, same harness, same tray as a canvas edit — a range is just a
-   * different way of saying which elements. Every element in the range travels
-   * with it, so all of them light up on the canvas while the run works and the
-   * tray can point back at the moment it was asked about.
-   */
-  const handleTimelineRangeRun = useCallback(
-    (range: {
-      start: number;
-      end: number;
-      prompt: string;
-      instruction: string;
-      elements: Array<{ id: string; selector?: string; sourceFile?: string }>;
-    }) => {
-      const pid = projectIdRef.current;
-      if (!pid) return;
-
-      const refs = range.elements.map((element) => ({
-        sourceFile: element.sourceFile ?? activeCompPath ?? undefined,
-        id: element.id,
-        selector: element.selector ?? `#${element.id}`,
-        time: range.start,
-      }));
-      trackStudioEvent("agent_run_submitted", {
-        harness: activeKindRef.current ?? "unknown",
-        model: activeKindRef.current
-          ? (modelByKind[activeKindRef.current] ?? "default")
-          : "default",
-        elements: refs.length,
-        instruction_length: range.instruction.length,
-        source: "timeline",
-      });
-
-      void fetch(`/api/projects/${pid}/agent`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          prompt: range.prompt,
-          instruction: range.instruction,
-          target: `${formatTime(range.start)}–${formatTime(range.end)}`,
-          agent: selectedAgentId ?? undefined,
-          model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
-          effort: activeKindRef.current ? effortByKind[activeKindRef.current] : undefined,
-          targetRef: refs[0] ?? { time: range.start, sourceFile: activeCompPath ?? undefined },
-          targetRefs: refs.slice(1),
-          targetKind: "range",
-        }),
-      })
-        .then(async (response) => {
-          const data = (await response.json()) as { error?: string; job?: AgentJob };
-          if (!response.ok || !data.job) {
-            showToast(data.error ?? "Could not start the agent.", "error");
-            return;
-          }
-          setAgentJobs((jobs) => [data.job as AgentJob, ...jobs]);
-        })
-        .catch((err: unknown) => {
-          showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
-        });
-    },
-    [activeCompPath, effortByKind, modelByKind, projectIdRef, selectedAgentId, showToast],
-  );
+  const handleTimelineRangeRun = useTimelineRangeRun({
+    activeCompPath,
+    projectIdRef,
+    selectedAgentId,
+    modelByKind,
+    effortByKind,
+    activeKindRef,
+    showToast,
+    setAgentJobs,
+  });
 
   /**
    * Point the composer at a run instead of at the selection. Steering reuses
