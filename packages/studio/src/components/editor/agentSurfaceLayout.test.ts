@@ -4,6 +4,10 @@ import type { OverlayRect } from "./domEditOverlayGeometry";
 
 const CANVAS = { width: 900, height: 600 };
 const COMPOSER = { width: 320, height: 84 };
+/** Where the composer's own rule puts it: beside the element, top-aligned. */
+function besideRect(r: OverlayRect) {
+  return { ...COMPOSER, left: r.left + r.width + 10, top: Math.max(10, r.top) };
+}
 const BUBBLE = { width: 268, height: 108 };
 
 function rect(partial: Partial<OverlayRect> = {}): OverlayRect {
@@ -24,38 +28,42 @@ function overlaps(
 }
 
 describe("layoutAgentSurfaces", () => {
-  it("puts the composer under the element and the answer above it", () => {
+  it("keeps the composer where it put itself, and clears the bubble of it", () => {
+    const r = rect();
+    const placed = besideRect(r);
     const { composer, bubble } = layoutAgentSurfaces({
-      rect: rect(),
+      rect: r,
       canvas: CANVAS,
-      composer: COMPOSER,
+      composer: placed,
       bubble: BUBBLE,
     });
-    expect(composer?.side).toBe("below");
-    expect(bubble?.side).toBe("above");
+    // The composer's own rule owns its position; this only reports it.
+    expect(composer?.left).toBe(placed.left);
+    expect(composer?.top).toBe(placed.top);
     expect(overlaps({ ...composer!, ...COMPOSER }, { ...bubble!, ...BUBBLE })).toBe(false);
   });
 
-  it("stacks them on one side when only that side has room", () => {
-    // An element near the top: nothing fits above it, so both go below.
-    const { composer, bubble } = layoutAgentSurfaces({
-      rect: rect({ top: 12 }),
+  it("pushes the bubble clear when the composer is over the side it wanted", () => {
+    // A wide element leaves the composer sitting where the bubble would go.
+    const r = rect({ left: 40, top: 250, width: 500, height: 60 });
+    const placed = { ...COMPOSER, left: 60, top: 300 };
+    const { bubble } = layoutAgentSurfaces({
+      rect: r,
       canvas: CANVAS,
-      composer: COMPOSER,
+      composer: placed,
       bubble: BUBBLE,
     });
-    expect(composer?.side).toBe("below");
-    expect(bubble?.top).toBeGreaterThan(composer!.top);
-    expect(overlaps({ ...composer!, ...COMPOSER }, { ...bubble!, ...BUBBLE })).toBe(false);
+    expect(overlaps({ ...placed }, { ...bubble!, ...BUBBLE })).toBe(false);
   });
 
   it("never overlaps, wherever the element sits", () => {
     for (const top of [0, 40, 120, 260, 400, 520, 580]) {
       for (const left of [-120, 0, 200, 500, 860]) {
+        const r = rect({ top, left });
         const { composer, bubble } = layoutAgentSurfaces({
-          rect: rect({ top, left }),
+          rect: r,
           canvas: CANVAS,
-          composer: COMPOSER,
+          composer: besideRect(r),
           bubble: BUBBLE,
         });
         expect(overlaps({ ...composer!, ...COMPOSER }, { ...bubble!, ...BUBBLE })).toBe(false);

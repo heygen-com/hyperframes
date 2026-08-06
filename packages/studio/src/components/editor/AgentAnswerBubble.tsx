@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { clampNumber } from "../../utils/studioHelpers";
 import { AgentGlyph, type AgentJob } from "./agentGlyphs";
 import { FLOATING_SURFACE } from "../ui/floatingSurface";
@@ -72,12 +72,36 @@ export function AgentAnswerBubble({
   onFollowUp: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // Whether the answer is actually being cut off. A character count was the
+  // wrong test: a 180-character answer that happens to fit still offered a
+  // "More" that expanded nothing, and then a "Less" beside the full text.
+  const [clamped, setClamped] = useState(false);
+  const bodyRef = useRef<HTMLParagraphElement>(null);
   const message = job.message?.trim();
+
+  useEffect(() => {
+    const body = bodyRef.current;
+    // While expanded there is no clamp to measure, so the last answer stands —
+    // which is what keeps "Less" on screen for an answer that was cut off.
+    if (!body || expanded) return;
+    const measure = () => setClamped(body.scrollHeight > body.clientHeight + 1);
+    measure();
+    // Re-measure on width changes: the bubble is laid out against the canvas,
+    // and the same text wraps differently at a different width.
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [expanded, message]);
+
   if (!message) return null;
 
   const fallback = resolveBubblePosition(rect, canvas, expanded ? 220 : 108);
   const { style, side, tailLeft } = placement
-    ? { style: { left: placement.left, top: placement.top }, side: placement.side, tailLeft: placement.tailLeft }
+    ? {
+        style: { left: placement.left, top: placement.top },
+        side: placement.side,
+        tailLeft: placement.tailLeft,
+      }
     : fallback;
   const failed = job.status === "failed" || job.status === "cancelled";
 
@@ -101,13 +125,38 @@ export function AgentAnswerBubble({
       />
       <div className="flex items-start gap-1.5">
         <AgentGlyph kind={job.kind} size={13} iconUrl={agentIconUrl} />
-        <p
-          className={`min-w-0 flex-1 whitespace-pre-wrap text-[11px] leading-[1.45] ${
-            failed ? "text-red-300" : "text-neutral-200"
-          } ${expanded ? "" : `line-clamp-${COLLAPSED_LINES}`}`}
+        {/* Expanded scrolls rather than clamps: a long answer is the agent
+            explaining itself, and cutting it mid-sentence hides the part that
+            says what it actually did. The scroll is contained so a wheel over
+            the answer never zooms the canvas underneath. */}
+        <div
+          data-preview-overlay-scroll="true"
+          className={`min-w-0 flex-1 ${expanded ? "max-h-[220px] overflow-y-auto overscroll-contain pr-1" : ""}`}
         >
-          {message}
-        </p>
+          <p
+            ref={bodyRef}
+            className={`whitespace-pre-wrap text-[11px] leading-[1.45] ${
+              failed ? "text-red-300" : "text-neutral-200"
+            }`}
+            // Inline rather than a `line-clamp-${COLLAPSED_LINES}` class:
+            // Tailwind only generates classes it can see in the source, and a
+            // name built at runtime is never in the stylesheet. The clamp
+            // silently did nothing, which is why "More" sat next to answers
+            // that were already whole.
+            style={
+              expanded
+                ? undefined
+                : {
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: COLLAPSED_LINES,
+                    overflow: "hidden",
+                  }
+            }
+          >
+            {message}
+          </p>
+        </div>
         <button
           className="shrink-0 rounded-md p-0.5 text-neutral-600 transition-colors duration-150 ease-out hover:text-neutral-300 active:scale-[0.96]"
           onClick={onDismiss}
@@ -129,7 +178,8 @@ export function AgentAnswerBubble({
         </button>
       </div>
       <div className="mt-1.5 flex items-center gap-1 pl-[19px]">
-        {message.length > 140 && (
+        {/* Offered only when the answer really is cut off. */}
+        {clamped && (
           <button
             className="rounded-md px-1.5 py-0.5 text-[10px] leading-none text-neutral-500 transition-colors duration-150 ease-out hover:bg-neutral-800/60 hover:text-neutral-300 active:scale-[0.96]"
             onClick={() => setExpanded((open) => !open)}

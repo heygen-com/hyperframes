@@ -421,6 +421,8 @@ export function StudioApp() {
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
     applyDomSelection: domEditSession.applyDomSelection,
     setRightPanelTab: panelLayout.setRightPanelTab,
+    askAgentOpen: domEditSession.agentModalOpen,
+    openAskAgent: domEditSession.handleAskAgent,
     initialState: initialUrlStateRef.current,
   });
   const studioCtxValue = buildStudioContextValue({

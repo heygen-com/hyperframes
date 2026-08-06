@@ -38,6 +38,7 @@ function renderTray(
     onMoveJob?: (id: string, position: number) => void;
     onCancelJob?: (id: string) => void;
     onRevealTarget?: (job: AgentJob) => void;
+    onAnswerJob?: (id: string, optionId: string) => void;
   } = {},
 ) {
   const host = document.createElement("div");
@@ -77,13 +78,15 @@ describe("AgentRunTray", () => {
     act(() => root.unmount());
   });
 
-  it("counts only in-flight runs and reports queue position", () => {
+  it("counts running and waiting separately, and reports queue position", () => {
     const { host, root } = renderTray([
       job({ id: "a", status: "running", activity: "Read · index.html" }),
       job({ id: "b", status: "queued", instruction: "round the card" }),
       job({ id: "c", status: "done", message: "Claude Code finished.", endedAt: Date.now() }),
     ]);
-    expect(host.textContent).toContain("2 running");
+    // Runs on different elements go at once, so "2 running" would be a lie when
+    // one of them is still waiting its turn.
+    expect(host.textContent).toContain("1 running · 1 queued");
     // A waiting run says where it sits, not just that it waits.
     expect(host.textContent).toContain("Next up");
     expect(host.textContent).toContain("Claude Code finished.");
@@ -234,7 +237,7 @@ describe("harness marks", () => {
     );
     expect(viewBoxes).toEqual(new Set(["0 0 248 248", "0 0 24 24", "0 0 16 16"]));
     // Codex ships a two-path icon with its own gradient, not a flat glyph.
-    expect(host.querySelector('li svg linearGradient')).toBeTruthy();
+    expect(host.querySelector("li svg linearGradient")).toBeTruthy();
     expect(host.querySelectorAll("li svg[shape-rendering='crispEdges']")).toHaveLength(1);
     expect(host.querySelector("li img")?.getAttribute("src")).toContain("data:image/png");
     act(() => root.unmount());
@@ -272,6 +275,45 @@ describe("tray stacking", () => {
     // An inline z-index: the timeline ruler and panels paint over anything that
     // depends on a utility class surviving the CSS build.
     expect(tray?.style.zIndex).toBe("80");
+    act(() => root.unmount());
+  });
+});
+
+describe("a run that stopped to ask", () => {
+  const waiting = job({
+    status: "awaiting-permission",
+    activity: "Waiting on you · Write composition.html",
+    permission: {
+      tool: "Write composition.html",
+      options: [
+        { optionId: "allow_once", name: "Allow Once", kind: "allow_once" },
+        { optionId: "reject_once", name: "Reject", kind: "reject_once" },
+      ],
+    },
+  });
+
+  // Being waited on is said first: it is the only count the reader can act on.
+  it("leads the headline and offers the agent's options on the row", () => {
+    const onAnswerJob = vi.fn();
+    const { host, root } = renderTray([waiting], vi.fn(), null, { onAnswerJob });
+
+    expect(host.textContent).toContain("1 needs you");
+    expect(host.textContent).toContain("Waiting on you · Write composition.html");
+
+    const allow = [...host.querySelectorAll('[data-agent-permission="true"] button')].find(
+      (button) => button.textContent === "Allow Once",
+    ) as HTMLButtonElement;
+    act(() => allow.click());
+    expect(onAnswerJob.mock.calls).toEqual([["job-1", "allow_once"]]);
+
+    act(() => root.unmount());
+  });
+
+  // Nothing to answer with means nothing to show: a prompt whose buttons do
+  // nothing is worse than the status line alone.
+  it("shows no prompt when there is nowhere to send the answer", () => {
+    const { host, root } = renderTray([waiting]);
+    expect(host.querySelector('[data-agent-permission="true"]')).toBeNull();
     act(() => root.unmount());
   });
 });

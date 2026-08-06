@@ -32,6 +32,12 @@ export interface DomEditActionsValue extends Pick<
   | "handleAgentModalRun"
   | "clearFinishedAgentJobs"
   | "moveAgentJob"
+  | "answerAgentJob"
+  | "steerAgentJob"
+  | "promoteAgentJob"
+  | "handleTimelineRangeRun"
+  | "beginSteerJob"
+  | "cancelSteerJob"
   | "cancelAgentJob"
   | "revealAgentJobTarget"
   | "setSelectedAgentId"
@@ -96,6 +102,7 @@ export interface DomEditSelectionValue extends Pick<
   | "gsapMultipleTimelines"
   | "gsapUnsupportedTimelinePattern"
   | "agentModalOpen"
+  | "steeringJob"
   | "copiedAgentPrompt"
   | "agentPromptSelectionContext"
   | "agentRunLabel"
@@ -151,6 +158,7 @@ export function DomEditProvider({
     domEditGroupSelections,
     domEditHoverSelection,
     agentModalOpen,
+    steeringJob,
     copiedAgentPrompt,
     agentPromptSelectionContext,
     agentRunLabel,
@@ -191,6 +199,12 @@ export function DomEditProvider({
     handleAgentModalRun,
     clearFinishedAgentJobs,
     moveAgentJob,
+    answerAgentJob,
+    steerAgentJob,
+    promoteAgentJob,
+    handleTimelineRangeRun,
+    beginSteerJob,
+    cancelSteerJob,
     cancelAgentJob,
     revealAgentJobTarget,
     setSelectedAgentId,
@@ -287,6 +301,12 @@ export function DomEditProvider({
       handleAgentModalRun,
       clearFinishedAgentJobs,
       moveAgentJob,
+      answerAgentJob,
+      steerAgentJob,
+      promoteAgentJob,
+      handleTimelineRangeRun,
+      beginSteerJob,
+      cancelSteerJob,
       cancelAgentJob,
       revealAgentJobTarget,
       setSelectedAgentId,
@@ -365,6 +385,12 @@ export function DomEditProvider({
       handleAgentModalRun,
       clearFinishedAgentJobs,
       moveAgentJob,
+      answerAgentJob,
+      steerAgentJob,
+      promoteAgentJob,
+      handleTimelineRangeRun,
+      beginSteerJob,
+      cancelSteerJob,
       cancelAgentJob,
       revealAgentJobTarget,
       setSelectedAgentId,
@@ -430,6 +456,7 @@ export function DomEditProvider({
       gsapMultipleTimelines,
       gsapUnsupportedTimelinePattern,
       agentModalOpen,
+      steeringJob,
       copiedAgentPrompt,
       agentPromptSelectionContext,
       agentRunLabel,
@@ -454,6 +481,7 @@ export function DomEditProvider({
       gsapMultipleTimelines,
       gsapUnsupportedTimelinePattern,
       agentModalOpen,
+      steeringJob,
       copiedAgentPrompt,
       agentPromptSelectionContext,
       agentRunLabel,

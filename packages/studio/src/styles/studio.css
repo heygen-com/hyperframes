@@ -515,3 +515,134 @@ body {
     width: 100%;
   }
 }
+
+/* OverlayState (AgentOverlayState) — what the selection chrome shows while an
+   agent works on that element. Every treatment tints from --hf-overlay-tint, so
+   a state that carries its own accent needs no rule of its own. Transform and
+   opacity only: a run must not cost frames in the preview it is editing. */
+@keyframes hf-overlay-march {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+@keyframes hf-overlay-sweep {
+  to {
+    transform: translate(-50%, -50%) rotate(1turn);
+  }
+}
+
+@keyframes hf-overlay-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes hf-overlay-rule {
+  0% {
+    transform: scaleX(0);
+  }
+  60%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes hf-overlay-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes hf-overlay-corner {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
+@keyframes hf-overlay-glide {
+  50% {
+    transform: translateX(26px);
+  }
+}
+
+.hf-overlay-ants rect {
+  fill: none;
+  stroke: var(--hf-overlay-tint);
+  stroke-width: 1.25;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  animation: hf-overlay-march 1.1s linear infinite;
+}
+
+/* The sweep is a conic gradient masked down to the border itself: a light
+   travelling the outline, rather than a second box drawn around it. */
+.hf-overlay-aura {
+  position: absolute;
+  inset: -2px;
+  border-radius: 5px;
+  overflow: hidden;
+  padding: 1.5px;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+.hf-overlay-aura::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 320px;
+  height: 320px;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 200deg,
+    color-mix(in oklab, var(--hf-overlay-tint) 18%, transparent) 250deg,
+    var(--hf-overlay-tint) 320deg,
+    #ffffff 340deg,
+    var(--hf-overlay-tint) 350deg,
+    transparent 360deg
+  );
+  animation: hf-overlay-sweep 1.9s linear infinite;
+}
+
+.hf-overlay-glow {
+  animation: hf-overlay-breathe 1.9s ease-in-out infinite;
+}
+
+.hf-overlay-rule {
+  transform-origin: left;
+  animation: hf-overlay-rule 1.6s ease-in-out infinite;
+}
+
+.hf-overlay-caret {
+  animation: hf-overlay-caret 1s steps(1) infinite;
+}
+
+.hf-overlay-corner {
+  animation: hf-overlay-corner 1.4s ease-in-out infinite;
+}
+
+.hf-overlay-ghost {
+  animation: hf-overlay-glide 2.2s ease-in-out infinite;
+}
+
+/* Colour stays the cue when motion is off: every animation collapses, nothing
+   disappears. */
+@media (prefers-reduced-motion: reduce) {
+  .hf-overlay-ants rect,
+  .hf-overlay-aura::before,
+  .hf-overlay-glow,
+  .hf-overlay-rule,
+  .hf-overlay-caret,
+  .hf-overlay-corner,
+  .hf-overlay-ghost {
+    animation: none;
+  }
+}

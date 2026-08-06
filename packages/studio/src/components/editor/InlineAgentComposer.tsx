@@ -1,68 +1,24 @@
 import { useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { clampNumber } from "../../utils/studioHelpers";
 import {
-  useDomEditActionsContextOptional,
-  useDomEditSelectionContextOptional,
-} from "../../contexts/DomEditContext";
-import {
   AgentGlyph,
+  type AgentJob,
   type AgentKind,
   type AgentModel,
   type AgentOption,
   type CustomAgentDraft,
 } from "./agentGlyphs";
 import { CustomAgentForm } from "./CustomAgentForm";
-import { AgentAnswerBubble } from "./AgentAnswerBubble";
-import { layoutAgentSurfaces } from "./agentSurfaceLayout";
-import { dismissAnswer, isAnswerDismissed } from "../../utils/agentAnswers";
-import { CANVAS_OVERLAY_CONTROL_Z, FLOATING_CHIP, FLOATING_SURFACE } from "../ui/floatingSurface";
+import { AGENT_SURFACE_GAP, HANDLE_WIDTH, resolveComposerPosition } from "./agentSurfaceLayout";
 import {
-  agentDraftKey,
-  clearAgentDraft,
-  readAgentDraft,
-  writeAgentDraft,
-} from "../../utils/agentDrafts";
-import { AgentRunTray } from "./AgentRunTray";
+  CANVAS_OVERLAY_CONTROL_Z,
+  FLOATING_CHIP,
+  FLOATING_SURFACE,
+  GHOST_ICON_BUTTON,
+} from "../ui/floatingSurface";
+import { clearAgentDraft, readAgentDraft, writeAgentDraft } from "../../utils/agentDrafts";
 import type { OverlayRect } from "./domEditOverlayGeometry";
-
-const COMPOSER_WIDTH = 320;
-/** Collapsed width of the ask handle; it expands to its label on hover. */
-const HANDLE_WIDTH = 26;
-const COMPOSER_HEIGHT = 84;
-const GAP = 10;
-
-/**
- * Place the composer under the selection, flipping above when it would fall off
- * the bottom, and clamping both axes to the canvas. A null rect (element
- * scrolled out of view, or opened from the inspector) pins it to the bottom.
- */
-export function resolveComposerPosition(
-  rect: OverlayRect | null,
-  canvas: { width: number; height: number },
-  composerHeight: number = COMPOSER_HEIGHT,
-): CSSProperties {
-  if (!rect || canvas.width === 0) {
-    return {
-      left: Math.max(GAP, (canvas.width - COMPOSER_WIDTH) / 2),
-      top: Math.max(GAP, canvas.height - composerHeight - GAP),
-    };
-  }
-
-  const below = rect.top + rect.height + GAP;
-  const above = rect.top - composerHeight - GAP;
-  const fitsBelow = below + composerHeight <= canvas.height - GAP;
-
-  return {
-    left: clampNumber(
-      rect.left + rect.width / 2 - COMPOSER_WIDTH / 2,
-      GAP,
-      Math.max(GAP, canvas.width - COMPOSER_WIDTH - GAP),
-    ),
-    top: clampNumber(fitsBelow ? below : above, GAP, Math.max(GAP, canvas.height - composerHeight)),
-  };
-}
 
 function Chevron() {
   return (
@@ -112,6 +68,9 @@ export function InlineAgentComposer({
   onRun,
   onCopy,
   onClose,
+  steeringJob = null,
+  onSteer,
+  onCancelSteer,
   toContainerStyle = (style) => style,
 }: {
   selectionLabel: string;
@@ -139,6 +98,10 @@ export function InlineAgentComposer({
   onRun: (instruction: string) => void;
   onCopy: (instruction: string) => void;
   onClose: () => void;
+  /** The run being corrected, when the composer was opened from the tray. */
+  steeringJob?: AgentJob | null;
+  onSteer?: (jobId: string, text: string) => void;
+  onCancelSteer?: () => void;
   /** Lifts overlay-local coordinates into whatever space this is drawn in. */
   toContainerStyle?: (style: CSSProperties) => CSSProperties;
 }) {
@@ -171,7 +134,10 @@ export function InlineAgentComposer({
   const submit = () => {
     const instruction = value.trim();
     if (!instruction) return;
-    if (runLabel) onRun(instruction);
+    // Steering reuses this box on purpose: one place to type in the whole
+    // product, whether the run exists yet or is already going.
+    if (steeringJob && onSteer) onSteer(steeringJob.id, instruction);
+    else if (runLabel) onRun(instruction);
     else onCopy(instruction);
     setValue("");
     clearAgentDraft(draftKey);
@@ -221,8 +187,41 @@ export function InlineAgentComposer({
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
     >
+      {steeringJob && (
+        <div className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-0.5">
+          <AgentGlyph kind={steeringJob.kind} size={11} iconUrl={agentIconUrl} />
+          <span className="shrink-0 text-[11px] leading-none text-studio-accent">
+            {steeringJob.status === "running" ? "Steering" : "Changing"}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[11px] leading-none text-neutral-500">
+            {steeringJob.instruction}
+          </span>
+          {onCancelSteer && (
+            <button
+              className={GHOST_ICON_BUTTON}
+              onClick={onCancelSteer}
+              aria-label="Stop steering this run"
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M4 4 L12 12 M12 4 L4 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
       <div
-        className="flex cursor-grab items-center gap-1.5 px-1.5 pb-1.5 pt-0.5 active:cursor-grabbing"
+        className={`flex cursor-grab items-center gap-1.5 px-1.5 pb-1.5 pt-0.5 active:cursor-grabbing${
+          steeringJob ? " hidden" : ""
+        }`}
         {...dragHandlers}
       >
         {/* The harness owns the header (the element it edits reads from the
@@ -256,11 +255,12 @@ export function InlineAgentComposer({
             }}
             aria-haspopup="menu"
             aria-expanded={modelPickerOpen}
-            aria-label={selectedModel ? `Model: ${selectedModel}` : "Model: cheapest that can run"}
+            aria-label={selectedModel ? `Model: ${selectedModel}` : "Model: the default"}
           >
             <span className="truncate">
-              {selectedModel ??
-                (agentModels[0]?.id ? `${agentModels[0].id} · cheapest` : "cheapest")}
+              {/* Unset means Studio picks; name the model it picked, not the
+                  rule it picked it by — the reason belongs in the menu. */}
+              {selectedModel ?? (agentModels[0]?.id ? `${agentModels[0].id} · default` : "default")}
             </span>
             <Chevron />
           </button>
@@ -379,7 +379,7 @@ export function InlineAgentComposer({
                 setModelPickerOpen(false);
               }}
             >
-              <span className="truncate">Cheapest that can run</span>
+              <span className="truncate">Default</span>
               {!selectedModel && (
                 <span className="ml-auto text-[10px] text-studio-accent">in use</span>
               )}
@@ -442,7 +442,13 @@ export function InlineAgentComposer({
           ref={inputRef}
           rows={1}
           className="max-h-24 min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-snug text-neutral-200 outline-none placeholder:text-neutral-600"
-          placeholder={`Describe a change to ${selectionLabel}…`}
+          placeholder={
+            steeringJob
+              ? steeringJob.status === "running"
+                ? "Correct it — it picks up where it is"
+                : "Change what it will be asked"
+              : `Describe a change to ${selectionLabel}…`
+          }
           value={value}
           onChange={(e) => {
             updateValue(e.target.value);
@@ -493,7 +499,7 @@ export function InlineAgentComposer({
  * on the canvas whether or not the user wanted to ask for anything — while
  * keeping the entry point where the eye already is, next to what is selected.
  */
-function AskAgentHandle({
+export function AskAgentHandle({
   rect,
   canvas,
   agentKind,
@@ -515,8 +521,16 @@ function AskAgentHandle({
   // Sits above the selection's top edge, clear of the corner resize handles,
   // and clamped so it never leaves the canvas on an element near an edge. It
   // grows rightward on hover, so the anchor is the right edge either way.
-  const right = clampNumber(rect.left + rect.width, HANDLE_WIDTH + GAP, canvas.width - GAP);
-  const top = clampNumber(rect.top - 32, GAP, Math.max(GAP, canvas.height - 26 - GAP));
+  const right = clampNumber(
+    rect.left + rect.width,
+    HANDLE_WIDTH + AGENT_SURFACE_GAP,
+    canvas.width - AGENT_SURFACE_GAP,
+  );
+  const top = clampNumber(
+    rect.top - 32,
+    AGENT_SURFACE_GAP,
+    Math.max(AGENT_SURFACE_GAP, canvas.height - 26 - AGENT_SURFACE_GAP),
+  );
 
   return (
     <button
@@ -541,171 +555,5 @@ function AskAgentHandle({
         </span>
       </span>
     </button>
-  );
-}
-
-/**
- * Canvas-side connector: renders the composer over the selected element while
- * the agent session is open, and the run tray whenever this project has runs.
- * Reads the DomEdit contexts directly so the overlay doesn't thread agent props
- * through its own signature; returns null in standalone player mounts, which
- * have no project to edit.
- */
-export function InlineAgentComposerHost({
-  rect,
-  canvas,
-  overlayEl,
-}: {
-  rect: OverlayRect | null;
-  canvas: { width: number; height: number };
-  /** The canvas overlay these coordinates are relative to. */
-  overlayEl: HTMLElement | null;
-}) {
-  const [dismissedAnswers, setDismissedAnswers] = useState<string[]>([]);
-  const actions = useDomEditActionsContextOptional();
-  const selectionValue = useDomEditSelectionContextOptional();
-  if (!actions || !selectionValue) return null;
-
-  // Drawn in the document, not inside the canvas overlay: that overlay is a
-  // z-10 stacking context and its sibling motion path sits at z-40, so nothing
-  // rendered within it can come out on top however high its own z-index is.
-  const origin = overlayEl?.getBoundingClientRect();
-  const toViewport = (style: CSSProperties): CSSProperties => ({
-    ...style,
-    position: "fixed",
-    left: typeof style.left === "number" ? style.left + (origin?.left ?? 0) : style.left,
-    top: typeof style.top === "number" ? style.top + (origin?.top ?? 0) : style.top,
-    zIndex: 70,
-  });
-
-  const {
-    projectId,
-    domEditSelection,
-    domEditGroupSelections,
-    agentModalOpen,
-    agentRunLabel,
-    agentRunKind,
-    agentIconUrl,
-    agentIconUrlById,
-    agentOptions,
-    agentModels,
-    selectedModel,
-    selectedEffort,
-    agentJobs,
-  } = selectionValue;
-
-  // The newest finished run about the element in front of the user: an answer
-  // belongs next to what it is about, not only in a list they may never open.
-  const answer = domEditSelection
-    ? agentJobs.find(
-        (job) =>
-          (job.status === "done" || job.status === "failed") &&
-          Boolean(job.message) &&
-          !dismissedAnswers.includes(job.id) &&
-          !isAnswerDismissed(job.id) &&
-          job.targetRef?.selector === domEditSelection.selector &&
-          (job.targetRef?.sourceFile ?? "") === (domEditSelection.sourceFile ?? ""),
-      )
-    : undefined;
-
-  // Both surfaces belong to the same element, so they are placed together —
-  // laid out apart they land on top of each other.
-  const surfaces =
-    rect && (answer || (agentModalOpen && domEditSelection))
-      ? layoutAgentSurfaces({
-          rect,
-          canvas,
-          composer: agentModalOpen && domEditSelection ? { width: 320, height: 84 } : null,
-          bubble: answer ? { width: 268, height: 108 } : null,
-        })
-      : {};
-
-
-  return createPortal(
-    <>
-      {!agentModalOpen && domEditSelection && (
-        <AskAgentHandle
-          toContainerStyle={toViewport}
-          rect={rect}
-          canvas={canvas}
-          agentKind={agentRunKind}
-          agentIconUrl={agentIconUrlById ?? agentIconUrl}
-          label={agentRunLabel ?? "the agent"}
-          onOpen={actions.handleAskAgent}
-        />
-      )}
-      {answer && rect && (
-        <AgentAnswerBubble
-          job={answer}
-          rect={rect}
-          canvas={canvas}
-          placement={surfaces.bubble}
-          agentIconUrl={agentIconUrlById ?? agentIconUrl}
-          toContainerStyle={toViewport}
-          onDismiss={() => {
-            dismissAnswer(answer.id);
-            setDismissedAnswers((ids) => [...ids, answer.id]);
-          }}
-          onFollowUp={() => {
-            dismissAnswer(answer.id);
-            setDismissedAnswers((ids) => [...ids, answer.id]);
-            actions.handleAskAgent();
-          }}
-        />
-      )}
-      {agentModalOpen && domEditSelection && (
-        <InlineAgentComposer
-          toContainerStyle={toViewport}
-          placement={surfaces.composer}
-          selectionLabel={
-            domEditGroupSelections.length > 1
-              ? `${domEditGroupSelections.length} elements`
-              : domEditSelection.label
-          }
-          draftKey={agentDraftKey({
-            projectId,
-            sourceFile: domEditSelection.sourceFile,
-            selector: domEditSelection.selector,
-            selectorIndex: domEditSelection.selectorIndex,
-            id: domEditSelection.id,
-          })}
-          rect={rect}
-          canvas={canvas}
-          runLabel={agentRunLabel}
-          agentKind={agentRunKind}
-          agentIconUrl={agentIconUrlById ?? agentIconUrl}
-          agentOptions={agentOptions}
-          agentModels={agentModels}
-          selectedModel={selectedModel}
-          selectedEffort={selectedEffort}
-          onSelectAgent={(id) => {
-            actions.setSelectedAgentId(id);
-            void actions.refreshAgentModels(id);
-          }}
-          onAddCustomAgent={actions.addCustomAgent}
-          onSelectModel={(model) => {
-            if (agentRunKind) actions.setSelectedModel(agentRunKind, model);
-          }}
-          onSelectEffort={(effort) => {
-            if (agentRunKind) actions.setSelectedEffort(agentRunKind, effort);
-          }}
-          onRun={actions.handleAgentModalRun}
-          onCopy={(instruction) => void actions.handleAgentModalSubmit(instruction)}
-          onClose={() => {
-            actions.setAgentModalOpen(false);
-            actions.setAgentPromptSelectionContext(undefined);
-          }}
-        />
-      )}
-      <AgentRunTray
-        jobs={agentJobs}
-        agentIconUrl={agentIconUrl}
-        onClearFinished={actions.clearFinishedAgentJobs}
-        onMoveJob={actions.moveAgentJob}
-        onCancelJob={actions.cancelAgentJob}
-        onRevealTarget={actions.revealAgentJobTarget}
-      />
-    </>,
-    document.body,
   );
 }

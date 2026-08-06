@@ -16,6 +16,8 @@ export interface StudioUrlState {
   rightCollapsed: boolean | null;
   timelineVisible: boolean | null;
   selection: StudioUrlSelectionState | null;
+  /** Whether the agent composer was open, so a reload does not close it. */
+  askAgentOpen: boolean | null;
 }
 
 const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders", "slideshow", "variables"];
@@ -87,6 +89,7 @@ function defaultStudioUrlState(): StudioUrlState {
     rightCollapsed: null,
     timelineVisible: null,
     selection: null,
+    askAgentOpen: null,
   };
 }
 
@@ -102,6 +105,7 @@ export function parseStudioUrlStateFromHash(hash: string): StudioUrlState {
     rightCollapsed: parseBoolean(params.get("rc")),
     timelineVisible: parseBoolean(params.get("tv")),
     selection: normalizeSelection(params),
+    askAgentOpen: parseBoolean(params.get("ask")),
   };
 }
 
@@ -123,6 +127,9 @@ export function buildStudioHash(projectId: string, state: StudioUrlState): strin
   if (state.rightPanelTab) params.set("tab", state.rightPanelTab);
   if (state.rightCollapsed != null) params.set("rc", state.rightCollapsed ? "1" : "0");
   if (state.timelineVisible != null) params.set("tv", state.timelineVisible ? "1" : "0");
+  // Only written while open: the composer is a transient surface, and a `0` on
+  // every URL a user copies would be noise.
+  if (state.askAgentOpen) params.set("ask", "1");
   if (state.selection) {
     if (state.selection.sourceFile) params.set("selFile", state.selection.sourceFile);
     if (state.selection.id) params.set("selId", state.selection.id);

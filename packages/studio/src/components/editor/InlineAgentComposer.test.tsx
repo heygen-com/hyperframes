@@ -3,7 +3,8 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InlineAgentComposer, resolveComposerPosition } from "./InlineAgentComposer";
+import { InlineAgentComposer } from "./InlineAgentComposer";
+import { resolveComposerPosition } from "./agentSurfaceLayout";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -64,19 +65,27 @@ function pressEnter(host: HTMLElement) {
 const CANVAS = { width: 800, height: 600 };
 
 describe("resolveComposerPosition", () => {
-  it("centers under the selection", () => {
-    expect(resolveComposerPosition(rect({ left: 300, top: 100, width: 200 }), CANVAS, 84)).toEqual({
-      left: 240, // 300 + 100 - 160
-      top: 150, // 100 + 40 + 10
+  it("sits at the element's top right, beside it rather than over it", () => {
+    expect(resolveComposerPosition(rect({ left: 100, top: 120, width: 200 }), CANVAS, 84)).toEqual({
+      left: 310, // 100 + 200 + 10
+      top: 120, // aligned with the element's own top edge
     });
   });
 
-  it("flips above when the composer would fall off the bottom", () => {
-    expect(resolveComposerPosition(rect({ top: 540 }), CANVAS, 84).top).toBe(446); // 540 - 84 - 10
+  it("slides left only as far as the canvas forces, staying in that corner", () => {
+    // 600 + 100 + 10 + 320 runs off an 800-wide canvas, so it stops at the edge
+    // and overlaps the element rather than jumping to its other side.
+    expect(resolveComposerPosition(rect({ left: 600 }), CANVAS, 84).left).toBe(470); // 800 - 320 - 10
   });
 
-  it("clamps horizontally inside the canvas", () => {
-    expect(resolveComposerPosition(rect({ left: 780 }), CANVAS, 84).left).toBe(470);
+  it("stays in the corner on a canvas narrower than the box", () => {
+    const narrow = { width: 360, height: 600 };
+    const placed = resolveComposerPosition(rect({ left: 20, top: 100, width: 300 }), narrow, 84);
+    expect(placed).toEqual({ left: 30, top: 100 }); // 360 - 320 - 10, element's own top
+  });
+
+  it("keeps the box inside the canvas whatever the element does", () => {
+    expect(resolveComposerPosition(rect({ top: 580 }), CANVAS, 84).top).toBe(506);
     expect(resolveComposerPosition(rect({ left: -200 }), CANVAS, 84).left).toBe(10);
   });
 

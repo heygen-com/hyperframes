@@ -43,6 +43,7 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
+import { requestBufferedReload } from "../lib/previewBuffer";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 
@@ -441,20 +442,20 @@ export function useTimelinePlayer() {
     const iframe = iframeRef.current;
     if (!iframe) return;
     saveSeekPosition();
-    // Hide the iframe across the full reload so the user never sees the reloading
-    // document's RAW DOM (every clip stacked and visible) in the window between the
-    // new document parsing and the runtime initializing + seeking. initializeAdapter
-    // reveals it again right after its restore seek renders the correct frame.
-    // Tradeoff: this shows the parent stage background (a brief "freeze"/blank, on
-    // the order of the reload time ~100-300ms) INSTEAD of the all-clips flash. A
-    // blank is far less jarring than a burst of every asset appearing at once.
-    // Only the FULL-reload edits (drops/inserts) hit this — timing edits now take
-    // the soft-reload path and never touch refreshPlayer.
-    iframe.style.visibility = "hidden";
-    const src = iframe.src;
-    const url = new URL(src, window.location.origin);
+    const url = new URL(iframe.src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));
     applyPreviewVariablesToUrl(url);
+
+    // Preferred: build the new document beside this one and swap when it has
+    // seeked, so the canvas never goes blank (see lib/previewBuffer).
+    if (requestBufferedReload(iframe, url.toString())) return;
+
+    // Fallback for a preview with no buffering (a standalone player mount).
+    // Hide the iframe across the reload so the user never sees the reloading
+    // document's RAW DOM — every clip stacked and visible — in the window
+    // between parsing and the runtime seeking. The cost is a blank for the
+    // length of the reload, which is why buffering is preferred.
+    iframe.style.visibility = "hidden";
     iframe.src = url.toString();
   }, [saveSeekPosition]);
   const getAdapterRef = useRef(getAdapter);

@@ -282,3 +282,33 @@ describe("studio url state", () => {
     harness.unmount();
   });
 });
+
+describe("the agent composer in the URL", () => {
+  it("round-trips an open composer, so a reload does not close it", () => {
+    const hash = buildStudioHash("proj", {
+      activeCompPath: null,
+      currentTime: null,
+      rightPanelTab: null,
+      rightCollapsed: null,
+      timelineVisible: null,
+      selection: { id: "card" },
+      askAgentOpen: true,
+    });
+    expect(hash).toContain("ask=1");
+    expect(parseStudioUrlStateFromHash(hash).askAgentOpen).toBe(true);
+  });
+
+  it("writes nothing while it is closed — a copied URL should not carry noise", () => {
+    const hash = buildStudioHash("proj", {
+      activeCompPath: null,
+      currentTime: null,
+      rightPanelTab: null,
+      rightCollapsed: null,
+      timelineVisible: null,
+      selection: null,
+      askAgentOpen: false,
+    });
+    expect(hash).not.toContain("ask");
+    expect(parseStudioUrlStateFromHash(hash).askAgentOpen).toBeNull();
+  });
+});

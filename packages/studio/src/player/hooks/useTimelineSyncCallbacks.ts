@@ -10,6 +10,7 @@
 
 import { useCallback } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
+import { promotePreviewBuffer } from "../lib/previewBuffer";
 import type { TimelineElement, DomClipChild } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
@@ -65,6 +66,10 @@ interface UseTimelineSyncCallbacksParams {
  * stuck invisible.
  */
 export function revealIframe(iframe: HTMLIFrameElement | null): void {
+  // A buffered reload reveals by promotion: the new document becomes visible
+  // and the one it replaces is dropped in the same step, so there is never a
+  // frame with neither on screen.
+  promotePreviewBuffer(iframe);
   if (iframe && iframe.style.visibility === "hidden") {
     iframe.style.visibility = "";
   }

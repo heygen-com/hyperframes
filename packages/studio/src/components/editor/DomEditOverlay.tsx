@@ -29,7 +29,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
-import { InlineAgentComposerHost } from "./InlineAgentComposer";
+import { InlineAgentComposerHost } from "./InlineAgentComposerHost";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 

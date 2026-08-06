@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyTextToClipboard } from "../utils/clipboard";
+import { useAgentQueue } from "./useAgentQueue";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
@@ -13,6 +14,7 @@ import type {
 import { findElementForSelection } from "../components/editor/domEditing";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { usePlayerStore } from "../player";
+import { formatTime } from "../player/lib/time";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
@@ -61,6 +63,8 @@ export function useAskAgentModal({
   >();
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
+  /** The run the composer is correcting, when it was opened from the tray. */
+  const [steeringJob, setSteeringJob] = useState<AgentJob | null>(null);
   // null while unknown — the Run button stays hidden until the server confirms
   // a harness CLI (claude / codex / HYPERFRAMES_AGENT_CMD) is installed.
   const [agentRunLabel, setAgentRunLabel] = useState<string | null>(null);
@@ -200,6 +204,9 @@ export function useAskAgentModal({
   const handleAskAgent = useCallback(() => {
     const selection = resolveSelection();
     if (!selection) return;
+    // Opening from the canvas is a fresh ask about this element, never a
+    // correction to whatever was last steered.
+    setSteeringJob(null);
     setAgentPromptTagSnippet(undefined);
     setAgentPromptSelectionContext(undefined);
     void preloadAgentPromptSnippet(selection);
@@ -249,7 +256,8 @@ export function useAskAgentModal({
       const pid = projectIdRef.current;
       if (!selection || !pid) return;
 
-      const coSelected = resolveGroup(selection).length;
+      const group = resolveGroup(selection);
+      const coSelected = group.length;
       // Traction, not content: how often runs are started, with which harness
       // and model, and whether multi-select is used. No instruction text.
       trackStudioEvent("agent_run_submitted", {
@@ -280,6 +288,14 @@ export function useAskAgentModal({
             selectorIndex: selection.selectorIndex,
             time: usePlayerStore.getState().currentTime,
           },
+          // Every co-selected element too: the instruction applies to all of
+          // them, so all of them have to show the run on the canvas.
+          targetRefs: group.map((entry) => ({
+            sourceFile: entry.sourceFile,
+            id: entry.id ?? undefined,
+            selector: entry.selector,
+            selectorIndex: entry.selectorIndex,
+          })),
         }),
       })
         .then(async (response) => {
@@ -312,6 +328,10 @@ export function useAskAgentModal({
       const ref = job.targetRef;
       if (!ref) return;
       if (typeof ref.time === "number") usePlayerStore.getState().setCurrentTime(ref.time);
+      // A run about a stretch of the timeline is about the moment, not about
+      // one of the elements that happened to be in it: seeking is the whole
+      // job, and selecting the first element would be picking for the user.
+      if (job.targetKind === "range") return;
 
       let doc: Document | null = null;
       try {
@@ -342,40 +362,86 @@ export function useAskAgentModal({
     [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef, showToast],
   );
 
-  const patchAgentJobs = useCallback(
-    (path: string, init: RequestInit) => {
-      const pid = projectId ?? projectIdRef.current;
+  /**
+   * Queue a run for a stretch of the timeline rather than one element.
+   *
+   * Same queue, same harness, same tray as a canvas edit — a range is just a
+   * different way of saying which elements. Every element in the range travels
+   * with it, so all of them light up on the canvas while the run works and the
+   * tray can point back at the moment it was asked about.
+   */
+  const handleTimelineRangeRun = useCallback(
+    (range: {
+      start: number;
+      end: number;
+      prompt: string;
+      instruction: string;
+      elements: Array<{ id: string; selector?: string; sourceFile?: string }>;
+    }) => {
+      const pid = projectIdRef.current;
       if (!pid) return;
-      void fetch(`/api/projects/${pid}/agent/jobs${path}`, init)
+
+      const refs = range.elements.map((element) => ({
+        sourceFile: element.sourceFile ?? activeCompPath ?? undefined,
+        id: element.id,
+        selector: element.selector ?? `#${element.id}`,
+        time: range.start,
+      }));
+      trackStudioEvent("agent_run_submitted", {
+        harness: activeKindRef.current ?? "unknown",
+        model: activeKindRef.current
+          ? (modelByKind[activeKindRef.current] ?? "default")
+          : "default",
+        elements: refs.length,
+        instruction_length: range.instruction.length,
+        source: "timeline",
+      });
+
+      void fetch(`/api/projects/${pid}/agent`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prompt: range.prompt,
+          instruction: range.instruction,
+          target: `${formatTime(range.start)}–${formatTime(range.end)}`,
+          agent: selectedAgentId ?? undefined,
+          model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
+          effort: activeKindRef.current ? effortByKind[activeKindRef.current] : undefined,
+          targetRef: refs[0] ?? { time: range.start, sourceFile: activeCompPath ?? undefined },
+          targetRefs: refs.slice(1),
+          targetKind: "range",
+        }),
+      })
         .then(async (response) => {
-          const data = (await response.json()) as { error?: string; jobs?: AgentJob[] };
-          if (!response.ok) {
-            showToast(data.error ?? "Could not update the queue.", "error");
+          const data = (await response.json()) as { error?: string; job?: AgentJob };
+          if (!response.ok || !data.job) {
+            showToast(data.error ?? "Could not start the agent.", "error");
             return;
           }
-          setAgentJobs(data.jobs ?? []);
+          setAgentJobs((jobs) => [data.job as AgentJob, ...jobs]);
         })
-        .catch(() => showToast("Could not update the queue.", "error"));
+        .catch((err: unknown) => {
+          showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
+        });
     },
-    [projectId, projectIdRef, showToast],
+    [activeCompPath, effortByKind, modelByKind, projectIdRef, selectedAgentId, showToast],
   );
 
-  /** Reorder a waiting run; `position` indexes the queue, 0 is next up. */
-  const moveAgentJob = useCallback(
-    (jobId: string, position: number) =>
-      patchAgentJobs(`/${jobId}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ position }),
-      }),
-    [patchAgentJobs],
+  /**
+   * Point the composer at a run instead of at the selection. Steering reuses
+   * the one prompt box the product already has: a second field in the tray
+   * would be a second place to type the same kind of thing.
+   */
+  const beginSteerJob = useCallback(
+    (job: AgentJob) => {
+      setSteeringJob(job);
+      setAgentModalOpen(true);
+      trackStudioEvent("agent_steer_opened", { harness: job.kind, status: job.status });
+    },
+    [setAgentModalOpen],
   );
 
-  /** Drop a queued run, or stop one that is already going. */
-  const cancelAgentJob = useCallback(
-    (jobId: string) => patchAgentJobs(`/${jobId}`, { method: "DELETE" }),
-    [patchAgentJobs],
-  );
+  const cancelSteerJob = useCallback(() => setSteeringJob(null), []);
 
   /** Register a harness of the user's own; it lands in the picker immediately. */
   const addCustomAgent = useCallback(
@@ -406,15 +472,6 @@ export function useAskAgentModal({
     [projectId, projectIdRef, refreshAgentState, showToast],
   );
 
-  const clearFinishedAgentJobs = useCallback(() => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    void fetch(`/api/projects/${pid}/agent/jobs`, { method: "DELETE" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { jobs?: AgentJob[] } | null) => setAgentJobs(data?.jobs ?? []))
-      .catch(() => undefined);
-  }, [projectIdRef]);
-
   const handleAgentModalSubmit = useCallback(
     async (userInstruction: string) => {
       const selection = resolveSelection();
@@ -434,6 +491,22 @@ export function useAskAgentModal({
     [buildPrompt, resolveSelection, showToast],
   );
 
+  const {
+    moveAgentJob,
+    steerAgentJob,
+    promoteAgentJob,
+    answerAgentJob,
+    cancelAgentJob,
+    clearFinishedAgentJobs,
+  } = useAgentQueue({
+    projectId,
+    projectIdRef,
+    showToast,
+    setAgentJobs,
+    activeKindRef,
+    onSteered: () => setSteeringJob(null),
+  });
+
   // ── Effects ──
 
   // Runs live on the server, so read them once on mount: a reload lands back on
@@ -445,7 +518,12 @@ export function useAskAgentModal({
 
   // Fast while something is in flight, slow otherwise — a run can also be
   // started from another tab or the CLI, and the tray should still notice.
-  const hasActiveJob = agentJobs.some((job) => job.status === "queued" || job.status === "running");
+  // A run stopped on a question counts as active: it is the state the user is
+  // most likely watching, and polling it every eight seconds makes their own
+  // answer look like it did not land.
+  const hasActiveJob = agentJobs.some(
+    (job) => job.status !== "done" && job.status !== "failed" && job.status !== "cancelled",
+  );
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     const timer = setInterval(() => void refreshAgentState(), hasActiveJob ? 1200 : 8000);
@@ -497,12 +575,18 @@ export function useAskAgentModal({
     setAgentPromptSelectionContext,
 
     // Callbacks
-    preloadAgentPromptSnippet,
     handleAskAgent,
     handleAgentModalSubmit,
     handleAgentModalRun,
     clearFinishedAgentJobs,
+    handleTimelineRangeRun,
     moveAgentJob,
+    answerAgentJob,
+    steerAgentJob,
+    promoteAgentJob,
+    steeringJob,
+    beginSteerJob,
+    cancelSteerJob,
     cancelAgentJob,
     revealAgentJobTarget,
     setSelectedAgentId,

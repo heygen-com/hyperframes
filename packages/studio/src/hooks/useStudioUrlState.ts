@@ -35,6 +35,9 @@ interface UseStudioUrlStateParams {
     },
   ) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
+  /** Whether the agent composer is open, and how to reopen it on a reload. */
+  askAgentOpen: boolean;
+  openAskAgent: () => void;
   initialState: StudioUrlState;
 }
 
@@ -70,6 +73,8 @@ export function useStudioUrlState({
   buildDomSelectionFromTarget,
   applyDomSelection,
   setRightPanelTab,
+  askAgentOpen,
+  openAskAgent,
   initialState,
 }: UseStudioUrlStateParams) {
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -93,8 +98,9 @@ export function useStudioUrlState({
       selection: hydratedSelectionRef.current
         ? toPersistedSelection(domEditSelection)
         : pendingSelectionRef.current,
+      askAgentOpen,
     }),
-    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab],
+    [activeCompPath, askAgentOpen, domEditSelection, rightCollapsed, rightPanelTab],
   );
 
   // Resolve a URL selection to a live element and apply it. Shared by the initial
@@ -102,7 +108,22 @@ export function useStudioUrlState({
   // false ONLY when the iframe document isn't ready yet (caller should retry);
   // a missing element or null selection clears the selection and returns true.
   const applyUrlSelection = useCallback(
-    (selection: StudioUrlSelectionState | null): boolean => {
+    (
+      selection: StudioUrlSelectionState | null,
+      options: {
+        /** Runs once the element is actually selected, not merely resolved. */
+        afterApply?: () => void;
+        /**
+         * Whether "no such element" should clear the selection. Hydration says
+         * yes: the URL named something that is not there. Restoring across a
+         * reload says no — the document may simply not have parsed the element
+         * yet, and clearing on the first miss is indistinguishable from giving
+         * up immediately.
+         */
+        clearWhenMissing?: boolean;
+      } = {},
+    ): boolean => {
+      const { afterApply, clearWhenMissing = true } = options;
       if (!selection) {
         applyDomSelection(null, { revealPanel: false });
         return true;
@@ -125,11 +146,13 @@ export function useStudioUrlState({
         activeCompPath,
       );
       if (!element) {
+        if (!clearWhenMissing) return false;
         applyDomSelection(null, { revealPanel: false });
         return true;
       }
       void buildDomSelectionFromTarget(element, { preferClipAncestor: false }).then((resolved) => {
         applyDomSelection(resolved, { revealPanel: false });
+        if (resolved) afterApply?.();
       });
       return true;
     },
@@ -173,18 +196,63 @@ export function useStudioUrlState({
       markHydrated();
       return;
     }
+    // The composer belongs to an element, so it comes back only once that
+    // element does — reopening earlier would open it on nothing. An agent's
+    // edit reloads Studio mid-sentence and the draft already survives; this is
+    // what puts the box back around it.
+    const reopenComposer = () => {
+      if (initialState.askAgentOpen) openAskAgent();
+    };
     // Doc not ready yet → leave hydration pending so a later tick retries.
-    if (!applyUrlSelection(pendingSelection)) return;
+    if (!applyUrlSelection(pendingSelection, { afterApply: reopenComposer })) return;
     markHydrated();
     pendingSelectionRef.current = null;
   }, [
     applyUrlSelection,
     compositionLoading,
     selectionHydrationTime,
+    initialState.askAgentOpen,
     initialState.currentTime,
+    openAskAgent,
     projectId,
     refreshKey,
   ]);
+
+  // ── Keep the selection across a preview reload ──
+  // The reload swaps in a new document, so the selected element is a node that
+  // no longer exists and the selection clears itself. An agent's edit reloads
+  // the preview on every run, and losing the selection there loses the element
+  // the user is working on — and, with it, everything keyed to the selection:
+  // the inspector, the composer, and the selection in the URL.
+  const lastSelectionRef = useRef<StudioUrlSelectionState | null>(null);
+  useEffect(() => {
+    const persisted = toPersistedSelection(domEditSelection);
+    if (persisted) lastSelectionRef.current = persisted;
+  }, [domEditSelection]);
+
+  // Read through a ref: applyUrlSelection is rebuilt whenever the selection
+  // changes, so an effect depending on it would tear down its own retry loop
+  // the moment the first restore landed.
+  const applyUrlSelectionRef = useRef(applyUrlSelection);
+  applyUrlSelectionRef.current = applyUrlSelection;
+
+  useEffect(() => {
+    const target = lastSelectionRef.current;
+    if (!target) return;
+
+    // The new document is not parsed when the reload is announced, and
+    // applyUrlSelection reports that by returning false, so retry until it is.
+    let attempts = 0;
+    const retry = setInterval(() => {
+      attempts += 1;
+      // The user selecting something else mid-reload wins: it is a newer
+      // intention than the one being restored.
+      const abandoned = lastSelectionRef.current !== target;
+      const restored = applyUrlSelectionRef.current(target, { clearWhenMissing: false });
+      if (abandoned || restored || attempts > 40) clearInterval(retry);
+    }, 100);
+    return () => clearInterval(retry);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (hydratedInitialTimeRef.current) return;

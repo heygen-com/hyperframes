@@ -11,7 +11,8 @@ import { createJsonStore } from "./jsonStore";
 const store = createJsonStore<string[]>({
   key: "hf-studio-agent-answers-read",
   fallback: [],
-  parse: (raw) => (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : []),
+  parse: (raw) =>
+    Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [],
 });
 
 /** Keeps the list from growing with every run of every session. */

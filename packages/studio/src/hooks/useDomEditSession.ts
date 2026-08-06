@@ -144,35 +144,7 @@ export function useDomEditSession({
     rightPanelTab,
   });
 
-  const {
-    agentModalOpen,
-    copiedAgentPrompt,
-    agentPromptSelectionContext,
-    agentRunLabel,
-    agentRunKind,
-    agentIconUrl,
-    agentIconUrlById,
-    agentOptions,
-    agentModels,
-    selectedModel,
-    selectedEffort,
-    selectedAgentId,
-    agentJobs,
-    setAgentModalOpen,
-    setAgentPromptSelectionContext,
-    handleAskAgent,
-    handleAgentModalSubmit,
-    handleAgentModalRun,
-    clearFinishedAgentJobs,
-    moveAgentJob,
-    cancelAgentJob,
-    revealAgentJobTarget,
-    setSelectedAgentId,
-    addCustomAgent,
-    setSelectedModel,
-    setSelectedEffort,
-    refreshAgentModels,
-  } = useAskAgentModal({
+  const agent = useAskAgentModal({
     projectId,
     previewIframeRef,
     applyDomSelection,
@@ -485,25 +457,14 @@ export function useDomEditSession({
   const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   return {
+    // Every agent field is a passthrough; spreading keeps one list, not two.
+    ...agent,
     // State
     projectId,
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
     activeGroupElement,
-    agentModalOpen,
-    copiedAgentPrompt,
-    agentPromptSelectionContext,
-    agentRunLabel,
-    agentRunKind,
-    agentIconUrl,
-    agentIconUrlById,
-    agentOptions,
-    agentModels,
-    selectedModel,
-    selectedEffort,
-    selectedAgentId,
-    agentJobs,
     // Refs
     domEditSelectionRef,
     // Callbacks
@@ -528,18 +489,6 @@ export function useDomEditSession({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleAskAgent,
-    handleAgentModalSubmit,
-    handleAgentModalRun,
-    clearFinishedAgentJobs,
-    moveAgentJob,
-    cancelAgentJob,
-    revealAgentJobTarget,
-    setSelectedAgentId,
-    addCustomAgent,
-    setSelectedModel,
-    setSelectedEffort,
-    refreshAgentModels,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
@@ -551,8 +500,6 @@ export function useDomEditSession({
     updateDomEditHoverSelection,
     applyMarqueeSelection,
     resolveImportedFontAsset,
-    setAgentModalOpen,
-    setAgentPromptSelectionContext,
 
     // GSAP script editing
     selectedGsapAnimations,

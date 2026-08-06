@@ -116,5 +116,19 @@ export function buildElementAgentPrompt({
     "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",
   );
 
+  // OverlayState: the agent narrates its own work onto the canvas. Studio only
+  // shows "working" on its own, so this is the only way the preview can say
+  // anything finer — and an agent that ignores it still loses nothing.
+  lines.push(
+    "",
+    "Overlay state (optional):",
+    '- Print `<!-- hf:overlay {"kind":"editing","scope":"text","label":"Rewriting the headline"} -->` at any point and Studio shows it on this element in the preview.',
+    "- kind: reading | thinking | editing. Without one, the element just says the run is working.",
+    "- scope: text | box | motion | content — what the edit is about; it selects a finer treatment.",
+    "- label: one short line for the badge. accent: any CSS colour, if this run wants its own.",
+    "- target: {selector} or {id} to point the state at a different element than this one.",
+    "- Do not declare done or failed: Studio sets those when the run exits.",
+  );
+
   return lines.join("\n");
 }
