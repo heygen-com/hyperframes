@@ -54,10 +54,44 @@ export const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
  * Whitespace and surrounding `"…"` / `'…'` quotes are stripped; case is
  * preserved. Pass each name through `normalizeFamilyName` for case-
  * insensitive comparisons.
+ *
+ * Only top-level commas split: a `var(--x, fallback)` expression stays one
+ * token, as does a comma inside a quoted family name.
  */
 export function parseFontFamilyValue(value: string): string[] {
-  return value
-    .split(",")
+  const pieces: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote: "'" | '"' | null = null;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (char !== "," || depth !== 0) continue;
+    pieces.push(value.slice(start, index));
+    start = index + 1;
+  }
+  pieces.push(value.slice(start));
+
+  return pieces
     .map((piece) => piece.trim().replace(/^['"]/, "").replace(/['"]$/, "").trim())
     .filter((piece) => piece.length > 0);
 }
