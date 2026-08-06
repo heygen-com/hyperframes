@@ -25,6 +25,7 @@ import {
   materializeIfDynamic,
 } from "./gsapDragCommit";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
+import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
@@ -275,26 +276,44 @@ export async function tryGsapResizeIntercept(
     if (committedScale) {
       setElementGsapScale(scaleDraftEl, committedScale.x, committedScale.y);
     }
+    // Measure from the pre-gesture position, not the draft one.
+    //
+    // The resize draft translates the element to keep the dragged corner under
+    // the cursor, but the scale route never persists that translation — the
+    // element renders back at its pre-gesture position as soon as the commit
+    // lands. Measuring while the draft translation was still applied made the
+    // residual carry the whole drag distance, and the position commit then
+    // composed that residual onto the pre-gesture base (it reads the gesture's
+    // own base attributes, not the live value), so the element landed a full
+    // drag away from the drop point on every scale resize.
+    const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
+    const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
+      selection.element,
+      { x: 0, y: 0 },
+      gsapPos,
+    );
+    const base = { x: baseGsapX, y: baseGsapY };
+    setElementGsapPosition(scaleDraftEl, base.x, base.y);
     const post = scaleDraftEl.getBoundingClientRect();
     const residual = { x: scaleDraftDropPoint.x - post.x, y: scaleDraftDropPoint.y - post.y };
     if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return;
     if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
-      logResize("scale-finalize", { skipped: "already-on-drop-point", residual });
+      logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
       return;
     }
-    const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
     // The ONE corrected position — rounded once so the live runtime and the
     // persisted file agree exactly (commitStaticGsapPosition composes the same
     // rounded value from this delta).
     const corrected = {
-      x: Math.round(gsapPos.x + residual.x),
-      y: Math.round(gsapPos.y + residual.y),
+      x: Math.round(base.x + residual.x),
+      y: Math.round(base.y + residual.y),
     };
     logResize("scale-finalize", {
       dropPoint: scaleDraftDropPoint,
       post: { x: post.x, y: post.y },
       residual,
       gsapPos,
+      base,
       corrected,
     });
     // Correct the LIVE runtime NOW, synchronously: the soft reload above just
@@ -311,8 +330,8 @@ export async function tryGsapResizeIntercept(
       ? await fetchFallbackAnimations()
       : (resolved?.animations ?? animations);
     // Delta chosen so the drag-path math composes back to exactly `corrected`
-    // (no drag scratch attrs exist during a resize, so base = gsapPos).
-    const delta = { x: corrected.x - gsapPos.x, y: corrected.y - gsapPos.y };
+    // — it adds this onto the same base the measurement above used.
+    const delta = { x: corrected.x - base.x, y: corrected.y - base.y };
     // An element whose position is animated needs the correction written into
     // that animation, at the playhead, or the tween renders its own value a
     // frame later and the element leaves the drop point anyway. This used to
@@ -327,14 +346,14 @@ export async function tryGsapResizeIntercept(
     );
     if (positionTween) {
       logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });
-      await commitGsapPositionFromDrag(selection, positionTween, delta, gsapPos, iframe, selector, {
+      await commitGsapPositionFromDrag(selection, positionTween, delta, base, iframe, selector, {
         commitMutation,
         fetchAnimations: fetchFallbackAnimations,
       });
       return;
     }
     const existingSet = findExistingPositionWrite(currentAnimations, selector, selection.element);
-    await commitStaticGsapPosition(selection, delta, gsapPos, selector, existingSet, {
+    await commitStaticGsapPosition(selection, delta, base, selector, existingSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,
     });

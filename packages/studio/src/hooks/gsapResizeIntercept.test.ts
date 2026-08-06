@@ -293,3 +293,102 @@ it("does not mix the scale shorthand into a tween that speaks longhands", async 
   const resized = frames.find((frame) => frame.properties.scaleX != null);
   expect(resized?.properties.scaleX).toBeCloseTo(0.61, 1);
 });
+
+/**
+ * The bug: a scale resize measured its drop-point correction while the
+ * gesture's own translation was still applied, but the position commit adds
+ * that correction onto the element's PRE-gesture position (it reads the
+ * gesture's base attributes). The two disagreed by the whole drag distance, so
+ * every scale resize of a statically positioned element persisted a position a
+ * drag-length away from where it was dropped — the element held still for one
+ * frame and then slid off.
+ *
+ * The fixture models the geometry the browser reported: a 630x252 element
+ * dragged from x=432 to x=587 with its box drafted down to 320x128, dropped at
+ * a committed scale of 0.837. Scaling about the centre puts it back on the drop
+ * point at its pre-gesture position, so the correct persisted correction is
+ * NONE.
+ */
+it("does not move a statically positioned element when a scale resize lands", async () => {
+  document.body.innerHTML = "";
+  const el = document.createElement("div");
+  el.id = "clip";
+  el.setAttribute("data-hf-studio-original-box-width", "630");
+  el.setAttribute("data-hf-studio-original-box-height", "252");
+  // The gesture's base pose — where the commit puts the element back, since a
+  // scale resize never persists the drag translation.
+  el.setAttribute("data-hf-drag-gsap-base-x", "432");
+  el.setAttribute("data-hf-drag-gsap-base-y", "173");
+  // The draft the gesture left applied: a smaller box at the dragged position.
+  el.setAttribute("data-hf-studio-box-size", "true");
+  el.setAttribute("data-hf-studio-original-width", "");
+  el.setAttribute("data-hf-studio-original-height", "");
+  el.style.width = "320px";
+  el.style.height = "128px";
+  document.body.append(el);
+
+  const pos = { x: 587, y: 235 };
+  const scale = { x: 1.648, y: 1.648 };
+  const [LEFT, TOP] = [120, 520];
+  el.getBoundingClientRect = () => {
+    const cssW = Number.parseFloat(el.style.width) || 630;
+    const cssH = Number.parseFloat(el.style.height) || 252;
+    const [w, h] = [cssW * scale.x, cssH * scale.y];
+    // GSAP scales about the element centre, so the box grows around it.
+    return {
+      x: LEFT + pos.x + cssW / 2 - w / 2,
+      y: TOP + pos.y + cssH / 2 - h / 2,
+      width: w,
+      height: h,
+    } as DOMRect;
+  };
+  const gsapStub = {
+    set: (_target: Element, vars: Record<string, number>) => {
+      if (vars.x != null) pos.x = vars.x;
+      if (vars.y != null) pos.y = vars.y;
+      if (vars.scaleX != null) scale.x = vars.scaleX;
+      if (vars.scaleY != null) scale.y = vars.scaleY;
+    },
+    getProperty: (_target: Element, prop: string) =>
+      ({ scaleX: scale.x, scaleY: scale.y, x: pos.x, y: pos.y })[prop] ?? 0,
+  };
+  Object.assign(window, { gsap: gsapStub });
+  const iframe = {
+    contentWindow: { gsap: gsapStub, __timelines: {} },
+    contentDocument: document,
+  } as unknown as HTMLIFrameElement;
+  const positionHold = {
+    id: "#clip-set-0-position",
+    targetSelector: "#clip",
+    propertyGroup: "position",
+    method: "set",
+    properties: { x: 432, y: 173 },
+    position: 0,
+    resolvedStart: 0,
+    duration: 0,
+    global: true,
+  } as unknown as GsapAnimation;
+  const selection = { id: "clip", selector: "#clip", element: el } as DomEditSelection;
+  usePlayerStore.setState({ currentTime: 0.5 });
+  const commitMutation = vi.fn();
+
+  await tryGsapResizeIntercept(
+    selection,
+    { width: 320, height: 128 },
+    [keyframedScaleFixture(), positionHold],
+    iframe,
+    commitMutation,
+    async () => [keyframedScaleFixture(), positionHold],
+  );
+
+  const positionWrites = commitMutation.mock.calls
+    .map((call) => call[1] as { properties?: Record<string, number> })
+    .filter((mutation) => mutation.properties?.x != null || mutation.properties?.y != null);
+  // Either it left the position alone, or it rewrote the same value.
+  for (const write of positionWrites) {
+    expect(write.properties?.x).toBe(432);
+    expect(write.properties?.y).toBe(173);
+  }
+  // And the live element ends on the drop point, not a drag away from it.
+  expect(el.getBoundingClientRect().x).toBeCloseTo(603.3, 0);
+});
