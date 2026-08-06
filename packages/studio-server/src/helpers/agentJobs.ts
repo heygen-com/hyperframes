@@ -175,6 +175,23 @@ const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
  */
 /** How long a cancelled ACP turn has to end itself before it is ended for it. */
 const GRACEFUL_STOP_MS = 3000;
+/**
+ * How much of a streamed message to keep for reading declarations out of.
+ *
+ * Far more than any declaration needs, and bounded so a long run cannot grow
+ * this without limit or re-scan its whole transcript on every token.
+ */
+const TRANSCRIPT_WINDOW = 4000;
+
+/** The latest thing the agent actually said, out of a part-written message. */
+function lastLineOf(transcript: string): string {
+  const lines = transcript.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!.trim();
+    if (line) return line;
+  }
+  return "";
+}
 
 function permissionTimeoutMs(): number {
   const set = Number(process.env.HYPERFRAMES_AGENT_ASK_TIMEOUT_MS);
@@ -1000,6 +1017,8 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
   let timer: NodeJS.Timeout | undefined;
   // What the agent called each tool call, for describing the ones it asks about.
   const toolTitles = new Map<string, string>();
+  // The tail of what the agent has said, for reading things that span chunks.
+  let transcript = "";
   try {
     const outcome = await runAcpSession({
       command: agent.command,
@@ -1024,13 +1043,20 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
         onUpdate: (update) => {
           if (update.tool) toolTitles.set(update.tool.id, update.tool.title);
           if (update.message) {
-            const overlay = readOverlayState("custom", update.message);
+            // ACP streams a message a token at a time, so a chunk is as likely
+            // to be `",\"` as a sentence. Anything read out of prose has to be
+            // read out of the accumulated text or it never matches: a
+            // declaration split across forty chunks is forty non-matches.
+            transcript = (transcript + update.message).slice(-TRANSCRIPT_WINDOW);
+            const overlay = readOverlayState("custom", transcript);
             if (overlay) job.overlay = overlay;
-            const skeletons = readTimelineSkeletons("custom", update.message);
+            const skeletons = readTimelineSkeletons("custom", transcript);
             if (skeletons) job.skeletons = skeletons.length > 0 ? skeletons : undefined;
+            const said = readActivity("custom", lastLineOf(transcript));
+            if (said) job.activity = said;
+            return;
           }
-          // "custom" is the prose reader: an ACP update is already the text,
-          // with no harness envelope left to unwrap.
+          // A tool call arrives whole, and is already the summary.
           const activity = update.activity ? readActivity("custom", update.activity) : null;
           if (activity) job.activity = activity;
         },

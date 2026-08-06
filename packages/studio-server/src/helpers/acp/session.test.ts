@@ -618,6 +618,31 @@ describe("skeletons an agent declares", () => {
     expect(read().message).toBe("Adding two clips.");
   });
 
+  // What a real ACP agent does: a message arrives a token at a time, so the
+  // declaration is split across dozens of chunks and matches none of them.
+  it("reads a declaration streamed one token at a time", async () => {
+    const tokens = [
+      "Adding a clip. ",
+      "<!-- hf:time",
+      'line {"add',
+      'ing":[{"track":',
+      '0,"start":1,',
+      '"end":3,"label":',
+      '"Hero"}]} ',
+      "-->",
+    ];
+    const { read } = startJob({
+      agent: acpCommand(createAcpAgent(tokens.map(said), "end_turn", 400)),
+      projectDir: createProjectDir(),
+    });
+
+    await until(() => (read().skeletons?.length ?? 0) > 0);
+    expect(read().skeletons).toEqual([{ track: 0, start: 1, end: 3, label: "Hero" }]);
+    // And the run still reports prose, not the fragment it happens to be on.
+    expect(read().activity).toBe("Adding a clip.");
+    await until(() => read().status === "done");
+  });
+
   it("clears them when the agent says it is no longer adding", async () => {
     const { read } = startJob({
       agent: acpCommand(
