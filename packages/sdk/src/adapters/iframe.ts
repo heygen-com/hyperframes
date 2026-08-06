@@ -484,7 +484,15 @@ export function imageAlphaOpaqueAt(
 
 // ─── Paint query ──────────────────────────────────────────────────────────────
 
-/** Elements that paint by virtue of what they are, whatever their CSS says. */
+/**
+ * Elements that paint by virtue of what they are, whatever their CSS says.
+ *
+ * `img` and `picture` look redundant against the branches above them in `elementPaintsInk`,
+ * and are not: those branches need a `point` to sample alpha against, so a point-free call
+ * ("could this paint at all?") falls through to this set — as does any environment without
+ * `window.HTMLImageElement`. The set is also exported, where it reads as a description of
+ * intrinsic painters rather than a switch in one function.
+ */
 export const INTRINSIC_PAINT_TAGS: ReadonlySet<string> = new Set([
   "img",
   "picture",
@@ -493,8 +501,26 @@ export const INTRINSIC_PAINT_TAGS: ReadonlySet<string> = new Set([
   "svg",
 ]);
 
-/** Computed background-color values that put down no ink. */
-const TRANSPARENT_BACKGROUNDS = new Set(["transparent", "rgba(0, 0, 0, 0)", "rgba(0,0,0,0)"]);
+/**
+ * Does this computed colour put down no ink?
+ *
+ * The `transparent` keyword computes to `rgba(0, 0, 0, 0)`, but ANY colour can carry a zero
+ * alpha — `rgba(255, 255, 255, 0)` is exactly as invisible and is what you get from fading a
+ * white background out. Matching known spellings misses those, so the alpha is read instead.
+ */
+function isTransparentColor(value: string): boolean {
+  if (!value || value === "transparent") return true;
+  // rgb/hsl and their -a forms all carry alpha as the fourth component. Computed
+  // background-color is serialized to rgb() by every engine we target, but matching both
+  // costs one alternation and removes the dependency on that.
+  const inner = /^(?:rgba?|hsla?)\(([^)]*)\)$/.exec(value)?.[1];
+  if (inner === undefined) return false;
+  // Handles both the legacy comma form and the `rgb(r g b / a)` slash form.
+  const parts = inner.split(/[\s,/]+/).filter(Boolean);
+  // An rgb() with no alpha component is fully opaque.
+  const alpha = parts[3];
+  return alpha !== undefined && Number.parseFloat(alpha) === 0;
+}
 
 const BORDER_SIDES = ["top", "right", "bottom", "left"] as const;
 
@@ -550,8 +576,7 @@ export function elementPaintsInk(
 
   const cs = win.getComputedStyle(el);
 
-  const bg = cs.backgroundColor;
-  if (bg && !TRANSPARENT_BACKGROUNDS.has(bg)) return true;
+  if (!isTransparentColor(cs.backgroundColor)) return true;
   if (cs.backgroundImage && cs.backgroundImage !== "none") return true;
 
   for (const side of BORDER_SIDES) {
@@ -570,15 +595,26 @@ interface PaintCandidate {
 }
 
 /**
- * The area of the smallest composition root, which is what a full-bleed layer is
- * measured against. Nested sub-compositions carry `data-composition-id` too, so the
- * reference frame shrinks with nesting.
+ * Area of the composition frame the point sits in — what a full-bleed layer is measured
+ * against. Nested sub-compositions carry `data-composition-id` too, so the innermost
+ * root CONTAINING the point wins.
+ *
+ * Containment is the load-bearing part. Taking the smallest root in the document
+ * regardless of where the point falls lets an unrelated sub-composition elsewhere on the
+ * frame shrink the reference: a 300x300 badge in a corner would make every mid-size
+ * painter in the 1920x1080 outer frame read as full-bleed, and the composition would go
+ * click-through under artwork the user can plainly see.
+ *
+ * Infinity when no root contains the point, which disables the full-bleed rule rather
+ * than guessing at a frame.
  */
-function compositionFrameArea(doc: Document): number {
+function compositionFrameArea(doc: Document, x: number, y: number): number {
   let smallest = Infinity;
   doc.querySelectorAll("[data-composition-id]").forEach((root) => {
     const rect = root.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) smallest = Math.min(smallest, rect.width * rect.height);
+    if (rect.width <= 0 || rect.height <= 0) return;
+    if (!boxContains(rect, x, y)) return;
+    smallest = Math.min(smallest, rect.width * rect.height);
   });
   return smallest;
 }
@@ -669,7 +705,7 @@ export function compositionPaintsAt(
   const fullBleed = opts?.fullBleedFraction ?? 0;
   if (fullBleed <= 0) return true;
 
-  const frameArea = compositionFrameArea(doc);
+  const frameArea = compositionFrameArea(doc, x, y);
   return frameArea === Infinity || winner.area < fullBleed * frameArea;
 }
 

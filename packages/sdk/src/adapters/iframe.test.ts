@@ -1078,6 +1078,30 @@ describe("elementPaintsInk", () => {
     );
   });
 
+  it("reads the alpha, so a NON-BLACK zero-alpha colour is still no ink", () => {
+    // Only the `transparent` keyword computes to rgba(0,0,0,0); a faded-out white stays
+    // rgba(255, 255, 255, 0), which a set of known spellings counts as painted.
+    for (const color of [
+      "rgba(255, 255, 255, 0)",
+      "rgba(12, 34, 56, 0.0)",
+      "rgb(255 255 255 / 0)",
+      "hsla(0, 0%, 0%, 0)",
+      "hsl(120 50% 50% / 0)",
+    ]) {
+      expect(elementPaintsInk(el(pnode({ style: { backgroundColor: color } })), win), color).toBe(
+        false,
+      );
+    }
+    // A non-zero alpha still paints, however faint.
+    expect(
+      elementPaintsInk(el(pnode({ style: { backgroundColor: "rgba(255, 255, 255, 0.01)" } })), win),
+    ).toBe(true);
+    // rgb() with no alpha component is opaque.
+    expect(elementPaintsInk(el(pnode({ style: { backgroundColor: "rgb(1, 2, 3)" } })), win)).toBe(
+      true,
+    );
+  });
+
   it("counts a background image", () => {
     expect(elementPaintsInk(el(pnode({ style: { backgroundImage: "url(a.png)" } })), win)).toBe(
       true,
@@ -1231,11 +1255,9 @@ describe("compositionPaintsAt", () => {
     expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500)).toBe(true);
   });
 
-  it("measures full-bleed against the INNERMOST composition root", () => {
-    // Nested sub-compositions carry data-composition-id too, so the reference frame
-    // shrinks with nesting and the threshold tightens. Pinned because it is inherited
-    // behaviour, not a decision: a 300×300 painter is full-bleed inside a 300×300
-    // sub-composition even though it covers 9% of the outer frame.
+  it("measures full-bleed against the innermost root CONTAINING the point", () => {
+    // A 300×300 painter really is full-bleed inside the 300×300 sub-composition it lives
+    // in, even though it covers 9% of the outer frame.
     const nested: PaintRect = { left: 0, top: 0, width: 300, height: 300 };
     const nodes = [
       root(),
@@ -1245,6 +1267,41 @@ describe("compositionPaintsAt", () => {
     expect(
       compositionPaintsAt(paintDoc(nodes), paintWin(), 150, 150, { fullBleedFraction: 0.9 }),
     ).toBe(false);
+  });
+
+  it("ignores a sub-composition the point is NOT inside when sizing the frame", () => {
+    // Regression: taking the smallest root in the DOCUMENT let a badge in one corner set the
+    // reference frame for the whole canvas, so mid-size artwork out in the 1000×1000 outer
+    // frame measured against 300×300, read as full-bleed, and went click-through under
+    // something the user can plainly see — the unsafe direction.
+    const badge: PaintRect = { left: 0, top: 0, width: 300, height: 300 };
+    const nodes = [
+      root(),
+      pnode({ attrs: { "data-composition-id": "badge" }, rect: badge }),
+      pnode({
+        style: { backgroundColor: "#f00" },
+        rect: { left: 500, top: 500, width: 300, height: 300 },
+      }),
+    ];
+    expect(
+      compositionPaintsAt(paintDoc(nodes), paintWin(), 600, 600, { fullBleedFraction: 0.9 }),
+    ).toBe(true);
+  });
+
+  it("disables the full-bleed rule when no root contains the point", () => {
+    const nodes = [
+      pnode({
+        attrs: { "data-composition-id": "elsewhere" },
+        rect: { left: 0, top: 0, width: 10, height: 10 },
+      }),
+      pnode({
+        style: { backgroundColor: "#f00" },
+        rect: { left: 400, top: 400, width: 200, height: 200 },
+      }),
+    ];
+    expect(
+      compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500, { fullBleedFraction: 0.9 }),
+    ).toBe(true);
   });
 
   it("skips display:none, visibility:hidden and zero-area boxes", () => {
