@@ -42,8 +42,10 @@ CSS:
 Anime.js:
 
 ```js
-const animation = anime.timeline({ autoplay: false });
-animation.add({ targets: "<selector>" /* derived channels */ });
+const animation = anime.createTimeline({ autoplay: false });
+animation.add("<selector>", {
+  /* derived channels */
+});
 window.__hfAnime = window.__hfAnime || [];
 window.__hfAnime.push(animation);
 ```
