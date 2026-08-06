@@ -46,6 +46,27 @@ export interface DraftProps {
   height?: number;
 }
 
+export interface PaintsAtOptions {
+  /**
+   * A hit whose smallest painting box covers at least this fraction of the composition
+   * frame reads as background rather than ink. 0 (the default) counts every painting box.
+   *
+   * Host policy, not a fact about the composition: an editor that treats "you clicked a
+   * full-bleed layer" as "you clicked nothing" wants ~0.9, while a caller asking the
+   * literal ink question wants 0.
+   */
+  fullBleedFraction?: number;
+
+  /**
+   * Consider only model-addressable elements (`[data-hf-id]`). Default true.
+   *
+   * False widens the walk to every element, which catches nodes created after the
+   * document was stamped (split-text word spans, cloned nodes) at the cost of a larger
+   * candidate set.
+   */
+  addressableOnly?: boolean;
+}
+
 /**
  * Injectable preview adapter — decouples the SDK from the host preview surface.
  * The null/headless adapter stubs all methods (no browser needed).
@@ -57,6 +78,25 @@ export interface DraftProps {
 export interface PreviewAdapter {
   /** Sync hit-test at composition coordinates. Requires same-origin iframe. */
   elementAtPoint(x: number, y: number, opts?: { atTime?: number }): ElementAtPointResult | null;
+
+  /**
+   * Does the composition put ink at (x, y)? Same coordinate space as `elementAtPoint`.
+   *
+   * The question a host layering a transparent composition over other content has to
+   * answer before it swallows a click: is the user pointing AT something, or through an
+   * empty gap at whatever sits beneath? Geometry alone cannot tell — a composition is
+   * mostly full-bleed wrapper `<div>`s with no visual presence, and those boxes cover
+   * every pixel of the frame.
+   *
+   * `null` = not knowable (document not loaded, not readable, adapter has no surface).
+   * Callers must treat null as PAINTED: erring toward "paints" costs a click that selects
+   * the composition, erring the other way makes it vanish from under the cursor.
+   *
+   * Deliberately not derived from `elementsFromPoint`, which omits `pointer-events: none`
+   * nodes — those still paint, and reporting no ink over visible artwork is the failure
+   * this fail-safe direction exists to avoid.
+   */
+  paintsAt?(x: number, y: number, opts?: PaintsAtOptions): boolean | null;
 
   /** Apply draft CSS markers to the preview element (60fps, SDK not involved) */
   applyDraft(id: string, props: DraftProps): void;

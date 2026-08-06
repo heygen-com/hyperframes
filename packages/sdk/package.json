@@ -34,6 +34,11 @@
       "import": "./src/adapters/headless.ts",
       "types": "./src/adapters/headless.ts"
     },
+    "./adapters/iframe": {
+      "bun": "./src/adapters/iframe.ts",
+      "import": "./src/adapters/iframe.ts",
+      "types": "./src/adapters/iframe.ts"
+    },
     "./editing": {
       "bun": "./src/editing/affordances.ts",
       "import": "./src/editing/affordances.ts",
@@ -58,6 +63,10 @@
       "./adapters/headless": {
         "import": "./dist/adapters/headless.js",
         "types": "./dist/adapters/headless.d.ts"
+      },
+      "./adapters/iframe": {
+        "import": "./dist/adapters/iframe.js",
+        "types": "./dist/adapters/iframe.d.ts"
       },
       "./editing": {
         "import": "./dist/editing/affordances.js",

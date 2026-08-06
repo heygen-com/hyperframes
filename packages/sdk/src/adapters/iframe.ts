@@ -26,6 +26,16 @@
  *   only when currentSrc/dimensions change. Phase 1 is optimized for static images.
  * - Phase 2 (full per-pixel alpha via drawElement rasterization) is NOT built
  *   here — gated on a perf spike.
+ *
+ * Paint query (paintsAt):
+ * - Answers "does the composition put ink here", which is a different question from
+ *   "what element is here" and needs a different traversal. elementsFromPoint omits
+ *   `pointer-events: none` nodes; those still paint, so a paint query built on the
+ *   z-stack reports no ink over visible artwork. paintsAt therefore walks element
+ *   BOXES geometrically and is blind to pointer-events and z-index.
+ * - Ink itself is a computed-style heuristic (background, border, own text, intrinsic
+ *   media) EXCEPT for <img>, which routes through the alpha sampler above — so a
+ *   transparent PNG only paints where its pixels do.
  */
 
 import {
@@ -36,7 +46,7 @@ import {
   composeTranslate,
   readCurrentTranslate,
 } from "@hyperframes/core/runtime/position-edits";
-import type { PreviewAdapter, ElementAtPointResult, DraftProps } from "./types.js";
+import type { PreviewAdapter, ElementAtPointResult, DraftProps, PaintsAtOptions } from "./types.js";
 import type { EditOp, Composition } from "../types.js";
 import { applyPatchesToDocument, applyOverrideSet } from "../engine/apply-patches.js";
 
@@ -374,7 +384,7 @@ function hasRotationOrSkew(el: Element | null, win: Window & typeof globalThis):
  * element which lives in the iframe's document.
  */
 // fallow-ignore-next-line complexity
-function imageAlphaOpaqueAt(
+export function imageAlphaOpaqueAt(
   img: HTMLImageElement,
   clientX: number,
   clientY: number,
@@ -472,6 +482,197 @@ function imageAlphaOpaqueAt(
   }
 }
 
+// ─── Paint query ──────────────────────────────────────────────────────────────
+
+/** Elements that paint by virtue of what they are, whatever their CSS says. */
+export const INTRINSIC_PAINT_TAGS: ReadonlySet<string> = new Set([
+  "img",
+  "picture",
+  "video",
+  "canvas",
+  "svg",
+]);
+
+/** Computed background-color values that put down no ink. */
+const TRANSPARENT_BACKGROUNDS = new Set(["transparent", "rgba(0, 0, 0, 0)", "rgba(0,0,0,0)"]);
+
+const BORDER_SIDES = ["top", "right", "bottom", "left"] as const;
+
+/**
+ * The element's OWN non-whitespace text — a direct child text node, not text that
+ * lives in a descendant. A wrapper around a caption doesn't paint; the caption does.
+ * Without this, every ancestor of a text node would count and the whole frame would
+ * read as painted.
+ */
+function hasOwnText(el: Element): boolean {
+  for (const node of Array.from(el.childNodes)) {
+    if (node.nodeType === 3 /* TEXT_NODE */ && (node.textContent ?? "").trim() !== "") return true;
+  }
+  return false;
+}
+
+/**
+ * Does this element put ink on the frame, and — when `point` is supplied and the
+ * element is an image — ink at that specific point?
+ *
+ * Mostly a heuristic over computed style, because a composition's ordinary elements
+ * cannot be sampled without rasterizing them. `<img>` is the exception: the alpha
+ * sampler above reads the actual pixel, so a transparent PNG paints only where its
+ * pixels do. `<picture>` defers to the `<img>` it wraps, since the wrapper itself
+ * paints nothing.
+ *
+ * KNOWN OVER-COUNT: a `background-image` that is itself mostly transparent reads as
+ * painting across its whole box. Narrowing it needs a second sampling path (resolve
+ * the `url()`, load it, map through background-size/position). Erring toward "paints"
+ * is the safe direction — the cost is a click that selects the composition, not a
+ * click that vanishes.
+ *
+ * Transparency by CSS (`display: none`, `visibility: hidden`, `opacity: 0`) is NOT
+ * handled here; `compositionPaintsAt` filters those before asking.
+ */
+export function elementPaintsInk(
+  el: Element,
+  win: Window & typeof globalThis,
+  point?: { x: number; y: number },
+): boolean {
+  const tag = el.tagName.toLowerCase();
+
+  if (tag === "picture") {
+    const img = el.querySelector("img");
+    return img ? elementPaintsInk(img, win, point) : true;
+  }
+
+  if (point && win.HTMLImageElement && el instanceof win.HTMLImageElement) {
+    return imageAlphaOpaqueAt(el, point.x, point.y, win);
+  }
+
+  if (INTRINSIC_PAINT_TAGS.has(tag)) return true;
+
+  const cs = win.getComputedStyle(el);
+
+  const bg = cs.backgroundColor;
+  if (bg && !TRANSPARENT_BACKGROUNDS.has(bg)) return true;
+  if (cs.backgroundImage && cs.backgroundImage !== "none") return true;
+
+  for (const side of BORDER_SIDES) {
+    const style = cs.getPropertyValue(`border-${side}-style`);
+    const width = Number.parseFloat(cs.getPropertyValue(`border-${side}-width`) || "0");
+    if (style && style !== "none" && style !== "hidden" && width > 0) return true;
+  }
+
+  return hasOwnText(el);
+}
+
+interface PaintCandidate {
+  el: Element;
+  area: number;
+  depth: number;
+}
+
+/**
+ * The area of the smallest composition root, which is what a full-bleed layer is
+ * measured against. Nested sub-compositions carry `data-composition-id` too, so the
+ * reference frame shrinks with nesting.
+ */
+function compositionFrameArea(doc: Document): number {
+  let smallest = Infinity;
+  doc.querySelectorAll("[data-composition-id]").forEach((root) => {
+    const rect = root.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) smallest = Math.min(smallest, rect.width * rect.height);
+  });
+  return smallest;
+}
+
+function boxContains(rect: DOMRect, x: number, y: number): boolean {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+/**
+ * Is the element rendered at all? `display: none` needs no check here — it collapses
+ * the box, which the area guard already rejects — but `visibility` and `opacity` do
+ * not, and opacity has to be read up the ancestor chain: a fully opaque child inside
+ * a fade-in wrapper that has not started yet is invisible, and getComputedStyle does
+ * not multiply the cascade for us.
+ */
+function isRenderedVisible(el: Element, win: Window & typeof globalThis): boolean {
+  const cs = win.getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return false;
+  return isOpacityVisible(el, win);
+}
+
+function depthOf(el: Element): number {
+  let depth = 0;
+  for (let p = el.parentElement; p; p = p.parentElement) depth++;
+  return depth;
+}
+
+/**
+ * `el` as a paint candidate for the point, or null when it cannot contribute ink
+ * there. Ink itself is NOT tested here — that is the expensive part, deferred until
+ * the candidates are ordered.
+ */
+function paintCandidateAt(
+  el: Element,
+  win: Window & typeof globalThis,
+  x: number,
+  y: number,
+): PaintCandidate | null {
+  // Composition roots set the frame reference; they are never candidates themselves.
+  if (el.hasAttribute("data-composition-id")) return null;
+
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  if (!boxContains(rect, x, y)) return null;
+  if (!isRenderedVisible(el, win)) return null;
+
+  return { el, area: rect.width * rect.height, depth: depthOf(el) };
+}
+
+/**
+ * Does the composition in `doc` put ink at (x, y)?
+ *
+ * A GEOMETRIC walk, not a z-stack one: every element whose border box contains the
+ * point is a candidate, regardless of pointer-events, z-index, or what paints over
+ * it. That is what makes the answer "is there artwork here" rather than "what would
+ * receive this click" — an author's `pointer-events: none` overlay still paints.
+ *
+ * Candidates are ordered smallest-box-first (deeper node wins a near-tie, matching
+ * the way a host picks the most specific element) and ink is evaluated lazily down
+ * that order, so the common case costs at most one alpha sample rather than one per
+ * candidate.
+ *
+ * Exported so a host whose hit-test policy differs can reuse the ink test without
+ * taking the adapter with it.
+ */
+export function compositionPaintsAt(
+  doc: Document,
+  win: Window & typeof globalThis,
+  x: number,
+  y: number,
+  opts?: PaintsAtOptions,
+): boolean {
+  const selector = (opts?.addressableOnly ?? true) ? "[data-hf-id]" : "*";
+  const candidates: PaintCandidate[] = [];
+  doc.querySelectorAll(selector).forEach((el) => {
+    const candidate = paintCandidateAt(el, win, x, y);
+    if (candidate) candidates.push(candidate);
+  });
+
+  // Smallest area first; on a near-tie prefer the deeper (more specific) element.
+  candidates.sort((a, b) =>
+    Math.abs(a.area - b.area) <= 0.5 ? b.depth - a.depth : a.area - b.area,
+  );
+
+  const winner = candidates.find((c) => elementPaintsInk(c.el, win, { x, y }));
+  if (!winner) return false;
+
+  const fullBleed = opts?.fullBleedFraction ?? 0;
+  if (fullBleed <= 0) return true;
+
+  const frameArea = compositionFrameArea(doc);
+  return frameArea === Infinity || winner.area < fullBleed * frameArea;
+}
+
 // ─── IframePreviewAdapter ─────────────────────────────────────────────────────
 
 /**
@@ -562,6 +763,27 @@ class IframePreviewAdapter implements PreviewAdapter {
     }
 
     return null;
+  }
+
+  /**
+   * Does the composition put ink at (x, y)? See PreviewAdapter.paintsAt.
+   *
+   * null when the document is unreachable — not loaded, or cross-origin despite the
+   * adapter's same-origin contract. Callers treat null as painted, so a composition
+   * that is still loading stays clickable.
+   */
+  paintsAt(x: number, y: number, opts?: PaintsAtOptions): boolean | null {
+    let doc: Document | null;
+    let win: (Window & typeof globalThis) | null;
+    try {
+      doc = this.iframe.contentDocument;
+      win = this.iframe.contentWindow as (Window & typeof globalThis) | null;
+    } catch {
+      // Cross-origin contentDocument access throws. Unknowable, not "no ink".
+      return null;
+    }
+    if (!doc || !win) return null;
+    return compositionPaintsAt(doc, win, x, y, opts);
   }
 
   /**

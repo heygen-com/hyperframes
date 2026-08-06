@@ -544,6 +544,12 @@
       // this PR only teaches the server scan to prefer its reported PID, but that
       // line shift makes fallow re-flag the inherited probe clones.
       "packages/cli/src/server/portUtils.ts",
+      // iframe.test.ts: the remaining clone groups are pre-existing per-case arrange
+      // blocks in the selection and draft-loop suites (build an adapter, wire a spy,
+      // act). Appending the paint-query suite shifts their line numbers and re-flags
+      // them; each block states its own setup on purpose, which a shared fixture
+      // would hide.
+      "packages/sdk/src/adapters/iframe.test.ts",
       // gsapParserAcorn.motionEval.test.ts: parallel arrange/act/assert cases for
       // the staggered-collection honesty pass (.from reveal vs .to landing on the
       // rest pose). Each asserts a distinct keyframe shape; collapsing the shared

@@ -99,6 +99,44 @@ iframeDoc.addEventListener("click", (e) => {
 
 `resolveNearestHfElement` returns `null` when the walk exits the tree without finding a `[data-hf-id]` node, when the matching node carries `[data-hf-root]` (the root is transparent to selection), or when `isVisible` returns `false` for that node.
 
+## Transparent compositions over other content
+
+A composition authored as an overlay — a small graphic on an otherwise-empty 1080×1920 frame, layered over a video or an avatar — is still a rectangular DOM box covering every pixel of the frame. Without help it swallows every click, and whatever sits beneath it becomes unreachable.
+
+`preview.paintsAt(x, y)` is the question you need answered: does the composition put ink here, or is the pointer over an empty gap? Toggle `pointer-events` on your wrapper from the answer, and let the browser deliver the event to the right target:
+
+```typescript
+const wrapper = document.querySelector<HTMLElement>("#composition-wrapper")!;
+
+function updatePassThrough(clientX: number, clientY: number, altKey: boolean) {
+  const point = clientToCompositionCoords(clientX, clientY);
+  // Alt is the escape hatch for grabbing the composition itself in an empty region.
+  // `null` means the answer is not knowable yet — treat it as painted, so a
+  // composition that is still loading stays clickable.
+  const painted = point ? (preview.paintsAt?.(point.x, point.y) ?? null) : null;
+  const passThrough = !!point && !altKey && painted === false;
+  wrapper.style.pointerEvents = passThrough ? "none" : "";
+}
+```
+
+Three things are easy to get wrong here:
+
+<Steps>
+  <Step title="Decide before the press, not during it">
+    The browser picks an event's target before any handler runs, so flipping `pointer-events` inside `mousedown` cannot retarget the click already in flight. Sample the pointer position on `mousemove` and keep the decision current.
+  </Step>
+  <Step title="Re-evaluate on every frame, not only on movement">
+    Animated artwork moves under a stationary cursor. Anything that can change the answer — pointer movement, the Alt key, and the playhead — has to re-run the query from the last known position.
+  </Step>
+  <Step title="Treat null as painted">
+    `paintsAt` returns `null` when the document is not loaded or not readable. Erring toward "paints" costs a click that selects the composition; erring the other way makes the composition vanish from under the cursor.
+  </Step>
+</Steps>
+
+Pass `{ fullBleedFraction: 0.9 }` if your editor treats a layer covering nearly the whole frame as background rather than artwork — a common choice, since a full-bleed wrapper is usually scaffolding rather than something the user is pointing at.
+
+Do not reimplement this with `elementsFromPoint`. That stack omits `pointer-events: none` nodes, and a decorative overlay carrying `pointer-events: none` still paints — a z-stack query would report no ink over visible artwork and pass the click through anyway. `paintsAt` walks element boxes geometrically for that reason.
+
 ## Draft loop: 60fps drag without model mutations
 
 The draft loop keeps the model clean during a drag. The SDK is **not** in the 60fps path — you call `preview.applyDraft` on every `pointermove` and `preview.commitPreview` once on `pointerup`. The model sees exactly one `moveElement` op per drag, rather than hundreds.

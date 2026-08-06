@@ -15,6 +15,10 @@
  * - z-stack fallthrough via mock elementsFromPoint
  * - canvas taint → opaque fallback
  * - non-image regression (WS-A1 opacity behavior unchanged)
+ *
+ * Paint-query tests (elementPaintsInk / compositionPaintsAt / paintsAt) live at the
+ * bottom of this file and carry their own fake-DOM helpers: the walk is geometric, so
+ * they need element boxes and computed style rather than a hit-test stack.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -24,6 +28,8 @@ import {
   createIframePreviewAdapter,
   alphaIsOpaque,
   mapPointToImagePixel,
+  elementPaintsInk,
+  compositionPaintsAt,
   _imgCanvasCache,
 } from "./iframe.js";
 import type { ElementAtPointResult } from "./types.js";
@@ -894,5 +900,462 @@ describe("WS-G: z-stack fallthrough via mock elementsFromPoint", () => {
       { HTMLImageElement: FakeHTMLImageElement, getComputedStyle: () => ({ opacity: "1" }) },
     );
     expect(createIframePreviewAdapter(noStack).elementAtPoint(50, 50)).toEqual(expected);
+  });
+});
+
+// ─── Paint query: elementPaintsInk / compositionPaintsAt / paintsAt ──────────
+
+/**
+ * The paint query decides whether a host layering a transparent composition over
+ * other content swallows a click or lets it through, so both directions matter: a
+ * false negative makes visible artwork unclickable, a false positive makes the
+ * composition opaque to interaction again.
+ *
+ * These need richer fakes than the resolver tests above — boxes, computed style and
+ * a document to walk — because the walk is geometric rather than a z-stack.
+ */
+
+interface PaintRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const PAINT_DEFAULT_STYLE: Record<string, string> = {
+  display: "block",
+  visibility: "visible",
+  opacity: "1",
+  backgroundColor: "rgba(0, 0, 0, 0)",
+  backgroundImage: "none",
+};
+
+const paintStyles = new WeakMap<object, Record<string, string>>();
+
+function domRect(r: PaintRect): DOMRect {
+  return {
+    ...r,
+    right: r.left + r.width,
+    bottom: r.top + r.height,
+  } as DOMRect;
+}
+
+interface PaintNode {
+  tagName: string;
+  attrs: Record<string, string>;
+  parentElement: PaintNode | null;
+  childNodes: Array<{ nodeType: number; textContent: string }>;
+  children: PaintNode[];
+  getBoundingClientRect(): DOMRect;
+  getAttribute(name: string): string | null;
+  hasAttribute(name: string): boolean;
+  querySelector(selector: string): PaintNode | null;
+}
+
+function pnode(init: {
+  tag?: string;
+  attrs?: Record<string, string>;
+  style?: Record<string, string>;
+  rect?: PaintRect;
+  text?: string;
+  parent?: PaintNode | null;
+}): PaintNode {
+  const rect = init.rect ?? { left: 0, top: 0, width: 100, height: 100 };
+  const node: PaintNode = {
+    tagName: (init.tag ?? "div").toUpperCase(),
+    attrs: { "data-hf-id": `hf-${init.tag ?? "div"}`, ...init.attrs },
+    parentElement: init.parent ?? null,
+    childNodes: init.text === undefined ? [] : [{ nodeType: 3, textContent: init.text }],
+    children: [],
+    getBoundingClientRect: () => domRect(rect),
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
+    },
+    hasAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attrs, name);
+    },
+    querySelector(selector) {
+      return this.children.find((c) => c.tagName.toLowerCase() === selector) ?? null;
+    },
+  };
+  if (init.style) paintStyles.set(node, init.style);
+  init.parent?.children.push(node);
+  return node;
+}
+
+/** An image node the walk can pick up: a FakeHTMLImageElement with a box and a parent. */
+function pimg(
+  id: string,
+  rect: PaintRect,
+  opts?: { parent?: PaintNode | null; src?: string; naturalWidth?: number },
+): FakeHTMLImageElement {
+  const img = new FakeHTMLImageElement(id);
+  img.getBoundingClientRect = () => domRect(rect);
+  img.parentElement = (opts?.parent ?? null) as unknown as FakeHTMLImageElement | null;
+  if (opts?.src) {
+    img.src = opts.src;
+    img.currentSrc = opts.src;
+  }
+  if (opts?.naturalWidth !== undefined) img.naturalWidth = opts.naturalWidth;
+  return img;
+}
+
+function paintWin(): Window & typeof globalThis {
+  return {
+    HTMLImageElement: FakeHTMLImageElement,
+    getComputedStyle(el: object) {
+      const merged = { ...PAINT_DEFAULT_STYLE, ...(paintStyles.get(el) ?? {}) };
+      return {
+        ...merged,
+        getPropertyValue(name: string) {
+          if (merged[name] !== undefined) return merged[name];
+          return name.endsWith("-width") ? "0px" : "none";
+        },
+      } as unknown as CSSStyleDeclaration;
+    },
+  } as unknown as Window & typeof globalThis;
+}
+
+function paintDoc(nodes: object[]): Document {
+  return {
+    querySelectorAll(selector: string) {
+      if (selector === "*") return nodes;
+      const attr = selector.slice(1, -1);
+      return nodes.filter((n) => (n as PaintNode).hasAttribute(attr));
+    },
+  } as unknown as Document;
+}
+
+/** OffscreenCanvas stub that counts pixel reads, for the lazy-sampling guard. */
+function stubCountingCanvas(): { restore: () => void; reads: () => number } {
+  const orig = globalThis.OffscreenCanvas as typeof OffscreenCanvas | undefined;
+  let reads = 0;
+  globalThis.OffscreenCanvas = class {
+    constructor(
+      public width: number,
+      public height: number,
+    ) {}
+    getContext(_type: string) {
+      return {
+        drawImage() {},
+        getImageData() {
+          reads++;
+          return { data: new Uint8ClampedArray([255, 0, 0, 255]), width: 1, height: 1 };
+        },
+      };
+    }
+  } as unknown as typeof OffscreenCanvas;
+  return {
+    restore: () => {
+      if (orig === undefined) {
+        delete (globalThis as Record<string, unknown>).OffscreenCanvas;
+      } else {
+        globalThis.OffscreenCanvas = orig;
+      }
+    },
+    reads: () => reads,
+  };
+}
+
+const el = (n: PaintNode) => n as unknown as Element;
+
+describe("elementPaintsInk", () => {
+  const win = paintWin();
+
+  it("treats a bare layout wrapper as NOT painting", () => {
+    // The common case, and the reason this exists: a composition is mostly full-bleed
+    // wrappers with no visual presence, and every one covers what sits beneath.
+    expect(elementPaintsInk(el(pnode({})), win)).toBe(false);
+  });
+
+  it("counts a background colour, but not a transparent one", () => {
+    expect(elementPaintsInk(el(pnode({ style: { backgroundColor: "#ff0000" } })), win)).toBe(true);
+    expect(elementPaintsInk(el(pnode({ style: { backgroundColor: "rgba(0,0,0,0)" } })), win)).toBe(
+      false,
+    );
+    expect(elementPaintsInk(el(pnode({ style: { backgroundColor: "transparent" } })), win)).toBe(
+      false,
+    );
+  });
+
+  it("counts a background image", () => {
+    expect(elementPaintsInk(el(pnode({ style: { backgroundImage: "url(a.png)" } })), win)).toBe(
+      true,
+    );
+  });
+
+  it("counts a visible border but not a zero-width or `none` one", () => {
+    const bordered = pnode({
+      style: { "border-top-style": "solid", "border-top-width": "2px" },
+    });
+    expect(elementPaintsInk(el(bordered), win)).toBe(true);
+
+    const zeroWidth = pnode({
+      style: { "border-top-style": "solid", "border-top-width": "0px" },
+    });
+    expect(elementPaintsInk(el(zeroWidth), win)).toBe(false);
+
+    const styleNone = pnode({
+      style: { "border-top-style": "none", "border-top-width": "2px" },
+    });
+    expect(elementPaintsInk(el(styleNone), win)).toBe(false);
+  });
+
+  it("counts intrinsic media regardless of styling", () => {
+    for (const tag of ["video", "canvas", "svg"]) {
+      expect(elementPaintsInk(el(pnode({ tag })), win), tag).toBe(true);
+    }
+  });
+
+  it("counts an element's OWN text, not text belonging to a descendant", () => {
+    expect(elementPaintsInk(el(pnode({ tag: "span", text: "Clean" })), win)).toBe(true);
+
+    // Without the own-text rule every ancestor of a caption would count as painting,
+    // and the whole frame would read as covered.
+    const wrapper = pnode({});
+    pnode({ tag: "span", text: "Clean", parent: wrapper });
+    expect(elementPaintsInk(el(wrapper), win)).toBe(false);
+
+    expect(elementPaintsInk(el(pnode({ text: "   \n  " })), win)).toBe(false);
+  });
+});
+
+describe("elementPaintsInk: <img> routes through the alpha sampler", () => {
+  beforeEach(() => {
+    _imgCanvasCache.clear();
+  });
+
+  const rect = { left: 0, top: 0, width: 100, height: 100 };
+
+  /** Ink at the centre of a 100×100 image, under a controlled canvas behaviour. */
+  function inkAtCentre(
+    behavior: CanvasAlphaBehavior,
+    build: () => Element = () => pimg("hf-img", rect) as unknown as Element,
+  ): boolean {
+    const restore = stubOffscreenCanvas(behavior);
+    try {
+      return elementPaintsInk(build(), paintWin(), { x: 50, y: 50 });
+    } finally {
+      restore();
+    }
+  }
+
+  it("an opaque pixel paints", () => {
+    expect(inkAtCentre("opaque")).toBe(true);
+  });
+
+  it("a transparent pixel does NOT paint — the whole point of the alpha path", () => {
+    expect(inkAtCentre("transparent")).toBe(false);
+  });
+
+  it("a tainted canvas fails safe to painted", () => {
+    expect(inkAtCentre("tainted")).toBe(true);
+  });
+
+  it("an unloaded image fails safe to painted", () => {
+    expect(
+      inkAtCentre(
+        "transparent",
+        () => pimg("hf-img", rect, { naturalWidth: 0 }) as unknown as Element,
+      ),
+    ).toBe(true);
+  });
+
+  it("falls back to the tag rule when no point is supplied", () => {
+    // Point-free callers are asking "could this paint at all", which for an image is yes.
+    expect(elementPaintsInk(pimg("hf-img", rect) as unknown as Element, paintWin())).toBe(true);
+  });
+
+  it("<picture> defers to the <img> it wraps rather than painting unconditionally", () => {
+    const withInnerImg = () => {
+      const picture = pnode({ tag: "picture" });
+      picture.children.push(pimg("hf-inner", rect) as unknown as PaintNode);
+      return el(picture);
+    };
+    expect(inkAtCentre("transparent", withInnerImg)).toBe(false);
+  });
+
+  it("<picture> with no inner <img> still paints", () => {
+    expect(elementPaintsInk(el(pnode({ tag: "picture" })), paintWin(), { x: 1, y: 1 })).toBe(true);
+  });
+});
+
+describe("compositionPaintsAt", () => {
+  beforeEach(() => {
+    _imgCanvasCache.clear();
+  });
+
+  const FRAME: PaintRect = { left: 0, top: 0, width: 1000, height: 1000 };
+  const root = () => pnode({ attrs: { "data-composition-id": "main" }, rect: FRAME });
+
+  it("an unpainted full-bleed wrapper does not mask a painted child", () => {
+    const nodes = [
+      root(),
+      pnode({ rect: FRAME }),
+      pnode({
+        attrs: { "data-hf-id": "hf-sun" },
+        style: { backgroundColor: "#ff0" },
+        rect: { left: 100, top: 100, width: 180, height: 180 },
+      }),
+    ];
+    const paints = compositionPaintsAt(paintDoc(nodes), paintWin(), 150, 150, {
+      fullBleedFraction: 0.9,
+    });
+    expect(paints).toBe(true);
+  });
+
+  it("reports no ink where only an unpainted wrapper sits", () => {
+    const nodes = [root(), pnode({ rect: FRAME })];
+    expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500)).toBe(false);
+  });
+
+  it("reports no ink outside every box", () => {
+    const nodes = [
+      root(),
+      pnode({
+        style: { backgroundColor: "#f00" },
+        rect: { left: 0, top: 0, width: 10, height: 10 },
+      }),
+    ];
+    expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500)).toBe(false);
+  });
+
+  it("fullBleedFraction rejects a lone full-bleed painter; the default accepts it", () => {
+    const nodes = [root(), pnode({ style: { backgroundColor: "rgba(0,0,0,0.3)" }, rect: FRAME })];
+    // Host policy: an editor reads "you clicked a layer covering the whole frame" as
+    // "you clicked the background".
+    expect(
+      compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500, { fullBleedFraction: 0.9 }),
+    ).toBe(false);
+    // The literal ink question: a full-frame scrim does put ink there.
+    expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500)).toBe(true);
+  });
+
+  it("measures full-bleed against the INNERMOST composition root", () => {
+    // Nested sub-compositions carry data-composition-id too, so the reference frame
+    // shrinks with nesting and the threshold tightens. Pinned because it is inherited
+    // behaviour, not a decision: a 300×300 painter is full-bleed inside a 300×300
+    // sub-composition even though it covers 9% of the outer frame.
+    const nested: PaintRect = { left: 0, top: 0, width: 300, height: 300 };
+    const nodes = [
+      root(),
+      pnode({ attrs: { "data-composition-id": "inner" }, rect: nested }),
+      pnode({ style: { backgroundColor: "#f00" }, rect: nested }),
+    ];
+    expect(
+      compositionPaintsAt(paintDoc(nodes), paintWin(), 150, 150, { fullBleedFraction: 0.9 }),
+    ).toBe(false);
+  });
+
+  it("skips display:none, visibility:hidden and zero-area boxes", () => {
+    const painted = { backgroundColor: "#f00" };
+    const box = { left: 0, top: 0, width: 100, height: 100 };
+    for (const style of [
+      { ...painted, display: "none" },
+      { ...painted, visibility: "hidden" },
+    ]) {
+      const nodes = [root(), pnode({ style, rect: box })];
+      expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 50, 50)).toBe(false);
+    }
+    const collapsed = [
+      root(),
+      pnode({ style: painted, rect: { left: 0, top: 0, width: 0, height: 0 } }),
+    ];
+    expect(compositionPaintsAt(paintDoc(collapsed), paintWin(), 0, 0)).toBe(false);
+  });
+
+  it("skips an element hidden by an ANCESTOR's opacity:0", () => {
+    // getComputedStyle does not multiply the cascade, so a fully opaque child inside a
+    // fade-in wrapper that has not started yet reads as painting unless the check walks up.
+    const wrapper = pnode({
+      style: { opacity: "0" },
+      rect: { left: 0, top: 0, width: 200, height: 200 },
+    });
+    const child = pnode({
+      attrs: { "data-hf-id": "hf-child" },
+      style: { backgroundColor: "#f00" },
+      rect: { left: 0, top: 0, width: 100, height: 100 },
+      parent: wrapper,
+    });
+    expect(compositionPaintsAt(paintDoc([root(), wrapper, child]), paintWin(), 50, 50)).toBe(false);
+  });
+
+  it("addressableOnly:false picks up a node the stamping pass never saw", () => {
+    // Runtime-generated nodes (split-text word spans, clones) carry no data-hf-id.
+    const generated = pnode({
+      tag: "span",
+      attrs: {},
+      text: "word",
+      rect: { left: 0, top: 0, width: 50, height: 20 },
+    });
+    delete generated.attrs["data-hf-id"];
+    const nodes = [root(), generated];
+    expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 10, 10)).toBe(false);
+    expect(
+      compositionPaintsAt(paintDoc(nodes), paintWin(), 10, 10, { addressableOnly: false }),
+    ).toBe(true);
+  });
+
+  it("samples alpha lazily — the smallest painting box wins before the rest are read", () => {
+    // Guards the per-frame cost: ink is evaluated down the ordered candidates, so a hit
+    // on the most specific element must not have already paid for the ones behind it.
+    const canvas = stubCountingCanvas();
+    try {
+      const nodes = [
+        root(),
+        pimg("hf-big", { left: 0, top: 0, width: 400, height: 400 }, { src: "http://x/big.png" }),
+        pimg(
+          "hf-small",
+          { left: 0, top: 0, width: 100, height: 100 },
+          { src: "http://x/small.png" },
+        ),
+      ];
+      expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 50, 50)).toBe(true);
+      expect(canvas.reads()).toBe(1);
+    } finally {
+      canvas.restore();
+    }
+  });
+});
+
+describe("IframePreviewAdapter.paintsAt", () => {
+  beforeEach(() => {
+    _imgCanvasCache.clear();
+  });
+
+  const iframeWith = (doc: unknown, win: unknown) =>
+    ({ contentDocument: doc, contentWindow: win }) as unknown as HTMLIFrameElement;
+
+  it("returns null when the document is not reachable", () => {
+    // Not knowable, not "no ink" — callers treat null as painted so a composition that
+    // has not loaded stays clickable.
+    expect(createIframePreviewAdapter(iframeWith(null, paintWin())).paintsAt(1, 1)).toBeNull();
+    expect(createIframePreviewAdapter(iframeWith(paintDoc([]), null)).paintsAt(1, 1)).toBeNull();
+  });
+
+  it("returns null when contentDocument access throws (cross-origin)", () => {
+    const hostile = {} as HTMLIFrameElement;
+    Object.defineProperty(hostile, "contentDocument", {
+      get() {
+        throw new DOMException("Blocked a frame", "SecurityError");
+      },
+    });
+    expect(createIframePreviewAdapter(hostile).paintsAt(1, 1)).toBeNull();
+  });
+
+  it("delegates to the walk", () => {
+    const nodes = [
+      pnode({
+        attrs: { "data-composition-id": "main" },
+        rect: { left: 0, top: 0, width: 500, height: 500 },
+      }),
+      pnode({
+        style: { backgroundColor: "#f00" },
+        rect: { left: 0, top: 0, width: 100, height: 100 },
+      }),
+    ];
+    const adapter = createIframePreviewAdapter(iframeWith(paintDoc(nodes), paintWin()));
+    expect(adapter.paintsAt(50, 50)).toBe(true);
+    expect(adapter.paintsAt(400, 400)).toBe(false);
   });
 });
