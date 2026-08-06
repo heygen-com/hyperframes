@@ -192,6 +192,50 @@ describe("applyInlineStyle rebuilds rather than wraps", () => {
     expect(host.innerHTML).toBe('<span style="color: red">ab</span><br>cd');
   });
 
+  // The bug: a chip is `display: flex`, so each span became its own flex item.
+  // Colouring one word broke the centring and rewrapped the whole line.
+  it("keeps a flex container's text as one item, so colouring a word cannot reflow it", () => {
+    const host = mount("Hello this is a test to see how this work");
+    host.style.display = "flex";
+
+    applyInlineStyle(rangeOver(host, 28, 31), { color: "red" });
+
+    expect(host.children).toHaveLength(1);
+    expect(host.firstElementChild?.tagName).toBe("SPAN");
+    expect(host.firstElementChild?.getAttribute("style")).toBeNull();
+    expect(host.querySelector("span span")?.textContent).toBe("how");
+    expect(host.textContent).toBe("Hello this is a test to see how this work");
+  });
+
+  it("does the same for a grid container", () => {
+    const host = mount("abcdef");
+    host.style.display = "grid";
+
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "red" });
+
+    expect(host.children).toHaveLength(1);
+  });
+
+  it("does not wrap an ordinary block, which flows its text already", () => {
+    const host = mount("abcdef");
+
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "red" });
+
+    expect(host.innerHTML).toBe('ab<span style="color: red">cd</span>ef');
+  });
+
+  it("reads styling back out of the wrapper it added", () => {
+    const host = mount("abcdef");
+    host.style.display = "flex";
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "red" });
+
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "blue" });
+
+    expect(host.querySelectorAll("span span")).toHaveLength(1);
+    expect(host.querySelector("span span")?.getAttribute("style")).toBe("color: blue");
+    expect(host.textContent).toBe("abcdef");
+  });
+
   it("styles a run that sits after a line break", () => {
     const host = mount("ab<br>cd");
 

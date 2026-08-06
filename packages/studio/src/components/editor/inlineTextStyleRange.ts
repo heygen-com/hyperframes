@@ -193,22 +193,50 @@ function styleKey(style: Record<string, string>): string {
 /** Rebuild the element: bare text where there is no styling, one span where there is. */
 function render(host: Element, runs: StyledRun[]): void {
   const doc = host.ownerDocument;
+  const nodes = runNodes(doc, runs);
   host.replaceChildren();
+  if (nodes.length > 1 && laysOutItsChildren(host)) {
+    // Wrapped, because in a flex or grid container every child is an item to
+    // be laid out. Text that was one anonymous item becomes several boxes the
+    // moment a word inside it is coloured, and the element visibly reflows:
+    // centring, wrapping and order all change under an edit that was only ever
+    // meant to change a colour. One wrapper keeps it a single item, and the
+    // runs inside it stay inline text.
+    const wrapper = doc.createElement("span");
+    wrapper.append(...nodes);
+    host.append(wrapper);
+    return;
+  }
+  host.append(...nodes);
+}
+
+function runNodes(doc: Document, runs: StyledRun[]): Node[] {
+  const nodes: Node[] = [];
   for (const run of runs) {
     const key = styleKey(run.style);
     for (const [index, piece] of run.text.split(BREAK).entries()) {
-      if (index > 0) host.append(doc.createElement("br"));
+      if (index > 0) nodes.push(doc.createElement("br"));
       if (!piece) continue;
       if (!key) {
-        host.append(doc.createTextNode(piece));
+        nodes.push(doc.createTextNode(piece));
         continue;
       }
       const span = doc.createElement("span");
       span.setAttribute("style", key);
       span.textContent = piece;
-      host.append(span);
+      nodes.push(span);
     }
   }
+  return nodes;
+}
+
+/** Displays whose children are boxes it positions, rather than text it flows. */
+const LAYS_OUT_CHILDREN = new Set(["flex", "inline-flex", "grid", "inline-grid"]);
+
+function laysOutItsChildren(host: Element): boolean {
+  const view = host.ownerDocument.defaultView;
+  if (!view) return false;
+  return LAYS_OUT_CHILDREN.has(view.getComputedStyle(host).display);
 }
 
 /** Where a DOM position falls, counted in characters from the element's start. */
