@@ -699,3 +699,68 @@ describe("an unwritable config dir must not re-roll the seed", () => {
     });
   });
 });
+
+describe("identity-persistence classification (sticky per process)", () => {
+  let readConfig: typeof import("./config.js").readConfig;
+  let readConfigFresh: typeof import("./config.js").readConfigFresh;
+  let getIdentityPersistence: typeof import("./config.js").getIdentityPersistence;
+  let getIdentityWriteOutcome: typeof import("./config.js").getIdentityWriteOutcome;
+  let CONFIG_PATH: typeof import("./config.js").CONFIG_PATH;
+
+  beforeEach(async () => {
+    fsState.files.clear();
+    policyState.runtimeOverride = null;
+    vi.resetModules();
+    ({ readConfig, readConfigFresh, getIdentityPersistence, getIdentityWriteOutcome, CONFIG_PATH } =
+      await import("./config.js"));
+  });
+
+  it("classifies a fresh mint whose write landed as unknown, never durable", () => {
+    readConfig();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+
+  it("classifies an id loaded from a preexisting config as durable, with no write outcome", () => {
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ telemetryEnabled: true, anonymousId: "prior-id", bucketSeed: "seed" }),
+    );
+    readConfig();
+    expect(getIdentityPersistence()).toBe("durable");
+    expect(getIdentityWriteOutcome()).toBeUndefined();
+  });
+
+  it("classifies a fresh mint whose write failed as process_only", async () => {
+    const fs = await import("node:fs");
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw new Error("EACCES: permission denied");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    readConfig();
+    expect(getIdentityPersistence()).toBe("process_only");
+    expect(getIdentityWriteOutcome()).toBe("failed");
+
+    warn.mockRestore();
+    vi.mocked(fs.writeFileSync).mockImplementation((path, content) => {
+      fsState.files.set(String(path), String(content));
+    });
+  });
+
+  it("does not self-promote to durable when a fresh-install process re-reads its own write", () => {
+    readConfig();
+    expect(fsState.files.has(CONFIG_PATH)).toBe(true);
+    // The file now exists on disk; a cache-bypassing re-read hits the
+    // existing-file path — the ephemeral-HOME churn signature.
+    readConfigFresh();
+    expect(getIdentityPersistence()).toBe("unknown");
+  });
+
+  it("classifies a corrupt-config recovery mint by its write outcome, not as durable", () => {
+    fsState.files.set(CONFIG_PATH, "{not json");
+    readConfig();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+});
