@@ -601,10 +601,19 @@ export function wrapInlineScriptWithErrorBoundary(source: string, errorLabel: st
  * `getVariables()` returned `{}` only during render — parametrized sub-comps
  * silently shipped blank/default text in the final MP4 while snapshot QA passed
  * (issue #2064). Both callers now share this one builder so they can't drift.
+ *
+ * Every `<` is rewritten to its JSON unicode escape because this body is
+ * emitted into a `<script>` element, and `<script>` is a RAW TEXT element:
+ * HTML serialization does not escape its content, and the tokenizer ends it at
+ * the first `</script`. `JSON.stringify` escapes `"` and `\` but NOT `/`, so a
+ * variable value or key containing `</script>` would otherwise close the
+ * element early and the remainder would parse as markup. The escape is
+ * transparent to `JSON.parse`, so the value the runtime reads is unchanged.
  */
 export function buildVariablesByCompScript(
   variablesByComp: Record<string, Record<string, unknown>>,
 ): string | null {
   if (!variablesByComp || Object.keys(variablesByComp).length === 0) return null;
-  return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(variablesByComp)});`;
+  const json = JSON.stringify(variablesByComp).replace(/</g, "\\u003c");
+  return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${json});`;
 }
