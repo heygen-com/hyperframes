@@ -17,11 +17,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /** `plaintext-only` is what keeps a text edit from becoming a structural one. */
 const EDITABLE = "plaintext-only";
+/** Studio's accent, so the mark belongs to Studio rather than to the design. */
+const EDITING_OUTLINE = "2px solid #3CE6AC";
 
 export interface InlineTextEditSession {
   element: HTMLElement;
   /** What the element said when editing started, for putting back on cancel. */
   original: string;
+  /** The element's own outline, to put back when the session ends. */
+  outline: string;
 }
 
 export interface InlineTextEditControls {
@@ -63,6 +67,9 @@ export function useInlineTextEdit({
     // just nothing left to clean up.
     if (open.element.isConnected) {
       open.element.removeAttribute("contenteditable");
+      // Restored rather than cleared: the composition may have authored one.
+      open.element.style.outline = open.outline;
+      open.element.style.removeProperty("outline-offset");
       open.element.blur();
     }
     return open;
@@ -72,7 +79,17 @@ export function useInlineTextEdit({
     (element: HTMLElement): boolean => {
       if (openRef.current) return false;
 
-      const open = { element, original: element.textContent ?? "" };
+      const open = {
+        element,
+        original: element.textContent ?? "",
+        outline: element.style.outline,
+      };
+      // Drawn on the element itself, not in Studio's overlay above it. This is
+      // the only mark that says the caret is in the TEXT rather than the
+      // element being selected, and it has to sit in the same document as the
+      // caret to read that way.
+      element.style.outline = EDITING_OUTLINE;
+      element.style.outlineOffset = "2px";
       openRef.current = open;
       setSession(open);
       onPause?.();

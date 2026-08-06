@@ -12,6 +12,8 @@ import {
 import { ClipContextMenu } from "./ClipContextMenu";
 import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
+import { selectTimelineTrack, useSelectedTimelineTrack } from "./useTimelineTrackSelection";
+import { trackScopeRange } from "./timelineTrackScope";
 
 export interface ClipContextMenuState {
   x: number;
@@ -156,6 +158,9 @@ export function TimelineOverlays({
     if (clipContextMenu && !clipElement) setClipContextMenu(null);
   }, [clipContextMenu, clipElement, setClipContextMenu]);
 
+  const selectedTrack = useSelectedTimelineTrack();
+  const trackScope = trackScopeRange(selectedTrack, elements);
+
   return (
     <>
       {showShortcutHint && !showPopover && !rangeSelection && (
@@ -172,6 +177,20 @@ export function TimelineOverlays({
             setShowPopover(false);
             setRangeSelection(null);
           }}
+        />
+      )}
+
+      {/* Picking a track is itself the request to work on it, so the composer
+          opens with it rather than making the user find a second gesture. It
+          covers the track's whole span, which is what "this track" means when
+          no narrower time was asked for. */}
+      {!rangeSelection && trackScope && (
+        <EditPopover
+          rangeStart={trackScope.start}
+          rangeEnd={trackScope.end}
+          anchorX={trackScope.anchorX}
+          anchorY={trackScope.anchorY}
+          onClose={() => selectTimelineTrack(null)}
         />
       )}
 

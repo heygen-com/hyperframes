@@ -420,13 +420,15 @@ describe("TimelineTrackHeader", () => {
   describe("selecting the track", () => {
     afterEach(() => resetTimelineTrackSelection());
 
-    it("selects and deselects on the track's own button", () => {
+    // The name is the target: it is what a user points at when they mean
+    // "this track", and it used to be a bare number floating by the eye.
+    it("selects and deselects on the track's name", () => {
       const { host, root } = renderHeader();
 
-      click(host, "Select track 1");
+      click(host, "Select Hero card");
       expect(getSelectedTimelineTrack()).toBe(1 / 6);
 
-      click(host, "Deselect track 1");
+      click(host, "Deselect Hero card");
       expect(getSelectedTimelineTrack()).toBeNull();
       act(() => root.unmount());
     });
@@ -434,7 +436,7 @@ describe("TimelineTrackHeader", () => {
     it("reports itself pressed while it is the selected track", () => {
       const { host, root } = renderHeader();
 
-      click(host, "Select track 1");
+      click(host, "Select Hero card");
       const button = host.querySelector<HTMLButtonElement>('[data-track-select="true"]');
       expect(button?.getAttribute("aria-pressed")).toBe("true");
       act(() => root.unmount());

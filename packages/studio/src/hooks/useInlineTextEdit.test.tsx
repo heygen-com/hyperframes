@@ -230,4 +230,26 @@ describe("useInlineTextEdit", () => {
       act(() => root.unmount());
     });
   });
+
+  // The mark that says the caret is in the text, not that the element is
+  // selected. It has to live in the same document as the caret to read so.
+  it("outlines the element while it is being edited, and puts it back after", () => {
+    const element = heading();
+    element.style.outline = "1px dotted red";
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    // Serialisation order is the browser's; what matters is that it is the
+    // accent, solid, and thicker than whatever it replaced.
+    expect(element.style.outline).toContain("#3CE6AC");
+    expect(element.style.outline).toContain("2px");
+
+    act(() => controls().cancel());
+    expect(element.style.outline).toContain("dotted");
+    expect(element.style.outline).toContain("red");
+    expect(element.style.getPropertyValue("outline-offset")).toBe("");
+    act(() => root.unmount());
+  });
 });

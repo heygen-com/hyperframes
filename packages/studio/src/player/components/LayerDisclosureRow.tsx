@@ -14,6 +14,8 @@ export function LayerDisclosureRow({
   lanesId,
   onToggleClipExpanded,
   children,
+  onSelectTrack,
+  trackSelected = false,
 }: {
   keyframeClip: TimelineElement;
   clipCount: number;
@@ -30,6 +32,10 @@ export function LayerDisclosureRow({
   onToggleClipExpanded: () => void;
   /** Trailing controls that act on the LAYER (the visibility eye), not on a lane. */
   children?: React.ReactNode;
+  /** Scope the timeline to this track. Absent outside the editor. */
+  onSelectTrack?: () => void;
+  /** Whether this track is the one the timeline is scoped to. */
+  trackSelected?: boolean;
 }) {
   const name = keyframeClip.label ?? keyframeClip.domId ?? keyframeClip.id;
   return (
@@ -69,9 +75,27 @@ export function LayerDisclosureRow({
       <span aria-hidden="true" className="shrink-0 text-[13px] leading-none text-white/40">
         ◇
       </span>
-      <span className="min-w-0 flex-1 truncate font-medium" title={name}>
+      {/* The name is how a track is picked. It is the thing a user points at
+          when they mean "this track", so it is the control rather than a
+          separate marker sitting somewhere else in the row. */}
+      <button
+        type="button"
+        data-track-select="true"
+        aria-pressed={trackSelected}
+        aria-label={trackSelected ? `Deselect ${name}` : `Select ${name}`}
+        title={name}
+        disabled={!onSelectTrack}
+        className={`min-w-0 flex-1 truncate rounded border-0 bg-transparent p-0 text-left text-[11px] font-medium transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] disabled:cursor-default ${
+          trackSelected ? "text-[#3CE6AC]" : "text-inherit hover:text-white"
+        }`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelectTrack?.();
+        }}
+      >
         {name}
-      </span>
+      </button>
       <TrackClipCount clipCount={clipCount} />
       {children}
     </div>

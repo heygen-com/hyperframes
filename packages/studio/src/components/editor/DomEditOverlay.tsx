@@ -154,9 +154,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
 
-  // Double-click an element to edit its text where it sits.
-  const inlineText = useInlineTextEditing(selectionRef);
-
   // Brief highlight on the sibling a forward/backward z step crossed — drawn
   // in this studio overlay, never in the iframe DOM (see useZOrderCrossedFlash).
   const { zOrderFlashRect, handleZOrderCrossed } = useZOrderCrossedFlash({ overlayRef, iframeRef });
@@ -167,6 +164,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   groupSelectionsRef.current = groupSelections;
   const hoverSelectionRef = useRef(hoverSelection);
   hoverSelectionRef.current = hoverSelection;
+
+  // Double-click an element to edit its text where it sits.
+  const inlineText = useInlineTextEditing(selectionRef);
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
   onPathOffsetCommitRef.current = onPathOffsetCommit;
   const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
@@ -322,12 +322,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement) return;
-    // Checked before the post-gesture suppression below, which would otherwise
-    // swallow the press that opens an edit.
-    if (inlineText.startFromPress(event)) {
-      event.preventDefault();
-      return;
-    }
     if (suppressNextOverlayMouseDownRef.current) {
       suppressNextOverlayMouseDownRef.current = false;
       suppressNextBoxMouseDownRef.current = false;
@@ -361,6 +355,16 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
       onSelectionChangeRef.current(candidate, { additive: true });
+      return;
+    }
+
+    // A second press on the same spot opens that element's text. This is the
+    // press path that actually runs: the pointer handler prevents the default
+    // on its way through, so the overlay's own mousedown never fires, and the
+    // browser never pairs the presses into a dblclick either.
+    if (inlineText.startFromPress(event)) {
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
@@ -462,6 +466,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         if (!inlineText.editing) {
           focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
         }
+      }}
+      onKeyDown={(event) => {
+        if (!inlineText.handleKeyDown(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
       }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}

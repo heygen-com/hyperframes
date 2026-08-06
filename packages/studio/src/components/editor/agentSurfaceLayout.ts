@@ -190,6 +190,10 @@ export function resolveComposerPosition(
       AGENT_SURFACE_GAP,
       Math.max(AGENT_SURFACE_GAP, canvas.width - COMPOSER_WIDTH - AGENT_SURFACE_GAP),
     ),
-    top: clampNumber(rect.top, AGENT_SURFACE_GAP, Math.max(AGENT_SURFACE_GAP, canvas.height - composerHeight - AGENT_SURFACE_GAP)),
+    top: clampNumber(
+      rect.top,
+      AGENT_SURFACE_GAP,
+      Math.max(AGENT_SURFACE_GAP, canvas.height - composerHeight - AGENT_SURFACE_GAP),
+    ),
   };
 }

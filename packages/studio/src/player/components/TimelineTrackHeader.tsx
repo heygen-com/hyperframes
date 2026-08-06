@@ -344,6 +344,7 @@ export function TimelineTrackHeader({
   onTogglePropertyGroupKeyframe,
   onSeek,
 }: TimelineTrackHeaderProps) {
+  const { selectedLane, toggle: toggleTimelineTrack } = useTimelineTrackSelection();
   const clipPercentage = keyframeClip
     ? ((currentTime - keyframeClip.start) / keyframeClip.duration) * 100
     : 0;
@@ -393,15 +394,9 @@ export function TimelineTrackHeader({
             columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
             lanesId={lanesId}
             onToggleClipExpanded={onToggleClipExpanded}
+            onSelectTrack={() => toggleTimelineTrack(trackNumber)}
+            trackSelected={selectedLane === trackNumber}
           >
-            {/* A keyframed track is selectable too, and its row already shows
-                the clip's name, so this is the compact number form. */}
-            <TrackSelectButton
-              trackNumber={trackNumber}
-              trackDisplayNumber={trackDisplayNumber}
-              trackLabel={trackLabel}
-              showTrackLabel={false}
-            />
             {/* The eye belongs to the LAYER, so it lives on the always-mounted
                 layer row exactly like a plain track's. Hanging it off a lane row
                 (hover-gated, and only while expanded) left a keyframed track with
