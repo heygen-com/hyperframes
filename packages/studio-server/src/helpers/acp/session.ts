@@ -23,6 +23,14 @@ export interface AcpRunHooks {
   onSessionId?: (sessionId: string) => void;
   onUpdate?: (update: AcpUpdate) => void;
   /**
+   * Handed the two things that can be done to a turn already in flight. ACP has
+   * no way to speak into an open turn, so a correction ends this one and starts
+   * another on the same session — which keeps everything the agent has read.
+   */
+  onControls?: (controls: { steer: (text: string) => void; cancel: () => void }) => void;
+  /** The turn has restarted on the correction, so the run is moving again. */
+  onSteered?: () => void;
+  /**
    * The agent asking before it acts. Left out, the agent's own default applies
    * and Studio never hears the question.
    */
@@ -71,6 +79,21 @@ export async function runAcpSession(opts: {
       const sessionId = readSessionId(session);
       if (!sessionId) throw new Error(`${opts.command} opened a session without an id`);
       hooks.onSessionId?.(sessionId);
+      // Registered before anything else can be awaited: from the moment there
+      // is a session, stopping it has to be possible.
+      // A correction arrives as "cancel this turn, then ask again": the loop is
+      // what turns those two protocol calls into one continuous run.
+      let correction: string | null = null;
+      const stop = () => {
+        void context.request("session/cancel", { sessionId }).catch(() => undefined);
+      };
+      hooks.onControls?.({
+        steer: (text) => {
+          correction = text;
+          stop();
+        },
+        cancel: stop,
+      });
 
       const modelId = acpModelId(opts.model, opts.effort);
       // Best effort: an agent that does not take this model is better off
@@ -80,12 +103,21 @@ export async function runAcpSession(opts: {
         await context.request("session/set_model", { sessionId, modelId }).catch(() => undefined);
       }
 
-      const turn = await context.request("session/prompt", {
-        sessionId,
-        prompt: [{ type: "text", text: opts.prompt }],
-      });
+      let text = opts.prompt;
+      for (;;) {
+        const turn = await context.request("session/prompt", {
+          sessionId,
+          prompt: [{ type: "text", text }],
+        });
+        const stopReason = readStopReason(turn);
+        // Only a correction restarts. A plain cancel, or a turn that ended on
+        // its own terms, is the end of the run.
+        if (!correction) return { stopReason, said };
 
-      return { stopReason: readStopReason(turn), said };
+        text = correction;
+        correction = null;
+        hooks.onSteered?.();
+      }
     },
   );
 }

@@ -10,6 +10,7 @@ import { readAcpUpdate } from "./updates";
 import {
   answerAgentJob,
   cancelAgentJob,
+  steerAgentJob,
   enqueueAgentJob,
   listAgentJobs,
   type AgentCommand,
@@ -35,6 +36,8 @@ function createAcpAgent(
   holdMs = 0,
   /** Options to ask about before doing anything, the way a real agent would. */
   ask: Array<Record<string, unknown>> | null = null,
+  /** Say back what it was asked, for testing what reaches it and when. */
+  echoPrompt = false,
 ): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-acp-test-"));
   tempDirs.push(dir);
@@ -46,13 +49,15 @@ function createAcpAgent(
       `const stopReason = ${JSON.stringify(stopReason)};`,
       `const holdMs = ${JSON.stringify(holdMs)};`,
       `const ask = ${JSON.stringify(ask)};`,
+      `const echoPrompt = ${JSON.stringify(echoPrompt)};`,
       "const send = (m) => process.stdout.write(JSON.stringify(m) + '\\n');",
       "let pending = null;",
+      "let timer = null;",
       "const finish = (id) => {",
       "  for (const update of updates) {",
       "    send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'sess-42', update } });",
       "  }",
-      "  setTimeout(() => send({ jsonrpc: '2.0', id, result: { stopReason } }), holdMs);",
+      "  timer = setTimeout(() => send({ jsonrpc: '2.0', id, result: { stopReason } }), holdMs);",
       "};",
       "let buf = '';",
       "process.stdin.on('data', (chunk) => {",
@@ -67,9 +72,16 @@ function createAcpAgent(
       "      send({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });",
       "    } else if (msg.method === 'session/new') {",
       "      send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'sess-42' } });",
+      "    } else if (msg.method === 'session/cancel') {",
+      "      if (timer) clearTimeout(timer);",
+      "      send({ jsonrpc: '2.0', id: msg.id, result: {} });",
+      "      send({ jsonrpc: '2.0', id: pending, result: { stopReason: 'cancelled' } });",
       "    } else if (msg.method === 'session/prompt') {",
+      "      pending = msg.id;",
+      "      if (echoPrompt) send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'sess-42', update: {",
+      "        sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Asked: ' + msg.params.prompt[0].text + '. ' },",
+      "      } } });",
       "      if (ask) {",
-      "        pending = msg.id;",
       "        send({ jsonrpc: '2.0', id: 900, method: 'session/request_permission', params: {",
       "          sessionId: 'sess-42',",
       "          toolCall: { toolCallId: 'call-1', title: 'Write composition.html', kind: 'edit' },",
@@ -141,7 +153,9 @@ function startJob(opts: {
 }
 
 async function until(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Generous: stopping a run asks it to stop first and only kills it if it
+  // will not, so some of these waits include that grace.
+  for (let attempt = 0; attempt < 400; attempt++) {
     if (check()) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -514,5 +528,69 @@ describe("answering over the API", () => {
     const res = await answerVia(app, projectId, jobId, "yes");
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "job is not waiting on an answer" });
+  });
+});
+
+describe("stopping and correcting an ACP run", () => {
+  /** A stub that holds its turn open, and says what it was asked each time. */
+  function talkativeAgent(holdMs = 600): string {
+    return createAcpAgent([], "end_turn", holdMs, null, true);
+  }
+
+  it("asks the agent to stop, and settles the run cancelled", async () => {
+    const projectDir = createProjectDir();
+    const { projectId, jobId, read } = startJob({
+      agent: acpCommand(talkativeAgent()),
+      projectDir,
+    });
+
+    // Steering and stopping only mean anything once there is a session; the
+    // id is how the run says it has one.
+    await until(() => read().sessionId === "sess-42");
+    cancelAgentJob(projectId, jobId, projectDir);
+    await until(() => read().status === "cancelled");
+    expect(read().message).toBe("Stopped mid-run.");
+  });
+
+  // One run, one session, one job. The agent keeps everything it has read; what
+  // it does not keep is the turn, and the run says so while it starts over.
+  it("restarts the turn on the same session, and says that is what it did", async () => {
+    const projectDir = createProjectDir();
+    const { projectId, jobId, read } = startJob({
+      agent: acpCommand(talkativeAgent()),
+      projectDir,
+      instruction: "make it blue",
+    });
+
+    await until(() => read().sessionId === "sess-42");
+    const before = read();
+    expect(
+      steerAgentJob({ projectId, jobId, text: "make it green", projectDir, resumed: null }),
+    ).toMatchObject({ id: jobId });
+    expect(read().activity).toBe("Starting the turn again with your correction…");
+
+    await until(() => read().status === "done");
+    const after = read();
+    // Same run, not a second one, and the session it was carrying is intact.
+    expect(after.id).toBe(before.id);
+    expect(after.sessionId).toBe("sess-42");
+    expect(after.steers).toEqual(["make it green"]);
+    // The correction reached the agent as a prompt of its own, after the first.
+    expect(after.message).toContain("do this: make it blue");
+    expect(after.message).toContain("Asked: make it green.");
+  });
+
+  it("leaves only one run in the list", async () => {
+    const projectDir = createProjectDir();
+    const { projectId, jobId, read } = startJob({
+      agent: acpCommand(talkativeAgent()),
+      projectDir,
+    });
+
+    await until(() => read().sessionId === "sess-42");
+    steerAgentJob({ projectId, jobId, text: "actually, green", projectDir, resumed: null });
+    await until(() => read().status === "done");
+
+    expect(listAgentJobs(projectId)).toHaveLength(1);
   });
 });

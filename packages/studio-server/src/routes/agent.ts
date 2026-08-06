@@ -138,6 +138,10 @@ export function resumedAgentCommand(
   agent: AgentCommand,
   sessionId: string | undefined,
 ): AgentCommand | null {
+  // An ACP run is never resumed by re-running a CLI: its session stays open for
+  // the life of the run, and the resume flags here belong to a different
+  // command entirely — the harness' own CLI, not the adapter launching it.
+  if (agent.transport === "acp") return null;
   const build = sessionId ? RESUME_ARGS[agent.kind] : undefined;
   const args = build?.(sessionId!);
   if (!args) return null;

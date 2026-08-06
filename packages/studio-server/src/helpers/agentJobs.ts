@@ -124,8 +124,22 @@ const pendingByProject = new Map<string, PendingRun[]>();
 const runningByJob = new Map<string, ChildProcess>();
 /** What each live run was started with, so a steer can rebuild it. */
 const activeRuns = new Map<string, PendingRun>();
-/** Runs whose stdin is still open, and how to say something more to them. */
-const openRuns = new Map<string, (text: string) => void>();
+/**
+ * Runs that can still be told something, and what happens when they are.
+ *
+ * Claude Code reads a correction into the turn it is already having. ACP has no
+ * way to speak into an open turn, so a correction ends that turn and starts
+ * another on the same session: the agent keeps everything it has read, but it
+ * does start again — which is a different promise, and one the user is told.
+ */
+interface OpenRun {
+  say: (text: string) => void;
+  /** Whether saying something makes the agent start its turn over. */
+  restarts: boolean;
+  /** Stop the run the way its transport prefers. */
+  stop?: () => void;
+}
+const openRuns = new Map<string, OpenRun>();
 /** Runs stopped on a question, and how to settle the one they asked. */
 const askedByJob = new Map<string, Asked>();
 
@@ -152,6 +166,9 @@ const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
  * blocks every later edit to that element on a question nobody is looking at.
  * Read per call so a deployment that wants a longer leash can set one.
  */
+/** How long a cancelled ACP turn has to end itself before it is ended for it. */
+const GRACEFUL_STOP_MS = 3000;
+
 function permissionTimeoutMs(): number {
   const set = Number(process.env.HYPERFRAMES_AGENT_ASK_TIMEOUT_MS);
   return Number.isFinite(set) && set > 0 ? set : 5 * 60 * 1000;
@@ -343,6 +360,18 @@ export function promoteAgentJob(projectId: string, jobId: string, dir?: string):
  */
 function stopRun(jobId: string, why: string): void {
   askedByJob.get(jobId)?.fail(new Error(why));
+
+  // A transport with its own way of stopping is asked first: over ACP that is
+  // `session/cancel`, which lets the agent put its tools down rather than
+  // having them taken away mid-write. The process still goes, on a short leash
+  // in case the agent does not take the hint.
+  const open = openRuns.get(jobId);
+  if (open?.stop) {
+    open.stop();
+    const child = runningByJob.get(jobId);
+    setTimeout(() => child?.kill("SIGTERM"), GRACEFUL_STOP_MS).unref?.();
+    return;
+  }
   runningByJob.get(jobId)?.kill("SIGTERM");
 }
 
@@ -411,13 +440,13 @@ export function steerAgentJob(opts: {
   const run = activeRuns.get(opts.jobId);
   if (!run) return null;
 
-  // The run is still listening: say it into the turn that is already going.
-  // Nothing is stopped, nothing is resumed, and the agent keeps everything it
-  // has read so far — which is the whole point of holding stdin open.
-  const speak = openRuns.get(opts.jobId);
-  if (speak) {
-    job.activity = "Steering…";
-    speak(text);
+  // The run can still be told something. One job, one session, nothing
+  // resumed — the difference is only whether the agent carries on or takes the
+  // correction from the top, and the run says which.
+  const open = openRuns.get(opts.jobId);
+  if (open) {
+    job.activity = open.restarts ? "Starting the turn again with your correction…" : "Steering…";
+    open.say(text);
     return job;
   }
 
@@ -818,6 +847,11 @@ function closeOut(job: AgentJob, cwd: string): void {
 
 /** What a finished ACP turn means for the run, by the reason it ended. */
 function settleAcpTurn(job: AgentJob, label: string, stopReason: string, said: string): void {
+  // Studio may already have decided how this ended — giving up on a question
+  // nobody answered, for one — in which case the stop reason that follows is
+  // just the agent acknowledging that decision, not news about the run.
+  if (job.status === "failed" || job.status === "cancelled") return;
+
   const answer = stripOverlayMarkers(said).slice(0, MAX_RESULT_CHARS);
   if (stopReason === "cancelled") {
     job.status = "cancelled";
@@ -874,6 +908,7 @@ function askForPermission(
         // run is over as far as Studio is concerned, and saying so to the agent
         // is not enough — an agent is free to sit on a refused request, and
         // this one is holding an element while it does.
+        job.status = "failed";
         job.message = `No answer to ${request.tool} within ${waitMs / 1000}s`;
         reject(new Error(job.message));
         stopRun(job.id, job.message);
@@ -929,6 +964,9 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
           }, AGENT_TIMEOUT_MS);
         },
         onSessionId: (sessionId) => (job.sessionId ??= sessionId),
+        onControls: ({ steer, cancel }) =>
+          openRuns.set(job.id, { say: steer, restarts: true, stop: cancel }),
+        onSteered: () => markRunning(job),
         onPermission: (params) => askForPermission(job, params, toolTitles),
         onUpdate: (update) => {
           if (update.tool) toolTitles.set(update.tool.id, update.tool.title);
@@ -1028,7 +1066,7 @@ function runNatively({ job, agent, prompt, cwd }: PendingRun): Promise<void> {
 
     if (streaming) {
       // stdin stays open: the run is a conversation until its turn reports back.
-      openRuns.set(job.id, sendMessage);
+      openRuns.set(job.id, { say: sendMessage, restarts: false });
       sendMessage(prompt);
     } else {
       child.stdin.end(prompt);
