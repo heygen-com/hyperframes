@@ -95,3 +95,52 @@ describe("text-content is still not a markup sink", () => {
     expect(html).toContain("&lt;span");
   });
 });
+
+describe("rich-text round trips what a real composition contains", () => {
+  it("keeps text that looks like markup as text", () => {
+    const { html } = patchTitle("safe", "a &lt;b&gt; &amp; c", "rich-text");
+
+    expect(html).toContain("&lt;b&gt;");
+    expect(html).not.toContain("<b>");
+  });
+
+  it("keeps non-ASCII text intact", () => {
+    const { html } = patchTitle("safe", "héllo 👍 世界", "rich-text");
+
+    expect(html).toContain("héllo");
+    expect(html).toContain("👍");
+    expect(html).toContain("世界");
+  });
+
+  it("keeps a line break", () => {
+    const { html } = patchTitle("safe", "a<br>b", "rich-text");
+
+    expect(html).toContain("<br>");
+  });
+
+  it("keeps the wrapper span a flex element needs", () => {
+    const { html } = patchTitle(
+      "safe",
+      '<span>a <span style="color: red">b</span> c</span>',
+      "rich-text",
+    );
+
+    expect(html).toContain('<span>a <span style="color: red">b</span> c</span>');
+  });
+
+  it("empties the element when every character was deleted", () => {
+    const { html } = patchTitle("gone", "", "rich-text");
+
+    expect(html).toContain('id="title"></h1>');
+  });
+
+  it("does not accumulate markup when the same value is written twice", () => {
+    const value = '<span style="color: red">x</span>';
+    const once = patchTitle("safe", value, "rich-text").html;
+    const twice = patchElementInHtml(once, { id: "title" }, [
+      { type: "rich-text", property: "", value },
+    ]).html;
+
+    expect(twice).toBe(once);
+  });
+});

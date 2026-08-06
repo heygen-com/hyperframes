@@ -45,22 +45,71 @@ const TAG_STYLES: Record<string, Record<string, string>> = {
   U: { "text-decoration-line": "underline" },
 };
 
-/** A line break counts as one character, so offsets survive a rebuild. */
-const BREAK = "\n";
+/**
+ * Stands in for a `<br>` while the element is a flat string, so a break counts
+ * as one character and offsets survive the rebuild.
+ *
+ * Not a newline. Compositions are written across lines, so an element's text
+ * routinely contains real newlines that are only source formatting, and using
+ * one as the marker turned every one of them into a visible line break the
+ * first time a word was styled. A NUL never appears: the HTML parser replaces
+ * it with U+FFFD, so no document can contain one.
+ */
+const BREAK = "\u0000";
 
 /** Apply `style` to the characters the range covers, then rebuild the element. */
 export function applyInlineStyle(range: Range, style: InlineStyleDelta): void {
   if (range.collapsed) return;
-  const host = editingHost(range.commonAncestorContainer);
-  if (!host) return;
+  // Resolved from where the selection starts, not from where it and its end
+  // happen to meet. A selection dragged past the element's edge meets its end
+  // at an ancestor, and taking that as the host would rebuild the ancestor:
+  // every sibling element inside it flattened into text by an edit that was
+  // meant to colour a word.
+  const host = editingHost(range.startContainer);
+  if (!host || !holdsBothEnds(host, range)) return;
 
-  const start = offsetOf(host, range.startContainer, range.startOffset);
-  const end = offsetOf(host, range.endContainer, range.endOffset);
-  if (start === null || end === null || start >= end) return;
+  const runs = readRuns(host);
+  const span = codePointBounds(
+    runs,
+    offsetOf(host, range.startContainer, range.startOffset),
+    offsetOf(host, range.endContainer, range.endOffset),
+  );
+  if (!span) return;
 
-  const runs = restyle(readRuns(host), start, end, style);
-  render(host, runs);
-  selectRange(host, start, end);
+  render(host, restyle(runs, span.start, span.end, style));
+  selectRange(host, span.start, span.end);
+}
+
+/**
+ * The offsets to style, widened so they never fall inside a character.
+ *
+ * A selection offset counts UTF-16 units and an emoji is two of them, so a
+ * boundary can land between the halves of one. Styling from there puts half the
+ * character in one span and half in the next, and both render as a question
+ * mark in a box.
+ */
+function codePointBounds(
+  runs: StyledRun[],
+  start: number | null,
+  end: number | null,
+): { start: number; end: number } | null {
+  if (start === null || end === null || start >= end) return null;
+  const text = runs.map((run) => run.text).join("");
+  return {
+    start: isTrailingHalf(text, start) ? start - 1 : start,
+    end: isTrailingHalf(text, end) ? end + 1 : end,
+  };
+}
+
+/** Whether the whole selection lives inside this element. */
+function holdsBothEnds(host: Element, range: Range): boolean {
+  return host.contains(range.startContainer) && host.contains(range.endContainer);
+}
+
+/** Whether this offset sits on the second half of a character, mid-pair. */
+function isTrailingHalf(text: string, offset: number): boolean {
+  const code = text.charCodeAt(offset);
+  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 /**
@@ -69,8 +118,8 @@ export function applyInlineStyle(range: Range, style: InlineStyleDelta): void {
  * agrees about it, which is what a control can honestly display.
  */
 export function readInlineStyle(range: Range, properties: string[]): Record<string, string> {
-  const host = editingHost(range.commonAncestorContainer);
-  if (!host) return {};
+  const host = editingHost(range.startContainer);
+  if (!host || !holdsBothEnds(host, range)) return {};
   const start = offsetOf(host, range.startContainer, range.startOffset);
   const end = offsetOf(host, range.endContainer, range.endOffset);
   if (start === null || end === null) return {};
@@ -231,7 +280,15 @@ function runNodes(doc: Document, runs: StyledRun[]): Node[] {
 }
 
 /** Displays whose children are boxes it positions, rather than text it flows. */
-const LAYS_OUT_CHILDREN = new Set(["flex", "inline-flex", "grid", "inline-grid"]);
+const LAYS_OUT_CHILDREN = new Set([
+  "flex",
+  "inline-flex",
+  "grid",
+  "inline-grid",
+  // How line clamping is written, and it boxes its children like flex.
+  "-webkit-box",
+  "-webkit-inline-box",
+]);
 
 function laysOutItsChildren(host: Element): boolean {
   const view = host.ownerDocument.defaultView;

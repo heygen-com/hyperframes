@@ -47,6 +47,24 @@ function rangeOver(host: HTMLElement, start: number, end: number): Range {
   return range;
 }
 
+/** Elements left holding half a character by a boundary that fell inside one. */
+function elementsWithHalfACharacter(host: HTMLElement): string[] {
+  return Array.from(host.querySelectorAll("*"))
+    .map((node) => node.textContent ?? "")
+    .filter((text) => {
+      for (let index = 0; index < text.length; index += 1) {
+        const code = text.charCodeAt(index);
+        if (code >= 0xdc00 && code <= 0xdfff) return true;
+        if (code >= 0xd800 && code <= 0xdbff) {
+          const next = text.charCodeAt(index + 1);
+          if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+          index += 1;
+        }
+      }
+      return false;
+    });
+}
+
 describe("applyInlineStyle", () => {
   it("styles exactly the characters selected, and nothing else", () => {
     const host = mount("hello world");
@@ -260,5 +278,115 @@ describe("readInlineStyle", () => {
     const styles = readInlineStyle(rangeOver(host, 0, 3), ["background-color"]);
 
     expect(styles["background-color"]).toBeUndefined();
+  });
+});
+
+// Edge cases found by asking what a real composition contains that the happy
+// path does not: source formatting, containers that box their children, text
+// that is not plain ASCII, and a selection that reaches outside the element.
+describe("applyInlineStyle edge cases", () => {
+  it("keeps a newline that came from the source file as text, not a line break", () => {
+    // Compositions are written across lines. Turning that whitespace into <br>
+    // would add visible breaks to an element that had none.
+    const host = mount("\n      Hello world\n    ");
+
+    applyInlineStyle(rangeOver(host, 7, 12), { color: "red" });
+
+    expect(host.querySelectorAll("br")).toHaveLength(0);
+    expect(host.textContent).toBe("\n      Hello world\n    ");
+  });
+
+  it("still writes a real line break back as a line break", () => {
+    const host = mount("ab<br>cd");
+
+    applyInlineStyle(rangeOver(host, 3, 5), { color: "red" });
+
+    expect(host.querySelectorAll("br")).toHaveLength(1);
+    expect(host.textContent).toBe("abcd");
+  });
+
+  it("keeps text that looks like markup as text", () => {
+    const host = mount("a &lt;b&gt; &amp; c");
+
+    applyInlineStyle(rangeOver(host, 0, 1), { color: "red" });
+
+    expect(host.textContent).toBe("a <b> & c");
+    expect(host.querySelectorAll("b")).toHaveLength(0);
+  });
+
+  it("does not cut an emoji in half when the boundary lands inside one", () => {
+    // A selection offset is counted in UTF-16 units, and an emoji is two of
+    // them. Splitting one leaves half a character in each span.
+    const host = mount("ab👍cd");
+
+    applyInlineStyle(rangeOver(host, 0, 3), { color: "red" });
+
+    expect(host.textContent).toBe("ab👍cd");
+    // textContent would read back whole even if the two halves sat in separate
+    // spans, so the check that matters is that no element holds half a one.
+    expect(elementsWithHalfACharacter(host)).toEqual([]);
+  });
+
+  it("keeps a whole emoji together when the selection starts inside one", () => {
+    const host = mount("ab👍cd");
+
+    applyInlineStyle(rangeOver(host, 3, 6), { color: "red" });
+
+    expect(host.textContent).toBe("ab👍cd");
+    expect(elementsWithHalfACharacter(host)).toEqual([]);
+  });
+
+  it("leaves the element alone when the selection reaches outside it", () => {
+    // Rebuilding on a range whose common ancestor is an ancestor of the element
+    // would rewrite far more of the document than the user selected.
+    document.body.innerHTML = '<section><h1 id="a">first</h1><h1 id="b">second</h1></section>';
+    const section = document.body.firstElementChild as HTMLElement;
+    const before = section.innerHTML;
+    const range = document.createRange();
+    range.setStart(section.querySelector("#a")!.firstChild!, 1);
+    range.setEnd(section.querySelector("#b")!.firstChild!, 2);
+
+    applyInlineStyle(range, { color: "red" });
+
+    expect(section.innerHTML).toBe(before);
+  });
+
+  it("keeps a line-clamped element's text as one item", () => {
+    // -webkit-box is how line clamping is written, and it boxes its children
+    // exactly like flex does.
+    const host = mount("abcdef");
+    host.style.display = "-webkit-box";
+
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "red" });
+
+    expect(host.children).toHaveLength(1);
+  });
+
+  it("styles the whole text when everything is selected", () => {
+    const host = mount("abcdef");
+
+    applyInlineStyle(rangeOver(host, 0, 6), { color: "red" });
+
+    expect(host.innerHTML).toBe('<span style="color: red">abcdef</span>');
+  });
+
+  it("styles right up to an existing run's edge without merging into it", () => {
+    const host = mount("abcd");
+    applyInlineStyle(rangeOver(host, 0, 2), { color: "red" });
+
+    applyInlineStyle(rangeOver(host, 2, 4), { "font-style": "italic" });
+
+    expect(host.querySelectorAll("span")).toHaveLength(2);
+    expect(host.textContent).toBe("abcd");
+  });
+
+  it("survives being asked to style the same run twice over", () => {
+    const host = mount("abcdef");
+    for (let round = 0; round < 5; round += 1) {
+      applyInlineStyle(rangeOver(host, 1, 4), { color: "red" });
+    }
+
+    expect(host.querySelectorAll("span")).toHaveLength(1);
+    expect(host.textContent).toBe("abcdef");
   });
 });
