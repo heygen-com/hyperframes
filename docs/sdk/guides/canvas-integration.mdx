@@ -108,8 +108,23 @@ A composition authored as an overlay — a small graphic on an otherwise-empty 1
 ```typescript
 const wrapper = document.querySelector<HTMLElement>("#composition-wrapper")!;
 
+/**
+ * Host-page pointer coordinates → the iframe document's own client space, which is what
+ * `paintsAt` samples against. The iframe renders at the composition's native size and is
+ * CSS-scaled to fit, so the on-screen scale has to be divided out — skip this and you
+ * sample the wrong pixel, and pass-through toggles over the wrong regions.
+ */
+function toCompositionPoint(clientX: number, clientY: number) {
+  const rect = iframe.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const scaleX = rect.width / compositionNativeWidth;
+  const scaleY = rect.height / compositionNativeHeight;
+  if (!scaleX || !scaleY) return null;
+  return { x: (clientX - rect.left) / scaleX, y: (clientY - rect.top) / scaleY };
+}
+
 function updatePassThrough(clientX: number, clientY: number, altKey: boolean) {
-  const point = clientToCompositionCoords(clientX, clientY);
+  const point = toCompositionPoint(clientX, clientY);
   // Alt is the escape hatch for grabbing the composition itself in an empty region.
   // `null` means the answer is not knowable yet — treat it as painted, so a
   // composition that is still loading stays clickable.
@@ -119,6 +134,12 @@ function updatePassThrough(clientX: number, clientY: number, altKey: boolean) {
 }
 ```
 
+<Warning>
+  Listen on the **host document**, not on the wrapper or the iframe. The first time this
+  sets `pointer-events: none` the wrapper stops receiving events, so a listener attached
+  there can never turn it back on — the pass-through state sticks.
+</Warning>
+
 Three things are easy to get wrong here:
 
 <Steps>
@@ -126,7 +147,7 @@ Three things are easy to get wrong here:
     The browser picks an event's target before any handler runs, so flipping `pointer-events` inside `mousedown` cannot retarget the click already in flight. Sample the pointer position on `mousemove` and keep the decision current.
   </Step>
   <Step title="Re-evaluate on every frame, not only on movement">
-    Animated artwork moves under a stationary cursor. Anything that can change the answer — pointer movement, the Alt key, and the playhead — has to re-run the query from the last known position.
+    Animated artwork moves under a stationary cursor. Anything that can change the answer — pointer movement, the Alt key, and the playhead — has to re-run the query from the last known position. Coalesce those triggers into one `requestAnimationFrame` query rather than answering each separately, and short-circuit before the query when the pointer is outside the composition's box: it is a walk over the document, so it does not belong on an ungated per-event path.
   </Step>
   <Step title="Treat null as painted">
     `paintsAt` returns `null` when the document is not loaded or not readable. Erring toward "paints" costs a click that selects the composition; erring the other way makes the composition vanish from under the cursor.

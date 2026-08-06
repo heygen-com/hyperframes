@@ -713,6 +713,8 @@ class FakeHTMLImageElement {
   attrs: Record<string, string>;
   tagName: string;
   parentElement: FakeHTMLImageElement | null;
+  /** A clear pixel falls through to the style/own-text checks, which read this. */
+  childNodes: Array<{ nodeType: number; textContent: string }> = [];
   naturalWidth: number;
   naturalHeight: number;
   currentSrc: string;
@@ -1016,13 +1018,16 @@ function paintWin(): Window & typeof globalThis {
   } as unknown as Window & typeof globalThis;
 }
 
-function paintDoc(nodes: object[]): Document {
+function paintDoc(nodes: object[], readyState = "complete"): Document {
+  const matching = (selector: string) => {
+    if (selector === "*") return nodes;
+    const attr = selector.slice(1, -1);
+    return nodes.filter((n) => (n as PaintNode).hasAttribute(attr));
+  };
   return {
-    querySelectorAll(selector: string) {
-      if (selector === "*") return nodes;
-      const attr = selector.slice(1, -1);
-      return nodes.filter((n) => (n as PaintNode).hasAttribute(attr));
-    },
+    readyState,
+    querySelectorAll: matching,
+    querySelector: (selector: string) => matching(selector)[0] ?? null,
   } as unknown as Document;
 }
 
@@ -1199,6 +1204,18 @@ describe("elementPaintsInk: <img> routes through the alpha sampler", () => {
     expect(inkAtCentre("transparent", withInnerImg)).toBe(false);
   });
 
+  it("a clear pixel still paints when the image itself has background or border ink", () => {
+    // object-fit letterbox over a white plate: the bitmap misses, the chip is still visible.
+    const restore = stubOffscreenCanvas("transparent");
+    try {
+      const img = pimg("hf-chip", rect);
+      paintStyles.set(img, { backgroundColor: "#fff" });
+      expect(elementPaintsInk(img as unknown as Element, paintWin(), { x: 50, y: 50 })).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
   it("<picture> with no inner <img> still paints", () => {
     expect(elementPaintsInk(el(pnode({ tag: "picture" })), paintWin(), { x: 1, y: 1 })).toBe(true);
   });
@@ -1266,6 +1283,52 @@ describe("compositionPaintsAt", () => {
     ];
     expect(
       compositionPaintsAt(paintDoc(nodes), paintWin(), 150, 150, { fullBleedFraction: 0.9 }),
+    ).toBe(false);
+  });
+
+  it("never vetoes a PIXEL-VERIFIED hit, however large the box", () => {
+    // The flagship shape: a full-frame transparent PNG overlay. Its box IS the frame, so an
+    // area-based veto called every opaque pixel "background" and the visible artwork became
+    // unclickable. Box area is not ink area once the pixel has actually been read.
+    const restore = stubOffscreenCanvas("opaque");
+    try {
+      const frame: PaintRect = { left: 0, top: 0, width: 1000, height: 1000 };
+      const nodes = [root(), pimg("hf-overlay", frame)];
+      expect(
+        compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500, { fullBleedFraction: 0.9 }),
+      ).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("still vetoes a full-bleed image whose pixels could NOT be read", () => {
+    // A tainted cross-origin image is a fail-safe "opaque", not a measurement. Exempting it
+    // would make every full-frame CDN-backed overlay permanently absorb clicks.
+    const restore = stubOffscreenCanvas("tainted");
+    try {
+      const frame: PaintRect = { left: 0, top: 0, width: 1000, height: 1000 };
+      const nodes = [root(), pimg("hf-overlay", frame)];
+      expect(
+        compositionPaintsAt(paintDoc(nodes), paintWin(), 500, 500, { fullBleedFraction: 0.9 }),
+      ).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("counts ink painted by the composition root itself", () => {
+    // A root carrying a background is painting, and at fraction 0 the literal ink question
+    // has to say so. A non-zero fraction still discounts it: a root's box IS the frame.
+    const painted = () =>
+      pnode({
+        attrs: { "data-composition-id": "main", "data-hf-id": "hf-root" },
+        style: { backgroundColor: "#111" },
+        rect: { left: 0, top: 0, width: 1000, height: 1000 },
+      });
+    expect(compositionPaintsAt(paintDoc([painted()]), paintWin(), 500, 500)).toBe(true);
+    expect(
+      compositionPaintsAt(paintDoc([painted()]), paintWin(), 500, 500, { fullBleedFraction: 0.9 }),
     ).toBe(false);
   });
 
@@ -1398,6 +1461,22 @@ describe("IframePreviewAdapter.paintsAt", () => {
       },
     });
     expect(createIframePreviewAdapter(hostile).paintsAt(1, 1)).toBeNull();
+  });
+
+  it("answers null while the document is still loading", () => {
+    // A same-origin iframe mid-navigation is READABLE and empty, so the !doc guard never
+    // fires — walking it would answer a confident "no ink" under an arriving composition.
+    const stamped = [pnode({ attrs: { "data-hf-id": "hf-a" } })];
+    expect(
+      createIframePreviewAdapter(iframeWith(paintDoc(stamped, "loading"), paintWin())).paintsAt(
+        1,
+        1,
+      ),
+    ).toBeNull();
+    // Loaded but carrying nothing of the composition — equally unknowable.
+    expect(
+      createIframePreviewAdapter(iframeWith(paintDoc([]), paintWin())).paintsAt(1, 1),
+    ).toBeNull();
   });
 
   it("delegates to the walk", () => {

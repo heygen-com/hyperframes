@@ -389,6 +389,9 @@ export function imageAlphaOpaqueAt(
   clientX: number,
   clientY: number,
   win: Window & typeof globalThis,
+  /** Set to true only when pixels were actually read (or the point provably missed the
+   *  rendered image). Lets callers tell a measured answer from a fail-safe assumption. */
+  probe?: { sampled: boolean },
 ): boolean {
   // Not loaded yet — treat as opaque (safe fallback)
   if (img.naturalWidth === 0 || img.naturalHeight === 0) return true;
@@ -435,8 +438,12 @@ export function imageAlphaOpaqueAt(
   );
 
   // Point is outside the rendered image area — not this image's pixel.
-  // Continue the z-stack (return false = miss on this element).
-  if (mapped === null) return false;
+  // Continue the z-stack (return false = miss on this element). Geometric certainty,
+  // so it counts as sampled.
+  if (mapped === null) {
+    if (probe) probe.sampled = true;
+    return false;
+  }
 
   // Retrieve or build the offscreen canvas. Key on src + natural dimensions: a
   // srcset/responsive layout can serve the same URL at a different natural size,
@@ -473,6 +480,7 @@ export function imageAlphaOpaqueAt(
     // The mapped-pixel read also surfaces lazy canvas taint (SecurityError),
     // so no separate taint probe is needed.
     const data = ctx.getImageData(mapped.px, mapped.py, 1, 1);
+    if (probe) probe.sampled = true;
     return alphaIsOpaque(data);
   } catch {
     // Taint discovered on getImageData — update cache and fall back opaque.
@@ -556,36 +564,71 @@ function hasOwnText(el: Element): boolean {
  * Transparency by CSS (`display: none`, `visibility: hidden`, `opacity: 0`) is NOT
  * handled here; `compositionPaintsAt` filters those before asking.
  */
-export function elementPaintsInk(
-  el: Element,
-  win: Window & typeof globalThis,
-  point?: { x: number; y: number },
-): boolean {
-  const tag = el.tagName.toLowerCase();
+/**
+ * How an element's ink was established.
+ *
+ * `"verified"` means pixels were read. `"inferred"` means computed style says something
+ * paints across the box — true of a `background-image` that is mostly transparent, and of
+ * an image whose pixels could not be sampled. The distinction is what lets the full-bleed
+ * veto discount assumed box-filling paint without discarding a measured pixel.
+ */
+type InkKind = "none" | "verified" | "inferred";
 
-  if (tag === "picture") {
-    const img = el.querySelector("img");
-    return img ? elementPaintsInk(img, win, point) : true;
-  }
-
-  if (point && win.HTMLImageElement && el instanceof win.HTMLImageElement) {
-    return imageAlphaOpaqueAt(el, point.x, point.y, win);
-  }
-
-  if (INTRINSIC_PAINT_TAGS.has(tag)) return true;
-
-  const cs = win.getComputedStyle(el);
-
-  if (!isTransparentColor(cs.backgroundColor)) return true;
-  if (cs.backgroundImage && cs.backgroundImage !== "none") return true;
-
+/** Any side with a drawn border — a style that renders and a non-zero width. */
+function hasVisibleBorder(cs: CSSStyleDeclaration): boolean {
   for (const side of BORDER_SIDES) {
     const style = cs.getPropertyValue(`border-${side}-style`);
     const width = Number.parseFloat(cs.getPropertyValue(`border-${side}-width`) || "0");
     if (style && style !== "none" && style !== "hidden" && width > 0) return true;
   }
+  return false;
+}
 
-  return hasOwnText(el);
+/** Computed-style ink: background, border, or the element's own text. */
+function styleInk(el: Element, win: Window & typeof globalThis): InkKind {
+  const cs = win.getComputedStyle(el);
+
+  if (!isTransparentColor(cs.backgroundColor)) return "inferred";
+  if (cs.backgroundImage && cs.backgroundImage !== "none") return "inferred";
+  if (hasVisibleBorder(cs)) return "inferred";
+
+  return hasOwnText(el) ? "inferred" : "none";
+}
+
+function inkAt(
+  el: Element,
+  win: Window & typeof globalThis,
+  point?: { x: number; y: number },
+): InkKind {
+  const tag = el.tagName.toLowerCase();
+
+  if (tag === "picture") {
+    const img = el.querySelector("img");
+    return img ? inkAt(img, win, point) : "inferred";
+  }
+
+  if (point && win.HTMLImageElement && el instanceof win.HTMLImageElement) {
+    const probe = { sampled: false };
+    if (imageAlphaOpaqueAt(el, point.x, point.y, win, probe)) {
+      // An unsampled "opaque" is the fail-safe, not a measurement, so it stays inferred.
+      return probe.sampled ? "verified" : "inferred";
+    }
+    // A clear pixel does not settle the element: its own background plate, padding and
+    // border still paint, and the point may have landed on them rather than the bitmap.
+    return styleInk(el, win);
+  }
+
+  if (INTRINSIC_PAINT_TAGS.has(tag)) return "inferred";
+
+  return styleInk(el, win);
+}
+
+export function elementPaintsInk(
+  el: Element,
+  win: Window & typeof globalThis,
+  point?: { x: number; y: number },
+): boolean {
+  return inkAt(el, win, point) !== "none";
 }
 
 interface PaintCandidate {
@@ -624,11 +667,13 @@ function boxContains(rect: DOMRect, x: number, y: number): boolean {
 }
 
 /**
- * Is the element rendered at all? `display: none` needs no check here — it collapses
- * the box, which the area guard already rejects — but `visibility` and `opacity` do
- * not, and opacity has to be read up the ancestor chain: a fully opaque child inside
- * a fade-in wrapper that has not started yet is invisible, and getComputedStyle does
- * not multiply the cascade for us.
+ * Is the element rendered at all?
+ *
+ * `display: none` is checked belt-and-braces: a real engine collapses the box and the area
+ * guard already rejects it, so the clause only earns its place against hosts that report a
+ * box anyway. `visibility` and `opacity` genuinely need it, and opacity has to be read up
+ * the ancestor chain — a fully opaque child inside a fade-in wrapper that has not started
+ * yet is invisible, and getComputedStyle does not multiply the cascade for us.
  */
 function isRenderedVisible(el: Element, win: Window & typeof globalThis): boolean {
   const cs = win.getComputedStyle(el);
@@ -653,9 +698,10 @@ function paintCandidateAt(
   x: number,
   y: number,
 ): PaintCandidate | null {
-  // Composition roots set the frame reference; they are never candidates themselves.
-  if (el.hasAttribute("data-composition-id")) return null;
-
+  // Composition roots are candidates like anything else: a root carrying a background is
+  // painting, and at fullBleedFraction 0 the literal ink question has to say so. They are
+  // not excluded here because the veto already handles them — a root's box IS the frame,
+  // so any non-zero fraction discounts it as background without a special case.
   const rect = el.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
   if (!boxContains(rect, x, y)) return null;
@@ -678,7 +724,16 @@ function paintCandidateAt(
  * candidate.
  *
  * Exported so a host whose hit-test policy differs can reuse the ink test without
- * taking the adapter with it.
+ * taking the adapter with it. Two preconditions come with that:
+ *
+ * - `doc` must be hf-id-stamped (what `openComposition` produces). Against an unstamped
+ *   document the default walk matches nothing and every point answers a hard `false`,
+ *   indistinguishable from genuinely empty — pass `addressableOnly: false` there.
+ * - `x`/`y` are the DOCUMENT's own client coordinates, not the host page's. A host with a
+ *   CSS-scaled iframe has to divide out that scale first, or it samples the wrong pixel.
+ *
+ * This returns a plain boolean: it has no "not knowable" channel, so a caller that needs
+ * the fail-safe contract should use `PreviewAdapter.paintsAt` instead.
  */
 export function compositionPaintsAt(
   doc: Document,
@@ -694,16 +749,31 @@ export function compositionPaintsAt(
     if (candidate) candidates.push(candidate);
   });
 
-  // Smallest area first; on a near-tie prefer the deeper (more specific) element.
-  candidates.sort((a, b) =>
-    Math.abs(a.area - b.area) <= 0.5 ? b.depth - a.depth : a.area - b.area,
-  );
+  // Smallest area first, deeper element first on an exact tie. Compared exactly rather
+  // than within an epsilon: a "close enough" tie relation is intransitive, which makes
+  // Array.sort's output implementation-defined and the smallest-first guarantee (and the
+  // lazy single-sample property that rides on it) engine-dependent.
+  candidates.sort((a, b) => a.area - b.area || b.depth - a.depth);
 
-  const winner = candidates.find((c) => elementPaintsInk(c.el, win, { x, y }));
+  let winner: PaintCandidate | undefined;
+  let winnerInk: InkKind = "none";
+  for (const candidate of candidates) {
+    const ink = inkAt(candidate.el, win, { x, y });
+    if (ink === "none") continue;
+    winner = candidate;
+    winnerInk = ink;
+    break;
+  }
   if (!winner) return false;
 
   const fullBleed = opts?.fullBleedFraction ?? 0;
   if (fullBleed <= 0) return true;
+
+  // Never veto a measured pixel. The rule exists to discount paint ASSUMED to fill a box
+  // — a full-frame wrapper with a background-image — and a full-bleed transparent PNG or
+  // SVG overlay is precisely the case where that assumption is wrong: box area is not ink
+  // area, and answering "background" there makes visible artwork unclickable.
+  if (winnerInk === "verified") return true;
 
   const frameArea = compositionFrameArea(doc, x, y);
   return frameArea === Infinity || winner.area < fullBleed * frameArea;
@@ -819,6 +889,17 @@ class IframePreviewAdapter implements PreviewAdapter {
       return null;
     }
     if (!doc || !win) return null;
+
+    // A same-origin iframe mid-navigation exposes a READABLE but empty document — srcdoc
+    // and blob: assignment are async navigations — so the `!doc` guard never fires while a
+    // composition is arriving. Walking that document answers a confident "no ink", and the
+    // host turns the wrapper transparent to clicks under a composition that is about to
+    // appear. Unknowable is the contractual answer, and it reads as painted.
+    if (doc.readyState === "loading") return null;
+    if (!doc.querySelector("[data-hf-id]") && !doc.querySelector("[data-composition-id]")) {
+      return null;
+    }
+
     return compositionPaintsAt(doc, win, x, y, opts);
   }
 

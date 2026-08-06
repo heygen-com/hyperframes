@@ -106,7 +106,11 @@ interface PreviewAdapter {
 
   Returns `null` when the answer is not knowable (document not loaded, not readable, or the adapter has no surface). **Treat `null` as painted.** Erring toward "paints" costs a click that selects the composition; erring the other way makes the composition vanish from under the cursor.
 
-  Ink is a computed-style test — background colour, background image, visible border, the element's own text, or intrinsic media — with one exception: `<img>` (and the `<img>` inside a `<picture>`) routes through per-pixel alpha, so a transparent PNG paints only where its pixels do. A `background-image` that is itself mostly transparent still reads as painting across its whole box.
+  Ink is a computed-style test — background colour, background image, visible border, the element's own text, or intrinsic media — with one exception: `<img>` (and the `<img>` inside a `<picture>`) routes through per-pixel alpha, so a transparent PNG paints only where its pixels do. A pixel-verified hit is never discounted by `fullBleedFraction`: box area is not ink area, so a full-frame transparent overlay stays clickable where it is actually opaque.
+
+  **Known over-counts** (report ink that isn't there, so a click selects the composition): a `background-image` that is itself mostly transparent reads as painting across its whole box; `<video>`, `<svg>` and `<canvas>` are unconditionally opaque; and an image whose pixels cannot be read — cross-origin without CORS, still loading, rotated, or above the sampler's size budget — falls back to opaque.
+
+  **Known under-counts** (miss ink that is there, so a click may pass through): `::before` / `::after` generated content, `box-shadow`, `outline` and `text-decoration` are not tested, and the first three paint outside the border box, so the element is not even a candidate. Content the SDK never stamped is invisible under the default `addressableOnly` — see below.
 
   The walk is **geometric**, not `elementsFromPoint`-based, and is blind to `pointer-events` and `z-index` by design: a decorative overlay carrying `pointer-events: none` still paints, and a z-stack query would report no ink over visible artwork.
 </ParamField>
@@ -184,7 +188,9 @@ interface PaintsAtOptions {
 </ParamField>
 
 <ParamField path="addressableOnly" type="boolean" default="true">
-  Consider only model-addressable elements (`[data-hf-id]`). Set `false` to widen the walk to every element, which catches nodes created after the document was stamped — split-text word spans, cloned nodes — at the cost of a larger candidate set.
+  Consider only model-addressable elements (`[data-hf-id]`). Stamping happens once, on the document `openComposition` was given, so anything the runtime creates or fetches afterwards is invisible to the default walk: split-text word and character spans (splitting also empties the stamped parent's own text nodes, so the parent stops counting too), cloned nodes, and whole sub-composition scenes mounted from `data-composition-src`. Kinetic typography and registry-mounted lower-thirds — both canonical transparent-overlay content — therefore read as no-ink by default.
+
+  Set `false` to widen the walk to every element, which sees that content at the cost of a larger candidate set.
 </ParamField>
 
 <Note>
