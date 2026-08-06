@@ -134,6 +134,7 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^1.3.0",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "hono": "^4.0.0",
