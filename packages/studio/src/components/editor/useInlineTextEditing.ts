@@ -60,6 +60,16 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
     );
   };
 
+  /** A point on Studio's canvas, in the scaled composition's coordinates. */
+  const compositionPoint = (event: { clientX: number; clientY: number }) => {
+    const iframe = actions?.previewIframeRef?.current;
+    const view = iframe?.contentWindow;
+    if (!iframe || !view?.innerWidth) return undefined;
+    const box = iframe.getBoundingClientRect();
+    const scale = box.width / view.innerWidth || 1;
+    return { x: (event.clientX - box.left) / scale, y: (event.clientY - box.top) / scale };
+  };
+
   return {
     editing: inlineText.session !== null,
     // Enter opens the selected element's text, the way every design tool does,
@@ -80,7 +90,9 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
 
       const element = elementUnderPress(event);
       if (!canEditElementTextInline(element)) return false;
-      return inlineText.start(element!);
+      // The caret opens where the press landed, which means mapping the point
+      // out of Studio's coordinates and into the composition's own.
+      return inlineText.start(element!, compositionPoint(event));
     },
   };
 }

@@ -30,8 +30,12 @@ export interface InlineTextEditSession {
 
 export interface InlineTextEditControls {
   session: InlineTextEditSession | null;
-  /** Begin editing this element. Returns false when a session is already open. */
-  start: (element: HTMLElement) => boolean;
+  /**
+   * Begin editing this element. `caretAt` is a point in the element's own
+   * document, so the caret can open where the user pointed rather than at a
+   * fixed end. Returns false when a session is already open.
+   */
+  start: (element: HTMLElement, caretAt?: { x: number; y: number }) => boolean;
   /** Hand the current text to the commit function and close. */
   commit: () => void;
   /** Put the original text back and close, persisting nothing. */
@@ -76,7 +80,7 @@ export function useInlineTextEdit({
   }, []);
 
   const start = useCallback(
-    (element: HTMLElement): boolean => {
+    (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
       if (openRef.current) return false;
 
       const open = {
@@ -102,7 +106,7 @@ export function useInlineTextEdit({
       const view = element.ownerDocument.defaultView;
       const raf = view?.requestAnimationFrame(() => {
         element.focus({ preventScroll: true });
-        placeCaretAtEnd(element);
+        placeCaret(element, caretAt);
       });
       framesRef.current = raf ?? null;
       return true;
@@ -148,16 +152,62 @@ export function useInlineTextEdit({
     // Clicking away keeps the work, which is what every other field in Studio
     // does and what a user who has just typed something expects.
     const onBlur = () => commit();
+    // Double-clicking inside an open edit takes the whole text. The browser
+    // would take a word, but the element IS the field here, and replacing all
+    // of it is the common intent once the caret is already in.
+    const onDoubleClick = () => selectAll(element);
 
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("blur", onBlur);
+    element.addEventListener("dblclick", onDoubleClick);
     return () => {
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("blur", onBlur);
+      element.removeEventListener("dblclick", onDoubleClick);
     };
   }, [session, commit, cancel]);
 
   return { session, start, commit, cancel };
+}
+
+/**
+ * Put the caret where the user pointed, or after the last character.
+ *
+ * Opening on a point is what makes this feel like text rather than a dialog:
+ * the caret lands between the two letters that were clicked, exactly as it
+ * would in any other editor.
+ */
+function placeCaret(element: HTMLElement, at?: { x: number; y: number }): void {
+  const doc = element.ownerDocument;
+  const selection = doc.defaultView?.getSelection();
+  if (!selection) return;
+
+  const range = at ? caretRangeAt(doc, at) : null;
+  if (range && element.contains(range.startContainer)) {
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+  placeCaretAtEnd(element);
+}
+
+/** The caret position under a point, across the two APIs browsers expose. */
+function caretRangeAt(doc: Document, at: { x: number; y: number }): Range | null {
+  const legacy = doc as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  if (typeof legacy.caretRangeFromPoint === "function") {
+    return legacy.caretRangeFromPoint(at.x, at.y);
+  }
+  const standard = doc as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  const position = standard.caretPositionFromPoint?.(at.x, at.y);
+  if (!position) return null;
+  const range = doc.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  range.collapse(true);
+  return range;
 }
 
 /**
@@ -186,6 +236,17 @@ function placeCaretAtEnd(element: HTMLElement): void {
     range.selectNodeContents(element);
     range.collapse(false);
   }
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+/** Take the whole text, for a double press inside an open edit. */
+function selectAll(element: HTMLElement): void {
+  const doc = element.ownerDocument;
+  const selection = doc.defaultView?.getSelection();
+  if (!selection) return;
+  const range = doc.createRange();
+  range.selectNodeContents(element);
   selection.removeAllRanges();
   selection.addRange(range);
 }

@@ -272,4 +272,70 @@ describe("useInlineTextEdit", () => {
     expect(element.style.getPropertyValue("outline-offset")).toBe("");
     act(() => root.unmount());
   });
+
+  // Opening on a point is what makes this feel like text rather than a dialog.
+  it("opens the caret where the press landed when it can resolve one", async () => {
+    const element = heading("Motion Playground");
+    const range = document.createRange();
+    range.setStart(element.firstChild!, 6);
+    range.collapse(true);
+    const doc = document as Document & { caretRangeFromPoint?: unknown };
+    const original = doc.caretRangeFromPoint;
+    doc.caretRangeFromPoint = () => range;
+
+    const { controls, root } = mount();
+    act(() => {
+      controls().start(element, { x: 120, y: 40 });
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+
+    expect(document.getSelection()?.anchorOffset).toBe(6);
+    doc.caretRangeFromPoint = original;
+    act(() => root.unmount());
+  });
+
+  // A point that resolves outside the element (a rotated glyph, a gap) must
+  // not put the caret in someone else's text.
+  it("falls back to the end when the point lands outside the element", async () => {
+    const element = heading("Motion Playground");
+    const stranger = heading("Somewhere else");
+    const strayRange = document.createRange();
+    strayRange.setStart(stranger.firstChild!, 3);
+    strayRange.collapse(true);
+    const doc = document as Document & { caretRangeFromPoint?: unknown };
+    const original = doc.caretRangeFromPoint;
+    doc.caretRangeFromPoint = () => strayRange;
+
+    const { controls, root } = mount();
+    act(() => {
+      controls().start(element, { x: 9999, y: 9999 });
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+
+    const selection = document.getSelection()!;
+    expect(selection.anchorNode?.parentElement).toBe(element);
+    expect(selection.anchorOffset).toBe(element.textContent!.length);
+    doc.caretRangeFromPoint = original;
+    act(() => root.unmount());
+  });
+
+  it("takes the whole text when it is double-clicked while open", async () => {
+    const element = heading("Motion Playground");
+    const { controls, root } = mount();
+    act(() => {
+      controls().start(element);
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+
+    act(() => element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+
+    expect(document.getSelection()?.toString()).toBe("Motion Playground");
+    act(() => root.unmount());
+  });
 });
