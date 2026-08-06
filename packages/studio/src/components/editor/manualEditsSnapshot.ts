@@ -17,6 +17,8 @@ import {
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
   STUDIO_ORIGINAL_WIDTH_ATTR,
   STUDIO_ORIGINAL_HEIGHT_ATTR,
+  STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
+  STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MIN_WIDTH_ATTR,
   STUDIO_ORIGINAL_MIN_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MAX_WIDTH_ATTR,
@@ -60,6 +62,8 @@ export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapsho
     marker: element.getAttribute(STUDIO_BOX_SIZE_ATTR),
     originalWidth: element.getAttribute(STUDIO_ORIGINAL_WIDTH_ATTR),
     originalHeight: element.getAttribute(STUDIO_ORIGINAL_HEIGHT_ATTR),
+    originalBoxWidth: element.getAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR),
+    originalBoxHeight: element.getAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR),
     originalMinWidth: element.getAttribute(STUDIO_ORIGINAL_MIN_WIDTH_ATTR),
     originalMinHeight: element.getAttribute(STUDIO_ORIGINAL_MIN_HEIGHT_ATTR),
     originalMaxWidth: element.getAttribute(STUDIO_ORIGINAL_MAX_WIDTH_ATTR),
@@ -128,6 +132,8 @@ export function restoreStudioBoxSize(element: HTMLElement, previous: StudioBoxSi
   restoreAttribute(element, STUDIO_BOX_SIZE_ATTR, previous.marker);
   restoreAttribute(element, STUDIO_ORIGINAL_WIDTH_ATTR, previous.originalWidth);
   restoreAttribute(element, STUDIO_ORIGINAL_HEIGHT_ATTR, previous.originalHeight);
+  restoreAttribute(element, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, previous.originalBoxWidth);
+  restoreAttribute(element, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, previous.originalBoxHeight);
   restoreAttribute(element, STUDIO_ORIGINAL_MIN_WIDTH_ATTR, previous.originalMinWidth);
   restoreAttribute(element, STUDIO_ORIGINAL_MIN_HEIGHT_ATTR, previous.originalMinHeight);
   restoreAttribute(element, STUDIO_ORIGINAL_MAX_WIDTH_ATTR, previous.originalMaxWidth);

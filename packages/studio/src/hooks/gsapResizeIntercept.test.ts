@@ -196,3 +196,50 @@ it("non-uniform drag commits scaleX/scaleY longhands", async () => {
   expect(serialized).toContain("scaleX");
   expect(serialized).toContain("scaleY");
 });
+
+/**
+ * The bug: the original box size was read only from the element's INLINE
+ * width, and a composition sizes its elements from the stylesheet. With no
+ * inline width the code fell back to a hardcoded 200, so the committed scale
+ * came out `real / 200` times too large. Dropping a 630px chip at 2391px wide
+ * left it rendering at 7532px, over three times where it was dropped, and the
+ * next drag compounded it.
+ */
+it("scales from the element's real box, not a hardcoded fallback", async () => {
+  const el = document.createElement("div");
+  el.id = "clip";
+  // Sized by a stylesheet, so it carries no inline width, and the draft
+  // recorded the box it measured instead.
+  el.setAttribute("data-hf-studio-original-box-width", "630");
+  el.setAttribute("data-hf-studio-original-box-height", "252");
+  document.body.append(el);
+  const selection = { id: "clip", selector: "#clip", element: el } as DomEditSelection;
+  const commitMutation = vi.fn();
+
+  await tryGsapResizeIntercept(
+    selection,
+    { width: 1260, height: 504 },
+    [keyframedScaleFixture()],
+    fakeIframe(el, { scaleX: 1, scaleY: 1 }),
+    commitMutation,
+  );
+
+  type Mutation = {
+    properties?: Record<string, number>;
+    keyframes?: Array<{ percentage: number; properties: Record<string, number> }>;
+  };
+  const committed = commitMutation.mock.calls
+    .map((call) => call[1] as Mutation)
+    .flatMap((mutation) => [
+      mutation.properties,
+      ...(mutation.keyframes ?? []).map((frame) => frame.properties),
+    ])
+    .filter((properties): properties is Record<string, number> => properties != null)
+    .find((properties) => properties.scale != null || properties.scaleX != null);
+
+  // Dropped at twice the element's own size, so the scale is about 2. The
+  // number that matters is that it is not the 6.3 which 1260/200 produced.
+  const scale = committed?.scale ?? committed?.scaleX ?? 0;
+  expect(scale).toBeCloseTo(2, 1);
+  expect(scale).toBeLessThan(3);
+});

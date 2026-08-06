@@ -8,6 +8,10 @@
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioBoxSize } from "../components/editor/manualEdits";
+import {
+  STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
+  STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
+} from "../components/editor/manualEditsTypes";
 import { setElementGsapPosition } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
@@ -42,6 +46,26 @@ function synthesizeIdentityProps(
     else id[k] = v;
   }
   return id;
+}
+
+/**
+ * The element's box before the resize draft ran, in CSS pixels.
+ *
+ * Prefers the measurement the draft recorded. Falls back to the inline style it
+ * saved for restoring, which is a real value for the elements that carry one,
+ * and null when neither says anything.
+ */
+function originalBoxSize(
+  el: HTMLElement | null,
+  measuredAttr: string,
+  inlineProperty: "width" | "height",
+): number | null {
+  const measured = Number.parseFloat(el?.getAttribute(measuredAttr) ?? "");
+  if (Number.isFinite(measured) && measured > 0) return measured;
+  const inline = Number.parseFloat(
+    el?.getAttribute(`data-hf-studio-original-${inlineProperty}`) ?? "",
+  );
+  return Number.isFinite(inline) && inline > 0 ? inline : null;
 }
 
 // ── Resize intercept ──────────────────────────────────────────────────────
@@ -134,10 +158,15 @@ export async function tryGsapResizeIntercept(
     const el = iframe?.contentDocument?.querySelector(selector ?? "") as HTMLElement | null;
     // The resize draft modifies el.style.width/height, so read the ORIGINAL
     // dimensions saved by the draft system before it ran.
-    const origW = Number.parseFloat(el?.getAttribute("data-hf-studio-original-width") ?? "");
-    const origH = Number.parseFloat(el?.getAttribute("data-hf-studio-original-height") ?? "");
-    const cssW = Number.isFinite(origW) && origW > 0 ? origW : 200;
-    const cssH = Number.isFinite(origH) && origH > 0 ? origH : cssW;
+    //
+    // The measured box first, then the inline one. The inline attributes exist
+    // to restore an inline style and are empty for anything sized by a
+    // stylesheet, which is how compositions are written, so reading them alone
+    // sent almost every element to the fallback below: a 630px chip scaled by
+    // 630/200, landing over three times the size it was dropped at, and worse
+    // on the next drag because the wrong scale then counted as its live one.
+    const cssW = originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width") ?? 200;
+    const cssH = originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height") ?? cssW;
     // `size` is the draft's CSS box; on screen it is multiplied by the element's
     // LIVE scale (the draft divides the cursor delta by it — see
     // resolveDomEditResizeGesture). The committed keyframe REPLACES that live

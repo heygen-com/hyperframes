@@ -12,6 +12,8 @@ import {
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
   STUDIO_ORIGINAL_WIDTH_ATTR,
   STUDIO_ORIGINAL_HEIGHT_ATTR,
+  STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
+  STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MIN_WIDTH_ATTR,
   STUDIO_ORIGINAL_MIN_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MAX_WIDTH_ATTR,
@@ -361,6 +363,12 @@ function writeStudioBoxSizeVars(
   if (!element.hasAttribute(STUDIO_BOX_SIZE_ATTR)) {
     element.setAttribute(STUDIO_ORIGINAL_WIDTH_ATTR, element.style.getPropertyValue("width"));
     element.setAttribute(STUDIO_ORIGINAL_HEIGHT_ATTR, element.style.getPropertyValue("height"));
+    // Measured here and only here: this branch runs once, before the draft
+    // writes a width, so it is the last moment the element still has the box
+    // the user started with. Offset sizes are layout, so a scale animation
+    // running on the element does not distort them.
+    element.setAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR, String(element.offsetWidth));
+    element.setAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, String(element.offsetHeight));
     element.setAttribute(
       STUDIO_ORIGINAL_MIN_WIDTH_ATTR,
       element.style.getPropertyValue("min-width"),
