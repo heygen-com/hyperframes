@@ -192,7 +192,8 @@ const hasJsonFlag = process.argv.includes("--json");
 // Captured references — populated when the lazy imports resolve.
 // Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
 // exit handler is synchronous-only).
-let _flush: (() => Promise<void>) | undefined;
+// Resolves to whether the batch was acknowledged; this exit path ignores it.
+let _flush: (() => Promise<unknown>) | undefined;
 let _flushSync: (() => void) | undefined;
 let _trackCliError:
   | ((props: {

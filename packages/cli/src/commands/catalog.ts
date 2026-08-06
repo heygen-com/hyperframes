@@ -16,7 +16,6 @@ import { c } from "../ui/colors.js";
 import { listRegistryItems, loadAllItems } from "../registry/resolver.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import { runAdd } from "./add.js";
 import {
   createFilePrimitiveInstallStateStore,
@@ -30,7 +29,6 @@ import {
   tryResolveOAuthCredential,
 } from "../auth/index.js";
 import { PrimitiveFunnel } from "../telemetry/primitive-funnel.js";
-import { writePrimitiveFunnelContext } from "../telemetry/primitive-funnel-state.js";
 import {
   THREAD_MESSAGE_STACK_ARTIFACT_ID,
   THREAD_MESSAGE_STACK_CATALOG_DIGEST,
@@ -107,6 +105,36 @@ export default defineCommand({
       return;
     }
 
+    const primitiveResultRank =
+      matching.findIndex((item) => item.name === "thread-message-stack") + 1;
+    let primitiveSession:
+      | {
+          intent: ReturnType<typeof createPrimitiveInstallIntent>;
+          context: ConstructorParameters<typeof PrimitiveFunnel>[0];
+          funnel: PrimitiveFunnel;
+        }
+      | undefined;
+    if (primitiveResultRank > 0) {
+      const intent = createPrimitiveInstallIntent({
+        itemName: "thread-message-stack",
+        query: args.query ?? "",
+        artifactId: THREAD_MESSAGE_STACK_ARTIFACT_ID,
+        versionId: THREAD_MESSAGE_STACK_VERSION_ID,
+      });
+      const context = {
+        funnelId: intent.funnelId,
+        installId: intent.installId,
+        primitiveId: "thread-message-stack",
+        artifactId: intent.artifactId,
+        versionId: intent.versionId,
+        catalogVersion: THREAD_MESSAGE_STACK_CATALOG_DIGEST,
+        queryFingerprint: `sha256:${intent.queryFingerprint}`,
+      };
+      const funnel = new PrimitiveFunnel(context);
+      funnel.catalogSearched(matching.length);
+      primitiveSession = { intent, context, funnel };
+    }
+
     if (json) {
       const output = matching.map((item) => ({
         name: item.name,
@@ -141,23 +169,11 @@ export default defineCommand({
       const selectedName = selected as string;
       let result: Awaited<ReturnType<typeof runAdd>> | undefined;
       if (selectedName === "thread-message-stack") {
-        const intent = createPrimitiveInstallIntent({
-          itemName: selectedName,
-          query: args.query ?? "",
-          artifactId: THREAD_MESSAGE_STACK_ARTIFACT_ID,
-          versionId: THREAD_MESSAGE_STACK_VERSION_ID,
-        });
-        const funnelContext = {
-          funnelId: intent.funnelId,
-          installId: intent.installId,
-          artifactId: intent.artifactId,
-          versionId: intent.versionId,
-          catalogVersion: THREAD_MESSAGE_STACK_CATALOG_DIGEST,
-          queryFingerprint: `sha256:${intent.queryFingerprint}`,
-        };
-        const funnel = new PrimitiveFunnel(funnelContext);
-        funnel.searched();
-        funnel.selected();
+        if (!primitiveSession)
+          throw new Error("Selected primitive is absent from catalog results.");
+        const { intent, context: funnelContext, funnel } = primitiveSession;
+        funnel.catalogResultSelected(primitiveResultRank);
+        const authStartedAt = performance.now();
         const outcome = await resumePrimitiveInstallExactlyOnce(intent, {
           store: createFilePrimitiveInstallStateStore(),
           isAuthenticated: async () => {
@@ -165,38 +181,50 @@ export default defineCommand({
             if (!credential) return false;
             try {
               const user = await new AuthClient().getCurrentUser(credential);
-              funnel.authCompleted(user.email ?? user.username);
+              funnel.authCompleted(
+                user.email ?? user.username,
+                "existing_session",
+                performance.now() - authStartedAt,
+              );
               return true;
             } catch {
               return false;
             }
           },
           authenticate: async () => {
-            funnel.authRequired();
+            funnel.authStarted();
             try {
               await startAuthorizationCodeFlow();
               const credential = await tryResolveOAuthCredential();
               if (!credential) return "failed";
               const user = await new AuthClient().getCurrentUser(credential);
-              funnel.authCompleted(user.email ?? user.username);
+              funnel.authCompleted(
+                user.email ?? user.username,
+                "oauth",
+                performance.now() - authStartedAt,
+              );
               return true;
             } catch {
               return "failed";
             }
           },
           install: async () => {
-            result = await runAdd({ name: selectedName, projectDir: dir, skipClipboard: false });
-            writePrimitiveFunnelContext(dir, funnelContext);
+            result = await runAdd({
+              name: selectedName,
+              projectDir: dir,
+              skipClipboard: false,
+              primitiveFunnelSession: primitiveSession,
+            });
           },
         });
         if (outcome === "failed" || outcome === "cancelled") {
-          funnel.installFailed(
-            randomUUID(),
+          funnel.authFailed(
+            `${funnelContext.installId}:auth-failed`,
             outcome === "cancelled" ? "auth_cancelled" : "auth_failed",
+            performance.now() - authStartedAt,
           );
           throw new Error(`Catalog authentication ${outcome}; no primitive was installed.`);
         }
-        if (outcome === "installed") funnel.installSucceeded(randomUUID());
         if (!result) {
           console.log(`${c.success("✓")} ${c.accent(selectedName)} was already installed.`);
           return;

@@ -11,6 +11,7 @@ export const examples: Example[] = [
   ["Skip the clipboard copy (CI/headless)", "hyperframes add shader-wipe --no-clipboard"],
 ];
 
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
@@ -30,10 +31,18 @@ import {
   DEFAULT_PROJECT_CONFIG,
   loadProjectConfig,
   projectConfigPath,
+  type ProjectConfig,
   writeProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
 import { authorizeThreadMessageStackInstall } from "../registry/threadMessageStackAuthorization.js";
+import { PrimitiveFunnel, type PrimitiveFunnelContext } from "../telemetry/primitive-funnel.js";
+import { writePrimitiveFunnelContext } from "../telemetry/primitive-funnel-state.js";
+import {
+  THREAD_MESSAGE_STACK_ARTIFACT_ID,
+  THREAD_MESSAGE_STACK_CATALOG_DIGEST,
+  THREAD_MESSAGE_STACK_VERSION_ID,
+} from "../registry/heygenverseCatalog.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
 // `registry-item.json` files specify `target` paths relative to the project
@@ -91,6 +100,11 @@ export interface RunAddArgs {
   cliVersion?: string;
   /** Caller-owned messages materialized only for thread-message-stack. */
   threadMessageStackData?: ThreadMessageStackData;
+  /** Caller-owned catalog session; direct add creates one without search/selection side effects. */
+  primitiveFunnelSession?: {
+    context: PrimitiveFunnelContext;
+    funnel: PrimitiveFunnel;
+  };
 }
 
 export interface RunAddResult {
@@ -167,8 +181,72 @@ async function installAll(
   return written;
 }
 
+async function resolveRequestedItem(
+  name: string,
+  registry: string,
+): Promise<{ resolved: RegistryItem[]; item: RegistryItem }> {
+  let resolved: RegistryItem[];
+  try {
+    resolved = await resolveItemWithDependencies(name, { baseUrl: registry });
+  } catch (err) {
+    throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
+  }
+  const item = resolved[resolved.length - 1]!;
+  if (item.type === "hyperframes:example") {
+    throw new AddError(
+      `"${item.name}" is an example — use \`hyperframes init <dir> --example ${item.name}\` instead.`,
+      "example-type",
+    );
+  }
+  return { resolved, item };
+}
+
+async function resolveAndInstall(
+  opts: RunAddArgs,
+  projectDir: string,
+  config: ProjectConfig,
+): Promise<RunAddResult> {
+  const { resolved, item } = await resolveRequestedItem(opts.name, config.registry);
+  const warnings = assertCompatibleOrThrow(resolved, opts.cliVersion);
+  const installPlan: RegistryItem[] = resolved.map((resolvedItem) => ({
+    ...resolvedItem,
+    files: resolvedItem.files.map((f) => ({
+      ...f,
+      target: remapTarget(resolvedItem, f.target, config.paths),
+    })),
+  }));
+  const written = await installAll(
+    installPlan,
+    projectDir,
+    config.registry,
+    item.name,
+    opts.threadMessageStackData,
+  );
+
+  const itemForInstall = installPlan[installPlan.length - 1]!;
+  const primaryFile =
+    itemForInstall.files.find((f) => f.type === "hyperframes:snippet") ??
+    itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
+    itemForInstall.files[0];
+  const snippet = buildSnippet(item, primaryFile?.target ?? "");
+
+  return {
+    ok: true,
+    name: item.name,
+    type: item.type,
+    typeDir: ITEM_TYPE_DIRS[item.type],
+    written,
+    installed: installPlan.map((planItem) => planItem.name),
+    snippet,
+    clipboardCopied: !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false,
+    warnings,
+  };
+}
+
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   const projectDir = resolve(opts.projectDir);
+  let primitiveSession = opts.primitiveFunnelSession;
+  let installStartedAt = 0;
 
   // 1. Load (or write default) project config.
   let config = loadProjectConfig(projectDir);
@@ -182,78 +260,63 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   // credentials. Gate its named command boundary before registry resolution so
   // an API key, cancellation, or failed OAuth cannot fetch even its manifest.
   if (opts.name === "thread-message-stack") {
-    const authorization = await authorizeThreadMessageStackInstall();
+    if (!primitiveSession) {
+      const context: PrimitiveFunnelContext = {
+        funnelId: randomUUID(),
+        installId: randomUUID(),
+        primitiveId: "thread-message-stack",
+        artifactId: THREAD_MESSAGE_STACK_ARTIFACT_ID,
+        versionId: THREAD_MESSAGE_STACK_VERSION_ID,
+        catalogVersion: THREAD_MESSAGE_STACK_CATALOG_DIGEST,
+        queryFingerprint: `sha256:${createHash("sha256").update("").digest("hex")}`,
+      };
+      primitiveSession = { context, funnel: new PrimitiveFunnel(context) };
+    }
+    const authStartedAt = performance.now();
+    const authorization = await authorizeThreadMessageStackInstall({
+      onAuthStarted: () => primitiveSession?.funnel.authStarted(),
+      onVerified: (user, authState) =>
+        primitiveSession?.funnel.authCompleted(
+          user.email ?? user.username,
+          authState,
+          performance.now() - authStartedAt,
+        ),
+    });
     if (authorization !== "authorized") {
+      primitiveSession.funnel.authFailed(
+        `${primitiveSession.context.installId}:auth-failed`,
+        authorization === "cancelled" ? "auth_cancelled" : "auth_failed",
+        performance.now() - authStartedAt,
+      );
       throw new AddError(
         `thread-message-stack requires verified HeyGen OAuth (${authorization}); no source was downloaded or materialized.`,
         "oauth-required",
       );
     }
+    primitiveSession.funnel.installStarted();
+    installStartedAt = performance.now();
   }
 
-  // 2. Resolve the requested item and its transitive registryDependencies.
-  //    The list comes back topologically sorted: dependencies first, the
-  //    requested item last.
-  let resolved: RegistryItem[];
   try {
-    resolved = await resolveItemWithDependencies(opts.name, { baseUrl: config.registry });
-  } catch (err) {
-    throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
-  }
-  // `resolveItemWithDependencies` always pushes the requested item last (or throws),
-  // so the final element is the item the user asked for.
-  const item = resolved[resolved.length - 1]!;
-
-  if (item.type === "hyperframes:example") {
-    throw new AddError(
-      `"${item.name}" is an example — use \`hyperframes init <dir> --example ${item.name}\` instead.`,
-      "example-type",
+    const result = await resolveAndInstall(opts, projectDir, config);
+    if (primitiveSession) {
+      writePrimitiveFunnelContext(projectDir, primitiveSession.context);
+      primitiveSession.funnel.installCompleted(
+        `${primitiveSession.context.installId}:install-completed`,
+        performance.now() - installStartedAt,
+      );
+    }
+    return result;
+  } catch (error) {
+    primitiveSession?.funnel.installFailed(
+      `${primitiveSession.context.installId}:install-failed`,
+      error instanceof AddError && error.code === "install-failed"
+        ? "install_failed"
+        : "invalid_payload",
+      performance.now() - installStartedAt,
     );
+    throw error;
   }
-
-  // 3. Compatibility-gate every item we're about to install (dependencies
-  //    included) before writing anything.
-  const warnings = assertCompatibleOrThrow(resolved, opts.cliVersion);
-
-  // 4. Remap targets per project config — each item by its own type.
-  const installPlan: RegistryItem[] = resolved.map((resolvedItem) => ({
-    ...resolvedItem,
-    files: resolvedItem.files.map((f) => ({
-      ...f,
-      target: remapTarget(resolvedItem, f.target, config.paths),
-    })),
-  }));
-
-  // 5. Install — dependencies first, requested item last.
-  const written = await installAll(
-    installPlan,
-    projectDir,
-    config.registry,
-    item.name,
-    opts.threadMessageStackData,
-  );
-
-  // 6. Build include snippet + clipboard copy for the requested item.
-  const itemForInstall = installPlan[installPlan.length - 1]!;
-  const primaryFile =
-    itemForInstall.files.find((f) => f.type === "hyperframes:snippet") ??
-    itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
-    itemForInstall.files[0];
-  const snippetTargetRel = primaryFile?.target ?? "";
-  const snippet = buildSnippet(item, snippetTargetRel);
-  const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
-
-  return {
-    ok: true,
-    name: item.name,
-    type: item.type,
-    typeDir: ITEM_TYPE_DIRS[item.type],
-    written,
-    installed: installPlan.map((planItem) => planItem.name),
-    snippet,
-    clipboardCopied,
-    warnings,
-  };
 }
 
 // ── Command ─────────────────────────────────────────────────────────────────

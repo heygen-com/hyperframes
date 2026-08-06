@@ -94,19 +94,26 @@ function buildPayload(events: readonly QueuedEvent[]): string | null {
  * request that `beforeExit` had just started. Keeping the queue intact until
  * delivery lets the exit-time flushSync() child (which survives the parent)
  * re-send anything unconfirmed; event uuids make that re-send idempotent.
+ *
+ * Returns whether PostHog acknowledged the batch. Almost every caller ignores
+ * this — telemetry is fire-and-forget by design. The exception is the primitive
+ * funnel's terminal events, which consume a durable single-use claim before
+ * emitting: they need to know whether the send actually landed so they can hand
+ * the claim back instead of burning it on an event that never arrived.
  */
-export async function flush(): Promise<void> {
+export async function flush(): Promise<boolean> {
   // Copy, not alias — events queued while the request is in flight must not
   // be swept into the "delivered" set below.
   const snapshot = eventQueue.slice();
   const payload = buildPayload(snapshot);
-  if (payload == null) return;
+  // Nothing queued is not a delivery failure — there was nothing to deliver.
+  if (payload == null) return true;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
 
   try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
+    const response = await fetch(`${POSTHOG_HOST}/batch/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Connection: "close" },
       body: payload,
@@ -114,11 +121,15 @@ export async function flush(): Promise<void> {
     });
     // Delivered — forget exactly what was sent (events queued while the
     // request was in flight stay for the next flush).
+    // A rejected batch is dropped too: PostHog will reject the retry the same
+    // way, so re-queueing would just resend it on every later command.
     const sent = new Set(snapshot);
     eventQueue = eventQueue.filter((e) => !sent.has(e));
+    return response.ok;
   } catch {
     // Silently ignore — telemetry must never break the CLI. The events stay
     // queued so the exit-time flushSync() fallback can still deliver them.
+    return false;
   } finally {
     clearTimeout(timeout);
   }

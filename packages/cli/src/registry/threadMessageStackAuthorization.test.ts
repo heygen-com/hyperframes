@@ -45,4 +45,37 @@ describe("thread-message-stack verified OAuth authorization", () => {
       }),
     ).resolves.toBe("failed");
   });
+
+  it("reports auth start and the verified user's bounded auth path at the real boundary", async () => {
+    const onAuthStarted = vi.fn();
+    const onVerified = vi.fn();
+    const authenticate = vi.fn(async () => {
+      await writeStore({ oauth: { access_token: "fresh-oauth-token" } });
+      return true as const;
+    });
+    const user = { email: "verified@example.com" };
+
+    await expect(
+      authorizeThreadMessageStackInstall({
+        authenticate,
+        verify: async () => user,
+        onAuthStarted,
+        onVerified,
+      }),
+    ).resolves.toBe("authorized");
+    expect(onAuthStarted).toHaveBeenCalledTimes(1);
+    expect(onVerified).toHaveBeenCalledWith(user, "oauth");
+
+    onAuthStarted.mockClear();
+    onVerified.mockClear();
+    await expect(
+      authorizeThreadMessageStackInstall({
+        verify: async () => user,
+        onAuthStarted,
+        onVerified,
+      }),
+    ).resolves.toBe("authorized");
+    expect(onAuthStarted).not.toHaveBeenCalled();
+    expect(onVerified).toHaveBeenCalledWith(user, "existing_session");
+  });
 });

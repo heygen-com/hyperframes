@@ -211,6 +211,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    const primitiveCommandStartedAt = performance.now();
     const browserGpuMode = resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined);
     if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
     if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
@@ -399,7 +400,11 @@ export default defineCommand({
           browserGpuMode,
         });
       } catch (error) {
-        trackPrimitivePreviewFailed(dir, "preview_failed");
+        await trackPrimitivePreviewFailed(
+          dir,
+          "preview_failed",
+          performance.now() - primitiveCommandStartedAt,
+        );
         clack.log.error(errorMessage(error));
         setCommandExitCode(1);
         return;
@@ -422,7 +427,7 @@ export default defineCommand({
         remoteDebuggingPort,
         browserNoGpu,
       });
-      trackPrimitivePreviewSucceeded(dir);
+      await trackPrimitivePreviewSucceeded(dir, performance.now() - primitiveCommandStartedAt);
       return;
     }
 
@@ -918,11 +923,15 @@ function attachStudioReadyHandler(
   spinner: ReturnType<typeof clack.spinner>,
   projectName: string,
   projectDir: string,
+  primitiveCommandStartedAt: number,
   options?: BrowserLaunchOptions,
 ): void {
   let detected = false;
 
-  function handleOutput(data: Buffer): void {
+  // Async because the terminal funnel event awaits delivery before its claim is
+  // considered spent. `detected` is latched before the await, so a second chunk
+  // arriving mid-flight still short-circuits.
+  async function handleOutput(data: Buffer): Promise<void> {
     const url = data.toString().match(/Local:\s+(http:\/\/localhost:\d+)/)?.[1];
     if (!url || detected) return;
 
@@ -930,15 +939,19 @@ function attachStudioReadyHandler(
     spinner.stop(c.success("Studio running"));
     printStudioSummary(projectName, url, { footer: "Press Ctrl+C to stop" });
     openStudioBrowser(url, projectName, projectDir, options);
-    trackPrimitivePreviewSucceeded(projectDir);
+    await trackPrimitivePreviewSucceeded(projectDir, performance.now() - primitiveCommandStartedAt);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
 
   child.stdout.on("data", handleOutput);
   child.stderr.on("data", handleOutput);
-  child.on("error", (err) => {
-    trackPrimitivePreviewFailed(projectDir, "preview_failed");
+  child.on("error", async (err) => {
+    await trackPrimitivePreviewFailed(
+      projectDir,
+      "preview_failed",
+      performance.now() - primitiveCommandStartedAt,
+    );
     spinner.stop(c.error("Failed to start studio"));
     console.error(c.dim(err.message));
   });
@@ -948,6 +961,7 @@ function attachStudioReadyHandler(
  * Dev mode: spawn the studio dev server from the monorepo.
  */
 async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+  const primitiveCommandStartedAt = performance.now();
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
@@ -970,7 +984,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
     env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
-  attachStudioReadyHandler(child, s, pName, dir, options);
+  attachStudioReadyHandler(child, s, pName, dir, primitiveCommandStartedAt, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Kill the child's entire process tree on SIGTERM/SIGINT. Ctrl+C sends
@@ -1001,6 +1015,7 @@ function hasLocalStudio(dir: string): boolean {
  * Provides full Vite HMR and the complete studio experience.
  */
 async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+  const primitiveCommandStartedAt = performance.now();
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
   const pName = options?.projectName ?? basename(dir);
@@ -1020,7 +1035,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
     env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
-  attachStudioReadyHandler(child, s, pName, dir, options);
+  attachStudioReadyHandler(child, s, pName, dir, primitiveCommandStartedAt, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Same tree-kill handler as dev mode. No-op on Windows (see comment above).
@@ -1040,6 +1055,7 @@ async function runEmbeddedMode(
   startPort: number,
   options?: EmbeddedStudioOptions,
 ): Promise<void> {
+  const primitiveCommandStartedAt = performance.now();
   const { createStudioServer, loadPreviewServerBuildSignature, resolveStudioBundle } =
     await import("../server/studioServer.js");
 
@@ -1084,7 +1100,11 @@ async function runEmbeddedMode(
       options?.browserGpuMode,
     );
   } catch (err: unknown) {
-    trackPrimitivePreviewFailed(dir, "preview_failed");
+    await trackPrimitivePreviewFailed(
+      dir,
+      "preview_failed",
+      performance.now() - primitiveCommandStartedAt,
+    );
     s.stop(c.error("Failed to start studio"));
     console.error();
     console.error(`  ${(err as Error).message}`);
@@ -1100,7 +1120,7 @@ async function runEmbeddedMode(
       details: ["Reusing existing server. Use --force-new to start a fresh instance."],
     });
     openStudioBrowser(url, pName, dir, options);
-    trackPrimitivePreviewSucceeded(dir);
+    await trackPrimitivePreviewSucceeded(dir, performance.now() - primitiveCommandStartedAt);
     return;
   }
 
@@ -1119,7 +1139,7 @@ async function runEmbeddedMode(
     footer: "Press Ctrl+C to stop",
   });
   openStudioBrowser(url, pName, dir, options);
-  trackPrimitivePreviewSucceeded(dir);
+  await trackPrimitivePreviewSucceeded(dir, performance.now() - primitiveCommandStartedAt);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
