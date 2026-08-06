@@ -86,6 +86,7 @@ export function useTimelinePlayer() {
             state.duration,
             resolvedDuration,
           ),
+          state.timelineProjectId,
         ),
       );
 
@@ -105,15 +106,19 @@ export function useTimelinePlayer() {
 
       // Asynchronously enrich media elements still missing sourceDuration
       // (header-only probe, cheap), applying each resolved value to the store.
-      void probeMissingSourceDurations(mergedElements, (key, durationSeconds) => {
-        usePlayerStore.setState((state) => {
-          const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
-          if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
-          const patched = state.elements.slice();
-          patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
-          return { elements: patched };
-        });
-      });
+      void probeMissingSourceDurations(
+        mergedElements,
+        state.timelineProjectId,
+        (key, durationSeconds) => {
+          usePlayerStore.setState((state) => {
+            const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
+            if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
+            const patched = state.elements.slice();
+            patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
+            return { elements: patched };
+          });
+        },
+      );
     },
     [setElements, setTimelineReady, setDuration],
   );

@@ -108,6 +108,42 @@ describe("useRenderClipContent", () => {
     if (isValidElement(content)) expect(content.type).toBe(AudioWaveform);
   });
 
+  it("routes root-relative iframe media back through the active project", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    const resolvedRootMedia = `${window.location.origin}/assets/clip.mp4`;
+    const video = renderClipContent(
+      {
+        id: "video",
+        tag: "video",
+        start: 0,
+        duration: 4,
+        track: 0,
+        src: resolvedRootMedia,
+      },
+      null,
+    );
+    const audio = renderClipContent({
+      id: "audio",
+      tag: "audio",
+      start: 0,
+      duration: 4,
+      track: 1,
+      src: resolvedRootMedia,
+    });
+
+    expect(isValidElement<{ videoSrc: string }>(video)).toBe(true);
+    expect(isValidElement<{ audioUrl: string; waveformUrl: string }>(audio)).toBe(true);
+    if (isValidElement<{ videoSrc: string }>(video)) {
+      expect(video.props.videoSrc).toBe("/api/projects/my-project/preview/assets/clip.mp4");
+    }
+    if (isValidElement<{ audioUrl: string; waveformUrl: string }>(audio)) {
+      expect(audio.props).toMatchObject({
+        audioUrl: "/api/projects/my-project/preview/assets/clip.mp4",
+        waveformUrl: "/api/projects/my-project/waveform/assets/clip.mp4",
+      });
+    }
+  });
+
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive" });
 

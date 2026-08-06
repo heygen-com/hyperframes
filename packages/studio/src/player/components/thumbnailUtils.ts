@@ -90,12 +90,43 @@ export function encodePreviewPath(relativePath: string): string {
  * (parent) document. Composition-relative paths (e.g. "assets/image.png") are
  * routed through the project preview endpoint with each segment encoded.
  *
- * Already-loadable URLs pass through untouched: absolute http(s) URLs, plus
- * `data:` and `blob:` URLs. Routing a `data:`/`blob:` URL through the preview
- * endpoint would percent-encode the whole thing into a multi-KB path segment
- * that the server rejects with HTTP 431 (Request Header Fields Too Large).
+ * External http(s), `data:`, and `blob:` URLs pass through untouched. A
+ * same-origin absolute URL outside the project preview endpoint is the browser's
+ * resolved form of a root-relative authored path, so route it back through the
+ * active project instead of accidentally fetching the Studio shell.
  */
-export function resolveMediaPreviewUrl(src: string, projectId: string): string {
-  if (/^(?:https?:|data:|blob:)/i.test(src)) return src;
-  return `/api/projects/${projectId}/preview/${encodePreviewPath(src)}`;
+export function resolveMediaPreviewUrl(
+  src: string,
+  projectId: string,
+  studioOrigin?: string,
+): string {
+  if (!src) return src;
+  if (/^(?:data:|blob:)/i.test(src)) return src;
+
+  let relativePath = src;
+  let suffix = "";
+  if (/^https?:/i.test(src)) {
+    let parsed: URL;
+    try {
+      parsed = new URL(src);
+    } catch {
+      return src;
+    }
+    if (!studioOrigin || parsed.origin !== studioOrigin) return src;
+    const previewPath = new URL(`/api/projects/${projectId}/preview/`, studioOrigin).pathname;
+    if (parsed.pathname.startsWith(previewPath)) return src;
+    if (parsed.pathname.startsWith("/api/")) return src;
+    try {
+      relativePath = parsed.pathname
+        .replace(/^\/+/, "")
+        .split("/")
+        .map(decodeURIComponent)
+        .join("/");
+    } catch {
+      return src;
+    }
+    suffix = `${parsed.search}${parsed.hash}`;
+  }
+
+  return `/api/projects/${projectId}/preview/${encodePreviewPath(relativePath.replace(/^\/+/, ""))}${suffix}`;
 }

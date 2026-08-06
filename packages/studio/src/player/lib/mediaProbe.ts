@@ -1,3 +1,4 @@
+import { resolveMediaPreviewUrl } from "../components/thumbnailUtils";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
 
 export interface MediaProbeResult {
@@ -85,6 +86,10 @@ function getCachedProbe(url: string): MediaProbeResult | undefined {
   return cached?.result;
 }
 
+function resolveProbeSource(src: string, projectId: string | null): string {
+  return projectId ? resolveMediaPreviewUrl(src, projectId, window.location.origin) : src;
+}
+
 function evictMetadataOverflow(): void {
   const overflow = cache.size + failed.size - TIMELINE_VIEWPORT_BUDGETS.metadataRegistryEntries;
   if (overflow <= 0) return;
@@ -106,11 +111,11 @@ function evictMetadataOverflow(): void {
  */
 export function applyCachedSourceDurations<
   T extends { src?: string; tag: string; sourceDuration?: number },
->(elements: T[]): T[] {
+>(elements: T[], projectId: string | null): T[] {
   return elements.map((el) => {
     const tag = el.tag.toLowerCase();
     if (!el.src || el.sourceDuration != null || (tag !== "audio" && tag !== "video")) return el;
-    const cached = getCachedProbe(el.src);
+    const cached = getCachedProbe(resolveProbeSource(el.src, projectId));
     return cached?.duration && cached.duration > 0
       ? { ...el, sourceDuration: cached.duration }
       : el;
@@ -124,20 +129,27 @@ export function applyCachedSourceDurations<
  */
 export async function probeMissingSourceDurations<
   T extends { src?: string; tag: string; sourceDuration?: number; key?: string; id: string },
->(elements: T[], apply: (key: string, durationSeconds: number) => void): Promise<void> {
-  const needs = elements.filter(
-    (el) =>
-      el.src &&
-      el.sourceDuration == null &&
-      ["video", "audio"].includes(el.tag.toLowerCase()) &&
-      !getCachedProbe(el.src) &&
-      !hasFreshFailure(normalizeUrl(el.src)),
-  );
+>(
+  elements: T[],
+  projectId: string | null,
+  apply: (key: string, durationSeconds: number) => void,
+): Promise<void> {
+  const needs = elements.flatMap((el) => {
+    if (
+      !el.src ||
+      el.sourceDuration != null ||
+      !["video", "audio"].includes(el.tag.toLowerCase())
+    ) {
+      return [];
+    }
+    const source = resolveProbeSource(el.src, projectId);
+    return !getCachedProbe(source) && !hasFreshFailure(normalizeUrl(source))
+      ? [{ el, source }]
+      : [];
+  });
   if (needs.length === 0) return;
   await Promise.allSettled(
-    needs.map(async (el) => {
-      const source = el.src;
-      if (!source) return;
+    needs.map(async ({ el, source }) => {
       const result = await probeMediaUrl(source);
       if (result) apply(el.key ?? el.id, result.duration);
     }),

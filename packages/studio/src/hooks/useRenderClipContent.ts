@@ -27,12 +27,21 @@ export function normalizeCompositionSrc(
 }
 
 /** Resolve a media src to its project-relative preview path, or null. */
-function resolvePreviewRelative(src: string | undefined, pid: string): string | null {
+function resolvePreviewRelative(
+  src: string | undefined,
+  pid: string,
+  origin: string,
+): string | null {
   if (!src) return null;
-  if (!src.startsWith("http")) return src;
-  const base = `/api/projects/${pid}/preview/`;
-  const idx = src.indexOf(base);
-  return idx !== -1 ? decodeURIComponent(src.slice(idx + base.length)) : null;
+  try {
+    const parsed = new URL(src, origin);
+    const base = new URL(`/api/projects/${pid}/preview/`, origin).pathname;
+    return parsed.pathname.startsWith(base)
+      ? decodeURIComponent(parsed.pathname.slice(base.length))
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -61,14 +70,12 @@ function renderAudioClip(
   labelColor: string,
   context: TimelineClipRenderContext,
 ): ReactNode {
-  const srcRelative = resolvePreviewRelative(el.src, pid);
+  const audioUrl = resolveMediaPreviewUrl(el.src ?? "", pid, window.location.origin);
+  const srcRelative = resolvePreviewRelative(audioUrl, pid, window.location.origin);
   // Encode each path segment (spaces, parens, U+202F, unicode) so the URL matches
   // what the assets panel loads — a raw segment 404s. resolvePreviewRelative
   // returns the DECODED path, so it must be re-encoded here.
   const encodedRelative = srcRelative ? encodePreviewPath(srcRelative) : null;
-  const audioUrl = encodedRelative
-    ? `/api/projects/${pid}/preview/${encodedRelative}`
-    : (el.src ?? "");
   const waveformUrl = encodedRelative
     ? `/api/projects/${pid}/waveform/${encodedRelative}`
     : undefined;
@@ -184,7 +191,7 @@ export function useRenderClipContent({
         !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {
-        const mediaSrc = resolveMediaPreviewUrl(el.src, pid);
+        const mediaSrc = resolveMediaPreviewUrl(el.src, pid, window.location.origin);
         // Still images can't be decoded by VideoThumbnail's <video> extractor
         // (the error event fires and the shimmer never resolves) — render the
         // image itself as the strip.

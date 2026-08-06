@@ -1,15 +1,24 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getMediaProbeDiagnostics, probeMediaUrl, resetMediaProbeRegistry } from "./mediaProbe";
+import {
+  applyCachedSourceDurations,
+  getMediaProbeDiagnostics,
+  probeMediaUrl,
+  probeMissingSourceDurations,
+  resetMediaProbeRegistry,
+} from "./mediaProbe";
 
 const dispose = vi.fn();
 const getDurationFromMetadata = vi.fn(async () => 5);
+const requestedSources: string[] = [];
 
 vi.mock("mediabunny", () => ({
   ALL_FORMATS: {},
   UrlSource: class {
-    constructor(readonly url: string) {}
+    constructor(readonly url: string) {
+      requestedSources.push(url);
+    }
   },
   Input: class {
     getDurationFromMetadata = getDurationFromMetadata;
@@ -22,6 +31,7 @@ vi.mock("mediabunny", () => ({
 beforeEach(() => {
   resetMediaProbeRegistry();
   vi.clearAllMocks();
+  requestedSources.length = 0;
   getDurationFromMetadata.mockResolvedValue(5);
 });
 
@@ -77,5 +87,57 @@ describe("media probe registry", () => {
     vi.advanceTimersByTime(30_001);
     await expect(probeMediaUrl("/bad.mp4")).resolves.toBeNull();
     expect(getDurationFromMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it("probes same-origin rooted media through the active project preview", async () => {
+    const apply = vi.fn();
+    await probeMissingSourceDurations(
+      [
+        {
+          id: "clip",
+          tag: "video",
+          src: `${window.location.origin}/assets/clip.mp4`,
+        },
+      ],
+      "project-a",
+      apply,
+    );
+
+    expect(requestedSources).toEqual([
+      `${window.location.origin}/api/projects/project-a/preview/assets/clip.mp4`,
+    ]);
+    expect(apply).toHaveBeenCalledWith("clip", 5);
+    expect(
+      applyCachedSourceDurations(
+        [
+          {
+            id: "clip",
+            tag: "video",
+            src: `${window.location.origin}/assets/clip.mp4`,
+          },
+        ],
+        "project-a",
+      ),
+    ).toEqual([
+      {
+        id: "clip",
+        tag: "video",
+        src: `${window.location.origin}/assets/clip.mp4`,
+        sourceDuration: 5,
+      },
+    ]);
+
+    await probeMissingSourceDurations(
+      [
+        {
+          id: "clip",
+          tag: "video",
+          src: `${window.location.origin}/assets/clip.mp4`,
+        },
+      ],
+      "project-a",
+      apply,
+    );
+    expect(requestedSources).toHaveLength(1);
   });
 });
