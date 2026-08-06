@@ -41,6 +41,17 @@ export interface AgentModel {
   contextWindow?: number;
 }
 
+/** A clip an agent said it is about to add, in authored track coordinates. */
+export interface TimelineSkeleton {
+  /** A data-track-index, the number the agent writes, not a display lane. */
+  track: number;
+  start: number;
+  end: number;
+  label?: string;
+  /** Which composition, when the agent is editing more than one. */
+  file?: string;
+}
+
 /** One thing the agent will do if allowed, in the agent's own words. */
 export interface PermissionOption {
   optionId: string;
@@ -67,6 +78,8 @@ export interface AgentJob {
   status: "queued" | "running" | "awaiting-permission" | "done" | "failed" | "cancelled";
   /** What the run stopped to ask, while it is waiting for an answer. */
   permission?: { tool: string; options: PermissionOption[] };
+  /** Where the agent said it is about to add clips, while the run is live. */
+  skeletons?: TimelineSkeleton[];
   activity: string;
   /** What the agent declared the selection overlay should show. See overlayState. */
   overlay?: OverlayState;

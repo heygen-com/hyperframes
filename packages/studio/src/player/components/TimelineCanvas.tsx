@@ -23,6 +23,8 @@ import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
+import { TimelineSkeletons } from "./TimelineSkeletons";
+import { useTimelineSkeletons } from "./useTimelineSkeletons";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -43,6 +45,10 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
   const { draggedClip, scrollRef, selectedElementIds, displayTrackOrder } = props;
+  // Read here rather than threaded from Timeline.tsx, which is at the studio
+  // line cap. Player components already read this context optionally, and it
+  // is absent in standalone mounts, which have no project and no agent.
+  const skeletons = useTimelineSkeletons();
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
@@ -238,6 +244,16 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           }}
         />
       )}
+
+      {/* Clips an agent said it is about to add, drawn under the playhead and
+          over the lanes, and taking no pointer events. */}
+      <TimelineSkeletons
+        {...skeletons}
+        contentOrigin={props.contentOrigin}
+        pps={props.pps}
+        rowHeights={props.rowHeights}
+        displayTrackOrder={displayTrackOrder}
+      />
 
       {/* Range highlight */}
       {props.rangeSelection && (

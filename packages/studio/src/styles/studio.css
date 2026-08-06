@@ -646,3 +646,26 @@ body {
     animation: none;
   }
 }
+
+/* A clip an agent said it is about to add: present enough to read as pending,
+   quiet enough not to compete with the clips that actually exist. */
+@keyframes hf-timeline-skeleton {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.hf-timeline-skeleton {
+  animation: hf-timeline-skeleton 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-timeline-skeleton {
+    animation: none;
+    opacity: 0.75;
+  }
+}
