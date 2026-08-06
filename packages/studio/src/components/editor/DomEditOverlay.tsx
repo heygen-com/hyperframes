@@ -504,7 +504,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       )}
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
         <DomEditSelectionChrome
-          onBoxDoublePress={inlineText.startFromPress}
+          inlineText={inlineText}
           selection={selection}
           overlayRect={overlayRect}
           allowCanvasMovement={allowCanvasMovement}
