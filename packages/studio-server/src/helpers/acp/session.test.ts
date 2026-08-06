@@ -594,3 +594,46 @@ describe("stopping and correcting an ACP run", () => {
     expect(listAgentJobs(projectId)).toHaveLength(1);
   });
 });
+
+describe("skeletons an agent declares", () => {
+  const DECLARATION =
+    '<!-- hf:timeline {"adding":[{"track":0,"start":1,"end":3,"label":"Hero"},{"track":2,"start":3,"end":4.5}]} --> Adding two clips.';
+
+  it("shows while the run is live and leaves nothing behind", async () => {
+    const { read } = startJob({
+      agent: acpCommand(createAcpAgent([said(DECLARATION)], "end_turn", 400)),
+      projectDir: createProjectDir(),
+    });
+
+    await until(() => (read().skeletons?.length ?? 0) > 0);
+    expect(read().skeletons).toEqual([
+      { track: 0, start: 1, end: 3, label: "Hero" },
+      { track: 2, start: 3, end: 4.5 },
+    ]);
+    // The declaration is for the timeline, not for the reader.
+    expect(read().activity).toBe("Adding two clips.");
+
+    await until(() => read().status === "done");
+    expect(read().skeletons).toBeUndefined();
+    expect(read().message).toBe("Adding two clips.");
+  });
+
+  it("clears them when the agent says it is no longer adding", async () => {
+    const { read } = startJob({
+      agent: acpCommand(
+        createAcpAgent(
+          [
+            said('<!-- hf:timeline {"adding":[{"track":0,"start":0,"end":1}]} -->'),
+            said('<!-- hf:timeline {"adding":[]} -->'),
+          ],
+          "end_turn",
+          400,
+        ),
+      ),
+      projectDir: createProjectDir(),
+    });
+
+    await until(() => read().status === "running" && read().skeletons === undefined);
+    await until(() => read().status === "done");
+  });
+});

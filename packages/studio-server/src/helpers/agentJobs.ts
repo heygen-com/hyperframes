@@ -6,12 +6,16 @@ import { readPermissionRequest, refusalOption } from "./acp/permissions.js";
 import { runAcpSession } from "./acp/session.js";
 import {
   loggedRunSchema,
+  MAX_TIMELINE_SKELETONS,
   overlayStateSchema,
+  timelineDeclarationSchema,
+  timelineSkeletonSchema,
   type AgentKind,
   type AgentStatus,
   type AgentTargetRef,
   type OverlayState,
   type PermissionRequest,
+  type TimelineSkeleton,
 } from "./agentSchemas.js";
 
 export { AGENT_KINDS } from "./agentSchemas.js";
@@ -21,6 +25,7 @@ export type {
   OverlayState,
   PermissionOption,
   PermissionRequest,
+  TimelineSkeleton,
 } from "./agentSchemas.js";
 
 export interface AgentCommand {
@@ -77,6 +82,8 @@ export interface AgentJob {
   activity: string;
   /** What the agent said the selection overlay should show, if it said anything. */
   overlay?: OverlayState;
+  /** Where the agent said it is about to add clips, while the run is live. */
+  skeletons?: TimelineSkeleton[];
   message?: string;
   startedAt: number;
   endedAt?: number;
@@ -541,6 +548,9 @@ function codexItem(line: string): Record<string, unknown> | null {
 
 /** The marker an agent writes to drive the overlay; see OverlayState. */
 const OVERLAY_MARKER = "hf:overlay";
+const TIMELINE_MARKER = "hf:timeline";
+/** Every marker an agent can address Studio with, for stripping them all out. */
+const DECLARATION_MARKERS = [OVERLAY_MARKER, TIMELINE_MARKER];
 
 /**
  * Pull the JSON object that starts at `from` out of `text`.
@@ -593,47 +603,87 @@ function proseLines(kind: AgentKind, line: string): string[] {
 }
 
 /**
- * An overlay state the agent declared for itself, if this chunk carries one.
+ * Every declaration of one kind in this chunk, latest wins.
  *
- * The last declaration in a chunk wins: an agent that narrates several steps in
- * one message is describing where it ended up.
+ * The agent writes these inline in its prose, so the object has no line to
+ * split on and ends where its own braces balance. Written once and shared by
+ * every declaration: two copies of this walk would drift the moment one of
+ * them learned something the other did not.
  */
-export function readOverlayState(kind: AgentKind, line: string): OverlayState | null {
-  let latest: OverlayState | null = null;
+function readDeclaration<T>(
+  kind: AgentKind,
+  line: string,
+  marker: string,
+  parse: (value: unknown) => T | null,
+): T | null {
+  let latest: T | null = null;
   for (const text of proseLines(kind, line)) {
-    let at = text.indexOf(OVERLAY_MARKER);
+    let at = text.indexOf(marker);
     while (at !== -1) {
-      const start = text.indexOf("{", at + OVERLAY_MARKER.length);
+      const start = text.indexOf("{", at + marker.length);
       const json = start === -1 ? null : extractJsonObject(text, start);
       if (json) {
         try {
-          const parsed = overlayStateSchema.safeParse(JSON.parse(json));
-          if (parsed.success) latest = parsed.data;
+          const value = parse(JSON.parse(json));
+          if (value !== null) latest = value;
         } catch {
           // A malformed declaration is noise, not a failed run.
         }
       }
-      at = text.indexOf(OVERLAY_MARKER, at + OVERLAY_MARKER.length);
+      at = text.indexOf(marker, at + marker.length);
     }
   }
   return latest;
 }
 
 /**
- * The same text with its overlay declarations taken out.
+ * An overlay state the agent declared for itself, if this chunk carries one.
  *
- * A declaration is addressed to the canvas, not to the reader: left in, it
- * becomes the run's "what is it doing" line and the tray shows raw JSON.
+ * The last declaration in a chunk wins: an agent that narrates several steps in
+ * one message is describing where it ended up.
  */
-export function stripOverlayMarkers(text: string): string {
+export function readOverlayState(kind: AgentKind, line: string): OverlayState | null {
+  return readDeclaration(kind, line, OVERLAY_MARKER, (value) => {
+    const parsed = overlayStateSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+  });
+}
+
+/**
+ * Where the agent says it is about to put new clips, if it said.
+ *
+ * Entries are read one at a time so one bad entry costs its own skeleton
+ * rather than every sibling's, and the whole set is replaced each time the
+ * agent declares: an empty list is how it says it is no longer adding.
+ */
+export function readTimelineSkeletons(kind: AgentKind, line: string): TimelineSkeleton[] | null {
+  return readDeclaration(kind, line, TIMELINE_MARKER, (value) => {
+    const parsed = timelineDeclarationSchema.safeParse(value);
+    if (!parsed.success) return null;
+    return parsed.data.adding
+      .flatMap((entry) => {
+        const clip = timelineSkeletonSchema.safeParse(entry);
+        return clip.success ? [clip.data] : [];
+      })
+      .slice(0, MAX_TIMELINE_SKELETONS);
+  });
+}
+
+/**
+ * The same text with the agent's declarations taken out.
+ *
+ * A declaration is addressed to Studio, not to the reader: left in, it becomes
+ * the run's "what is it doing" line and the tray shows raw JSON.
+ */
+export function stripAgentDeclarations(text: string): string {
+  return DECLARATION_MARKERS.reduce(stripMarker, text);
+}
+
+function stripMarker(text: string, marker: string): string {
   let out = "";
   let cursor = 0;
-  for (
-    let at = text.indexOf(OVERLAY_MARKER);
-    at !== -1;
-    at = text.indexOf(OVERLAY_MARKER, cursor)
-  ) {
-    const start = text.indexOf("{", at + OVERLAY_MARKER.length);
+  for (let at = text.indexOf(marker); at !== -1; at = text.indexOf(marker, cursor)) {
+    const start = text.indexOf("{", at + marker.length);
     const json = start === -1 ? null : extractJsonObject(text, start);
     if (!json) break;
     // Swallow the HTML comment the contract wraps it in, when there is one.
@@ -661,7 +711,7 @@ export function readActivity(kind: AgentKind, line: string): string | null {
   if (kind === "codex") return codexActivity(trimmed);
   // Prose harnesses: the latest line already is the summary, minus any overlay
   // declaration, which is for the canvas rather than for the reader.
-  return stripOverlayMarkers(trimmed).slice(0, 90) || null;
+  return stripAgentDeclarations(trimmed).slice(0, 90) || null;
 }
 
 /** Tool calls and prose out of stream-json; bookkeeping events are skipped. */
@@ -679,7 +729,7 @@ function claudeActivity(line: string): string | null {
       return file ? `${part.name} · ${file}` : part.name;
     }
     if (part.type === "text" && typeof part.text === "string") {
-      const said = stripOverlayMarkers(part.text).split("\n")[0]?.trim();
+      const said = stripAgentDeclarations(part.text).split("\n")[0]?.trim();
       if (said) return said.slice(0, 90);
     }
   }
@@ -707,7 +757,7 @@ function codexActivity(line: string): string | null {
     return `Shell · ${command.split("\n")[0]!.slice(0, 70)}`;
   }
   if (item.type === "agent_message" && typeof item.text === "string") {
-    const said = stripOverlayMarkers(item.text).split("\n")[0]?.trim();
+    const said = stripAgentDeclarations(item.text).split("\n")[0]?.trim();
     if (said) return said.slice(0, 90);
   }
   return null;
@@ -797,7 +847,7 @@ function readResultMessage(kind: AgentKind, output: string): string | undefined 
     for (const line of lines) {
       const item = codexItem(line);
       if (item?.type === "agent_message" && typeof item.text === "string") {
-        return stripOverlayMarkers(item.text).slice(0, MAX_RESULT_CHARS);
+        return stripAgentDeclarations(item.text).slice(0, MAX_RESULT_CHARS);
       }
     }
     return undefined;
@@ -835,6 +885,9 @@ function closeOut(job: AgentJob, cwd: string): void {
   runningByJob.delete(job.id);
   askedByJob.delete(job.id);
   job.permission = undefined;
+  // A promise about clips that are coming does not outlive the run that made
+  // it: the composition reload is what replaces a skeleton with the real clip.
+  job.skeletons = undefined;
   activeRuns.delete(job.id);
   openRuns.delete(job.id);
   if (job.overlay && job.overlay.kind !== "done" && job.overlay.kind !== "failed") {
@@ -852,7 +905,7 @@ function settleAcpTurn(job: AgentJob, label: string, stopReason: string, said: s
   // just the agent acknowledging that decision, not news about the run.
   if (job.status === "failed" || job.status === "cancelled") return;
 
-  const answer = stripOverlayMarkers(said).slice(0, MAX_RESULT_CHARS);
+  const answer = stripAgentDeclarations(said).slice(0, MAX_RESULT_CHARS);
   if (stopReason === "cancelled") {
     job.status = "cancelled";
     job.message ??= "Stopped mid-run.";
@@ -973,6 +1026,8 @@ async function runOverAcp({ job, agent, prompt, cwd }: PendingRun): Promise<void
           if (update.message) {
             const overlay = readOverlayState("custom", update.message);
             if (overlay) job.overlay = overlay;
+            const skeletons = readTimelineSkeletons("custom", update.message);
+            if (skeletons) job.skeletons = skeletons.length > 0 ? skeletons : undefined;
           }
           // "custom" is the prose reader: an ACP update is already the text,
           // with no harness envelope left to unwrap.
@@ -1033,6 +1088,8 @@ function runNatively({ job, agent, prompt, cwd }: PendingRun): Promise<void> {
         if (activity) job.activity = activity;
         const overlay = readOverlayState(agent.kind, line);
         if (overlay) job.overlay = overlay;
+        const skeletons = readTimelineSkeletons(agent.kind, line);
+        if (skeletons) job.skeletons = skeletons.length > 0 ? skeletons : undefined;
         // The turn is over; nothing more will be said to it, so let it exit.
         if (streaming && isTurnComplete(line)) {
           openRuns.delete(job.id);

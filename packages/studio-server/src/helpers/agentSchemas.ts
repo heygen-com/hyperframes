@@ -140,6 +140,43 @@ export const agentJobPatchSchema = z
   );
 
 /**
+ * One clip an agent says it is about to add, and where it will land.
+ *
+ * `track` is a `data-track-index`, the number the agent itself writes into the
+ * file. It is deliberately not a timeline lane: Studio packs lanes contiguously
+ * for display, so the two disagree the moment a composition has gaps, and the
+ * agent has never seen a lane.
+ */
+export const timelineSkeletonSchema = z
+  .object({
+    track: z.number().int().min(0).max(999),
+    start: z.number().finite().min(0),
+    end: z.number().finite().min(0),
+    /** One short name for the clip, shown on the skeleton. */
+    label: z.string().trim().min(1).max(60).optional(),
+    /** Which composition this is about, when the agent is editing more than one. */
+    file: z.string().trim().min(1).max(400).optional(),
+  })
+  // A skeleton with no width is nothing to draw, and an inverted one is a
+  // typo rather than an intention.
+  .refine((clip) => clip.end > clip.start, { message: "end must be after start" });
+export type TimelineSkeleton = z.infer<typeof timelineSkeletonSchema>;
+
+/**
+ * What an agent declares about the timeline: everything it is about to add.
+ *
+ * Entries are read one at a time so a single bad one costs its own skeleton
+ * rather than the whole declaration, and an empty list is how an agent says it
+ * is no longer adding anything.
+ */
+export const timelineDeclarationSchema = z.object({
+  adding: z.array(z.unknown()).default([]),
+});
+
+/** Enough for any real composition; a runaway declaration cannot fill the timeline. */
+export const MAX_TIMELINE_SKELETONS = 64;
+
+/**
  * One thing the agent will do if allowed, in its own words.
  *
  * The label and the id are the agent's, not Studio's: inventing our own
