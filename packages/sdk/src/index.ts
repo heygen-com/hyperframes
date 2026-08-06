@@ -61,7 +61,7 @@ export type {
   PersistAdapter,
   PreviewAdapter,
   PersistVersionEntry,
-  PaintsAtOptions,
+  PaintQueryOptions,
 } from "./adapters/types.js";
 
 // Concrete adapter factories (browser-safe — Node-only fs adapter: @hyperframes/sdk/adapters/fs).

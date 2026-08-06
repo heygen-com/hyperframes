@@ -87,7 +87,7 @@ Injectable preview surface adapter. Decouples the SDK from the host's rendering 
 ```typescript
 interface PreviewAdapter {
   elementAtPoint(x: number, y: number, opts?: { atTime?: number }): ElementAtPointResult | null;
-  paintsAt?(x: number, y: number, opts?: PaintsAtOptions): boolean | null;
+  isProvablyEmptyAt?(x: number, y: number, opts?: PaintQueryOptions): boolean;
   applyDraft(id: string, props: DraftProps): void;
   commitPreview(): void;
   cancelPreview(): void;
@@ -101,10 +101,14 @@ interface PreviewAdapter {
   Synchronous hit-test at composition coordinates `(x, y)`. Returns the nearest `[data-hf-id]` element under the point, or `null` for a transparent hit (the composition root, an opacity-0 element, or nothing at all). Requires a same-origin iframe — cross-origin access throws a DOMException. The `atTime` option reflects GSAP state at the current playhead; seeking to a speculative time is not supported.
 </ParamField>
 
-<ParamField path="paintsAt" type="(x, y, opts?) => boolean | null">
-  Optional. Does the composition put ink at composition coordinates `(x, y)`? This is the question a host has to answer before a transparent composition layered over other content swallows a click: is the user pointing **at** artwork, or through an empty gap at whatever sits beneath? Geometry alone cannot tell — a composition is mostly full-bleed wrapper `<div>`s that cover every pixel of the frame without painting anything.
+<ParamField path="isProvablyEmptyAt" type="(x, y, opts?) => boolean">
+  Optional. Is `(x, y)` provably free of ink — is it safe to let a click pass through to whatever sits beneath? This is the question a host has to answer before a transparent composition layered over other content swallows a click: is the user pointing **at** artwork, or through an empty gap? Geometry alone cannot tell — a composition is mostly full-bleed wrapper `<div>`s that cover every pixel of the frame without painting anything.
 
-  Returns `null` when the answer is not knowable (document not loaded, not readable, or the adapter has no surface). **Treat `null` as painted.** Erring toward "paints" costs a click that selects the composition; erring the other way makes the composition vanish from under the cursor.
+  **True only when the composition was readable and nothing painted there.** Ink present, a document still loading or unreadable, and an adapter that doesn't implement the method (`preview.isProvablyEmptyAt?.(x, y)` → `undefined` → falsy) all come back falsy. That polarity is deliberate: it puts the burden of proof on passing the click through, so every way of failing keeps the composition clickable rather than making it vanish from under the cursor. The obvious call site is safe by construction:
+
+  ```typescript
+  if (preview.isProvablyEmptyAt?.(x, y)) passThrough();
+  ```
 
   Ink is a computed-style test — background colour, background image, visible border, the element's own text, or intrinsic media — with one exception: `<img>` (and the `<img>` inside a `<picture>`) routes through per-pixel alpha, so a transparent PNG paints only where its pixels do. A pixel-verified hit is never discounted by `fullBleedFraction`: box area is not ink area, so a full-frame transparent overlay stays clickable where it is actually opaque.
 
@@ -174,10 +178,10 @@ interface DraftProps {
 
 `dx` and `dy` are the accumulated drag deltas in composition pixels. `width` and `height` are defined in the interface for forward compatibility but are not yet wired to any op.
 
-### PaintsAtOptions
+### PaintQueryOptions
 
 ```typescript
-interface PaintsAtOptions {
+interface PaintQueryOptions {
   fullBleedFraction?: number;
   addressableOnly?: boolean;
 }
@@ -194,7 +198,7 @@ interface PaintsAtOptions {
 </ParamField>
 
 <Note>
-  `ElementAtPointResult` and `DraftProps` are the structural shapes a `PreviewAdapter` produces and consumes. They are **not** re-exported from the `@hyperframes/sdk` barrel — you implement against these shapes rather than importing them. `PaintsAtOptions` **is** re-exported, since callers pass it rather than implement it.
+  `ElementAtPointResult` and `DraftProps` are the structural shapes a `PreviewAdapter` produces and consumes. They are **not** re-exported from the `@hyperframes/sdk` barrel — you implement against these shapes rather than importing them. `PaintQueryOptions` **is** re-exported, since callers pass it rather than implement it.
 </Note>
 
 ---
@@ -292,9 +296,9 @@ import { createHeadlessAdapter } from "@hyperframes/sdk";
 function createHeadlessAdapter(): PreviewAdapter;
 ```
 
-Returns a no-op `PreviewAdapter` for headless use: agents, CI pipelines, and server-side rendering. All methods are stubs — `elementAtPoint` and `paintsAt` always return `null`, `applyDraft` and `commitPreview` are no-ops, and the `"selection"` event never fires.
+Returns a no-op `PreviewAdapter` for headless use: agents, CI pipelines, and server-side rendering. All methods are stubs — `elementAtPoint` always returns `null` and `isProvablyEmptyAt` always returns `false`, `applyDraft` and `commitPreview` are no-ops, and the `"selection"` event never fires.
 
-`paintsAt` returns `null` rather than `false` on purpose: an adapter with no surface cannot know whether the composition paints, and callers read `null` as painted. Answering `false` would tell a host that a composition it cannot see puts down no ink.
+`isProvablyEmptyAt` returns `false` on purpose: an adapter with no surface cannot establish that a point is free of ink, and answering `true` would tell a host it is safe to click through a composition nobody can see.
 
 Pass this adapter when you open a composition for programmatic editing and do not need a live preview surface.
 
@@ -333,7 +337,7 @@ Returns a `PreviewAdapter` that bridges the SDK to a same-origin `<iframe>` cont
 
 **Image-alpha hit-testing:** For `<img>` elements, the adapter samples the alpha channel of the pixel under the pointer using an `OffscreenCanvas`. Transparent pixels fall through to the element behind. Cross-origin images that taint the canvas are treated as opaque (safe fallback, logged once per src).
 
-**Paint queries:** `paintsAt` answers whether the composition puts ink at a point — see the [`PreviewAdapter` interface](#previewadapter) above and the [transparent-overlay recipe](/sdk/guides/canvas-integration#transparent-compositions-over-other-content). The pieces it is built from are importable directly for hosts whose hit-test policy differs:
+**Paint queries:** `isProvablyEmptyAt` answers whether a point is safe to click through — see the [`PreviewAdapter` interface](#previewadapter) above and the [transparent-overlay recipe](/sdk/guides/canvas-integration#transparent-compositions-over-other-content). The pieces it is built from are importable directly for hosts whose hit-test policy differs:
 
 ```typescript
 import {
@@ -377,7 +381,7 @@ if (hit) {
 | `createMemoryAdapter` | `@hyperframes/sdk` |
 | `createHeadlessAdapter` | `@hyperframes/sdk` |
 | `createIframePreviewAdapter`, `resolveNearestHfElement` | `@hyperframes/sdk` |
-| `PaintsAtOptions` | `@hyperframes/sdk` (type only) |
+| `PaintQueryOptions` | `@hyperframes/sdk` (type only) |
 | `elementPaintsInk`, `compositionPaintsAt`, `imageAlphaOpaqueAt`, `alphaIsOpaque`, `mapPointToImagePixel`, `INTRINSIC_PAINT_TAGS` | `@hyperframes/sdk/adapters/iframe` |
 | `createFsAdapter`, `FsAdapterOptions` | `@hyperframes/sdk/adapters/fs` |
 

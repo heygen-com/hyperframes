@@ -16,7 +16,7 @@
  * - canvas taint → opaque fallback
  * - non-image regression (WS-A1 opacity behavior unchanged)
  *
- * Paint-query tests (elementPaintsInk / compositionPaintsAt / paintsAt) live at the
+ * Paint-query tests (elementPaintsInk / compositionPaintsAt / isProvablyEmptyAt) live at
  * bottom of this file and carry their own fake-DOM helpers: the walk is geometric, so
  * they need element boxes and computed style rather than a hit-test stack.
  */
@@ -905,7 +905,7 @@ describe("WS-G: z-stack fallthrough via mock elementsFromPoint", () => {
   });
 });
 
-// ─── Paint query: elementPaintsInk / compositionPaintsAt / paintsAt ──────────
+// ─── Paint query: elementPaintsInk / compositionPaintsAt / isProvablyEmptyAt ───
 
 /**
  * The paint query decides whether a host layering a transparent composition over
@@ -1438,7 +1438,7 @@ describe("compositionPaintsAt", () => {
   });
 });
 
-describe("IframePreviewAdapter.paintsAt", () => {
+describe("IframePreviewAdapter.isProvablyEmptyAt", () => {
   beforeEach(() => {
     _imgCanvasCache.clear();
   });
@@ -1446,40 +1446,42 @@ describe("IframePreviewAdapter.paintsAt", () => {
   const iframeWith = (doc: unknown, win: unknown) =>
     ({ contentDocument: doc, contentWindow: win }) as unknown as HTMLIFrameElement;
 
-  it("returns null when the document is not reachable", () => {
-    // Not knowable, not "no ink" — callers treat null as painted so a composition that
-    // has not loaded stays clickable.
-    expect(createIframePreviewAdapter(iframeWith(null, paintWin())).paintsAt(1, 1)).toBeNull();
-    expect(createIframePreviewAdapter(iframeWith(paintDoc([]), null)).paintsAt(1, 1)).toBeNull();
+  it("is never provably empty when the document is not reachable", () => {
+    // Unknowable is not empty: the composition stays clickable rather than vanishing.
+    expect(createIframePreviewAdapter(iframeWith(null, paintWin())).isProvablyEmptyAt(1, 1)).toBe(
+      false,
+    );
+    expect(createIframePreviewAdapter(iframeWith(paintDoc([]), null)).isProvablyEmptyAt(1, 1)).toBe(
+      false,
+    );
   });
 
-  it("returns null when contentDocument access throws (cross-origin)", () => {
+  it("is never provably empty when contentDocument access throws (cross-origin)", () => {
     const hostile = {} as HTMLIFrameElement;
     Object.defineProperty(hostile, "contentDocument", {
       get() {
         throw new DOMException("Blocked a frame", "SecurityError");
       },
     });
-    expect(createIframePreviewAdapter(hostile).paintsAt(1, 1)).toBeNull();
+    expect(createIframePreviewAdapter(hostile).isProvablyEmptyAt(1, 1)).toBe(false);
   });
 
-  it("answers null while the document is still loading", () => {
+  it("is never provably empty while the document is still loading", () => {
     // A same-origin iframe mid-navigation is READABLE and empty, so the !doc guard never
     // fires — walking it would answer a confident "no ink" under an arriving composition.
     const stamped = [pnode({ attrs: { "data-hf-id": "hf-a" } })];
     expect(
-      createIframePreviewAdapter(iframeWith(paintDoc(stamped, "loading"), paintWin())).paintsAt(
-        1,
-        1,
-      ),
-    ).toBeNull();
+      createIframePreviewAdapter(
+        iframeWith(paintDoc(stamped, "loading"), paintWin()),
+      ).isProvablyEmptyAt(1, 1),
+    ).toBe(false);
     // Loaded but carrying nothing of the composition — equally unknowable.
     expect(
-      createIframePreviewAdapter(iframeWith(paintDoc([]), paintWin())).paintsAt(1, 1),
-    ).toBeNull();
+      createIframePreviewAdapter(iframeWith(paintDoc([]), paintWin())).isProvablyEmptyAt(1, 1),
+    ).toBe(false);
   });
 
-  it("delegates to the walk", () => {
+  it("inverts the walk: empty where nothing paints, not empty over ink", () => {
     const nodes = [
       pnode({
         attrs: { "data-composition-id": "main" },
@@ -1491,7 +1493,7 @@ describe("IframePreviewAdapter.paintsAt", () => {
       }),
     ];
     const adapter = createIframePreviewAdapter(iframeWith(paintDoc(nodes), paintWin()));
-    expect(adapter.paintsAt(50, 50)).toBe(true);
-    expect(adapter.paintsAt(400, 400)).toBe(false);
+    expect(adapter.isProvablyEmptyAt(50, 50)).toBe(false); // over the painted box
+    expect(adapter.isProvablyEmptyAt(400, 400)).toBe(true); // empty region
   });
 });

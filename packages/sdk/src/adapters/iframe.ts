@@ -27,11 +27,11 @@
  * - Phase 2 (full per-pixel alpha via drawElement rasterization) is NOT built
  *   here — gated on a perf spike.
  *
- * Paint query (paintsAt):
- * - Answers "does the composition put ink here", which is a different question from
+ * Paint query (isProvablyEmptyAt):
+ * - Answers "is this point provably free of ink", which is a different question from
  *   "what element is here" and needs a different traversal. elementsFromPoint omits
  *   `pointer-events: none` nodes; those still paint, so a paint query built on the
- *   z-stack reports no ink over visible artwork. paintsAt therefore walks element
+ *   z-stack reports no ink over visible artwork. The walk therefore covers element
  *   BOXES geometrically and is blind to pointer-events and z-index.
  * - Ink itself is a computed-style heuristic (background, border, own text, intrinsic
  *   media) EXCEPT for <img>, which routes through the alpha sampler above — so a
@@ -46,7 +46,12 @@ import {
   composeTranslate,
   readCurrentTranslate,
 } from "@hyperframes/core/runtime/position-edits";
-import type { PreviewAdapter, ElementAtPointResult, DraftProps, PaintsAtOptions } from "./types.js";
+import type {
+  PreviewAdapter,
+  ElementAtPointResult,
+  DraftProps,
+  PaintQueryOptions,
+} from "./types.js";
 import type { EditOp, Composition } from "../types.js";
 import { applyPatchesToDocument, applyOverrideSet } from "../engine/apply-patches.js";
 
@@ -732,15 +737,16 @@ function paintCandidateAt(
  * - `x`/`y` are the DOCUMENT's own client coordinates, not the host page's. A host with a
  *   CSS-scaled iframe has to divide out that scale first, or it samples the wrong pixel.
  *
- * This returns a plain boolean: it has no "not knowable" channel, so a caller that needs
- * the fail-safe contract should use `PreviewAdapter.paintsAt` instead.
+ * Note the polarity: this answers "does it paint", the positive question, and cannot say
+ * "not knowable". A caller that wants the fail-safe contract — every uncertainty resolving
+ * toward keeping the composition clickable — wants `PreviewAdapter.isProvablyEmptyAt`.
  */
 export function compositionPaintsAt(
   doc: Document,
   win: Window & typeof globalThis,
   x: number,
   y: number,
-  opts?: PaintsAtOptions,
+  opts?: PaintQueryOptions,
 ): boolean {
   const selector = (opts?.addressableOnly ?? true) ? "[data-hf-id]" : "*";
   const candidates: PaintCandidate[] = [];
@@ -872,35 +878,30 @@ class IframePreviewAdapter implements PreviewAdapter {
   }
 
   /**
-   * Does the composition put ink at (x, y)? See PreviewAdapter.paintsAt.
+   * Is (x, y) provably free of ink? See PreviewAdapter.isProvablyEmptyAt.
    *
-   * null when the document is unreachable — not loaded, or cross-origin despite the
-   * adapter's same-origin contract. Callers treat null as painted, so a composition
-   * that is still loading stays clickable.
+   * Every uncertain path answers false rather than claiming emptiness: an unreachable or
+   * cross-origin document, and a same-origin iframe mid-navigation — srcdoc and blob:
+   * assignment are async navigations, so `contentDocument` is a READABLE but empty
+   * document while the composition is arriving. Walking that would find no ink and hand
+   * back a confident "safe to click through" under a composition about to appear.
    */
-  paintsAt(x: number, y: number, opts?: PaintsAtOptions): boolean | null {
+  isProvablyEmptyAt(x: number, y: number, opts?: PaintQueryOptions): boolean {
     let doc: Document | null;
     let win: (Window & typeof globalThis) | null;
     try {
       doc = this.iframe.contentDocument;
       win = this.iframe.contentWindow as (Window & typeof globalThis) | null;
     } catch {
-      // Cross-origin contentDocument access throws. Unknowable, not "no ink".
-      return null;
+      return false; // Cross-origin access throws. Unknowable is not empty.
     }
-    if (!doc || !win) return null;
-
-    // A same-origin iframe mid-navigation exposes a READABLE but empty document — srcdoc
-    // and blob: assignment are async navigations — so the `!doc` guard never fires while a
-    // composition is arriving. Walking that document answers a confident "no ink", and the
-    // host turns the wrapper transparent to clicks under a composition that is about to
-    // appear. Unknowable is the contractual answer, and it reads as painted.
-    if (doc.readyState === "loading") return null;
+    if (!doc || !win) return false;
+    if (doc.readyState === "loading") return false;
     if (!doc.querySelector("[data-hf-id]") && !doc.querySelector("[data-composition-id]")) {
-      return null;
+      return false;
     }
 
-    return compositionPaintsAt(doc, win, x, y, opts);
+    return !compositionPaintsAt(doc, win, x, y, opts);
   }
 
   /**

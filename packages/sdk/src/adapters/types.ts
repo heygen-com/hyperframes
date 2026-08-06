@@ -46,7 +46,7 @@ export interface DraftProps {
   height?: number;
 }
 
-export interface PaintsAtOptions {
+export interface PaintQueryOptions {
   /**
    * A hit whose smallest painting box covers at least this fraction of the composition
    * frame reads as background rather than ink. 0 (the default) counts every painting box.
@@ -80,7 +80,8 @@ export interface PreviewAdapter {
   elementAtPoint(x: number, y: number, opts?: { atTime?: number }): ElementAtPointResult | null;
 
   /**
-   * Does the composition put ink at (x, y)? Same coordinate space as `elementAtPoint`.
+   * Is (x, y) provably free of ink — is it safe to let a click pass through to whatever
+   * sits beneath this composition? Same coordinate space as `elementAtPoint`.
    *
    * The question a host layering a transparent composition over other content has to
    * answer before it swallows a click: is the user pointing AT something, or through an
@@ -88,15 +89,19 @@ export interface PreviewAdapter {
    * mostly full-bleed wrapper `<div>`s with no visual presence, and those boxes cover
    * every pixel of the frame.
    *
-   * `null` = not knowable (document not loaded, not readable, adapter has no surface).
-   * Callers must treat null as PAINTED: erring toward "paints" costs a click that selects
-   * the composition, erring the other way makes it vanish from under the cursor.
+   * True ONLY when the composition was readable and nothing painted there. Everything
+   * else is false: ink present, a document still loading or unreadable, or an adapter
+   * that does not implement this at all (`preview.isProvablyEmptyAt?.(x, y)` → undefined
+   * → falsy). The polarity is the point — it puts the burden of proof on passing the
+   * click through, so every way of failing keeps the composition clickable instead of
+   * making it vanish from under the cursor. A "does it paint" reading would leave two of
+   * those three bottom values doing the dangerous thing.
    *
    * Deliberately not derived from `elementsFromPoint`, which omits `pointer-events: none`
-   * nodes — those still paint, and reporting no ink over visible artwork is the failure
-   * this fail-safe direction exists to avoid.
+   * nodes — those still paint, and reporting no ink over visible artwork is exactly the
+   * failure this polarity exists to prevent.
    */
-  paintsAt?(x: number, y: number, opts?: PaintsAtOptions): boolean | null;
+  isProvablyEmptyAt?(x: number, y: number, opts?: PaintQueryOptions): boolean;
 
   /** Apply draft CSS markers to the preview element (60fps, SDK not involved) */
   applyDraft(id: string, props: DraftProps): void;
