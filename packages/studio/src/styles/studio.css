@@ -669,3 +669,11 @@ body {
     opacity: 0.75;
   }
 }
+
+/* Text is being edited in the composition itself. The selection box is already
+   framing the element, so this only says which mode it is in: a dashed edge,
+   the same accent, so it reads as the same object rather than a new one. */
+[data-editing-text="true"] [data-dom-edit-selection-box="true"] {
+  border-style: dashed;
+  box-shadow: 0 0 0 1px rgba(60, 230, 172, 0.25);
+}

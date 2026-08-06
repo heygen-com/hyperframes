@@ -1,0 +1,227 @@
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
+/** A heading in the document, standing in for one in the preview. */
+function heading(text = "Motion Playground"): HTMLElement {
+  const element = document.createElement("h1");
+  element.textContent = text;
+  document.body.append(element);
+  return element;
+}
+
+function mount(onCommit = vi.fn(), onPause = vi.fn()) {
+  const controls: { current: InlineTextEditControls | null } = { current: null };
+  function Probe() {
+    controls.current = useInlineTextEdit({ onCommit, onPause });
+    return null;
+  }
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => root.render(<Probe />));
+  return { controls: () => controls.current!, root, onCommit, onPause };
+}
+
+describe("useInlineTextEdit", () => {
+  it("makes the element editable, focused, and its text selected", () => {
+    const element = heading();
+    const { controls, root, onPause } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+
+    expect(element.getAttribute("contenteditable")).toBe("plaintext-only");
+    expect(document.activeElement).toBe(element);
+    expect(controls().session?.element).toBe(element);
+    // The frame being edited is the one the user chose to edit on.
+    expect(onPause).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("hands the current text over exactly once when it commits", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "Motion Playground Live";
+    act(() => controls().commit());
+
+    expect(onCommit.mock.calls).toEqual([["Motion Playground Live"]]);
+    act(() => root.unmount());
+  });
+
+  // Cancelling must leave the preview exactly as it found it: the element was
+  // being mutated live, and nothing was persisted.
+  it("puts the original text back on cancel, and commits nothing", () => {
+    const element = heading("Motion Playground");
+    const { controls, root, onCommit } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "half-typed";
+    act(() => controls().cancel());
+
+    expect(element.textContent).toBe("Motion Playground");
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it.each([
+    ["commit", (c: InlineTextEditControls) => c.commit()],
+    ["cancel", (c: InlineTextEditControls) => c.cancel()],
+  ])("stops being editable after %s", (_name, close) => {
+    const element = heading();
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    act(() => close(controls()));
+
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(controls().session).toBeNull();
+    act(() => root.unmount());
+  });
+
+  // A session that failed to close would leave the canvas unable to select.
+  it("tears down once when it is closed twice", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    act(() => controls().commit());
+    act(() => controls().commit());
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("refuses to open a second session over an open one", () => {
+    const first = heading("first");
+    const second = heading("second");
+    const { controls, root } = mount();
+
+    let opened = false;
+    act(() => {
+      controls().start(first);
+      opened = controls().start(second);
+    });
+
+    expect(opened).toBe(false);
+    expect(controls().session?.element).toBe(first);
+    expect(second.hasAttribute("contenteditable")).toBe(false);
+    act(() => root.unmount());
+  });
+
+  // The composition reloads while an edit is open often enough to matter.
+  it("closes without throwing when the element has left the document", () => {
+    const element = heading();
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.remove();
+
+    expect(() => act(() => controls().cancel())).not.toThrow();
+    expect(controls().session).toBeNull();
+    act(() => root.unmount());
+  });
+
+  describe("the keys that end it", () => {
+    function press(element: HTMLElement, key: string, shiftKey = false) {
+      act(() => {
+        element.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true }));
+      });
+    }
+
+    it("commits on Enter", () => {
+      const element = heading();
+      const { controls, root, onCommit } = mount();
+      act(() => {
+        controls().start(element);
+      });
+
+      element.textContent = "Renamed";
+      press(element, "Enter");
+
+      expect(onCommit.mock.calls).toEqual([["Renamed"]]);
+      expect(controls().session).toBeNull();
+      act(() => root.unmount());
+    });
+
+    // A multi-line element still needs a way to get a line break.
+    it("leaves Shift+Enter alone", () => {
+      const element = heading();
+      const { controls, root, onCommit } = mount();
+      act(() => {
+        controls().start(element);
+      });
+
+      press(element, "Enter", true);
+
+      expect(onCommit).not.toHaveBeenCalled();
+      expect(controls().session).not.toBeNull();
+      act(() => root.unmount());
+    });
+
+    it("cancels on Escape", () => {
+      const element = heading("Original");
+      const { controls, root, onCommit } = mount();
+      act(() => {
+        controls().start(element);
+      });
+
+      element.textContent = "half-typed";
+      press(element, "Escape");
+
+      expect(element.textContent).toBe("Original");
+      expect(onCommit).not.toHaveBeenCalled();
+      act(() => root.unmount());
+    });
+
+    it("commits when the element loses focus", () => {
+      const element = heading();
+      const { controls, root, onCommit } = mount();
+      act(() => {
+        controls().start(element);
+      });
+
+      element.textContent = "Clicked away";
+      act(() => element.dispatchEvent(new FocusEvent("blur")));
+
+      expect(onCommit.mock.calls).toEqual([["Clicked away"]]);
+      act(() => root.unmount());
+    });
+
+    it("stops listening once the session is over", () => {
+      const element = heading();
+      const { controls, root, onCommit } = mount();
+      act(() => {
+        controls().start(element);
+      });
+      act(() => controls().commit());
+
+      press(element, "Enter");
+
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      act(() => root.unmount());
+    });
+  });
+});
