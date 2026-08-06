@@ -10,6 +10,7 @@ import { defaultTimelineTheme } from "./timelineTheme";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { LABEL_COL_W } from "./timelineLayout";
+import { getSelectedTimelineTrack, resetTimelineTrackSelection } from "./useTimelineTrackSelection";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -412,5 +413,48 @@ describe("TimelineTrackHeader", () => {
     assertAligned([POSITION]);
     assertAligned([POSITION, OPACITY]);
     act(() => view.root.unmount());
+  });
+
+  // Scoping an edit request to one track: the row has other controls, so the
+  // row itself cannot be the button, and a track must be selectable by keyboard.
+  describe("selecting the track", () => {
+    afterEach(() => resetTimelineTrackSelection());
+
+    it("selects and deselects on the track's own button", () => {
+      const { host, root } = renderHeader();
+
+      click(host, "Select track 1");
+      expect(getSelectedTimelineTrack()).toBe(1 / 6);
+
+      click(host, "Deselect track 1");
+      expect(getSelectedTimelineTrack()).toBeNull();
+      act(() => root.unmount());
+    });
+
+    it("reports itself pressed while it is the selected track", () => {
+      const { host, root } = renderHeader();
+
+      click(host, "Select track 1");
+      const button = host.querySelector<HTMLButtonElement>('[data-track-select="true"]');
+      expect(button?.getAttribute("aria-pressed")).toBe("true");
+      act(() => root.unmount());
+    });
+
+    // The eye and the caret were there first and keep their clicks.
+    it("does not steal the visibility toggle's click", () => {
+      const onToggleTrackHidden = vi.fn();
+      const { host, root } = renderHeader({ onToggleTrackHidden });
+
+      click(host, "Hide track 1");
+      expect(onToggleTrackHidden).toHaveBeenCalledTimes(1);
+      expect(getSelectedTimelineTrack()).toBeNull();
+      act(() => root.unmount());
+    });
+
+    it("gives a keyframed track a select button too", () => {
+      const { host, root } = renderHeader();
+      expect(host.querySelector('[data-track-select="true"]')).not.toBeNull();
+      act(() => root.unmount());
+    });
   });
 });

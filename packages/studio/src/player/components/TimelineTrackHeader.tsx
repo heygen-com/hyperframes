@@ -4,6 +4,7 @@ import { Music } from "../../icons/SystemIcons";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
+import { useTimelineTrackSelection } from "./useTimelineTrackSelection";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LayerDisclosureRow } from "./LayerDisclosureRow";
 import { TrackClipCount } from "./TrackClipCount";
@@ -91,6 +92,49 @@ function VisibilityButton({
 
 // The header a track gets when it has no keyframe clip to disclose: label, clip
 // count, eye. Not deprecated — it is the live path for every track without lanes.
+/**
+ * The track's name, and the thing that scopes an edit request to it.
+ *
+ * A real button rather than a click handler on the row: the row contains other
+ * controls, so it cannot itself be one, and a track has to be selectable
+ * without a mouse. In the narrow gutter there is no room for a name, so it
+ * shows the track's number, which is the thing a user needs there anyway.
+ */
+function TrackSelectButton({
+  trackNumber,
+  trackDisplayNumber,
+  trackLabel,
+  showTrackLabel,
+}: {
+  trackNumber: number;
+  trackDisplayNumber: number | null;
+  trackLabel: string;
+  showTrackLabel: boolean;
+}) {
+  const { selectedLane, toggle } = useTimelineTrackSelection();
+  const selected = selectedLane === trackNumber;
+  const suffix = trackDisplaySuffix(trackDisplayNumber);
+  return (
+    <button
+      type="button"
+      data-track-select="true"
+      aria-pressed={selected}
+      aria-label={selected ? `Deselect track${suffix}` : `Select track${suffix}`}
+      title={showTrackLabel ? trackLabel : `Track${suffix}`}
+      className={`min-w-0 truncate rounded border-0 bg-transparent p-0 text-left text-[11px] transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+        showTrackLabel ? "flex-1" : "px-1"
+      } ${selected ? "text-[#3CE6AC]" : "text-inherit hover:text-white"}`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        toggle(trackNumber);
+      }}
+    >
+      {showTrackLabel ? trackLabel : (trackDisplayNumber ?? trackNumber)}
+    </button>
+  );
+}
+
 function PlainTrackHeader({
   trackNumber,
   trackDisplayNumber,
@@ -115,11 +159,12 @@ function PlainTrackHeader({
       {isAudioTrack && (
         <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
       )}
-      {showTrackLabel && (
-        <span className="min-w-0 flex-1 truncate text-[11px]" title={trackLabel}>
-          {trackLabel}
-        </span>
-      )}
+      <TrackSelectButton
+        trackNumber={trackNumber}
+        trackDisplayNumber={trackDisplayNumber}
+        trackLabel={trackLabel}
+        showTrackLabel={showTrackLabel}
+      />
       {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
       <VisibilityButton
         hidden={isTrackHidden}
@@ -349,6 +394,14 @@ export function TimelineTrackHeader({
             lanesId={lanesId}
             onToggleClipExpanded={onToggleClipExpanded}
           >
+            {/* A keyframed track is selectable too, and its row already shows
+                the clip's name, so this is the compact number form. */}
+            <TrackSelectButton
+              trackNumber={trackNumber}
+              trackDisplayNumber={trackDisplayNumber}
+              trackLabel={trackLabel}
+              showTrackLabel={false}
+            />
             {/* The eye belongs to the LAYER, so it lives on the always-mounted
                 layer row exactly like a plain track's. Hanging it off a lane row
                 (hover-gated, and only while expanded) left a keyframed track with

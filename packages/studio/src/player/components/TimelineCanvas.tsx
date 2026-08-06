@@ -25,6 +25,10 @@ import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 import { TimelineSkeletons } from "./TimelineSkeletons";
 import { useTimelineSkeletons } from "./useTimelineSkeletons";
+import {
+  useClearTrackSelectionOnEscape,
+  useSelectedTimelineTrack,
+} from "./useTimelineTrackSelection";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -49,6 +53,9 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   // line cap. Player components already read this context optionally, and it
   // is absent in standalone mounts, which have no project and no agent.
   const skeletons = useTimelineSkeletons();
+  const selectedTrack = useSelectedTimelineTrack();
+  useClearTrackSelectionOnEscape();
+  const selectedTrackRow = selectedTrack === null ? -1 : displayTrackOrder.indexOf(selectedTrack);
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
@@ -241,6 +248,24 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             border: "1px dashed rgba(60,230,172,0.7)",
             borderRadius: 2,
             zIndex: 70,
+          }}
+        />
+      )}
+
+      {/* The track an edit request is scoped to. Drawn under everything else:
+          it says which row is being talked about, it is not a thing itself. */}
+      {selectedTrackRow !== -1 && (
+        <div
+          data-selected-track="true"
+          className="pointer-events-none absolute"
+          style={{
+            left: 0,
+            right: 0,
+            top: getTimelineRowTop(selectedTrackRow, props.rowHeights),
+            height: getTimelineRowHeight(selectedTrackRow, props.rowHeights),
+            backgroundColor: "rgba(60,230,172,0.07)",
+            boxShadow: "inset 2px 0 0 0 rgba(60,230,172,0.55)",
+            zIndex: 1,
           }}
         />
       )}
