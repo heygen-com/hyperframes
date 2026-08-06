@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { AgentJob, AgentKind } from "../components/editor/agentGlyphs";
 import { formatTime } from "../player/lib/time";
+import { startAgentRun } from "./startAgentRun";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 /**
@@ -65,33 +66,23 @@ export function useTimelineRangeRun({
         source: "timeline",
       });
 
-      const window = `${formatTime(range.start)}–${formatTime(range.end)}`;
-      void fetch(`/api/projects/${pid}/agent`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      const kind = activeKindRef.current;
+      startAgentRun({
+        projectId: pid,
+        showToast,
+        onStarted: (job) => setAgentJobs((jobs) => [job, ...jobs]),
+        body: {
           prompt: range.prompt,
           instruction: range.instruction,
-          target: range.track === undefined ? window : `track ${range.track} · ${window}`,
+          target: describeRange(range),
           agent: selectedAgentId ?? undefined,
-          model: activeKindRef.current ? modelByKind[activeKindRef.current] : undefined,
-          effort: activeKindRef.current ? effortByKind[activeKindRef.current] : undefined,
+          model: kind ? modelByKind[kind] : undefined,
+          effort: kind ? effortByKind[kind] : undefined,
           targetRef: refs[0] ?? { time: range.start, sourceFile: activeCompPath ?? undefined },
           targetRefs: refs.slice(1),
           targetKind: "range",
-        }),
-      })
-        .then(async (response) => {
-          const data = (await response.json()) as { error?: string; job?: AgentJob };
-          if (!response.ok || !data.job) {
-            showToast(data.error ?? "Could not start the agent.", "error");
-            return;
-          }
-          setAgentJobs((jobs) => [data.job as AgentJob, ...jobs]);
-        })
-        .catch((err: unknown) => {
-          showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
-        });
+        },
+      });
     },
     [
       activeCompPath,
@@ -104,4 +95,10 @@ export function useTimelineRangeRun({
       setAgentJobs,
     ],
   );
+}
+
+/** What the tray calls this run: the window, and the track when it has one. */
+function describeRange(range: TimelineRangeRun): string {
+  const window = `${formatTime(range.start)}–${formatTime(range.end)}`;
+  return range.track === undefined ? window : `track ${range.track} · ${window}`;
 }

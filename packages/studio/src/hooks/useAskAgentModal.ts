@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyTextToClipboard } from "../utils/clipboard";
+import { startAgentRun } from "./startAgentRun";
 import { useAgentQueue } from "./useAgentQueue";
 import { useTimelineRangeRun } from "./useTimelineRangeRun";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
@@ -269,10 +270,11 @@ export function useAskAgentModal({
         instruction_length: userInstruction.length,
       });
 
-      void fetch(`/api/projects/${pid}/agent`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      startAgentRun({
+        projectId: pid,
+        showToast,
+        onStarted: (job) => setAgentJobs((jobs) => [job, ...jobs]),
+        body: {
           prompt: buildPrompt(selection, userInstruction),
           instruction: userInstruction,
           target: coSelected > 0 ? `${coSelected + 1} elements` : selection.label,
@@ -296,19 +298,8 @@ export function useAskAgentModal({
             selector: entry.selector,
             selectorIndex: entry.selectorIndex,
           })),
-        }),
-      })
-        .then(async (response) => {
-          const data = (await response.json()) as { error?: string; job?: AgentJob };
-          if (!response.ok || !data.job) {
-            showToast(data.error ?? "Could not start the agent.", "error");
-            return;
-          }
-          setAgentJobs((jobs) => [data.job as AgentJob, ...jobs]);
-        })
-        .catch((err: unknown) => {
-          showToast(err instanceof Error ? err.message : "Could not start the agent.", "error");
-        });
+        },
+      });
     },
     [
       buildPrompt,

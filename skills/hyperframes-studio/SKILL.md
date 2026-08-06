@@ -109,7 +109,12 @@ lands. Say where they are going and Studio draws a skeleton at each spot for the
 <!-- hf:timeline {"adding":[{"track":0,"start":1.0,"end":3.0,"label":"Hero card"}]} -->
 ```
 
-Read this closely, because one field is easy to get wrong:
+**Print it before you start writing, not after.** A skeleton exists to fill the gap between "I
+have decided where these go" and "the file has changed", so a declaration that arrives with your
+final message has nothing left to cover: the run ends, the composition reloads, and the real clips
+replace it in the same breath. Declare as soon as you know the times and tracks, then do the work.
+
+Read the rest closely, because one field is easy to get wrong:
 
 - **`track` is a `data-track-index`**, the number you write into the file. It is not a row number
   on screen. Studio packs authored tracks onto contiguous rows, so a composition using tracks 0, 4

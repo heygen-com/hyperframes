@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
-import { usePlayerStore } from "../store/playerStore";
+import type { AgentJob } from "../../components/editor/agentGlyphs";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { laneForAuthoredTrack } from "./timelineAuthoredTrack";
 
 /**
@@ -44,34 +45,35 @@ export function useTimelineSkeletons(): TimelineSkeletonLayout {
   const jobs = useDomEditSelectionContextOptional()?.agentJobs;
   const elements = usePlayerStore((state) => state.elements);
 
-  return useMemo(() => {
-    if (!jobs || jobs.length === 0) return EMPTY;
+  return useMemo(() => (jobs ? place(jobs, elements) : EMPTY), [jobs, elements]);
+}
 
-    const placed: PlacedSkeleton[] = [];
-    const incoming: PlacedSkeleton[] = [];
-    const incomingTracks = new Set<number>();
+/** Turn every live run's declarations into rows to draw. */
+function place(jobs: readonly AgentJob[], elements: readonly TimelineElement[]) {
+  const placed: PlacedSkeleton[] = [];
+  const incoming: PlacedSkeleton[] = [];
+  const incomingTracks = new Set<number>();
 
-    for (const job of jobs) {
-      if (SETTLED.includes(job.status)) continue;
-      for (const [index, clip] of (job.skeletons ?? []).entries()) {
-        const at = laneForAuthoredTrack(clip.track, elements, clip.file ?? null);
-        const skeleton = {
-          key: `${job.id}:${index}`,
-          start: clip.start,
-          end: clip.end,
-          label: clip.label,
-          lane: at.kind === "lane" ? at.lane : clip.track,
-        };
-        if (at.kind === "lane") {
-          placed.push(skeleton);
-        } else {
-          incoming.push(skeleton);
-          incomingTracks.add(clip.track);
-        }
+  for (const job of jobs) {
+    if (SETTLED.includes(job.status)) continue;
+    for (const [index, clip] of (job.skeletons ?? []).entries()) {
+      const at = laneForAuthoredTrack(clip.track, elements, clip.file ?? null);
+      const skeleton = {
+        key: `${job.id}:${index}`,
+        start: clip.start,
+        end: clip.end,
+        label: clip.label,
+        lane: at.kind === "lane" ? at.lane : clip.track,
+      };
+      if (at.kind === "lane") {
+        placed.push(skeleton);
+      } else {
+        incoming.push(skeleton);
+        incomingTracks.add(clip.track);
       }
     }
+  }
 
-    if (placed.length === 0 && incoming.length === 0) return EMPTY;
-    return { placed, incoming, incomingTracks: [...incomingTracks].sort((a, b) => a - b) };
-  }, [jobs, elements]);
+  if (placed.length === 0 && incoming.length === 0) return EMPTY;
+  return { placed, incoming, incomingTracks: [...incomingTracks].sort((a, b) => a - b) };
 }
