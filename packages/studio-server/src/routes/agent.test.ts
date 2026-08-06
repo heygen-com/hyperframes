@@ -238,7 +238,14 @@ describe("resolveAgentCommand", () => {
 describe("listAgentCommands", () => {
   it("lists every harness with whether it is installed", () => {
     const agents = listAgentCommands({});
-    expect(agents.map((agent) => agent.id)).toEqual(["claude", "codex", "hermes", "openclaw"]);
+    expect(agents.map((agent) => agent.id)).toEqual([
+      "claude",
+      "codex",
+      "hermes",
+      "openclaw",
+      "codex-acp",
+      "claude-acp",
+    ]);
     // Availability is a PATH lookup, so it just has to be a boolean here.
     expect(agents.every((agent) => typeof agent.available === "boolean")).toBe(true);
   });
@@ -246,7 +253,56 @@ describe("listAgentCommands", () => {
   it("puts a custom command first and never lists it twice", () => {
     const agents = listAgentCommands({ HYPERFRAMES_AGENT_CMD: "codex exec -" });
     expect(agents[0]).toMatchObject({ kind: "codex", label: "codex", available: true });
-    expect(agents.filter((agent) => agent.kind === "codex")).toHaveLength(1);
+    // The override replaces the CLI it names, not every way of reaching that
+    // harness: the ACP adapter is a different command and stays on offer.
+    expect(agents.filter((agent) => agent.command === "codex")).toHaveLength(1);
+  });
+});
+
+describe("harnesses reached over ACP", () => {
+  // An adapter is fetched on demand, so there is no file to look for. Hiding it
+  // because `npx` proves nothing would take away an option that works.
+  it("offers the ACP presets whether or not anything is installed", () => {
+    const acp = listAgentCommands({}).filter((agent) => agent.transport === "acp");
+    expect(acp.map((agent) => agent.id)).toEqual(["codex-acp", "claude-acp"]);
+    expect(acp.every((agent) => agent.available)).toBe(true);
+    // They carry the harness' own mark, not a generic one.
+    expect(acp.map((agent) => agent.kind)).toEqual(["codex", "claude"]);
+  });
+
+  it("resolves an ACP preset by its own id, not by its kind", () => {
+    expect(resolveAgentCommand({}, "codex-acp")).toMatchObject({
+      kind: "codex",
+      transport: "acp",
+      command: "npx",
+    });
+  });
+
+  // The whole point: anything in the ACP registry works without a release here.
+  it("runs a registered custom agent that declares the transport", async () => {
+    const projectDir = createProjectDir();
+    const app = createApp(projectDir);
+    const res = await app.request("/projects/p1/agent/custom", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        label: "Gemini ACP",
+        command: "npx",
+        args: ["-y", "some-acp-agent"],
+        transport: "acp",
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const listed = listAgentCommands({}, projectDir).find((agent) => agent.label === "Gemini ACP");
+    expect(listed).toMatchObject({ transport: "acp", available: true });
+  });
+
+  // `npx` is the launcher for every ACP adapter, so it must not be what names
+  // the harness — or every npx-run agent would take the first adapter's mark.
+  it("names a custom agent after the harness in it, not after npx", () => {
+    const agents = listAgentCommands({ HYPERFRAMES_AGENT_CMD: "npx -y my-own-agent" });
+    expect(agents[0]).toMatchObject({ kind: "custom" });
   });
 });
 

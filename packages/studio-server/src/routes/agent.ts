@@ -97,6 +97,24 @@ const AGENT_PRESETS: Record<string, AgentCommand> = {
     // exec is already the headless profile; --message-file - is how it takes stdin.
     args: ["agent", "exec", "--message-file", "-"],
   },
+  // The same two harnesses over the Agent Client Protocol, through the
+  // adapters their own projects publish. Same accounts, same models, same
+  // machine — what changes is that Studio talks to them over a published
+  // contract instead of reading their stdout, so they can ask before they act.
+  "codex-acp": {
+    kind: "codex",
+    label: "Codex (ACP)",
+    command: "npx",
+    args: ["-y", "@agentclientprotocol/codex-acp"],
+    transport: "acp",
+  },
+  "claude-acp": {
+    kind: "claude",
+    label: "Claude Code (ACP)",
+    command: "npx",
+    args: ["-y", "@agentclientprotocol/claude-agent-acp"],
+    transport: "acp",
+  },
 };
 
 /**
@@ -140,9 +158,12 @@ function harnessSpec(agent: AgentCommand | null, kind: AgentKind, cwd: string): 
 
 /** Name a custom command after the harness it points at, so its mark is right. */
 function sniffKind(command: string): AgentCommand["kind"] {
-  const match = Object.values(AGENT_PRESETS).find((preset) =>
-    new RegExp(preset.command, "i").test(command),
-  );
+  const match = Object.values(AGENT_PRESETS)
+    // Only the presets whose command IS the harness can be sniffed for. An ACP
+    // adapter is launched by `npx`, and matching on that would name every
+    // npx-run agent after whichever adapter happens to be listed first.
+    .filter((preset) => preset.transport !== "acp")
+    .find((preset) => new RegExp(preset.command, "i").test(command));
   return match?.kind ?? "custom";
 }
 
@@ -175,6 +196,21 @@ const ICON_MIME: Record<string, string> = {
   ".gif": "image/gif",
 };
 
+/**
+ * Whether the picker should offer this harness.
+ *
+ * For a CLI that is the harness, the question is whether it is installed, and
+ * a missing file is a real answer. An ACP adapter is not the harness — it is
+ * fetched on demand by `npx`, so finding `npx` proves nothing and not finding
+ * the adapter proves nothing either. The only honest test is the handshake,
+ * which costs a process start per entry in the picker. So a declared ACP agent
+ * is offered, and one that cannot run says why when it is used: an error the
+ * user can act on beats an option silently missing.
+ */
+function isAvailable(agent: { command: string; transport?: "native" | "acp" }): boolean {
+  return agent.transport === "acp" || isOnPath(agent.command);
+}
+
 function isOnPath(command: string): boolean {
   if (command.includes("/")) return existsSync(command);
   const paths = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
@@ -192,12 +228,15 @@ export interface AgentChoice extends AgentCommand {
 function toChoice(agent: CustomAgent): AgentChoice {
   return {
     id: agent.id,
-    kind: "custom",
+    // A custom agent naming a known harness gets that harness' mark; the ACP
+    // registry is full of adapters for CLIs Studio already draws.
+    kind: sniffKind(`${agent.command} ${agent.args.join(" ")}`),
     label: agent.label,
     command: agent.command,
     args: agent.args,
     icon: agent.icon,
-    available: isOnPath(agent.command),
+    transport: agent.transport,
+    available: isAvailable(agent),
   };
 }
 
@@ -213,9 +252,9 @@ export function listAgentCommands(
   const envAgent = resolveCustomAgentCommand(env);
   return [
     ...(envAgent ? [{ ...envAgent, id: envAgent.kind, available: true }] : []),
-    ...Object.values(AGENT_PRESETS)
-      .filter((preset) => preset.command !== envAgent?.command)
-      .map((preset) => ({ ...preset, id: preset.kind, available: isOnPath(preset.command) })),
+    ...Object.entries(AGENT_PRESETS)
+      .filter(([, preset]) => preset.command !== envAgent?.command)
+      .map(([id, preset]) => ({ ...preset, id, available: isAvailable(preset) })),
     ...(projectDir ? listCustomAgents(projectDir).map(toChoice) : []),
   ];
 }

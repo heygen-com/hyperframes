@@ -81,6 +81,12 @@ export const customAgentSchema = z.object({
   icon: z.string().optional(),
   /** Flag this CLI takes its model on, when it accepts one (e.g. `--model`). */
   modelFlag: z.string().optional(),
+  /**
+   * How Studio should talk to it. `acp` means it speaks the Agent Client
+   * Protocol, which is what lets anything from the ACP registry be added here
+   * and work — no parser, no preset, no release.
+   */
+  transport: z.enum(["native", "acp"]).optional(),
 });
 export type CustomAgent = z.infer<typeof customAgentSchema>;
 
