@@ -33,6 +33,26 @@ function mount(onCommit = vi.fn(), onPause = vi.fn()) {
 }
 
 describe("useInlineTextEdit", () => {
+  // Selecting the whole text would mean the next keystroke destroys it, which
+  // is a bad thing to do to someone who double-clicked to fix a typo.
+  it("leaves the caret after the last character, with nothing selected", async () => {
+    const element = heading("Motion Playground");
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+
+    const selection = document.getSelection()!;
+    expect(selection.toString()).toBe("");
+    expect(selection.isCollapsed).toBe(true);
+    expect(selection.anchorOffset).toBe(element.textContent!.length);
+    act(() => root.unmount());
+  });
+
   it("makes the element editable, and focuses it once the press has finished", async () => {
     const element = heading();
     const { controls, root, onPause } = mount();
