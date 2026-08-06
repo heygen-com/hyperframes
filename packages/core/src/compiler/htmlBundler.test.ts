@@ -1363,21 +1363,24 @@ describe("bundleToSingleHtml", () => {
   <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="18">
     <audio id="bgm" src="bgm.mp3" data-start="0" data-duration="18"></audio>
     <audio id="narration" src="narr.mp3" data-start="5" data-duration="10"></audio>
+    <video id="demo" src="demo.mp4" muted playsinline data-start="6" data-duration="8"></video>
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines.root = { duration: () => 18, seek() {}, pause() {} };</script>
 </body></html>`,
       "bgm.mp3": "",
       "narr.mp3": "",
+      "demo.mp4": "",
     });
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const bundled = await bundleToSingleHtml(dir);
-      // Sanity: the compiler MUST have emitted data-end for both audio elements,
+      // Sanity: the compiler MUST have emitted data-end for every media element,
       // so the linter is actually seeing the compiled shape (not the raw source).
       expect(bundled).toContain('id="bgm"');
       expect(bundled).toMatch(/id="bgm"[^>]*data-end="18"|data-end="18"[^>]*id="bgm"/);
       expect(bundled).toMatch(/id="narration"[^>]*data-end="15"|data-end="15"[^>]*id="narration"/);
+      expect(bundled).toMatch(/id="demo"[^>]*data-end="14"|data-end="14"[^>]*id="demo"/);
 
       const staticGuardWarnings = warnSpy.mock.calls
         .map((call) => String(call[0] ?? ""))
