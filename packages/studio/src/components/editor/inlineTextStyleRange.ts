@@ -199,13 +199,17 @@ function walk(
       runs.push({ text: BREAK, style: inherited, origin, identity: identityOf(origin) });
       continue;
     }
-    // The outermost child is the one the panel knows as a layer, so nesting
-    // below it keeps pointing at it rather than at its inner formatting.
+    // The outermost child that carries anything is the one the panel knows as
+    // a layer, so nesting below it keeps pointing at it rather than at its
+    // inner formatting. An element with nothing on it is not an identity and
+    // must not shadow one below it — the wrapper this rebuild adds inside a
+    // flex container is exactly that, and taking it as the origin made the
+    // second edit of an element drop every identity the first one kept.
     walk(
       element,
       { ...inherited, ...TAG_STYLES[element.tagName], ...ownStyle(element) },
       runs,
-      origin ?? element,
+      origin ?? (preservedAttributes(element).size > 0 ? element : null),
     );
   }
 }
@@ -407,13 +411,34 @@ function selectRange(host: Element, start: number, end: number): void {
   selection.addRange(range);
 }
 
-/** The DOM position a character offset lands on, after a rebuild. */
+/**
+ * The DOM position a character offset lands on, after a rebuild.
+ *
+ * Counts a line break as one position, because everything that produced the
+ * offset did. This walked text nodes only, so in an element containing a `<br>`
+ * it landed one character early for every break before the offset — and the
+ * selection it put back was not the one that had just been styled.
+ *
+ * Which was invisible until a control fired more than once. The colour input
+ * does: a native picker reports every sample while the pointer moves in it, and
+ * each one restyled a selection that had walked one character further along
+ * than the last. Choosing a colour for three characters painted a different
+ * shade onto each character of the whole line.
+ */
 function positionAt(host: Element, offset: number): { node: Node; offset: number } | null {
   let count = 0;
-  const walker = host.ownerDocument.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  const walker = host.ownerDocument.createTreeWalker(
+    host,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+  );
   let node = walker.nextNode();
   let last: Node | null = null;
   while (node) {
+    if (node.nodeType !== 3) {
+      if (nodeName(node) === "BR") count += 1;
+      node = walker.nextNode();
+      continue;
+    }
     const length = (node.textContent ?? "").length;
     if (count + length >= offset) return { node, offset: offset - count };
     count += length;

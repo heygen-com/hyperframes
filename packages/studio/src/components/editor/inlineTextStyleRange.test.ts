@@ -434,6 +434,23 @@ describe("applyInlineStyle keeps what the design panel tracks", () => {
     expect(host.innerHTML).toBe('<span style="color: red">abcd</span>');
   });
 
+  // The wrapper the rebuild adds inside a flex container carries nothing. Read
+  // as the layer it sits around, it hid the real one below it, and the second
+  // edit of an element threw away every identity the first one had kept.
+  it("keeps a layer's identity through a second edit inside a flex container", () => {
+    document.body.innerHTML =
+      '<div style="display: flex" contenteditable="true">' +
+      '<span data-hf-text-key="child:0">one<br>two</span></div>';
+    const host = document.body.firstElementChild as HTMLElement;
+    applyInlineStyle(rangeOver(host, 4, 6), { color: "red" });
+    const live = document.getSelection()?.getRangeAt(0);
+    if (live) applyInlineStyle(live, { color: "blue" });
+
+    expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
+    expect(host.innerHTML).toContain("color: blue");
+    expect(host.innerHTML).not.toContain("color: red");
+  });
+
   it("does not merge two tracked layers that end up looking alike", () => {
     const host = mount(
       '<span data-hf-text-key="child:0" style="color: red">ab</span>' +
@@ -443,5 +460,34 @@ describe("applyInlineStyle keeps what the design panel tracks", () => {
 
     expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
     expect(host.innerHTML).toContain('data-hf-text-key="child:1"');
+  });
+});
+
+/**
+ * A control that fires more than once per gesture, which the colour input does:
+ * a native picker reports every sample while the pointer moves in it, so one
+ * choice of colour arrives as a stream of them, each applied to whatever is
+ * selected at the time.
+ */
+describe("applyInlineStyle survives a control that fires repeatedly", () => {
+  it("restyles the same characters each time, in text containing a line break", () => {
+    const host = mount("1.<br>abcdefg");
+    // "cde", on the line after the break. Only the first sample knows where the
+    // user pointed; every one after it reads the selection back, which is what
+    // the toolbar does and what the restore has to have got right.
+    applyInlineStyle(rangeOver(host, 5, 8), { color: "rgb(1, 1, 1)" });
+    for (const color of ["rgb(2, 2, 2)", "rgb(3, 3, 3)"]) {
+      const live = document.getSelection()?.getRangeAt(0);
+      if (live) applyInlineStyle(live, { color });
+    }
+
+    expect(host.innerHTML).toBe('1.<br>ab<span style="color: rgb(3, 3, 3)">cde</span>fg');
+  });
+
+  it("puts the selection back over the characters it styled, past a break", () => {
+    const host = mount("1.<br>abcdefg");
+    applyInlineStyle(rangeOver(host, 5, 8), { color: "red" });
+
+    expect(document.getSelection()?.toString()).toBe("cde");
   });
 });
