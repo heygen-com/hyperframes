@@ -233,6 +233,50 @@ describe("usePanelLayout — right inspector panes", () => {
     harness.unmount();
   });
 
+  it("opens the sidebar when the rail's own button is clicked", () => {
+    const harness = renderPanelLayout();
+    act(() => resizeWindowTo(560));
+    expect(harness.getState().effectiveLeftCollapsed).toBe(true);
+
+    // Regression: the toggle used to flip stored INTENT, which was already
+    // false here, so the click persisted leftCollapsed=true and the rail stayed
+    // railed — a dead button that silently saved a collapse nobody asked for.
+    act(() => harness.getState().toggleLeftSidebar());
+
+    expect(harness.getState().effectiveLeftCollapsed).toBe(false);
+    expect(harness.getState().leftCollapsed).toBe(false);
+    expect(readStudioUiPreferences().leftCollapsed).toBe(false);
+    // And it gets a real width: rendering an expanded sidebar at the 42px rail
+    // width would squash its own content. Only a real-UI click caught this.
+    expect(harness.getState().leftWidth).toBeGreaterThanOrEqual(200);
+    harness.unmount();
+  });
+
+  it("closes the sidebar again on the next click", () => {
+    const harness = renderPanelLayout();
+    act(() => resizeWindowTo(560));
+    act(() => harness.getState().toggleLeftSidebar());
+    act(() => harness.getState().toggleLeftSidebar());
+
+    expect(harness.getState().effectiveLeftCollapsed).toBe(true);
+    expect(readStudioUiPreferences().leftCollapsed).toBe(true);
+    harness.unmount();
+  });
+
+  it("forgets that reopen once the window is wide again", () => {
+    const harness = renderPanelLayout();
+    act(() => resizeWindowTo(560));
+    act(() => harness.getState().setRightCollapsed(false));
+    expect(harness.getState().effectiveRightCollapsed).toBe(false);
+
+    // Widening past the threshold clears the override, so a later narrow trip
+    // rails again rather than staying open forever off one old click.
+    act(() => resizeWindowTo(1496));
+    act(() => resizeWindowTo(560));
+    expect(harness.getState().effectiveRightCollapsed).toBe(true);
+    harness.unmount();
+  });
+
   it("setRightPanelTab is flat-aware: exclusivity holds for callers other than a direct in-panel tab click", async () => {
     vi.resetModules();
     vi.doMock("../components/editor/manualEditingAvailability", async () => {

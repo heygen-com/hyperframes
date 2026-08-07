@@ -7,7 +7,14 @@ import type {
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { STUDIO_FLAT_INSPECTOR_ENABLED } from "../components/editor/manualEditingAvailability";
-import { defaultPanelWidths, fitPanelWidths, type PanelWidths } from "../utils/fitPanels";
+import {
+  defaultPanelWidths,
+  fitPanelWidths,
+  railsEngaged,
+  type PanelWidths,
+} from "../utils/fitPanels";
+
+const NO_OVERRIDE = { left: false, right: false } as const;
 
 export interface InitialPanelLayoutState {
   rightCollapsed?: boolean | null;
@@ -55,31 +62,32 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   // Set when the user explicitly reopens a panel the window had auto-collapsed,
   // so the rail cannot immediately swallow it again. Cleared once the window is
   // wide enough that auto-collapse is no longer in play.
-  const [autoCollapseOverride, setAutoCollapseOverride] = useState({
-    left: false,
-    right: false,
-  });
+  const [autoCollapseOverride, setAutoCollapseOverride] = useState<{
+    left: boolean;
+    right: boolean;
+  }>(NO_OVERRIDE);
 
   // Reconciliation is a live window resize away, not a mount-time snapshot: a
   // Studio loaded at 1440 and dragged to a half-screen used to keep its pixel
   // widths and squeeze the preview to nothing.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleResize = () => setViewportWidth(window.innerWidth);
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setViewportWidth(width);
+      // Cleared here rather than in an effect watching derived state: the rail
+      // flags depend only on width, and width only changes in this handler.
+      if (!railsEngaged(width)) {
+        setAutoCollapseOverride((prev) => (prev.left || prev.right ? NO_OVERRIDE : prev));
+      }
+    };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const fitted = fitPanelWidths(viewportWidth, preferredWidths);
-  const leftCollapsedByWidth = fitted.autoCollapseLeft && !autoCollapseOverride.left;
-  const rightCollapsedByWidth = fitted.autoCollapseRight && !autoCollapseOverride.right;
-
-  useEffect(() => {
-    if (fitted.autoCollapseLeft || fitted.autoCollapseRight) return;
-    setAutoCollapseOverride((prev) =>
-      prev.left || prev.right ? { left: false, right: false } : prev,
-    );
-  }, [fitted.autoCollapseLeft, fitted.autoCollapseRight]);
+  const fitted = fitPanelWidths(viewportWidth, preferredWidths, autoCollapseOverride);
+  const leftCollapsedByWidth = fitted.autoCollapseLeft;
+  const rightCollapsedByWidth = fitted.autoCollapseRight;
 
   // Rendered widths, which the drag handles measure from so the seam does not
   // jump when a panel is currently narrower than its stored preference.
@@ -119,9 +127,9 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
    */
   const commitPanelWidth = useCallback(
     (side: PanelSide, width: number) => {
-      setPreferred(side, width);
       // Persist what the window will actually allow, not a raw pointer delta.
-      const settled = fitPanelWidths(readViewportWidth(), preferredRef.current)[side];
+      const candidate = { ...preferredRef.current, [side]: Math.max(0, Math.round(width)) };
+      const settled = fitPanelWidths(readViewportWidth(), candidate)[side];
       setPreferred(side, settled);
       writeStudioUiPreferences(side === "left" ? { leftWidth: settled } : { rightWidth: settled });
     },
@@ -135,14 +143,20 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     [commitPanelWidth],
   );
 
+  // The toggle acts on what the user can SEE, not on stored intent. Toggling
+  // stored intent instead made the rail's "Show sidebar" button dead in the
+  // auto-collapsed state: intent was already false, so the click flipped it to
+  // true (persisting a collapse the user never asked for) while the rail stayed
+  // railed and nothing visibly happened.
+  const effectiveLeftCollapsedRef = useRef(false);
+  effectiveLeftCollapsedRef.current = leftCollapsed || leftCollapsedByWidth;
+
   const toggleLeftSidebar = useCallback(() => {
-    setLeftCollapsed((collapsed) => {
-      const next = !collapsed;
-      writeStudioUiPreferences({ leftCollapsed: next });
-      trackStudioEvent("panel_toggle", { panel: "left_sidebar", collapsed: next });
-      if (!next) setAutoCollapseOverride((prev) => ({ ...prev, left: true }));
-      return next;
-    });
+    const next = !effectiveLeftCollapsedRef.current;
+    setLeftCollapsed(next);
+    writeStudioUiPreferences({ leftCollapsed: next });
+    trackStudioEvent("panel_toggle", { panel: "left_sidebar", collapsed: next });
+    if (!next) setAutoCollapseOverride((prev) => ({ ...prev, left: true }));
   }, []);
 
   const setRightCollapsedWithOverride = useCallback((collapsed: boolean) => {
@@ -220,9 +234,13 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     leftWidth: fitted.left,
     rightWidth: fitted.right,
     adjustPanelWidth,
-    /** User intent. Persisted to localStorage; never written by auto-collapse. */
+    /**
+     * User intent. Persisted to localStorage; never written by auto-collapse.
+     * Deliberately read-only outside this hook: `toggleLeftSidebar` is the only
+     * writer, so it cannot be flipped without also clearing the rail override
+     * (which would open the sidebar and then immediately rail it again).
+     */
     leftCollapsed,
-    setLeftCollapsed,
     /** User intent. Synced into the shareable URL; never written by auto-collapse. */
     rightCollapsed,
     setRightCollapsed: setRightCollapsedWithOverride,

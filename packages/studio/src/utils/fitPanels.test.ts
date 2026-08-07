@@ -51,10 +51,10 @@ describe("fitPanelWidths", () => {
       [1100, 499],
       [960, 427],
       [860, 360],
-      [760, 434],
-      [640, 594],
-      [560, 514],
-      [480, 434],
+      [760, 432],
+      [640, 592],
+      [560, 512],
+      [480, 432],
     ];
     for (const [vw, preview] of projected) {
       expect({ vw, preview: fitAt(vw).preview }).toEqual({ vw, preview });
@@ -151,5 +151,14 @@ describe("fitTimelineHeight", () => {
   it("is idempotent", () => {
     const once = fitTimelineHeight(477, 429);
     expect(fitTimelineHeight(477, once)).toBe(once);
+  });
+
+  it("would return the preferred height if callers kept one", () => {
+    // The helper is preference-preserving; the vertical CALLER still stores the
+    // clamped value, so a shrink-then-grow does not restore the old height the
+    // way panel widths do. Tracked as a known asymmetry, not fixed here.
+    const preferred = 429;
+    expect(fitTimelineHeight(477, preferred)).toBe(277);
+    expect(fitTimelineHeight(717, preferred)).toBe(429);
   });
 });

@@ -19,8 +19,12 @@ export const MIN_PREVIEW_H = 200;
 
 const MIN_LEFT = 200;
 const MIN_RIGHT = 280;
-/** Collapsed sidebar rail (`w-10` in StudioLeftSidebar's collapsed branch). */
-export const RAIL_W = 40;
+/**
+ * Collapsed sidebar rail, as a layout FOOTPRINT: the `w-10` box (40) plus the
+ * `mr-0.5` gap (2) it contributes to the flex row. Measured in the browser at a
+ * 760px window: rail box 40, margin-right 2, preview starts at x=43.
+ */
+export const RAIL_W = 42;
 export const MIN_TIMELINE_H = 100;
 
 /** The two 3px resize seams between the three top-row panels. */
@@ -41,6 +45,14 @@ const PANEL_MAX_RATIO = 0.4;
  */
 const RAIL_LEFT_BELOW = 860;
 const RAIL_RIGHT_BELOW = 700;
+
+/**
+ * True when the window is narrow enough to force at least one panel to a rail.
+ * The sidebar threshold is the wider of the two, so it is the whole condition.
+ */
+export function railsEngaged(viewportWidth: number): boolean {
+  return viewportWidth < RAIL_LEFT_BELOW;
+}
 
 export interface PanelWidths {
   left: number;
@@ -84,14 +96,23 @@ export function defaultPanelWidths(viewportWidth: number): PanelWidths {
  * clobber a real preference.
  */
 // fallow-ignore-next-line complexity
-export function fitPanelWidths(viewportWidth: number, preferred: PanelWidths): FittedPanelWidths {
+export function fitPanelWidths(
+  viewportWidth: number,
+  preferred: PanelWidths,
+  /**
+   * Sides the user explicitly reopened while the window was narrow. A side
+   * listed here keeps its real width instead of the rail: without this the
+   * panel would render expanded at 42px and squash its own content.
+   */
+  reopened: { left: boolean; right: boolean } = { left: false, right: false },
+): FittedPanelWidths {
   const vw = Number.isFinite(viewportWidth) ? Math.max(0, viewportWidth) : 0;
   if (vw <= 0) {
     return { ...preferred, preview: 0, autoCollapseLeft: false, autoCollapseRight: false };
   }
 
-  const autoCollapseLeft = vw < RAIL_LEFT_BELOW;
-  const autoCollapseRight = vw < RAIL_RIGHT_BELOW;
+  const autoCollapseLeft = vw < RAIL_LEFT_BELOW && !reopened.left;
+  const autoCollapseRight = vw < RAIL_RIGHT_BELOW && !reopened.right;
   const cap = Math.floor(vw * PANEL_MAX_RATIO);
 
   // A railed panel's floor is its rail width; an open panel's floor is its
