@@ -85,7 +85,17 @@ See [wiring-components.md](./references/wiring-components.md) for full details.
 
 ## Discovery
 
-Use the CLI as the primary discovery surface:
+Use the CLI as the primary discovery surface. **Search by intent before browsing:** the registry holds hundreds of items, so listing them and matching on names or tags is the slow path, and it fails whenever the author's wording differs from yours.
+
+```bash
+# Rank the whole catalog against what the beat should do
+npx hyperframes catalog --query "reveal a headline one line at a time" --smart
+npx hyperframes add line-by-line-slide
+```
+
+`--smart` ranks by meaning and is free for signed-in HeyGen users; it sends the query text and nothing else. Without it the command falls back to word matching, which only finds items whose description happens to reuse your words. With `--json` the envelope names which tier answered, so check that rather than assuming a ranking happened. Only installable items are ranked. See `/hyperframes-cli` for the offline tier and the consent gates.
+
+To browse or filter instead of search:
 
 ```bash
 npx hyperframes catalog

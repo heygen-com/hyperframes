@@ -16,13 +16,14 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 ## Development loop
 
 1. **Scaffold:** `npx hyperframes init <project>` or capture a site. In non-TTY mode, pass `--non-interactive --example=<name>`.
-2. **Author:** write the composition using `/hyperframes-core`.
-3. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
-4. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
-5. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
-6. **Open the final Studio preview:** run `npx hyperframes preview`, hand the timeline project URL to the user, and ask whether to revise or render.
-7. **Render only after approval:** use draft quality for iteration and high quality for delivery.
-8. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
+2. **Find the move:** before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time" --smart`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
+3. **Author:** write the composition using `/hyperframes-core`.
+4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
+5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
+6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
+7. **Open the final Studio preview:** run `npx hyperframes preview`, hand the timeline project URL to the user, and ask whether to revise or render.
+8. **Render only after approval:** use draft quality for iteration and high quality for delivery.
+9. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
 
 ```bash
 # Fast iteration check; repeat while authoring as needed.
@@ -60,6 +61,11 @@ npx hyperframes snapshot --at <t1>,<t2>,<t3>
 Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timeline-registration timeouts as render-blocking mount defects. See `hyperframes-core/references/sub-compositions.md` for the corresponding fixes.
 
 ## Agent conventions
+
+- **Search the catalog by meaning before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain language>" --smart`. `--smart` is a per-run opt-in that needs no prompt, so it works non-interactively; it is also the only part of the catalog flow that sends anything to HeyGen (the query text), and it is free for signed-in users. Without it the command falls back to matching words the description happens to share, which misses any phrasing that does not reuse the catalog's own vocabulary.
+- **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `tier` (`meaning`, `on-device` or `words`), `top_score`, `dropped` and `warnings`. A weak result on the weakest tier is expected; the same result on the best tier is a bug. `top_score` is reported, not judged: real short queries and gibberish overlap on this catalog, so there is no "nothing matched" and you should not invent one without your own evidence.
+- **`dropped` above zero means the registry is a different generation from the search index.** The strongest matches are the ones being lost, so refresh the registry rather than rewording the query.
+- **Offer the offline tier; never enable it silently.** A one-time ~33 MB model plus catalog vectors, cached under `~/.hyperframes`, not added to the project or any package. It ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The CLI only offers it on a TTY, so in an agent or CI run the offer never appears and the user has to be told.
 
 - Prefer `--json` for agent and CI calls. Server-mode `render`, `preview`, and `play` do not provide ordinary JSON output; `preview --selection --json` and `preview --context --json` are query-mode exceptions.
 - `doctor --json` always exits zero. Gate on its payload:

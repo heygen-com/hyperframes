@@ -386,6 +386,10 @@ function mintConfig(): HyperframesConfig {
 }
 
 export interface HyperframesConfig {
+  /** Has the user agreed to send search queries to HeyGen? Undefined means never asked. */
+  smartSearchEnabled?: boolean;
+  /** Has the user agreed to download the on-device search model? Undefined means never asked. */
+  localEmbeddingEnabled?: boolean;
   /** Whether anonymous telemetry is enabled (default: true in production) */
   telemetryEnabled: boolean;
   /** Stable anonymous identifier — no PII, just a random UUID */
@@ -652,6 +656,10 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
     skillsRemovedCount: parsed.skillsRemovedCount,
+    // Consent, so both survive the run that recorded them. Undefined stays
+    // undefined on purpose: it means never asked, which is not the same as no.
+    smartSearchEnabled: parsed.smartSearchEnabled,
+    localEmbeddingEnabled: parsed.localEmbeddingEnabled,
   };
 }
 
