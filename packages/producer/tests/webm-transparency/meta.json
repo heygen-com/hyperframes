@@ -9,6 +9,6 @@
   "renderConfig": {
     "fps": 30,
     "format": "webm",
-    "workers": 1
+    "workers": 4
   }
 }

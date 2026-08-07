@@ -1,6 +1,6 @@
 /**
- * Tests for `discardWarmupCapture` — the helper distributed chunk workers
- * run before their first real capture to prime `lastFrameCache`.
+ * Tests for `discardWarmupCapture` — the helper screenshot-mode parallel
+ * workers run before their first real capture to settle their first seek.
  *
  * The helper is a thin wrapper around the inner `captureFrameCore`
  * machinery, so its testable contract is post-conditional rather than
@@ -19,11 +19,14 @@
  * `innerCapture` for exactly this reason). We don't need a real Chrome.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { existsSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { discardWarmupCapture, type CaptureSession } from "./frameCapture.js";
+import { captureFrameToBuffer, discardWarmupCapture, type CaptureSession } from "./frameCapture.js";
+import { pageScreenshotCapture } from "./screenshotService.js";
+
+vi.mock("./screenshotService.js");
 
 function makeFakeSession(): CaptureSession {
   // The discardWarmupCapture wrapper only reads `capturePerf`,
@@ -44,8 +47,9 @@ function makeFakeSession(): CaptureSession {
       beforeCaptureMs: 50,
       screenshotMs: 200,
       totalMs: 350,
+      frameMs: [40, 50],
     },
-    captureMode: "beginframe",
+    captureMode: "screenshot",
     beginFrameTimeTicks: 0,
     beginFrameIntervalMs: 33,
     beginFrameHasDamageCount: 4,
@@ -53,7 +57,42 @@ function makeFakeSession(): CaptureSession {
   } as unknown as CaptureSession;
 }
 
+function cleanupSession(session: CaptureSession): void {
+  rmSync(session.outputDir, { recursive: true, force: true });
+}
+
 describe("discardWarmupCapture", () => {
+  it("settles and retains screenshots after a single seek", async () => {
+    const session = makeFakeSession();
+    const evaluate = vi.fn(async () => false);
+    session.page = { evaluate } as unknown as CaptureSession["page"];
+    vi.mocked(pageScreenshotCapture)
+      .mockResolvedValueOnce(Buffer.from("warmup"))
+      .mockResolvedValueOnce(Buffer.from("retained"));
+    const result = await captureFrameToBuffer(session, 36, 1.2, true);
+    expect(evaluate.mock.calls.filter((call) => call.length === 2)).toHaveLength(1);
+    expect(pageScreenshotCapture).toHaveBeenCalledTimes(2);
+    expect(result.buffer.toString()).toBe("retained");
+    cleanupSession(session);
+  });
+
+  it("rejects BeginFrame sessions before issuing a duplicate compositor tick", async () => {
+    const session = makeFakeSession();
+    session.captureMode = "beginframe";
+    let called = false;
+    try {
+      await expect(
+        discardWarmupCapture(session, 36, 1.2, async () => {
+          called = true;
+          return { buffer: Buffer.alloc(0), quantizedTime: 1.2, captureTimeMs: 0 };
+        }),
+      ).rejects.toThrow("screenshot capture mode");
+      expect(called).toBe(false);
+    } finally {
+      cleanupSession(session);
+    }
+  });
+
   it("calls the inner capture exactly once with (frameIndex=0, time=0) by default", async () => {
     const session = makeFakeSession();
     try {
@@ -70,7 +109,7 @@ describe("discardWarmupCapture", () => {
       expect(receivedFrameIndex).toBe(0);
       expect(receivedTime).toBe(0);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -84,13 +123,13 @@ describe("discardWarmupCapture", () => {
       });
       expect(received).toEqual({ fi: 240, t: 8 });
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
   it("restores perf counters after the inner capture mutates them", async () => {
     const session = makeFakeSession();
-    const before = { ...session.capturePerf };
+    const before = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
     try {
       await discardWarmupCapture(session, 0, 0, async (s) => {
         s.capturePerf.frames += 1;
@@ -98,11 +137,12 @@ describe("discardWarmupCapture", () => {
         s.capturePerf.beforeCaptureMs += 5;
         s.capturePerf.screenshotMs += 33;
         s.capturePerf.totalMs += 50;
+        s.capturePerf.frameMs.push(999);
         return { buffer: Buffer.alloc(0), quantizedTime: 0, captureTimeMs: 50 };
       });
       expect(session.capturePerf).toEqual(before);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -119,7 +159,7 @@ describe("discardWarmupCapture", () => {
       expect(session.beginFrameHasDamageCount).toBe(hasBefore);
       expect(session.beginFrameNoDamageCount).toBe(noBefore);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -146,7 +186,7 @@ describe("discardWarmupCapture", () => {
       expect(session.beginFrameHasDamageCount).toBe(hasBefore);
       expect(session.beginFrameNoDamageCount).toBe(noBefore);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -163,7 +203,7 @@ describe("discardWarmupCapture", () => {
       const after = readdirSync(session.outputDir);
       expect(after).toEqual(before);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -177,7 +217,7 @@ describe("discardWarmupCapture", () => {
       }));
       expect(result).toBeUndefined();
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 });
