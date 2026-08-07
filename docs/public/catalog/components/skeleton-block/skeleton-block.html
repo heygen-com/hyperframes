@@ -3,9 +3,40 @@
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or invalid, and writes the result as a custom property the
+  CSS below consumes, or as a change to the row list itself. The timeline
+  recipe stays untouched: it keeps driving one offset and one opacity, and
+  slide decides how far that offset reaches.
+
+    - rows (number 1 to 6, default 3): how many loading rows the block shows.
+      Values outside the range are clamped to it.
+    - density (compact | standard | roomy, default standard): height of each
+      row and the gap between them, from a tight list to a generous one.
+    - fill (number 20 to 80, default 54, %): width of the title bar inside each
+      row, as a percent of the row. Values outside the range are clamped to it.
+    - slide (subtle | standard | wide, default standard): scales the sideways
+      travel the timeline drives, so rows settle from closer in or further out
+      in the same time. At rest the offset is zero, so this changes nothing
+      until the timeline runs.
+
+  On every default the result is identical to the original: three 40px rows,
+  12px apart, each with a 54 percent title bar, settling from 4px out.
 -->
 
-<div data-hf-ui-root class="hf-remocn-skeleton-block" role="status" aria-label="Loading content">
+<div
+  data-hf-ui-root
+  class="hf-remocn-skeleton-block"
+  role="status"
+  aria-label="Loading content"
+  data-composition-variables='[
+    { "id": "rows", "type": "number", "role": "content", "label": "Rows", "description": "Number of loading rows in the block. Values outside the range are clamped to it.", "default": 3, "min": 1, "max": 6, "step": 1 },
+    { "id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "Height of each row and the gap between them.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "roomy", "label": "Roomy" }] },
+    { "id": "fill", "type": "number", "role": "layout", "label": "Fill", "description": "Width of the title bar inside each row, as a percent of the row. Values outside the range are clamped to it.", "default": 54, "min": 20, "max": 80, "step": 1, "unit": "%" },
+    { "id": "slide", "type": "enum", "role": "motion", "label": "Slide", "description": "Scales the sideways travel the timeline drives, so rows settle from closer in or further out in the same time.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] }
+  ]'
+>
   <div class="row" aria-hidden="true">
     <span class="label">Loading title</span><span class="hint">Loading value</span>
   </div>
@@ -166,21 +197,21 @@
     border-radius: var(--_hf-ui-radius-surface);
     background: var(--hf-surface);
     display: grid;
-    gap: var(--_hf-ui-space-3);
+    gap: var(--hf-block-gap, var(--_hf-ui-space-3));
   }
   .hf-remocn-skeleton-block .row {
-    min-height: var(--_hf-ui-control-height);
+    min-height: var(--hf-block-row-height, var(--_hf-ui-control-height));
     border-radius: var(--_hf-ui-radius-control);
     background: var(--_hf-ui-surface-inset);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--_hf-ui-space-3);
-    transform: translateX(var(--hf-row-x, 0px));
+    transform: translateX(calc(var(--hf-row-x, 0px) * var(--hf-block-travel, 1)));
     opacity: var(--hf-row-opacity, 1);
   }
   .hf-remocn-skeleton-block .label {
-    width: 54%;
+    width: var(--hf-block-fill, 54%);
     height: 10px;
     overflow: hidden;
     border-radius: var(--_hf-ui-radius-control);
@@ -198,6 +229,65 @@
     font-size: 1px;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var densities = {
+      compact: { height: "30px", gap: "8px" },
+      standard: null,
+      roomy: { height: "52px", gap: "18px" },
+    };
+    var travels = { subtle: 0.5, standard: 1, wide: 3 };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = typeof value === "string" ? Number(value.trim()) : value;
+      if (typeof n !== "number" || !isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    var density = densities[pick(densities, vars.density, "standard")];
+    var travel = travels[pick(travels, vars.slide, "standard")];
+    var rows = Math.round(clampNumber(vars.rows, 1, 6, 3));
+    var fill = Math.round(clampNumber(vars.fill, 20, 80, 54));
+
+    var roots = document.querySelectorAll(".hf-remocn-skeleton-block");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      var style = root.style;
+      style.setProperty("--hf-block-fill", fill + "%");
+      // The timeline drives --hf-row-x, so scale that offset rather than
+      // replacing it: at rest it is zero and this stays invisible.
+      style.setProperty("--hf-block-travel", String(travel));
+      if (density) {
+        style.setProperty("--hf-block-row-height", density.height);
+        style.setProperty("--hf-block-gap", density.gap);
+      }
+
+      var list = root.querySelectorAll(".row");
+      while (list.length > rows) {
+        list[list.length - 1].remove();
+        list = root.querySelectorAll(".row");
+      }
+      var template = list[list.length - 1];
+      while (list.length < rows && template) {
+        root.appendChild(template.cloneNode(true));
+        list = root.querySelectorAll(".row");
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

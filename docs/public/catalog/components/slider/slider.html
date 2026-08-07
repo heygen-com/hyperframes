@@ -1,4 +1,28 @@
-<!-- Slider - animate --hf-slider-value from 0 to 1. -->
+<!--
+  Slider - animate --hf-slider-value from 0 to 1.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or invalid, and writes the result as a custom property the
+  CSS below consumes, or straight onto the readout and the ARIA state.
+
+    - value (number 0 to 100, default 35, %): where the handle rests, plus the
+      number in the readout, aria-valuenow and aria-valuetext, so all three
+      agree. A composition that tweens --hf-slider-value takes over from this
+      resting position, and owns keeping the readout in step, exactly as it
+      does without this variable. Values outside the range are clamped to it.
+    - accent (theme | blue | violet | amber, default theme): colour family for
+      the fill and the thumb ring. Theme sets nothing, so a palette that
+      restyles the inherited accent token is left alone. The theme accent is
+      already the green data colour, so green is not offered again here.
+    - thickness (slim | standard | chunky, default standard): height of the
+      track and the diameter of the thumb riding on it.
+    - readout (percent | hidden, default percent): whether the percent readout
+      sits beside the track. Hidden removes it and gives the track the full
+      width of the control.
+
+  On every default the result is identical to the original: a 35 percent mint
+  fill on a 4px track, with an 18px thumb and a 35% readout.
+-->
 <div
   data-hf-ui-root
   class="hf-ui-slider"
@@ -10,6 +34,12 @@
   aria-valuenow="35"
   aria-valuetext="35 percent"
   tabindex="0"
+  data-composition-variables='[
+    { "id": "value", "type": "number", "role": "content", "label": "Value", "description": "Where the handle rests, and the number in the readout and the accessible value. Values outside the range are clamped to it.", "default": 35, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family for the fill and the thumb ring. Theme leaves the inherited accent token alone.", "default": "theme", "options": [{ "value": "theme", "label": "Theme" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
+    { "id": "thickness", "type": "enum", "role": "layout", "label": "Thickness", "description": "Height of the track and the diameter of the thumb riding on it.", "default": "standard", "options": [{ "value": "slim", "label": "Slim" }, { "value": "standard", "label": "Standard" }, { "value": "chunky", "label": "Chunky" }] },
+    { "id": "readout", "type": "enum", "role": "layout", "label": "Readout", "description": "Percent readout beside the track. Hidden removes it and gives the track the full width.", "default": "percent", "options": [{ "value": "percent", "label": "Percent" }, { "value": "hidden", "label": "Hidden" }] }
+  ]'
 >
   <span class="hf-ui-slider-track"
     ><span class="hf-ui-slider-fill"></span><span class="hf-ui-slider-thumb"></span
@@ -155,7 +185,7 @@
     --hf-slider-thumb-scale: 1;
     --hf-slider-thumb-y: 0px;
     display: grid;
-    grid-template-columns: minmax(160px, 1fr) auto;
+    grid-template-columns: var(--hf-slider-columns, minmax(160px, 1fr) auto);
     gap: var(--_hf-ui-space-3);
     align-items: center;
     width: min(420px, 100%);
@@ -165,7 +195,7 @@
   }
   .hf-ui-slider-track {
     position: relative;
-    height: 4px;
+    height: var(--hf-slider-track-height, 4px);
     border-radius: 9999px;
     background: var(--_hf-ui-border-strong);
   }
@@ -174,15 +204,15 @@
     inset: 0 auto 0 0;
     width: calc(var(--hf-slider-value) * 100%);
     border-radius: inherit;
-    background: var(--_hf-ui-accent);
+    background: var(--hf-slider-accent, var(--_hf-ui-accent));
   }
   .hf-ui-slider-thumb {
     position: absolute;
     top: 50%;
     left: calc(var(--hf-slider-value) * 100%);
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--_hf-ui-accent);
+    width: var(--hf-slider-thumb-size, 18px);
+    height: var(--hf-slider-thumb-size, 18px);
+    border: 2px solid var(--hf-slider-accent, var(--_hf-ui-accent));
     border-radius: 50%;
     background: var(--_hf-ui-surface);
     transform: translate(-50%, calc(-50% + var(--hf-slider-thumb-y)))
@@ -215,3 +245,64 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var accents = {
+      theme: null,
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+      amber: "var(--_hf-ui-data-3)",
+    };
+    var thicknesses = {
+      slim: { track: "3px", thumb: "14px" },
+      standard: null,
+      chunky: { track: "8px", thumb: "26px" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = typeof value === "string" ? Number(value.trim()) : value;
+      if (typeof n !== "number" || !isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    var accent = accents[pick(accents, vars.accent, "theme")];
+    var thickness = thicknesses[pick(thicknesses, vars.thickness, "standard")];
+    var readout = pick({ percent: 1, hidden: 1 }, vars.readout, "percent");
+    var value = Math.round(clampNumber(vars.value, 0, 100, 35));
+
+    var roots = document.querySelectorAll(".hf-ui-slider");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      var style = root.style;
+      style.setProperty("--hf-slider-value", String(value / 100));
+      root.setAttribute("aria-valuenow", String(value));
+      root.setAttribute("aria-valuetext", value + " percent");
+      if (accent) style.setProperty("--hf-slider-accent", accent);
+      if (thickness) {
+        style.setProperty("--hf-slider-track-height", thickness.track);
+        style.setProperty("--hf-slider-thumb-size", thickness.thumb);
+      }
+
+      var cell = root.querySelector(".hf-ui-slider-value");
+      if (cell && readout === "hidden") {
+        cell.remove();
+        style.setProperty("--hf-slider-columns", "1fr");
+      } else if (cell) {
+        cell.textContent = value + "%";
+      }
+    }
+  })();
+</script>
