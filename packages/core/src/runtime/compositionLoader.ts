@@ -1,3 +1,4 @@
+import { planCompositionAssembly } from "../compiler/compositionAssembly";
 import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
@@ -383,12 +384,12 @@ async function mountCompositionContent(params: {
   injectedScripts: HTMLScriptElement[];
   injectedLinks: HTMLLinkElement[];
   parseDimensionPx: (value: string | null) => string | null;
-  /** Extra <style> elements from the parsed document <head> (non-template sub-compositions). */
-  headStyles?: HTMLStyleElement[];
-  /** Extra <script> elements from the parsed document <head> (non-template sub-compositions). */
-  headScripts?: HTMLScriptElement[];
-  /** Extra <link> elements from the parsed document <head> (font stylesheets, preconnects). */
-  headLinks?: HTMLLinkElement[];
+  /**
+   * The parsed document's `<head>`, when the composition was loaded as a full
+   * HTML document. What comes out of it is the shared assembly module's call:
+   * styles and scripts only for a non-templated composition, links always.
+   */
+  head?: ParentNode | null;
   /**
    * Defaults extracted from the sub-composition's own
    * `<html data-composition-variables="...">` attribute. Layered under the
@@ -403,43 +404,51 @@ async function mountCompositionContent(params: {
     details: Record<string, string | number | boolean | null | string[]>;
   }) => void;
 }): Promise<void> {
-  let innerRoot: HTMLElement | null = null;
-  if (params.authoredCompositionId) {
-    const candidateRoots = Array.from(
-      params.sourceNode.querySelectorAll<HTMLElement>("[data-composition-id]"),
-    );
-    innerRoot =
-      candidateRoots.find(
-        (candidate) =>
-          candidate instanceof HTMLElement &&
-          candidate.getAttribute("data-composition-id") === params.authoredCompositionId,
-      ) ?? null;
-  }
+  // Which node is the composition root, which id its CSS scopes to, which id
+  // its scripts scope to, where its assets come from and in what order: the
+  // shared assembly module answers all of it, so this path and the compiler's
+  // inlineSubCompositions agree by construction. Notably, an ANONYMOUS host
+  // (one naming no composition id) now falls back to the first root declared
+  // in the content and mounts scoped to it — mounting the content whole left
+  // its CSS unscoped and leaking into the host document.
+  const plan = planCompositionAssembly<Element>({
+    contentNode: params.sourceNode,
+    head: params.head,
+    hasTemplate: params.hasTemplate,
+    compositionId: params.authoredCompositionId,
+  });
+  // The mount sizes and flattens the root, which needs an HTMLElement; a root
+  // that is not one mounts as plain content, exactly as before.
+  const innerRoot = plan.innerRoot instanceof HTMLElement ? plan.innerRoot : null;
   const contentNode = innerRoot ?? params.sourceNode;
-  const authoredScopeCompositionId =
-    innerRoot?.getAttribute("data-composition-id")?.trim() || params.authoredCompositionId || null;
-  const runtimeScopeCompositionId =
-    params.runtimeCompositionId || authoredScopeCompositionId || null;
-  const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
+  const authoredScopeCompositionId = plan.authoredCompositionId;
+  // Scripts follow the id the CONTENT declares, CSS the id the HOST asked for.
+  // They differ only when a host names an id no root in the content declares,
+  // where collapsing them breaks a script's own
+  // `querySelector('[data-composition-id="..."]')`.
+  const scriptScopeCompositionId = plan.scriptCompositionId;
+  // No fallback to the authored id: an anonymous host has no runtime id, and
+  // the compiler emits no runtime scope selector and no variable table for one.
+  const runtimeScopeCompositionId = params.runtimeCompositionId || null;
+  const authoredRootId = plan.authoredRootId;
   const runtimeScopeSelector = runtimeScopeCompositionId
     ? `[data-composition-id="${CSS.escape(runtimeScopeCompositionId)}"]`
     : undefined;
 
-  if (params.headLinks) {
-    for (const link of params.headLinks) {
-      const rawHref = (link.getAttribute("href") || "").trim();
-      if (!rawHref) continue;
-      const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
-      if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
-      if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
-      const clonedLink = link.cloneNode(true) as HTMLLinkElement;
-      clonedLink.href = href;
-      document.head.appendChild(clonedLink);
-      params.injectedLinks.push(clonedLink);
-    }
+  for (const link of plan.linkSources) {
+    const rawHref = (link.getAttribute("href") || "").trim();
+    if (!rawHref) continue;
+    const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
+    if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
+    if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
+    const clonedLink = link.cloneNode(true);
+    if (!(clonedLink instanceof HTMLLinkElement)) continue;
+    clonedLink.href = href;
+    document.head.appendChild(clonedLink);
+    params.injectedLinks.push(clonedLink);
   }
 
-  const injectScopedStyles = (styleEls: Iterable<HTMLStyleElement>): void => {
+  const injectScopedStyles = (styleEls: Iterable<Element>): void => {
     for (const style of styleEls) {
       const clonedStyle = style.cloneNode(true);
       if (!(clonedStyle instanceof HTMLStyleElement)) continue;
@@ -460,18 +469,13 @@ async function mountCompositionContent(params: {
       params.injectedStyles.push(clonedStyle);
     }
   };
-  // Inject <head> styles from non-template sub-compositions first (they define
-  // element styles like backgrounds and positioning that the composition needs),
-  // then the content styles.
-  if (params.headStyles) injectScopedStyles(params.headStyles);
-  // Collect from `sourceNode`, not the composition root: the canonical authored
-  // shape puts <style>/<script> as SIBLINGS of the root inside <template>, so
-  // scanning only the root dropped a composition's entire stylesheet (and with
-  // it `#root { container-type: size }`, leaving every cq* unit unanchored).
-  // `sourceNode` is a superset of the root, so nothing is collected twice.
-  injectScopedStyles(Array.from(params.sourceNode.querySelectorAll<HTMLStyleElement>("style")));
+  // Already in injection order: <head> styles from a non-template composition
+  // first (they define backgrounds and positioning the composition needs), then
+  // the content's — including the ones authored as SIBLINGS of the composition
+  // root, the shape whose omission dropped a mounted composition's stylesheet.
+  injectScopedStyles(plan.styleSources);
 
-  const toPendingScript = (script: HTMLScriptElement): PendingScript | null => {
+  const toPendingScript = (script: Element): PendingScript | null => {
     const type = script.getAttribute("type")?.trim() ?? "";
     const src = script.getAttribute("src")?.trim() ?? "";
     if (src) {
@@ -484,15 +488,12 @@ async function mountCompositionContent(params: {
     }
     const content = script.textContent?.trim() ?? "";
     if (!content) return null;
-    return { kind: "inline", content, type, scopeCompositionId: authoredScopeCompositionId };
+    return { kind: "inline", content, type, scopeCompositionId: scriptScopeCompositionId };
   };
 
-  // <head> scripts first (e.g. a GSAP CDN tag in a non-template sub-comp): they
-  // must execute before the content scripts that call into them.
-  const scriptPayloads = [
-    ...(params.headScripts ?? []),
-    ...Array.from(params.sourceNode.querySelectorAll<HTMLScriptElement>("script")),
-  ]
+  // Already in execution order: <head> scripts first (a GSAP CDN tag in a
+  // non-template sub-comp) so they run before the content scripts calling in.
+  const scriptPayloads = plan.scriptSources
     .map(toPendingScript)
     .filter((payload): payload is PendingScript => payload !== null);
 
@@ -509,6 +510,13 @@ async function mountCompositionContent(params: {
       params.host.setAttribute("data-timeline-locked", "");
     }
     const flattenedRoot = prepareFlattenedInnerRoot(innerRoot);
+    if (!params.authoredCompositionId && authoredScopeCompositionId) {
+      // Flattening strips data-composition-id on the assumption the host
+      // carries the composition's identity. An anonymous host does not, so
+      // restore it or nothing in the mounted DOM matches the composition's own
+      // scoped CSS. Mirrors the identical restore in inlineSubCompositions.
+      flattenedRoot.setAttribute("data-composition-id", authoredScopeCompositionId);
+    }
     stripExtractedCompositionAssets(flattenedRoot);
     params.host.appendChild(flattenedRoot);
   } else if (params.hasTemplate) {
@@ -689,23 +697,6 @@ export async function loadExternalCompositions(
               )
             : null) ?? doc.querySelector<HTMLTemplateElement>("template");
         const sourceNode = template ? template.content : doc.body;
-        // When loading a non-template sub-composition (full HTML document),
-        // extract <style> and <script> elements from the parsed document's
-        // <head>. These contain critical CSS (backgrounds, positioning, fonts)
-        // and library scripts (e.g. GSAP CDN) that would otherwise be lost
-        // because mountCompositionContent only looks inside the composition
-        // root element.
-        const headStyles = !template
-          ? Array.from(doc.head.querySelectorAll<HTMLStyleElement>("style"))
-          : undefined;
-        const headScripts = !template
-          ? Array.from(doc.head.querySelectorAll<HTMLScriptElement>("script"))
-          : undefined;
-        const headLinks = Array.from(
-          doc.head.querySelectorAll<HTMLLinkElement>(
-            'link[rel="stylesheet"], link[rel="preconnect"]',
-          ),
-        );
         await mountCompositionContent({
           host,
           authoredCompositionId,
@@ -719,9 +710,11 @@ export async function loadExternalCompositions(
           injectedScripts: params.injectedScripts,
           injectedLinks: params.injectedLinks,
           parseDimensionPx: params.parseDimensionPx,
-          headStyles,
-          headScripts,
-          headLinks,
+          // A non-templated composition's <head> carries critical CSS
+          // (backgrounds, positioning, fonts) and library scripts; every
+          // composition's <head> can carry a webfont <link>. The shared
+          // assembly module decides which of those apply.
+          head: doc.head,
           // TODO(template-var-carriers): reads `<html>` only. A template/fragment
           // sub-comp that declares on its `[data-composition-id]` root div (the
           // dual-carrier contract from #2081) loses its defaults on this lazy

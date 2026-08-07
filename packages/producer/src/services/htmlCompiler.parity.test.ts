@@ -151,6 +151,15 @@ describe("preview/render semantic compilation parity", () => {
 
 const FONT_FACE = `@font-face { font-family: ParityBody; src: url(data:font/woff2;base64,d09GMgAB) format("woff2"); }`;
 
+const anonymousCardHost = (body: string) => ({
+  "index.html":
+    shell(`<main data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="6">
+      <section id="card-host" data-composition-src="compositions/card.html"
+        data-start="1" data-duration="3"></section>
+    </main>`),
+  "compositions/card.html": body,
+});
+
 const cardHost = (body: string) => ({
   "index.html":
     shell(`<main data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="6">
@@ -182,6 +191,37 @@ const MOUNT_PARITY_FIXTURES: { name: string; files: Record<string, string> }[] =
       <article id="card-root" data-composition-id="card" data-width="800" data-height="600">
         <style>${FONT_FACE}
         .parity-card { --parity-contract: 4; font-family: ParityBody, sans-serif; }</style>
+        <h2 class="parity-card">Card</h2>
+      </article>
+    </template>`),
+  },
+  {
+    name: "a TEMPLATED composition hoisting a head stylesheet link",
+    // The compiler used to hoist a <link> only for a non-templated
+    // composition, so a templated one's webfont survived preview (the mount
+    // path always hoisted) and vanished from the render.
+    files: cardHost(`<!doctype html><html><head>
+      <link rel="preconnect" href="https://fonts.example.com" />
+      </head><body>
+      <template id="card-template">
+        <style>${FONT_FACE}
+        .parity-card { --parity-contract: 6; font-family: ParityBody, sans-serif; }</style>
+        <article id="card-root" data-composition-id="card" data-width="800" data-height="600">
+          <h2 class="parity-card">Card</h2>
+        </article>
+      </template>
+      </body></html>`),
+  },
+  {
+    name: "an anonymous host scoping to the id its content declares",
+    // A host naming no composition id. The mount path used to drop the
+    // content in whole and unscoped, so this composition's CSS landed on the
+    // host document at large; the compiler has always fallen back to the
+    // first declared root and scoped to it.
+    files: anonymousCardHost(`<template id="card-template">
+      <style>${FONT_FACE}
+      .parity-card { --parity-contract: 7; font-family: ParityBody, sans-serif; }</style>
+      <article id="card-root" data-composition-id="card" data-width="800" data-height="600">
         <h2 class="parity-card">Card</h2>
       </article>
     </template>`),
@@ -223,12 +263,13 @@ const subCompositions = (files: Record<string, string>) =>
  *   bootstrap script are injected by the player and the producer AROUND a mount,
  *   never by `loadExternalCompositions`. Comparing them would compare harnesses.
  *
- * Excluded for now, and deliberately NOT worked around: a templated
- * sub-composition whose document `<head>` carries a `<link>` — the mount path
- * hoists it unconditionally, the compiler only for a non-templated composition.
- * That is one of the live divergences U1 catalogued; closing it is a behaviour
- * decision for a later unit, not something a gate should paper over. The
- * non-templated shape IS covered above, where both paths agree.
+ * Nothing else is excluded. The templated-head-`<link>` divergence this file
+ * used to carve out is closed and gated by a fixture above; so is the
+ * anonymous-host one. Two divergences remain ungated HERE rather than
+ * unfixed — an inline `<head>` script and the split between the CSS scope id
+ * and the script scope id both live in script bodies, and this contract
+ * carries no script-body field. Their gates are the unit suites in
+ * `packages/core/src/{compiler,runtime}`.
  */
 function assembledContract(contract: ParityContract) {
   const { runtimeBootstrap: _runtime, variableBootstrap: _variables, ...assembled } = contract;

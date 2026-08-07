@@ -1219,22 +1219,19 @@ describe("loadExternalCompositions", () => {
     });
   });
 
-  it("preserves data-composition-id unflattened for a host with no id of its own (anonymous host)", async () => {
-    // Regression test documenting why this file's own prepareFlattenedInnerRoot
-    // (line ~527) does NOT need the same anonymous-host id-restoration that
-    // producer/bundler compilation needed: an anonymous host's authoredCompositionId
-    // is null, so mountCompositionContent's innerRoot lookup never runs, and it
-    // falls through to a raw document.importNode() of the whole template content
-    // instead of prepareFlattenedInnerRoot. The composition's own
-    // data-composition-id is never stripped in the first place, so its root-styling
-    // CSS and self-referencing querySelector('[data-composition-id="X"]') calls
-    // already resolve. See PR review discussion on #1886 for the audit trail.
+  it("scopes an anonymous host's composition to the id its own content declares", async () => {
+    // A host naming no composition id used to mount the fetched content WHOLE:
+    // unflattened, and with its CSS injected unscoped, so the composition's
+    // rules landed on the host document at large. The compiler has always
+    // fallen back to the first root declared in the content, scoped to it, and
+    // restored the id that flattening strips. The mount path does the same now.
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/scoped-text.html");
     document.body.appendChild(host);
 
     const compositionHtml = `
       <template id="scoped-text-template">
+        <style>.label { color: rgb(1, 2, 3); }</style>
         <div data-composition-id="scoped-text" data-width="1080" data-height="1920">
           <div class="label">Scoped Text Should Stay Styled</div>
         </div>
@@ -1243,17 +1240,76 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    const injectedStyles: HTMLStyleElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedStyles });
 
-    // Not flattened: no data-hf-inner-root wrapper was created.
-    expect(host.querySelector("[data-hf-inner-root]")).toBeNull();
-    // The composition's own root element, with its own id intact, is a
-    // direct descendant of the (still anonymous) host.
+    // Flattened like every other mount, with the declared id restored so the
+    // composition's scoped CSS and self-referencing queries still resolve.
     const mountedRoot = host.querySelector('[data-composition-id="scoped-text"]');
-    expect(mountedRoot).not.toBeNull();
+    expect(mountedRoot?.getAttribute("data-hf-inner-root")).toBe("true");
     expect(mountedRoot?.querySelector(".label")?.textContent).toBe(
       "Scoped Text Should Stay Styled",
     );
+    // The stylesheet is scoped to the composition rather than leaking whole.
+    const injectedCss = injectedStyles.map((style) => style.textContent).join("\n");
+    expect(injectedCss).toContain('[data-composition-id="scoped-text"]');
+    expect(injectedCss).not.toMatch(/^\s*\.label\s*\{/);
+  });
+
+  // --- D1/D4 regressions: what the compiler and the mount path now agree on ---
+
+  it("executes an inline <head> script of a non-templated composition", async () => {
+    // The compiler used to drop this one on the floor (its <head> loop had a
+    // `src` branch and no else); the mount path always executed it.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/head-script.html");
+    host.setAttribute("data-composition-id", "head-script");
+    document.body.appendChild(host);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<html><head><script>window.__headScriptRan = true;</script></head><body>
+           <div data-composition-id="head-script"><p>Body</p></div>
+         </body></html>`,
+        { status: 200 },
+      ),
+    );
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts.map((script) => script.textContent).join("\n")).toContain(
+      "window.__headScriptRan = true;",
+    );
+  });
+
+  it("scopes scripts to the id the content declares when the host names another", async () => {
+    // Two scope ids, not one: CSS stays on the id the host asked for, scripts
+    // follow the id the content actually declares, so a script's own
+    // querySelector('[data-composition-id="..."]') resolves. Collapsing them
+    // pointed every self-query at an id that is nowhere in the content.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/captions.html");
+    host.setAttribute("data-composition-id", "captions-comp");
+    document.body.appendChild(host);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<template id="captions-comp-template">
+           <div data-composition-id="captions"><p>Caption</p></div>
+           <script>void 0;</script>
+         </template>`,
+        { status: 200 },
+      ),
+    );
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    const injectedStyles: HTMLStyleElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts, injectedStyles });
+
+    const scriptSource = injectedScripts.map((script) => script.textContent).join("\n");
+    expect(scriptSource).toContain('var __hfCompId = "captions";');
+    expect(scriptSource).not.toContain('var __hfCompId = "captions-comp";');
   });
 });
 
