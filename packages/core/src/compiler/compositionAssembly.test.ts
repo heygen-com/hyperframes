@@ -206,7 +206,7 @@ describe("enumerateNestedCompositionHosts", () => {
     return host;
   };
 
-  it("enumerates nested hosts with their ancestry", () => {
+  it("enumerates every nested host in document order", () => {
     const host = assembled(
       `<div data-composition-src="child-a.html"></div><div data-composition-src="child-b.html"></div>`,
     );
@@ -214,7 +214,6 @@ describe("enumerateNestedCompositionHosts", () => {
     const { hosts, skipped } = enumerateNestedCompositionHosts(host, ["outer.html"]);
 
     expect(hosts.map((entry) => entry.src)).toEqual(["child-a.html", "child-b.html"]);
-    expect(hosts[0]?.ancestry).toEqual(["outer.html", "child-a.html"]);
     expect(hosts[0]?.host.getAttribute("data-composition-src")).toBe("child-a.html");
     expect(skipped).toEqual([]);
   });

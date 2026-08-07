@@ -205,12 +205,6 @@ export type NestedHostSkipReason = "circular composition reference" | "nesting d
 export interface NestedCompositionHost<TElement> {
   host: TElement;
   src: string;
-  /**
-   * The chain of `data-composition-src` values from the outermost composition
-   * down to AND INCLUDING this host's own `src`. Pass it straight back into
-   * `enumerateNestedCompositionHosts` when this host is itself assembled.
-   */
-  ancestry: string[];
 }
 
 export interface NestedCompositionHosts<TElement> {
@@ -243,7 +237,7 @@ export function enumerateNestedCompositionHosts<TElement extends AssemblyAttribu
       skipped.push({ src, reason: "nesting depth exceeded" });
       continue;
     }
-    hosts.push({ host: nestedHost, src, ancestry: [...ancestry, src] });
+    hosts.push({ host: nestedHost, src });
   }
 
   return { hosts, skipped };
