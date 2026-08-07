@@ -3,41 +3,21 @@ title: "VFX Text Cursor"
 description: "Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges."
 ---
 
-# VFX Text Cursor
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges.
-
-`html-in-canvas` `text` `shader` `cursor` `chromatic`
-
-<Warning>
-**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
-</Warning>
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-text-cursor.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-text-cursor.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/vfx-text-cursor.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="VFX Text Cursor preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add vfx-text-cursor" />
 
-```bash Terminal
-npx hyperframes add vfx-text-cursor
-```
+That writes one file: `compositions/vfx-text-cursor.html`.
 
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 8s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `vfx-text-cursor.html` | `compositions/vfx-text-cursor.html` | hyperframes:composition |
+<Warning>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Rendering from the CLI switches it on for you. [How it
+  works](/guides/html-in-canvas)
+</Warning>
 
 ## Usage
 
@@ -46,3 +26,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="vfx-text-cursor" data-composition-src="compositions/vfx-text-cursor.html" data-start="0" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `html-in-canvas` `text` `shader` `cursor` `chromatic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

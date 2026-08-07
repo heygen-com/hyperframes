@@ -1,0 +1,44 @@
+---
+title: "Light Sweep Pass"
+description: "A traveling key light re-shades a slotted scene: a soft diagonal gradient band crosses the frame once while every per-element highlight and shadow shifts in lockstep (all driven by one --light-x property), then the light settles into a resting key. Quiet, expensive-feeling; the scene itself never moves. Callers fill the named scene slot; a token hero-and-cards default renders when it is left empty."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/light-sweep-pass.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Light Sweep Pass preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add light-sweep-pass" />
+
+That writes one file: `compositions/components/light-sweep-pass.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/light-sweep-pass.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `angle` | `115` | 60deg to 160deg, step 1deg | Band and highlight gradient angle in degrees. |
+| `sweep_at` | `0.9` | 0s to 8s, step 0.05s | Seconds after mount start when the band starts crossing. |
+| `strength` | `standard` | `subtle`, `standard` | Band opacity and highlight bloom multiplier. |
+| `accent` | `green` | `green`, `blue`, `violet` | Tint inside the band and the highlight blooms. |
+| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the settled key. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `overlay` `light` `sweep` `slots` `deterministic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

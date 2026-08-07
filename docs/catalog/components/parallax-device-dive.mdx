@@ -1,0 +1,41 @@
+---
+title: "Parallax Device Dive"
+description: "A canonical phone rises into view before the camera pushes through its screen and layered app UI expands to fill the frame."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/parallax-device-dive.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Parallax Device Dive preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add parallax-device-dive" />
+
+That writes one file: `compositions/components/parallax-device-dive.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/parallax-device-dive.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `blue` | `green`, `blue`, `violet` | Highlight color used throughout the app UI. |
+| `app_title` | `Dashboard` | string | Title displayed in the app header. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `camera` `device` `phone` `parallax` `transition`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

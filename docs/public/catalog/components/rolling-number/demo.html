@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Rolling Number - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: scale via transform on .demo-frame (not a GSAP target) */
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        transform: scale(2.6);
+        transform-origin: center center;
+      }
+      .demo-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        padding: 32px 48px 28px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        min-width: 240px;
+      }
+      .demo-label {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .demo-sublabel {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 400;
+        color: #a1a1aa;
+        margin-top: 2px;
+      }
+      .hf-remocn-rolling-number {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-rolling-number {
+        display: inline-flex;
+        gap: 2px;
+        font:
+          900 74px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .hf-remocn-rolling-number span {
+        display: inline-block;
+        transform: translateY(var(--hf-number-y, 0px));
+        filter: blur(var(--hf-number-blur, 0px));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="rolling-number-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="demo-card">
+          <span class="demo-label">Total Users</span>
+          <div class="hf-remocn-rolling-number">
+            <span>3</span><span>0</span><span>,</span><span>6</span><span>5</span><span>8</span>
+          </div>
+          <span class="demo-sublabel">↑ 12% this month</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-rolling-number span",
+          { opacity: 0, "--hf-number-y": "26px", "--hf-number-blur": "8px" },
+          {
+            opacity: 1,
+            "--hf-number-y": "0px",
+            "--hf-number-blur": "0px",
+            duration: 0.3,
+            stagger: 0.045,
+            ease: "back.out(1.6)",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["rolling-number-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

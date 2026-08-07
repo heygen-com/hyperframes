@@ -1,0 +1,43 @@
+---
+title: "Testimonial Card"
+description: "Reveals a customer quote at reading pace, then settles its avatar, author name, and handle beneath as a clean proof beat."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/testimonial-card.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Testimonial Card preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add testimonial-card" />
+
+That writes one file: `compositions/components/testimonial-card.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/testimonial-card.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `quote` | `This changed how we ship.` | string | Customer testimonial copy revealed at reading pace. |
+| `author` | `Ken Tanaka` | string | Name attributed to the testimonial. |
+| `handle` | `@ken` | string | Role or social handle shown beneath the author name. |
+| `rating` | `5` | 0 to 5, step 0.1 | Visible customer rating from zero to five stars. |
+
+{/* hf:generated-footer */}
+
+Tagged `prop` `ui-props` `testimonial` `social-proof` `quote` `prove`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

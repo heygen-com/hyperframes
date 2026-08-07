@@ -1,0 +1,44 @@
+---
+title: "Scroll Camera Story"
+description: "A compressed forced-scroll cinematic pass: a tall scene of slotted sections travels past the camera top to bottom, depth layers parallax at different rates, each section rises as the camera reaches it, and the pass decelerates into a held final section."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/scroll-camera-story.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Scroll Camera Story preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add scroll-camera-story" />
+
+That writes one file: `compositions/components/scroll-camera-story.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/scroll-camera-story.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `sections` | `3` | 2 to 4, step 1 | How many skeleton sections ride the pass. A sections slot overrides this with its own child count. |
+| `travel` | `220` | 100cqh to 400cqh, step 10cqh | Total camera travel in cqh. The world is 100 + travel cqh tall. |
+| `cues` | `` | string | Comma-separated seconds: arrival times for the sections after the first. Empty keeps the authored default rhythm. |
+| `accent` | `green` | `green`, `blue`, `violet` | Token the skeleton accents and foreground motes ride. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. None holds the final section. |
+
+{/* hf:generated-footer */}
+
+Tagged `camera` `scroll` `parallax` `story` `sections` `slot` `servo`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

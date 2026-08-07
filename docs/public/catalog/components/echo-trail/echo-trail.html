@@ -1,0 +1,358 @@
+<!doctype html>
+<!--
+  echo-trail: HyperFrames video primitive (trails)
+
+  The generalized onion skin: a moving element renders with N ghosted
+  copies of itself, each ghost showing the element where it was at
+  t minus i * delta, opacity stepped down per ghost. One traversal along
+  an authored path; as the element decelerates into rest the echoes
+  collapse into it and vanish, leaving a clean settled hold.
+
+  The subject is a SLOT. Callers supply content by placing an inert
+  template anywhere in the HOST page (templates never render, and the
+  runtime wipes the host clip's own children on mount, so the slot lives
+  at document level):
+
+    <template data-slot="echo-trail-subject"> ... </template>
+
+  Ghosts are deep clones of the subject content. With no slot, the
+  primitive renders a token card (surface, hairline border, accent dot,
+  two skeleton lines, contract tokens only).
+
+  Variables (declared in data-composition-variables below):
+    - echoes (number 2 to 6, default 4): ghost copy count.
+    - delta (number seconds, default 0.09, clamped 0.03 to 0.3): the lag
+      between successive ghosts.
+    - path ("sweep" | "rise" | "arc", default "sweep"): the authored
+      traversal preset.
+    - accent ("green" | "blue" | "violet", default "green"): green rides
+      --brand, blue rides --accent, violet rides --accent-2.
+    - exit ("none" | "fade" | "up", default "none"): frame roots own
+      transitions; the default holds the final frame to the last pixel.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN_BASE  = TRAVEL (2.1s) + echoes * delta + 0.2s settle; the lead
+               rests at TRAVEL and the last ghost has converged (and is
+               exactly invisible) by IN
+    HOLD     = max(0, D - IN - OUT)
+    OUT_BASE = 0.45s  only when exit != none
+    If D < IN_BASE + OUT_BASE, the whole envelope compresses together.
+
+  Determinism: ghost i's position at time t is path(ease(clamp01((t -
+  i * delta) / TRAVEL))) and its opacity is its stepped base times a pure
+  function of its distance to the lead; both are recomputed from
+  tl.time() on every update. No Math.random, no wall clock, no
+  incremental state, no requestAnimationFrame. Eventful seeks
+  (suppressEvents=false, the engine's render path) land identical frames
+  in any order and either direction; at rest every ghost is coincident
+  with the lead at opacity exactly zero, so the HOLD is truly still.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cqmin
+  units), is styled via #root only, and registers one paused timeline
+  under the LITERAL "echo-trail" key.
+-->
+<html
+  lang="en"
+  data-composition-id="echo-trail"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "echoes", "type": "number", "role": "style", "label": "Echoes", "description": "Ghost copy count, clamped 2 to 6.", "default": 4 },
+    { "id": "delta", "type": "number", "role": "timing", "label": "Delta", "description": "Lag between successive ghosts in seconds, clamped 0.03 to 0.3.", "default": 0.09 },
+    { "id": "path", "type": "enum", "role": "timing", "label": "Path", "description": "Authored traversal preset.", "default": "sweep", "options": [{ "value": "sweep", "label": "Sweep" }, { "value": "rise", "label": "Rise" }, { "value": "arc", "label": "Arc" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Subject accent color: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the settled element holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Echo Trail</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="echo-trail" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, "Inter", system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .et-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .et-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          .et-ghost,
+          .et-lead {
+            position: absolute;
+            left: 0;
+            top: 0;
+            will-change: opacity;
+          }
+
+          .et-ghost {
+            opacity: 0;
+          }
+
+          .et-lead {
+            opacity: 0;
+          }
+
+          .et-card {
+            width: 30cqmin;
+            padding: var(--space-3, 3cqmin);
+            display: grid;
+            gap: var(--space-2, 2cqmin);
+            border: 0.18cqmin solid var(--border, #475569);
+            border-radius: var(--radius, 2.4cqmin);
+            background: var(--surface, #14171c);
+            box-shadow: 0 1.6cqmin 5cqmin
+              color-mix(in srgb, var(--bg, #000000) 30%, transparent);
+          }
+
+          .et-card-dot {
+            width: 3.2cqmin;
+            height: 3.2cqmin;
+            border-radius: 50%;
+            background: var(--et-accent);
+          }
+
+          .et-card-line {
+            height: 1.6cqmin;
+            border-radius: 0.8cqmin;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 16%, transparent);
+          }
+
+          .et-card-line.short {
+            width: 62%;
+          }
+        </style>
+
+        <div
+          id="echo-trail-clip"
+          class="et-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="et-stage">
+            <div class="et-lead">
+              <div class="et-card">
+                <div class="et-card-dot"></div>
+                <div class="et-card-line"></div>
+                <div class="et-card-line short"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".et-stage");
+            var lead = root.querySelector(".et-lead");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var echoesRaw = parseFloat(vars.echoes);
+            var echoes = isFinite(echoesRaw)
+              ? Math.min(6, Math.max(2, Math.round(echoesRaw)))
+              : 4;
+            var deltaRaw = parseFloat(vars.delta);
+            var deltaVar = isFinite(deltaRaw)
+              ? Math.min(0.3, Math.max(0.03, deltaRaw))
+              : 0.09;
+            var pathName = vars.path === "rise" || vars.path === "arc" ? vars.path : "sweep";
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--et-accent", accentColors[accent]);
+
+            // SLOT. Caller templates live at HOST DOCUMENT level (the mount
+            // wipes host-clip children, and templates never render).
+            var hostDoc = root.ownerDocument;
+            var slotTemplate = null;
+            try {
+              slotTemplate = hostDoc.querySelector('template[data-slot="echo-trail-subject"]');
+            } catch (error) {
+              slotTemplate = null;
+            }
+            if (slotTemplate) {
+              lead.querySelector(".et-card").remove();
+              lead.appendChild(hostDoc.importNode(slotTemplate.content, true));
+            }
+
+            // Ghosts: deep clones of the subject, inserted BEFORE the lead
+            // so the lead always renders on top. ghosts[0] is the nearest
+            // past copy (highest stepped opacity).
+            var ghosts = [];
+            for (var g = 0; g < echoes; g += 1) {
+              var ghost = hostDoc.createElement("div");
+              ghost.className = "et-ghost";
+              ghost.setAttribute("aria-hidden", "true");
+              for (var c = 0; c < lead.children.length; c += 1) {
+                ghost.appendChild(lead.children[c].cloneNode(true));
+              }
+              stage.insertBefore(ghost, lead);
+              ghosts.push(ghost);
+            }
+
+            // Envelope: fixed IN/OUT, elastic HOLD, never time-scaled.
+            var TRAVEL_BASE = 2.1;
+            var IN_BASE = TRAVEL_BASE + echoes * deltaVar + 0.2;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var TRAVEL = TRAVEL_BASE * scale;
+            var delta = deltaVar * scale;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            // Path presets in percent-of-stage coordinates; the subject is
+            // centered on the point via a one-time -50%/-50% translate.
+            function pathPoint(u) {
+              if (pathName === "rise") {
+                return { x: 50 + 6 * Math.sin(Math.PI * u), y: 76 - 44 * u };
+              }
+              if (pathName === "arc") {
+                return { x: 16 + 68 * u, y: 64 - 34 * Math.sin(Math.PI * u) };
+              }
+              // sweep: a shallow S from left to right through center.
+              return { x: 18 + 64 * u, y: 50 + 10 * Math.cos(Math.PI * u) };
+            }
+
+            function easeInOut(t) {
+              return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+            }
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+
+            function posAt(timeSeconds) {
+              var u = easeInOut(clamp01(TRAVEL > 0 ? timeSeconds / TRAVEL : 1));
+              return pathPoint(u);
+            }
+
+            // One-time static transforms: center anchor plus a slight
+            // per-ghost scale step for depth. GSAP owns the transform, the
+            // per-update writes touch only left/top/opacity.
+            gsap.set(lead, { xPercent: -50, yPercent: -50 });
+            for (var i = 0; i < ghosts.length; i += 1) {
+              gsap.set(ghosts[i], {
+                xPercent: -50,
+                yPercent: -50,
+                scale: 1 - 0.015 * (i + 1),
+              });
+            }
+
+            // Stepped ghost bases: nearest past copy strongest.
+            var bases = [];
+            for (var b = 0; b < echoes; b += 1) {
+              bases.push(0.55 * (1 - b / echoes));
+            }
+
+            // Pure per-update apply: every position and every ghost alpha
+            // is a function of tl.time() alone. Ghost alpha is its stepped
+            // base times a separation ramp, so echoes are invisible before
+            // motion starts and collapse to exactly zero at rest. Writes
+            // are idempotent, so the HOLD repaints identically.
+            function applyTime(timeSeconds) {
+              var leadPos = posAt(timeSeconds);
+              gsap.set(lead, {
+                left: leadPos.x.toFixed(4) + "%",
+                top: leadPos.y.toFixed(4) + "%",
+              });
+              for (var n = 0; n < ghosts.length; n += 1) {
+                var p = posAt(timeSeconds - (n + 1) * delta);
+                var dist = Math.hypot(p.x - leadPos.x, p.y - leadPos.y);
+                var alpha = bases[n] * clamp01(dist / 2.2);
+                gsap.set(ghosts[n], {
+                  left: p.x.toFixed(4) + "%",
+                  top: p.y.toFixed(4) + "%",
+                  opacity: alpha < 0.002 ? 0 : alpha,
+                });
+              }
+            }
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                applyTime(tl.time());
+              },
+            });
+
+            // Anchor tween: an inert plain-object tween spanning the full
+            // authored duration so the timeline covers [0, D], onUpdate
+            // fires for every eventful seek, and holds never clamp short.
+            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
+
+            // Lead entrance: both endpoints authored. Ghosts need no
+            // entrance; the separation ramp keeps them at zero until the
+            // traversal opens a gap.
+            tl.fromTo(
+              lead,
+              { opacity: 0 },
+              { opacity: 1, duration: 0.22 * scale, ease: "power2.out" },
+              0,
+            );
+
+            // HOLD: truly still. The lead rests at path(1) and every ghost
+            // is coincident at opacity exactly zero.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            applyTime(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["echo-trail"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

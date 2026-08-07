@@ -1,0 +1,435 @@
+<!doctype html>
+<!--
+  ink-bleed-reveal: HyperFrames video primitive (texture / reveals). Wave M7.
+
+  Liquid ink blooms through paper to reveal a mark. Several ink blobs bleed
+  outward from the center and merge like liquid under the gooey chain
+  (Gaussian blur + a hard alpha threshold: the blur softens the silhouettes
+  together, the threshold snaps the merged alpha back to a crisp liquid
+  edge), then the puddle contracts and dies as the crisp mark resolves
+  beneath it. The chain is the classic SVG feGaussianBlur + feColorMatrix
+  recipe, but computed in a canvas work buffer each repaint: Chrome's live
+  filter raster patches damaged tiles with seek-history-dependent seam
+  antialiasing, while a cleared, fully redrawn canvas is a pure function of
+  (table, time) and lands byte-identical frames. A seeded, static
+  paper-grain overlay (feTurbulence, fixed seed, never animated) rides the
+  whole piece.
+
+  The mark is a SLOT. Callers supply content by placing an inert template
+  anywhere in the HOST page (templates never render, and the runtime wipes
+  the host clip's own children on mount, so the slot lives at document level):
+
+    <template data-slot="ink-bleed-reveal-mark"> ... </template>
+
+  With no slot, the primitive renders a token monogram: one display glyph in
+  ink, drawn entirely from contract tokens. Light paper is the home register,
+  but every color rides a token so themes restate it.
+
+  Variables (declared in data-composition-variables below):
+    - blobs (number 4-6, default 5): how many ink blobs bleed and merge.
+    - accent ("green" | "blue" | "violet", default "green"): ink tint; green
+      rides --brand, blue rides --accent, violet rides --accent-2. The ink
+      body is the accent mixed toward --fg so it reads as pigment, not paint.
+    - exit ("none" | "fade" | "up", default "none"): frame roots own
+      transitions; the default holds the revealed mark to the last pixel.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN_BASE  = 2.80s  ink blooms, merges, contracts; mark resolves crisp
+    HOLD     = max(0, D - IN - OUT); truly still (grain is static by
+               construction: painted by a fixed-seed feTurbulence, never
+               animated, so held frames are byte-identical)
+    OUT_BASE = 0.45s  only when exit != none
+    If D < IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Determinism (closed-form field law): there is NO physics state. One
+  per-blob parameter table is computed exactly once during synchronous
+  timeline construction from fixed LCG seed 0x1b1eedca; every painted frame
+  positions each blob as a pure function of (table row, timeline time) inside
+  the anchor tween's onUpdate. Zero per-blob tweens. No Math.random, no wall
+  clock, no requestAnimationFrame. Eventful seeks (suppressEvents=false, the
+  engine's render path) land identical frames in any order and either
+  direction; by the end of IN every blob's scale is exactly zero and the goo
+  layer's opacity is zero, so the HOLD is the crisp mark on still paper.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cqmin units),
+  is styled via #root only, and registers one paused timeline under the
+  LITERAL "ink-bleed-reveal" key. All DOM state is set with explicit
+  endpoints (gsap.set + fromTo) so any seek order lands identical frames.
+-->
+<html
+  lang="en"
+  data-composition-id="ink-bleed-reveal"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "blobs", "type": "number", "role": "style", "label": "Blobs", "description": "How many ink blobs bleed and merge (4 to 6).", "default": 5, "min": 4, "max": 6, "step": 1 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Ink tint: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the revealed mark holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ink Bleed Reveal</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="ink-bleed-reveal" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #1d1b16);
+            font-family: var(--font-display, "Inter", system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .ibr-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .ibr-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          /* The gooey layer is a canvas: blur + alpha threshold are computed
+             in-buffer each repaint (ctx.filter blur, then the colormatrix
+             threshold applied to the readback). Chrome's live SVG/CSS filter
+             raster patches damaged tiles with seek-history-dependent seam
+             antialiasing, which breaks byte-identical frames; a cleared and
+             fully redrawn canvas is a pure function of (table, time). */
+          .ibr-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .ibr-mark {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            will-change: transform, opacity;
+          }
+
+          .ibr-monogram {
+            display: grid;
+            place-items: center;
+            width: 44cqmin;
+            height: 44cqmin;
+            border: 0.5cqmin solid color-mix(in srgb, var(--ibr-accent) 58%, var(--fg, #1d1b16));
+            border-radius: 50%;
+          }
+
+          .ibr-monogram-glyph {
+            color: color-mix(in srgb, var(--ibr-accent) 55%, var(--fg, #1d1b16));
+            font-size: 22cqmin;
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: 0.02em;
+          }
+
+          /* Seeded static paper grain: feTurbulence with a FIXED seed paints
+             this layer once per raster; nothing about it is animated, so it
+             adds tooth without touching determinism. */
+          .ibr-grain {
+            position: absolute;
+            inset: 0;
+            filter: url(#ibr-grain-filter);
+            opacity: 0.5;
+            mix-blend-mode: multiply;
+          }
+        </style>
+
+        <div
+          id="ink-bleed-reveal-clip"
+          class="ibr-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <svg aria-hidden="true" width="0" height="0" style="position: absolute">
+            <defs>
+              <filter id="ibr-grain-filter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+                <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="2" seed="11" stitchTiles="stitch" result="noise" />
+                <feColorMatrix
+                  in="noise"
+                  type="matrix"
+                  values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.14 0.14 0.14 0 0"
+                />
+              </filter>
+            </defs>
+          </svg>
+          <div class="ibr-stage">
+            <div class="ibr-mark">
+              <div class="ibr-monogram">
+                <span class="ibr-monogram-glyph" aria-hidden="true">H</span>
+              </div>
+            </div>
+            <canvas class="ibr-canvas" aria-hidden="true"></canvas>
+            <div class="ibr-grain"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".ibr-stage");
+            var canvas = root.querySelector(".ibr-canvas");
+            var mark = root.querySelector(".ibr-mark");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var blobCount = Math.round(Number(vars.blobs));
+            if (!Number.isFinite(blobCount)) blobCount = 5;
+            blobCount = Math.min(6, Math.max(4, blobCount));
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #14a35e)",
+              blue: "var(--accent, #2f6fed)",
+              violet: "var(--accent-2, #7a5cd6)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--ibr-accent", accentColors[accent]);
+
+            // SLOT. Caller templates live at HOST DOCUMENT level (the mount
+            // wipes host-clip children, and templates never render). The
+            // scoped document proxy filters queries to this composition's
+            // subtree, so the lookup deliberately goes through ownerDocument.
+            var hostDoc = root.ownerDocument;
+            var slotTemplate = null;
+            try {
+              slotTemplate = hostDoc.querySelector(
+                'template[data-slot="ink-bleed-reveal-mark"]',
+              );
+            } catch (error) {
+              slotTemplate = null;
+            }
+            if (slotTemplate) {
+              mark.querySelector(".ibr-monogram").remove();
+              mark.appendChild(hostDoc.importNode(slotTemplate.content, true));
+            }
+
+            // Envelope: fixed IN/OUT, elastic HOLD, never time-scaled.
+            var IN_BASE = 2.8;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            // Geometry basis is fixed once at mount from the host box, like
+            // the particle-image-reveal canvas raster: the same host always
+            // yields the same pixel coordinates and blur radius. The display
+            // canvas rides the host raster; the goo itself is computed in a
+            // low-resolution work buffer (the blur radius dwarfs the lost
+            // detail, and the upscale softens the ink edge pleasantly).
+            var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+            var box = root.getBoundingClientRect();
+            var cssW = Math.max(1, Math.round(box.width) || 640);
+            var cssH = Math.max(1, Math.round(box.height) || 360);
+            var minDim = Math.min(cssW, cssH);
+            var cx = cssW / 2;
+            var cy = cssH / 2;
+            canvas.width = Math.round(cssW * dpr);
+            canvas.height = Math.round(cssH * dpr);
+            var ctx = canvas.getContext("2d");
+            var LOW = 3;
+            var work = hostDoc.createElement("canvas");
+            work.width = Math.max(1, Math.ceil(cssW / LOW));
+            work.height = Math.max(1, Math.ceil(cssH / LOW));
+            var workCtx = work.getContext("2d", { willReadFrequently: true });
+
+            // Gooey ratio: the blur radius vs. threshold slope is what makes
+            // this read as liquid instead of blur. Same math as the classic
+            // SVG chain (feGaussianBlur stdDeviation, then feColorMatrix
+            // alpha row 22 / -9), computed in-buffer for byte-stable seeks.
+            var blurLow = Math.max(2, (minDim * 0.028) / LOW);
+
+            // Resolve the ink color to a concrete value once at mount so
+            // canvas fills never depend on style recalc during seeks.
+            var probe = hostDoc.createElement("span");
+            probe.style.color =
+              "color-mix(in srgb, " + accentColors[accent] + " 62%, var(--fg, #1d1b16))";
+            root.appendChild(probe);
+            var inkColor = getComputedStyle(probe).color || "#1d1b16";
+            probe.remove();
+
+            // The LCG and every per-blob decision live here. This IIFE runs
+            // once before timeline construction; afterwards only the table is
+            // read. Blob state at any time is a pure closed-form function of
+            // (table row, timeline time). No velocities, no integration.
+            var blobRows = (function () {
+              var state = 0x1b1eedca;
+              function next() {
+                state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+                return state / 4294967296;
+              }
+              var rows = [];
+              for (var i = 0; i < blobCount; i += 1) {
+                var angle = (i / blobCount) * Math.PI * 2 + next() * 0.9;
+                rows.push({
+                  dirX: Math.cos(angle),
+                  dirY: Math.sin(angle),
+                  // How far this blob bleeds outward from the drop point.
+                  spread: (0.16 + 0.16 * next()) * minDim,
+                  // Base diameter; the first blob is the fat mother drop.
+                  size: (i === 0 ? 0.34 : 0.14 + 0.12 * next()) * minDim,
+                  // Bloom stagger and death schedule, fractions of IN.
+                  birth: i === 0 ? 0 : 0.04 + 0.3 * next(),
+                  die: 0.5 + 0.16 * next(),
+                  // Wobble makes the bleed organic; amplitude rides (1 - die)
+                  // so it is exactly zero once the blob is gone.
+                  wobbleAmp: (0.02 + 0.03 * next()) * minDim,
+                  wobblePhase: next() * Math.PI * 2,
+                  wobbleFreq: 2 + Math.floor(next() * 3),
+                });
+              }
+              return rows;
+            })();
+
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+            function easeOutCubic(v) {
+              return 1 - Math.pow(1 - v, 3);
+            }
+            function easeInOut(v) {
+              return v < 0.5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2;
+            }
+
+            // Pure repaint: clear the work buffer, draw every blob from its
+            // closed-form (row, p) state, blur, threshold the readback, then
+            // blit up to the display canvas. Every step is a pure function
+            // of (table, timeline time); no history survives a frame.
+            function paint(timeSeconds) {
+              var p = IN > 0 ? clamp01(timeSeconds / IN) : 1;
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              // The layer fades over the mark as the last blobs die,
+              // guaranteeing an exactly-empty canvas through the HOLD.
+              var layerAlpha = 1 - clamp01((p - 0.86) / 0.12);
+              if (layerAlpha === 0) return;
+              workCtx.filter = "none";
+              workCtx.clearRect(0, 0, work.width, work.height);
+              workCtx.filter = "blur(" + blurLow + "px)";
+              workCtx.fillStyle = inkColor;
+              var drew = false;
+              for (var i = 0; i < blobRows.length; i += 1) {
+                var row = blobRows[i];
+                // Bloom: the blob surfaces and bleeds outward.
+                var grow = easeOutCubic(clamp01((p - row.birth) / 0.34));
+                // Settle: the ink pulls back to the drop point and dies.
+                // Every die ramp completes by p = 0.97 exactly.
+                var die = easeInOut(clamp01((p - row.die) / (0.97 - row.die)));
+                var r = (row.size / 2) * grow * (1 - die);
+                if (r <= 0.01) continue;
+                var reach = row.spread * grow * (1 - die);
+                var wob =
+                  Math.sin(p * Math.PI * 2 * row.wobbleFreq + row.wobblePhase) *
+                  row.wobbleAmp *
+                  grow *
+                  (1 - die);
+                var x = cx + row.dirX * reach + wob * row.dirY;
+                var y = cy + row.dirY * reach - wob * row.dirX;
+                workCtx.beginPath();
+                workCtx.arc(x / LOW, y / LOW, r / LOW, 0, Math.PI * 2);
+                workCtx.fill();
+                drew = true;
+              }
+              workCtx.filter = "none";
+              if (!drew) return;
+              // The colormatrix threshold (alpha row 22 / -9) applied to the
+              // blurred buffer: this snap is what turns overlap into goo.
+              var image = workCtx.getImageData(0, 0, work.width, work.height);
+              var data = image.data;
+              for (var j = 3; j < data.length; j += 4) {
+                var a = (data[j] / 255) * 22 - 9;
+                data[j] = a <= 0 ? 0 : a >= 1 ? 255 : Math.round(a * 255);
+              }
+              workCtx.putImageData(image, 0, 0);
+              ctx.globalAlpha = layerAlpha;
+              ctx.drawImage(work, 0, 0, canvas.width, canvas.height);
+              ctx.globalAlpha = 1;
+            }
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+            gsap.set(mark, { opacity: 0, scale: 0.94, transformOrigin: "50% 50%" });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                paint(tl.time());
+              },
+            });
+
+            // Anchor tween: an inert plain-object tween spanning the full
+            // authored duration so tl.time() covers [0, D] and onUpdate
+            // (the blob painter) fires for every eventful seek anywhere in
+            // the piece, including the hold.
+            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
+
+            // IN: the crisp mark resolves beneath the contracting puddle.
+            // Both endpoints authored; the ink supplies the drama, the mark
+            // lands with one restrained settle.
+            tl.fromTo(
+              mark,
+              { opacity: 0 },
+              { opacity: 1, duration: IN * 0.34, ease: "power2.out" },
+              IN * 0.52,
+            );
+            tl.fromTo(
+              mark,
+              { scale: 0.94 },
+              { scale: 1, duration: IN * 0.4, ease: "power2.out" },
+              IN * 0.52,
+            );
+
+            // HOLD: truly still. The goo canvas is one clear rect (every
+            // blob dead, layer alpha zero) and the grain is a static seeded
+            // raster.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            paint(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["ink-bleed-reveal"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

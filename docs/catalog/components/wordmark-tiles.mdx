@@ -1,0 +1,42 @@
+---
+title: "Wordmark Tiles"
+description: "A wordmark resolves from deterministic color noise into correctly cropped glyph tiles through a spatially modulated GSAP wave."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/wordmark-tiles.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Wordmark Tiles preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add wordmark-tiles" />
+
+That writes one file: `compositions/components/wordmark-tiles.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/wordmark-tiles.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `LAUNCH` | string | Text resolved by the tile wave. |
+| `columns` | `12` | 8 to 14, step 1 | Number of columns in the wordmark tile grid. |
+| `waveStagger` | `40` | 15ms to 50ms, step 1ms | Delay between tile reveals in spatial wave order. |
+
+{/* hf:generated-footer */}
+
+Tagged `typography` `wordmark` `tiles` `raster` `reveal`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

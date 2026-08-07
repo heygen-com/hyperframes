@@ -1,0 +1,286 @@
+<!doctype html>
+<!--
+  focus-swap: HyperFrames video primitive (ui-props / holdable / demonstrate)
+
+  Concept: attention moves between two side-by-side cards. The card losing
+  focus recedes to 0.92 scale, softens, and dims while the other card advances
+  to full scale, sharpness, and opacity. Both sides move together as one clean
+  swap.
+
+  Compiled-from evidence: launches-motion-vocabulary.md section 3.6 identifies
+  blur-focus / defocus in 14 of 18 production launches and names focus-swap as
+  a high-frequency missing primitive for blur + opacity + optional scale.
+
+  Use when: directing the viewer from one product state, option, or result to
+  another without moving either element out of its established layout.
+
+  Variables:
+    - focus ("a" | "b", default "b"): the card that ends focused.
+    - blurPx (number, default 6): blur applied to the unfocused card.
+    - dim (number from 0 to 1, default 0.5): unfocused card opacity.
+
+  Envelope (holdable):
+    IN = 0.90s at the standard duration, including a 0.20s readable lead.
+    HOLD = elastic and deliberately still after focus lands.
+    OUT = none; the host composition owns the cut or exit.
+    For durations under 0.90s, the lead and swap compress to finish by D.
+
+  Sync point: focus-landed at 0.90s into IN at the standard duration. It
+  compresses with IN only when D is shorter than 0.90s and never enters HOLD.
+
+  Sound: none. This continuous attention shift has no discrete impact cue.
+
+  Mount contract: this is a template-wrapped sub-composition. The runtime
+  clones only template contents. #root has no data-width or data-height and
+  fills the host-owned box with position:absolute, inset:0, and
+  container-type:size. The paused GSAP timeline is registered under the
+  hardcoded composition id "focus-swap".
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "focus", "type": "enum", "role": "motion", "label": "Final focus", "description": "Card that ends sharp, full-size, and fully opaque.", "default": "b", "options": [{ "value": "a", "label": "Card A" }, { "value": "b", "label": "Card B" }] },
+    { "id": "blurPx", "type": "number", "role": "style", "label": "Unfocused blur", "description": "Blur applied to the card outside the viewer focus.", "default": 6, "min": 0, "max": 20, "step": 1, "unit": "px" },
+    { "id": "dim", "type": "number", "role": "style", "label": "Unfocused opacity", "description": "Opacity of the card outside the viewer focus.", "default": 0.5, "min": 0, "max": 1, "step": 0.05 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Focus Swap</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="focus-swap" data-duration="1.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: var(--font-body);
+          }
+
+          .fs-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            padding: 7cqh 6cqw;
+          }
+
+          .fs-pair {
+            width: 100%;
+            height: min(72cqh, 52cqw);
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4cqw;
+            align-items: stretch;
+          }
+
+          /* EDIT ZONE: visual payload only. Keep the card frames and their
+             initial states transform-free because GSAP owns scale and blur. */
+          .fs-card {
+            min-width: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 5cqh 3.2cqw;
+            overflow: hidden;
+            border: 0.16cqw solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: 0 2.2cqh 5cqh color-mix(in srgb, var(--bg) 72%, transparent);
+            transform-origin: center;
+            will-change: transform, filter, opacity;
+          }
+
+          .fs-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 0.75cqh;
+            background: var(--fs-card-accent);
+          }
+
+          .fs-card[data-focus-card="a"] {
+            --fs-card-accent: var(--brand);
+          }
+
+          .fs-card[data-focus-card="b"] {
+            --fs-card-accent: var(--accent);
+          }
+
+          .fs-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-2);
+          }
+
+          .fs-card-letter {
+            display: grid;
+            place-items: center;
+            width: 5cqw;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--fs-card-accent) 18%, var(--surface));
+            color: var(--fs-card-accent);
+            font-family: var(--font-mono);
+            font-size: 2.3cqw;
+            font-weight: 700;
+          }
+
+          .fs-status {
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: 1.25cqw;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          .fs-copy {
+            display: grid;
+            gap: var(--space-1);
+          }
+
+          .fs-title {
+            color: var(--fg);
+            font-family: var(--font-display);
+            font-size: 3.4cqw;
+            font-weight: 680;
+            line-height: 1;
+            letter-spacing: -0.025em;
+          }
+
+          .fs-detail {
+            color: var(--muted);
+            font-size: 1.45cqw;
+            line-height: 1.35;
+          }
+
+          .fs-meter {
+            height: 1.1cqh;
+            overflow: hidden;
+            border-radius: var(--radius);
+            background: color-mix(in srgb, var(--border) 60%, transparent);
+          }
+
+          .fs-meter-fill {
+            width: var(--fs-meter-width);
+            height: 100%;
+            border-radius: inherit;
+            background: var(--fs-card-accent);
+          }
+        </style>
+
+        <div class="fs-clip clip" data-start="0" data-duration="1.5" data-track-index="0">
+          <div class="fs-pair">
+            <article class="fs-card" data-focus-card="a" aria-label="Card A, plan">
+              <div class="fs-card-head">
+                <span class="fs-card-letter">A</span>
+                <span class="fs-status">Plan</span>
+              </div>
+              <div class="fs-copy">
+                <h2 class="fs-title">Shape the idea</h2>
+                <p class="fs-detail">Define the brief and align the team.</p>
+              </div>
+              <div class="fs-meter" aria-hidden="true">
+                <div class="fs-meter-fill" style="--fs-meter-width: 58%"></div>
+              </div>
+            </article>
+
+            <article class="fs-card" data-focus-card="b" aria-label="Card B, launch">
+              <div class="fs-card-head">
+                <span class="fs-card-letter">B</span>
+                <span class="fs-status">Launch</span>
+              </div>
+              <div class="fs-copy">
+                <h2 class="fs-title">Ship the result</h2>
+                <p class="fs-detail">Move from approved work to live impact.</p>
+              </div>
+              <div class="fs-meter" aria-hidden="true">
+                <div class="fs-meter-fill" style="--fs-meter-width: 86%"></div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var cardA = root.querySelector('[data-focus-card="a"]');
+            var cardB = root.querySelector('[data-focus-card="b"]');
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // INVARIANT: focus is the only owner of which card advances and
+            // which recedes. Invalid input resolves to the declared default.
+            var targetIsB = vars.focus !== "a";
+            var initialFocused = targetIsB ? cardA : cardB;
+            var targetFocused = targetIsB ? cardB : cardA;
+
+            var rawBlur = Number(vars.blurPx);
+            var blurPx = Number.isFinite(rawBlur) ? Math.max(0, Math.min(20, rawBlur)) : 6;
+            var rawDim = Number(vars.dim);
+            var dim = Number.isFinite(rawDim) ? Math.max(0, Math.min(1, rawDim)) : 0.5;
+            var blurred = "blur(" + blurPx + "px)";
+            var sharp = "blur(0px)";
+
+            // RETIME RANGE: keep the standard 0.20s lead and 0.70s swap. Only
+            // short host durations compress them so focus always lands by D.
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "1.5"));
+            var SWAP_START = Math.min(0.2, duration * 0.2);
+            var SWAP_DURATION = Math.min(0.7, Math.max(0.001, duration - SWAP_START));
+
+            gsap.set(initialFocused, { opacity: 1, scale: 1, filter: sharp });
+            gsap.set(targetFocused, { opacity: dim, scale: 0.92, filter: blurred });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.to(
+              initialFocused,
+              {
+                opacity: dim,
+                scale: 0.92,
+                filter: blurred,
+                duration: SWAP_DURATION,
+                ease: "power2.out",
+              },
+              SWAP_START,
+            );
+            tl.to(
+              targetFocused,
+              {
+                opacity: 1,
+                scale: 1,
+                filter: sharp,
+                duration: SWAP_DURATION,
+                ease: "power2.out",
+              },
+              SWAP_START,
+            );
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["focus-swap"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

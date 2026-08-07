@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1080px;
+        height: 1920px;
+        font-family: "Inter", sans-serif;
+      }
+
+      [data-composition-id="spotify-card"] .card {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-top: -495px;
+        margin-left: -390px;
+        width: 780px;
+        background: linear-gradient(
+          165deg,
+          rgba(140, 155, 170, 0.42) 0%,
+          rgba(100, 115, 130, 0.35) 30%,
+          rgba(75, 88, 105, 0.38) 60%,
+          rgba(60, 72, 88, 0.44) 100%
+        );
+        border-radius: 28px;
+        padding: 36px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        box-shadow:
+          0 24px 48px rgba(0, 0, 0, 0.3),
+          0 2px 6px rgba(0, 0, 0, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.32),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        overflow: hidden;
+      }
+
+      /* Specular highlight — light refraction across top */
+      [data-composition-id="spotify-card"] .card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 55%;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.18) 0%,
+          rgba(255, 255, 255, 0.07) 35%,
+          transparent 100%
+        );
+        border-radius: 28px 28px 0 0;
+        pointer-events: none;
+      }
+
+      /* Edge shine — bottom rim catch light */
+      [data-composition-id="spotify-card"] .card::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 20px;
+        right: 20px;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.08) 30%,
+          rgba(255, 255, 255, 0.12) 50%,
+          rgba(255, 255, 255, 0.08) 70%,
+          transparent 100%
+        );
+        pointer-events: none;
+      }
+
+      /* Album Art */
+      [data-composition-id="spotify-card"] .album-art {
+        width: 708px;
+        height: 708px;
+        border-radius: 16px;
+        overflow: hidden;
+        position: relative;
+        z-index: 1;
+        background: linear-gradient(145deg, #1db954 0%, #17a34a 30%, #0f7234 60%, #191414 100%);
+        margin-bottom: 36px;
+      }
+
+      [data-composition-id="spotify-card"] .album-art-icon {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0.2;
+      }
+
+      /* Track Info */
+      [data-composition-id="spotify-card"] .track-info {
+        position: relative;
+        z-index: 1;
+        margin-bottom: 28px;
+        padding: 0 8px;
+      }
+
+      [data-composition-id="spotify-card"] .track-name {
+        font-size: 52px;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        margin-bottom: 8px;
+      }
+
+      [data-composition-id="spotify-card"] .artist-name {
+        font-size: 34px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.7);
+        line-height: 1.3;
+      }
+
+      /* Spotify Branding */
+      [data-composition-id="spotify-card"] .spotify-brand {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 8px;
+      }
+
+      [data-composition-id="spotify-card"] .spotify-logo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      [data-composition-id="spotify-card"] .spotify-brand-text {
+        font-size: 26px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.55);
+        letter-spacing: 0.01em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="spotify-card"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="5"
+    >
+      <div id="card" class="clip card" data-start="0" data-duration="5" data-track-index="0">
+        <!-- Album Art -->
+        <div id="album-art" class="album-art">
+          <svg class="album-art-icon" width="200" height="200" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M9 18V5l12-2v13"
+              stroke="rgba(255,255,255,0.7)"
+              stroke-width="1"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="6" cy="18" r="3" stroke="rgba(255,255,255,0.7)" stroke-width="1" />
+            <circle cx="18" cy="16" r="3" stroke="rgba(255,255,255,0.7)" stroke-width="1" />
+          </svg>
+        </div>
+
+        <!-- Track Info -->
+        <div class="track-info">
+          <div id="track-name" class="track-name">HyperFrames</div>
+          <div id="artist-name" class="artist-name">HeyGen</div>
+        </div>
+
+        <!-- Spotify Branding -->
+        <div id="spotify-brand" class="spotify-brand">
+          <div class="spotify-logo">
+            <svg width="32" height="32" viewBox="0 0 16 16" fill="rgba(255,255,255,0.55)">
+              <path
+                d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0m3.669 11.538a.5.5 0 0 1-.686.165c-1.879-1.147-4.243-1.407-7.028-.77a.499.499 0 0 1-.222-.973c3.048-.696 5.662-.397 7.77.892a.5.5 0 0 1 .166.686m.979-2.178a.624.624 0 0 1-.858.205c-2.15-1.321-5.428-1.704-7.972-.932a.625.625 0 0 1-.362-1.194c2.905-.881 6.517-.454 8.986 1.063a.624.624 0 0 1 .206.858m.084-2.268C10.154 5.56 5.9 5.419 3.438 6.166a.748.748 0 1 1-.434-1.432c2.825-.857 7.523-.692 10.492 1.07a.747.747 0 1 1-.764 1.288"
+              />
+            </svg>
+          </div>
+          <span class="spotify-brand-text">Spotify</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      var tl = gsap.timeline({ paused: true });
+
+      var card = document.getElementById("card");
+      var albumArt = document.getElementById("album-art");
+      var trackName = document.getElementById("track-name");
+      var artistName = document.getElementById("artist-name");
+      var spotifyBrand = document.getElementById("spotify-brand");
+
+      // Start state
+      gsap.set(card, { y: 60, opacity: 0, scale: 0.94 });
+      gsap.set(trackName, { y: 20, opacity: 0 });
+      gsap.set(artistName, { y: 16, opacity: 0 });
+      gsap.set(spotifyBrand, { y: 12, opacity: 0 });
+
+      // ── Card entrance ────────────────────────────────────────
+      tl.to(
+        card,
+        {
+          y: 0,
+          opacity: 1,
+          scale: 1,
+          duration: 0.7,
+          ease: "power3.out",
+        },
+        0.1,
+      );
+
+      // ── Text stagger in ─────────────────────────────────────
+      tl.to(
+        trackName,
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.5,
+          ease: "power2.out",
+        },
+        0.55,
+      );
+
+      tl.to(
+        artistName,
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.45,
+          ease: "power2.out",
+        },
+        0.7,
+      );
+
+      tl.to(
+        spotifyBrand,
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.4,
+          ease: "power2.out",
+        },
+        0.85,
+      );
+
+      // ── Subtle album art breathe ────────────────────────────
+      tl.to(
+        albumArt,
+        {
+          scale: 1.015,
+          duration: 1.5,
+          ease: "power1.inOut",
+          yoyo: true,
+          repeat: 1,
+        },
+        1.2,
+      );
+
+      // ── Card exit ────────────────────────────────────────────
+      tl.to(
+        card,
+        {
+          y: -40,
+          opacity: 0,
+          scale: 0.96,
+          duration: 0.5,
+          ease: "power2.in",
+        },
+        4.2,
+      );
+
+      window.__timelines["spotify-card"] = tl;
+    </script>
+  </body>
+</html>

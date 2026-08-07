@@ -1,0 +1,42 @@
+---
+title: "Conic Progress Ring"
+description: "A token-driven conic progress ring whose angular fill and center count settle together from one registered percentage."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/conic-progress-ring.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Conic Progress Ring preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add conic-progress-ring" />
+
+That writes one file: `compositions/components/conic-progress-ring.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/conic-progress-ring.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `progress` | `100` | 0% to 100%, step 1% | Target angular fill from 0 to 100. |
+| `thickness` | `12` | 4% to 30%, step 1% | Ring stroke thickness as a percent of the ring radius. |
+| `label` | `100` | string | Numeric target shown in the center and counted in sync with the fill. |
+
+{/* hf:generated-footer */}
+
+Tagged `data` `progress` `ring` `conic-gradient` `prove` `demonstrate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,42 @@
+---
+title: "Notification Pileup"
+description: "Mobile notification cards arrive faster and faster, each new alert pushing the existing stack downward into a dense, anxious tower."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/notification-pileup.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Notification Pileup preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add notification-pileup" />
+
+That writes one file: `compositions/components/notification-pileup.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/notification-pileup.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `count` | `7` | 4 to 10, step 1 | Number of notification cards in the final pile. |
+| `speed` | `1` | 0.5 to 2, step 0.1 | Pacing multiplier for the accelerating notification arrivals. |
+| `showBadges` | `yes` | `yes`, `no` | Show or hide unread count badges on the notification cards. |
+
+{/* hf:generated-footer */}
+
+Tagged `notification` `mobile` `ui-props` `overload` `pileup` `loop` `agitate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

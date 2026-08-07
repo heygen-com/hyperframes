@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: "Barlow Condensed";
+        font-style: normal;
+        font-weight: 700;
+        font-display: block;
+        src: url("assets/fonts/BarlowCondensed-Bold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Barlow Condensed";
+        font-style: normal;
+        font-weight: 800;
+        font-display: block;
+        src: url("assets/fonts/BarlowCondensed-ExtraBold.woff2") format("woff2");
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #lb-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      #lb-main-outer {
+        position: absolute;
+        bottom: 215px;
+        left: 80px;
+        padding-right: 14px;
+        padding-bottom: 14px;
+      }
+
+      #lb-main-text {
+        font-family: "Barlow Condensed", sans-serif;
+        font-size: 88px;
+        font-weight: 800;
+        line-height: 1.05;
+        color: #212529;
+        background: #ffffff;
+        padding: 10px 22px 8px;
+        white-space: nowrap;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        box-shadow: 12px 12px 0 0 #dd0000;
+      }
+
+      #lb-sub-outer {
+        position: absolute;
+        bottom: 135px;
+        left: 80px;
+        padding-right: 10px;
+        padding-bottom: 10px;
+      }
+
+      #lb-sub-text {
+        font-family: "Barlow Condensed", sans-serif;
+        font-size: 48px;
+        font-weight: 700;
+        line-height: 1.1;
+        color: #ffffff;
+        background: #dd0000;
+        padding: 6px 18px 5px;
+        white-space: nowrap;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        box-shadow: 8px 8px 0 0 #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="lb-root"
+      data-composition-id="lower-third-bild"
+      data-composition-variables='{"TXT_MAIN_1_Line":{"type":"string","default":"BILD EXKLUSIV"},"TXT_SUB":{"type":"string","default":"Sonderbericht"}}'
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="lb-drv"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+
+      <div id="lb-main-outer">
+        <div id="lb-main-text"></div>
+      </div>
+
+      <div id="lb-sub-outer">
+        <div id="lb-sub-text"></div>
+      </div>
+
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          var mainText = (vars.TXT_MAIN_1_Line || "BILD EXKLUSIV").trim();
+          var subText = (vars.TXT_SUB || "Sonderbericht").trim();
+
+          var dur = parseFloat(document.getElementById("lb-drv").dataset.duration) || 8;
+
+          document.getElementById("lb-main-text").textContent = mainText;
+          document.getElementById("lb-sub-text").textContent = subText || " ";
+
+          var mainOuter = document.getElementById("lb-main-outer");
+          var subOuter = document.getElementById("lb-sub-outer");
+
+          var tl = gsap.timeline({ paused: true });
+
+          gsap.set([mainOuter, subOuter], { opacity: 1 });
+
+          tl.set([mainOuter, subOuter], { opacity: 0, visibility: "hidden" }, dur);
+
+          window.__timelines["lower-third-bild"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

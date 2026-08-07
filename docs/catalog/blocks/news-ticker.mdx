@@ -3,37 +3,15 @@ title: "News Ticker"
 description: "Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl."
 ---
 
-# News Ticker
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl.
-
-`lower-third` `overlay` `news` `ticker`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/news-ticker.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/news-ticker.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/news-ticker.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="News Ticker preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add news-ticker" />
 
-```bash Terminal
-npx hyperframes add news-ticker
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 7s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `news-ticker.html` | `compositions/news-ticker.html` | hyperframes:composition |
+That writes one file: `compositions/news-ticker.html`.
 
 ## Usage
 
@@ -42,3 +20,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="news-ticker" data-composition-src="compositions/news-ticker.html" data-start="0" data-duration="7" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `lower-third` `overlay` `news` `ticker`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

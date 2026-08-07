@@ -1,0 +1,255 @@
+<!--
+  Motion Blur — velocity-driven directional motion blur.
+
+  Usage: paste this snippet into your composition, then call
+  attachMotionBlur() with any element animated by your GSAP timeline.
+
+  The snippet hooks into the timeline's onUpdate callback, tracks the
+  GSAP x/y position of each target frame-by-frame, and applies:
+    1. Ghost copies of the element at increasing backward offsets with
+       decreasing opacity — inherently one-sided, no forward blur component.
+    2. A small Gaussian blur at the current position so the element looks
+       in-motion (blurry) rather than sharp on top of the trail.
+    3. An optional scaleX/Y stretch in the direction of travel (off by
+       default; enable via stretchMax > 0 if you want the effect).
+
+  Both effects clear automatically when the element decelerates to rest.
+
+  Requirements:
+  - Elements must be animated via GSAP x/y (transform), not left/top.
+  - Call attachMotionBlur() AFTER defining all tweens, before
+    window.__timelines registration.
+  - GSAP must be loaded before this snippet executes.
+
+  API:
+    attachMotionBlur(selector, timeline, options?)
+
+  Options:
+    blurScale     — directional blur per px/s of velocity (default 0.008)
+    blurMax       — max blur radius on the motion axis in px (default 20)
+    stretchScale  — scaleX/Y added per px/s (default 0.0002)
+    stretchMax    — max stretch factor above 1.0 (default 0, disabled)
+    axis          — "x" | "y" | "both" (default "both")
+-->
+
+<script>
+  (function () {
+    if (!window._hfMbUid) window._hfMbUid = 0;
+
+    window.attachMotionBlur = function (selector, tl, opts) {
+      opts = opts || {};
+      var blurScale = opts.blurScale !== undefined ? opts.blurScale : 0.008;
+      var blurMax = opts.blurMax !== undefined ? opts.blurMax : 20;
+      var stretchScale = opts.stretchScale !== undefined ? opts.stretchScale : 0.0002;
+      var stretchMax = opts.stretchMax !== undefined ? opts.stretchMax : 0;
+      var axis = opts.axis || "both";
+
+      var items = Array.isArray(selector) ? selector : [selector];
+      var targets = items.reduce(function (acc, s) {
+        if (typeof s === "string") {
+          document.querySelectorAll(s).forEach(function (el) {
+            acc.push(el);
+          });
+        } else if (s instanceof Element) {
+          acc.push(s);
+        }
+        return acc;
+      }, []);
+
+      // One SVG filter per target. Ghost copies placed behind → inherently one-sided.
+      // Small top Gaussian makes element look blurry at current position, not sharp.
+      var ns = "http://www.w3.org/2000/svg";
+      var GHOST_CFG = [
+        { frac: 0.25, slope: 0.55 },
+        { frac: 0.55, slope: 0.28 },
+        { frac: 1.0, slope: 0.1 },
+      ];
+
+      var state = targets.map(function (el) {
+        var uid = "hf-mb-" + window._hfMbUid++;
+        var svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
+
+        var filter = document.createElementNS(ns, "filter");
+        filter.id = uid;
+        filter.setAttribute("x", "-110%");
+        filter.setAttribute("y", "-25%");
+        filter.setAttribute("width", "260%");
+        filter.setAttribute("height", "150%");
+
+        var ghosts = GHOST_CFG.map(function (cfg, gi) {
+          var feOff = document.createElementNS(ns, "feOffset");
+          feOff.setAttribute("in", "SourceGraphic");
+          feOff.setAttribute("dx", "0");
+          feOff.setAttribute("dy", "0");
+          feOff.setAttribute("result", "go" + gi);
+
+          var feGB = document.createElementNS(ns, "feGaussianBlur");
+          feGB.setAttribute("in", "go" + gi);
+          feGB.setAttribute("stdDeviation", "0 0");
+          feGB.setAttribute("result", "gb" + gi);
+
+          var feCT = document.createElementNS(ns, "feComponentTransfer");
+          feCT.setAttribute("in", "gb" + gi);
+          feCT.setAttribute("result", "gf" + gi);
+          var feFuncA = document.createElementNS(ns, "feFuncA");
+          feFuncA.setAttribute("type", "linear");
+          feFuncA.setAttribute("slope", String(cfg.slope));
+          feCT.appendChild(feFuncA);
+
+          filter.appendChild(feOff);
+          filter.appendChild(feGB);
+          filter.appendChild(feCT);
+          return { feOff: feOff, feGB: feGB, frac: cfg.frac };
+        });
+
+        var feTopBlur = document.createElementNS(ns, "feGaussianBlur");
+        feTopBlur.setAttribute("in", "SourceGraphic");
+        feTopBlur.setAttribute("stdDeviation", "0 0");
+        feTopBlur.setAttribute("result", "top");
+        filter.appendChild(feTopBlur);
+
+        var feMerge = document.createElementNS(ns, "feMerge");
+        for (var mi = GHOST_CFG.length - 1; mi >= 0; mi--) {
+          var mn = document.createElementNS(ns, "feMergeNode");
+          mn.setAttribute("in", "gf" + mi);
+          feMerge.appendChild(mn);
+        }
+        var mnTop = document.createElementNS(ns, "feMergeNode");
+        mnTop.setAttribute("in", "top");
+        feMerge.appendChild(mnTop);
+        filter.appendChild(feMerge);
+
+        svg.appendChild(filter);
+        document.body.appendChild(svg);
+
+        return {
+          el: el,
+          ghosts: ghosts,
+          feTopBlur: feTopBlur,
+          filterId: uid,
+          prevX: parseFloat(gsap.getProperty(el, "x")) || 0,
+          prevY: parseFloat(gsap.getProperty(el, "y")) || 0,
+          prevTime: tl.time(),
+        };
+      });
+
+      // tl.eventCallback("onUpdate") is not available in the HyperFrames renderer —
+      // the runtime proxies the timeline object. Tween onUpdate fires on every seek.
+      var _proxy = { t: 0 };
+      tl.to(
+        _proxy,
+        {
+          t: 1,
+          duration: Math.max(tl.duration(), 0.1),
+          ease: "none",
+          onUpdate: function () {
+            var time = tl.time();
+
+            state.forEach(function (s) {
+              var x = parseFloat(gsap.getProperty(s.el, "x")) || 0;
+              var y = parseFloat(gsap.getProperty(s.el, "y")) || 0;
+              var dt = time - s.prevTime;
+
+              if (dt > 0.0005) {
+                var vx = axis !== "y" ? (x - s.prevX) / dt : 0;
+                var vy = axis !== "x" ? (y - s.prevY) / dt : 0;
+
+                var bx = Math.min(Math.abs(vx) * blurScale, blurMax);
+                var by = Math.min(Math.abs(vy) * blurScale, blurMax);
+                var bxFinal = axis !== "y" ? bx : Math.max(by * 0.08, 0.4);
+                var byFinal = axis !== "x" ? by : Math.max(bx * 0.08, 0.4);
+                var active = bx > 0.3 || by > 0.3;
+
+                if (active) {
+                  s.el.style.filter = "url(#" + s.filterId + ")";
+                  s.ghosts.forEach(function (g) {
+                    var dx = axis !== "y" ? (vx >= 0 ? -bxFinal * g.frac : bxFinal * g.frac) : 0;
+                    var dy = axis !== "x" ? (vy >= 0 ? -byFinal * g.frac : byFinal * g.frac) : 0;
+                    g.feOff.setAttribute("dx", dx.toFixed(2));
+                    g.feOff.setAttribute("dy", dy.toFixed(2));
+                    var gbx =
+                      axis !== "y"
+                        ? (bxFinal * g.frac * 0.5).toFixed(2)
+                        : Math.max(byFinal * g.frac * 0.04, 0.4).toFixed(2);
+                    var gby =
+                      axis !== "x"
+                        ? (byFinal * g.frac * 0.5).toFixed(2)
+                        : Math.max(bxFinal * g.frac * 0.04, 0.4).toFixed(2);
+                    g.feGB.setAttribute("stdDeviation", gbx + " " + gby);
+                  });
+                  s.feTopBlur.setAttribute(
+                    "stdDeviation",
+                    (bxFinal * 0.15).toFixed(2) + " " + (byFinal * 0.15).toFixed(2),
+                  );
+
+                  if (stretchMax > 0) {
+                    var sx = 1 + Math.min(Math.abs(vx) * stretchScale, stretchMax);
+                    var sy = 1 + Math.min(Math.abs(vy) * stretchScale, stretchMax);
+                    var ox = axis !== "y" ? (vx >= 0 ? "100% 50%" : "0% 50%") : "50% 50%";
+                    var oy = axis !== "x" ? (vy >= 0 ? "50% 100%" : "50% 0%") : "50% 50%";
+                    gsap.set(s.el, {
+                      scaleX: axis !== "y" ? sx : 1,
+                      scaleY: axis !== "x" ? sy : 1,
+                      transformOrigin: axis === "x" ? ox : axis === "y" ? oy : "50% 50%",
+                    });
+                  }
+                } else {
+                  s.el.style.filter = "";
+                  s.ghosts.forEach(function (g) {
+                    g.feOff.setAttribute("dx", "0");
+                    g.feOff.setAttribute("dy", "0");
+                    g.feGB.setAttribute("stdDeviation", "0 0");
+                  });
+                  s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                  if (stretchMax > 0) {
+                    gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                  }
+                }
+
+                s.prevX = x;
+                s.prevY = y;
+                s.prevTime = time;
+              } else if (dt < -0.0005) {
+                s.el.style.filter = "";
+                s.ghosts.forEach(function (g) {
+                  g.feOff.setAttribute("dx", "0");
+                  g.feOff.setAttribute("dy", "0");
+                  g.feGB.setAttribute("stdDeviation", "0 0");
+                });
+                s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                if (stretchMax > 0) {
+                  gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                }
+                s.prevX = x;
+                s.prevY = y;
+                s.prevTime = time;
+              }
+              // dt ≈ 0: double-fire — skip.
+            });
+          },
+        },
+        0,
+      );
+    };
+  })();
+</script>
+
+<!--
+  Timeline integration example:
+
+  const tl = gsap.timeline({ paused: true });
+
+  tl.fromTo("#my-box", { x: -100 }, { x: 1700, duration: 1.2, ease: "power3.inOut" }, 0.5);
+
+  // Extend to data-duration so seeks past the last tween reach the blur callback.
+  tl.set(document.body, {}, DATA_DURATION);
+
+  // Call AFTER tweens, BEFORE window.__timelines registration.
+  // attachMotionBlur adds a tracking tween with onUpdate — must be called after
+  // tl.set()/tl.to() have established the final timeline duration.
+  attachMotionBlur("#my-box", tl, { axis: "x" });
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["my-composition"] = tl;
+-->

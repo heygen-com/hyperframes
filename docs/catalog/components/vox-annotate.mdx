@@ -1,0 +1,46 @@
+---
+title: "Vox Annotate"
+description: "The Vox-style annotate gesture: a keyword in a held sentence gets a hand-drawn marker while a thin connector draws up to a mono callout label, all as one choreographed beat on the cue."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/vox-annotate.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Vox Annotate preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add vox-annotate" />
+
+That writes one file: `compositions/components/vox-annotate.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/vox-annotate.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `Ship the story, not the spec` | string | Full line of display text. |
+| `keyword` | `story` | string | First case-insensitive substring match in text receives the marker and annotation. Empty or unmatched draws nothing. |
+| `note` | `the annotate beat` | string | Mono callout label at the end of the connector. Empty draws the marker only. |
+| `style` | `highlight` | `highlight`, `circle`, `underline`, `scribble` | Shape of the hand-drawn marker stroke. |
+| `draw_at` | `0.9` | number | Second (from mount start) the annotate gesture starts. Clamped so the gesture completes before any exit. |
+| `accent` | `green` | `green`, `blue`, `violet` | Annotation ink color from the contract token map. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the lockup holds until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `typography` `annotation` `marker` `deterministic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

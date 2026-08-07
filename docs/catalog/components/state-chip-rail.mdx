@@ -1,0 +1,45 @@
+---
+title: "State Chip Rail"
+description: "A rail of mono status chips advances a seek-safe data-state snap machine on a cue schedule: active chip ink on surface, done chips dim, pending chips hollow, optional badges pop beside one state."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/state-chip-rail.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="State Chip Rail preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add state-chip-rail" />
+
+That writes one file: `compositions/components/state-chip-rail.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/state-chip-rail.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `states` | `Queued,Reading,Drafting,Done` | string | Comma-separated chip labels in machine order (2 to 8 states). |
+| `times` | `` | string | Comma-separated activation times in seconds, one per advance (state 1 onward). Blank entries use the default even rhythm. |
+| `badge_state` | `1` | 0 to 7, step 1 | Index of the state the badges pop beside. |
+| `badges` | `` | string | Comma-separated badge labels shown beside the badge state. Empty disables. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the active chip. |
+| `exit` | `none` | `none`, `fade`, `up` | How the rail leaves the frame. Default none: the hold ends the film. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `state-machine` `status` `chips` `rail`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

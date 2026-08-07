@@ -1,0 +1,41 @@
+---
+title: "Scan Band"
+description: "A diagonal distortion band sweeps once across a clean wordmark, revealing clipped red and cyan offsets only inside the moving band."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/scan-band.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Scan Band preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add scan-band" />
+
+That writes one file: `compositions/components/scan-band.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/scan-band.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `wordmark` | `HYPERFRAMES` | string | Text displayed by the scan effect. |
+| `band_angle` | `12` | -30deg to 30deg, step 1deg | Diagonal angle of the distortion band in degrees. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `typography` `scan` `chromatic` `distortion` `wordmark`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

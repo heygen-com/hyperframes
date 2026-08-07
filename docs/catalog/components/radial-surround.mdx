@@ -1,0 +1,45 @@
+---
+title: "Radial Surround"
+description: "Labeled hairline chips assemble around a centered subject on an elliptical ring, then optionally converge inward with a subtle edge dim. The center never moves: surrounded, not zoomed."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/radial-surround.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Radial Surround preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add radial-surround" />
+
+That writes one file: `compositions/components/radial-surround.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/radial-surround.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `center_label` | `Your team` | string | Label on the default center token card. |
+| `chips` | `Docs,Tickets,Dashboards,Inbox,Chat,Sheets` | string | Comma-separated chip labels that surround the center (up to 12). |
+| `close_in` | `true` | boolean | Converge the ring inward with a subtle edge dim after assembly. The center never moves. |
+| `cues` | `` | string | Comma-separated per-chip entrance times in seconds. Blank entries use the default cascade. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the center card tint. |
+| `exit` | `none` | `none`, `fade`, `up` | How the surrounded stage leaves the frame. Default none: the crowded hold ends the film. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `problem-setup` `radial` `ring` `surround` `converge`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

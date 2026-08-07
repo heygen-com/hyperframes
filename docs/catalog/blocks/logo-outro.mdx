@@ -3,37 +3,22 @@ title: "Logo Outro"
 description: "Cinematic logo reveal with piece-by-piece assembly, glow bloom, tagline fade-in, and URL pill"
 ---
 
-# Logo Outro
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Cinematic logo reveal with piece-by-piece assembly, glow bloom, tagline fade-in, and URL pill
-
-`branding` `outro` `logo`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/logo-outro.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Logo Outro preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add logo-outro" />
 
-```bash Terminal
-npx hyperframes add logo-outro
-```
+That writes one file: `compositions/logo-outro.html`.
 
-</CodeGroup>
+## Change the colors
 
-## Details
+Set these CSS variables on the block:
 
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 6s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `logo-outro.html` | `compositions/logo-outro.html` | hyperframes:composition |
+- `--bg-color` — Background. Defaults to `#0a0a0f`.
+- `--accent-color` — Accent. Defaults to `#1a1a1f`.
 
 ## Usage
 
@@ -42,3 +27,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="logo-outro" data-composition-src="compositions/logo-outro.html" data-start="0" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `branding` `outro` `logo`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,43 @@
+---
+title: "Stop Motion Cadence"
+description: "The stepped-time law as a demo primitive: one driver quantizes timeline time to floor(t * fps) / fps and feeds ALL motion; four token paper-cut shapes throw-and-land with squash on hits, 2-frame boil jitter seeded per step, and sparkle accents living exactly 2 to 3 frames."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/stop-motion-cadence.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Stop Motion Cadence preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add stop-motion-cadence" />
+
+That writes one file: `compositions/components/stop-motion-cadence.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/stop-motion-cadence.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `fps` | `10` | `8`, `10`, `12` | Stepped-time cadence in frames per second. |
+| `boil` | `on` | `on`, `off` | 2-frame edge jitter, seeded per step. Off holds dead still. |
+| `accent` | `green` | `green`, `blue`, `violet` | Lead shape color: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the settled collage holds until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `time-law` `stop-motion` `stepped` `boil` `deterministic` `experiment`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

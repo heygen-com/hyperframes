@@ -1,0 +1,45 @@
+---
+title: "Iris Reveal"
+description: "A circle clip-path opens from an authored origin revealing state B over state A in one confident pass, then holds on B. Classic register dims and desaturates the before state so the after state lands in full color; a thin accent rim rides the iris edge. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/iris-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Iris Reveal preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add iris-reveal" />
+
+That writes one file: `compositions/components/iris-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/iris-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `iris_x` | `50` | 0% to 100%, step 1% | Horizontal iris origin as a percent of the frame width. |
+| `iris_y` | `50` | 0% to 100%, step 1% | Vertical iris origin as a percent of the frame height. |
+| `open_at` | `0.35` | 0s to 8s, step 0.05s | Seconds after mount start when the iris begins opening. |
+| `register` | `color` | `color`, `plain` | Color dims and desaturates the before state so the after state lands in full color. Plain leaves both untouched. |
+| `accent` | `green` | `green`, `blue`, `violet` | Iris rim ring and default after art tint. |
+| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final revealed frame. |
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `iris` `circle-reveal` `clip-path` `bridge` `slots`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

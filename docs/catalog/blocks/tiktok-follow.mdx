@@ -3,38 +3,15 @@ title: "TikTok Follow"
 description: "Animated TikTok follow overlay with profile card and follow button"
 ---
 
-# TikTok Follow
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Animated TikTok follow overlay with profile card and follow button
-
-`social` `overlay` `tiktok`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/tiktok-follow.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="TikTok Follow preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add tiktok-follow" />
 
-```bash Terminal
-npx hyperframes add tiktok-follow
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1080×1920 |
-| Duration | 4.5s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `tiktok-follow.html` | `compositions/tiktok-follow.html` | hyperframes:composition |
-| `assets/avatar.jpg` | `assets/avatar.jpg` | hyperframes:asset |
+That writes `compositions/tiktok-follow.html`, plus 1 supporting file under `assets/`.
 
 ## Usage
 
@@ -43,3 +20,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="tiktok-follow" data-composition-src="compositions/tiktok-follow.html" data-start="0" data-duration="4.5" data-track-index="1" data-width="1080" data-height="1920"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `social` `overlay` `tiktok`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

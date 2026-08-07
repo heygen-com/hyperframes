@@ -1,0 +1,45 @@
+---
+title: "Grid Card Assemble"
+description: "N capability cards (thin-line icon that draws on, mono label, optional muted body) stagger-assemble into a grid or vertical list with a fade plus short slide into slot, then hold perfectly still."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/grid-card-assemble.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Grid Card Assemble preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add grid-card-assemble" />
+
+That writes one file: `compositions/components/grid-card-assemble.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/grid-card-assemble.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `items` | `Capture,Compose,Render,Publish` | string | Comma-separated cards (3 to 12). "Label: body" adds a one-line muted body under the label. |
+| `layout` | `grid` | `grid`, `list` | Grid wraps by columns; list stacks vertically. |
+| `columns` | `0` | 0 to 4, step 1 | Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)). |
+| `cues` | `` | string | Comma-separated per-item entrance times in seconds. Blank entries use the default cascade. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the card icons. |
+| `exit` | `none` | `none`, `fade`, `up` | How the assembled layout leaves the frame. Default none: the hold ends the film. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `layout` `grid` `list` `stagger` `assemble` `feature-tour`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

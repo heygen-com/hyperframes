@@ -1,0 +1,42 @@
+<!--
+  Text Stagger - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-text-stagger">
+  <span>Build</span>
+  <span>motion</span>
+  <span>systems</span>
+  <span>fast</span>
+</div>
+
+<style>
+  .hf-transition-text-stagger {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.24em;
+    color: #111827;
+    font:
+      900 74px/0.95 Inter,
+      system-ui,
+      sans-serif;
+    letter-spacing: -0.045em;
+  }
+  .hf-transition-text-stagger span {
+    display: inline-block;
+    background: linear-gradient(90deg, #111827, #111827, #38bdf8, #111827);
+    background-size: 240% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    will-change: transform, opacity, filter, background-position;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-text-stagger span', { opacity: 0, y: 48, filter: 'blur(14px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.54, stagger: 0.09, ease: 'power3.out' }, 0.35);
+  tl.to('.hf-transition-text-stagger span', { backgroundPosition: '100% 0%', duration: 0.72, stagger: 0.04, ease: 'power2.inOut' }, 1.05);
+-->

@@ -1,0 +1,46 @@
+---
+title: "Press Ripple"
+description: "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, then exits off-stage while the pressed state holds."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/press-ripple.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Press Ripple preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add press-ripple" />
+
+That writes one file: `compositions/components/press-ripple.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/press-ripple.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label` | `Get started` | string | Text inside the default pill target. |
+| `target_x` | `50` | 8% to 92%, step 1% | Zone center, percent of host width. |
+| `target_y` | `50` | 8% to 92%, step 1% | Zone center, percent of host height. |
+| `press_at` | `1.4` | 0.9s to 10s, step 0.1s | Seconds from mount start when the press begins. |
+| `cursor` | `light` | `light`, `dark` | Pointer tone. |
+| `accent` | `green` | `green`, `blue`, `violet` | Contract color for the ripple ink and pressed fill. |
+| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the pressed state. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `cursor` `press` `ripple` `payoff`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

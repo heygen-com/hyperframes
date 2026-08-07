@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Distortion Transitions</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        overflow: hidden;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .scene-inner {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+      }
+
+      #scene1 .scene-inner {
+        background: #1b263b;
+      }
+      #scene2 .scene-inner {
+        background: #e07a5f;
+      }
+
+      .scene-num {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 200px;
+        font-weight: 900;
+        color: rgba(255, 255, 255, 0.08);
+        line-height: 1;
+      }
+      .scene-label {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 48px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.25);
+        letter-spacing: 12px;
+        text-transform: uppercase;
+        margin-top: 10px;
+      }
+
+      .info-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(0, 0, 0, 0.88);
+        padding: 28px 60px;
+        opacity: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .info-bar .info-name {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 32px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .info-bar .info-cat {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 18px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.4);
+        letter-spacing: 4px;
+        text-transform: uppercase;
+      }
+
+      /* Title / Outro */
+      #title-card,
+      #outro-card {
+        position: absolute;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        background: #0d1117;
+        opacity: 0;
+      }
+      .card-title {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 72px;
+        font-weight: 800;
+        color: #fff;
+      }
+      .card-sub {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 28px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 16px;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="21"
+      data-width="1920"
+      data-height="1080"
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #000"
+    >
+      <!-- Title Card -->
+      <div id="title-card">
+        <div class="card-title">Distortion Transitions</div>
+        <div class="card-sub">Glitch &bull; Chromatic &bull; Ripple</div>
+      </div>
+
+      <!-- Scene A -->
+      <div id="scene1" class="scene" style="opacity: 0">
+        <div id="s1" class="scene-inner">
+          <div class="scene-num">ONE</div>
+          <div class="scene-label">Scene A</div>
+        </div>
+      </div>
+
+      <!-- Scene B -->
+      <div id="scene2" class="scene" style="opacity: 0">
+        <div id="s2" class="scene-inner">
+          <div class="scene-num">TWO</div>
+          <div class="scene-label">Scene B</div>
+        </div>
+      </div>
+
+      <!-- RGB channel overlays for glitch/chromatic -->
+      <div
+        id="glitch-r"
+        style="
+          position: absolute;
+          inset: 0;
+          z-index: 30;
+          opacity: 0;
+          pointer-events: none;
+          mix-blend-mode: screen;
+        "
+      >
+        <div
+          class="scene-inner"
+          style="
+            background: rgba(229, 56, 59, 0.35);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+          "
+        >
+          <div style="font-size: 200px; font-weight: 900; color: rgba(255, 255, 255, 0.08)">
+            ONE
+          </div>
+        </div>
+      </div>
+      <div
+        id="glitch-b"
+        style="
+          position: absolute;
+          inset: 0;
+          z-index: 30;
+          opacity: 0;
+          pointer-events: none;
+          mix-blend-mode: screen;
+        "
+      >
+        <div
+          class="scene-inner"
+          style="
+            background: rgba(72, 191, 227, 0.35);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+          "
+        >
+          <div style="font-size: 200px; font-weight: 900; color: rgba(255, 255, 255, 0.08)">
+            ONE
+          </div>
+        </div>
+      </div>
+
+      <!-- Info Bars -->
+      <div id="info1" class="info-bar">
+        <div class="info-name">Glitch</div>
+        <div class="info-cat">Distortion</div>
+      </div>
+      <div id="info2" class="info-bar">
+        <div class="info-name">Chromatic Aberration</div>
+        <div class="info-cat">Distortion</div>
+      </div>
+      <div id="info3" class="info-bar">
+        <div class="info-name">Ripple</div>
+        <div class="info-cat">Distortion</div>
+      </div>
+
+      <!-- Outro Card -->
+      <div id="outro-card">
+        <div class="card-title">Distortion Transitions</div>
+        <div class="card-sub">End</div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var tl = gsap.timeline({ defaults: { ease: "none" } });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+
+        function resetScenes() {
+          tl.set("#scene1", { opacity: 1 });
+          tl.set("#scene2", { opacity: 0 });
+          tl.set("#s1", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 });
+          tl.set("#s2", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 });
+          tl.set("#glitch-r", { opacity: 0, x: 0, y: 0 });
+          tl.set("#glitch-b", { opacity: 0, x: 0, y: 0 });
+        }
+
+        // ===== TITLE CARD (0–3s) =====
+        tl.set("#title-card", { opacity: 1 }, 0);
+        tl.fromTo(
+          ".card-title",
+          { y: 30, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
+          0.4,
+        );
+        tl.fromTo(
+          ".card-sub",
+          { y: 20, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
+          0.8,
+        );
+        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.in" }, 2.6);
+
+        // ===== DEMO 1: Glitch (3–8s) =====
+        var T;
+
+        // Reset & show scene A
+        tl.call(function () {}, [], 3);
+        resetScenes();
+
+        // Show info bar
+        tl.to("#info1", { opacity: 1, duration: 0.3, ease: "power2.out" }, 3);
+
+        // Hold 1.5s, transition at T=4.5
+        T = 4.5;
+
+        // Glitch transition
+        tl.set("#glitch-r", { opacity: 1, x: 40, y: -8 }, T);
+        tl.set("#glitch-b", { opacity: 1, x: -30, y: 12 }, T);
+        tl.set("#s1", { x: -15 }, T);
+
+        tl.set("#glitch-r", { x: -30, y: 15 }, T + 0.03);
+        tl.set("#glitch-b", { x: 50, y: -10 }, T + 0.03);
+        tl.set("#s1", { x: 20 }, T + 0.03);
+
+        tl.set("#glitch-r", { x: 60, y: -20 }, T + 0.06);
+        tl.set("#glitch-b", { x: -40, y: 8 }, T + 0.06);
+        tl.set("#s1", { x: -25 }, T + 0.06);
+
+        tl.set("#glitch-r", { x: -20, y: 5 }, T + 0.09);
+        tl.set("#glitch-b", { x: 35, y: -15 }, T + 0.09);
+
+        // Swap at T + 0.12
+        tl.set("#scene1", { opacity: 0 }, T + 0.12);
+        tl.set("#scene2", { opacity: 1 }, T + 0.12);
+
+        // Clear
+        tl.set("#glitch-r", { opacity: 0, x: 0, y: 0 }, T + 0.15);
+        tl.set("#glitch-b", { opacity: 0, x: 0, y: 0 }, T + 0.15);
+        tl.set("#s1", { x: 0 }, T + 0.15);
+
+        // Hold 1.0s, hide info, gap 0.5s
+        tl.to("#info1", { opacity: 0, duration: 0.3, ease: "power2.in" }, 7.0);
+
+        // ===== DEMO 2: Chromatic Aberration (8–13s) =====
+        tl.call(function () {}, [], 8);
+        resetScenes();
+
+        tl.to("#info2", { opacity: 1, duration: 0.3, ease: "power2.out" }, 8);
+
+        T = 9.5;
+
+        // Chromatic aberration transition
+        tl.set("#glitch-r", { opacity: 0.6, x: 0 }, T);
+        tl.set("#glitch-b", { opacity: 0.6, x: 0 }, T);
+        tl.to("#glitch-r", { x: -80, opacity: 0.8, duration: 0.3, ease: "power2.in" }, T);
+        tl.to("#glitch-b", { x: 80, opacity: 0.8, duration: 0.3, ease: "power2.in" }, T);
+
+        // Swap
+        tl.set("#scene1", { opacity: 0 }, T + 0.3);
+        tl.set("#scene2", { opacity: 1 }, T + 0.3);
+
+        // Converge back
+        tl.to("#glitch-r", { x: 0, opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.3);
+        tl.to("#glitch-b", { x: 0, opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.3);
+
+        tl.to("#info2", { opacity: 0, duration: 0.3, ease: "power2.in" }, 12.0);
+
+        // ===== DEMO 3: Ripple (13–18s) =====
+        tl.call(function () {}, [], 13);
+        resetScenes();
+
+        tl.to("#info3", { opacity: 1, duration: 0.3, ease: "power2.out" }, 13);
+
+        T = 14.5;
+
+        // Ripple distortion transition
+        tl.to("#s1", { x: 30, scale: 1.02, duration: 0.04, ease: "none" }, T);
+        tl.to(
+          "#s1",
+          { x: -25, scale: 0.98, filter: "blur(4px)", duration: 0.04, ease: "none" },
+          T + 0.04,
+        );
+        tl.to(
+          "#s1",
+          { x: 20, scale: 1.01, filter: "blur(6px)", duration: 0.04, ease: "none" },
+          T + 0.08,
+        );
+        tl.to(
+          "#s1",
+          { x: -15, scale: 0.99, filter: "blur(8px)", duration: 0.04, ease: "none" },
+          T + 0.12,
+        );
+        tl.to(
+          "#s1",
+          { x: 10, opacity: 0, filter: "blur(10px)", duration: 0.04, ease: "none" },
+          T + 0.16,
+        );
+        tl.set("#scene2", { opacity: 1 }, T + 0.16);
+        tl.fromTo(
+          "#s2",
+          { x: -15, scale: 1.02, filter: "blur(8px)" },
+          { x: 0, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power2.out" },
+          T + 0.2,
+        );
+
+        tl.to("#info3", { opacity: 0, duration: 0.3, ease: "power2.in" }, 17.0);
+
+        // ===== OUTRO (18–21s) =====
+        tl.set("#scene1", { opacity: 0 }, 18);
+        tl.set("#scene2", { opacity: 0 }, 18);
+        tl.set("#outro-card", { opacity: 1 }, 18);
+        tl.fromTo(
+          "#outro-card .card-title",
+          { y: 30, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
+          18.3,
+        );
+        tl.fromTo(
+          "#outro-card .card-sub",
+          { y: 20, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
+          18.7,
+        );
+        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.in" }, 20.5);
+      })();
+    </script>
+  </body>
+</html>

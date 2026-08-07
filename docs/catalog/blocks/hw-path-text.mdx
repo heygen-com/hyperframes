@@ -3,13 +3,13 @@ title: "Text Along a Path"
 description: "Handwriting flowing along any SVG path with a per-character reveal; the path is the only geometry input"
 ---
 
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-path-text.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-path-text.png" autoPlay muted loop playsInline />
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/blocks/hw-path-text.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Text Along a Path preview" />
 
 ## Install
 
-```bash Terminal
-npx hyperframes add hw-path-text
-```
+<InstallCommand command="npx hyperframes add hw-path-text" />
 
 That writes `compositions/hw-path-text.html`, plus 1 supporting file under `assets/fonts/`.
 

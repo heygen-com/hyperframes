@@ -1,0 +1,50 @@
+<!--
+  Skeleton Reveal - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-skeleton-reveal">
+  <div class="skeleton"></div>
+  <div class="content"><strong>Jane Cooper</strong><span>jane@example.com</span></div>
+</div>
+
+<style>
+  .hf-transition-skeleton-reveal {
+    position: relative;
+    width: 340px;
+    height: 76px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-skeleton-reveal .skeleton,
+  .hf-transition-skeleton-reveal .content {
+    position: absolute;
+    inset: 0;
+    border: 1px solid #e4e4e7;
+    border-radius: 14px;
+    background: #fff;
+  }
+  .hf-transition-skeleton-reveal .skeleton {
+    background: linear-gradient(90deg, #f4f4f5, #e4e4e7, #f4f4f5);
+    background-size: 240% 100%;
+    opacity: 1;
+  }
+  .hf-transition-skeleton-reveal .content {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    padding: 15px;
+    opacity: 0;
+    color: #18181b;
+  }
+  .hf-transition-skeleton-reveal span {
+    color: #71717a;
+    font-size: 14px;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-transition-skeleton-reveal .skeleton', { backgroundPosition: '100% 0', duration: 0.7, ease: 'none' }, startTime); tl.to('.hf-transition-skeleton-reveal .skeleton', { opacity: 0, duration: 0.22 }, startTime + 0.72); tl.to('.hf-transition-skeleton-reveal .content', { opacity: 1, duration: 0.24 }, startTime + 0.78);
+-->

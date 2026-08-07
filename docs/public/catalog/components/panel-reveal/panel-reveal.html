@@ -1,0 +1,48 @@
+<!--
+  Panel Reveal - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<section class="hf-transition-panel-reveal">
+  <header>Motion tokens</header>
+  <div>
+    <p>Duration 420ms</p>
+    <p>Easing power3.out</p>
+  </div>
+</section>
+
+<style>
+  .hf-transition-panel-reveal {
+    --hf-panel-open: 1;
+    width: 360px;
+    overflow: hidden;
+    border: 1px solid #e4e4e7;
+    border-radius: 14px;
+    background: #fff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 20px 56px rgba(24, 24, 27, 0.1);
+  }
+  .hf-transition-panel-reveal header {
+    padding: 15px 17px;
+    font-weight: 900;
+  }
+  .hf-transition-panel-reveal div {
+    max-height: calc(var(--hf-panel-open) * 120px);
+    opacity: var(--hf-panel-open);
+    padding: 0 17px calc(var(--hf-panel-open) * 17px);
+    overflow: hidden;
+  }
+  .hf-transition-panel-reveal p {
+    margin: 0 0 8px;
+    color: #71717a;
+    font-size: 14px;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-panel-reveal', { '--hf-panel-open': 0 }, { '--hf-panel-open': 1, duration: 0.44, ease: 'power3.inOut' }, startTime);
+-->

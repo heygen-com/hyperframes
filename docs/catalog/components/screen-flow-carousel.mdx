@@ -1,0 +1,44 @@
+---
+title: "Screen Flow Carousel"
+description: "Two to five app screens ride a horizontal rail: one primary at center, neighbors receded, advancing on cues with a velocity-matched throw and a smooth long-tail catch while a mono caption swaps with each advance. Screens are slots with token skeleton defaults."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/screen-flow-carousel.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Screen Flow Carousel preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add screen-flow-carousel" />
+
+That writes one file: `compositions/components/screen-flow-carousel.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/screen-flow-carousel.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `screens` | `3` | 2 to 5, step 1 | How many screens ride the rail. |
+| `captions` | `` | string | Comma-separated caption per screen. Blank entries use the authored defaults. |
+| `cues` | `` | string | Comma-separated advance times in seconds from mount start. Blank entries use the authored even rhythm. |
+| `accent` | `green` | `green`, `blue`, `violet` | Token the active ring, caption dot, and skeleton accents ride. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the final screen holds until the cut. |
+
+{/* hf:generated-footer */}
+
+Tagged `product-demo` `feature-tour` `carousel` `rail` `slot` `screens`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

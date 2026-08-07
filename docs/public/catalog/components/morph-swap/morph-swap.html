@@ -1,0 +1,383 @@
+<!doctype html>
+<!--
+  morph-swap: HyperFrames video primitive (transitions / holdable / bridge)
+
+  Concept: two slotted siblings sit absolutely stacked at one shared center.
+  A holds alone, then at swap_at it hands the stage to B through one of two
+  registers, both riding a shared transform-origin of 50% 50%:
+
+    - condense: A shrink-fades toward center exactly as B scales up through
+      the same silhouette (the flagship close morph: outgoing power2.in,
+      incoming back.out with a 0.15s overlap).
+    - reshape: A morphs its silhouette on scaleX/scaleY while fading, and B
+      picks up from that mid-morph silhouette and relaxes to its natural
+      shape (the flagship problem morph). NEVER width/height tweens; the
+      reshape rides transforms only, so it stays layout-free and seek-safe.
+
+  Slots (see README.md for a worked example):
+    - [data-slot="a"]: the outgoing content. Replace the children of this
+      element in your installed copy. Default: a muted token wireframe card.
+    - [data-slot="b"]: the incoming content. Same mechanism. Default: a
+      taller brand-tinted token card so the swap reads at a glance.
+
+  Variables (declared in data-composition-variables below):
+    - swap_at (number, seconds, default 1.4): when the morph starts, relative
+      to mount start. Clamped so the swap always completes inside IN.
+    - register (condense | reshape, default condense): the morph mechanic.
+    - accent (green | blue | violet, default green): incoming card accent.
+      green maps to --brand, blue to --accent, violet to --accent-2.
+    - exit (none | fade | up, default none): outgoing transition. none holds
+      the final frame (frame roots own transitions; holds end films).
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN       = swap_at + swap span (0.75s condense, 1.05s reshape); the stage
+               settles in during the first 0.32s
+    HOLD     = elastic = max(0, D - (IN + OUT)); B holds dead-still
+    OUT      = 0.50s when exit is fade or up, 0 when exit is none
+    If D < IN + OUT, IN and OUT scale down together so IN + OUT == D.
+
+  Sync point: morph-land at swap_at + span inside IN (2.15s at defaults). It
+  never moves into elastic HOLD.
+
+  Sound cue: dispatches a bubbling `hf:sfx` CustomEvent with id
+  "morph-land-soft" at morph-land. This primitive never plays audio.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset:0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "morph-swap" key (mount flattening strips
+  data-composition-id from the live root). Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="morph-swap"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "swap_at", "type": "number", "role": "timing", "label": "Swap start", "description": "Seconds after mount start when the morph begins.", "default": 1.4, "min": 0.1, "max": 8, "step": 0.05, "unit": "s" },
+    { "id": "register", "type": "enum", "role": "style", "label": "Register", "description": "Morph mechanic: condense shrink-fades A into B at center; reshape morphs the silhouette on scaleX/scaleY.", "default": "condense", "options": [{ "value": "condense", "label": "Condense" }, { "value": "reshape", "label": "Reshape" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Incoming card accent color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Outgoing transition. None holds the final frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Morph Swap</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="morph-swap" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host-owned box. Internal measurements use cqw/cqh
+             and every painted color comes from a contract token. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #07111f);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .msw-clip,
+          .msw-stage {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .msw-clip {
+            overflow: hidden;
+          }
+
+          .msw-stage {
+            opacity: 0;
+          }
+
+          /* Both panels stack full-bleed and center their content, so the two
+             siblings share one center and one transform origin. All morph
+             motion is transforms on the panel; slot content never reflows. */
+          .msw-panel {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            transform-origin: 50% 50%;
+          }
+
+          /* Caller-supplied media keeps a sane footprint at center. */
+          .msw-slot > img,
+          .msw-slot > video {
+            max-width: 84cqw;
+            max-height: 84cqh;
+            border-radius: var(--radius, 2.4cqmin);
+          }
+
+          .msw-slot {
+            display: grid;
+            place-items: center;
+          }
+
+          /* Token-styled default slot content: a muted wireframe card on the
+             outgoing side, a taller brand-tinted card on the incoming side.
+             Callers replacing slot children never see any of this. */
+          .msw-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: var(--space-3, 4cqh) var(--space-3, 4cqw);
+            border: 0.16cqw solid var(--border, #334155);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 88%, var(--bg, #07111f));
+            box-shadow: 0 2cqh 5cqw color-mix(in srgb, var(--bg, #07111f) 45%, transparent);
+          }
+
+          .msw-a .msw-card {
+            width: 52cqw;
+            height: 46cqh;
+          }
+
+          .msw-b .msw-card {
+            width: 36cqw;
+            height: 62cqh;
+            border-color: color-mix(in srgb, var(--msw-accent, #22c55e) 52%, var(--border, #334155));
+            background: color-mix(in srgb, var(--surface, #172033) 86%, var(--msw-accent, #22c55e));
+          }
+
+          .msw-bar {
+            width: 34%;
+            height: 4.4cqh;
+            margin-bottom: var(--space-3, 4cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.5;
+          }
+
+          .msw-b .msw-bar {
+            width: 46%;
+            background: var(--msw-accent, #22c55e);
+            opacity: 0.92;
+          }
+
+          .msw-line {
+            height: 2.4cqh;
+            margin-bottom: var(--space-2, 2.6cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.4;
+          }
+
+          .msw-line:nth-of-type(2) {
+            width: 92%;
+          }
+
+          .msw-line:nth-of-type(3) {
+            width: 68%;
+          }
+
+          .msw-line:nth-of-type(4) {
+            width: 44%;
+          }
+
+          .msw-b .msw-line {
+            background: color-mix(in srgb, var(--msw-accent, #22c55e) 70%, var(--fg, #f8fafc));
+            opacity: 0.7;
+          }
+        </style>
+
+        <div
+          id="morph-swap-clip"
+          class="msw-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="msw-stage">
+            <section class="msw-panel msw-a" aria-label="Outgoing panel">
+              <div class="msw-slot" data-slot="a">
+                <!-- SLOT "a": replace the children of this element with your
+                     own outgoing content (img, video, or HTML). -->
+                <div class="msw-card" aria-hidden="true">
+                  <div class="msw-bar"></div>
+                  <div class="msw-line"></div>
+                  <div class="msw-line"></div>
+                  <div class="msw-line"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="msw-panel msw-b" aria-label="Incoming panel">
+              <div class="msw-slot" data-slot="b">
+                <!-- SLOT "b": replace the children of this element with your
+                     own incoming content (img, video, or HTML). -->
+                <div class="msw-card" aria-hidden="true">
+                  <div class="msw-bar"></div>
+                  <div class="msw-line"></div>
+                  <div class="msw-line"></div>
+                  <div class="msw-line"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "morph-swap";
+            var stage = root.querySelector(".msw-stage");
+            var panelA = root.querySelector(".msw-a");
+            var panelB = root.querySelector(".msw-b");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var rawSwapAt = vars.swap_at == null ? 1.4 : Number(vars.swap_at);
+            // INVARIANT: swap_at always clamps into the declared 0.1-8 range.
+            var swapAt = Number.isFinite(rawSwapAt) ? Math.max(0.1, Math.min(8, rawSwapAt)) : 1.4;
+            // INVARIANT: only condense | reshape reaches the timeline.
+            var register = vars.register === "reshape" ? "reshape" : "condense";
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // INVARIANT: only none | fade | up reaches the timeline.
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--msw-accent", accentColors[accent]);
+
+            // RETIME RANGE: fixed IN and OUT scale together only when D is too
+            // short. HOLD is the sole elastic phase. Never use timeScale().
+            var STAGE_IN_BASE = 0.32;
+            var SPAN_BASE = register === "condense" ? 0.75 : 1.05;
+            var IN_BASE = swapAt + SPAN_BASE;
+            var OUT_BASE = exit === "none" ? 0 : 0.5;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var STAGE_IN = Math.min(STAGE_IN_BASE * scale, IN);
+            var SWAP = swapAt * scale;
+            var SWAP_END = IN;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // Explicit both-endpoints state makes tl.seek(0) deterministic:
+            // A fully present, B parked hidden at its pre-morph shape.
+            gsap.set(stage, { opacity: 0, y: 0 });
+            gsap.set(panelA, { scale: 1, scaleX: 1, scaleY: 1, autoAlpha: 1 });
+            gsap.set(panelB, { scale: 1, scaleX: 1, scaleY: 1, autoAlpha: 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN part 1: the stage settles and A holds alone.
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+
+            // IN part 2: the morph, both registers on the shared 50% 50% origin.
+            if (register === "condense") {
+              // A condenses toward center as B scales up through the same
+              // silhouette, 0.15s overlap (flagship close morph).
+              tl.to(
+                panelA,
+                { scale: 0.72, autoAlpha: 0, duration: 0.35 * scale, ease: "power2.in" },
+                SWAP,
+              );
+              tl.fromTo(
+                panelB,
+                { scale: 0.72, autoAlpha: 0 },
+                {
+                  scale: 1,
+                  autoAlpha: 1,
+                  duration: 0.55 * scale,
+                  ease: "back.out(1.6)",
+                  immediateRender: false,
+                },
+                SWAP + 0.2 * scale,
+              );
+            } else {
+              // A reshapes its silhouette on scaleX/scaleY (NEVER width or
+              // height tweens) while fading; B picks up from the same
+              // mid-morph silhouette and relaxes to its natural shape.
+              tl.to(
+                panelA,
+                { scaleX: 0.68, scaleY: 1.34, duration: 0.6 * scale, ease: "power2.inOut" },
+                SWAP,
+              );
+              tl.to(
+                panelA,
+                { autoAlpha: 0, duration: 0.45 * scale, ease: "power1.in" },
+                SWAP + 0.15 * scale,
+              );
+              tl.fromTo(
+                panelB,
+                { scaleX: 0.68, scaleY: 1.34, autoAlpha: 0 },
+                {
+                  scaleX: 1,
+                  scaleY: 1,
+                  autoAlpha: 1,
+                  duration: 0.65 * scale,
+                  ease: "power2.out",
+                  immediateRender: false,
+                },
+                SWAP + 0.4 * scale,
+              );
+            }
+            tl.call(
+              function () {
+                fireSfx("morph-land-soft", SWAP_END);
+              },
+              [],
+              SWAP_END,
+            );
+
+            // HOLD: B dead-still at its natural shape.
+
+            // OUT: only when the exit variable asks for one; exit none holds
+            // the final frame (frame roots own transitions).
+            if (exit !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exit === "up") {
+                tl.to(stage, { y: "-6cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

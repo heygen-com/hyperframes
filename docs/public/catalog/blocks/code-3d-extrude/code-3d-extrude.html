@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code 3D Extrude</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070b;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+      #gl {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="code-3d-extrude"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas id="gl" width="1920" height="1080"></canvas>
+    </div>
+    <script>
+      window.__TOKENS = {
+        feature: {
+          lang: "js",
+          theme: "github-dark",
+          bg: "#24292e",
+          fg: "#e1e4e8",
+          states: [
+            {
+              code: 'async function loadConfig(path) {\n  const raw = await readFile(path, "utf8")\n  const config = JSON.parse(raw)\n  return validate(config)\n}',
+              tokens: [
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-0",
+                  content: "async",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-2",
+                  content: "function",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-3",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-4",
+                  content: "loadConfig",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-5",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-6",
+                  content: "path",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-7",
+                  content: ") {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-8",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-9",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-10",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-11",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-12",
+                  content: "raw",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-13",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-14",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-15",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-16",
+                  content: "await",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-17",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-18",
+                  content: "readFile",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-19",
+                  content: "(path,",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-20",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-21",
+                  content: '"utf8"',
+                  color: "#9ECBFF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-22",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-23",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-24",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-25",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-26",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-27",
+                  content: "config",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-28",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-29",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-30",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-31",
+                  content: "JSON",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-32",
+                  content: ".",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-33",
+                  content: "parse",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-34",
+                  content: "(raw)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-35",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-36",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-37",
+                  content: "return",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-38",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-39",
+                  content: "validate",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-40",
+                  content: "(config)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-41",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-42",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "SPx9u4TyzfMqSHpbjPHnWFQU8lPVEPieF6W5Vtu-bNA-43",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+          ],
+        },
+      };
+      window.__BLOCK = {
+        id: "code-3d-extrude",
+        effect: "extrude",
+        seq: "feature",
+        duration: 8,
+        seed: 7,
+      };
+    </script>
+    <script>
+      // hf-code-anim-gl.js — WebGL code-animation engine for the "crazy" Code Animations blocks.
+      //
+      // Bridges the baked Shiki tokens (window.__TOKENS) into Three.js: the tokens are drawn once
+      // to an offscreen 2D canvas (a CanvasTexture), which then drives a lit 3D slab, a dissolve
+      // shader, or a GPU particle system. Determinism per the project contract:
+      //   - render only via tl.eventCallback("onUpdate", …) + one initial render() — never rAF
+      //   - all randomness from a seeded mulberry32 — never Math.random / Date.now
+      //   - canvas drawn once after document.fonts.ready (final glyph metrics)
+      //   - paused GSAP timeline registered on window.__timelines[id]; HF seeks it per frame
+      //
+      // Each block sets window.__BLOCK = { id, effect, seq, duration, seed } and includes this engine.
+      (function () {
+        "use strict";
+        var T = window.__TOKENS || {};
+
+        // ---- seeded PRNG (no Math.random) -----------------------------------------
+        function mulberry32(a) {
+          return function () {
+            a |= 0;
+            a = (a + 0x6d2b79f5) | 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        // ---- split a token state into lines of {content,color} --------------------
+        function splitLines(state) {
+          var lines = [[]];
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              lines.push([]);
+              continue;
+            }
+            lines[lines.length - 1].push(t);
+          }
+          while (lines.length && lines[lines.length - 1].length === 0) lines.pop();
+          return lines;
+        }
+
+        // ---- THE BRIDGE: draw baked tokens to an offscreen 2D canvas ---------------
+        // Returns { canvas, W, H, lines, lineH, padY, fontPx } so effects can sample it.
+        function drawCodeToCanvas(state, opts) {
+          opts = opts || {};
+          var fontPx = opts.fontPx || 36;
+          var lineH = opts.lineH || 54;
+          var padX = opts.padX || 70;
+          var padY = opts.padY || 60;
+          var weight = opts.weight || 500;
+          var font = weight + " " + fontPx + 'px "JetBrains Mono", monospace';
+
+          var lines = splitLines(state);
+          var measure = document.createElement("canvas").getContext("2d");
+          measure.font = font;
+          var maxW = 0;
+          for (var i = 0; i < lines.length; i++) {
+            var w = 0;
+            for (var j = 0; j < lines[i].length; j++)
+              w += measure.measureText(lines[i][j].content).width;
+            if (w > maxW) maxW = w;
+          }
+          var W = Math.max(2, Math.ceil(maxW + padX * 2));
+          var H = Math.max(2, Math.ceil(lines.length * lineH + padY * 2));
+
+          var canvas = document.createElement("canvas");
+          canvas.width = W;
+          canvas.height = H;
+          var ctx = canvas.getContext("2d");
+          if (opts.transparent) {
+            ctx.clearRect(0, 0, W, H);
+          } else {
+            ctx.fillStyle = opts.bg || "#0b0f17";
+            ctx.fillRect(0, 0, W, H);
+          }
+          ctx.textBaseline = "top";
+          ctx.font = font;
+          for (var li = 0; li < lines.length; li++) {
+            var x = padX;
+            var y = padY + li * lineH;
+            for (var k = 0; k < lines[li].length; k++) {
+              var tok = lines[li][k];
+              ctx.fillStyle = tok.color;
+              ctx.fillText(tok.content, x, y);
+              x += ctx.measureText(tok.content).width;
+            }
+          }
+          return {
+            canvas: canvas,
+            W: W,
+            H: H,
+            lines: lines.length,
+            lineH: lineH,
+            padY: padY,
+            fontPx: fontPx,
+          };
+        }
+
+        function fxExtrude(THREE, scene, camera, renderer, state, st, tl, dur) {
+          scene.background = new THREE.Color(0x05070b);
+          var code = drawCodeToCanvas(state, {
+            fontPx: 38,
+            lineH: 56,
+            padX: 80,
+            padY: 70,
+            weight: 600,
+          });
+          var tex = new THREE.CanvasTexture(code.canvas);
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.generateMipmaps = false;
+
+          var aspect = code.W / code.H;
+          var slabH = 6.2;
+          var slabW = slabH * aspect;
+          var depth = 0.5;
+
+          // beveled slab: rounded extruded rectangle
+          var hw = slabW / 2;
+          var hh = slabH / 2;
+          var r = 0.18;
+          var shape = new THREE.Shape();
+          shape.moveTo(-hw + r, -hh);
+          shape.lineTo(hw - r, -hh);
+          shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+          shape.lineTo(hw, hh - r);
+          shape.quadraticCurveTo(hw, hh, hw - r, hh);
+          shape.lineTo(-hw + r, hh);
+          shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+          shape.lineTo(-hw, -hh + r);
+          shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+          var geo = new THREE.ExtrudeGeometry(shape, {
+            depth: depth,
+            bevelEnabled: true,
+            bevelThickness: 0.12,
+            bevelSize: 0.1,
+            bevelSegments: 3,
+            steps: 1,
+          });
+          geo.center();
+          // UVs from ExtrudeGeometry don't map the texture nicely to the face; remap front-face UVs from XY bounds.
+          geo.computeBoundingBox();
+          var bb = geo.boundingBox;
+          var sizeX = bb.max.x - bb.min.x;
+          var sizeY = bb.max.y - bb.min.y;
+          var pos = geo.attributes.position;
+          var uv = geo.attributes.uv;
+          for (var vi = 0; vi < pos.count; vi++) {
+            uv.setXY(vi, (pos.getX(vi) - bb.min.x) / sizeX, (pos.getY(vi) - bb.min.y) / sizeY);
+          }
+          uv.needsUpdate = true;
+
+          // Face is an unlit "screen" — shows the exact vivid Shiki colors (no PBR/emissive wash).
+          // The 3D read comes from the lit, beveled EDGES + perspective, like a glowing monitor.
+          var faceMat = new THREE.MeshBasicMaterial({ map: tex });
+          var edgeMat = new THREE.MeshStandardMaterial({
+            color: 0x141d2b,
+            roughness: 0.3,
+            metalness: 0.4,
+          });
+          // ExtrudeGeometry groups: 0 = front+back faces, 1 = sides. Front shows the code.
+          var slab = new THREE.Mesh(geo, [faceMat, edgeMat]);
+          scene.add(slab);
+
+          scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+          var key = new THREE.DirectionalLight(0xbcd4ff, 1.25);
+          key.position.set(5, 7, 9);
+          scene.add(key);
+          var rim = new THREE.DirectionalLight(0x4fffa0, 0.45);
+          rim.position.set(-7, -3, 5);
+          scene.add(rim);
+
+          camera.position.set(0, 0, 10);
+
+          // fit camera distance so the WHOLE slab fits (width-limited for wide code), ~78% fill
+          var vfov = (camera.fov * Math.PI) / 180;
+          var screenAspect = 1920 / 1080;
+          var fitH = slabH / 2 / Math.tan(vfov / 2) / 0.78;
+          var fitW = slabW / 2 / (Math.tan(vfov / 2) * screenAspect) / 0.78;
+          var fitZ = Math.max(fitH, fitW);
+
+          st.rotY = -1.0;
+          st.rotX = 0.4;
+          st.camZ = fitZ + 6;
+          tl.to(st, { rotY: 0, rotX: 0, camZ: fitZ, duration: dur * 0.6, ease: "power3.out" }, 0);
+          // gentle breathing drift at rest (subtle — stays readable)
+          tl.to(
+            st,
+            { rotY: 0.06, rotX: -0.02, duration: dur * 0.4, ease: "sine.inOut" },
+            dur * 0.6,
+          );
+
+          return function () {
+            slab.rotation.y = st.rotY;
+            slab.rotation.x = st.rotX;
+            camera.position.z = st.camZ;
+            camera.lookAt(0, 0, 0);
+            // boot loop's render() issues the single renderer.render() — don't double-render here
+          };
+        }
+
+        // ---- dispatch + boot ------------------------------------------------------
+        function buildEffect(THREE, scene, camera, renderer, spec, st, tl) {
+          var state = T[spec.seq].states[0];
+          var dur = spec.duration;
+          if (spec.effect === "extrude")
+            return fxExtrude(THREE, scene, camera, renderer, state, st, tl, dur);
+          return function () {};
+        }
+
+        // Free GPU resources (renderer, geometries, materials, textures) on page teardown.
+        // One-shot renders exit per job so nothing leaks there; this guards long-lived
+        // Studio/player sessions that reload. Fires only on unload — never during capture.
+        function disposeGL(renderer, scene) {
+          scene.traverse(function (o) {
+            if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+            var mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+            mats.forEach(function (m) {
+              if (m.map && m.map.dispose) m.map.dispose();
+              if (
+                m.uniforms &&
+                m.uniforms.uTex &&
+                m.uniforms.uTex.value &&
+                m.uniforms.uTex.value.dispose
+              ) {
+                m.uniforms.uTex.value.dispose();
+              }
+              if (m.dispose) m.dispose();
+            });
+          });
+          if (renderer.dispose) renderer.dispose();
+        }
+
+        function go() {
+          var spec = window.__BLOCK;
+          var root = document.getElementById("root");
+          var glcanvas = document.getElementById("gl");
+          var W = 1920;
+          var H = 1080;
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          window.__timelines[spec.id] = tl; // register synchronously
+
+          var THREE = window.THREE;
+          var renderer = new THREE.WebGLRenderer({
+            canvas: glcanvas,
+            antialias: true,
+            alpha: false,
+            preserveDrawingBuffer: true,
+          });
+          renderer.setPixelRatio(1);
+          renderer.setSize(W, H, false);
+          var scene = new THREE.Scene();
+          var camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 200);
+          var st = {};
+
+          document.fonts.ready.then(function () {
+            var renderFn = buildEffect(THREE, scene, camera, renderer, spec, st, tl);
+            function render() {
+              renderFn();
+              renderer.render(scene, camera);
+            }
+            tl.eventCallback("onUpdate", render);
+            var dur = parseFloat(root.dataset.duration) || tl.duration();
+            tl.to({}, { duration: dur }, 0); // pad to full composition length
+            render(); // paint frame 0
+            window.addEventListener("beforeunload", function () {
+              disposeGL(renderer, scene);
+            });
+          });
+        }
+
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+        else go();
+      })();
+    </script>
+  </body>
+</html>

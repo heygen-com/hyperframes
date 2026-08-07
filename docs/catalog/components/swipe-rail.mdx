@@ -1,0 +1,42 @@
+---
+title: "Swipe Rail"
+description: "A contact circle leads a horizontal card rail through a fast drag, momentum carry, and settled snap to the next card."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/swipe-rail.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Swipe Rail preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add swipe-rail" />
+
+That writes one file: `compositions/components/swipe-rail.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/swipe-rail.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `card_count` | `4` | 3 to 5, step 1 | Number of cards rendered in the rail. |
+| `accent` | `green` | `green`, `blue`, `violet` | Active color used by the focused card and contact circle. |
+| `card_label_prefix` | `Feature` | string | Text placed before each card number. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `interaction` `gesture` `swipe` `cards` `rail`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

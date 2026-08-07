@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>HTML Glass Shatter</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        overflow: hidden;
+        font-family: "Inter", system-ui, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #06080d;
+      }
+
+      #scene-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      .panel {
+        position: absolute;
+        top: 0;
+        left: 0;
+        overflow: hidden;
+        color: #fff;
+      }
+
+      /* ── Panel A: Write HTML, Render Video ─────────────────────────── */
+      .panel-a-inner {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(160deg, #0a0c14 0%, #0d1117 40%, #111820 100%);
+        display: flex;
+        flex-direction: column;
+        padding: 80px 120px;
+        gap: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .panel-a-inner::before {
+        content: "";
+        position: absolute;
+        top: -200px;
+        right: -200px;
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.06) 0%, transparent 70%);
+        pointer-events: none;
+      }
+      .panel-a-inner::after {
+        content: "";
+        position: absolute;
+        bottom: -150px;
+        left: -150px;
+        width: 500px;
+        height: 500px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.05) 0%, transparent 70%);
+        pointer-events: none;
+      }
+
+      .pa-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 20px;
+        background: rgba(56, 189, 248, 0.08);
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        border-radius: 100px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #38bdf8;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        width: fit-content;
+        margin-bottom: 40px;
+      }
+      .pa-badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #38bdf8;
+      }
+
+      .pa-headline {
+        font-size: 88px;
+        font-weight: 800;
+        letter-spacing: -3px;
+        line-height: 1;
+        color: #f0f4f8;
+        margin-bottom: 48px;
+        max-width: 1100px;
+      }
+      .pa-headline em {
+        font-style: normal;
+        color: #38bdf8;
+      }
+
+      .pa-chart {
+        display: flex;
+        align-items: flex-end;
+        gap: 40px;
+        margin-bottom: 56px;
+      }
+      .pa-chart-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .pa-chart-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        height: 160px;
+      }
+      .pa-bar {
+        width: 64px;
+        border-radius: 6px 6px 0 0;
+      }
+      .pa-bar-v1 {
+        height: 60px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .pa-bar-v2 {
+        height: 150px;
+        background: linear-gradient(to top, #38bdf8, #818cf8);
+      }
+      .pa-chart-label {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.4);
+        font-weight: 500;
+      }
+      .pa-chart-sublabel {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .pa-chart-sublabel.dim {
+        color: rgba(255, 255, 255, 0.25);
+      }
+      .pa-chart-sublabel.lit {
+        color: #38bdf8;
+      }
+
+      .pa-features {
+        display: flex;
+        gap: 32px;
+        margin-bottom: 56px;
+      }
+      .pa-feature {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        flex: 1;
+      }
+      .pa-feature-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        background: rgba(56, 189, 248, 0.08);
+        border: 1px solid rgba(56, 189, 248, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+        color: #38bdf8;
+      }
+      .pa-feature-text h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 4px;
+      }
+      .pa-feature-text p {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.35);
+        line-height: 1.5;
+      }
+
+      .pa-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 16px 40px;
+        background: linear-gradient(135deg, #38bdf8, #818cf8);
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #fff;
+        border: none;
+        width: fit-content;
+        letter-spacing: -0.3px;
+      }
+
+      /* ── Panel B: Welcome to v2.0 ──────────────────────────── */
+      .panel-b-inner {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(160deg, #0a0f1a 0%, #0c1220 50%, #0f1628 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 120px;
+        gap: 48px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .pb-confetti {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .pb-dot {
+        position: absolute;
+        border-radius: 50%;
+        opacity: 0.12;
+      }
+
+      .pb-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 24px;
+        background: rgba(52, 211, 153, 0.08);
+        border: 1px solid rgba(52, 211, 153, 0.2);
+        border-radius: 100px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #34d399;
+        letter-spacing: 1px;
+      }
+
+      .pb-headline {
+        font-size: 80px;
+        font-weight: 800;
+        letter-spacing: -3px;
+        color: #f0f4f8;
+        text-align: center;
+      }
+
+      .pb-metrics {
+        display: flex;
+        gap: 48px;
+      }
+      .pb-metric {
+        text-align: center;
+        padding: 32px 48px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 16px;
+        min-width: 220px;
+      }
+      .pb-metric-value {
+        font-size: 52px;
+        font-weight: 800;
+        letter-spacing: -2px;
+        margin-bottom: 8px;
+      }
+      .pb-metric-value.green {
+        color: #34d399;
+      }
+      .pb-metric-value.blue {
+        color: #38bdf8;
+      }
+      .pb-metric-value.purple {
+        color: #a78bfa;
+      }
+      .pb-metric-label {
+        font-size: 15px;
+        color: rgba(255, 255, 255, 0.4);
+        font-weight: 500;
+      }
+
+      .pb-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 16px 40px;
+        background: linear-gradient(135deg, #34d399, #38bdf8);
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #fff;
+        border: none;
+        letter-spacing: -0.3px;
+      }
+
+      /* ── Error Overlay ─────────────────────────────────────── */
+      #error-overlay {
+        position: absolute;
+        inset: 0;
+        background: #06080d;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        flex-direction: column;
+        gap: 16px;
+      }
+      #error-overlay.visible {
+        display: flex;
+      }
+      #error-overlay h2 {
+        font-size: 24px;
+        color: #f0f4f8;
+        font-weight: 600;
+      }
+      #error-overlay p {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.5);
+        max-width: 480px;
+        text-align: center;
+        line-height: 1.6;
+      }
+      #error-overlay code {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="glass-shatter"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="12"
+      data-root="true"
+    >
+      <!-- Capture canvas: Panel A -->
+      <canvas
+        id="cap-a"
+        layoutsubtree
+        width="1920"
+        height="1080"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1920px;
+          height: 1080px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <section class="panel" id="panel-a" data-panel-a style="width: 1920px; height: 1080px">
+          <div class="panel-a-inner">
+            <div class="pa-badge">
+              <span class="pa-badge-dot"></span>
+              Write HTML, Render Video
+            </div>
+
+            <h1 class="pa-headline">Everything you loved.<br /><em>Now 10x faster.</em></h1>
+
+            <div class="pa-chart">
+              <div class="pa-chart-group">
+                <div class="pa-chart-bars">
+                  <div class="pa-bar pa-bar-v1"></div>
+                  <div class="pa-bar pa-bar-v2"></div>
+                </div>
+                <div class="pa-chart-label">Render Speed</div>
+                <div style="display: flex; gap: 16px">
+                  <span class="pa-chart-sublabel dim">v1</span>
+                  <span class="pa-chart-sublabel lit">v2</span>
+                </div>
+              </div>
+              <div class="pa-chart-group">
+                <div class="pa-chart-bars">
+                  <div class="pa-bar pa-bar-v1" style="height: 90px"></div>
+                  <div class="pa-bar pa-bar-v2" style="height: 145px"></div>
+                </div>
+                <div class="pa-chart-label">Throughput</div>
+                <div style="display: flex; gap: 16px">
+                  <span class="pa-chart-sublabel dim">v1</span>
+                  <span class="pa-chart-sublabel lit">v2</span>
+                </div>
+              </div>
+              <div class="pa-chart-group">
+                <div class="pa-chart-bars">
+                  <div class="pa-bar pa-bar-v1" style="height: 110px"></div>
+                  <div class="pa-bar pa-bar-v2" style="height: 155px"></div>
+                </div>
+                <div class="pa-chart-label">Reliability</div>
+                <div style="display: flex; gap: 16px">
+                  <span class="pa-chart-sublabel dim">v1</span>
+                  <span class="pa-chart-sublabel lit">v2</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="pa-features">
+              <div class="pa-feature">
+                <div class="pa-feature-icon">&#9889;</div>
+                <div class="pa-feature-text">
+                  <h3>Instant Deploys</h3>
+                  <p>Zero-downtime rollouts in under 3 seconds globally.</p>
+                </div>
+              </div>
+              <div class="pa-feature">
+                <div class="pa-feature-icon">&#128274;</div>
+                <div class="pa-feature-text">
+                  <h3>End-to-End Encryption</h3>
+                  <p>AES-256 at rest, TLS 1.3 in transit. SOC2 certified.</p>
+                </div>
+              </div>
+              <div class="pa-feature">
+                <div class="pa-feature-icon">&#128200;</div>
+                <div class="pa-feature-text">
+                  <h3>Real-time Analytics</h3>
+                  <p>Sub-second queries across billions of events.</p>
+                </div>
+              </div>
+            </div>
+
+            <button class="pa-cta">Start Creating &rarr;</button>
+          </div>
+        </section>
+      </canvas>
+
+      <!-- Capture canvas: Panel B -->
+      <canvas
+        id="cap-b"
+        layoutsubtree
+        width="1920"
+        height="1080"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1920px;
+          height: 1080px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <section class="panel" id="panel-b" data-panel-b style="width: 1920px; height: 1080px">
+          <div class="panel-b-inner">
+            <div class="pb-confetti" id="confetti-container"></div>
+
+            <div class="pb-badge">&#10003; Powered by HyperFrames</div>
+
+            <h1 class="pb-headline">HTML is Video</h1>
+
+            <div class="pb-metrics">
+              <div class="pb-metric">
+                <div class="pb-metric-value green">10x</div>
+                <div class="pb-metric-label">Render Speed</div>
+              </div>
+              <div class="pb-metric">
+                <div class="pb-metric-value blue">50%</div>
+                <div class="pb-metric-label">File Size</div>
+              </div>
+              <div class="pb-metric">
+                <div class="pb-metric-value purple">99.99%</div>
+                <div class="pb-metric-label">Reliability</div>
+              </div>
+            </div>
+
+            <button class="pb-cta">View Catalog &rarr;</button>
+          </div>
+        </section>
+      </canvas>
+
+      <!-- Three.js render target -->
+      <canvas id="scene-canvas" width="1920" height="1080"></canvas>
+
+      <!-- Error overlay -->
+      <div id="error-overlay">
+        <h2>HTML-in-Canvas Required</h2>
+        <p>
+          This composition requires the experimental CanvasDrawElement API. Enable it in Chrome or
+          Brave:
+        </p>
+        <p><code>chrome://flags/#canvas-draw-element</code></p>
+      </div>
+
+      <!-- Driver clip -->
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="12"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+
+    <script>
+      var W = 1920,
+        H = 1080;
+      var DURATION = 12;
+      var SHARD_COUNT = 200;
+      var CRACK_START = 2.0;
+      var CRACK_END = 4.0;
+      var SHATTER_START = 4.0;
+      var SHATTER_SETTLE = 10.0;
+
+      // ── Feature Detection ──────────────────────────────────────────────
+      function isSupported() {
+        if (!("layoutSubtree" in document.createElement("canvas"))) return false;
+        var tc = document.createElement("canvas");
+        tc.setAttribute("layoutsubtree", "");
+        var ctx = tc.getContext("2d");
+        return ctx && typeof ctx.drawElementImage === "function";
+      }
+
+      if (!isSupported()) {
+        document.getElementById("error-overlay").classList.add("visible");
+      }
+
+      // ── Seeded PRNG (mulberry32, seed 42) ──────────────────────────────
+      function mulberry32(seed) {
+        return function () {
+          seed |= 0;
+          seed = (seed + 0x6d2b79f5) | 0;
+          var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+      var rng = mulberry32(42);
+
+      // ── Generate confetti dots for Panel B ─────────────────────────────
+      var confettiEl = document.getElementById("confetti-container");
+      if (confettiEl) {
+        var dotColors = ["#34d399", "#38bdf8", "#a78bfa", "#f472b6", "#fbbf24"];
+        for (var d = 0; d < 60; d++) {
+          var dot = document.createElement("div");
+          dot.className = "pb-dot";
+          var sz = 4 + rng() * 12;
+          dot.style.width = sz + "px";
+          dot.style.height = sz + "px";
+          dot.style.left = rng() * 100 + "%";
+          dot.style.top = rng() * 100 + "%";
+          dot.style.background = dotColors[Math.floor(rng() * dotColors.length)];
+          dot.style.opacity = (0.06 + rng() * 0.12).toFixed(3);
+          confettiEl.appendChild(dot);
+        }
+      }
+
+      // ── Parse capture canvases ─────────────────────────────────────────
+      var capA = document.getElementById("cap-a");
+      var capB = document.getElementById("cap-b");
+      var ctxA = capA.getContext("2d");
+      var ctxB = capB.getContext("2d");
+      var panelA = document.getElementById("panel-a");
+      var panelB = document.getElementById("panel-b");
+
+      function capturePanels() {
+        ctxA.clearRect(0, 0, W, H);
+        ctxA.drawElementImage(panelA, 0, 0, W, H);
+        ctxB.clearRect(0, 0, W, H);
+        ctxB.drawElementImage(panelB, 0, 0, W, H);
+      }
+
+      // ── Voronoi Shard Generation ───────────────────────────────────────
+      // Generate ~200 seed points, compute Voronoi via brute force,
+      // triangulate each cell, extract per-shard geometry + UVs.
+
+      // Normalized coordinates: x in [0, aspectRatio], y in [0, 1]
+      var aspect = W / H;
+
+      // Generate seed points with weighted density toward center
+      var seeds = [];
+      for (var s = 0; s < SHARD_COUNT; s++) {
+        var sx, sy;
+        // 40% of points biased toward center for denser cracking there
+        if (s < SHARD_COUNT * 0.4) {
+          var angle = rng() * Math.PI * 2;
+          var radius = rng() * 0.35;
+          sx = 0.5 * aspect + Math.cos(angle) * radius * aspect;
+          sy = 0.5 + Math.sin(angle) * radius;
+        } else {
+          sx = rng() * aspect;
+          sy = rng();
+        }
+        seeds.push({ x: sx, y: sy });
+      }
+
+      // For each seed, compute a convex polygon via intersection of half-planes
+      // (simplified: sample angles around seed, find nearest boundary)
+      function computeShardPolygons(seeds) {
+        var shards = [];
+        var ANGLES = 32;
+
+        for (var i = 0; i < seeds.length; i++) {
+          var cx = seeds[i].x;
+          var cy = seeds[i].y;
+          var verts = [];
+
+          for (var a = 0; a < ANGLES; a++) {
+            var theta = (a / ANGLES) * Math.PI * 2;
+            var dx = Math.cos(theta);
+            var dy = Math.sin(theta);
+
+            // Find closest bisector intersection along this ray
+            var minT = 999;
+
+            for (var j = 0; j < seeds.length; j++) {
+              if (j === i) continue;
+              // Midpoint between seeds i and j
+              var mx = (cx + seeds[j].x) * 0.5;
+              var my = (cy + seeds[j].y) * 0.5;
+              // Normal of bisector: direction from i to j
+              var nx = seeds[j].x - cx;
+              var ny = seeds[j].y - cy;
+              // Ray-plane intersection: t = dot(m - c, n) / dot(d, n)
+              var denom = dx * nx + dy * ny;
+              if (denom <= 0.0001) continue;
+              var t = ((mx - cx) * nx + (my - cy) * ny) / denom;
+              if (t > 0.001 && t < minT) minT = t;
+            }
+
+            // Clamp to bounding box
+            if (dx > 0) {
+              var tb = (aspect - cx) / dx;
+              if (tb > 0 && tb < minT) minT = tb;
+            }
+            if (dx < 0) {
+              var tb2 = -cx / dx;
+              if (tb2 > 0 && tb2 < minT) minT = tb2;
+            }
+            if (dy > 0) {
+              var tb3 = (1 - cy) / dy;
+              if (tb3 > 0 && tb3 < minT) minT = tb3;
+            }
+            if (dy < 0) {
+              var tb4 = -cy / dy;
+              if (tb4 > 0 && tb4 < minT) minT = tb4;
+            }
+
+            if (minT < 998) {
+              verts.push({
+                x: cx + dx * minT,
+                y: cy + dy * minT,
+              });
+            }
+          }
+
+          if (verts.length < 3) continue;
+
+          // Sort vertices by angle from centroid
+          var centX = 0,
+            centY = 0;
+          for (var v = 0; v < verts.length; v++) {
+            centX += verts[v].x;
+            centY += verts[v].y;
+          }
+          centX /= verts.length;
+          centY /= verts.length;
+
+          verts.sort(function (a, b) {
+            return Math.atan2(a.y - centY, a.x - centX) - Math.atan2(b.y - centY, b.x - centX);
+          });
+
+          // Fan triangulation from centroid
+          var triangles = [];
+          for (var v2 = 0; v2 < verts.length; v2++) {
+            var next = (v2 + 1) % verts.length;
+            triangles.push([{ x: centX, y: centY }, verts[v2], verts[next]]);
+          }
+
+          shards.push({
+            seedX: cx,
+            seedY: cy,
+            centroidX: centX,
+            centroidY: centY,
+            triangles: triangles,
+            verts: verts,
+          });
+        }
+
+        return shards;
+      }
+
+      var shardData = computeShardPolygons(seeds);
+
+      // ── Three.js Scene ─────────────────────────────────────────────────
+      var sceneCanvas = document.getElementById("scene-canvas");
+      var renderer = new THREE.WebGLRenderer({
+        canvas: sceneCanvas,
+        antialias: true,
+        alpha: false,
+        preserveDrawingBuffer: true,
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.setClearColor(0x06080d, 1);
+
+      var scene = new THREE.Scene();
+      var camera = new THREE.OrthographicCamera(-aspect * 0.5, aspect * 0.5, 0.5, -0.5, 0.1, 100);
+      camera.position.z = 10;
+
+      // ── Textures from capture canvases ─────────────────────────────────
+      var texA = new THREE.CanvasTexture(capA);
+      texA.minFilter = THREE.LinearFilter;
+      texA.magFilter = THREE.LinearFilter;
+      texA.generateMipmaps = false;
+
+      var texB = new THREE.CanvasTexture(capB);
+      texB.minFilter = THREE.LinearFilter;
+      texB.magFilter = THREE.LinearFilter;
+      texB.generateMipmaps = false;
+
+      // ── Phase 1 & 2: Full plane with panel A + crack shader ────────────
+      var crackShaderMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          tPanel: { value: texA },
+          uCrackProgress: { value: 0.0 },
+          uAspect: { value: aspect },
+          uTime: { value: 0.0 },
+        },
+        vertexShader: [
+          "varying vec2 vUv;",
+          "void main() {",
+          "  vUv = uv;",
+          "  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);",
+          "}",
+        ].join("\n"),
+        fragmentShader: [
+          "uniform sampler2D tPanel;",
+          "uniform float uCrackProgress;",
+          "uniform float uAspect;",
+          "uniform float uTime;",
+          "varying vec2 vUv;",
+          "",
+          "// Hash functions for Voronoi",
+          "vec2 hash22(vec2 p) {",
+          "  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));",
+          "  return fract(sin(p) * 43758.5453);",
+          "}",
+          "",
+          "// Voronoi distance for crack pattern",
+          "float voronoi(vec2 p) {",
+          "  vec2 ip = floor(p);",
+          "  vec2 fp = fract(p);",
+          "  float d1 = 8.0;",
+          "  float d2 = 8.0;",
+          "  for (int x = -1; x <= 1; x++) {",
+          "    for (int y = -1; y <= 1; y++) {",
+          "      vec2 neighbor = vec2(float(x), float(y));",
+          "      vec2 point = hash22(ip + neighbor);",
+          "      vec2 diff = neighbor + point - fp;",
+          "      float dist = length(diff);",
+          "      if (dist < d1) {",
+          "        d2 = d1;",
+          "        d1 = dist;",
+          "      } else if (dist < d2) {",
+          "        d2 = dist;",
+          "      }",
+          "    }",
+          "  }",
+          "  return d2 - d1;",
+          "}",
+          "",
+          "void main() {",
+          "  vec4 color = texture2D(tPanel, vUv);",
+          "  ",
+          "  if (uCrackProgress <= 0.0) {",
+          "    gl_FragColor = color;",
+          "    return;",
+          "  }",
+          "  ",
+          "  // Distance from center (in UV space, aspect-corrected)",
+          "  vec2 center = vec2(0.5, 0.5);",
+          "  vec2 uv_aspect = vec2((vUv.x - 0.5) * uAspect, vUv.y - 0.5);",
+          "  float distFromCenter = length(uv_aspect);",
+          "  ",
+          "  // Crack wavefront: radiates outward based on progress",
+          "  float maxRadius = length(vec2(uAspect * 0.5, 0.5));",
+          "  float wavefront = uCrackProgress * maxRadius * 1.4;",
+          "  ",
+          "  if (distFromCenter > wavefront) {",
+          "    gl_FragColor = color;",
+          "    return;",
+          "  }",
+          "  ",
+          "  // Multi-scale Voronoi for cracks",
+          "  vec2 crackUV = vUv * vec2(uAspect, 1.0);",
+          "  float v1 = voronoi(crackUV * 8.0);",
+          "  float v2 = voronoi(crackUV * 16.0);",
+          "  float v3 = voronoi(crackUV * 4.0);",
+          "  ",
+          "  // Blend scales based on distance from center",
+          "  float normalizedDist = distFromCenter / maxRadius;",
+          "  float crackPattern = mix(v1, v2, smoothstep(0.0, 0.5, normalizedDist));",
+          "  crackPattern = mix(crackPattern, v3, smoothstep(0.3, 0.8, normalizedDist) * 0.4);",
+          "  ",
+          "  // Crack intensity: thinner = more crack-like",
+          "  float crackWidth = 0.04 + uCrackProgress * 0.02;",
+          "  float crack = smoothstep(crackWidth, 0.0, crackPattern);",
+          "  ",
+          "  // Fade in based on wavefront proximity",
+          "  float waveFade = smoothstep(wavefront, wavefront * 0.6, distFromCenter);",
+          "  crack *= waveFade;",
+          "  ",
+          "  // Impact point glow",
+          "  float impactGlow = exp(-distFromCenter * 6.0) * uCrackProgress * 0.6;",
+          "  ",
+          "  // Refraction distortion along cracks",
+          "  vec2 distortUV = vUv;",
+          "  if (crack > 0.1) {",
+          "    vec2 offset = (hash22(floor(crackUV * 8.0)) - 0.5) * 0.008 * crack;",
+          "    distortUV += offset;",
+          "  }",
+          "  vec4 distortedColor = texture2D(tPanel, distortUV);",
+          "  ",
+          "  // Composite: panel + bright crack lines + refraction",
+          "  vec3 crackColor = vec3(0.85, 0.92, 1.0);",
+          "  vec3 result = mix(distortedColor.rgb, crackColor, crack * 0.7);",
+          "  result += vec3(impactGlow * 0.3, impactGlow * 0.4, impactGlow * 0.6);",
+          "  ",
+          "  // Glass surface highlight along cracks",
+          "  float highlight = crack * 0.15 * (1.0 - normalizedDist);",
+          "  result += vec3(highlight);",
+          "  ",
+          "  gl_FragColor = vec4(result, 1.0);",
+          "}",
+        ].join("\n"),
+        transparent: false,
+      });
+
+      var fullPlane = new THREE.Mesh(new THREE.PlaneGeometry(aspect, 1), crackShaderMaterial);
+      fullPlane.position.set(0, 0, 0);
+      scene.add(fullPlane);
+
+      // ── Panel B: static plane behind shards ────────────────────────────
+      var panelBMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(aspect, 1),
+        new THREE.MeshBasicMaterial({ map: texB, side: THREE.FrontSide }),
+      );
+      panelBMesh.position.set(0, 0, -0.5);
+      panelBMesh.visible = false;
+      scene.add(panelBMesh);
+
+      // ── Phase 3: Shard meshes ──────────────────────────────────────────
+      // Each shard is a THREE.Mesh with its own geometry from the Voronoi subdivision.
+      // UV mapping samples the correct region of panel A's texture.
+
+      var shardMeshes = [];
+      var shardPhysics = [];
+
+      for (var si = 0; si < shardData.length; si++) {
+        var sd = shardData[si];
+        var tris = sd.triangles;
+
+        // Build merged geometry for all triangles in this shard
+        var positions = [];
+        var uvs = [];
+
+        for (var ti = 0; ti < tris.length; ti++) {
+          var tri = tris[ti];
+          for (var vi = 0; vi < 3; vi++) {
+            // Convert from Voronoi space (x in [0,aspect], y in [0,1]) to mesh space
+            var px = tri[vi].x - aspect * 0.5;
+            var py = -(tri[vi].y - 0.5); // flip Y for Three.js
+            positions.push(px, py, 0);
+
+            // UV: map from Voronoi space to [0,1]
+            var u = tri[vi].x / aspect;
+            var v = 1.0 - tri[vi].y; // flip V
+            uvs.push(u, v);
+          }
+        }
+
+        if (positions.length < 9) continue;
+
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+
+        var mat = new THREE.MeshBasicMaterial({
+          map: texA,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 1.0,
+        });
+
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.visible = false;
+        scene.add(mesh);
+        shardMeshes.push(mesh);
+
+        // Physics state for this shard
+        // Direction outward from center + random upward kick
+        var fromCenterX = sd.centroidX - aspect * 0.5;
+        var fromCenterY = sd.centroidY - 0.5;
+        var fromCenterLen =
+          Math.sqrt(fromCenterX * fromCenterX + fromCenterY * fromCenterY) + 0.001;
+        var outDirX = fromCenterX / fromCenterLen;
+        var outDirY = fromCenterY / fromCenterLen;
+
+        // Initial velocity: outward + upward component + randomness
+        var speed = 0.3 + rng() * 0.7;
+        var upKick = 0.2 + rng() * 0.5;
+
+        shardPhysics.push({
+          // Centroid in mesh-space for pivot
+          cx: sd.centroidX - aspect * 0.5,
+          cy: -(sd.centroidY - 0.5),
+          // Velocity
+          vx: outDirX * speed * (0.5 + rng() * 0.8),
+          vy: -outDirY * speed * (0.3 + rng() * 0.6) + upKick,
+          vz: (rng() - 0.5) * 0.3,
+          // Angular velocity
+          rx: (rng() - 0.5) * 4.0,
+          ry: (rng() - 0.5) * 4.0,
+          rz: (rng() - 0.5) * 6.0,
+          // Current state (written by physics step)
+          posX: 0,
+          posY: 0,
+          posZ: 0,
+          rotX: 0,
+          rotY: 0,
+          rotZ: 0,
+          opacity: 1.0,
+          settled: false,
+        });
+      }
+
+      // ── Physics Update ─────────────────────────────────────────────────
+      var GRAVITY = -2.5;
+      var FLOOR_Y = -0.8;
+      var DAMPING = 0.6;
+      var FRICTION = 0.92;
+
+      function updateShardPhysics(t) {
+        // t is time since shatter start (0 at SHATTER_START)
+        var dt = 1 / 30; // fixed step for determinism
+        var steps = Math.floor(t / dt);
+
+        for (var i = 0; i < shardPhysics.length; i++) {
+          var sp = shardPhysics[i];
+
+          // Reset and simulate from zero for determinism
+          var px = 0,
+            py = 0,
+            pz = 0;
+          var rx = 0,
+            ry = 0,
+            rz = 0;
+          var vx = sp.vx,
+            vy = sp.vy,
+            vz = sp.vz;
+          var avx = sp.rx,
+            avy = sp.ry,
+            avz = sp.rz;
+          var settled = false;
+
+          for (var step = 0; step < steps && !settled; step++) {
+            // Apply gravity
+            vy += GRAVITY * dt;
+
+            // Update position
+            px += vx * dt;
+            py += vy * dt;
+            pz += vz * dt;
+
+            // Update rotation
+            rx += avx * dt;
+            ry += avy * dt;
+            rz += avz * dt;
+
+            // Floor collision (relative to shard centroid)
+            var worldY = sp.cy + py;
+            if (worldY < FLOOR_Y && vy < 0) {
+              py = FLOOR_Y - sp.cy;
+              vy = -vy * DAMPING;
+              vx *= FRICTION;
+              vz *= FRICTION;
+              avx *= FRICTION;
+              avy *= FRICTION;
+              avz *= FRICTION;
+
+              // Settle if velocity is very small
+              if (Math.abs(vy) < 0.05) {
+                vy = 0;
+                settled = true;
+              }
+            }
+          }
+
+          sp.posX = px;
+          sp.posY = py;
+          sp.posZ = pz;
+          sp.rotX = rx;
+          sp.rotY = ry;
+          sp.rotZ = rz;
+          sp.settled = settled;
+
+          // Fade out shards at the very end
+          var fadeDuration = DURATION - SHATTER_SETTLE;
+          var elapsed = t + SHATTER_START;
+          if (elapsed > SHATTER_SETTLE) {
+            sp.opacity = Math.max(0, 1.0 - (elapsed - SHATTER_SETTLE) / fadeDuration);
+          } else {
+            sp.opacity = 1.0;
+          }
+        }
+      }
+
+      // ── Render State ───────────────────────────────────────────────────
+      var renderState = {
+        phase: 0, // 0=clean, 1=cracking, 2=shattered
+        crackProgress: 0,
+        shardsVisible: false,
+        panelBOpacity: 0,
+      };
+
+      function renderFrame(time) {
+        // Phase determination
+        if (time < CRACK_START) {
+          renderState.phase = 0;
+        } else if (time < SHATTER_START) {
+          renderState.phase = 1;
+        } else {
+          renderState.phase = 2;
+        }
+
+        // Capture HTML panels to texture each frame
+        capturePanels();
+        texA.needsUpdate = true;
+        texB.needsUpdate = true;
+
+        if (renderState.phase === 0) {
+          // Clean glass: show full plane, no cracks
+          fullPlane.visible = true;
+          crackShaderMaterial.uniforms.uCrackProgress.value = 0;
+          crackShaderMaterial.uniforms.uTime.value = time;
+          panelBMesh.visible = false;
+
+          // Hide all shards
+          for (var i = 0; i < shardMeshes.length; i++) {
+            shardMeshes[i].visible = false;
+          }
+        } else if (renderState.phase === 1) {
+          // Cracking: show full plane with crack shader
+          fullPlane.visible = true;
+          var crackT = (time - CRACK_START) / (CRACK_END - CRACK_START);
+          crackT = Math.max(0, Math.min(1, crackT));
+          // Ease in: slow start, accelerating
+          crackT = crackT * crackT;
+          crackShaderMaterial.uniforms.uCrackProgress.value = crackT;
+          crackShaderMaterial.uniforms.uTime.value = time;
+          panelBMesh.visible = false;
+
+          for (var i2 = 0; i2 < shardMeshes.length; i2++) {
+            shardMeshes[i2].visible = false;
+          }
+        } else {
+          // Shattered: hide full plane, show shards + panel B
+          fullPlane.visible = false;
+          panelBMesh.visible = true;
+
+          // Panel B fade-in
+          var panelBFadeT = Math.min(1, (time - SHATTER_START) / 1.5);
+          panelBFadeT = panelBFadeT * panelBFadeT * (3 - 2 * panelBFadeT); // smoothstep
+          panelBMesh.material.opacity = panelBFadeT;
+          panelBMesh.material.transparent = true;
+
+          // Update shard physics
+          var shatterTime = time - SHATTER_START;
+          updateShardPhysics(shatterTime);
+
+          // Apply physics to shard meshes
+          for (var i3 = 0; i3 < shardMeshes.length; i3++) {
+            var sm = shardMeshes[i3];
+            var sp = shardPhysics[i3];
+
+            sm.visible = true;
+
+            // Set position: centroid + physics offset
+            sm.position.set(sp.posX, sp.posY, sp.posZ + 0.01);
+            sm.rotation.set(sp.rotX, sp.rotY, sp.rotZ);
+
+            // Set pivot point to centroid
+            sm.position.x +=
+              sp.cx * (1 - Math.cos(sp.rotZ)) + sp.cy * Math.sin(sp.rotZ) - sp.cx + sp.posX;
+            sm.position.y +=
+              -sp.cx * Math.sin(sp.rotZ) + sp.cy * (1 - Math.cos(sp.rotZ)) - sp.cy + sp.posY;
+
+            // Simpler: just translate by physics offset, rotate around centroid
+            sm.position.set(sp.posX, sp.posY, sp.posZ + 0.01);
+            sm.rotation.set(sp.rotX, sp.rotY, sp.rotZ);
+
+            sm.material.opacity = sp.opacity;
+            sm.material.transparent = sp.opacity < 1.0;
+          }
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      // ── GSAP Timeline ──────────────────────────────────────────────────
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      // Driver tween: spans full duration, renders each frame via onUpdate
+      var timeProxy = { t: 0 };
+      tl.to(
+        timeProxy,
+        {
+          t: DURATION,
+          duration: DURATION,
+          ease: "none",
+          onUpdate: function () {
+            renderFrame(timeProxy.t);
+          },
+        },
+        0,
+      );
+
+      window.__timelines["glass-shatter"] = tl;
+
+      // ── Deferred Init ──────────────────────────────────────────────────
+      setTimeout(function () {
+        capturePanels();
+        texA.needsUpdate = true;
+        texB.needsUpdate = true;
+        tl.seek(0);
+      }, 0);
+    </script>
+  </body>
+</html>

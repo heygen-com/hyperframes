@@ -1,0 +1,42 @@
+---
+title: "Beat Pulse Background"
+description: "An accent-derived backdrop pulses its glow intensity and saturation on a deterministic, supplied beat grid."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/beat-pulse-background.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Beat Pulse Background preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add beat-pulse-background" />
+
+That writes one file: `compositions/components/beat-pulse-background.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/beat-pulse-background.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `beats` | `0.5,1.0,1.5,2.0,2.5,3.0,3.5` | string | Comma-separated beat times in seconds. Invalid entries are ignored and numeric values are clamped to the composition duration. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the pulsing glow. |
+| `intensity` | `subtle` | `subtle`, `club` | Strength of the glow and saturation pulse. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `background` `beat` `pulse` `rhythmic` `reactive`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

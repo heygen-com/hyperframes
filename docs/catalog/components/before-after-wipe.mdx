@@ -1,0 +1,45 @@
+---
+title: "Before After Wipe"
+description: "Two full-bleed content slots compare before and after states as a persistent divider wipes the after layer over the before layer and rests at a configurable split. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/before-after-wipe.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Before After Wipe preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add before-after-wipe" />
+
+That writes one file: `compositions/components/before-after-wipe.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/before-after-wipe.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label_a` | `Before` | string | Chip shown on the base before panel. Blank hides the chip. |
+| `label_b` | `After` | string | Chip shown on the revealed after panel. Blank hides the chip. |
+| `rest_split` | `50` | 0% to 100%, step 1% | Divider resting position after the wipe lands. |
+| `wipe_at` | `0.25` | 0s to 8s, step 0.05s | Seconds after mount start when the wipe begins. |
+| `accent` | `green` | `green`, `blue`, `violet` | Divider handle and after chip color. |
+| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final comparison frame. |
+
+{/* hf:generated-footer */}
+
+Tagged `prop` `ui-props` `compare` `holdable` `before-after` `wipe` `slots`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

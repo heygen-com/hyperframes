@@ -13,7 +13,15 @@
  *   npx tsx scripts/generate-catalog-pages.ts
  */
 
-import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
@@ -111,6 +119,7 @@ function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
 const GENERATED_HEADINGS = new Set([
   // current template
   "install",
+  "variables",
   "add it to your video",
   "paste it into your composition",
   "change the colors",
@@ -421,6 +430,84 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
   return lines;
 }
 
+/**
+ * Where the browser asks for a preview.
+ *
+ * Mintlify serves docs/public under `/public`, not the root. This is verified
+ * against the live site, where /public/images/... answers 200 and the same path
+ * without the prefix answers 404, so the prefix is load-bearing rather than a
+ * quirk of the local dev server.
+ */
+function playerPreviewUrl(kind: ItemKind, manifest: RegistryItem): string {
+  return `/public/catalog/preview/${typeDir(kind)}/${manifest.name}.html`;
+}
+
+/**
+ * Copy an item's demo composition into docs/public and wrap it in a player.
+ *
+ * Returns false when the item ships no demo.html, which is the caller's signal
+ * to fall back to a recorded video.
+ *
+ * The wrapper exists so the page can embed the preview in an iframe. Dropping
+ * <hyperframes-player> straight into the MDX would put a composition's own
+ * global CSS — and compositions do set styles on `body` — in the same document
+ * as the documentation around it.
+ */
+function writePlayerPreview(kind: ItemKind, manifest: RegistryItem): boolean {
+  const dir = typeDir(kind);
+  const itemDir = join(registryDir, dir, manifest.name);
+  if (!existsSync(itemDir)) return false;
+
+  // demo.html first: where an item ships one it is the version built to be
+  // watched on its own. Blocks mostly ship none, but a block *is* a standalone
+  // composition document, so its own file plays without anything wrapped round it.
+  const entry = ["demo.html", `${manifest.name}.html`].find((f) => existsSync(join(itemDir, f)));
+  if (!entry) return false;
+
+  // The whole directory, because a demo is usually a mount shell pointing at a
+  // sibling with data-composition-src="./<name>.html". Copying just the entry
+  // file leaves that reference dangling and the preview renders empty.
+  const destDir = join(docsDir, "public", "catalog", dir, manifest.name);
+  mkdirSync(destDir, { recursive: true });
+  for (const file of readdirSync(itemDir)) {
+    if (file === "registry-item.json") continue;
+    const from = join(itemDir, file);
+    if (!statSync(from).isFile()) continue;
+    writeFileSync(join(destDir, file), readFileSync(from));
+  }
+
+  const wrapperDir = join(docsDir, "public", "catalog", "preview", dir);
+  mkdirSync(wrapperDir, { recursive: true });
+
+  // The player's src is relative so the preview keeps working whatever prefix
+  // the docs are served under. The wrapper and the composition move together.
+  const wrapper = [
+    "<!doctype html>",
+    '<meta charset="utf-8" />',
+    `<title>${manifest.title} preview</title>`,
+    "<style>",
+    "  html, body { margin: 0; height: 100%; background: transparent; }",
+    "  hyperframes-player { display: block; width: 100%; height: 100%; }",
+    "</style>",
+    '<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>',
+    `<hyperframes-player id="p" src="../../${dir}/${manifest.name}/${entry}" controls muted></hyperframes-player>`,
+    "<script>",
+    "  // Poll rather than wait on an event: `ready` is a getter, and the element",
+    "  // may already be ready by the time this script runs.",
+    "  const player = document.getElementById('p');",
+    "  const start = setInterval(() => {",
+    "    if (!player.ready) return;",
+    "    clearInterval(start);",
+    "    player.play();",
+    "  }, 100);",
+    "  player.addEventListener('ended', () => { player.seek(0); player.play(); });",
+    "</script>",
+    "",
+  ].join("\n");
+  writeFileSync(join(wrapperDir, `${manifest.name}.html`), wrapper);
+  return true;
+}
+
 function catalogPreviewFor(kind: ItemKind, manifest: RegistryItem): string | undefined {
   // The manifest is the source of truth. Thirteen items declare a preview with
   // a video and no poster, and that omission is deliberate — no .png was ever
@@ -508,6 +595,55 @@ function generateParams(manifest: RegistryItem): string[] {
   return lines;
 }
 
+interface ItemVariable {
+  id: string;
+  type: string;
+  role?: string;
+  label?: string;
+  description?: string;
+  default?: string | number | boolean;
+  options?: { value: string; label?: string }[];
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+}
+
+/** The allowed values for one variable, written the way a reader has to type them. */
+function variableRange(v: ItemVariable): string {
+  if (v.options?.length) return v.options.map((o) => `\`${o.value}\``).join(", ");
+  if (typeof v.min === "number" && typeof v.max === "number") {
+    const unit = v.unit ? `${v.unit}` : "";
+    const step = typeof v.step === "number" ? `, step ${v.step}${unit}` : "";
+    return `${v.min}${unit} to ${v.max}${unit}${step}`;
+  }
+  return v.type;
+}
+
+function generateVariables(manifest: RegistryItem): string[] {
+  const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  const lines: string[] = [
+    "## Variables",
+    "",
+    "Every one of these has a default, so the piece works untouched. Set the ones you",
+    "want to change on the element:",
+    "",
+    "| Variable | Default | Accepts | What it does |",
+    "| --- | --- | --- | --- |",
+  ];
+  for (const v of raw) {
+    // A missing description is left blank rather than filled with the label
+    // again — a column that repeats its neighbour teaches the reader to skip it.
+    const what = v.description ?? "";
+    const def = v.default === undefined ? "" : `\`${v.default}\``;
+    lines.push(`| \`${v.id}\` | ${def} | ${variableRange(v)} | ${what} |`);
+  }
+  lines.push("");
+  return lines;
+}
+
 // fallow-ignore-next-line complexity
 function generateItemMdx(
   kind: ItemKind,
@@ -529,13 +665,22 @@ function generateItemMdx(
     `description: ${yamlString(manifest.description)}`,
     "---",
     "",
+    'import { InstallCommand } from "/snippets/install-command.jsx";',
+    "",
   ];
 
   // 1. What it looks like, before anything else. Credits, tags and the source
   //    prompt used to sit above this and pushed the preview below the fold.
   if (textureGroups.length > 0) {
     lines.push(...generateTexturePreview(manifest, textureGroups));
+  } else if (writePlayerPreview(kind, manifest)) {
+    lines.push(
+      `<iframe src="${playerPreviewUrl(kind, manifest)}" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="${manifest.title} preview" />`,
+      "",
+    );
   } else {
+    // No demo.html to play, so fall back to the recorded video. Blocks are the
+    // population that lands here: 125 of 132 ship no demo.
     const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
     // Same source of truth as the index: a manifest that declares a preview
     // without a poster has no .png, and asking for one is a 403 the browser
@@ -552,9 +697,7 @@ function generateItemMdx(
   lines.push(
     "## Install",
     "",
-    "```bash Terminal",
-    installCmd,
-    "```",
+    `<InstallCommand command="${installCmd}" />`,
     "",
     installOutcome(manifest, primaryTarget),
     "",
@@ -628,6 +771,7 @@ function generateItemMdx(
   }
 
   lines.push(...generateParams(manifest));
+  lines.push(...generateVariables(manifest));
 
   if (textureGroups.length > 0) {
     lines.push(...generateTextureAgentUsage(manifest, textureGroups));
@@ -760,8 +904,14 @@ function main(): void {
     "CSS Transitions": 6,
     Showcases: 7,
     Data: 8,
-    Effects: 9,
-    Blocks: 10,
+    "Motion Primitives": 9,
+    "Typography & Text": 10,
+    "UI Primitives": 11,
+    "Camera & 3D": 12,
+    "Product Demo": 13,
+    Texture: 14,
+    Effects: 15,
+    Blocks: 16,
   };
 
   // fallow-ignore-next-line complexity
@@ -782,6 +932,28 @@ function main(): void {
       return entry.type === "component" ? "Effects" : "CSS Transitions";
     if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
     if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
+    // Split what used to be one 267-item "Effects" list. Ordered most specific
+    // first: an item tagged both `camera` and `motion-primitive` is a camera
+    // move, which is the narrower and more useful shelf to find it on.
+    if (tags.includes("texture")) return "Texture";
+    if (tags.includes("camera") || tags.includes("3d")) return "Camera & 3D";
+    if (
+      tags.includes("product-demo") ||
+      tags.includes("demonstrate") ||
+      tags.includes("pointers")
+    ) {
+      return "Product Demo";
+    }
+    if (
+      tags.includes("typography") ||
+      tags.includes("text-effects") ||
+      tags.includes("text") ||
+      tags.includes("caption-style")
+    ) {
+      return "Typography & Text";
+    }
+    if (tags.includes("ui-primitive") || tags.includes("ui-props")) return "UI Primitives";
+    if (tags.includes("motion-primitive")) return "Motion Primitives";
     if (entry.type === "component") return "Effects";
     // Remaining blocks
     return "Blocks";

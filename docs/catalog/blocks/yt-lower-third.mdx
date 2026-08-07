@@ -3,38 +3,15 @@ title: "YouTube Lower Third"
 description: "Animated YouTube subscribe lower third with avatar and channel info"
 ---
 
-# YouTube Lower Third
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Animated YouTube subscribe lower third with avatar and channel info
-
-`social` `overlay` `youtube`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-lower-third.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-lower-third.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/yt-lower-third.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="YouTube Lower Third preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add yt-lower-third" />
 
-```bash Terminal
-npx hyperframes add yt-lower-third
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 4.5s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `yt-lower-third.html` | `compositions/yt-lower-third.html` | hyperframes:composition |
-| `assets/avatar.jpg` | `assets/avatar.jpg` | hyperframes:asset |
+That writes `compositions/yt-lower-third.html`, plus 1 supporting file under `assets/`.
 
 ## Usage
 
@@ -43,3 +20,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="yt-lower-third" data-composition-src="compositions/yt-lower-third.html" data-start="0" data-duration="4.5" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `social` `overlay` `youtube`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

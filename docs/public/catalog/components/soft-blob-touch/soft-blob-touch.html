@@ -1,0 +1,522 @@
+<!doctype html>
+<!--
+  soft-blob-touch: HyperFrames video primitive (product demo / material)
+
+  A granular soft blob idles with slow internal drift; a scripted touch dot
+  decel-arrives at a caller-positioned point; the blob deforms toward it
+  (an attraction bulge with mass), then recovers with an interruptible
+  spring once the dot retreats. The AI-orb material beat. Softness is the
+  whole point: the body is layered radial gradients plus a seeded grain
+  field, and nothing in the frame has a hard edge.
+
+  Reference: alexwidua 1702356241186476225 sheet-02 (granular blob leaning
+  toward a finger; fuzzy boundary, mass, recovery wobble).
+
+  Variables (declared in data-composition-variables below):
+    - touch_x, touch_y (numbers, percent of host box): where the dot lands.
+    - touch_at (seconds): when the dot makes contact. Clamped so the whole
+      deform and recover tail stays inside the clip.
+    - grain ("fine" | "coarse"): speck count and size for the body.
+    - accent ("green" | "blue" | "violet"): green rides --brand, blue rides
+      --accent, violet rides --accent-2.
+    - exit ("none" | "fade" | "up"): default none, the settled blob holds.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN ends when the recovery spring settles (touch_at + 1.57s); HOLD is
+    dead still (drift completes integer sine cycles and ends at exactly
+    zero by then); OUT = 0.45s only when exit is not none.
+
+  Deformation model (law L1, interruptible spring):
+    Two plain-object params (bulge, lean) feed ONE onUpdate painter. The
+    attack tween is the first 75 percent of a power2.out lean-in, cut
+    mid-flight when the dot lifts (analytic cut: the junction value AND
+    velocity are computed in closed form). The recovery tween's ease is a
+    closed-form underdamped spring whose initial velocity equals the cut
+    velocity, so the redirect preserves momentum exactly. Both tweens have
+    explicit endpoints; any seek order lands identical values.
+
+  Determinism (canvas 2D law, per particle-image-reveal):
+    One grain table is computed exactly once at build from fixed LCG seed
+    0x50f7b10b. Every painted frame is a pure function of (table, params,
+    timeline time). onUpdate clears and redraws from scratch; no
+    Math.random, no wall clock, no incremental state. Eventful seeks
+    (suppressEvents false) repaint identically in any order.
+-->
+<html
+  lang="en"
+  data-composition-id="soft-blob-touch"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "touch_x", "type": "number", "role": "layout", "label": "Touch X", "description": "Touch point, percent of host width.", "default": 66, "min": 8, "max": 92, "step": 1, "unit": "%" },
+    { "id": "touch_y", "type": "number", "role": "layout", "label": "Touch Y", "description": "Touch point, percent of host height.", "default": 38, "min": 8, "max": 92, "step": 1, "unit": "%" },
+    { "id": "touch_at", "type": "number", "role": "timing", "label": "Touch at", "description": "Seconds from mount start when the dot makes contact.", "default": 1.6, "min": 0.9, "max": 10, "step": 0.1, "unit": "s" },
+    { "id": "grain", "type": "enum", "role": "style", "label": "Grain", "description": "Speck register for the granular body.", "default": "fine", "options": [{ "value": "fine", "label": "Fine" }, { "value": "coarse", "label": "Coarse" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Body tint: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the settled blob holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Soft Blob Touch</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="soft-blob-touch" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, "Inter", system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .sbt-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .sbt-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          .sbt-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          /* The touch dot: a soft disc with a gradient falloff, no hard rim.
+             Motion rides transforms only (px), never left or top. */
+          .sbt-touch {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4.6cqmin;
+            height: 4.6cqmin;
+            margin-left: -2.3cqmin;
+            margin-top: -2.3cqmin;
+            border-radius: 50%;
+            background: radial-gradient(
+              circle at 42% 38%,
+              color-mix(in srgb, var(--fg, #f8fafc) 96%, transparent) 0%,
+              color-mix(in srgb, var(--fg, #f8fafc) 78%, transparent) 34%,
+              color-mix(in srgb, var(--fg, #f8fafc) 26%, transparent) 62%,
+              transparent 78%
+            );
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="soft-blob-touch-clip"
+          class="sbt-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="sbt-stage">
+            <canvas class="sbt-canvas" aria-hidden="true"></canvas>
+            <div class="sbt-touch" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".sbt-stage");
+            var canvas = root.querySelector(".sbt-canvas");
+            var touchDot = root.querySelector(".sbt-touch");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            function num(value, fallback, min, max) {
+              var n = Number(value);
+              if (!isFinite(n)) n = fallback;
+              return Math.max(min, Math.min(max, n));
+            }
+
+            var grain = vars.grain === "coarse" ? "coarse" : "fine";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // The bundler mirrors composition variables as scoped CSS custom
+            // props, so this unit's own accent variable shadows the contract
+            // --accent token inside the subtree ("blue" is a valid CSS color
+            // and would render pure blue). When the shadow is present, fall
+            // back to the literal contract value instead of var(--accent).
+            var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              computedAccent === "green" ||
+              computedAccent === "blue" ||
+              computedAccent === "violet"
+            ) {
+              accentColors.blue = "#61a8ff";
+            }
+
+            // Envelope. The deform tail is ATTACK + RECOVER after contact;
+            // clamp touch_at so the spring settles inside the clip.
+            var ATTACK_NAT = 0.55; // natural length of the uncut lean-in
+            var CUT_FRAC = 0.75; // the dot lifts at 75 percent of it
+            var ATTACK = ATTACK_NAT * CUT_FRAC;
+            var RECOVER = 1.15;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var OUT = exit === "none" ? 0 : 0.45;
+            var maxTouch = Math.max(0.9, duration - (ATTACK + RECOVER) - OUT - 0.05);
+            var touchAt = num(vars.touch_at, 1.6, 0.9, maxTouch);
+            var cutAt = touchAt + ATTACK;
+            var IN_END = cutAt + RECOVER;
+            var OUT_START = IN_END + Math.max(0, duration - IN_END - OUT);
+
+            // Canvas raster basis is fixed once at mount (elastic root: the
+            // host box decides the resolution; same host, same raster).
+            var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+            var box = root.getBoundingClientRect();
+            var cssW = Math.max(1, Math.round(box.width) || 640);
+            var cssH = Math.max(1, Math.round(box.height) || 360);
+            canvas.width = Math.round(cssW * dpr);
+            canvas.height = Math.round(cssH * dpr);
+            var ctx = canvas.getContext("2d");
+            var W = canvas.width;
+            var H = canvas.height;
+            var minDim = Math.min(W, H);
+
+            var touchX = (num(vars.touch_x, 66, 8, 92) / 100) * W;
+            var touchY = (num(vars.touch_y, 38, 8, 92) / 100) * H;
+            var centerX = W * 0.5;
+            var centerY = H * 0.5;
+            var R = minDim * 0.26;
+
+            // Direction of attraction, guarded for a touch at dead center.
+            var dxT = touchX - centerX;
+            var dyT = touchY - centerY;
+            var distT = Math.hypot(dxT, dyT);
+            var dirX = distT > 1 ? dxT / distT : 0.7071;
+            var dirY = distT > 1 ? dyT / distT : -0.7071;
+
+            // Resolve accent and fg to concrete rgb once at mount so canvas
+            // fills never depend on style recalc during seeks. Mixing happens
+            // numerically here (computed color-mix strings are not parseable
+            // across engines).
+            function probeColor(cssColor, fallback) {
+              var probe = root.ownerDocument.createElement("span");
+              probe.style.color = cssColor;
+              root.appendChild(probe);
+              var out = getComputedStyle(probe).color || fallback;
+              probe.remove();
+              var m = out.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+              if (!m) {
+                m = fallback.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+              }
+              return m
+                ? [Number(m[1]), Number(m[2]), Number(m[3])]
+                : [113, 245, 167];
+            }
+            var accentRgb = probeColor(accentColors[accent], "rgb(113, 245, 167)");
+            var fgRgb = probeColor("var(--fg, #f8fafc)", "rgb(248, 250, 252)");
+            function mix(a, b, t) {
+              return [
+                Math.round(a[0] + (b[0] - a[0]) * t),
+                Math.round(a[1] + (b[1] - a[1]) * t),
+                Math.round(a[2] + (b[2] - a[2]) * t),
+              ];
+            }
+            function rgba(c, a) {
+              return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")";
+            }
+            var bodyRgb = mix(accentRgb, fgRgb, 0.18);
+            var softRgb = mix(accentRgb, fgRgb, 0.55);
+
+            // The grain table: computed exactly once, then only read.
+            var counts = { fine: 1500, coarse: 760 };
+            var sizes = { fine: 0.0055, coarse: 0.0102 };
+            var COUNT = counts[grain];
+            var SPECK = sizes[grain] * minDim;
+            var grains = (function () {
+              var state = 0x50f7b10b;
+              function next() {
+                state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+                return state / 4294967296;
+              }
+              var rows = [];
+              for (var i = 0; i < COUNT; i += 1) {
+                // Radial distribution with a fuzzy tail past R: density thins
+                // toward the boundary and alpha fades it out, so the edge is
+                // granular vapor, never a line.
+                var rr = Math.pow(next(), 0.55) * R * 1.16;
+                var th = next() * Math.PI * 2;
+                var edge = Math.max(0, Math.min(1, (1.16 - rr / R) / 0.42));
+                rows.push({
+                  x: Math.cos(th) * rr,
+                  y: Math.sin(th) * rr * 0.94,
+                  size: SPECK * (0.5 + 0.9 * next()),
+                  dim: (0.3 + 0.7 * next()) * edge,
+                  tone: next(),
+                  driftAmp: (0.008 + 0.014 * next()) * minDim,
+                  driftCycles: next() < 0.5 ? 1 : 2,
+                  phaseX: next() * Math.PI * 2,
+                  phaseY: next() * Math.PI * 2,
+                });
+              }
+              return rows;
+            })();
+
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+
+            // Deformation params. Attack lifts both toward CUT value; the
+            // recovery springs them home. The painter owns all amplitudes.
+            var P = { bulge: 0, lean: 0 };
+            var bCut = 1 - Math.pow(1 - CUT_FRAC, 2); // power2.out at the cut
+            var vCut = (2 * (1 - CUT_FRAC)) / ATTACK_NAT; // slope there, per s
+            var attackEase = function (p) {
+              return (1 - Math.pow(1 - p * CUT_FRAC, 2)) / bCut;
+            };
+            // Closed-form underdamped spring x(s), x(0) = 1, x'(0) = vCut/bCut
+            // (velocity preserved across the cut), corrected by a linear ramp
+            // so x(RECOVER) is exactly zero. Higher frequency for the local
+            // bulge, lower for the whole-mass lean: the surface snaps back
+            // faster than the body.
+            function springEase(lambda, omega) {
+              var v0 = vCut / bCut;
+              var c2 = (v0 + lambda) / omega;
+              function x(s) {
+                return (
+                  Math.exp(-lambda * s) *
+                  (Math.cos(omega * s) + c2 * Math.sin(omega * s))
+                );
+              }
+              var xEnd = x(RECOVER);
+              return function (p) {
+                var s = p * RECOVER;
+                return 1 - (x(s) - (s / RECOVER) * xEnd);
+              };
+            }
+            var bulgeSpring = springEase(4.2, Math.PI * 2 * 2.2);
+            var leanSpring = springEase(3.6, Math.PI * 2 * 1.5);
+
+            // Pure repaint: clear, then rebuild the whole frame from
+            // (grain table, P, t). Drift phase u completes integer sine
+            // cycles over [0, IN_END] and is exactly zero from IN_END on,
+            // so the HOLD frame is dead still.
+            var sigma = R * 0.85;
+            var bulgeAmp = R * 0.62;
+            var leanAmp = minDim * 0.045;
+            function paint(t) {
+              ctx.clearRect(0, 0, W, H);
+              var u = clamp01(t / IN_END);
+              var lx = leanAmp * P.lean * dirX;
+              var ly = leanAmp * P.lean * dirY;
+              var cx = centerX + lx;
+              var cy = centerY + ly;
+
+              // Layered radial gradients: wide aura, mid glow, dense core,
+              // and a bulge lobe that swells toward the touch point.
+              var aura = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
+              aura.addColorStop(0, rgba(accentRgb, 0.16));
+              aura.addColorStop(0.55, rgba(accentRgb, 0.06));
+              aura.addColorStop(1, rgba(accentRgb, 0));
+              ctx.fillStyle = aura;
+              ctx.fillRect(0, 0, W, H);
+
+              var mid = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.12);
+              mid.addColorStop(0, rgba(bodyRgb, 0.34));
+              mid.addColorStop(0.62, rgba(bodyRgb, 0.16));
+              mid.addColorStop(1, rgba(bodyRgb, 0));
+              ctx.fillStyle = mid;
+              ctx.fillRect(0, 0, W, H);
+
+              var core = ctx.createRadialGradient(
+                cx - R * 0.12,
+                cy - R * 0.14,
+                0,
+                cx,
+                cy,
+                R * 0.62,
+              );
+              core.addColorStop(0, rgba(softRgb, 0.4));
+              core.addColorStop(1, rgba(softRgb, 0));
+              ctx.fillStyle = core;
+              ctx.fillRect(0, 0, W, H);
+
+              if (P.bulge > 0.001) {
+                var lobeX = cx + dirX * R * 0.72;
+                var lobeY = cy + dirY * R * 0.72;
+                var lobeR = R * (0.22 + 0.5 * P.bulge);
+                var lobe = ctx.createRadialGradient(lobeX, lobeY, 0, lobeX, lobeY, lobeR);
+                lobe.addColorStop(0, rgba(softRgb, 0.34 * P.bulge));
+                lobe.addColorStop(1, rgba(softRgb, 0));
+                ctx.fillStyle = lobe;
+                ctx.fillRect(0, 0, W, H);
+              }
+
+              // Grain field. Each speck drifts on its own integer-cycle sine
+              // (zero at u = 0 and u = 1) and is attracted toward the touch
+              // point with an exponential falloff: the material near the dot
+              // reaches for it, the far side barely stirs.
+              var TAU = Math.PI * 2;
+              for (var i = 0; i < grains.length; i += 1) {
+                var g = grains[i];
+                var driftX =
+                  g.driftAmp *
+                  (Math.sin(TAU * g.driftCycles * u + g.phaseX) - Math.sin(g.phaseX));
+                var driftY =
+                  g.driftAmp *
+                  (Math.sin(TAU * g.driftCycles * u + g.phaseY) - Math.sin(g.phaseY));
+                var gx = cx + g.x + driftX;
+                var gy = cy + g.y + driftY;
+                if (P.bulge > 0.001) {
+                  var tx = touchX - gx;
+                  var ty = touchY - gy;
+                  var td = Math.hypot(tx, ty);
+                  if (td > 0.5) {
+                    var w = Math.exp(-td / sigma);
+                    var pull = (bulgeAmp * P.bulge * w) / td;
+                    gx += tx * pull;
+                    gy += ty * pull;
+                  }
+                }
+                var c = g.tone < 0.62 ? softRgb : fgRgb;
+                ctx.globalAlpha = g.dim * 0.85;
+                ctx.fillStyle = rgba(c, 1);
+                ctx.beginPath();
+                ctx.arc(gx, gy, g.size, 0, TAU);
+                ctx.fill();
+              }
+              ctx.globalAlpha = 1;
+            }
+
+            // Touch dot choreography, transforms only, px space of the host
+            // box (canvas coordinates divided by dpr).
+            var stageW = cssW;
+            var stageH = cssH;
+            var dotX = touchX / dpr;
+            var dotY = touchY / dpr;
+            // Enter and leave along the attraction axis, from off stage.
+            var away = Math.hypot(stageW, stageH) * 0.7;
+            var offX = dotX + dirX * away;
+            var offY = dotY + dirY * away;
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+            gsap.set(touchDot, { x: offX, y: offY, opacity: 0 });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                paint(tl.time());
+              },
+            });
+
+            // Anchor tween: spans the full authored duration so seeks into
+            // the hold keep tl.time() honest and onUpdate (the canvas
+            // repaint) fires for every eventful seek anywhere in [0, D].
+            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
+
+            // The dot decel-arrives (power3.out: it arrives, it never
+            // passes through), dwells for the press, then accelerates away.
+            var arriveStart = Math.max(0, touchAt - 0.85);
+            tl.fromTo(
+              touchDot,
+              { x: offX, y: offY, opacity: 0 },
+              {
+                x: dotX,
+                y: dotY,
+                opacity: 1,
+                duration: touchAt - arriveStart,
+                ease: "power3.out",
+              },
+              arriveStart,
+            );
+            tl.fromTo(
+              touchDot,
+              { x: dotX, y: dotY, opacity: 1 },
+              {
+                x: offX,
+                y: offY,
+                opacity: 0,
+                duration: 0.55,
+                ease: "power2.in",
+                immediateRender: false,
+              },
+              cutAt,
+            );
+
+            // Attack: the truncated lean-in, cut mid-flight at the dot lift.
+            tl.fromTo(
+              P,
+              { bulge: 0, lean: 0 },
+              { bulge: bCut, lean: bCut, duration: ATTACK, ease: attackEase },
+              touchAt,
+            );
+            // Recovery: velocity-matched closed-form springs back to rest.
+            tl.fromTo(
+              P,
+              { bulge: bCut },
+              {
+                bulge: 0,
+                duration: RECOVER,
+                ease: bulgeSpring,
+                immediateRender: false,
+              },
+              cutAt,
+            );
+            tl.fromTo(
+              P,
+              { lean: bCut },
+              {
+                lean: 0,
+                duration: RECOVER,
+                ease: leanSpring,
+                immediateRender: false,
+              },
+              cutAt,
+            );
+
+            // HOLD: truly still. Drift is zero past IN_END by construction
+            // and both params are home, so every hold frame is identical.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            paint(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["soft-blob-touch"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

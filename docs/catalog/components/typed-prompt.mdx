@@ -1,0 +1,47 @@
+---
+title: "Typed Prompt"
+description: "A prompt line types itself in chunked human cadence behind a deterministic blinking caret, with optional backspace-and-retype correction of the final word."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/typed-prompt.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Typed Prompt preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add typed-prompt" />
+
+That writes one file: `compositions/components/typed-prompt.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/typed-prompt.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `Generate a product launch video` | string | The prompt that gets typed. |
+| `prompt_glyph` | `>` | string | Leading glyph before the typed line. Empty string hides it. |
+| `cadence` | `human` | `uniform`, `human` | Keystroke rhythm: uniform fixed steps or seeded human chunks. |
+| `caret` | `blink` | `blink`, `solid` | Blink runs integer sine cycles during typing then goes solid. |
+| `correction` | `` | string | Mistyped word typed in place of the final word, then backspaced and corrected. Empty disables. |
+| `cues` | `` | string | Comma-separated seconds relative to mount start; cue N anchors the start of word N. Empty uses the authored rhythm. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color of the prompt glyph and caret. |
+| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. Frame roots own transitions; none holds the end frame. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `typing` `prompt` `deterministic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>US Flow Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="us-map-flow"
+      data-composition-id="us-map-flow"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="12"
+    >
+      <div class="flow-header">
+        <h1 class="flow-headline">Interstate Flow Connections</h1>
+        <p class="flow-subtitle">Relative volume of major city-to-city corridors</p>
+      </div>
+
+      <svg class="flow-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="arc-glow">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="dot-glow">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <g class="states-group"></g>
+        <g class="arcs-group"></g>
+        <g class="traveling-dots-group"></g>
+        <g class="city-dots-group"></g>
+        <g class="city-labels-group"></g>
+      </svg>
+
+      <div class="flow-source">Source: Illustrative data</div>
+
+      <style>
+        #us-map-flow {
+          position: relative;
+          width: 1920px;
+          height: 1080px;
+          background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+          font-family: "Inter", sans-serif;
+          color: #ffffff;
+          overflow: hidden;
+        }
+
+        #us-map-flow .flow-header {
+          position: absolute;
+          top: 40px;
+          left: 60px;
+          z-index: 2;
+        }
+
+        #us-map-flow .flow-headline {
+          font-size: 48px;
+          font-weight: 700;
+          color: #f8fafc;
+          letter-spacing: -0.02em;
+          clip-path: inset(0 100% 0 0);
+        }
+
+        #us-map-flow .flow-subtitle {
+          font-size: 22px;
+          font-weight: 300;
+          color: #94a3b8;
+          margin-top: 8px;
+          opacity: 0;
+        }
+
+        #us-map-flow .flow-svg {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1920px;
+          height: 1080px;
+        }
+
+        #us-map-flow .state-path {
+          fill: #1e293b;
+          stroke: #334155;
+          stroke-width: 0.5;
+          opacity: 0;
+        }
+
+        #us-map-flow .arc-path {
+          fill: none;
+          stroke: #3b82f6;
+          filter: url(#arc-glow);
+          stroke-linecap: round;
+        }
+
+        #us-map-flow .city-dot {
+          fill: #ffffff;
+          filter: url(#dot-glow);
+          opacity: 0;
+        }
+
+        #us-map-flow .city-label {
+          fill: #cbd5e1;
+          font-family: "Inter", sans-serif;
+          font-size: 13px;
+          font-weight: 500;
+          opacity: 0;
+        }
+
+        #us-map-flow .traveling-dot {
+          fill: #60a5fa;
+          opacity: 0;
+        }
+
+        #us-map-flow .flow-source {
+          position: absolute;
+          bottom: 30px;
+          right: 60px;
+          font-size: 14px;
+          font-weight: 400;
+          color: #475569;
+          opacity: 0;
+        }
+      </style>
+
+      <script>
+        (function () {
+          var NS = "http://www.w3.org/2000/svg";
+          var root = document.getElementById("us-map-flow");
+          var svg = root.querySelector(".flow-svg");
+          var statesGroup = svg.querySelector(".states-group");
+          var arcsGroup = svg.querySelector(".arcs-group");
+          var travelingDotsGroup = svg.querySelector(".traveling-dots-group");
+          var cityDotsGroup = svg.querySelector(".city-dots-group");
+          var cityLabelsGroup = svg.querySelector(".city-labels-group");
+
+          var tl = gsap.timeline({ paused: true });
+
+          /* --- City data: name → [longitude, latitude] (D3 uses [lon, lat]) --- */
+          var cities = {
+            "San Francisco": [-122.4194, 37.7749],
+            "New York": [-74.006, 40.7128],
+            "Los Angeles": [-118.2437, 34.0522],
+            Chicago: [-87.6298, 41.8781],
+            Seattle: [-122.3321, 47.6062],
+            Austin: [-97.7431, 30.2672],
+            Miami: [-80.1918, 25.7617],
+            Denver: [-104.9903, 39.7392],
+            Houston: [-95.3698, 29.7604],
+            Atlanta: [-84.388, 33.749],
+            Boston: [-71.0589, 42.3601],
+            Dallas: [-96.797, 32.7767],
+          };
+
+          /* --- Flow connections --- */
+          var flows = [
+            { from: "San Francisco", to: "New York", volume: 100 },
+            { from: "Los Angeles", to: "Chicago", volume: 85 },
+            { from: "Seattle", to: "Austin", volume: 70 },
+            { from: "New York", to: "Miami", volume: 90 },
+            { from: "Chicago", to: "Denver", volume: 65 },
+            { from: "Houston", to: "Atlanta", volume: 75 },
+            { from: "Boston", to: "San Francisco", volume: 80 },
+            { from: "Denver", to: "Los Angeles", volume: 60 },
+            { from: "Atlanta", to: "Dallas", volume: 55 },
+            { from: "Miami", to: "New York", volume: 50 },
+            { from: "Austin", to: "Seattle", volume: 45 },
+            { from: "Dallas", to: "Chicago", volume: 40 },
+          ];
+
+          var maxVolume = 100;
+          var minWidth = 1.5;
+          var maxWidth = 4;
+
+          /* --- Projection centered on continental US --- */
+          var projection = d3.geoAlbersUsa().scale(1300).translate([960, 560]);
+
+          var pathGen = d3.geoPath().projection(projection);
+
+          /* --- Project city positions --- */
+          var projected = {};
+          var cityNames = Object.keys(cities);
+          cityNames.forEach(function (name) {
+            var p = projection(cities[name]);
+            if (p) {
+              projected[name] = { x: p[0], y: p[1] };
+            }
+          });
+
+          /* --- Unique city list for dots/labels (only those that project) --- */
+          var visibleCities = Object.keys(projected);
+
+          /* --- Build arc path string (quadratic bezier curving upward) --- */
+          function buildArcPath(fromName, toName) {
+            var p1 = projected[fromName];
+            var p2 = projected[toName];
+            if (!p1 || !p2) return null;
+            var x1 = p1.x;
+            var y1 = p1.y;
+            var x2 = p2.x;
+            var y2 = p2.y;
+            var midX = (x1 + x2) / 2;
+            var midY = Math.min(y1, y2) - Math.abs(x2 - x1) * 0.15;
+            return "M" + x1 + "," + y1 + " Q" + midX + "," + midY + " " + x2 + "," + y2;
+          }
+
+          /* --- Load topology and render states --- */
+          d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(function (us) {
+            var states = topojson.feature(us, us.objects.states).features;
+
+            states.forEach(function (feature) {
+              var d = pathGen(feature);
+              if (!d) return;
+              var path = document.createElementNS(NS, "path");
+              path.setAttribute("d", d);
+              path.setAttribute("class", "state-path");
+              statesGroup.appendChild(path);
+            });
+
+            /* --- Create arc paths --- */
+            var arcPaths = [];
+            flows.forEach(function (flow) {
+              var d = buildArcPath(flow.from, flow.to);
+              if (!d) return;
+
+              var strokeW = minWidth + (flow.volume / maxVolume) * (maxWidth - minWidth);
+              var arcOpacity = 0.4 + (flow.volume / maxVolume) * 0.6;
+
+              var path = document.createElementNS(NS, "path");
+              path.setAttribute("d", d);
+              path.setAttribute("class", "arc-path");
+              path.setAttribute("stroke-width", strokeW);
+              path.style.opacity = arcOpacity;
+              arcsGroup.appendChild(path);
+
+              var len = path.getTotalLength();
+              path.style.strokeDasharray = len;
+              path.style.strokeDashoffset = len;
+
+              arcPaths.push({ el: path, length: len });
+            });
+
+            /* --- Create city dots --- */
+            visibleCities.forEach(function (name) {
+              var p = projected[name];
+              var circle = document.createElementNS(NS, "circle");
+              circle.setAttribute("cx", p.x);
+              circle.setAttribute("cy", p.y);
+              circle.setAttribute("r", 5);
+              circle.setAttribute("class", "city-dot");
+              cityDotsGroup.appendChild(circle);
+            });
+
+            /* --- Create city labels with offset --- */
+            visibleCities.forEach(function (name) {
+              var p = projected[name];
+              var text = document.createElementNS(NS, "text");
+              text.setAttribute("x", p.x + 10);
+              text.setAttribute("y", p.y - 10);
+              text.setAttribute("class", "city-label");
+              text.textContent = name;
+              cityLabelsGroup.appendChild(text);
+            });
+
+            /* --- Create traveling dots (one per arc) --- */
+            var travelingDots = [];
+            arcPaths.forEach(function () {
+              var dot = document.createElementNS(NS, "circle");
+              dot.setAttribute("r", 3);
+              dot.setAttribute("class", "traveling-dot");
+              travelingDotsGroup.appendChild(dot);
+              travelingDots.push(dot);
+            });
+
+            /* ===== GSAP TIMELINE ===== */
+
+            /* 0s: headline clip-path wipe */
+            tl.to(
+              "#us-map-flow .flow-headline",
+              {
+                clipPath: "inset(0 0% 0 0)",
+                duration: 1,
+                ease: "power2.inOut",
+              },
+              0,
+            );
+
+            /* 0.3s: subtitle fade */
+            tl.to(
+              "#us-map-flow .flow-subtitle",
+              {
+                opacity: 1,
+                duration: 0.5,
+                ease: "power2.out",
+              },
+              0.3,
+            );
+
+            /* 0.6s: states fade in */
+            tl.to(
+              "#us-map-flow .state-path",
+              {
+                opacity: 1,
+                duration: 0.8,
+                ease: "power2.out",
+              },
+              0.6,
+            );
+
+            /* 1.5s: city dots pop in */
+            tl.to(
+              "#us-map-flow .city-dot",
+              {
+                opacity: 1,
+                scale: 1,
+                transformOrigin: "center center",
+                duration: 0.4,
+                stagger: 0.05,
+                ease: "back.out(1.7)",
+              },
+              1.5,
+            );
+
+            /* 2.5s: city labels fade in */
+            tl.to(
+              "#us-map-flow .city-label",
+              {
+                opacity: 1,
+                duration: 0.3,
+                stagger: 0.05,
+                ease: "power2.out",
+              },
+              2.5,
+            );
+
+            /* 3.5s: arcs draw sequentially */
+            arcPaths.forEach(function (arc, i) {
+              tl.to(
+                arc.el,
+                {
+                  strokeDashoffset: 0,
+                  duration: 1,
+                  ease: "power2.inOut",
+                },
+                3.5 + i * 0.2,
+              );
+            });
+
+            /* 7.0s: traveling dots animate along paths */
+            arcPaths.forEach(function (arc, i) {
+              var dot = travelingDots[i];
+              var pathEl = arc.el;
+              var pathLength = arc.length;
+
+              tl.set(dot, { opacity: 0.9 }, 7.0 + i * 0.1);
+
+              var progress = { value: 0 };
+              tl.to(
+                progress,
+                {
+                  value: 1,
+                  duration: 1.5,
+                  ease: "power1.inOut",
+                  onUpdate: function () {
+                    var pt = pathEl.getPointAtLength(progress.value * pathLength);
+                    dot.setAttribute("cx", pt.x);
+                    dot.setAttribute("cy", pt.y);
+                  },
+                  onComplete: function () {
+                    gsap.to(dot, { opacity: 0, duration: 0.3 });
+                  },
+                },
+                7.0 + i * 0.1,
+              );
+            });
+
+            /* 9.0s: source fade in */
+            tl.to(
+              "#us-map-flow .flow-source",
+              {
+                opacity: 1,
+                duration: 0.6,
+                ease: "power2.out",
+              },
+              9.0,
+            );
+
+            /* Register timeline */
+            window.__timelines = window.__timelines || {};
+            window.__timelines["us-map-flow"] = tl;
+          });
+        })();
+      </script>
+    </div>
+  </body>
+</html>

@@ -3,36 +3,26 @@ title: "Parallax Zoom"
 description: "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition"
 ---
 
-# Parallax Zoom
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition
-
-`transition` `zoom` `parallax` `grid` `hero`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/components/parallax-zoom.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Parallax Zoom preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add parallax-zoom" />
 
-```bash Terminal
-npx hyperframes add parallax-zoom
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Component |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `parallax-zoom.html` | `compositions/components/parallax-zoom.html` | hyperframes:snippet |
+That writes one file: `compositions/components/parallax-zoom.html`.
 
 ## Usage
 
 Open `compositions/components/parallax-zoom.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `zoom` `parallax` `grid` `hero`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,42 @@
+---
+title: "Beat Timeline"
+description: "A paused master-timeline orchestration spine that pins titled beat rows to evenly spaced named labels. Each row enters on its label, holds with the sequence, then exits with the group."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/beat-timeline.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Beat Timeline preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add beat-timeline" />
+
+That writes one file: `compositions/components/beat-timeline.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/beat-timeline.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `beatCount` | `4` | 2 to 6, step 1 | Number of beat rows in the sequence. |
+| `interval` | `0.6` | 0.2s to 2s, step 0.05s | Base time between consecutive beat markers. |
+| `labels` | `One,Two,Three,Four` | string | Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N. |
+
+{/* hf:generated-footer */}
+
+Tagged `orchestration` `transitions` `sequencing` `bridge` `timeline`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

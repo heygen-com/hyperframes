@@ -1,37 +1,17 @@
 ---
 title: "Motion Blur"
-description: "Velocity-driven directional motion blur — samples element position each frame and applies a one-sided ghost trail proportional to speed"
+description: "Velocity-driven motion blur — samples element position each frame and applies a one-sided SVG feGaussianBlur ghost trail proportional to speed"
 ---
 
-# Motion Blur
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Velocity-driven directional motion blur — samples element position each frame and applies a one-sided ghost trail proportional to speed.
-
-`effect` `motion-blur` `velocity` `animation` `physics`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/components/motion-blur.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Motion Blur preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add motion-blur" />
 
-```bash Terminal
-npx hyperframes add motion-blur
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Component |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `motion-blur.html` | `compositions/components/motion-blur.html` | hyperframes:snippet |
+That writes one file: `compositions/components/motion-blur.html`.
 
 ## Usage
 
@@ -68,3 +48,13 @@ Blur scales linearly with velocity up to `blurMax`. Both the ghost trail and top
 | `blurMax` | `20` | Max blur radius on the motion axis (px) |
 | `stretchScale` | `0.0002` | scaleX/Y added per px/s (requires `stretchMax > 0`) |
 | `stretchMax` | `0` | Max stretch above 1.0 — disabled by default |
+
+{/* hf:generated-footer */}
+
+Tagged `effect` `motion-blur` `velocity` `animation` `physics`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

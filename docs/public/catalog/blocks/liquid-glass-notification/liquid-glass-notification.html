@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="lib/liquid-glass.iife.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      body {
+        font-family: "Inter", sans-serif;
+        color: #fff;
+      }
+
+      #three-canvas {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        display: block;
+      }
+      #glass-canvas {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        display: block;
+        width: 1920px;
+        height: 1080px;
+      }
+      .text-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .glass-panel {
+        position: absolute;
+        width: 520px;
+        height: 118px;
+        background: rgba(255, 255, 255, 0.06);
+        --lg-blur: 0.22;
+        --lg-refraction: 0.6;
+        --lg-corner-radius: 36;
+        --lg-z-radius: 38;
+        --lg-specular: 0.2;
+        --lg-fresnel: 0.9;
+        --lg-edge-highlight: 0.1;
+        --lg-chrom-aberration: 0.05;
+        --lg-shadow-opacity: 0.35;
+        --lg-shadow-spread: 14;
+        --lg-shadow-offset-y: 4;
+        --lg-saturation: 0.25;
+      }
+      .glass-panel.p1 {
+        top: 60px;
+        left: 1340px;
+      }
+      .glass-panel.p2 {
+        top: 196px;
+        left: 1340px;
+      }
+
+      .notif-card {
+        position: absolute;
+        width: 520px;
+        height: 118px;
+        padding: 18px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: #fff;
+      }
+      .notif-card.c1 {
+        top: 60px;
+        left: 1340px;
+      }
+      .notif-card.c2 {
+        top: 196px;
+        left: 1340px;
+      }
+
+      .avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        font-weight: 800;
+        flex-shrink: 0;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.35),
+          0 10px 24px rgba(0, 0, 0, 0.24);
+      }
+      .avatar-ja {
+        width: 128px;
+        border-radius: 20px;
+        background: rgba(2, 4, 10, 0.72);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.18),
+          0 10px 24px rgba(0, 0, 0, 0.24);
+      }
+      .hyperframes-logo {
+        width: 102px;
+        height: auto;
+        display: block;
+      }
+      .avatar-kl {
+        background: linear-gradient(135deg, #ff7ab6, #8b5cf6);
+      }
+      .notif-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .notif-header {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 3px;
+      }
+      .notif-name {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .notif-time {
+        font-size: 14px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      .notif-text {
+        font-size: 17px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.88);
+        line-height: 1.32;
+      }
+      .notif-progress {
+        position: absolute;
+        right: 26px;
+        bottom: 15px;
+        left: 168px;
+        height: 3px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .notif-progress-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+        box-shadow: 0 0 16px rgba(79, 219, 94, 0.55);
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #06e3fa;
+        box-shadow: 0 0 16px rgba(6, 227, 250, 0.65);
+      }
+      .notif-actions {
+        position: absolute;
+        right: 22px;
+        bottom: 13px;
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+      }
+      .action-chip {
+        padding: 5px 11px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+        color: rgba(255, 255, 255, 0.94);
+        font-size: 12px;
+        font-weight: 750;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      }
+      .typing-dots {
+        display: inline-flex;
+        gap: 3px;
+        margin-left: 5px;
+        transform: translateY(-1px);
+      }
+      .typing-dots span {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.72);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="liquid-glass-notification"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas id="three-canvas"></canvas>
+
+      <canvas id="glass-canvas" layoutsubtree width="1920" height="1080">
+        <div class="glass-panel liquid-glass p1" id="gp1"></div>
+        <div class="glass-panel liquid-glass p2" id="gp2"></div>
+      </canvas>
+
+      <div class="text-overlay">
+        <div class="notif-card c1" id="txt1">
+          <div class="avatar avatar-ja">
+            <img
+              class="hyperframes-logo"
+              src="assets/hyperframes-logo-dark.svg"
+              alt="HyperFrames"
+            />
+          </div>
+          <div class="notif-body">
+            <div class="notif-header">
+              <span class="notif-name">Render complete</span>
+              <span class="status-dot" id="status-dot"></span>
+              <span class="notif-time" id="render-status">rendering</span>
+            </div>
+            <div class="notif-text" id="render-copy">
+              Liquid glass preview is encoding with GPU capture.
+            </div>
+            <div class="notif-progress">
+              <div class="notif-progress-fill" id="render-progress"></div>
+            </div>
+          </div>
+        </div>
+        <div class="notif-card c2" id="txt2">
+          <div class="avatar avatar-kl">M</div>
+          <div class="notif-body">
+            <div class="notif-header">
+              <span class="notif-name">Messages</span>
+              <span class="notif-time">now</span>
+            </div>
+            <div class="notif-text">
+              Miguel: can it feel alive but still native?
+              <span class="typing-dots" id="typing-dots"
+                ><span></span><span></span><span></span
+              ></span>
+            </div>
+            <div class="notif-actions" id="reply-actions">
+              <span class="action-chip">Reply</span>
+              <span class="action-chip">Mark Read</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var threeCanvas = document.getElementById("three-canvas");
+        var threeRenderer = new THREE.WebGLRenderer({
+          canvas: threeCanvas,
+          antialias: false,
+          preserveDrawingBuffer: true,
+        });
+        threeRenderer.setSize(1920, 1080);
+        threeRenderer.setPixelRatio(1);
+        var threeScene = new THREE.Scene();
+        var threeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        var fs = [
+          "precision highp float;",
+          "varying vec2 vUv;",
+          "uniform float uTime;",
+          "vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}",
+          "vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}",
+          "vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}",
+          "vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}",
+          "float snoise(vec3 v){",
+          "  const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);",
+          "  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);",
+          "  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;",
+          "  vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);",
+          "  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;",
+          "  i=mod289(i);",
+          "  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));",
+          "  float n_=0.142857142857;vec3 ns=n_*D.wyz-D.xzx;",
+          "  vec4 j=p-49.0*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);",
+          "  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);",
+          "  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);",
+          "  vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;",
+          "  vec4 sh=-step(h,vec4(0.0));",
+          "  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;",
+          "  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);",
+          "  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));",
+          "  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;",
+          "  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;",
+          "  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));",
+          "}",
+          "void main(){",
+          "  vec2 uv=vUv;float ar=1920.0/1080.0;vec2 p=vec2(uv.x*ar,uv.y);float t=uTime*0.06;",
+          "  float wx=snoise(vec3(p*1.4,t*0.5))*0.2;float wy=snoise(vec3(p*1.4+100.0,t*0.5))*0.2;",
+          "  vec2 wp=p+vec2(wx,wy);",
+          "  vec3 base=mix(vec3(0.10,0.02,0.22),vec3(0.04,0.10,0.25),smoothstep(0.0,1.0,uv.x*0.6+uv.y*0.4));",
+          "  float angle=0.65;float ridgeUv=dot(wp,vec2(cos(angle),sin(angle)));",
+          "  float ridge1=sin(ridgeUv*8.0+t*2.0+snoise(vec3(wp*0.8,t))*1.5);",
+          "  float ridge2=sin(ridgeUv*5.5-t*1.4+snoise(vec3(wp*1.2+50.0,t*0.7))*2.0);",
+          "  float ridge3=sin(ridgeUv*12.0+t*3.0+snoise(vec3(wp*0.6+80.0,t*0.4))*1.0);",
+          "  float crease1=pow(abs(ridge1),0.35)*sign(ridge1)*0.5+0.5;",
+          "  float crease2=pow(abs(ridge2),0.4)*sign(ridge2)*0.5+0.5;",
+          "  float crease3=pow(abs(ridge3),0.5)*sign(ridge3)*0.5+0.5;",
+          "  vec3 warm=mix(vec3(0.9,0.4,0.08),vec3(0.95,0.65,0.15),crease1);",
+          "  float warmZone=smoothstep(0.15,0.75,uv.x+uv.y*0.4+snoise(vec3(uv*2.0,t))*0.3);",
+          "  vec3 cool=mix(vec3(0.02,0.4,0.55),vec3(0.25,0.7,0.82),crease2);",
+          "  float coolZone=smoothstep(0.25,0.85,1.2-uv.x+uv.y*0.5+snoise(vec3(uv*2.0+40.0,t*0.8))*0.25);",
+          "  vec3 hot=mix(vec3(0.8,0.1,0.4),vec3(0.6,0.08,0.65),crease3);",
+          "  float hotZone=smoothstep(0.5,0.9,snoise(vec3(uv*2.5+20.0,t*0.6))*0.5+0.5);",
+          "  vec3 col=base;",
+          "  col=mix(col,warm,warmZone*0.75*smoothstep(0.3,0.7,crease1));",
+          "  col=mix(col,cool,coolZone*0.65*smoothstep(0.2,0.65,crease2));",
+          "  col=mix(col,hot,hotZone*0.5*smoothstep(0.35,0.8,crease3));",
+          "  float edgeGlow=pow(1.0-abs(ridge1),6.0)*0.4+pow(1.0-abs(ridge2),5.0)*0.25;",
+          "  col+=edgeGlow*mix(warm,cool,uv.x)*0.8;",
+          "  col*=1.0-pow(abs(ridge1),4.0)*0.15;",
+          "  float vig=1.0-smoothstep(0.5,1.5,length((uv-0.5)*vec2(1.3,1.0)));",
+          "  col*=0.65+vig*0.5;",
+          "  float luma=dot(col,vec3(0.299,0.587,0.114));col=mix(vec3(luma),col,1.5);",
+          "  col=clamp(col,0.0,1.0);col=pow(col,vec3(0.9));",
+          "  gl_FragColor=vec4(col,1.0);",
+          "}",
+        ].join("\n");
+
+        var uniforms = { uTime: { value: 0.0 } };
+        threeScene.add(
+          new THREE.Mesh(
+            new THREE.PlaneGeometry(2, 2),
+            new THREE.ShaderMaterial({
+              vertexShader:
+                "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }",
+              fragmentShader: fs,
+              uniforms: uniforms,
+            }),
+          ),
+        );
+        threeRenderer.render(threeScene, threeCamera);
+
+        var glassCanvas = document.getElementById("glass-canvas");
+        var glassCtx = glassCanvas.getContext("2d");
+        var lg = new LiquidGlass.LiquidGlassCanvas(glassCanvas);
+
+        function renderFrame(time) {
+          uniforms.uTime.value = time;
+          threeRenderer.render(threeScene, threeCamera);
+          if (!lg.isReady) return;
+          glassCtx.clearRect(0, 0, 1920, 1080);
+          glassCtx.drawImage(threeCanvas, 0, 0, 1920, 1080);
+          lg.renderGlassElements();
+        }
+
+        var lgReady = false;
+        lg.waitForInit().then(function (ok) {
+          if (!ok) return;
+          lgReady = true;
+          glassCanvas.onpaint = function () {
+            renderFrame(0);
+          };
+          if (glassCanvas.requestPaint) glassCanvas.requestPaint();
+        });
+
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        tl.to(
+          {},
+          {
+            duration: 8,
+            ease: "none",
+            onUpdate: function () {
+              var t = tl.time();
+              uniforms.uTime.value = t;
+              threeRenderer.render(threeScene, threeCamera);
+              if (lgReady) {
+                glassCanvas.onpaint = function () {
+                  glassCtx.clearRect(0, 0, 1920, 1080);
+                  glassCtx.drawImage(threeCanvas, 0, 0, 1920, 1080);
+                  lg.renderGlassElements();
+                };
+                if (glassCanvas.requestPaint) glassCanvas.requestPaint();
+              }
+            },
+          },
+          0,
+        );
+
+        var renderStatus = document.getElementById("render-status");
+        var renderCopy = document.getElementById("render-copy");
+
+        gsap.set(["#gp1", "#gp2"], { left: "1980px", opacity: 0 });
+        gsap.set(["#txt1", "#txt2"], { x: 640, opacity: 0 });
+        gsap.set("#reply-actions", { y: 8, opacity: 0 });
+        gsap.set("#typing-dots span", { opacity: 0.35 });
+
+        tl.to("#gp1", { left: "1326px", opacity: 1, duration: 0.38, ease: "power3.out" }, 0.18);
+        tl.to("#txt1", { x: -14, opacity: 1, duration: 0.38, ease: "power3.out" }, 0.18);
+        tl.to("#gp1", { left: "1340px", duration: 0.16, ease: "power2.out" }, 0.56);
+        tl.to("#txt1", { x: 0, duration: 0.16, ease: "power2.out" }, 0.56);
+
+        tl.to("#gp2", { left: "1326px", opacity: 1, duration: 0.36, ease: "power3.out" }, 0.82);
+        tl.to("#txt2", { x: -14, opacity: 1, duration: 0.36, ease: "power3.out" }, 0.82);
+        tl.to("#gp2", { left: "1340px", duration: 0.16, ease: "power2.out" }, 1.18);
+        tl.to("#txt2", { x: 0, duration: 0.16, ease: "power2.out" }, 1.18);
+
+        tl.to("#render-progress", { width: "100%", duration: 3.4, ease: "none" }, 0.82);
+        tl.to(
+          "#status-dot",
+          { scale: 1.45, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 },
+          1.1,
+        );
+        tl.to(
+          "#typing-dots span",
+          {
+            opacity: 1,
+            y: -2,
+            duration: 0.22,
+            ease: "power2.out",
+            stagger: 0.08,
+            yoyo: true,
+            repeat: 5,
+          },
+          1.2,
+        );
+        tl.to("#gp2", { top: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
+        tl.to("#txt2", { y: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
+        tl.to("#gp2", { top: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
+        tl.to("#txt2", { y: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
+        tl.to("#reply-actions", { y: 0, opacity: 1, duration: 0.24, ease: "power2.out" }, 2.72);
+        tl.to(
+          "#status-dot",
+          {
+            backgroundColor: "#4ade80",
+            boxShadow: "0 0 18px rgba(74, 222, 128, 0.8)",
+            duration: 0.15,
+          },
+          4.25,
+        );
+        tl.call(
+          function () {
+            renderStatus.textContent = "complete";
+            renderCopy.textContent = "liquid-glass-notification.mp4 is ready.";
+          },
+          null,
+          4.25,
+        );
+        tl.to(
+          "#gp1",
+          { top: "-=8", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
+          4.25,
+        );
+        tl.to(
+          "#txt1",
+          { y: "-=8", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
+          4.25,
+        );
+
+        tl.to("#gp1", { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" }, 6.72);
+        tl.to("#txt1", { x: 640, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.72);
+        tl.to("#gp2", { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" }, 6.9);
+        tl.to("#txt2", { x: 640, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.9);
+
+        window.__timelines["liquid-glass-notification"] = tl;
+      })();
+    </script>
+  </body>
+</html>

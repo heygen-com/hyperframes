@@ -1,0 +1,42 @@
+---
+title: "Pan Stations"
+description: "A lateral camera move across a continuous row of labeled feature stations, with a steady dwell at each stop before the next pan."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/pan-stations.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Pan Stations preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add pan-stations" />
+
+That writes one file: `compositions/components/pan-stations.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pan-stations.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `stationCount` | `4` | 3 to 6, step 1 | Number of feature stations in the row. |
+| `labels` | `Capture,Edit,Render,Share` | string | Comma-separated labels shown on the station cards. |
+| `dwell` | `0.6` | 0.2s to 2s, step 0.1s | Seconds the camera holds at each station before panning. |
+
+{/* hf:generated-footer */}
+
+Tagged `camera` `pan` `stations` `features` `exhibit` `agitate` `cross-shelved`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

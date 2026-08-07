@@ -1,0 +1,353 @@
+<!doctype html>
+<!--
+  locked-nucleus-orbit: HyperFrames video primitive (intros / reveals / orbit)
+
+  One nucleus stays dead center for the full composition. Satellite rings and
+  copy chips fade in while orbiting on deterministic index-based phases, then
+  decelerate into a composed lockup. The nucleus is never a GSAP target.
+
+  Variables:
+    - label (string, default "core"): text inside the fixed nucleus.
+    - accent (green | blue | violet, default green): active color.
+    - satellites (number, 3 to 6, default 4): visible satellite count.
+
+  Envelope (fixed IN and ORBIT, elastic HOLD, no OUT):
+    IN_BASE    = 0.45s, rings and chips fade in along their orbital arcs
+    ORBIT_BASE = 1.75s, satellites decelerate into their final phases
+    HOLD       = max(0, D - (IN + ORBIT)), only ring opacity breathes
+    OUT        = 0s, the composed lockup is the final state
+    If D is shorter than IN_BASE + ORBIT_BASE, IN and ORBIT compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, has no data-width or data-height, and registers one paused timeline
+  under the hardcoded locked-nucleus-orbit id.
+-->
+<html
+  lang="en"
+  data-composition-id="locked-nucleus-orbit"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "label", "type": "string", "role": "content", "label": "Nucleus label", "description": "Text displayed inside the fixed center nucleus.", "default": "core" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the nucleus, rings, and satellite markers.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "satellites", "type": "number", "role": "layout", "label": "Satellites", "description": "Number of orbiting copy chips.", "default": 4, "min": 3, "max": 6, "step": 1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Locked Nucleus Orbit</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="locked-nucleus-orbit" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .lno-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .lno-field {
+            position: absolute;
+            inset: 0;
+          }
+
+          .lno-ring {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: var(--lno-size);
+            aspect-ratio: 1;
+            border: 0.12cqmin solid color-mix(in srgb, var(--lno-accent) 34%, transparent);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transform-origin: 50% 50%;
+            box-shadow: inset 0 0 3cqmin color-mix(in srgb, var(--lno-accent) 5%, transparent);
+            opacity: 0;
+          }
+
+          .lno-ring:nth-child(1) {
+            --lno-size: 46cqmin;
+          }
+
+          .lno-ring:nth-child(2) {
+            --lno-size: 58cqmin;
+          }
+
+          .lno-ring:nth-child(3) {
+            --lno-size: 70cqmin;
+          }
+
+          .lno-nucleus {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 15cqmin;
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            transform: translate(-50%, -50%);
+            border: 0.2cqmin solid color-mix(in srgb, var(--lno-accent) 68%, white 16%);
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--surface, #172033) 86%, var(--lno-accent) 14%);
+            box-shadow:
+              0 0 2.8cqmin color-mix(in srgb, var(--lno-accent) 38%, transparent),
+              inset 0 0 2.2cqmin color-mix(in srgb, var(--lno-accent) 18%, transparent);
+            z-index: 3;
+          }
+
+          .lno-nucleus::before {
+            content: "";
+            position: absolute;
+            width: 2.4cqmin;
+            aspect-ratio: 1;
+            top: 2.5cqmin;
+            border-radius: 50%;
+            background: var(--lno-accent);
+            box-shadow: 0 0 1.8cqmin color-mix(in srgb, var(--lno-accent) 72%, transparent);
+          }
+
+          .lno-nucleus-label {
+            max-width: 11cqmin;
+            margin-top: 3.1cqmin;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+            font-size: clamp(9px, 2cqmin, 20px);
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .lno-arm {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 0;
+            height: 0;
+            transform-origin: 0 0;
+          }
+
+          .lno-anchor {
+            position: absolute;
+            left: var(--lno-radius);
+            top: 0;
+            transform: translate(-50%, -50%);
+          }
+
+          .lno-chip {
+            min-width: 12cqmin;
+            max-width: 22cqmin;
+            min-height: 5.2cqmin;
+            display: flex;
+            align-items: center;
+            gap: 1.25cqmin;
+            padding: 1.1cqmin 1.8cqmin;
+            border: 0.12cqmin solid
+              color-mix(in srgb, var(--lno-accent) 48%, var(--border, #334155));
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--surface, #172033) 90%, transparent);
+            box-shadow: 0 1.2cqmin 3.6cqmin color-mix(in srgb, var(--bg, #0b0c0e) 60%, transparent);
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+
+          .lno-marker {
+            flex: 0 0 auto;
+            width: 2.4cqmin;
+            aspect-ratio: 1;
+            border: 0.32cqmin solid var(--lno-accent);
+            border-radius: 50%;
+            box-shadow: 0 0 1.4cqmin color-mix(in srgb, var(--lno-accent) 56%, transparent);
+          }
+
+          .lno-copy {
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+            font-size: clamp(8px, 1.8cqmin, 18px);
+            font-weight: 650;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="locked-nucleus-orbit-clip"
+          class="lno-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="lno-field">
+            <div class="lno-ring" aria-hidden="true"></div>
+            <div class="lno-ring" aria-hidden="true"></div>
+            <div class="lno-ring" aria-hidden="true"></div>
+            <div class="lno-satellites"></div>
+            <div class="lno-nucleus">
+              <span class="lno-nucleus-label"></span>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var label = root.querySelector(".lno-nucleus-label");
+            var satelliteLayer = root.querySelector(".lno-satellites");
+            var rings = root.querySelectorAll(".lno-ring");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var accentColors = {
+              green: "#34d399",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var countValue = Number(vars.satellites);
+            var satelliteCount =
+              vars.satellites != null && Number.isFinite(countValue)
+                ? Math.max(3, Math.min(6, Math.round(countValue)))
+                : 4;
+            var labelText = vars.label == null ? "core" : String(vars.label);
+            var copy = ["signal", "motion", "frames", "output", "sync", "lock"];
+            var radii = [23, 29, 35];
+
+            root.style.setProperty("--lno-accent", accentColors[accent]);
+            label.textContent = labelText;
+
+            var satellites = [];
+            for (var index = 0; index < satelliteCount; index += 1) {
+              var arm = document.createElement("div");
+              var anchor = document.createElement("div");
+              var chip = document.createElement("div");
+              var marker = document.createElement("span");
+              var chipCopy = document.createElement("span");
+
+              arm.className = "lno-arm";
+              anchor.className = "lno-anchor";
+              chip.className = "lno-chip";
+              marker.className = "lno-marker";
+              chipCopy.className = "lno-copy";
+              arm.style.setProperty("--lno-radius", radii[index % radii.length] + "cqmin");
+              chipCopy.textContent = copy[index];
+
+              chip.appendChild(marker);
+              chip.appendChild(chipCopy);
+              anchor.appendChild(chip);
+              arm.appendChild(anchor);
+              satelliteLayer.appendChild(arm);
+
+              var finalPhase = -90 + (360 * index) / satelliteCount;
+              var travel = 210 + (index % 3) * 70;
+              satellites.push({
+                arm: arm,
+                chip: chip,
+                startPhase: finalPhase - travel,
+                finalPhase: finalPhase,
+              });
+            }
+
+            var IN_BASE = 0.45;
+            var ORBIT_BASE = 1.75;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var motionBase = IN_BASE + ORBIT_BASE;
+            var motionScale = duration < motionBase ? duration / motionBase : 1;
+            var IN = IN_BASE * motionScale;
+            var ORBIT = ORBIT_BASE * motionScale;
+            var MOTION = IN + ORBIT;
+            var HOLD = Math.max(0, duration - MOTION);
+            var fadeStagger = Math.min(0.07, IN / (satelliteCount * 2));
+            var fadeDuration = Math.max(0.001, IN - fadeStagger * (satelliteCount - 1));
+
+            gsap.set(rings, { opacity: 0, scale: 0.86 });
+            satellites.forEach(function (satellite) {
+              gsap.set(satellite.arm, { rotation: satellite.startPhase });
+              gsap.set(satellite.chip, {
+                opacity: 0,
+                rotation: -satellite.startPhase,
+                scale: 0.82,
+              });
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(rings, { opacity: 0.38, scale: 1, duration: IN, ease: "power2.out" }, 0);
+
+            satellites.forEach(function (satellite, index) {
+              tl.to(
+                satellite.arm,
+                { rotation: satellite.finalPhase, duration: MOTION, ease: "power2.out" },
+                0,
+              );
+              tl.to(
+                satellite.chip,
+                { rotation: -satellite.finalPhase, duration: MOTION, ease: "power2.out" },
+                0,
+              );
+              tl.to(
+                satellite.chip,
+                {
+                  opacity: 1,
+                  scale: 1,
+                  duration: fadeDuration,
+                  ease: "back.out(1.7)",
+                },
+                index * fadeStagger,
+              );
+            });
+
+            if (HOLD > 0.2) {
+              tl.to(
+                rings,
+                {
+                  opacity: 0.5,
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                MOTION,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["locked-nucleus-orbit"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Devices Canvas — HTML-in-Canvas API Showcase</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #050508;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #050508;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="devices-canvas"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="15"
+      data-root="true"
+    >
+      <!-- LIVE HTML captured every frame via drawElementImage  -->
+      <canvas
+        id="cap-phone"
+        layoutsubtree
+        width="390"
+        height="844"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 390px;
+          height: 844px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <div
+          id="phone-html"
+          style="
+            width: 390px;
+            height: 844px;
+            overflow: hidden;
+            font-family: Inter, system-ui, sans-serif;
+            color: #e2e8f0;
+          "
+        >
+          <div
+            id="phone-scroll"
+            style="background: linear-gradient(180deg, #0a0a12, #0f0f1a); transform: translateY(0)"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 14px 18px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+              "
+            >
+              <span
+                style="
+                  font-weight: 800;
+                  font-size: 14px;
+                  background: linear-gradient(135deg, #34d399, #3b82f6);
+                  -webkit-background-clip: text;
+                  -webkit-text-fill-color: transparent;
+                "
+                >HyperFrames</span
+              ><span
+                style="
+                  font-size: 10px;
+                  font-weight: 600;
+                  padding: 5px 12px;
+                  border-radius: 6px;
+                  background: #10b981;
+                  color: #fff;
+                "
+                >Log in</span
+              >
+            </div>
+            <div
+              id="phone-title"
+              style="
+                font-size: 26px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+                padding: 18px 18px 6px;
+                line-height: 1.1;
+                opacity: 0;
+              "
+            >
+              Community Playground
+            </div>
+            <div style="font-size: 11px; color: rgba(255, 255, 255, 0.4); padding: 0 18px 14px">
+              Made with HyperFrames
+            </div>
+            <div style="display: flex; gap: 6px; padding: 0 18px 14px">
+              <span
+                style="
+                  font-size: 9px;
+                  font-weight: 600;
+                  padding: 4px 10px;
+                  border-radius: 16px;
+                  background: rgba(16, 185, 129, 0.15);
+                  color: #10b981;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >Examples</span
+              ><span
+                id="phone-count"
+                style="
+                  font-size: 9px;
+                  font-weight: 600;
+                  padding: 4px 10px;
+                  border-radius: 16px;
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  color: rgba(255, 255, 255, 0.5);
+                "
+                >Catalog 0</span
+              >
+            </div>
+            <div id="phone-cards" style="display: grid; gap: 10px; padding: 0 18px 18px"></div>
+          </div>
+        </div>
+      </canvas>
+
+      <canvas
+        id="cap-laptop"
+        layoutsubtree
+        width="1440"
+        height="900"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1440px;
+          height: 900px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <div
+          id="laptop-html"
+          style="
+            width: 1440px;
+            height: 900px;
+            overflow: hidden;
+            font-family: Inter, system-ui, sans-serif;
+            color: #e2e8f0;
+          "
+        >
+          <div
+            id="laptop-scroll"
+            style="background: linear-gradient(180deg, #0a0a12, #0f0f1a); transform: translateY(0)"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 18px 36px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+              "
+            >
+              <span
+                style="
+                  font-weight: 800;
+                  font-size: 17px;
+                  background: linear-gradient(135deg, #34d399, #3b82f6);
+                  -webkit-background-clip: text;
+                  -webkit-text-fill-color: transparent;
+                "
+                >HyperFrames</span
+              >
+              <div
+                style="display: flex; gap: 20px; font-size: 12px; color: rgba(255, 255, 255, 0.5)"
+              >
+                <span>Docs</span><span>Playground</span><span>Pricing</span>
+              </div>
+              <span
+                style="
+                  font-size: 11px;
+                  font-weight: 600;
+                  padding: 6px 14px;
+                  border-radius: 6px;
+                  background: #10b981;
+                  color: #fff;
+                "
+                >Log in</span
+              >
+            </div>
+            <div
+              id="laptop-title"
+              style="
+                font-size: 40px;
+                font-weight: 800;
+                letter-spacing: -1px;
+                padding: 28px 36px 10px;
+                opacity: 0;
+              "
+            >
+              Community Playground
+            </div>
+            <div style="font-size: 13px; color: rgba(255, 255, 255, 0.4); padding: 0 36px 18px">
+              Create videos with HTML — powered by HyperFrames
+            </div>
+            <div style="display: flex; gap: 8px; padding: 0 36px 20px">
+              <span
+                style="
+                  font-size: 10px;
+                  font-weight: 600;
+                  padding: 5px 12px;
+                  border-radius: 16px;
+                  background: rgba(16, 185, 129, 0.15);
+                  color: #10b981;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >Examples</span
+              ><span
+                id="laptop-count"
+                style="
+                  font-size: 10px;
+                  font-weight: 600;
+                  padding: 5px 12px;
+                  border-radius: 16px;
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  color: rgba(255, 255, 255, 0.5);
+                "
+                >Catalog 0</span
+              >
+            </div>
+            <div
+              id="laptop-cards"
+              style="
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 14px;
+                padding: 0 36px 36px;
+              "
+            ></div>
+          </div>
+        </div>
+      </canvas>
+
+      <canvas
+        id="theater"
+        width="1920"
+        height="1080"
+        style="position: absolute; top: 0; left: 0; width: 1920px; height: 1080px"
+      ></canvas>
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="15"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+    <script>
+      var W = 1920,
+        H = 1080,
+        PI = Math.PI;
+
+      // ── Renderer ───────────────────────────────────────────────────────
+      var renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("theater"),
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.setClearColor(0x050508, 1);
+
+      var scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050508);
+      var camera = new THREE.PerspectiveCamera(34, W / H, 0.1, 100);
+
+      // ── Environment Map ────────────────────────────────────────────────
+      var eC = document.createElement("canvas");
+      eC.width = 1024;
+      eC.height = 512;
+      var ec = eC.getContext("2d");
+      var eg = ec.createLinearGradient(0, 0, 1024, 512);
+      eg.addColorStop(0, "#020307");
+      eg.addColorStop(0.15, "#1a1a2e");
+      eg.addColorStop(0.3, "#ffffff");
+      eg.addColorStop(0.45, "#0a0a1e");
+      eg.addColorStop(0.6, "#ffffff");
+      eg.addColorStop(0.75, "#1e1e2e");
+      eg.addColorStop(1, "#020307");
+      ec.fillStyle = eg;
+      ec.fillRect(0, 0, 1024, 512);
+      ec.globalCompositeOperation = "screen";
+      for (var ei = 0; ei < 7; ei++) {
+        ec.fillStyle = "rgba(255,255,255," + (ei % 2 === 0 ? 0.15 : 0.08) + ")";
+        ec.fillRect((ei % 3) * 100, 60 + ei * 56, 700, 3 + (ei % 2) * 2);
+      }
+      var eT = new THREE.CanvasTexture(eC);
+      eT.mapping = THREE.EquirectangularReflectionMapping;
+      var pm = new THREE.PMREMGenerator(renderer);
+      scene.environment = pm.fromEquirectangular(eT).texture;
+      eT.dispose();
+      pm.dispose();
+
+      // ── Background ─────────────────────────────────────────────────────
+      scene.add(
+        new THREE.Mesh(
+          new THREE.PlaneGeometry(22, 14),
+          new THREE.ShaderMaterial({
+            uniforms: {},
+            vertexShader:
+              "varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
+            fragmentShader:
+              "varying vec2 v;void main(){vec3 c=vec3(0.02,0.02,0.03);c+=vec3(0.05,0.02,0.1)*exp(-pow(length(v-vec2(0.3,0.55)),2.0)*5.0);c+=vec3(0.02,0.05,0.1)*exp(-pow(length(v-vec2(0.7,0.45)),2.0)*5.0);gl_FragColor=vec4(c,1.0);}",
+            depthWrite: false,
+          }),
+        ),
+      ).position.z = -6;
+
+      var floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({ color: 0x050508, metalness: 0.95, roughness: 0.18 }),
+      );
+      floor.rotation.x = -PI / 2;
+      floor.position.y = -2.5;
+      scene.add(floor);
+
+      scene.add(new THREE.AmbientLight(0x222233, 0.5));
+      var kL = new THREE.DirectionalLight(0xffffff, 2.2);
+      kL.position.set(-3, 4, 5);
+      scene.add(kL);
+      var rL = new THREE.PointLight(0x6366f1, 3, 15);
+      rL.position.set(4, 2, 3);
+      scene.add(rL);
+      var wL = new THREE.PointLight(0xffc8a8, 1.5, 12);
+      wL.position.set(-3, -1, 4);
+      scene.add(wL);
+
+      // ── Live HTML → WebGL Texture  ─
+      var capPhoneCvs = document.getElementById("cap-phone");
+      var capPhoneCtx = capPhoneCvs.getContext("2d");
+      var phoneHtmlEl = document.getElementById("phone-html");
+      var phoneScrollEl = document.getElementById("phone-scroll");
+
+      var capLapCvs = document.getElementById("cap-laptop");
+      var capLapCtx = capLapCvs.getContext("2d");
+      var lapHtmlEl = document.getElementById("laptop-html");
+      var lapScrollEl = document.getElementById("laptop-scroll");
+
+      var apiOk = (function () {
+        var tc = document.createElement("canvas");
+        if (!("layoutSubtree" in tc)) return false;
+        tc.setAttribute("layoutsubtree", "");
+        var ctx = tc.getContext("2d");
+        return ctx && typeof ctx.drawElementImage === "function";
+      })();
+      var paintReady = false;
+
+      // Generate card HTML for both screens
+      var cardData = [
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#2563eb)",
+          text: "100M+ AI team",
+          title: "Notion Showcase",
+          meta: "15s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#4a1942,#db2777)",
+          text: "Design System v4",
+          title: "Dribbble Showcase",
+          meta: "12s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#451a03,#f59e0b)",
+          text: "$1.9T Market Cap",
+          title: "Stripe Showcase",
+          meta: "10s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#064e3b,#10b981)",
+          text: "Ship faster with AI",
+          title: "Vercel Promo",
+          meta: "20s · 1080×1920",
+        },
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#3b82f6)",
+          text: "Privacy App",
+          title: "iPhone App Store",
+          meta: "8s · 1080×1920",
+        },
+        {
+          bg: "linear-gradient(135deg,#4a1942,#a855f7)",
+          text: "Audio Visualizer",
+          title: "Spotify Remix",
+          meta: "15s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#064e3b,#059669)",
+          text: "Code Animation",
+          title: "Terminal Demo",
+          meta: "12s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#451a03,#d97706)",
+          text: "Launch Video",
+          title: "Product Hunt",
+          meta: "30s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#6366f1)",
+          text: "3D Devices",
+          title: "Device Mockups",
+          meta: "15s · 1920×1080",
+        },
+      ];
+      function makeCardHTML(cd, isMobile) {
+        var fs = isMobile ? 12 : 16;
+        return (
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:' +
+          (isMobile ? 10 : 12) +
+          'px;overflow:hidden;opacity:0" class="anim-card">' +
+          '<div style="width:100%;aspect-ratio:16/9;background:' +
+          cd.bg +
+          ';display:flex;align-items:center;justify-content:center"><span style="font-size:' +
+          fs +
+          'px;font-weight:700;color:rgba(255,255,255,0.7)">' +
+          cd.text +
+          "</span></div>" +
+          '<div style="padding:' +
+          (isMobile ? "8px 10px" : "10px 14px") +
+          '"><div style="font-size:' +
+          (isMobile ? 11 : 13) +
+          'px;font-weight:600;margin-bottom:2px">' +
+          cd.title +
+          '</div><div style="font-size:' +
+          (isMobile ? 9 : 10) +
+          'px;color:rgba(255,255,255,0.3)">' +
+          cd.meta +
+          "</div></div></div>"
+        );
+      }
+      var phoneCardsEl = document.getElementById("phone-cards");
+      var laptopCardsEl = document.getElementById("laptop-cards");
+      for (var ci = 0; ci < cardData.length; ci++) {
+        if (ci < 6) phoneCardsEl.innerHTML += makeCardHTML(cardData[ci], true);
+        laptopCardsEl.innerHTML += makeCardHTML(cardData[ci], false);
+      }
+
+      var phoneTex = new THREE.CanvasTexture(capPhoneCvs);
+      phoneTex.minFilter = THREE.LinearFilter;
+      phoneTex.magFilter = THREE.LinearFilter;
+      phoneTex.generateMipmaps = false;
+      var lapTex = new THREE.CanvasTexture(capLapCvs);
+      lapTex.minFilter = THREE.LinearFilter;
+      lapTex.magFilter = THREE.LinearFilter;
+      lapTex.generateMipmaps = false;
+
+      function captureScreens() {
+        if (!apiOk || !paintReady) return;
+        try {
+          capPhoneCtx.clearRect(0, 0, 390, 844);
+          capPhoneCtx.drawElementImage(phoneHtmlEl, 0, 0, 390, 844);
+          capLapCtx.clearRect(0, 0, 1440, 900);
+          capLapCtx.drawElementImage(lapHtmlEl, 0, 0, 1440, 900);
+          phoneTex.needsUpdate = true;
+          lapTex.needsUpdate = true;
+        } catch (e) {}
+      }
+
+      // ── Turntable Group (both devices rotate together for 360° orbit) ──
+      var turntable = new THREE.Group();
+      scene.add(turntable);
+
+      // ── Model Groups ───────────────────────────────────────────────────
+      var phoneGrp = new THREE.Group();
+      turntable.add(phoneGrp);
+      var lapGrp = new THREE.Group();
+      turntable.add(lapGrp);
+      var ready = 0;
+
+      var draco = new THREE.DRACOLoader();
+      draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.6/");
+      var loader = new THREE.GLTFLoader();
+      loader.setDRACOLoader(draco);
+
+      // ── Morphing Glass Lens (single, shared between devices) ───────────
+      var glassMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        metalness: 0,
+        roughness: 0.02,
+        transmission: 1,
+        thickness: 1.8,
+        ior: 1.45,
+        attenuationColor: new THREE.Color(0xe8f4ff),
+        attenuationDistance: 10,
+        clearcoat: 1,
+        clearcoatRoughness: 0.03,
+        specularIntensity: 1,
+        envMapIntensity: 2.5,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+      });
+
+      var glassGeos = [
+        new THREE.SphereGeometry(0.22, 32, 32),
+        new THREE.IcosahedronGeometry(0.22, 1),
+        new THREE.OctahedronGeometry(0.25, 0),
+        new THREE.DodecahedronGeometry(0.22, 0),
+        new THREE.TetrahedronGeometry(0.28, 0),
+        new THREE.TorusGeometry(0.16, 0.07, 16, 32),
+      ];
+      var glassLens = new THREE.Mesh(glassGeos[0], glassMat);
+      glassLens.renderOrder = 10;
+
+      // iPhone
+      loader.load("models/iphone.glb", function (gltf) {
+        var m = gltf.scene;
+        var box = new THREE.Box3().setFromObject(m);
+        var sz = box.getSize(new THREE.Vector3());
+        var s = 3.2 / sz.y;
+        m.scale.setScalar(s);
+        box.setFromObject(m);
+        m.position.sub(box.getCenter(new THREE.Vector3()));
+        m.traverse(function (child) {
+          if (!child.isMesh) return;
+          if (child.material && child.material.emissiveMap) {
+            child.material = new THREE.MeshBasicMaterial({ map: phoneTex });
+          }
+        });
+        scene.add(glassLens);
+
+        phoneGrp.add(m);
+        ready++;
+        if (ready === 2) onReady();
+      });
+
+      // MacBook
+      loader.load("models/macbook.glb", function (gltf) {
+        var m = gltf.scene;
+        var box = new THREE.Box3().setFromObject(m);
+        var sz = box.getSize(new THREE.Vector3());
+        var s = 4.5 / Math.max(sz.x, sz.z);
+        m.scale.setScalar(s);
+        box.setFromObject(m);
+        m.position.sub(box.getCenter(new THREE.Vector3()));
+
+        m.traverse(function (child) {
+          if (child.isMesh && (child.name === "matte" || child.name === "Matte")) {
+            child.material = new THREE.MeshBasicMaterial({ map: lapTex });
+          }
+        });
+
+        // Apple logo on back of lid — exact coords from model inspection:
+        // back mesh center: (0, 0.04, -1.54), matte center: (0, 0.15, -1.56)
+        // Back surface faces -Z. Logo at z = -1.63 (outside back surface), facing -Z.
+        var lc = document.createElement("canvas");
+        lc.width = 256;
+        lc.height = 256;
+        var lx = lc.getContext("2d");
+        lx.clearRect(0, 0, 256, 256);
+        lx.save();
+        lx.translate(128, 128);
+        lx.scale(11, 11);
+        lx.translate(-12, -13);
+        lx.fillStyle = "#b8b8bc";
+        lx.fill(
+          new Path2D(
+            "M18.71,19.5C17.88,20.49 17,21.4 15.66,21.42C14.29,21.45 13.73,20.56 12.18,20.56C10.63,20.56 9.99,21.4 8.74,21.45C7.44,21.5 6.47,20.36 5.62,19.39C3.89,17.39 2.59,13.78 4.37,11.37C5.25,10.17 6.61,9.42 8.08,9.4C9.4,9.37 10.62,10.35 11.43,10.35C12.24,10.35 13.72,9.17 15.32,9.35C15.98,9.38 17.66,9.61 18.72,11.17C18.62,11.23 16.39,12.52 16.42,15.19C16.45,18.37 19.18,19.35 19.21,19.36ZM15.23,7.7C15.96,6.82 16.43,5.6 16.31,4.38C15.25,4.42 13.97,5.09 13.22,5.96C12.55,6.74 11.98,7.99 12.12,9.18C13.29,9.27 14.5,8.57 15.23,7.7Z",
+          ),
+        );
+        lx.restore();
+        var logoTex = new THREE.CanvasTexture(lc);
+        logoTex.minFilter = THREE.LinearFilter;
+        var appleLogoMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.55, 0.55),
+          new THREE.MeshBasicMaterial({
+            map: logoTex,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        appleLogoMesh.position.set(0, 0.1, -1.63);
+        appleLogoMesh.rotation.y = PI;
+        m.add(appleLogoMesh);
+
+        lapGrp.add(m);
+        ready++;
+        if (ready === 2) onReady();
+      });
+
+      function onReady() {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            paintReady = true;
+            captureScreens();
+            window.__timelines = window.__timelines || {};
+            window.__timelines["devices-canvas"] = tl;
+          });
+        });
+      }
+
+      // ── Cubic Bezier Implementation ────────────────────────────────────
+      function cbz(p1x, p1y, p2x, p2y) {
+        var ax = 3 * p1x - 3 * p2x + 1,
+          bx = 3 * p2x - 6 * p1x,
+          cx = 3 * p1x;
+        var ay = 3 * p1y - 3 * p2y + 1,
+          by = 3 * p2y - 6 * p1y,
+          cy = 3 * p1y;
+        return function (t) {
+          var s = t;
+          for (var i = 0; i < 12; i++) {
+            var x = ((ax * s + bx) * s + cx) * s - t;
+            var dx = (3 * ax * s + 2 * bx) * s + cx;
+            if (Math.abs(dx) < 1e-10) break;
+            s -= x / dx;
+          }
+          s = Math.max(0, Math.min(1, s));
+          return ((ay * s + by) * s + cy) * s;
+        };
+      }
+
+      var enterEase = cbz(0.16, 1.0, 0.3, 1.0);
+      var spinEase = cbz(0.76, 0.0, 0.18, 1.0);
+      var driftEase = cbz(0.45, 0.0, 0.15, 1.0);
+      var snapEase = cbz(0.22, 1.15, 0.36, 1.0);
+      var breatheEase = cbz(0.37, 0.0, 0.63, 1.0);
+
+      // ── Animation State ────────────────────────────────────────────────
+      var S = {
+        phX: 0,
+        phY: 0.1,
+        phZ: 0.5,
+        phRX: 0,
+        phRY: PI,
+        phRZ: 0,
+        lpX: 10,
+        lpY: -0.2,
+        lpZ: -0.6,
+        lpRX: 0,
+        lpRY: 0,
+        lpRZ: 0,
+        cX: 0,
+        cY: 0.15,
+        cZ: 2.8,
+        clX: 0,
+        clY: 0.1,
+        clZ: 0,
+        drift: 0,
+        turn: 0,
+        scroll: 0,
+        cardReveal: 0,
+        titleFade: 0,
+        counter: 0,
+        p: 0,
+      };
+
+      function render() {
+        var d = S.drift;
+
+        // ── Animate live HTML content (captured to texture every frame) ──
+        // Title fade-in
+        document.getElementById("phone-title").style.opacity = S.titleFade;
+        document.getElementById("laptop-title").style.opacity = S.titleFade;
+        // Counter
+        var cnt = Math.round(S.counter);
+        document.getElementById("phone-count").textContent = "Catalog " + cnt;
+        document.getElementById("laptop-count").textContent = "Catalog " + cnt;
+        // Staggered card reveal
+        var allCards = document.querySelectorAll(".anim-card");
+        for (var ci2 = 0; ci2 < allCards.length; ci2++) {
+          var cardProgress = Math.max(0, Math.min(1, (S.cardReveal * allCards.length - ci2) * 1.5));
+          allCards[ci2].style.opacity = cardProgress;
+          allCards[ci2].style.transform = "translateY(" + (1 - cardProgress) * 15 + "px)";
+        }
+        // Scroll
+        phoneScrollEl.style.transform = "translateY(-" + S.scroll * 500 + "px)";
+        lapScrollEl.style.transform = "translateY(-" + S.scroll * 300 + "px)";
+        // Re-capture HTML to texture
+        captureScreens();
+
+        phoneGrp.position.set(
+          S.phX + Math.sin(d * 0.5) * 0.015,
+          S.phY + Math.sin(d * 0.7) * 0.008,
+          S.phZ + Math.cos(d * 0.4) * 0.008,
+        );
+        phoneGrp.rotation.set(S.phRX, S.phRY, S.phRZ);
+        lapGrp.position.set(
+          S.lpX - Math.sin(d * 0.4) * 0.012,
+          S.lpY + Math.sin(d * 0.6) * 0.006,
+          S.lpZ + Math.cos(d * 0.35) * 0.008,
+        );
+        lapGrp.rotation.set(S.lpRX, S.lpRY, S.lpRZ);
+        turntable.rotation.y = S.turn;
+        // Single morphing glass — orbits around device edges, never overlaps screen
+        var t = tl.time();
+        var geoIdx = Math.floor(d * 0.8) % glassGeos.length;
+        if (glassLens.geometry !== glassGeos[geoIdx]) glassLens.geometry = glassGeos[geoIdx];
+        glassLens.rotation.set(d * 0.7, d * 0.9, d * 0.4);
+
+        // Glass glides across screen surface — hide during rotations to avoid clipping
+        glassLens.visible = t < 3.3 || (t >= 9.5 && t < 12.5) || t >= 13.5;
+        var gx, gy, gz;
+        if (t < 7) {
+          // Slide across iPhone screen face
+          var px = phoneGrp.position.x,
+            py = phoneGrp.position.y,
+            pz = phoneGrp.position.z;
+          gx = px + Math.sin(d * 1.4) * 0.35;
+          gy = py + Math.cos(d * 1.1) * 0.6;
+          gz = pz + 0.15;
+        } else if (t < 11) {
+          // Slide across MacBook screen face
+          var lx2 = lapGrp.position.x,
+            ly2 = lapGrp.position.y,
+            lz2 = lapGrp.position.z;
+          gx = lx2 + Math.sin(d * 1.2) * 1.2;
+          gy = ly2 + 0.3 + Math.cos(d * 0.9) * 0.6;
+          gz = lz2 + 0.2;
+        } else {
+          // Glide between both screens
+          var mx = (phoneGrp.position.x + lapGrp.position.x) * 0.5;
+          var my = (phoneGrp.position.y + lapGrp.position.y) * 0.5;
+          gx = mx + Math.sin(d * 1.0) * 1.5;
+          gy = my + 0.2 + Math.cos(d * 0.8) * 0.5;
+          gz = 0.3;
+        }
+        glassLens.position.set(gx, gy, gz);
+        camera.position.set(S.cX, S.cY, S.cZ);
+        camera.lookAt(S.clX, S.clY, S.clZ);
+        renderer.render(scene, camera);
+      }
+
+      // ── GSAP Timeline — Product Review Edit ────────────────────────────
+      // __timelines created in onReady() after GLTF models load
+      var tl = gsap.timeline({ paused: true });
+
+      tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none", onUpdate: render }, 0);
+
+      // ── Act 1 (0–3.5s): iPhone FRONT — hero close-up showing hyperframes.dev
+      tl.to(S, { phRY: PI + 0.06, phRX: 0.015, duration: 1.5, ease: breatheEase }, 0.3);
+      tl.to(S, { phRY: PI - 0.04, phRX: -0.01, duration: 1.5, ease: breatheEase }, 1.8);
+
+      // ── Act 2 (3.5–7s): iPhone spins 180° to show BACK (camera, titanium, Apple logo)
+      tl.to(S, { phRY: PI * 2, duration: 2.2, ease: spinEase }, 3.5);
+      tl.to(S, { cZ: 4.8, cY: 0.25, duration: 2, ease: driftEase }, 3.5);
+      // Hold back view — slight orbit to appreciate hardware
+      tl.to(
+        S,
+        { phRY: PI * 2 + 0.15, phRX: 0.04, cX: 0.15, duration: 1.5, ease: breatheEase },
+        5.5,
+      );
+
+      // ── Act 3 (7–9s): iPhone spins back to front, then exits LEFT off screen
+      tl.to(S, { phRY: PI * 3, duration: 1.8, ease: snapEase }, 7);
+      tl.to(S, { cZ: 3.5, cY: 0.2, duration: 1.5, ease: driftEase }, 7);
+      tl.to(S, { phX: -6, phZ: 0.3, duration: 2, ease: spinEase }, 8);
+
+      // ── Act 4 (9–11s): MacBook enters from right, hero close-up
+      tl.to(S, { lpX: 0, duration: 2, ease: enterEase }, 9);
+      tl.to(S, { cX: 0, clX: 0, cZ: 5, cY: 0.3, clY: -0.1, duration: 2, ease: driftEase }, 9);
+      tl.to(S, { lpRY: 0.06, duration: 1.5, ease: breatheEase }, 10);
+
+      // ── Act 5 (11–12.5s): iPhone returns, both settle for turntable
+      tl.to(S, { phX: -2.0, duration: 1.5, ease: enterEase }, 11);
+      tl.to(S, { lpX: 2.2, duration: 1.5, ease: breatheEase }, 11);
+      tl.to(
+        S,
+        { cX: 0.1, clX: 0.1, cZ: 7.5, cY: 0.5, clY: -0.1, duration: 1.5, ease: driftEase },
+        11,
+      );
+      tl.to(S, { phRY: PI * 3, lpRY: 0, duration: 1, ease: breatheEase }, 11);
+
+      // ── Act 6 (12.5–15s): 360° turntable — both devices rotate together
+      tl.to(S, { turn: PI * 2, duration: 2.5, ease: spinEase }, 12.5);
+
+      // ── Live HTML Animations (captured to 3D textures every frame) ──
+      // Title fade in
+      tl.to(S, { titleFade: 1, duration: 0.8, ease: breatheEase }, 0.3);
+      // Counter animates up
+      tl.to(S, { counter: 43, duration: 2, ease: driftEase }, 0.5);
+      // Cards stagger in (0→1 reveals all cards sequentially)
+      tl.to(S, { cardReveal: 1, duration: 3, ease: breatheEase }, 0.8);
+      // Scroll during hero shots
+      tl.to(S, { scroll: 0.6, duration: 3, ease: breatheEase }, 1.5);
+      tl.to(S, { scroll: 0, duration: 1.5, ease: driftEase }, 7);
+      // Scroll on MacBook reveal
+      tl.to(S, { scroll: 0.8, duration: 3, ease: breatheEase }, 9.5);
+      tl.to(S, { scroll: 0.3, duration: 2, ease: driftEase }, 13);
+
+      // __timelines registered in onReady() after GLTF models load
+    </script>
+  </body>
+</html>

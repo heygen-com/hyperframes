@@ -1,0 +1,46 @@
+---
+title: "Native Notification Pop"
+description: "One system-faithful notification banner (iOS or macOS) drops in over any scene on an accurate interruptible spring: fast arrival, soft overshoot, settled mass, backdrop blur, app dot, title, one body line. Holds; tucks away only via exit."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/native-notification-pop.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Native Notification Pop preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add native-notification-pop" />
+
+That writes one file: `compositions/components/native-notification-pop.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/native-notification-pop.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `title` | `Render complete` | string | The notification title line. |
+| `body` | `launch-cut.mp4 is ready to preview` | string | One body line. Long lines truncate with an ellipsis. |
+| `app_label` | `HyperFrames` | string | Small-caps app name row beside the app dot. |
+| `os` | `ios` | `ios`, `macos` | Banner geometry and placement: wide centered iOS or compact top-right macOS. |
+| `at` | `0.3` | 0s to 8s, step 0.05s | Seconds after mount start when the banner drops in. |
+| `accent` | `green` | `green`, `blue`, `violet` | App dot color. |
+| `exit` | `none` | `none`, `fade`, `up` | None holds the banner; up tucks it back off the top; fade fades it in place. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `overlay` `notification` `spring`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code Shader Dissolve</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070b;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+      #gl {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="code-shader-dissolve"
+      data-start="0"
+      data-duration="7"
+      data-width="1920"
+      data-height="1080"
+    >
+      <canvas id="gl" width="1920" height="1080"></canvas>
+    </div>
+    <script>
+      window.__TOKENS = {
+        compile: {
+          lang: "js",
+          theme: "github-dark",
+          bg: "#24292e",
+          fg: "#e1e4e8",
+          states: [
+            {
+              code: "function compile(src) {\n  const ast = parse(src)\n  const ir = optimize(ast)\n  return emit(ir)\n}",
+              tokens: [
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-0",
+                  content: "function",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-2",
+                  content: "compile",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-3",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-4",
+                  content: "src",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-5",
+                  content: ") {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-6",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-7",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-8",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-9",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-10",
+                  content: "ast",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-11",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-12",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-13",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-14",
+                  content: "parse",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-15",
+                  content: "(src)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-16",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-17",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-18",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-19",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-20",
+                  content: "ir",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-21",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-22",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-23",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-24",
+                  content: "optimize",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-25",
+                  content: "(ast)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-26",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-27",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-28",
+                  content: "return",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-29",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-30",
+                  content: "emit",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-31",
+                  content: "(ir)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-32",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-33",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "zGtBjd8ajYlOewpKFJD53Oc7W94UowxIfV0186O1l8A-34",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+          ],
+        },
+      };
+      window.__BLOCK = {
+        id: "code-shader-dissolve",
+        effect: "dissolve",
+        seq: "compile",
+        duration: 7,
+        seed: 11,
+      };
+    </script>
+    <script>
+      // hf-code-anim-gl.js — WebGL code-animation engine for the "crazy" Code Animations blocks.
+      //
+      // Bridges the baked Shiki tokens (window.__TOKENS) into Three.js: the tokens are drawn once
+      // to an offscreen 2D canvas (a CanvasTexture), which then drives a lit 3D slab, a dissolve
+      // shader, or a GPU particle system. Determinism per the project contract:
+      //   - render only via tl.eventCallback("onUpdate", …) + one initial render() — never rAF
+      //   - all randomness from a seeded mulberry32 — never Math.random / Date.now
+      //   - canvas drawn once after document.fonts.ready (final glyph metrics)
+      //   - paused GSAP timeline registered on window.__timelines[id]; HF seeks it per frame
+      //
+      // Each block sets window.__BLOCK = { id, effect, seq, duration, seed } and includes this engine.
+      (function () {
+        "use strict";
+        var T = window.__TOKENS || {};
+
+        // ---- seeded PRNG (no Math.random) -----------------------------------------
+        function mulberry32(a) {
+          return function () {
+            a |= 0;
+            a = (a + 0x6d2b79f5) | 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        // ---- split a token state into lines of {content,color} --------------------
+        function splitLines(state) {
+          var lines = [[]];
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              lines.push([]);
+              continue;
+            }
+            lines[lines.length - 1].push(t);
+          }
+          while (lines.length && lines[lines.length - 1].length === 0) lines.pop();
+          return lines;
+        }
+
+        // ---- THE BRIDGE: draw baked tokens to an offscreen 2D canvas ---------------
+        // Returns { canvas, W, H, lines, lineH, padY, fontPx } so effects can sample it.
+        function drawCodeToCanvas(state, opts) {
+          opts = opts || {};
+          var fontPx = opts.fontPx || 36;
+          var lineH = opts.lineH || 54;
+          var padX = opts.padX || 70;
+          var padY = opts.padY || 60;
+          var weight = opts.weight || 500;
+          var font = weight + " " + fontPx + 'px "JetBrains Mono", monospace';
+
+          var lines = splitLines(state);
+          var measure = document.createElement("canvas").getContext("2d");
+          measure.font = font;
+          var maxW = 0;
+          for (var i = 0; i < lines.length; i++) {
+            var w = 0;
+            for (var j = 0; j < lines[i].length; j++)
+              w += measure.measureText(lines[i][j].content).width;
+            if (w > maxW) maxW = w;
+          }
+          var W = Math.max(2, Math.ceil(maxW + padX * 2));
+          var H = Math.max(2, Math.ceil(lines.length * lineH + padY * 2));
+
+          var canvas = document.createElement("canvas");
+          canvas.width = W;
+          canvas.height = H;
+          var ctx = canvas.getContext("2d");
+          if (opts.transparent) {
+            ctx.clearRect(0, 0, W, H);
+          } else {
+            ctx.fillStyle = opts.bg || "#0b0f17";
+            ctx.fillRect(0, 0, W, H);
+          }
+          ctx.textBaseline = "top";
+          ctx.font = font;
+          for (var li = 0; li < lines.length; li++) {
+            var x = padX;
+            var y = padY + li * lineH;
+            for (var k = 0; k < lines[li].length; k++) {
+              var tok = lines[li][k];
+              ctx.fillStyle = tok.color;
+              ctx.fillText(tok.content, x, y);
+              x += ctx.measureText(tok.content).width;
+            }
+          }
+          return {
+            canvas: canvas,
+            W: W,
+            H: H,
+            lines: lines.length,
+            lineH: lineH,
+            padY: padY,
+            fontPx: fontPx,
+          };
+        }
+
+        function fxDissolve(THREE, scene, camera, renderer, state, st, tl, dur, seed) {
+          scene.background = new THREE.Color(0x05070b);
+          var code = drawCodeToCanvas(state, {
+            fontPx: 40,
+            lineH: 60,
+            padX: 90,
+            padY: 80,
+            weight: 600,
+          });
+          var tex = new THREE.CanvasTexture(code.canvas);
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.generateMipmaps = false;
+
+          var aspect = code.W / code.H;
+          var planeH = 6.6;
+          var planeW = planeH * aspect;
+
+          var uniforms = {
+            uTex: { value: tex },
+            uProgress: { value: 0 },
+            uSeed: { value: (seed || 1) * 13.37 },
+          };
+          var mat = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            transparent: true,
+            vertexShader: [
+              "varying vec2 vUv;",
+              "void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+            ].join("\n"),
+            fragmentShader: [
+              "precision highp float;",
+              "uniform sampler2D uTex;",
+              "uniform float uProgress;",
+              "uniform float uSeed;",
+              "varying vec2 vUv;",
+              "float hash(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }",
+              "float noise(vec2 p){ vec2 i=floor(p),f=fract(p); float a=hash(i),b=hash(i+vec2(1.,0.)),c=hash(i+vec2(0.,1.)),d=hash(i+vec2(1.,1.)); vec2 u=f*f*(3.-2.*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }",
+              "void main(){",
+              "  vec2 uv = vUv;",
+              // multi-octave seeded noise field
+              "  float n = noise(uv*16.0+uSeed)*0.6 + noise(uv*48.0+uSeed*1.7)*0.3 + noise(uv*120.0+uSeed*2.3)*0.1;",
+              "  float edge = 0.12;",
+              "  float reveal = smoothstep(n-edge, n+edge, uProgress);", // 0 hidden -> 1 shown
+              // chromatic fringe strongest at the dissolving edge
+              "  float band = reveal*(1.0-reveal)*4.0;",
+              "  float off = band*0.010;",
+              "  float r = texture2D(uTex, uv+vec2(off,0.0)).r;",
+              "  float g = texture2D(uTex, uv).g;",
+              "  float b = texture2D(uTex, uv-vec2(off,0.0)).b;",
+              "  vec3 codeCol = vec3(r,g,b);",
+              // additive cyan edge glow along the dissolve front
+              "  vec3 glow = vec3(0.30,0.72,1.0) * band * 0.9;",
+              "  vec3 outc = codeCol*reveal + glow;",
+              "  float a = max(reveal, band*0.8);",
+              "  gl_FragColor = vec4(outc, a);",
+              "}",
+            ].join("\n"),
+          });
+
+          var plane = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+          scene.add(plane);
+
+          camera.position.set(0, 0, 10);
+          var vfov = (camera.fov * Math.PI) / 180;
+          var screenAspect = 1920 / 1080;
+          var fitH = planeH / 2 / Math.tan(vfov / 2) / 0.82;
+          var fitW = planeW / 2 / (Math.tan(vfov / 2) * screenAspect) / 0.82;
+          camera.position.z = Math.max(fitH, fitW);
+          camera.lookAt(0, 0, 0);
+
+          // compile in, then hold crisp. Overshoot to 1.15 so even max-noise pixels
+          // (n up to ~1.0, edge 0.12) fully resolve — no leftover specks at rest.
+          tl.to(uniforms.uProgress, { value: 1.15, duration: dur * 0.62, ease: "power1.inOut" }, 0);
+
+          // uProgress is tweened by GSAP; the boot loop's render() draws once per frame.
+          return function () {};
+        }
+
+        // ---- dispatch + boot ------------------------------------------------------
+        function buildEffect(THREE, scene, camera, renderer, spec, st, tl) {
+          var state = T[spec.seq].states[0];
+          var dur = spec.duration;
+          if (spec.effect === "dissolve")
+            return fxDissolve(THREE, scene, camera, renderer, state, st, tl, dur, spec.seed);
+          return function () {};
+        }
+
+        // Free GPU resources (renderer, geometries, materials, textures) on page teardown.
+        // One-shot renders exit per job so nothing leaks there; this guards long-lived
+        // Studio/player sessions that reload. Fires only on unload — never during capture.
+        function disposeGL(renderer, scene) {
+          scene.traverse(function (o) {
+            if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+            var mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+            mats.forEach(function (m) {
+              if (m.map && m.map.dispose) m.map.dispose();
+              if (
+                m.uniforms &&
+                m.uniforms.uTex &&
+                m.uniforms.uTex.value &&
+                m.uniforms.uTex.value.dispose
+              ) {
+                m.uniforms.uTex.value.dispose();
+              }
+              if (m.dispose) m.dispose();
+            });
+          });
+          if (renderer.dispose) renderer.dispose();
+        }
+
+        function go() {
+          var spec = window.__BLOCK;
+          var root = document.getElementById("root");
+          var glcanvas = document.getElementById("gl");
+          var W = 1920;
+          var H = 1080;
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          window.__timelines[spec.id] = tl; // register synchronously
+
+          var THREE = window.THREE;
+          var renderer = new THREE.WebGLRenderer({
+            canvas: glcanvas,
+            antialias: true,
+            alpha: false,
+            preserveDrawingBuffer: true,
+          });
+          renderer.setPixelRatio(1);
+          renderer.setSize(W, H, false);
+          var scene = new THREE.Scene();
+          var camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 200);
+          var st = {};
+
+          document.fonts.ready.then(function () {
+            var renderFn = buildEffect(THREE, scene, camera, renderer, spec, st, tl);
+            function render() {
+              renderFn();
+              renderer.render(scene, camera);
+            }
+            tl.eventCallback("onUpdate", render);
+            var dur = parseFloat(root.dataset.duration) || tl.duration();
+            tl.to({}, { duration: dur }, 0); // pad to full composition length
+            render(); // paint frame 0
+            window.addEventListener("beforeunload", function () {
+              disposeGL(renderer, scene);
+            });
+          });
+        }
+
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+        else go();
+      })();
+    </script>
+  </body>
+</html>

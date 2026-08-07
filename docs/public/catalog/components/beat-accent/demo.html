@@ -1,0 +1,89 @@
+<!doctype html>
+<!--
+  beat-accent: demo. Standalone 1920x1080 host composition that mounts the
+  primitive from ./beat-accent.html through data-composition-src. The wide,
+  centered mount card gives the burst room for its word and radial flash.
+  Non-default text, flashColor, and intensity values prove per-instance
+  variables flow through the mount. This file is a host-only visual check and
+  is not installed by `hyperframes add`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Beat Accent - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 42%, #17213a 0%, #05070d 72%);
+      }
+
+      .mount-card {
+        --bg: #101827;
+        --surface: #18233a;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --border: #334155;
+        --brand: #22c55e;
+        --accent: #ff4f8b;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-display: Inter, system-ui, sans-serif;
+        width: 52%;
+        height: 44%;
+        left: 24%;
+        top: 28%;
+        border-radius: 32px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.52);
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="beat-accent-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="beat-accent-mount"
+        class="mount-card clip"
+        data-composition-id="beat-accent"
+        data-composition-src="./beat-accent.html"
+        data-variable-values='{"text":"DROP","flashColor":"bright","intensity":1.6}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="998"
+        data-height="475"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["beat-accent-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

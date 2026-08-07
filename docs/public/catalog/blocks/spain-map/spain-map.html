@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Spain Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background-color: #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="spain-map"
+      data-composition-id="spain-map"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="12"
+    >
+      <div class="map-container">
+        <div class="header">
+          <h1 class="headline">PIB per c&aacute;pita por Comunidad Aut&oacute;noma</h1>
+          <p class="subtitle">Producto Interior Bruto per c&aacute;pita, estimaci&oacute;n 2024</p>
+        </div>
+
+        <svg class="map-svg" viewBox="0 0 1400 820" preserveAspectRatio="xMidYMid meet">
+          <g class="regions-group"></g>
+          <g class="labels-group"></g>
+        </svg>
+
+        <div class="legend">
+          <span class="legend-label legend-low">Bajo</span>
+          <div class="legend-bar"></div>
+          <span class="legend-label legend-high">Alto</span>
+        </div>
+
+        <div class="source">Fuente: Instituto Nacional de Estad&iacute;stica</div>
+      </div>
+
+      <style>
+        #spain-map {
+          width: 1920px;
+          height: 1080px;
+          background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+          font-family: "Inter", sans-serif;
+          color: #e2e8f0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          overflow: hidden;
+        }
+
+        #spain-map .map-container {
+          width: 1700px;
+          height: 950px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+        }
+
+        #spain-map .header {
+          text-align: center;
+          margin-bottom: 20px;
+        }
+
+        #spain-map .headline {
+          font-size: 48px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #f8fafc;
+          clip-path: inset(0 100% 0 0);
+        }
+
+        #spain-map .subtitle {
+          font-size: 20px;
+          font-weight: 300;
+          color: #94a3b8;
+          margin-top: 8px;
+          opacity: 0;
+        }
+
+        #spain-map .map-svg {
+          width: 1500px;
+          height: 750px;
+          overflow: visible;
+        }
+
+        #spain-map .region-path {
+          stroke: #1e293b;
+          stroke-width: 0.8;
+          opacity: 0;
+          cursor: default;
+        }
+
+        #spain-map .region-label {
+          font-size: 11px;
+          font-weight: 500;
+          fill: #f8fafc;
+          text-anchor: middle;
+          dominant-baseline: central;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        #spain-map .legend {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 16px;
+          opacity: 0;
+        }
+
+        #spain-map .legend-bar {
+          width: 300px;
+          height: 12px;
+          border-radius: 6px;
+          background: linear-gradient(90deg, #7f1d1d, #dc2626, #fbbf24);
+        }
+
+        #spain-map .legend-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #94a3b8;
+        }
+
+        #spain-map .source {
+          position: absolute;
+          bottom: 0;
+          right: 40px;
+          font-size: 12px;
+          color: #475569;
+          opacity: 0;
+        }
+      </style>
+
+      <script>
+        (function () {
+          var SPAIN_TOPO_URL =
+            "https://cdn.jsdelivr.net/npm/es-atlas@0.6.0/es/autonomous_regions.json";
+
+          var data = {
+            "01": { name: "Andalucía", abbr: "AND", gdp: 20200 },
+            "02": { name: "Aragón", abbr: "ARA", gdp: 30500 },
+            "03": { name: "Asturias", abbr: "AST", gdp: 24100 },
+            "04": { name: "Illes Balears", abbr: "BAL", gdp: 28900 },
+            "05": { name: "Canarias", abbr: "CAN", gdp: 21500 },
+            "06": { name: "Cantabria", abbr: "CNT", gdp: 25200 },
+            "07": { name: "Castilla y León", abbr: "CYL", gdp: 25800 },
+            "08": { name: "Castilla-La Mancha", abbr: "CLM", gdp: 21400 },
+            "09": { name: "Catalunya", abbr: "CAT", gdp: 33700 },
+            10: { name: "Comunitat Valenciana", abbr: "VAL", gdp: 23800 },
+            11: { name: "Extremadura", abbr: "EXT", gdp: 19200 },
+            12: { name: "Galicia", abbr: "GAL", gdp: 24500 },
+            13: { name: "Comunidad de Madrid", abbr: "MAD", gdp: 38100 },
+            14: { name: "Región de Murcia", abbr: "MUR", gdp: 22100 },
+            15: { name: "Navarra", abbr: "NAV", gdp: 35200 },
+            16: { name: "País Vasco", abbr: "PVA", gdp: 36800 },
+            17: { name: "La Rioja", abbr: "RIO", gdp: 29800 },
+            18: { name: "Ceuta", abbr: "CEU", gdp: 21000 },
+            19: { name: "Melilla", abbr: "MEL", gdp: 19500 },
+          };
+
+          var nameMap = {};
+          for (var key in data) {
+            nameMap[data[key].name.toLowerCase()] = key;
+          }
+
+          var minGdp = 19200;
+          var maxGdp = 38100;
+
+          function gdpToColor(gdp) {
+            var t = Math.min(Math.max((gdp - minGdp) / (maxGdp - minGdp), 0), 1);
+            if (t < 0.5) {
+              var s = t / 0.5;
+              return lerpColor([127, 29, 29], [220, 38, 38], s);
+            } else {
+              var s2 = (t - 0.5) / 0.5;
+              return lerpColor([220, 38, 38], [251, 191, 36], s2);
+            }
+          }
+
+          function lerpColor(a, b, t) {
+            var r = Math.round(a[0] + (b[0] - a[0]) * t);
+            var g = Math.round(a[1] + (b[1] - a[1]) * t);
+            var bl = Math.round(a[2] + (b[2] - a[2]) * t);
+            return "rgb(" + r + "," + g + "," + bl + ")";
+          }
+
+          function findData(feature) {
+            var id = String(feature.id).padStart(2, "0");
+            if (data[id]) return data[id];
+            var fname = (feature.properties && feature.properties.name) || "";
+            var fnameLower = fname.toLowerCase();
+            for (var k in data) {
+              var dname = data[k].name.toLowerCase();
+              if (fnameLower.indexOf(dname) >= 0 || dname.indexOf(fnameLower) >= 0) {
+                return data[k];
+              }
+            }
+            return null;
+          }
+
+          var svg = document.querySelector("#spain-map .map-svg");
+          var regionsGroup = svg.querySelector(".regions-group");
+          var labelsGroup = svg.querySelector(".labels-group");
+          var tl = gsap.timeline({ paused: true });
+
+          fetch(SPAIN_TOPO_URL)
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (es) {
+              var featureCollection = topojson.feature(es, es.objects.autonomous_regions);
+              var features = featureCollection.features;
+
+              var projection = d3
+                .geoConicConformal()
+                .center([0, 39.5])
+                .rotate([3.5, 0])
+                .fitSize([1200, 750], featureCollection);
+              var path = d3.geoPath().projection(projection);
+
+              var sortedFeatures = features
+                .filter(function (f) {
+                  return findData(f) !== null;
+                })
+                .sort(function (a, b) {
+                  return findData(a).gdp - findData(b).gdp;
+                });
+
+              sortedFeatures.forEach(function (feature) {
+                var info = findData(feature);
+                if (!info) return;
+
+                var d = path(feature);
+                if (!d) return;
+
+                var el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                el.setAttribute("d", d);
+                el.setAttribute("class", "region-path");
+                el.setAttribute("data-region", info.abbr);
+                el.setAttribute("data-gdp", String(info.gdp));
+                el.style.fill = gdpToColor(info.gdp);
+                regionsGroup.appendChild(el);
+
+                var centroid = path.centroid(feature);
+                if (centroid[0] && centroid[1]) {
+                  var label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                  label.setAttribute("x", String(centroid[0]));
+                  label.setAttribute("y", String(centroid[1]));
+                  label.setAttribute("class", "region-label");
+                  label.textContent = info.abbr;
+                  labelsGroup.appendChild(label);
+                }
+              });
+
+              buildTimeline();
+            });
+
+          function buildTimeline() {
+            var regionPaths = regionsGroup.querySelectorAll(".region-path");
+            var regionLabels = labelsGroup.querySelectorAll(".region-label");
+
+            tl.to(
+              "#spain-map .headline",
+              {
+                clipPath: "inset(0 0% 0 0)",
+                duration: 1.0,
+                ease: "power2.inOut",
+              },
+              0,
+            );
+
+            tl.to(
+              "#spain-map .subtitle",
+              {
+                opacity: 1,
+                duration: 0.6,
+                ease: "power2.out",
+              },
+              0.4,
+            );
+
+            tl.to(
+              regionPaths,
+              {
+                opacity: 1,
+                scale: 1,
+                duration: 0.4,
+                stagger: {
+                  each: 0.08,
+                  from: "center",
+                },
+                ease: "back.out(1.4)",
+              },
+              1.0,
+            );
+
+            tl.to(
+              regionLabels,
+              {
+                opacity: 1,
+                duration: 0.3,
+                stagger: {
+                  each: 0.05,
+                  from: "center",
+                },
+                ease: "power2.out",
+              },
+              4.0,
+            );
+
+            tl.to(
+              "#spain-map .legend",
+              {
+                opacity: 1,
+                y: 0,
+                duration: 0.6,
+                ease: "power2.out",
+              },
+              5.5,
+            );
+
+            tl.to(
+              "#spain-map .source",
+              {
+                opacity: 1,
+                duration: 0.5,
+                ease: "power2.out",
+              },
+              6.0,
+            );
+
+            var highlightRegions = ["MAD", "PVA", "NAV"];
+            highlightRegions.forEach(function (abbr, i) {
+              var el = regionsGroup.querySelector('[data-region="' + abbr + '"]');
+              if (!el) return;
+
+              tl.to(
+                el,
+                {
+                  filter: "brightness(1.5) drop-shadow(0 0 8px rgba(255,255,255,0.4))",
+                  stroke: "#f8fafc",
+                  strokeWidth: 2.5,
+                  duration: 0.5,
+                  ease: "power2.out",
+                },
+                6.5 + i * 0.8,
+              );
+
+              tl.to(
+                el,
+                {
+                  filter: "brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0))",
+                  stroke: "#1e293b",
+                  strokeWidth: 0.8,
+                  duration: 0.5,
+                  ease: "power2.in",
+                },
+                7.0 + i * 0.8,
+              );
+            });
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["spain-map"] = tl;
+          }
+        })();
+      </script>
+    </div>
+  </body>
+</html>

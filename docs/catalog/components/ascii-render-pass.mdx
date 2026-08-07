@@ -1,0 +1,44 @@
+---
+title: "ASCII Render Pass"
+description: "A slotted scene renders as live ASCII: a canvas samples the source's luminance grid (rasterized once at mount) and draws glyphs from a density ramp charset; resolution steps coarse to fine as the piece resolves, then holds legible-fine."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/ascii-render-pass.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="ASCII Render Pass preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add ascii-render-pass" />
+
+That writes one file: `compositions/components/ascii-render-pass.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ascii-render-pass.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `charset` | ` .:-=+*#%@` | string | Density ramp, dark to light. A leading space keeps dark cells empty. |
+| `grid` | `med` | `coarse`, `med`, `fine` | Final cell pitch the resolve lands on. |
+| `resolve_at` | `1.4` | 0.6s to 10s, step 0.1s | Seconds from mount start when the coarse-to-fine resolve begins. |
+| `accent` | `green` | `green`, `blue`, `violet` | Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the fine render. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `experiment` `texture` `ascii` `quantize`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
