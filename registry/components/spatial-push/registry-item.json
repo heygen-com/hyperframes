@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spatial-push",
+  "type": "hyperframes:component",
+  "title": "Spatial Push",
+  "description": "A physical depth transition that presses the old scene backward.",
+  "tags": ["transition-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "spatial-push.html",
+      "target": "compositions/components/spatial-push.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spatial-push.png"
+  }
+}

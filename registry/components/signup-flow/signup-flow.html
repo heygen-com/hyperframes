@@ -1,0 +1,80 @@
+<!--
+  Signup Flow - Remocn-inspired composed UI flow for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-signup-flow">
+  <h3>Create account</h3>
+  <button class="hf-ui-signup-social" type="button">Continue with Google</button>
+  <div class="hf-ui-signup-divider"><span></span><em>or</em><span></span></div>
+  <div class="hf-ui-signup-field">email@company.com</div>
+  <div class="hf-ui-signup-field muted">Password</div>
+  <button class="hf-ui-signup-submit" type="button">Start building</button>
+</div>
+
+<style>
+  .hf-ui-signup-flow {
+    display: grid;
+    gap: 14px;
+    width: 430px;
+    padding: 30px;
+    border: 1px solid #e4e4e7;
+    border-radius: 28px;
+    background: #ffffff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 28px 84px rgba(0, 0, 0, 0.12);
+  }
+  .hf-ui-signup-flow h3 {
+    margin: 0 0 6px;
+    text-align: center;
+    font-size: 28px;
+  }
+  .hf-ui-signup-flow button,
+  .hf-ui-signup-field {
+    height: 50px;
+    border-radius: 14px;
+    font-weight: 850;
+  }
+  .hf-ui-signup-social,
+  .hf-ui-signup-field {
+    border: 1px solid #e4e4e7;
+    background: #ffffff;
+    color: #18181b;
+  }
+  .hf-ui-signup-field {
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+  }
+  .hf-ui-signup-field.muted {
+    color: #a1a1aa;
+  }
+  .hf-ui-signup-divider {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px;
+    align-items: center;
+    color: #a1a1aa;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .hf-ui-signup-divider span {
+    height: 1px;
+    background: #e4e4e7;
+  }
+  .hf-ui-signup-submit {
+    border: 0;
+    background: #18181b;
+    color: #ffffff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-signup-flow', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.36, ease: 'power2.out' }, 0.25);
+  tl.fromTo('.hf-ui-signup-flow > *', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.24, stagger: 0.05, ease: 'power2.out' }, 0.48);
+  tl.to('.hf-ui-signup-submit', { scale: 0.97, duration: 0.12, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 1.2);
+-->

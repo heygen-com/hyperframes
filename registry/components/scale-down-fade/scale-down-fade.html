@@ -1,0 +1,35 @@
+<!--
+  Scale Down Fade - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-scale-down-fade"><span>Quiet</span><span>confidence</span></div>
+
+<style>
+  .hf-remocn-scale-down-fade {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-scale-down-fade {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-scale-down-fade span {
+    display: inline-block;
+    transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+      scale(var(--hf-word-scale, 1));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-scale-down-fade span', { opacity: 0, '--hf-word-scale': 1.08, '--hf-word-blur': '16px' }, { opacity: 1, '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.52, stagger: 0.05, ease: 'power3.out' }, startTime);
+-->

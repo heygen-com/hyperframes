@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Touch Indicator - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      /*
+        Host declares the 17-token theme contract. touch-indicator.html
+        consumes these via var(--token, fallback); it never redeclares them.
+      */
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #05060a;
+
+        --bg: #0b0c10;
+        --fg: #f5f6f8;
+        --muted: #8b8f9a;
+        --surface: #16181d;
+        --border: #262931;
+        --brand: #6366f1;
+        --accent: #ff5470;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        --radius: 20px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 24px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+        --ease-emphasis: cubic-bezier(0.05, 0.7, 0.1, 1);
+      }
+
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 56px;
+        transform: scale(1.3); /* ponytail: scale wrapper only, GSAP targets stay untouched */
+        transform-origin: center;
+      }
+
+      .phone {
+        position: relative;
+        width: 380px;
+        height: 760px;
+        border-radius: 44px;
+        background: var(--bg, #0b0c10);
+        border: 1px solid color-mix(in srgb, var(--fg, #fff) 12%, transparent);
+        box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+        font-family: var(--font-body, sans-serif);
+        color: var(--fg, #f5f6f8);
+      }
+
+      .phone__header {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        padding: 0 var(--space-3, 24px);
+        font-family: var(--font-display, sans-serif);
+        font-weight: 800;
+        font-size: 20px;
+        letter-spacing: -0.01em;
+      }
+
+      .phone__media {
+        height: 380px;
+        margin: 0 var(--space-2, 16px);
+        border-radius: var(--radius, 20px);
+        background: linear-gradient(
+          145deg,
+          color-mix(in srgb, var(--brand, #6366f1) 85%, transparent),
+          color-mix(in srgb, var(--accent, #ff5470) 70%, transparent)
+        );
+      }
+
+      .phone__row {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2, 16px);
+        padding: 0 var(--space-3, 24px);
+      }
+
+      .like-btn {
+        position: relative;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 0;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--surface, #16181d) 100%, transparent);
+        color: var(--muted, #8b8f9a);
+        padding: 0;
+      }
+
+      .like-btn__icon {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .like-count {
+        font-family: var(--font-mono, monospace);
+        font-size: 15px;
+        color: var(--muted, #8b8f9a);
+      }
+
+      .phone__list {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 508px;
+        bottom: 0;
+        padding: var(--space-2, 16px);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1, 8px);
+      }
+      .phone__list-row {
+        height: 56px;
+        border-radius: calc(var(--radius, 20px) * 0.6);
+        background: var(--surface, #16181d);
+        border: 1px solid var(--border, #262931);
+      }
+
+      /*
+        Mount slot: fills the whole phone screen, so touch-indicator.html's
+        own container-query sizing resolves against a narrow (380px) host
+        box, not a full 1920-wide frame -- this is what proves the spec's
+        46px floor engages instead of the raw 5cqw target (19px here).
+      */
+      .touch-indicator-mount {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="touch-indicator-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+    >
+      <div class="demo-frame">
+        <div class="phone">
+          <div class="phone__header">Feed</div>
+          <div class="phone__media"></div>
+          <div class="phone__row">
+            <button class="like-btn" type="button" aria-label="Like">
+              <svg class="like-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 21s-7.5-4.6-10-9.1C.6 8.6 2 5 5.6 5c2 0 3.4 1 4.4 2.6C11 6 12.4 5 14.4 5 18 5 19.4 8.6 22 11.9 19.5 16.4 12 21 12 21z"
+                />
+              </svg>
+            </button>
+            <span class="like-count">128</span>
+          </div>
+          <div class="phone__list">
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+          </div>
+
+          <!--
+            MOUNT: touch-indicator as a real sub-composition clip, not
+            pasted markup. This div's data-composition-id must match the
+            internal data-composition-id inside touch-indicator.html (and
+            the window.__timelines key it registers under) -- see
+            sub-compositions.md, Pitfall 2. targetX/Y re-aim the primitive's
+            own default landing point (50/55) at this card's like button
+            (12%, 63% of the mount box) via a per-instance variable
+            override, the documented way a host customizes a mounted
+            primitive instead of forking its file.
+          -->
+          <div
+            id="touch-indicator-mount"
+            class="clip touch-indicator-mount"
+            data-composition-id="touch-indicator"
+            data-composition-src="./touch-indicator.html"
+            data-variable-values='{"targetX":12,"targetY":63}'
+            data-start="0.4"
+            data-duration="2.6"
+            data-track-index="1"
+            data-width="380"
+            data-height="760"
+          ></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Host timeline: no chrome motion needed to prove the mount contract,
+      // just registration under the host's own data-composition-id.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["touch-indicator-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

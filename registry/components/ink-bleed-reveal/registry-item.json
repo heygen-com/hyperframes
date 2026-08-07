@@ -1,0 +1,59 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ink-bleed-reveal",
+  "type": "hyperframes:component",
+  "title": "Ink Bleed Reveal",
+  "description": "Liquid ink blooms through paper under a gooey blur-plus-threshold filter, merges, then contracts as a crisp slotted mark resolves beneath it, with static seeded paper grain riding the result.",
+  "tags": ["motion-primitive", "texture", "reveal", "gooey", "svg-filter", "deterministic", "experiment"],
+  "jobs": ["reveal"],
+  "family": "texture",
+  "profile": "materialize",
+  "evidence": "Wave M7 experiment: liquid-threshold gooey recipe (wild-scout #3, Jakubowski / Ethode referents), closed-form blob field, no physics state",
+  "syncPoints": [{ "id": "mark-locked", "phase": "in", "offset": 2.8 }],
+  "files": [
+    {
+      "path": "ink-bleed-reveal.html",
+      "target": "compositions/components/ink-bleed-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "blobs",
+      "type": "number",
+      "role": "style",
+      "label": "Blobs",
+      "description": "How many ink blobs bleed and merge (4 to 6).",
+      "default": 5,
+      "min": 4,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Ink tint: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the revealed mark holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

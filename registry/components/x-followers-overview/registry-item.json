@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "x-followers-overview",
+  "type": "hyperframes:component",
+  "title": "X Followers Overview",
+  "description": "A social analytics card with count-up and audience pills.",
+  "tags": ["social-overlay", "remocn-port"],
+  "files": [
+    {
+      "path": "x-followers-overview.html",
+      "target": "compositions/components/x-followers-overview.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-followers-overview.png"
+  }
+}

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Animated Bar Chart - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        transform: scale(2.1);
+        transform-origin: center center;
+      }
+      .hf-remocn-animated-bar-chart {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-animated-bar-chart {
+        width: 760px;
+        min-height: 420px;
+        border-radius: 28px;
+        background: #fff;
+        padding: 34px;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+        display: grid;
+        gap: 22px;
+      }
+      .hf-remocn-animated-bar-chart header {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+      }
+      .hf-remocn-animated-bar-chart h3 {
+        margin: 0;
+        font-size: 34px;
+        letter-spacing: -0.04em;
+        font-weight: 700;
+        color: #111827;
+      }
+      .hf-remocn-animated-bar-chart header p {
+        margin: 6px 0 0;
+        font-size: 16px;
+        color: #6b7280;
+        font-weight: 400;
+      }
+      .hf-remocn-animated-bar-chart strong {
+        font-size: 54px;
+        letter-spacing: -0.06em;
+        color: #2563eb;
+        font-weight: 700;
+      }
+      .hf-remocn-animated-bar-chart .bars {
+        height: 210px;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        align-items: end;
+        gap: 14px;
+      }
+      .hf-remocn-animated-bar-chart .bar {
+        height: calc(var(--h) * var(--hf-grow, 1));
+        border-radius: 14px 14px 5px 5px;
+        background: linear-gradient(180deg, #60a5fa, #2563eb);
+      }
+      .hf-remocn-animated-bar-chart .chart-footer {
+        display: grid;
+        gap: 6px;
+      }
+      .hf-remocn-animated-bar-chart svg {
+        width: 100%;
+        height: 180px;
+        overflow: visible;
+      }
+      .hf-remocn-animated-bar-chart path {
+        stroke-dasharray: 900;
+        stroke-dashoffset: var(--hf-dash, 0);
+      }
+      .hf-remocn-animated-bar-chart .bar-labels {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        text-align: center;
+        font-size: 13px;
+        font-weight: 500;
+        color: #9ca3af;
+        padding: 0 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="animated-bar-chart-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-animated-bar-chart">
+          <header>
+            <div>
+              <h3>Animated Bar Chart</h3>
+              <p>A compact data card with deterministic bar growth and value callouts.</p>
+            </div>
+            <strong>+42%</strong>
+          </header>
+          <div class="bars">
+            <span class="bar" style="--h: 42%"></span><span class="bar" style="--h: 72%"></span
+            ><span class="bar" style="--h: 56%"></span><span class="bar" style="--h: 88%"></span
+            ><span class="bar" style="--h: 64%"></span><span class="bar" style="--h: 95%"></span
+            ><span class="bar" style="--h: 78%"></span>
+          </div>
+          <div class="chart-footer">
+            <svg viewBox="0 0 700 210">
+              <!-- baseline -->
+              <line x1="20" y1="185" x2="680" y2="185" stroke="#e4e4e7" stroke-width="1.5"/>
+              <path
+                d="M20 172 C120 90, 190 118, 260 74 S430 112, 508 42 S620 82, 680 30"
+                fill="none"
+                stroke="#2563eb"
+                stroke-width="10"
+                stroke-linecap="round"
+              />
+            </svg>
+            <div class="bar-labels">
+              <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-animated-bar-chart",
+          { "--hf-grow": 0, "--hf-dash": 900 },
+          { "--hf-grow": 1, "--hf-dash": 0, duration: 1.2, ease: "power3.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["animated-bar-chart-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

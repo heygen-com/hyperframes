@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Spotlight Card - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        transform: scale(1.65);
+        transform-origin: center center;
+      }
+      .hf-remocn-spotlight-card {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-spotlight-card {
+        position: relative;
+        width: 760px;
+        height: 428px;
+        overflow: hidden;
+        border-radius: 30px;
+        background: #080b12;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+      }
+      .hf-remocn-spotlight-card .mesh {
+        position: absolute;
+        inset: -22%;
+        filter: blur(44px);
+        opacity: 0.88;
+        background:
+          radial-gradient(
+            circle at var(--hf-x1, 20%) var(--hf-y1, 30%),
+            #60a5fa 0 18%,
+            transparent 32%
+          ),
+          radial-gradient(
+            circle at var(--hf-x2, 76%) var(--hf-y2, 52%),
+            #f472b6 0 16%,
+            transparent 34%
+          ),
+          radial-gradient(
+            circle at var(--hf-x3, 46%) var(--hf-y3, 78%),
+            #34d399 0 18%,
+            transparent 34%
+          );
+      }
+      .hf-remocn-spotlight-card .card {
+        position: absolute;
+        inset: 74px 92px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 26px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        overflow: hidden;
+      }
+      .hf-remocn-spotlight-card .spot {
+        position: absolute;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 65%);
+        transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
+        mix-blend-mode: screen;
+      }
+      .hf-remocn-spotlight-card .particle {
+        position: absolute;
+        left: 50%;
+        top: 54%;
+        width: 12px;
+        height: 20px;
+        border-radius: 3px;
+        background: var(--c);
+        transform: translate(var(--hf-px, 0px), var(--hf-py, 0px)) rotate(var(--hf-pr, 0deg));
+        opacity: var(--hf-po, 0);
+      }
+      .hf-remocn-spotlight-card h3 {
+        margin: 0;
+        font-size: 44px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-spotlight-card p {
+        margin: 8px 0 0;
+        font-size: 18px;
+        color: rgba(255, 255, 255, 0.7);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="spotlight-card-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-spotlight-card">
+          <div class="mesh"></div>
+          <div class="card">
+            <div class="spot"></div>
+            <div>
+              <h3>Spotlight Card</h3>
+              <p>A card with a scripted cursor spotlight and lit border.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-spotlight-card .mesh",
+          {
+            "--hf-x1": "18%",
+            "--hf-y1": "28%",
+            "--hf-x2": "78%",
+            "--hf-y2": "46%",
+            "--hf-x3": "44%",
+            "--hf-y3": "80%",
+          },
+          {
+            "--hf-x1": "34%",
+            "--hf-y1": "42%",
+            "--hf-x2": "62%",
+            "--hf-y2": "60%",
+            "--hf-x3": "58%",
+            "--hf-y3": "64%",
+            duration: 4,
+            ease: "sine.inOut",
+          },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-spotlight-card .spot",
+          { "--hf-spot-x": "-120px", "--hf-spot-y": "-70px" },
+          { "--hf-spot-x": "190px", "--hf-spot-y": "90px", duration: 3, ease: "sine.inOut" },
+          startTime,
+        );
+        const particles_spotlight_card = gsap.utils.toArray(".hf-remocn-spotlight-card .particle");
+        if (particles_spotlight_card.length) {
+          tl.fromTo(
+            particles_spotlight_card,
+            { "--hf-po": 0, "--hf-px": "0px", "--hf-py": "0px", "--hf-pr": "0deg" },
+            {
+              "--hf-po": 1,
+              "--hf-px": (i) => Math.cos(i * 0.83) * 250 + "px",
+              "--hf-py": (i) => -120 - Math.sin(i * 0.61) * 120 + "px",
+              "--hf-pr": (i) => 180 + i * 37 + "deg",
+              duration: 0.8,
+              stagger: 0.015,
+              ease: "power2.out",
+            },
+            startTime + 0.2,
+          );
+        }
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["spotlight-card-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

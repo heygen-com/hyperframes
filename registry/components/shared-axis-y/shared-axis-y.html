@@ -1,0 +1,35 @@
+<!--
+  Shared Axis Y - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-shared-axis-y"><span>Plan</span><span>Debug</span><span>Ask</span></div>
+
+<style>
+  .hf-remocn-shared-axis-y {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-shared-axis-y {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-shared-axis-y span {
+    display: inline-block;
+    transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+      scale(var(--hf-word-scale, 1));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-shared-axis-y span', { opacity: 0, '--hf-word-y': '32px' }, { opacity: 1, '--hf-word-y': '0px', duration: 0.22, stagger: 0.075, ease: 'power2.out' }, startTime);
+-->

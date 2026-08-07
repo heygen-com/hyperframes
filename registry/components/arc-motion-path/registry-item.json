@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "arc-motion-path",
+  "type": "hyperframes:component",
+  "title": "Arc Motion Path",
+  "description": "A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation.",
+  "tags": ["motionpath", "gsap-plugin", "hyperframes-native"],
+  "files": [
+    {
+      "path": "arc-motion-path.html",
+      "target": "compositions/components/arc-motion-path.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/arc-motion-path.png"
+  }
+}

@@ -1,0 +1,461 @@
+<!doctype html>
+<!--
+  native-notification-pop: HyperFrames video primitive (product-demo / overlay)
+
+  One system-faithful notification banner drops in over ANY scene: fast
+  arrival, soft overshoot, settled mass. The os enum picks the chrome
+  geometry: ios is a wide centered banner with a large radius, macos is a
+  compact top-right banner. The banner carries an app dot, an app label, a
+  title, and one body line over a backdrop-filter blur; it holds at rest and
+  tucks away only via the exit variable. Distinct from notification-stack:
+  this is overlay chrome, faithful to the OS, one banner.
+
+  Spring law: arrival is a closed-form underdamped spring sampled from a
+  linear driver, y(t) = -offset * e^(-zeta*w*t) * (cos(wd*t) +
+  (zeta*w/wd) * sin(wd*t)). Position is a pure function of timeline time, so
+  forward seeks, reverse seeks, and repeated seeks are byte-identical, and a
+  mid-motion redirect (an exit overlapping the drop) picks up the current
+  sampled position instead of snapping (Wave K L1): banner y has exactly one
+  owner at any time (spring sampler, then the rest pin, then the exit tween,
+  in timeline order), and the drop cue is clamped so the spring always
+  completes before OUT begins.
+
+  Backdrop blur: the banner uses backdrop-filter blur + saturate over the
+  scene. If a host compositor flattens or lags the blur under seeks, remove
+  the backdrop-filter lines; the color-mix surface fill underneath is opaque
+  enough to carry the banner on its own (verified fallback).
+
+  Slot (see README.md for a worked example):
+    - [data-slot="scene"]: the full-bleed background the banner drops over.
+      Replace the children of this element in your installed copy. Default:
+      a token backdrop with soft color fields and a skeleton card, saturated
+      enough that the banner blur visibly reads.
+
+  Variables (declared in data-composition-variables below):
+    - title (string): the notification title line.
+    - body (string): one body line. Long lines truncate with an ellipsis.
+    - app_label (string, default "HyperFrames"): small-caps app name row.
+    - os (ios | macos, default ios): banner geometry and placement.
+    - at (number, seconds, default 0.3): when the drop starts, relative to
+      mount start. Clamped so the spring settles before any exit.
+    - accent (green | blue | violet, default green): app dot color.
+      green maps to --brand, blue to --accent, violet to --accent-2.
+    - exit (none | fade | up, default none): none holds the banner at rest;
+      up tucks the banner back off the top (the native dismiss); fade fades
+      it in place. The scene slot holds regardless: frame roots own scene
+      transitions.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN   = at + 0.9s spring drop (first contact with rest at at + ~0.31s)
+    HOLD = elastic; the banner rests dead still
+    OUT  = 0.45s when exit is fade or up, 0 when exit is none
+
+  Sound cue: dispatches a bubbling `hf:sfx` CustomEvent with id
+  "notification-pop" at first contact with rest. This primitive never plays
+  audio.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset: 0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "native-notification-pop" key. Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="native-notification-pop"
+  data-composition-duration="3"
+  data-composition-variables='[
+    { "id": "title", "type": "string", "role": "content", "label": "Title", "description": "The notification title line.", "default": "Render complete" },
+    { "id": "body", "type": "string", "role": "content", "label": "Body", "description": "One body line. Long lines truncate with an ellipsis.", "default": "launch-cut.mp4 is ready to preview" },
+    { "id": "app_label", "type": "string", "role": "content", "label": "App label", "description": "Small-caps app name row beside the app dot.", "default": "HyperFrames" },
+    { "id": "os", "type": "enum", "role": "style", "label": "OS", "description": "Banner geometry and placement: wide centered iOS or compact top-right macOS.", "default": "ios", "options": [{ "value": "ios", "label": "iOS" }, { "value": "macos", "label": "macOS" }] },
+    { "id": "at", "type": "number", "role": "timing", "label": "Drop start", "description": "Seconds after mount start when the banner drops in.", "default": 0.3, "min": 0, "max": 8, "step": 0.05, "unit": "s" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "App dot color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "None holds the banner; up tucks it back off the top; fade fades it in place.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Native Notification Pop</title>
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="native-notification-pop"
+        data-duration="3"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #07111f);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .nnp-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .nnp-slot,
+          .nnp-slot > img,
+          .nnp-slot > video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .nnp-slot > img,
+          .nnp-slot > video {
+            object-fit: cover;
+          }
+
+          /* Token backdrop default: soft saturated color fields plus a
+             skeleton card, so the banner blur has structure to smear.
+             Callers replacing slot children never see any of this. */
+          .nnp-default {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background:
+              radial-gradient(
+                50cqw 42cqh at 24% 12%,
+                color-mix(in srgb, var(--brand, #22c55e) 34%, transparent) 0%,
+                transparent 70%
+              ),
+              radial-gradient(
+                46cqw 40cqh at 82% 26%,
+                color-mix(in srgb, var(--accent-2, #c5a3ff) 30%, transparent) 0%,
+                transparent 70%
+              ),
+              radial-gradient(
+                ellipse at 50% 90%,
+                color-mix(in srgb, var(--surface, #172033) 80%, var(--bg, #07111f)) 0%,
+                var(--bg, #07111f) 78%
+              );
+          }
+
+          .nnp-card {
+            width: 52cqw;
+            padding: var(--space-3, 4cqh) var(--space-3, 4cqw);
+            border: 0.16cqmin solid var(--border, #334155);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 88%, var(--bg, #07111f));
+          }
+
+          .nnp-card-bar {
+            width: 34%;
+            height: 4.2cqh;
+            margin-bottom: var(--space-3, 4cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.55;
+          }
+
+          .nnp-card-line {
+            height: 2.2cqh;
+            margin-bottom: var(--space-2, 2.6cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.38;
+          }
+
+          .nnp-card-line:nth-of-type(2) {
+            width: 90%;
+          }
+
+          .nnp-card-line:nth-of-type(3) {
+            width: 62%;
+          }
+
+          /* The anchor owns placement so the banner transform belongs to the
+             spring alone (a translateX(-50%) centering transform would be
+             clobbered by the gsap y). */
+          .nnp-anchor {
+            position: absolute;
+            inset: 0 0 auto 0;
+            display: flex;
+            z-index: 3;
+          }
+
+          .nnp-anchor[data-os="ios"] {
+            justify-content: center;
+            padding-top: 4.5cqh;
+          }
+
+          .nnp-anchor[data-os="macos"] {
+            justify-content: flex-end;
+            padding: 3.5cqh 2.2cqw 0 0;
+          }
+
+          .nnp-banner {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2, 2.4cqmin);
+            border: 0.14cqmin solid color-mix(in srgb, var(--fg, #f8fafc) 16%, transparent);
+            background: color-mix(in srgb, var(--surface, #172033) 62%, transparent);
+            -webkit-backdrop-filter: blur(3.2cqmin) saturate(140%);
+            backdrop-filter: blur(3.2cqmin) saturate(140%);
+            box-shadow: 0 2.4cqh 7cqh color-mix(in srgb, var(--bg, #07111f) 50%, transparent);
+            will-change: transform;
+          }
+
+          .nnp-anchor[data-os="ios"] .nnp-banner {
+            width: 58cqw;
+            border-radius: 3.6cqmin;
+            padding: 2.6cqmin 3cqmin;
+          }
+
+          .nnp-anchor[data-os="macos"] .nnp-banner {
+            width: 38cqw;
+            border-radius: 2.2cqmin;
+            padding: 2.2cqmin 2.6cqmin;
+          }
+
+          .nnp-dot {
+            flex: 0 0 auto;
+            width: 5.4cqmin;
+            aspect-ratio: 1;
+            border-radius: 30%;
+            background: linear-gradient(
+              160deg,
+              color-mix(in srgb, var(--nnp-accent) 72%, var(--fg, #f8fafc)) 0%,
+              var(--nnp-accent) 62%
+            );
+          }
+
+          .nnp-anchor[data-os="macos"] .nnp-dot {
+            width: 4.6cqmin;
+            border-radius: 24%;
+          }
+
+          .nnp-copy {
+            flex: 1 1 auto;
+            min-width: 0;
+          }
+
+          .nnp-app,
+          .nnp-title,
+          .nnp-body {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          }
+
+          .nnp-app {
+            color: var(--muted, #94a3b8);
+            font-size: 1.9cqmin;
+            font-weight: 500;
+            letter-spacing: 0.11em;
+            line-height: 1.5;
+            text-transform: uppercase;
+          }
+
+          .nnp-app:empty {
+            display: none;
+          }
+
+          .nnp-title {
+            color: var(--fg, #f8fafc);
+            font-size: 2.7cqmin;
+            font-weight: 600;
+            line-height: 1.35;
+          }
+
+          .nnp-body {
+            color: var(--muted, #94a3b8);
+            font-size: 2.4cqmin;
+            font-weight: 400;
+            line-height: 1.4;
+          }
+        </style>
+
+        <div
+          id="native-notification-pop-clip"
+          class="nnp-clip clip"
+          data-start="0"
+          data-duration="3"
+          data-track-index="0"
+        >
+          <div class="nnp-slot" data-slot="scene">
+            <!-- SLOT "scene": replace the children of this element with your
+                 own full-bleed content (img, video, or HTML). -->
+            <div class="nnp-default" aria-hidden="true">
+              <div class="nnp-card">
+                <div class="nnp-card-bar"></div>
+                <div class="nnp-card-line"></div>
+                <div class="nnp-card-line"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="nnp-anchor" data-os="ios">
+            <div class="nnp-banner" role="status">
+              <div class="nnp-dot" aria-hidden="true"></div>
+              <div class="nnp-copy">
+                <div class="nnp-app"></div>
+                <div class="nnp-title"></div>
+                <div class="nnp-body"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "native-notification-pop";
+            var clip = root.querySelector(".nnp-clip");
+            var anchor = root.querySelector(".nnp-anchor");
+            var banner = root.querySelector(".nnp-banner");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var title = vars.title == null ? "Render complete" : String(vars.title);
+            var body = vars.body == null ? "launch-cut.mp4 is ready to preview" : String(vars.body);
+            var appLabel = vars.app_label == null ? "HyperFrames" : String(vars.app_label);
+            var os = vars.os === "macos" ? "macos" : "ios";
+            var rawAt = vars.at == null ? 0.3 : Number(vars.at);
+            var at = Number.isFinite(rawAt) ? Math.max(0, Math.min(8, rawAt)) : 0.3;
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // The bundler mirrors composition variables as scoped CSS custom
+            // props, so this unit's own accent variable shadows the contract
+            // --accent token inside the subtree. When the shadow is present,
+            // fall back to the literal contract value instead of var(--accent).
+            var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              computedAccent === "green" ||
+              computedAccent === "blue" ||
+              computedAccent === "violet"
+            ) {
+              accentColors.blue = "#38bdf8";
+            }
+            root.style.setProperty("--nnp-accent", accentColors[accent]);
+
+            anchor.setAttribute("data-os", os);
+            root.querySelector(".nnp-app").textContent = appLabel;
+            root.querySelector(".nnp-title").textContent = title;
+            root.querySelector(".nnp-body").textContent = body;
+            banner.setAttribute("aria-label", appLabel + ": " + title + ". " + body);
+
+            // RETIME RANGE: fixed phases; HOLD is the only elastic span.
+            var DROP = 0.9;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
+            var OUT = Math.min(OUT_BASE, duration * 0.2);
+            var OUT_START = duration - OUT;
+            // The spring always settles before any exit: no second tween ever
+            // fights the sampler for banner y (Wave K L1 single-owner form).
+            at = Math.min(at, Math.max(0, OUT_START - DROP));
+
+            // Start fully above the frame: measured px at mount (cq-unit
+            // transform tweens misbehave under seeks; px measured once do not).
+            var clipTop = clip.getBoundingClientRect().top;
+            var bannerBottom = banner.getBoundingClientRect().bottom;
+            var offset = Math.max(1, bannerBottom - clipTop + 4);
+
+            // System spring constants, tuned against the iOS/macOS banner
+            // feel: first contact with rest at ~0.31s, ~3% soft overshoot,
+            // visually settled by ~0.7s.
+            var OMEGA = 15;
+            var ZETA = 0.74;
+            var OMEGA_D = OMEGA * Math.sqrt(1 - ZETA * ZETA);
+            function springEnvelope(t) {
+              return (
+                Math.exp(-ZETA * OMEGA * t) *
+                (Math.cos(OMEGA_D * t) + ((ZETA * OMEGA) / OMEGA_D) * Math.sin(OMEGA_D * t))
+              );
+            }
+            var LAND = Math.PI / OMEGA_D; // first contact with rest
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            gsap.set(banner, { y: -offset, opacity: 1 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: the spring drop. A linear driver samples the closed form,
+            // so position is a pure function of time and seeks in either
+            // direction land on identical frames.
+            var driver = { t: 0 };
+            tl.to(
+              driver,
+              {
+                t: DROP,
+                duration: DROP,
+                ease: "none",
+                onUpdate: function () {
+                  gsap.set(banner, { y: -offset * springEnvelope(driver.t) });
+                },
+              },
+              at,
+            );
+            // Pin exactly to rest for the hold (the envelope tail is ~0 but
+            // not exactly 0).
+            tl.set(banner, { y: 0 }, at + DROP);
+            tl.call(
+              function () {
+                fireSfx("notification-pop", at + LAND);
+              },
+              [],
+              at + LAND,
+            );
+
+            // HOLD: settled mass. Dead still.
+
+            // OUT: the banner tucks away only via exit; the scene holds
+            // (frame roots own scene transitions).
+            if (exit === "up") {
+              tl.to(banner, { y: -offset, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(banner, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

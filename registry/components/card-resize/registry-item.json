@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "card-resize",
+  "type": "hyperframes:component",
+  "title": "Card Resize",
+  "description": "A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel",
+  "tags": ["transition-primitive", "transitions-dev-port", "card", "layout"],
+  "files": [
+    {
+      "path": "card-resize.html",
+      "target": "compositions/components/card-resize.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
+  }
+}

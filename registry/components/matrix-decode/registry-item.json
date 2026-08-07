@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "matrix-decode",
+  "type": "hyperframes:component",
+  "title": "Matrix Decode",
+  "description": "Random scramble resolves left-to-right into the target text.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "matrix-decode.html",
+      "target": "compositions/components/matrix-decode.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/matrix-decode.png"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "micro-transitions",
+  "type": "hyperframes:component",
+  "title": "Micro Transitions",
+  "description": "A transitions.dev-inspired pack of badge, dropdown, modal, tabs, tooltip, and success-check micro transitions",
+  "tags": [
+    "transition-primitive",
+    "motion-primitive",
+    "transitions-dev-port",
+    "ui",
+    "transition",
+    "microinteraction"
+  ],
+  "files": [
+    {
+      "path": "micro-transitions.html",
+      "target": "compositions/components/micro-transitions.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/micro-transitions.png"
+  }
+}

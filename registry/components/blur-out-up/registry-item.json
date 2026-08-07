@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "blur-out-up",
+  "type": "hyperframes:component",
+  "title": "Blur Out Up",
+  "description": "Words arrive clean and depart upward with increasing blur for airy exits.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "blur-out-up.html",
+      "target": "compositions/components/blur-out-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-out-up.png"
+  }
+}

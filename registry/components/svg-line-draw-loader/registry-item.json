@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "svg-line-draw-loader",
+  "type": "hyperframes:component",
+  "title": "SVG Line Draw Loader",
+  "description": "An Anime.js-style path drawing loader implemented as a seekable GSAP stroke timeline.",
+  "tags": ["advanced-motion", "anime-inspired", "hyperframes-native"],
+  "files": [
+    {
+      "path": "svg-line-draw-loader.html",
+      "target": "compositions/components/svg-line-draw-loader.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/svg-line-draw-loader.png"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "avatar-cloud",
+  "type": "hyperframes:component",
+  "title": "Avatar Cloud",
+  "description": "Lettermark avatars populate a loose elliptical cloud while fine SVG links draw between the community and its central proof label.",
+  "tags": ["effects", "avatars", "community", "network", "social-proof", "prove"],
+  "jobs": ["prove"],
+  "family": "effects",
+  "profile": "holdable",
+  "evidence": "consumer-sim fixture + rules avatar-cloud-network",
+  "syncPoints": [{ "id": "network-formed", "phase": "in", "offset": 2.15 }],
+  "files": [
+    {
+      "path": "avatar-cloud.html",
+      "target": "compositions/components/avatar-cloud.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "avatarCount",
+      "type": "number",
+      "role": "layout",
+      "label": "Avatar count",
+      "description": "Number of lettermark avatars in the network cloud.",
+      "default": 10,
+      "min": 6,
+      "max": 16,
+      "step": 1
+    },
+    {
+      "id": "showLinks",
+      "type": "enum",
+      "role": "content",
+      "label": "Show links",
+      "description": "Show or hide the connecting network lines.",
+      "default": "yes",
+      "options": [
+        { "value": "yes", "label": "Yes" },
+        { "value": "no", "label": "No" }
+      ]
+    },
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Proof label",
+      "description": "Community proof copy shown in the center hub.",
+      "default": "50k builders"
+    }
+  ]
+}

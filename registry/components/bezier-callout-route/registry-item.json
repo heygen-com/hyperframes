@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "bezier-callout-route",
+  "type": "hyperframes:component",
+  "title": "Bezier Callout Route",
+  "description": "A route-map primitive with multiple callouts traveling along cubic Bezier paths.",
+  "tags": ["motionpath", "gsap-plugin", "hyperframes-native"],
+  "files": [
+    {
+      "path": "bezier-callout-route.html",
+      "target": "compositions/components/bezier-callout-route.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/bezier-callout-route.png"
+  }
+}

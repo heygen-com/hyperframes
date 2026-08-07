@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "device-frame-stage",
+  "type": "hyperframes:component",
+  "title": "Device Frame Stage",
+  "description": "A phone or tablet mockup staged as a physical scene prop with a screen slot for arbitrary reconstructed UI, rising onto the stage, settling, and holding an idle float",
+  "tags": ["prop", "device", "mobile", "tablet", "ui-props", "holdable"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "fixture + mobile inventory #1 + device-frame-spec.md",
+  "files": [
+    {
+      "path": "device-frame-stage.html",
+      "target": "compositions/components/device-frame-stage.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "device",
+      "type": "enum",
+      "role": "layout",
+      "label": "Device kind",
+      "default": "phone",
+      "options": [
+        { "value": "phone", "label": "Phone" },
+        { "value": "tablet", "label": "Tablet" }
+      ]
+    },
+    {
+      "id": "cutout",
+      "type": "enum",
+      "role": "layout",
+      "label": "Camera cutout",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "island", "label": "Island" },
+        { "value": "notch", "label": "Notch" }
+      ]
+    },
+    {
+      "id": "body",
+      "type": "enum",
+      "role": "style",
+      "label": "Body material",
+      "default": "graphite",
+      "options": [
+        { "value": "graphite", "label": "Graphite" },
+        { "value": "silver", "label": "Silver" }
+      ]
+    }
+  ]
+}

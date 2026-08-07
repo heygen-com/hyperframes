@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "tabs-slide-indicator",
+  "type": "hyperframes:component",
+  "title": "Tabs Slide Indicator",
+  "description": "A pill indicator transition that slides between active tabs",
+  "tags": ["transition-primitive", "transitions-dev-port", "tabs", "indicator"],
+  "files": [
+    {
+      "path": "tabs-slide-indicator.html",
+      "target": "compositions/components/tabs-slide-indicator.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tabs-slide-indicator.png"
+  }
+}

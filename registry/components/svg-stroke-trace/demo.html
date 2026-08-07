@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  svg-stroke-trace demo. This standalone composition mounts the primitive
+  through data-composition-src. A non-default closed logo path, wider stroke,
+  and violet accent prove all three variables and the optional fill behavior.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>SVG Stroke Trace Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 2.4cqmin;
+        --space-1: 1.2cqmin;
+        --space-2: 2.4cqmin;
+        --space-3: 4cqmin;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 46%,
+          color-mix(in srgb, var(--surface) 88%, var(--accent-2)) 0%,
+          var(--bg) 72%
+        );
+      }
+
+      .mount-card {
+        width: 76%;
+        height: 62%;
+        left: 12%;
+        top: 19%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        border-radius: calc(var(--radius) * 1.35);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        box-shadow: 0 4cqh 12cqh color-mix(in srgb, var(--bg) 58%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="svg-stroke-trace-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="svg-stroke-trace-mount"
+        class="mount-card clip"
+        data-composition-id="svg-stroke-trace"
+        data-composition-src="./svg-stroke-trace.html"
+        data-variable-values='{"path":"M 170 378 L 330 132 L 458 330 L 584 132 L 830 378 L 680 378 L 584 248 L 508 378 L 408 378 L 330 248 L 252 378 Z","stroke_width":16,"accent":"violet"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1459"
+        data-height="670"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["svg-stroke-trace-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

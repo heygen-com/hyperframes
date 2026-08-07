@@ -1,0 +1,84 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ordered-dither-pass",
+  "type": "hyperframes:component",
+  "title": "Ordered Dither Pass",
+  "description": "Bayer-matrix ordered dithering quantizes a slotted scene (rasterized once at mount): the image emerges from pure 2-tone noise to clean, or dissolves the reverse. Stateless per frame, never error diffusion.",
+  "tags": ["motion-primitive", "experiment", "texture", "dither", "transition", "quantize"],
+  "jobs": ["reveal", "bridge"],
+  "family": "effects",
+  "profile": "texture",
+  "evidence": "Wave M M2: Codrops 'Building a Real-Time Dithering Shader' (Niccolo Fanton, 2025-06-04), the ordered-not-error-diffusion pass from the wild scout",
+  "syncPoints": [{ "id": "ramp", "phase": "in", "offset": 0.4 }],
+  "files": [
+    {
+      "path": "ordered-dither-pass.html",
+      "target": "compositions/components/ordered-dither-pass.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "matrix",
+      "type": "enum",
+      "role": "style",
+      "label": "Matrix",
+      "description": "Bayer matrix size: 2 is the coarsest crosshatch, 8 the smoothest ordered grain.",
+      "default": "4",
+      "options": [
+        { "value": "2", "label": "2 x 2" },
+        { "value": "4", "label": "4 x 4" },
+        { "value": "8", "label": "8 x 8" }
+      ]
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "timing",
+      "label": "Direction",
+      "description": "in resolves noise to clean; out dissolves clean to noise and holds it.",
+      "default": "in",
+      "options": [
+        { "value": "in", "label": "Noise to clean" },
+        { "value": "out", "label": "Clean to noise" }
+      ]
+    },
+    {
+      "id": "levels",
+      "type": "number",
+      "role": "style",
+      "label": "Levels",
+      "description": "Quantization levels per color channel during the dithered phase.",
+      "default": 2,
+      "min": 2,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Light tone of the 2-tone noise phase: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the frame leaves. None holds the final state.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

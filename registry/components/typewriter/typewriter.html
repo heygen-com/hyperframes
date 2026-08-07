@@ -1,0 +1,45 @@
+<!--
+  Typewriter - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-typewriter"><span>hyperframes add typewriter</span><i></i></div>
+
+<style>
+  .hf-remocn-typewriter {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-typewriter {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font:
+      800 42px/1 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      monospace;
+  }
+  .hf-remocn-typewriter span {
+    display: inline-block;
+    max-width: calc(var(--hf-type-progress, 1) * 100%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .hf-remocn-typewriter i {
+    width: 3px;
+    height: 42px;
+    border-radius: 999px;
+    background: #18181b;
+    opacity: var(--hf-caret-opacity, 1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-typewriter', { '--hf-type-progress': 0 }, { '--hf-type-progress': 1, duration: 1.2, ease: 'steps(28)' }, startTime); tl.to('.hf-remocn-typewriter i', { '--hf-caret-opacity': 0.2, duration: 0.24, repeat: 7, yoyo: true, ease: 'none' }, startTime + 0.2);
+-->

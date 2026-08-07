@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  testimonial-card demo: standalone 1920x1080 composition that mounts the
+  primitive through data-composition-src. Non-default content exercises all
+  four variables while the host owns the stage and mount dimensions.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Testimonial Card - Demo</title>
+    <style>
+      :root {
+        --bg: #070a12;
+        --fg: #f8fafc;
+        --muted: #a8b3c7;
+        --surface: #151c2c;
+        --border: #34405a;
+        --brand: #8b5cf6;
+        --accent: #22d3ee;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 28px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          color-mix(in srgb, var(--surface) 72%, var(--bg)),
+          var(--bg) 72%
+        );
+      }
+
+      .mount-card {
+        width: 54%;
+        height: 64%;
+        left: 23%;
+        top: 18%;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        border-radius: calc(var(--radius) * 1.35);
+        box-shadow: 0 40px 90px color-mix(in srgb, var(--bg) 78%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="testimonial-card-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="testimonial-card-mount"
+        class="mount-card clip"
+        data-composition-id="testimonial-card"
+        data-composition-src="./testimonial-card.html"
+        data-variable-values='{"quote":"Our launch video went from brief to polished in one afternoon.","author":"Maya Chen","handle":"@mayac","rating":4.6}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1037"
+        data-height="691"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["testimonial-card-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

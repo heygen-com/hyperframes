@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "tool-menu-slide-in",
+  "type": "hyperframes:component",
+  "title": "Tool Menu Slide In",
+  "description": "A tool menu enters with short-axis slide and icon stagger.",
+  "tags": ["transition-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "tool-menu-slide-in.html",
+      "target": "compositions/components/tool-menu-slide-in.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tool-menu-slide-in.png"
+  }
+}

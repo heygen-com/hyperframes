@@ -1,0 +1,41 @@
+<!--
+  Matrix Decode - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-matrix-decode" data-final="HYPERFRAMES">
+  <span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span
+  ><span>0</span><span>0</span><span>0</span><span>0</span>
+</div>
+
+<style>
+  .hf-remocn-matrix-decode {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-matrix-decode {
+    display: inline-flex;
+    gap: 3px;
+    font:
+      900 64px/1 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      monospace;
+    color: #16a34a;
+    text-shadow: 0 0 18px rgba(22, 163, 74, 0.28);
+  }
+  .hf-remocn-matrix-decode span {
+    display: inline-block;
+    min-width: 0.64em;
+    opacity: var(--hf-matrix-opacity, 1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-matrix-decode span', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }, startTime);
+-->

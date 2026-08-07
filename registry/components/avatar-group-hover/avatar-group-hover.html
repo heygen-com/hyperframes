@@ -1,0 +1,38 @@
+<!--
+  Avatar Group Hover - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-avatar-group-hover">
+  <span>A</span><span>B</span><span>C</span><span>D</span>
+</div>
+
+<style>
+  .hf-transition-avatar-group-hover {
+    display: inline-flex;
+    align-items: center;
+    padding-left: 18px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-avatar-group-hover span {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    margin-left: -18px;
+    border: 3px solid #fff;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #111827, #0ea5e9);
+    color: #fff;
+    font-weight: 900;
+    box-shadow: 0 12px 30px rgba(24, 24, 27, 0.18);
+    transform: translateY(var(--hf-avatar-y, 0px));
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-transition-avatar-group-hover span', { '--hf-avatar-y': '-18px', duration: 0.28, stagger: { each: 0.035, from: 'center' }, ease: 'back.out(1.8)' }, startTime); tl.to('.hf-transition-avatar-group-hover span', { '--hf-avatar-y': '0px', duration: 0.42, stagger: { each: 0.035, from: 'center' }, ease: 'bounce.out' }, startTime + 0.36);
+-->

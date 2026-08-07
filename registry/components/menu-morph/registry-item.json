@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "menu-morph",
+  "type": "hyperframes:component",
+  "title": "Menu Morph",
+  "description": "A transitions.dev-inspired hamburger and plus-menu morph primitive for compact action menus",
+  "tags": ["transition-primitive", "transitions-dev-port", "menu", "morph"],
+  "files": [
+    {
+      "path": "menu-morph.html",
+      "target": "compositions/components/menu-morph.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menu-morph.png"
+  }
+}

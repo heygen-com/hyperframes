@@ -1,0 +1,47 @@
+<!--
+  RGB Glitch Text - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-rgb-glitch-text">
+  <span>GLITCH</span><span>GLITCH</span><strong>GLITCH</strong>
+</div>
+
+<style>
+  .hf-remocn-rgb-glitch-text {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-rgb-glitch-text {
+    position: relative;
+    width: 420px;
+    height: 82px;
+    font-size: 72px;
+    line-height: 1;
+  }
+  .hf-remocn-rgb-glitch-text span,
+  .hf-remocn-rgb-glitch-text strong {
+    position: absolute;
+    inset: 0;
+  }
+  .hf-remocn-rgb-glitch-text span:first-child {
+    color: #ef4444;
+    transform: translateX(var(--hf-glitch-red, 0px));
+  }
+  .hf-remocn-rgb-glitch-text span:nth-child(2) {
+    color: #22d3ee;
+    transform: translateX(var(--hf-glitch-blue, 0px));
+  }
+  .hf-remocn-rgb-glitch-text strong {
+    color: #18181b;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-remocn-rgb-glitch-text', { opacity: 1, duration: 0.01 }, startTime); tl.to('.hf-remocn-rgb-glitch-text', { '--hf-glitch-red': '-8px', '--hf-glitch-blue': '8px', duration: 0.06, repeat: 5, yoyo: true, ease: 'steps(1)' }, startTime + 0.1);
+-->

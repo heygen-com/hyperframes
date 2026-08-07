@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "simulated-cursor",
+  "type": "hyperframes:component",
+  "title": "Simulated Cursor",
+  "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
+  "tags": ["motion-primitive", "cursor", "ui", "walkthrough"],
+  "files": [
+    {
+      "path": "simulated-cursor.html",
+      "target": "compositions/components/simulated-cursor.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/simulated-cursor.png"
+  }
+}

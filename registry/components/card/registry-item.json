@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "card",
+  "type": "hyperframes:component",
+  "title": "Card",
+  "description": "A single semantic card surface with calm type hierarchy, success status, a review action, and Soft Optical reveal hooks",
+  "tags": ["ui-primitive", "remocn-port", "card", "surface"],
+  "files": [
+    {
+      "path": "card.html",
+      "target": "compositions/components/card.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card.png"
+  }
+}

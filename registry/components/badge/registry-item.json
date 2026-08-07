@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "badge",
+  "type": "hyperframes:component",
+  "title": "Badge",
+  "description": "An Operator Black semantic badge for restrained success, warning, and neutral status labels",
+  "tags": ["ui-primitive", "remocn-port", "badge", "status"],
+  "files": [
+    {
+      "path": "badge.html",
+      "target": "compositions/components/badge.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge.png"
+  }
+}

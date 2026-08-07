@@ -1,0 +1,336 @@
+<!doctype html>
+<!--
+  pull-back-reveal: HyperFrames video primitive (camera / reveal / recontextualize)
+
+  Concept: the frame starts tight on one stat chip, pauses long enough to
+  establish it as the subject, then pulls back to reveal the headline and two
+  supporting cards that give the stat its meaning. The chip remains the same
+  DOM element for the entire move.
+
+  Variables:
+    - detail_text (string, default "+312%"): the stat inside the focus chip.
+    - headline (string, default "Growth compounds"): the scene headline.
+    - accent (green | blue | violet, default "green"): the scene highlight.
+
+  Envelope (fixed IN, elastic HOLD, no OUT, never gsap.timeScale()):
+    IN_BASE  = 2.40s  tight hold, whip-out pull-back, then a short drift settle
+    HOLD     = elastic full-scene hold with a restrained shadow breath
+    OUT_BASE = 0s     the reveal establishes the final composed scene
+    If D is shorter than IN_BASE, the three IN beats compress together and
+    HOLD becomes zero. Longer mounts stretch HOLD only.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the hardcoded pull-back-reveal id.
+-->
+<html
+  lang="en"
+  data-composition-id="pull-back-reveal"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "detail_text", "type": "string", "role": "content", "label": "Detail text", "description": "Stat shown in the detail chip at the center of the reveal.", "default": "+312%" },
+    { "id": "headline", "type": "string", "role": "content", "label": "Headline", "description": "Headline revealed around the focused detail.", "default": "Growth compounds" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Highlight color used across the composed scene.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pull Back Reveal</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="pull-back-reveal" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .pbr-clip,
+          .pbr-world {
+            position: absolute;
+            inset: 0;
+          }
+
+          .pbr-clip {
+            overflow: hidden;
+            background: var(--bg, #0b0c0e);
+          }
+
+          .pbr-world {
+            overflow: hidden;
+            transform-origin: 50% 50%;
+            background:
+              radial-gradient(
+                circle at 48% 50%,
+                color-mix(in srgb, var(--pbr-accent) 19%, transparent),
+                transparent 27%
+              ),
+              linear-gradient(
+                145deg,
+                color-mix(in srgb, var(--surface, #18202d) 82%, var(--bg, #0b0c0e)),
+                var(--bg, #0b0c0e) 72%
+              );
+            will-change: transform;
+          }
+
+          .pbr-headline {
+            position: absolute;
+            z-index: 1;
+            top: 8cqh;
+            left: 8cqw;
+            width: 76cqw;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 7.6cqw;
+            font-weight: 780;
+            line-height: 0.92;
+            letter-spacing: -0.055em;
+            overflow-wrap: anywhere;
+            text-shadow: 0 1.8cqh 5cqh color-mix(in srgb, var(--bg, #0b0c0e) 72%, transparent);
+          }
+
+          .pbr-card {
+            position: absolute;
+            z-index: 1;
+            overflow: hidden;
+            border: 0.11cqw solid color-mix(in srgb, var(--border, #334155) 78%, transparent);
+            border-radius: var(--radius, 2.4cqw);
+            background: color-mix(in srgb, var(--surface, #1e293b) 92%, transparent);
+            box-shadow:
+              0 2.2cqh 5.5cqh color-mix(in srgb, var(--bg, #0b0c0e) 54%, transparent),
+              inset 0 0.1cqh 0 color-mix(in srgb, var(--fg, #f8fafc) 9%, transparent);
+          }
+
+          .pbr-detail-card {
+            top: 31cqh;
+            left: 8cqw;
+            width: 56cqw;
+            height: 56cqh;
+            padding: 5cqh 4cqw;
+          }
+
+          .pbr-detail-label,
+          .pbr-support-label {
+            color: var(--muted, #94a3b8);
+            font-size: 1.35cqw;
+            font-weight: 680;
+            line-height: 1;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+          }
+
+          .pbr-detail-chip {
+            position: absolute;
+            top: 13cqh;
+            left: 31cqw;
+            width: 20cqw;
+            min-height: 12cqh;
+            display: grid;
+            place-items: center;
+            padding: 1.8cqh 1.5cqw;
+            border: 0.12cqw solid color-mix(in srgb, var(--pbr-accent) 72%, var(--fg, #f8fafc));
+            border-radius: calc(var(--radius, 2.4cqw) * 0.72);
+            background: color-mix(in srgb, var(--pbr-accent) 22%, var(--surface, #1e293b));
+            box-shadow: 0 1.8cqh 4.5cqh color-mix(in srgb, var(--pbr-accent) 28%, transparent);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 4.4cqw;
+            font-weight: 820;
+            line-height: 1;
+            letter-spacing: -0.055em;
+            overflow: hidden;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .pbr-detail-context {
+            position: absolute;
+            bottom: 5cqh;
+            left: 4cqw;
+            color: var(--muted, #94a3b8);
+            font-size: 1.6cqw;
+            font-weight: 560;
+            line-height: 1.25;
+          }
+
+          .pbr-support-card {
+            left: 75cqw;
+            width: 17cqw;
+            height: 25cqh;
+            padding: 3.6cqh 2.2cqw;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+          }
+
+          .pbr-support-card-a {
+            top: 31cqh;
+          }
+
+          .pbr-support-card-b {
+            top: 62cqh;
+          }
+
+          .pbr-support-value {
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 3.7cqw;
+            font-weight: 780;
+            line-height: 0.9;
+            letter-spacing: -0.05em;
+          }
+
+          .pbr-support-rule {
+            width: 100%;
+            height: 0.5cqh;
+            border-radius: 999cqw;
+            background: color-mix(in srgb, var(--pbr-accent) 72%, var(--border, #334155));
+          }
+
+          .pbr-ground {
+            position: absolute;
+            z-index: 0;
+            left: 15cqw;
+            bottom: 2cqh;
+            width: 70cqw;
+            height: 10cqh;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--pbr-accent) 16%, var(--bg, #0b0c0e));
+            filter: blur(3.2cqh);
+            opacity: 0;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="pull-back-reveal-clip"
+          class="pbr-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="pbr-world">
+            <div class="pbr-headline"></div>
+
+            <section class="pbr-card pbr-detail-card">
+              <div class="pbr-detail-label">Net growth</div>
+              <div class="pbr-detail-chip"></div>
+              <div class="pbr-detail-context">Across every active workspace</div>
+            </section>
+
+            <section class="pbr-card pbr-support-card pbr-support-card-a">
+              <div class="pbr-support-label">Retention</div>
+              <div class="pbr-support-value">94%</div>
+              <div class="pbr-support-rule"></div>
+            </section>
+
+            <section class="pbr-card pbr-support-card pbr-support-card-b">
+              <div class="pbr-support-label">Teams</div>
+              <div class="pbr-support-value">48</div>
+              <div class="pbr-support-rule"></div>
+            </section>
+
+            <div class="pbr-ground"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var world = root.querySelector(".pbr-world");
+            var headline = root.querySelector(".pbr-headline");
+            var detail = root.querySelector(".pbr-detail-chip");
+            var ground = root.querySelector(".pbr-ground");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var detailText = vars.detail_text == null ? "+312%" : String(vars.detail_text);
+            var headlineText = vars.headline == null ? "Growth compounds" : String(vars.headline);
+            var accentColors = {
+              green: "#22c55e",
+              blue: "#3b82f6",
+              violet: "#8b5cf6",
+            };
+            var accentColor = accentColors[vars.accent] || accentColors.green;
+
+            detail.textContent = detailText;
+            headline.textContent = headlineText;
+            root.style.setProperty("--pbr-accent", accentColor);
+
+            // RETIME RANGE: IN owns the tight beat and complete camera move.
+            // HOLD is the only elastic phase. This reveal has no exit.
+            var IN_BASE = 2.4;
+            var TIGHT_HOLD_BASE = 0.55;
+            var WHIP_BASE = 1.2;
+            var DRIFT_BASE = 0.65;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var phaseScale = Math.min(1, duration / IN_BASE);
+            var TIGHT_HOLD = TIGHT_HOLD_BASE * phaseScale;
+            var WHIP = WHIP_BASE * phaseScale;
+            var DRIFT = DRIFT_BASE * phaseScale;
+            var IN = TIGHT_HOLD + WHIP + DRIFT;
+            var HOLD = Math.max(0, duration - IN);
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              world,
+              { scale: 2.2, y: 0 },
+              { scale: 1.055, y: "0.7cqh", duration: WHIP, ease: "power4.out" },
+              TIGHT_HOLD,
+            );
+            tl.to(
+              world,
+              { scale: 1, y: 0, duration: DRIFT, ease: "sine.inOut" },
+              TIGHT_HOLD + WHIP,
+            );
+            tl.fromTo(
+              ground,
+              { opacity: 0, scaleX: 0.72, scaleY: 0.72 },
+              { opacity: 0.78, scaleX: 1, scaleY: 1, duration: DRIFT, ease: "power2.out" },
+              TIGHT_HOLD + WHIP,
+            );
+
+            if (HOLD > 0) {
+              tl.to(
+                ground,
+                { opacity: 0.68, scaleX: 0.97, duration: HOLD * 0.5, ease: "sine.inOut" },
+                IN,
+              );
+              tl.to(
+                ground,
+                { opacity: 0.78, scaleX: 1, duration: HOLD * 0.5, ease: "sine.inOut" },
+                IN + HOLD * 0.5,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["pull-back-reveal"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

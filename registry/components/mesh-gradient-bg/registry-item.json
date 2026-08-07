@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mesh-gradient-bg",
+  "type": "hyperframes:component",
+  "title": "Mesh Gradient Background",
+  "description": "A render-safe mesh gradient using animated radial layers.",
+  "tags": ["effect", "remocn-port"],
+  "files": [
+    {
+      "path": "mesh-gradient-bg.html",
+      "target": "compositions/components/mesh-gradient-bg.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mesh-gradient-bg.png"
+  }
+}

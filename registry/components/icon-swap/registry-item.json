@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "icon-swap",
+  "type": "hyperframes:component",
+  "title": "Icon Swap",
+  "description": "A scale-and-blur icon swap primitive for toolbar and action state changes",
+  "tags": ["transition-primitive", "transitions-dev-port", "icon", "swap"],
+  "files": [
+    {
+      "path": "icon-swap.html",
+      "target": "compositions/components/icon-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/icon-swap.png"
+  }
+}
