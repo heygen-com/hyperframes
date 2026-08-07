@@ -1,11 +1,11 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "HyperFrames",
-  "theme": "aspen",
+  "theme": "maple",
   "colors": {
-    "primary": "#16785B",
-    "light": "#3CE6AC",
-    "dark": "#16785B"
+    "primary": "#0a0a0a",
+    "light": "#f6f5f1",
+    "dark": "#0a0a0a"
   },
   "background": {
     "color": {
@@ -20,12 +20,11 @@
     }
   },
   "appearance": {
-    "default": "system"
+    "default": "light"
   },
   "logo": {
     "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg",
-    "href": "https://hyperframes.heygen.com/introduction"
+    "dark": "/logo/dark.svg"
   },
   "favicon": "/favicon.svg",
   "contextual": {
@@ -48,207 +47,78 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
-        "icon": "book-open",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Start here",
+            "group": "Getting Started",
             "pages": [
+              "spike-player",
               "introduction",
-              "quickstart",
-              "go-further",
-              "developers/index"
-            ]
-          },
-          {
-            "group": "Explore",
-            "pages": [
-              "examples",
-              "thirty-days",
-              "product-updates",
+              "changelog",
               "weekly-updates",
-              "changelog"
+              "quickstart",
+              "showcase",
+              "examples",
+              "launch-videos"
             ]
           },
           {
-            "group": "Choose where to create",
+            "group": "Concepts",
             "pages": [
-              "guides/choose-creation-path",
-              "guides/mcp",
-              "guides/design-tools"
+              "concepts/compositions",
+              "concepts/data-attributes",
+              "concepts/variables",
+              "concepts/frame-adapters",
+              "concepts/determinism"
             ]
           },
           {
-            "group": "Prompt Guide",
+            "group": "Guides",
             "pages": [
-              "prompting/overview",
-              {
-                "group": "Level 1 — Your first video",
-                "pages": [
-                  "prompting/product-launch",
-                  "prompting/explainers",
-                  "prompting/code-and-prs",
-                  "prompting/captions-and-talking-heads",
-                  "prompting/music-and-slideshows",
-                  "prompting/motion-graphics"
-                ]
-              },
-              {
-                "group": "Level 2 — Control",
-                "pages": [
-                  "prompting/anatomy",
-                  "prompting/specification-dial",
-                  "prompting/vocabulary",
-                  "prompting/visual-specs",
-                  "prompting/examples"
-                ]
-              },
-              {
-                "group": "Level 3 — Life",
-                "pages": [
-                  "prompting/motion",
-                  "prompting/transitions"
-                ]
-              },
-              {
-                "group": "Level 4 — Substance",
-                "pages": [
-                  "prompting/code-blocks",
-                  "prompting/data-and-maps",
-                  "prompting/overlays-and-lower-thirds",
-                  "prompting/captions-catalog",
-                  "prompting/generated-artwork",
-                  "prompting/color-grading",
-                  "prompting/vfx-and-liquid-glass",
-                  "prompting/runtimes-and-3d"
-                ]
-              },
-              {
-                "group": "Level 5 — Voice and sound",
-                "pages": [
-                  "prompting/media-and-audio"
-                ]
-              },
-              {
-                "group": "Level 6 — Scale",
-                "pages": [
-                  "prompting/design-systems",
-                  "prompting/variables-and-templating",
-                  "prompting/storyboards",
-                  "prompting/editing-existing-videos",
-                  "prompting/iterating",
-                  "prompting/recreating-references",
-                  "prompting/rendering-and-output",
-                  "prompting/remotion-migration"
-                ]
-              },
-              {
-                "group": "Level 7 — Capstone",
-                "pages": [
-                  "prompting/capstone"
-                ]
-              },
-              {
-                "group": "Appendix",
-                "pages": [
-                  "prompting/rules-and-anti-patterns"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Workflows",
-            "pages": [
-              "workflows",
-              "guides/product-launch-video",
-              "guides/faceless-explainer",
-              "guides/pr-to-video",
-              "guides/captions-and-recuts",
-              "guides/motion-graphics",
-              "guides/music-to-video",
-              "guides/slideshow",
-              "guides/general-video",
-              "guides/hyperframes-vs-remotion"
-            ]
-          },
-          {
-            "group": "Build the project",
-            "pages": [
-              "concepts/index",
-              "guides/media",
+              "guides/pipeline",
+              "guides/skills",
+              "guides/authentication",
               "guides/video-components",
-              "guides/avatar-presenter",
-              "guides/voice-and-audio",
-              "guides/remove-background",
               "guides/color-grading",
-              "guides/media-effects",
-              "guides/export-and-share"
-            ]
-          },
-          {
-            "group": "Help",
-            "pages": [
-              "help",
+              "guides/html-in-canvas",
+              "guides/website-to-video",
+              "guides/figma",
+              "guides/antigravity",
+              "guides/copilot-cli",
+              "guides/claude-design",
+              "guides/open-design",
+              "guides/prompting",
+              "guides/hyperframes-vs-remotion",
+              "guides/gsap-animation",
+              "guides/keyframes",
+              "guides/rendering",
+              "guides/remove-background",
+              "guides/hdr",
+              "guides/4k-rendering",
+              "guides/performance",
+              "guides/timeline-editing",
+              "guides/video-editor-cheatsheet",
+              "guides/common-mistakes",
               "guides/troubleshooting",
               "guides/feedback"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "Studio",
-        "icon": "palette",
-        "groups": [
-          {
-            "group": "Start in Studio",
-            "pages": [
-              "studio/index",
-              "studio/storyboard"
-            ]
           },
           {
-            "group": "Edit",
+            "group": "Deploy",
             "pages": [
-              "studio/canvas",
-              "studio/timeline",
-              "studio/animation",
-              "studio/captions"
-            ]
-          },
-          {
-            "group": "Build and reuse",
-            "pages": [
-              "studio/assets-and-blocks",
-              "studio/variables",
-              "studio/slideshows"
-            ]
-          },
-          {
-            "group": "Finish and recover",
-            "pages": [
-              "studio/export",
-              "studio/troubleshooting"
-            ]
-          },
-          {
-            "group": "Reference",
-            "pages": [
-              "studio/source",
-              "studio/shortcuts"
+              "deploy/cloud",
+              "guides/deploy",
+              "deploy/aws-lambda",
+              "deploy/gcp-cloud-run",
+              "deploy/templates-on-lambda",
+              "deploy/migrating-to-hyperframes-lambda"
             ]
           }
         ]
       },
       {
         "tab": "Catalog",
-        "icon": "grid-2",
         "groups": [
-          {
-            "group": "Overview",
-            "pages": [
-              "catalog/index"
-            ]
-          },
           {
             "group": "Code Animations",
             "pages": [
@@ -260,7 +130,11 @@
               "catalog/blocks/code-scroll",
               "catalog/blocks/code-shader-dissolve",
               "catalog/blocks/code-snippet-flight",
-              "catalog/blocks/code-typing"
+              "catalog/blocks/code-typing",
+              "catalog/components/code-accordion",
+              "catalog/components/glass-code-block",
+              "catalog/components/live-code-compilation",
+              "catalog/components/terminal-simulator"
             ]
           },
           {
@@ -280,8 +154,7 @@
               "catalog/components/caption-particle-burst",
               "catalog/components/caption-pill-karaoke",
               "catalog/components/caption-texture",
-              "catalog/components/caption-weight-shift",
-              "catalog/blocks/mk-callout-highlight"
+              "catalog/components/caption-weight-shift"
             ]
           },
           {
@@ -305,16 +178,15 @@
           {
             "group": "Social Overlays",
             "pages": [
-              "catalog/blocks/editorial-flash-overlay",
-              "catalog/blocks/freeze-frame-dressing",
               "catalog/blocks/instagram-follow",
               "catalog/blocks/macos-notification",
               "catalog/blocks/reddit-post",
               "catalog/blocks/spotify-card",
               "catalog/blocks/tiktok-follow",
               "catalog/blocks/x-post",
-              "catalog/blocks/yt-comment-card",
-              "catalog/blocks/yt-lower-third"
+              "catalog/blocks/yt-lower-third",
+              "catalog/components/x-follow-card",
+              "catalog/components/x-followers-overview"
             ]
           },
           {
@@ -356,10 +228,6 @@
           {
             "group": "CSS Transitions",
             "pages": [
-              "catalog/blocks/beat-freeze-cut",
-              "catalog/blocks/hw-scribble-transition",
-              "catalog/blocks/mk-clone-wall-transition",
-              "catalog/blocks/organic-light-leak-overlay",
               "catalog/blocks/transitions-3d",
               "catalog/blocks/transitions-blur",
               "catalog/blocks/transitions-cover",
@@ -381,6 +249,221 @@
               "catalog/blocks/app-showcase",
               "catalog/blocks/apple-money-count",
               "catalog/blocks/blue-sweater-intro-video",
+              "catalog/blocks/north-korea-locked-down",
+              "catalog/blocks/nyc-paris-flight",
+              "catalog/blocks/ui-3d-reveal",
+              "catalog/blocks/vpn-youtube-spot",
+              "catalog/components/ai-generation-canvas",
+              "catalog/components/browser-flow",
+              "catalog/components/chat-to-preview-layout",
+              "catalog/components/data-flow-pipes",
+              "catalog/components/device-mockup-zoom",
+              "catalog/components/drag-and-drop-flow",
+              "catalog/components/ecosystem-constellation",
+              "catalog/components/hero-device-assemble",
+              "catalog/components/infinite-bento-pan",
+              "catalog/components/infinite-marquee",
+              "catalog/components/landing-code-showcase",
+              "catalog/components/pricing-tier-focus",
+              "catalog/components/terminal-to-browser-deploy"
+            ]
+          },
+          {
+            "group": "Data",
+            "pages": [
+              "catalog/blocks/data-chart",
+              "catalog/blocks/spain-map",
+              "catalog/blocks/us-map",
+              "catalog/blocks/us-map-bubble",
+              "catalog/blocks/us-map-flow",
+              "catalog/blocks/us-map-hex",
+              "catalog/blocks/world-map",
+              "catalog/components/animated-bar-chart",
+              "catalog/components/animated-line-chart",
+              "catalog/components/dashboard-populate"
+            ]
+          },
+          {
+            "group": "UI Primitives",
+            "pages": [
+              "catalog/components/accordion",
+              "catalog/components/alert",
+              "catalog/components/alert-dialog",
+              "catalog/components/aspect-ratio",
+              "catalog/components/avatar",
+              "catalog/components/backdrop",
+              "catalog/components/badge",
+              "catalog/components/blur-in",
+              "catalog/components/breadcrumb",
+              "catalog/components/button",
+              "catalog/components/button-group",
+              "catalog/components/calendar",
+              "catalog/components/card",
+              "catalog/components/caret",
+              "catalog/components/carousel",
+              "catalog/components/chart",
+              "catalog/components/checkbox",
+              "catalog/components/collapsible",
+              "catalog/components/combobox",
+              "catalog/components/command-menu",
+              "catalog/components/command-menu-item",
+              "catalog/components/context-menu",
+              "catalog/components/cursor",
+              "catalog/components/dialog",
+              "catalog/components/drawer",
+              "catalog/components/dropdown-menu",
+              "catalog/components/dropdown-menu-item",
+              "catalog/components/empty",
+              "catalog/components/field",
+              "catalog/components/hover-card",
+              "catalog/components/input",
+              "catalog/components/input-group",
+              "catalog/components/input-otp",
+              "catalog/components/item",
+              "catalog/components/kbd",
+              "catalog/components/label",
+              "catalog/components/menubar",
+              "catalog/components/native-select",
+              "catalog/components/navigation-menu",
+              "catalog/components/pagination",
+              "catalog/components/popover",
+              "catalog/components/progress",
+              "catalog/components/progress-steps",
+              "catalog/components/radio",
+              "catalog/components/registry",
+              "catalog/components/remocn-ui",
+              "catalog/components/resizable",
+              "catalog/components/scroll-area",
+              "catalog/components/select",
+              "catalog/components/select-item",
+              "catalog/components/separator",
+              "catalog/components/sheet",
+              "catalog/components/sidebar",
+              "catalog/components/skeleton",
+              "catalog/components/skeleton-block",
+              "catalog/components/slider",
+              "catalog/components/spinner",
+              "catalog/components/stepper",
+              "catalog/components/switch",
+              "catalog/components/table",
+              "catalog/components/tabs",
+              "catalog/components/textarea",
+              "catalog/components/toast",
+              "catalog/components/toggle",
+              "catalog/components/toggle-group",
+              "catalog/components/tooltip"
+            ]
+          },
+          {
+            "group": "UI Flows",
+            "pages": [
+              "catalog/components/ai-prompt-flow",
+              "catalog/components/checkout-flow",
+              "catalog/components/onboarding-stepper-flow",
+              "catalog/components/settings-toggle-flow",
+              "catalog/components/signup-flow"
+            ]
+          },
+          {
+            "group": "Transition Primitives",
+            "pages": [
+              "catalog/components/avatar-group-hover",
+              "catalog/components/badge-pop",
+              "catalog/components/card-resize",
+              "catalog/components/chromatic-aberration-wipe",
+              "catalog/components/code-diff-wipe",
+              "catalog/components/directional-wipe",
+              "catalog/components/frosted-glass-wipe",
+              "catalog/components/icon-swap",
+              "catalog/components/image-expand-to-fullscreen",
+              "catalog/components/input-feedback",
+              "catalog/components/menu-morph",
+              "catalog/components/micro-scale-fade",
+              "catalog/components/micro-transitions",
+              "catalog/components/number-pop-in",
+              "catalog/components/page-slide",
+              "catalog/components/panel-reveal",
+              "catalog/components/skeleton-reveal",
+              "catalog/components/spatial-push",
+              "catalog/components/success-check",
+              "catalog/components/tabs-slide-indicator",
+              "catalog/components/text-stagger",
+              "catalog/components/text-state-swap",
+              "catalog/components/tilt-card",
+              "catalog/components/tool-menu-slide-in",
+              "catalog/components/zoom-through-transition"
+            ]
+          },
+          {
+            "group": "Motion Primitives",
+            "pages": [
+              "catalog/components/blur-out-up",
+              "catalog/components/bottom-up-letters",
+              "catalog/components/dynamic-grid",
+              "catalog/components/fade-through",
+              "catalog/components/focus-blur-resolve",
+              "catalog/components/inline-highlight",
+              "catalog/components/kinetic-center-build",
+              "catalog/components/line-by-line-slide",
+              "catalog/components/marker-highlight",
+              "catalog/components/mask-reveal-up",
+              "catalog/components/masked-slide-reveal",
+              "catalog/components/matrix-decode",
+              "catalog/components/number-wheel",
+              "catalog/components/per-character-rise",
+              "catalog/components/per-word-crossfade",
+              "catalog/components/perspective-marquee",
+              "catalog/components/rgb-glitch-text",
+              "catalog/components/rolling-number",
+              "catalog/components/scale-down-fade",
+              "catalog/components/shared-axis-y",
+              "catalog/components/shared-axis-z",
+              "catalog/components/short-slide-down",
+              "catalog/components/short-slide-right",
+              "catalog/components/simulated-cursor",
+              "catalog/components/slot-machine-roll",
+              "catalog/components/soft-blur-in",
+              "catalog/components/spring-scale-in",
+              "catalog/components/staggered-fade-up",
+              "catalog/components/strikethrough-replace",
+              "catalog/components/top-down-letters",
+              "catalog/components/tracking-in",
+              "catalog/components/typewriter"
+            ]
+          },
+          {
+            "group": "Effects",
+            "pages": [
+              "catalog/components/confetti",
+              "catalog/components/grain-overlay",
+              "catalog/components/grid-pixelate-wipe",
+              "catalog/components/mesh-gradient-bg",
+              "catalog/components/parallax-unzoom",
+              "catalog/components/parallax-zoom",
+              "catalog/components/shimmer-sweep",
+              "catalog/components/spotlight-card",
+              "catalog/components/vignette"
+            ]
+          },
+          {
+            "group": "Text Effects",
+            "pages": [
+              "catalog/components/caption-blend-difference",
+              "catalog/components/morph-text",
+              "catalog/components/texture-mask-text"
+            ]
+          },
+          {
+            "group": "Blocks",
+            "pages": [
+              "catalog/blocks/flowchart",
+              "catalog/blocks/flowchart-vertical",
+              "catalog/blocks/logo-outro"
+            ]
+          },
+          {
+            "group": "Code Snippets",
+            "pages": [
               "catalog/blocks/code-snippet-apple-terminal-basic",
               "catalog/blocks/code-snippet-apple-terminal-clear-dark",
               "catalog/blocks/code-snippet-apple-terminal-clear-light",
@@ -404,98 +487,142 @@
               "catalog/blocks/code-snippet-monokai",
               "catalog/blocks/code-snippet-solarized-light",
               "catalog/blocks/code-snippet-visual-studio-dark",
-              "catalog/blocks/code-snippet-visual-studio-light",
-              "catalog/blocks/north-korea-locked-down",
-              "catalog/blocks/nyc-paris-flight",
-              "catalog/blocks/ui-3d-reveal",
-              "catalog/blocks/vpn-youtube-spot"
+              "catalog/blocks/code-snippet-visual-studio-light"
             ]
           },
           {
-            "group": "Data",
+            "group": "MotionPath Primitives",
             "pages": [
-              "catalog/blocks/data-chart",
-              "catalog/blocks/mk-line-graph",
-              "catalog/blocks/spain-map",
-              "catalog/blocks/us-map",
-              "catalog/blocks/us-map-bubble",
-              "catalog/blocks/us-map-flow",
-              "catalog/blocks/us-map-hex",
-              "catalog/blocks/world-map"
+              "catalog/components/arc-motion-path",
+              "catalog/components/bezier-callout-route",
+              "catalog/components/orbital-feature-path"
             ]
           },
           {
-            "group": "Effects",
+            "group": "Advanced Motion",
             "pages": [
-              "catalog/components/caption-blend-difference",
-              "catalog/components/grain-overlay",
-              "catalog/components/grid-pixelate-wipe",
-              "catalog/components/hw-arrow",
-              "catalog/components/hw-boil",
-              "catalog/components/hw-box-label",
-              "catalog/components/hw-callout-circle",
-              "catalog/components/hw-underline",
-              "catalog/components/mk-emphasis-type",
-              "catalog/components/mk-usage-arc",
-              "catalog/components/morph-text",
-              "catalog/components/motion-blur",
-              "catalog/components/parallax-unzoom",
-              "catalog/components/parallax-zoom",
-              "catalog/components/shimmer-sweep",
-              "catalog/components/texture-mask-text",
-              "catalog/components/vignette",
-              "catalog/components/yt-camera-move",
-              "catalog/components/yt-circle-pointer",
-              "catalog/components/yt-feather-highlight",
-              "catalog/components/yt-screen-warp"
+              "catalog/components/camera-rig-depth-stack",
+              "catalog/components/keyframe-scrub-stack",
+              "catalog/components/shader-displacement-panel",
+              "catalog/components/stagger-lattice",
+              "catalog/components/svg-line-draw-loader"
             ]
           },
           {
-            "group": "Blocks",
+            "group": "3D Primitives",
             "pages": [
-              "catalog/blocks/camcorder-hud",
-              "catalog/blocks/flowchart",
-              "catalog/blocks/flowchart-vertical",
-              "catalog/blocks/hw-frame",
-              "catalog/blocks/hw-path-text",
-              "catalog/blocks/hw-pipeline",
-              "catalog/blocks/hw-text-cloud",
-              "catalog/blocks/hw-title",
-              "catalog/blocks/logo-outro",
-              "catalog/blocks/mk-background",
-              "catalog/blocks/mk-placeholder-grid",
-              "catalog/blocks/mk-progress-stat",
-              "catalog/blocks/mk-specs-list",
-              "catalog/blocks/yt-lcd-background",
-              "catalog/blocks/yt-logo-intro",
-              "catalog/blocks/yt-prism-title",
-              "catalog/blocks/yt-vertical-fill"
+              "catalog/components/three-orbiting-cards",
+              "catalog/components/three-particle-ribbon"
             ]
           }
         ]
       },
       {
-        "tab": "Developers",
-        "icon": "code",
+        "tab": "Primitives",
         "groups": [
           {
-            "group": "Start here",
+            "group": "Overview",
             "pages": [
-              "developers/overview"
+              "primitives/index"
             ]
           },
           {
-            "group": "Command line",
+            "group": "Annotation",
             "pages": [
-              "developers/cli",
-              "packages/cli",
-              "packages/lint"
+              "primitives/marker-highlight",
+              "primitives/whiteboard-ink"
             ]
           },
           {
-            "group": "SDK guides",
+            "group": "Camera moves",
             "pages": [
-              "sdk/quickstart",
+              "primitives/caption-camera-follow",
+              "primitives/focus-rack"
+            ]
+          },
+          {
+            "group": "Interface morphs",
+            "pages": []
+          },
+          {
+            "group": "Motion trails",
+            "pages": [
+              "primitives/echo-trail"
+            ]
+          },
+          {
+            "group": "Text effects",
+            "pages": [
+              "primitives/kinetic-type-swap",
+              "primitives/particle-text-dissolve"
+            ]
+          },
+          {
+            "group": "Transitions",
+            "pages": [
+              "primitives/grade-split-reveal",
+              "primitives/halftone-dissolve",
+              "primitives/match-cut"
+            ]
+          },
+          {
+            "group": "Card assembly",
+            "pages": []
+          },
+          {
+            "group": "Process sequences",
+            "pages": [
+              "primitives/state-chip-rail"
+            ]
+          },
+          {
+            "group": "Interaction",
+            "pages": [
+              "primitives/press-ripple"
+            ]
+          },
+          {
+            "group": "List assembly",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "tab": "Packages",
+        "groups": [
+          {
+            "group": "Packages",
+            "pages": [
+              "packages/core",
+              "packages/parsers",
+              "packages/lint",
+              "packages/studio-server",
+              "packages/sdk",
+              "packages/engine",
+              "packages/player",
+              "packages/producer",
+              "packages/shader-transitions",
+              "packages/aws-lambda",
+              "packages/gcp-cloud-run",
+              "packages/studio",
+              "packages/cli"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "sdk/overview",
+              "sdk/quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
               "sdk/guides/querying-and-editing",
               "sdk/guides/timing-and-animation",
               "sdk/guides/undo-redo-and-patches",
@@ -506,7 +633,7 @@
             ]
           },
           {
-            "group": "SDK reference",
+            "group": "Reference",
             "pages": [
               "sdk/reference/open-composition",
               "sdk/reference/composition",
@@ -515,85 +642,32 @@
               "sdk/reference/adapters",
               "sdk/reference/utilities"
             ]
-          },
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
           {
-            "group": "Composition, design & animation",
+            "group": "Reference",
             "pages": [
-              "concepts/compositions",
-              "concepts/variables",
-              "concepts/data-attributes",
-              "guides/gsap-animation",
-              "concepts/frame-adapters",
-              "concepts/determinism",
-              "guides/html-in-canvas",
-              "guides/figma"
+              "reference/html-schema"
             ]
           },
           {
-            "group": "Composition reference",
-            "pages": [
-              "reference/html-schema",
-              "reference/color-grading"
-            ]
-          },
-          {
-            "group": "Rendering paths",
-            "pages": [
-              "guides/rendering",
-              "deploy/overview",
-              "deploy/cloud",
-              "guides/deploy"
-            ]
-          },
-          {
-            "group": "Cloud infrastructure",
-            "pages": [
-              "deploy/aws-lambda",
-              "deploy/gcp-cloud-run",
-              "deploy/templates-on-lambda",
-              "deploy/migrating-to-hyperframes-lambda",
-              "packages/aws-lambda",
-              "packages/gcp-cloud-run"
-            ]
-          },
-          {
-            "group": "Advanced rendering",
-            "pages": [
-              "guides/4k-rendering",
-              "guides/hdr",
-              "guides/performance"
-            ]
-          },
-          {
-            "group": "Packages",
-            "pages": [
-              "packages/core",
-              "packages/parsers",
-              "packages/studio-server",
-              "packages/sdk",
-              "packages/engine",
-              "packages/player",
-              "packages/producer",
-              "packages/shader-transitions",
-              "packages/studio"
-            ]
-          },
-          {
-            "group": "Agent setup",
-            "pages": [
-              "guides/authentication",
-              "guides/skills"
-            ]
-          },
-          {
-            "group": "Contributing & community",
+            "group": "Contributing",
             "pages": [
               "contributing",
               "contributing/catalog",
               "contributing/release-channels",
               "contributing/changelog-process",
               "contributing/testing-local-changes",
-              "contributing/canary-rollouts",
+              "contributing/studio-manual-dom-editing"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
               "community/adopters"
             ]
           }
@@ -603,206 +677,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/heygen-com/hyperframes",
-      "x": "https://x.com/HeyGen",
-      "instagram": "https://www.instagram.com/heygen_official/"
-    },
-    "links": [
-      {
-        "header": "Explore",
-        "items": [
-          {
-            "label": "Introduction",
-            "href": "/introduction"
-          },
-          {
-            "label": "Make your first video",
-            "href": "/quickstart"
-          },
-          {
-            "label": "Examples",
-            "href": "/examples"
-          }
-        ]
-      },
-      {
-        "header": "Build",
-        "items": [
-          {
-            "label": "Studio",
-            "href": "/studio"
-          },
-          {
-            "label": "Catalog",
-            "href": "/catalog"
-          },
-          {
-            "label": "Developers",
-            "href": "/developers/overview"
-          }
-        ]
-      },
-      {
-        "header": "Resources",
-        "items": [
-          {
-            "label": "Product updates",
-            "href": "/product-updates"
-          },
-          {
-            "label": "Playground",
-            "href": "https://www.hyperframes.dev/"
-          },
-          {
-            "label": "GitHub",
-            "href": "https://github.com/heygen-com/hyperframes"
-          }
-        ]
-      }
-    ]
-  },
-  "navbar": {
-    "links": [
-      {
-        "type": "github",
-        "href": "https://github.com/heygen-com/hyperframes"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Playground",
-      "href": "https://www.hyperframes.dev/"
+      "github": "https://github.com/heygen-com/hyperframes"
     }
-  },
-  "redirects": [
-    {
-      "source": "/guides",
-      "destination": "/introduction"
-    },
-    {
-      "source": "/showcase",
-      "destination": "/examples"
-    },
-    {
-      "source": "/launch-videos",
-      "destination": "/examples"
-    },
-    {
-      "source": "/guides/claude-design",
-      "destination": "/guides/design-tools"
-    },
-    {
-      "source": "/guides/open-design",
-      "destination": "/guides/design-tools"
-    },
-    {
-      "source": "/guides/common-mistakes",
-      "destination": "/guides/troubleshooting"
-    },
-    {
-      "source": "/guides/create-with-agent",
-      "destination": "/workflows"
-    },
-    {
-      "source": "/guides/choose-your-path",
-      "destination": "/workflows"
-    },
-    {
-      "source": "/guides/help",
-      "destination": "/help"
-    },
-    {
-      "source": "/guides/project-tour",
-      "destination": "/concepts"
-    },
-    {
-      "source": "/guides/media-overlays",
-      "destination": "/catalog"
-    },
-    {
-      "source": "/guides/common-questions",
-      "destination": "/help"
-    },
-    {
-      "source": "/contributing/studio-manual-dom-editing",
-      "destination": "/studio/canvas"
-    },
-    {
-      "source": "/guides/video-editor-cheatsheet",
-      "destination": "/studio/shortcuts"
-    },
-    {
-      "source": "/guides/timeline-editing",
-      "destination": "/studio/timeline"
-    },
-    {
-      "source": "/guides/website-to-video",
-      "destination": "/guides/product-launch-video"
-    },
-    {
-      "source": "/guides/prompting",
-      "destination": "/prompting/overview",
-      "permanent": true
-    },
-    {
-      "source": "/guides/pipeline",
-      "destination": "/workflows",
-      "permanent": true
-    },
-    {
-      "source": "/guides/quality-checklist",
-      "destination": "/guides/export-and-share",
-      "permanent": true
-    },
-    {
-      "source": "/guides/publish-and-share",
-      "destination": "/guides/export-and-share",
-      "permanent": true
-    },
-    {
-      "source": "/guides/antigravity",
-      "destination": "/guides/skills",
-      "permanent": true
-    },
-    {
-      "source": "/guides/copilot-cli",
-      "destination": "/guides/skills",
-      "permanent": true
-    },
-    {
-      "source": "/studio/tour",
-      "destination": "/studio",
-      "permanent": true
-    },
-    {
-      "source": "/studio/layers",
-      "destination": "/studio/canvas",
-      "permanent": true
-    },
-    {
-      "source": "/studio/design",
-      "destination": "/studio/canvas",
-      "permanent": true
-    },
-    {
-      "source": "/guides/keyframes",
-      "destination": "/studio/animation",
-      "permanent": true
-    },
-    {
-      "source": "/studio/lint-and-agent",
-      "destination": "/studio/source",
-      "permanent": true
-    },
-    {
-      "source": "/guides/transcribe-and-caption",
-      "destination": "/guides/voice-and-audio",
-      "permanent": true
-    },
-    {
-      "source": "/sdk/overview",
-      "destination": "/sdk/quickstart",
-      "permanent": true
-    }
-  ]
+  }
 }

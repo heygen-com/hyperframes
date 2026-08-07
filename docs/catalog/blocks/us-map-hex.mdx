@@ -3,41 +3,42 @@ title: "US Hex Grid Map"
 description: "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label"
 ---
 
+# US Hex Grid Map
+
+Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label
+
+`data` `map` `geography` `usa` `hexgrid` `tilegrid`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-hex.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-hex.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add us-map-hex
 ```
 
-That writes one file: `compositions/us-map-hex.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 10 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 10s |
 
-```html index.html
-<div
-  data-composition-id="us-map-hex"
-  data-composition-src="compositions/us-map-hex.html"
-  data-start="0"
-  data-duration="10"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `us-map-hex.html` | `compositions/us-map-hex.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="us-map-hex" data-composition-src="compositions/us-map-hex.html" data-start="0" data-duration="10" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `data` `map` `geography` `usa` `hexgrid` `tilegrid`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

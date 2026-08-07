@@ -3,41 +3,43 @@ title: "Instagram Follow"
 description: "Animated Instagram follow overlay with profile card and follow button"
 ---
 
+# Instagram Follow
+
+Animated Instagram follow overlay with profile card and follow button
+
+`social` `overlay` `instagram`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/instagram-follow.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/instagram-follow.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add instagram-follow
 ```
 
-That writes `compositions/instagram-follow.html`, plus 1 supporting file under `assets/`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 4.5 seconds at 1080×1920. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1080×1920 |
+| Duration | 4.5s |
 
-```html index.html
-<div
-  data-composition-id="instagram-follow"
-  data-composition-src="compositions/instagram-follow.html"
-  data-start="0"
-  data-duration="4.5"
-  data-track-index="1"
-  data-width="1080"
-  data-height="1920"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `instagram-follow.html` | `compositions/instagram-follow.html` | hyperframes:composition |
+| `assets/avatar.jpg` | `assets/avatar.jpg` | hyperframes:asset |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="instagram-follow" data-composition-src="compositions/instagram-follow.html" data-start="0" data-duration="4.5" data-track-index="1" data-width="1080" data-height="1920"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `social` `overlay` `instagram`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

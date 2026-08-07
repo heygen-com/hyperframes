@@ -3,47 +3,48 @@ title: "iOS 26 Liquid Glass Home Screen"
 description: "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model."
 ---
 
+# iOS 26 Liquid Glass Home Screen
+
+3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.
+
+`liquid-glass-html-in-canvas` `webgpu` `3d` `iphone` `ios26` `notifications` `gltf` `html-in-canvas`
+
+<Warning>
+**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
+</Warning>
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add ios26-liquid-glass
 ```
 
-That writes `compositions/ios26-liquid-glass.html`, plus 28 supporting files under `models/`, `lib/`, and `assets/icons/`.
+</CodeGroup>
 
-<Warning>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Rendering from the CLI switches it on for you. [How it
-  works](/guides/html-in-canvas)
-</Warning>
+## Details
 
-## Add it to your video
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 15s |
 
-It runs for 15 seconds at 1920×1080. Paste this into your composition:
+## Files
 
-```html index.html
-<div
-  data-composition-id="ios26-liquid-glass"
-  data-composition-src="compositions/ios26-liquid-glass.html"
-  data-start="0"
-  data-duration="15"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+| File | Target | Type |
+| --- | --- | --- |
+| `ios26-liquid-glass.html` | `compositions/ios26-liquid-glass.html` | hyperframes:composition |
+| `models/iphone.glb` | `models/iphone.glb` | hyperframes:asset |
+| `lib/liquid-glass.iife.js` | `lib/liquid-glass.iife.js` | hyperframes:asset |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="ios26-liquid-glass" data-composition-src="compositions/ios26-liquid-glass.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `liquid-glass-html-in-canvas` `webgpu` `3d` `iphone` `ios26` `notifications` `gltf` `html-in-canvas`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

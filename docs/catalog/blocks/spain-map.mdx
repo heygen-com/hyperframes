@@ -3,41 +3,42 @@ title: "Spain Map"
 description: "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection"
 ---
 
+# Spain Map
+
+Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection
+
+`data` `map` `geography` `spain` `europe` `choropleth`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add spain-map
 ```
 
-That writes one file: `compositions/spain-map.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 12 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 12s |
 
-```html index.html
-<div
-  data-composition-id="spain-map"
-  data-composition-src="compositions/spain-map.html"
-  data-start="0"
-  data-duration="12"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `spain-map.html` | `compositions/spain-map.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="spain-map" data-composition-src="compositions/spain-map.html" data-start="0" data-duration="12" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `data` `map` `geography` `spain` `europe` `choropleth`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

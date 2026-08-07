@@ -3,41 +3,42 @@ title: "News Ticker"
 description: "Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl."
 ---
 
+# News Ticker
+
+Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl.
+
+`lower-third` `overlay` `news` `ticker`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/news-ticker.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/news-ticker.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add news-ticker
 ```
 
-That writes one file: `compositions/news-ticker.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 7 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 7s |
 
-```html index.html
-<div
-  data-composition-id="news-ticker"
-  data-composition-src="compositions/news-ticker.html"
-  data-start="0"
-  data-duration="7"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `news-ticker.html` | `compositions/news-ticker.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="news-ticker" data-composition-src="compositions/news-ticker.html" data-start="0" data-duration="7" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `lower-third` `overlay` `news` `ticker`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

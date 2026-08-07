@@ -3,29 +3,38 @@ title: "Morph Text"
 description: "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect"
 ---
 
+# Morph Text
+
+Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect
+
+`text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/morph-text.mp4" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add morph-text
 ```
 
-That writes one file: `compositions/components/morph-text.html`.
+</CodeGroup>
 
-## Paste it into your composition
+## Details
 
-Open `compositions/components/morph-text.html` and copy what is inside into your own composition.
+| Property | Value |
+| --- | --- |
+| Type | Component |
 
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
+## Files
 
-{/* hf:generated-footer */}
+| File | Target | Type |
+| --- | --- | --- |
+| `morph-text.html` | `compositions/components/morph-text.html` | hyperframes:snippet |
 
-Tagged `text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`.
+## Usage
 
-## Related topics
+Open `compositions/components/morph-text.html` and paste its contents into your composition.
 
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)
+Edit the `<ol id="morph-words">` list to change the statements that cycle through. Each `<li>` accepts `data-font` (CSS font-family) and `data-color` (hex) attributes. Adjust `data-morph-speed` (seconds per transition) and `data-morph-pause` (hold time) on the root element.

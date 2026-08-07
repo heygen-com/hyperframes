@@ -1,23 +1,52 @@
 ---
-title: "Code Snippet - Apple Terminal Homebrew"
-description: "Apple Terminal Homebrew profile: black background with bright green text and lime cursor, per-character typing animation of a shell session."
+title: "Apple Terminal Homebrew"
+description: "Apple Terminal Homebrew profile with black background, bright green text and lime cursor, per-character typing animation."
 ---
 
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.mp4" autoPlay muted loop playsInline />
+# Apple Terminal Homebrew
+
+macOS Terminal.app window in the built-in Homebrew profile — black background with vivid green text and a lime `#48F800` cursor. One of the most beloved classic terminal looks.
+
+`code` `developer` `showcase` `terminal` `apple`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.png" autoPlay muted loop playsInline />
+
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add code-snippet-apple-terminal-homebrew
 ```
 
-That writes one file: `compositions/code-snippet-apple-terminal-homebrew.html`.
+</CodeGroup>
 
-## Add it to your video
+Install all Apple Terminal themes at once:
 
-It runs for 12 seconds at 1920×1080. Paste this into your composition:
+```bash Terminal
+npx hyperframes add apple-terminal
+```
 
-```html index.html
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 12s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `code-snippet-apple-terminal-homebrew.html` | `compositions/code-snippet-apple-terminal-homebrew.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
 <div
   data-composition-id="code-snippet-apple-terminal-homebrew"
   data-composition-src="compositions/code-snippet-apple-terminal-homebrew.html"
@@ -29,15 +58,11 @@ It runs for 12 seconds at 1920×1080. Paste this into your composition:
 ></div>
 ```
 
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+## Features
 
-{/* hf:generated-footer */}
-
-Tagged `code` `developer` `showcase` `terminal` `apple` `apple-terminal`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)
+- Faithful recreation of macOS Terminal.app Homebrew profile — black background with #00CF00 text and #48F800 cursor
+- macOS window chrome with traffic light buttons and centered title bar
+- Per-character GSAP typing animation — command types out character by character
+- Output lines reveal sequentially after command executes
+- Cursor blinks three times at the end then holds steady
+- Self-contained HTML — no external assets, only GSAP CDN

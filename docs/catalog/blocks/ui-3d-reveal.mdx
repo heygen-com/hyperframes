@@ -3,41 +3,42 @@ title: "3D UI Reveal"
 description: "Perspective 3D reveal animation for UI elements"
 ---
 
+# 3D UI Reveal
+
+Perspective 3D reveal animation for UI elements
+
+`showcase` `3d` `reveal`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add ui-3d-reveal
 ```
 
-That writes one file: `compositions/ui-3d-reveal.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 13 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 13s |
 
-```html index.html
-<div
-  data-composition-id="ui-3d-reveal"
-  data-composition-src="compositions/ui-3d-reveal.html"
-  data-start="0"
-  data-duration="13"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `ui-3d-reveal.html` | `compositions/ui-3d-reveal.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="ui-3d-reveal" data-composition-src="compositions/ui-3d-reveal.html" data-start="0" data-duration="13" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `showcase` `3d` `reveal`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

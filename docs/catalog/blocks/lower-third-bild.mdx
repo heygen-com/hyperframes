@@ -3,41 +3,44 @@ title: "Lower Third — BILD Style"
 description: "News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow."
 ---
 
+# Lower Third — BILD Style
+
+News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow.
+
+`broadcast` `lower-third` `news` `overlay`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-bild.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-bild.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add lower-third-bild
 ```
 
-That writes `compositions/lower-third-bild.html`, plus 2 supporting files under `compositions/assets/fonts/`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 8 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 8s |
 
-```html index.html
-<div
-  data-composition-id="lower-third-bild"
-  data-composition-src="compositions/lower-third-bild.html"
-  data-start="0"
-  data-duration="8"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `lower-third-bild.html` | `compositions/lower-third-bild.html` | hyperframes:composition |
+| `assets/fonts/BarlowCondensed-Bold.woff2` | `compositions/assets/fonts/BarlowCondensed-Bold.woff2` | hyperframes:asset |
+| `assets/fonts/BarlowCondensed-ExtraBold.woff2` | `compositions/assets/fonts/BarlowCondensed-ExtraBold.woff2` | hyperframes:asset |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="lower-third-bild" data-composition-src="compositions/lower-third-bild.html" data-start="0" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `broadcast` `lower-third` `news` `overlay`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)
