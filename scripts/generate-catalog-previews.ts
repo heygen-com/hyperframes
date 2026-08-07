@@ -211,25 +211,29 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
     }
   }
   if (!existsSync(join(tmpDir, "index.html"))) {
-    const manifestPath = join(tmpDir, "registry-item.json");
-    let width = 1920;
-    let height = 1080;
-    let duration = 5;
-    if (existsSync(manifestPath)) {
-      const m = JSON.parse(readFileSync(manifestPath, "utf-8"));
-      width = m.dimensions?.width ?? width;
-      height = m.dimensions?.height ?? height;
-      duration = m.duration ?? duration;
-    }
-
-    // Dark background for social overlays so transparent cards are visible.
-    const tags: string[] = (() => {
+    // One read for every field the wrapper needs. A malformed manifest cannot
+    // reach here — `discoverItems` parses the same file without a guard — so
+    // the only case this absorbs is the file being absent, which is what each
+    // `??` default below already stood for.
+    const manifest: {
+      dimensions?: { width?: number; height?: number };
+      duration?: number;
+      tags?: string[];
+      files?: { path?: string; target?: string }[];
+    } = (() => {
       try {
-        return JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8")).tags ?? [];
+        return JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8"));
       } catch {
-        return [];
+        return {};
       }
     })();
+
+    const width = manifest.dimensions?.width ?? 1920;
+    const height = manifest.dimensions?.height ?? 1080;
+    const duration = manifest.duration ?? 5;
+
+    // Dark background for social overlays so transparent cards are visible.
+    const tags = manifest.tags ?? [];
     const isSocialOverlay = tags.includes("social") || tags.includes("overlay");
     const bgColor = isSocialOverlay ? "#1a1a2e" : "#ffffff";
 
@@ -238,17 +242,9 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
     // (`../assets/background.jpeg` from `compositions/`), which only resolves
     // from the target path — the flat source copy at the project root resolves
     // it outside the project and silently renders without the asset.
-    const entrySrc = (() => {
-      try {
-        const m = JSON.parse(readFileSync(manifestPath, "utf-8"));
-        const target = m.files?.find(
-          (f: { path?: string; target?: string }) => f.path === item.entryFile,
-        )?.target;
-        return target && existsSync(join(tmpDir, target)) ? target : item.entryFile;
-      } catch {
-        return item.entryFile;
-      }
-    })();
+    const entryTarget = manifest.files?.find((f) => f.path === item.entryFile)?.target;
+    const entrySrc =
+      entryTarget && existsSync(join(tmpDir, entryTarget)) ? entryTarget : item.entryFile;
 
     const wrapper = `<!doctype html>
 <html lang="en">

@@ -7,7 +7,9 @@
 # `scripts/generate-catalog-previews.ts` or `scripts/generate-template-previews.ts`,
 # run this script to publish the new files.
 #
-# Requires AWS credentials for the heygen engineering account (profile: engineering-767398024897).
+# Requires AWS credentials for the heygen engineering account (profile: engineering-767398024897)
+# with both s3:PutObject and cloudfront:CreateInvalidation — the sync alone does
+# not reach a reader, see the invalidation step below.
 # Contributors without AWS access: open a PR with the HTML/MDX changes and a
 # maintainer will run the generators + this upload before merging.
 

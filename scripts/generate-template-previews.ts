@@ -24,6 +24,7 @@ import {
   cpSync,
   rmSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -147,11 +148,16 @@ async function generateThumbnail(templateId: string, projectDir: string): Promis
     fps: { num: 30, den: 1 },
   });
   try {
+    // Opaque capture, for the reason spelled out in generate-catalog-previews.ts:
+    // `format: "png"` is the engine's TRANSPARENT mode and forces
+    // `background-image: none !important` on every composition root, silently
+    // dropping any backdrop the template paints for itself.
     const session = await createCaptureSession(fileServer.url, framesDir, {
       width: config.width,
       height: config.height,
       fps: 30,
-      format: "png",
+      format: "jpeg",
+      quality: 95,
     });
     await initializeSession(session);
 
@@ -164,7 +170,11 @@ async function generateThumbnail(templateId: string, projectDir: string): Promis
 
     const t = Math.min(config.captureTime, duration * 0.8);
     const result = await captureFrame(session, 0, t);
-    cpSync(result.path, join(outputDir, `${templateId}.png`));
+    execFileSync(
+      "ffmpeg",
+      ["-v", "error", "-y", "-i", result.path, join(outputDir, `${templateId}.png`)],
+      { stdio: "inherit" },
+    );
     console.log(`  ✓ ${templateId}.png (${result.captureTimeMs}ms)`);
 
     await closeCaptureSession(session);
