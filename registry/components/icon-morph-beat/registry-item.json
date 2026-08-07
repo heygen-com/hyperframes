@@ -1,0 +1,48 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "icon-morph-beat",
+  "type": "hyperframes:component",
+  "title": "Icon Morph Beat",
+  "description": "An icon morphs between authored state silhouettes, shifts to an accent color, and marks completion with one restrained pulse.",
+  "tags": ["motion-primitive", "product-demo", "icon", "morph", "state-change", "completion"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "state-change",
+  "evidence": "Wave H U28 icon-morph-beat brief and Amicro morph animation research",
+  "syncPoints": [{ "id": "morph-complete", "phase": "in", "offset": 0.9 }],
+  "files": [
+    {
+      "path": "icon-morph-beat.html",
+      "target": "compositions/components/icon-morph-beat.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "pair",
+      "type": "enum",
+      "role": "content",
+      "label": "Icon pair",
+      "description": "Before and after icon states used by the morph.",
+      "default": "mic-check",
+      "options": [
+        { "value": "mic-check", "label": "Mic to check" },
+        { "value": "play-check", "label": "Play to check" },
+        { "value": "lock-unlock", "label": "Lock to unlock" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color applied as the morph completes.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

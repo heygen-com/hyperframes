@@ -1,0 +1,73 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "stop-motion-cadence",
+  "type": "hyperframes:component",
+  "title": "Stop Motion Cadence",
+  "description": "The stepped-time law as a demo primitive: one driver quantizes timeline time to floor(t * fps) / fps and feeds ALL motion; four token paper-cut shapes throw-and-land with squash on hits, 2-frame boil jitter seeded per step, and sparkle accents living exactly 2 to 3 frames.",
+  "tags": ["motion-primitive", "time-law", "stop-motion", "stepped", "boil", "deterministic", "experiment"],
+  "jobs": ["demonstrate"],
+  "family": "demonstrate",
+  "profile": "stepped-time",
+  "evidence": "Wave M10 experiment: MotionMarkus stop-motion sheets (2059406490981863865/sheet-01)",
+  "syncPoints": [{ "id": "first-hit", "phase": "in", "offset": 1.0 }],
+  "files": [
+    {
+      "path": "stop-motion-cadence.html",
+      "target": "compositions/components/stop-motion-cadence.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "fps",
+      "type": "enum",
+      "role": "timing",
+      "label": "Cadence",
+      "description": "Stepped-time cadence in frames per second.",
+      "default": "10",
+      "options": [
+        { "value": "8", "label": "8 fps" },
+        { "value": "10", "label": "10 fps" },
+        { "value": "12", "label": "12 fps" }
+      ]
+    },
+    {
+      "id": "boil",
+      "type": "enum",
+      "role": "style",
+      "label": "Boil",
+      "description": "2-frame edge jitter, seeded per step. Off holds dead still.",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On" },
+        { "value": "off", "label": "Off" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Lead shape color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the settled collage holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

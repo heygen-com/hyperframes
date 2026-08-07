@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "container": {
+    "image": "ghcr.io/puppeteer/puppeteer:25.3.0",
+    "digest": "sha256:9665f5b57abc5cc7080a641878964018de219055a4d2c9d8d050ceb1161778ba"
+  },
+  "puppeteer": "25.3.0",
+  "chromeForTesting": "150.0.7871.24",
+  "gsap": {
+    "path": "registry/ui-primitives/vendor/gsap-3.14.2.min.js",
+    "version": "3.14.2",
+    "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280"
+  },
+  "environment": {
+    "deviceScaleFactor": 1,
+    "locale": "en-US",
+    "timezone": "UTC"
+  }
+}

@@ -1,0 +1,3206 @@
+{
+  "version": 1,
+  "name": "operator-black",
+  "featureBaseline": "96b1dd7beeeea01c637aca2cff2ec94fcc83fe02",
+  "items": {
+    "accordion": {
+      "classes": [
+        "hf-ui-accordion",
+        "hf-ui-accordion-content",
+        "hf-ui-accordion-inner",
+        "hf-ui-accordion-item",
+        "hf-ui-accordion-trigger"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-hidden=true"],
+      "dataAttributes": ["data-state=closed"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-accordion",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-accordion-content",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-accordion-inner",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-accordion-item",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-accordion-item[data-state=\"open\"]",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-accordion-trigger",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-accordion-trigger svg",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-accordion-trigger svg"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-accordion-open"],
+      "timelineSelectors": [".hf-ui-accordion-item"],
+      "manifest": {
+        "name": "accordion",
+        "type": "hyperframes:component",
+        "tags": ["accordion", "disclosure", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "accordion.html",
+            "target": "compositions/components/accordion.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/accordion.png"
+      }
+    },
+    "alert": {
+      "classes": ["hf-ui-alert", "hf-ui-alert-icon"],
+      "ids": [],
+      "roles": ["status"],
+      "ariaAttributes": [],
+      "dataAttributes": ["data-tone=info"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-alert",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert strong",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-icon",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-alert p", ".hf-ui-alert strong"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-alert-y"],
+      "timelineSelectors": [".hf-ui-alert"],
+      "manifest": {
+        "name": "alert",
+        "type": "hyperframes:component",
+        "tags": ["alert", "remocn-port", "status", "ui-primitive"],
+        "files": [
+          {
+            "path": "alert.html",
+            "target": "compositions/components/alert.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert.png"
+      }
+    },
+    "alert-dialog": {
+      "classes": [
+        "hf-ui-alert-dialog",
+        "hf-ui-alert-dialog-actions",
+        "hf-ui-alert-dialog-cancel",
+        "hf-ui-alert-dialog-confirm",
+        "hf-ui-alert-dialog-copy",
+        "hf-ui-alert-dialog-icon",
+        "hf-ui-alert-dialog-overlay",
+        "hf-ui-alert-dialog-panel"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": ["data-state=open"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-alert-dialog",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-actions",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-actions button",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-cancel",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-confirm",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-copy h3",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-copy p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-icon",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-overlay",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-alert-dialog-panel",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-alert-dialog-actions button",
+        ".hf-ui-alert-dialog-copy h3",
+        ".hf-ui-alert-dialog-copy p"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-alert-open", "--hf-alert-scale", "--hf-alert-y"],
+      "timelineSelectors": [
+        ".hf-ui-alert-dialog-actions",
+        ".hf-ui-alert-dialog-overlay",
+        ".hf-ui-alert-dialog-panel"
+      ],
+      "manifest": {
+        "name": "alert-dialog",
+        "type": "hyperframes:component",
+        "tags": ["alert-dialog", "overlay", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "alert-dialog.html",
+            "target": "compositions/components/alert-dialog.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert-dialog.png"
+      }
+    },
+    "aspect-ratio": {
+      "classes": ["hf-ui-aspect-ratio"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-aspect-ratio",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-aspect-ratio span",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-aspect-ratio span"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-aspect-ratio"],
+      "manifest": {
+        "name": "aspect-ratio",
+        "type": "hyperframes:component",
+        "tags": ["aspect-ratio", "layout", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "aspect-ratio.html",
+            "target": "compositions/components/aspect-ratio.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aspect-ratio.png"
+      }
+    },
+    "avatar": {
+      "classes": ["hf-ui-avatar"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-hidden=true", "aria-label=Maya Chen"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-avatar",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-avatar i",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-avatar i"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-avatar-size"],
+      "timelineSelectors": [".hf-ui-avatar"],
+      "manifest": {
+        "name": "avatar",
+        "type": "hyperframes:component",
+        "tags": ["avatar", "identity", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "avatar.html",
+            "target": "compositions/components/avatar.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar.png"
+      }
+    },
+    "backdrop": {
+      "classes": ["hf-remocn-backdrop", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-backdrop",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-backdrop .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-backdrop .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-backdrop .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-backdrop .hint",
+        ".hf-remocn-backdrop .label",
+        ".hf-remocn-backdrop .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-backdrop", ".row"],
+      "manifest": {
+        "name": "backdrop",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "backdrop.html",
+            "target": "compositions/components/backdrop.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/backdrop.png"
+      }
+    },
+    "badge": {
+      "classes": ["hf-ui-badge"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": ["data-tone=success"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-badge",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-badge[data-tone=\"neutral\"]",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-badge[data-tone=\"warning\"]",
+          "matchCount": 0
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-badge-scale"],
+      "timelineSelectors": [".hf-ui-badge"],
+      "manifest": {
+        "name": "badge",
+        "type": "hyperframes:component",
+        "tags": ["badge", "remocn-port", "status", "ui-primitive"],
+        "files": [
+          {
+            "path": "badge.html",
+            "target": "compositions/components/badge.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge.png"
+      }
+    },
+    "blur-in": {
+      "classes": ["hf-ui-blur-in"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-label=Design systems for video"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-blur-in",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-blur-in span",
+          "matchCount": 4
+        }
+      ],
+      "relationSelectors": [".hf-ui-blur-in span"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-blur-in"],
+      "manifest": {
+        "name": "blur-in",
+        "type": "hyperframes:component",
+        "tags": ["blur-in", "remocn-port", "text-effect", "ui-primitive"],
+        "files": [
+          {
+            "path": "blur-in.html",
+            "target": "compositions/components/blur-in.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-in.png"
+      }
+    },
+    "breadcrumb": {
+      "classes": ["hf-ui-breadcrumb"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-label=Breadcrumb"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-breadcrumb",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-breadcrumb i",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-breadcrumb strong",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-breadcrumb i", ".hf-ui-breadcrumb strong"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-breadcrumb"],
+      "manifest": {
+        "name": "breadcrumb",
+        "type": "hyperframes:component",
+        "tags": ["breadcrumb", "navigation", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "breadcrumb.html",
+            "target": "compositions/components/breadcrumb.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/breadcrumb.png"
+      }
+    },
+    "button": {
+      "classes": [
+        "hf-ui-button",
+        "hf-ui-button-check",
+        "hf-ui-button-label",
+        "hf-ui-button-spinner"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-hidden=true"],
+      "dataAttributes": ["data-state=idle", "data-variant=default"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-button",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-button-check",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-button-spinner",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-button[data-state=\"hover\"]",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-state=\"loading\"] .hf-ui-button-label",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-state=\"loading\"] .hf-ui-button-spinner",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-state=\"press\"]",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-state=\"success\"] .hf-ui-button-check",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-state=\"success\"] .hf-ui-button-label",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-variant=\"outline\"]",
+          "matchCount": 0
+        },
+        {
+          "selector": ".hf-ui-button[data-variant=\"secondary\"]",
+          "matchCount": 0
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-button[data-state=\"loading\"] .hf-ui-button-label",
+        ".hf-ui-button[data-state=\"loading\"] .hf-ui-button-spinner",
+        ".hf-ui-button[data-state=\"success\"] .hf-ui-button-check",
+        ".hf-ui-button[data-state=\"success\"] .hf-ui-button-label"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-button-bg",
+        "--hf-button-border",
+        "--hf-button-fg",
+        "--hf-button-scale",
+        "--hf-button-y"
+      ],
+      "timelineSelectors": [".hf-ui-button", ".hf-ui-button-spinner"],
+      "manifest": {
+        "name": "button",
+        "type": "hyperframes:component",
+        "tags": ["button", "control", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "button.html",
+            "target": "compositions/components/button.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button.png"
+      }
+    },
+    "button-group": {
+      "classes": ["hf-ui-button-group"],
+      "ids": [],
+      "roles": ["group"],
+      "ariaAttributes": ["aria-label=Export mode", "aria-pressed=true"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-button-group",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-button-group button",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-button-group button[aria-pressed=\"true\"]",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-button-group button",
+        ".hf-ui-button-group button[aria-pressed=\"true\"]"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-button-group"],
+      "manifest": {
+        "name": "button-group",
+        "type": "hyperframes:component",
+        "tags": ["button-group", "control", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "button-group.html",
+            "target": "compositions/components/button-group.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button-group.png"
+      }
+    },
+    "calendar": {
+      "classes": ["hf-ui-calendar", "hf-ui-calendar-grid"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-calendar",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-calendar header",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-calendar-grid",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-calendar-grid :is(span, strong)",
+          "matchCount": 7
+        },
+        {
+          "selector": ".hf-ui-calendar-grid strong",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-calendar header",
+        ".hf-ui-calendar-grid :is(span, strong)",
+        ".hf-ui-calendar-grid strong"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-calendar-grid"],
+      "manifest": {
+        "name": "calendar",
+        "type": "hyperframes:component",
+        "tags": ["calendar", "date", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "calendar.html",
+            "target": "compositions/components/calendar.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/calendar.png"
+      }
+    },
+    "card": {
+      "classes": ["hf-ui-card", "hf-ui-card-footer", "hf-ui-card-header", "hf-ui-card-kicker"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-card",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-card p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-card strong",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-card-footer",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-card-header",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-card-kicker",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-card p", ".hf-ui-card strong"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-card-scale", "--hf-card-y"],
+      "timelineSelectors": [".hf-ui-card"],
+      "manifest": {
+        "name": "card",
+        "type": "hyperframes:component",
+        "tags": ["card", "remocn-port", "surface", "ui-primitive"],
+        "files": [
+          {
+            "path": "card.html",
+            "target": "compositions/components/card.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card.png"
+      }
+    },
+    "caret": {
+      "classes": ["hf-ui-caret", "hf-ui-caret-line", "hf-ui-caret-value"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-caret",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-caret-line",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-caret-value",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-caret", ".hf-ui-caret-value"],
+      "manifest": {
+        "name": "caret",
+        "type": "hyperframes:component",
+        "tags": ["caret", "remocn-port", "typing", "ui-primitive"],
+        "files": [
+          {
+            "path": "caret.html",
+            "target": "compositions/components/caret.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caret.png"
+      }
+    },
+    "carousel": {
+      "classes": ["active", "hf-ui-carousel"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-carousel",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-carousel nav",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-carousel nav .active",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-carousel nav span",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-carousel section",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-carousel section:first-child",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-carousel nav",
+        ".hf-ui-carousel nav .active",
+        ".hf-ui-carousel nav span",
+        ".hf-ui-carousel section",
+        ".hf-ui-carousel section:first-child"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-carousel"],
+      "manifest": {
+        "name": "carousel",
+        "type": "hyperframes:component",
+        "tags": ["carousel", "media", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "carousel.html",
+            "target": "compositions/components/carousel.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/carousel.png"
+      }
+    },
+    "chart": {
+      "classes": ["hf-ui-chart"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-chart",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-chart div",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-chart figcaption",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-chart span",
+          "matchCount": 4
+        }
+      ],
+      "relationSelectors": [".hf-ui-chart div", ".hf-ui-chart figcaption", ".hf-ui-chart span"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--h", "--hf-chart-progress"],
+      "timelineSelectors": [".hf-ui-chart"],
+      "manifest": {
+        "name": "chart",
+        "type": "hyperframes:component",
+        "tags": ["chart", "data", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "chart.html",
+            "target": "compositions/components/chart.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chart.png"
+      }
+    },
+    "checkbox": {
+      "classes": ["hf-ui-checkbox", "hf-ui-checkbox-box", "hf-ui-checkbox-label"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-hidden=true"],
+      "dataAttributes": ["data-state=unchecked"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-checkbox",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-checkbox svg",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-checkbox-box",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-checkbox-label",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-checkbox[data-state=\"checked\"]",
+          "matchCount": 0
+        }
+      ],
+      "relationSelectors": [".hf-ui-checkbox svg"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-checkbox-progress"],
+      "timelineSelectors": [".hf-ui-checkbox"],
+      "manifest": {
+        "name": "checkbox",
+        "type": "hyperframes:component",
+        "tags": ["checkbox", "control", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "checkbox.html",
+            "target": "compositions/components/checkbox.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/checkbox.png"
+      }
+    },
+    "collapsible": {
+      "classes": ["hf-ui-collapsible"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": ["data-state=open"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-collapsible",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-collapsible div",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-collapsible header",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-collapsible header span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-collapsible p",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-collapsible div",
+        ".hf-ui-collapsible header",
+        ".hf-ui-collapsible header span",
+        ".hf-ui-collapsible p"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-collapse-open"],
+      "timelineSelectors": [".hf-ui-collapsible"],
+      "manifest": {
+        "name": "collapsible",
+        "type": "hyperframes:component",
+        "tags": ["collapsible", "disclosure", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "collapsible.html",
+            "target": "compositions/components/collapsible.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/collapsible.png"
+      }
+    },
+    "combobox": {
+      "classes": [
+        "hf-ui-combobox",
+        "hf-ui-combobox-menu",
+        "hf-ui-combobox-option",
+        "hf-ui-combobox-search",
+        "hf-ui-combobox-trigger",
+        "is-active",
+        "is-muted"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": ["data-state=open"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-combobox",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-menu",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-option",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-combobox-option.is-active",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-option.is-muted",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-search",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-trigger",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-trigger span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-combobox-trigger strong",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-combobox-trigger span", ".hf-ui-combobox-trigger strong"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [
+        ".hf-ui-combobox-menu",
+        ".hf-ui-combobox-option",
+        ".hf-ui-combobox-trigger"
+      ],
+      "manifest": {
+        "name": "combobox",
+        "type": "hyperframes:component",
+        "tags": ["combobox", "control", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "combobox.html",
+            "target": "compositions/components/combobox.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/combobox.png"
+      }
+    },
+    "command-menu": {
+      "classes": [
+        "hf-ui-command-group",
+        "hf-ui-command-item",
+        "hf-ui-command-menu",
+        "hf-ui-command-search",
+        "is-active"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-command-group",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-command-item",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-command-item kbd",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-command-item.is-active",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-command-menu",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-command-search",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-command-item kbd"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-command-item", ".hf-ui-command-menu"],
+      "manifest": {
+        "name": "command-menu",
+        "type": "hyperframes:component",
+        "tags": ["command-menu", "overlay", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "command-menu.html",
+            "target": "compositions/components/command-menu.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/command-menu.png"
+      }
+    },
+    "command-menu-item": {
+      "classes": ["hf-remocn-command-menu-item", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-command-menu-item",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-command-menu-item .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-command-menu-item .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-command-menu-item .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-command-menu-item .hint",
+        ".hf-remocn-command-menu-item .label",
+        ".hf-remocn-command-menu-item .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-command-menu-item", ".row"],
+      "manifest": {
+        "name": "command-menu-item",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "command-menu-item.html",
+            "target": "compositions/components/command-menu-item.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/command-menu-item.png"
+      }
+    },
+    "context-menu": {
+      "classes": [
+        "danger",
+        "hf-ui-context-cursor",
+        "hf-ui-context-item",
+        "hf-ui-context-menu",
+        "hf-ui-context-scene",
+        "hf-ui-context-separator",
+        "is-active"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-context-cursor",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-context-item",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-context-item kbd",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-context-item.danger",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-context-item.is-active",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-context-menu",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-context-scene",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-context-separator",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-context-item kbd"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-context-cursor", ".hf-ui-context-item", ".hf-ui-context-menu"],
+      "manifest": {
+        "name": "context-menu",
+        "type": "hyperframes:component",
+        "tags": ["context-menu", "menu", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "context-menu.html",
+            "target": "compositions/components/context-menu.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/context-menu.png"
+      }
+    },
+    "cursor": {
+      "classes": [
+        "hf-ui-cursor-label",
+        "hf-ui-cursor-pointer",
+        "hf-ui-cursor-ripple",
+        "hf-ui-cursor-stage",
+        "hf-ui-cursor-target"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-cursor-label",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-cursor-pointer",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-cursor-ripple",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-cursor-stage",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-cursor-target",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [
+        ".hf-ui-cursor-label",
+        ".hf-ui-cursor-pointer",
+        ".hf-ui-cursor-ripple",
+        ".hf-ui-cursor-target"
+      ],
+      "manifest": {
+        "name": "cursor",
+        "type": "hyperframes:component",
+        "tags": ["cursor", "pointer", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "cursor.html",
+            "target": "compositions/components/cursor.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor.png"
+      }
+    },
+    "dialog": {
+      "classes": [
+        "hf-ui-dialog",
+        "hf-ui-dialog-action",
+        "hf-ui-dialog-actions",
+        "hf-ui-dialog-cancel",
+        "hf-ui-dialog-close",
+        "hf-ui-dialog-overlay",
+        "hf-ui-dialog-panel"
+      ],
+      "ids": ["hf-ui-dialog-title"],
+      "roles": ["dialog"],
+      "ariaAttributes": [
+        "aria-hidden=true",
+        "aria-label=Close",
+        "aria-labelledby=hf-ui-dialog-title",
+        "aria-modal=true"
+      ],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-dialog",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog button",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-dialog h2",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog-action",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog-actions",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog-cancel",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog-close",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog-overlay",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dialog-panel",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-dialog button", ".hf-ui-dialog h2", ".hf-ui-dialog p"],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-dialog-opacity",
+        "--hf-dialog-overlay",
+        "--hf-dialog-scale",
+        "--hf-dialog-y"
+      ],
+      "timelineSelectors": [".hf-ui-dialog"],
+      "manifest": {
+        "name": "dialog",
+        "type": "hyperframes:component",
+        "tags": ["dialog", "overlay", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "dialog.html",
+            "target": "compositions/components/dialog.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dialog.png"
+      }
+    },
+    "drawer": {
+      "classes": ["hf-ui-drawer", "hf-ui-drawer-handle", "hf-ui-drawer-row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-drawer",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-drawer h3",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-drawer-handle",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-drawer-row",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-drawer-row strong",
+          "matchCount": 2
+        }
+      ],
+      "relationSelectors": [".hf-ui-drawer h3", ".hf-ui-drawer-row strong"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-drawer", ".hf-ui-drawer-row"],
+      "manifest": {
+        "name": "drawer",
+        "type": "hyperframes:component",
+        "tags": ["drawer", "overlay", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "drawer.html",
+            "target": "compositions/components/drawer.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drawer.png"
+      }
+    },
+    "dropdown-menu": {
+      "classes": [
+        "hf-ui-dropdown",
+        "hf-ui-dropdown-item",
+        "hf-ui-dropdown-menu",
+        "hf-ui-dropdown-trigger"
+      ],
+      "ids": [],
+      "roles": ["menu"],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-dropdown",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dropdown-item",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-dropdown-item:first-child",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dropdown-menu",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-dropdown-trigger",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-dropdown-item-stagger", "--hf-dropdown-open"],
+      "timelineSelectors": [".hf-ui-dropdown"],
+      "manifest": {
+        "name": "dropdown-menu",
+        "type": "hyperframes:component",
+        "tags": ["dropdown-menu", "menu", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "dropdown-menu.html",
+            "target": "compositions/components/dropdown-menu.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu.png"
+      }
+    },
+    "dropdown-menu-item": {
+      "classes": ["hf-remocn-dropdown-menu-item", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-dropdown-menu-item",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-dropdown-menu-item .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-dropdown-menu-item .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-dropdown-menu-item .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-dropdown-menu-item .hint",
+        ".hf-remocn-dropdown-menu-item .label",
+        ".hf-remocn-dropdown-menu-item .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-dropdown-menu-item", ".row"],
+      "manifest": {
+        "name": "dropdown-menu-item",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "dropdown-menu-item.html",
+            "target": "compositions/components/dropdown-menu-item.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu-item.png"
+      }
+    },
+    "empty": {
+      "classes": ["hf-ui-empty", "hf-ui-empty-icon"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-empty",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-empty button",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-empty h3",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-empty p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-empty-icon",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-empty button", ".hf-ui-empty h3", ".hf-ui-empty p"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-empty"],
+      "manifest": {
+        "name": "empty",
+        "type": "hyperframes:component",
+        "tags": ["empty", "remocn-port", "state", "ui-primitive"],
+        "files": [
+          {
+            "path": "empty.html",
+            "target": "compositions/components/empty.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/empty.png"
+      }
+    },
+    "field": {
+      "classes": ["hf-ui-field", "hf-ui-field-control"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-field",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-field label",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-field p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-field-control",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-field label", ".hf-ui-field p"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-field"],
+      "manifest": {
+        "name": "field",
+        "type": "hyperframes:component",
+        "tags": ["field", "form", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "field.html",
+            "target": "compositions/components/field.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/field.png"
+      }
+    },
+    "hover-card": {
+      "classes": ["hf-ui-hover-card"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-hover-card",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-hover-card aside",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-hover-card button",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-hover-card p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-hover-card span",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-hover-card aside",
+        ".hf-ui-hover-card button",
+        ".hf-ui-hover-card p",
+        ".hf-ui-hover-card span"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-hover-open", "--hf-hover-y"],
+      "timelineSelectors": [".hf-ui-hover-card"],
+      "manifest": {
+        "name": "hover-card",
+        "type": "hyperframes:component",
+        "tags": ["hover-card", "overlay", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "hover-card.html",
+            "target": "compositions/components/hover-card.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hover-card.png"
+      }
+    },
+    "input": {
+      "classes": [
+        "hf-ui-input-caret",
+        "hf-ui-input-field",
+        "hf-ui-input-helper",
+        "hf-ui-input-label",
+        "hf-ui-input-shell",
+        "hf-ui-input-value"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-hidden=true"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-input-caret",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-field",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-helper",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-label",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-shell",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-value",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-input-focus", "--hf-input-value-progress"],
+      "timelineSelectors": [".hf-ui-input-field"],
+      "manifest": {
+        "name": "input",
+        "type": "hyperframes:component",
+        "tags": ["field", "input", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "input.html",
+            "target": "compositions/components/input.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input.png"
+      }
+    },
+    "input-group": {
+      "classes": ["hf-ui-input-group"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-input-group",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-group button",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-group input",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-group span",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-input-group button",
+        ".hf-ui-input-group input",
+        ".hf-ui-input-group span"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-input-group"],
+      "manifest": {
+        "name": "input-group",
+        "type": "hyperframes:component",
+        "tags": ["field", "input-group", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "input-group.html",
+            "target": "compositions/components/input-group.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-group.png"
+      }
+    },
+    "input-otp": {
+      "classes": ["active", "hf-ui-input-otp"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-label=One time code"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-input-otp",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-otp .active",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-input-otp span",
+          "matchCount": 4
+        }
+      ],
+      "relationSelectors": [".hf-ui-input-otp .active", ".hf-ui-input-otp span"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-input-otp"],
+      "manifest": {
+        "name": "input-otp",
+        "type": "hyperframes:component",
+        "tags": ["field", "input-otp", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "input-otp.html",
+            "target": "compositions/components/input-otp.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-otp.png"
+      }
+    },
+    "item": {
+      "classes": ["hf-ui-item", "hf-ui-item-icon"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-item",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-item em",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-item p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-item-icon",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-item em", ".hf-ui-item p"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-item"],
+      "manifest": {
+        "name": "item",
+        "type": "hyperframes:component",
+        "tags": ["item", "list", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "item.html",
+            "target": "compositions/components/item.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/item.png"
+      }
+    },
+    "kbd": {
+      "classes": ["hf-ui-kbd"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-kbd",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-kbd-y"],
+      "timelineSelectors": [".hf-ui-kbd"],
+      "manifest": {
+        "name": "kbd",
+        "type": "hyperframes:component",
+        "tags": ["kbd", "remocn-port", "shortcut", "ui-primitive"],
+        "files": [
+          {
+            "path": "kbd.html",
+            "target": "compositions/components/kbd.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kbd.png"
+      }
+    },
+    "label": {
+      "classes": ["hf-ui-label"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-label",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-label span",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-label span"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-label"],
+      "manifest": {
+        "name": "label",
+        "type": "hyperframes:component",
+        "tags": ["form", "label", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "label.html",
+            "target": "compositions/components/label.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/label.png"
+      }
+    },
+    "menubar": {
+      "classes": ["hf-ui-menubar"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-label=Editor menu"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-menubar",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-menubar button",
+          "matchCount": 4
+        },
+        {
+          "selector": ".hf-ui-menubar button:first-child",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-menubar button", ".hf-ui-menubar button:first-child"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-menubar"],
+      "manifest": {
+        "name": "menubar",
+        "type": "hyperframes:component",
+        "tags": ["menubar", "navigation", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "menubar.html",
+            "target": "compositions/components/menubar.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menubar.png"
+      }
+    },
+    "native-select": {
+      "classes": ["hf-ui-native-select"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-native-select",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-native-select select",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-native-select span",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-native-select select", ".hf-ui-native-select span"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-select-ring"],
+      "timelineSelectors": [".hf-ui-native-select"],
+      "manifest": {
+        "name": "native-select",
+        "type": "hyperframes:component",
+        "tags": ["control", "native-select", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "native-select.html",
+            "target": "compositions/components/native-select.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/native-select.png"
+      }
+    },
+    "navigation-menu": {
+      "classes": ["hf-ui-navigation-menu"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-current=page"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-navigation-menu",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-navigation-menu [aria-current=\"page\"]",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-navigation-menu a",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-navigation-menu div",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-navigation-menu [aria-current=\"page\"]",
+        ".hf-ui-navigation-menu a",
+        ".hf-ui-navigation-menu div"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-navigation-menu"],
+      "manifest": {
+        "name": "navigation-menu",
+        "type": "hyperframes:component",
+        "tags": ["navigation", "navigation-menu", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "navigation-menu.html",
+            "target": "compositions/components/navigation-menu.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/navigation-menu.png"
+      }
+    },
+    "pagination": {
+      "classes": ["hf-ui-pagination"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-current=page", "aria-label=Pagination"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-pagination",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-pagination :is(a, button)",
+          "matchCount": 5
+        },
+        {
+          "selector": ".hf-ui-pagination [aria-current=\"page\"]",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-pagination :is(a, button)",
+        ".hf-ui-pagination [aria-current=\"page\"]"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-pagination"],
+      "manifest": {
+        "name": "pagination",
+        "type": "hyperframes:component",
+        "tags": ["navigation", "pagination", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "pagination.html",
+            "target": "compositions/components/pagination.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pagination.png"
+      }
+    },
+    "popover": {
+      "classes": ["hf-ui-popover", "hf-ui-popover-anchor", "hf-ui-popover-panel"],
+      "ids": [],
+      "roles": ["dialog"],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-popover",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-popover-anchor",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-popover-panel",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-popover-panel span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-popover-panel strong",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-popover-panel span", ".hf-ui-popover-panel strong"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-popover-open"],
+      "timelineSelectors": [".hf-ui-popover"],
+      "manifest": {
+        "name": "popover",
+        "type": "hyperframes:component",
+        "tags": ["overlay", "popover", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "popover.html",
+            "target": "compositions/components/popover.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/popover.png"
+      }
+    },
+    "progress": {
+      "classes": [
+        "hf-ui-progress",
+        "hf-ui-progress-bar",
+        "hf-ui-progress-header",
+        "hf-ui-progress-track"
+      ],
+      "ids": [],
+      "roles": ["progressbar"],
+      "ariaAttributes": ["aria-valuemax=100", "aria-valuemin=0", "aria-valuenow=64"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-progress",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-progress-bar",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-progress-header",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-progress-track",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-progress-value"],
+      "timelineSelectors": [".hf-ui-progress"],
+      "manifest": {
+        "name": "progress",
+        "type": "hyperframes:component",
+        "tags": ["progress", "remocn-port", "status", "ui-primitive"],
+        "files": [
+          {
+            "path": "progress.html",
+            "target": "compositions/components/progress.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/progress.png"
+      }
+    },
+    "progress-steps": {
+      "classes": ["hf-remocn-progress-steps", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-progress-steps",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-progress-steps .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-progress-steps .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-progress-steps .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-progress-steps .hint",
+        ".hf-remocn-progress-steps .label",
+        ".hf-remocn-progress-steps .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-progress-steps", ".row"],
+      "manifest": {
+        "name": "progress-steps",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "progress-steps.html",
+            "target": "compositions/components/progress-steps.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/progress-steps.png"
+      }
+    },
+    "radio": {
+      "classes": ["hf-ui-radio", "hf-ui-radio-group"],
+      "ids": [],
+      "roles": ["radiogroup"],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-radio",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-radio span",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-radio-group",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-radio span"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-radio-selected"],
+      "timelineSelectors": [],
+      "manifest": {
+        "name": "radio",
+        "type": "hyperframes:component",
+        "tags": ["control", "radio", "remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "radio.html",
+            "target": "compositions/components/radio.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/radio.png"
+      }
+    },
+    "registry": {
+      "classes": ["hf-remocn-registry", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-registry",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-registry .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-registry .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-registry .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-registry .hint",
+        ".hf-remocn-registry .label",
+        ".hf-remocn-registry .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-registry", ".row"],
+      "manifest": {
+        "name": "registry",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "registry.html",
+            "target": "compositions/components/registry.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/registry.png"
+      }
+    },
+    "remocn-ui": {
+      "classes": ["hf-remocn-remocn-ui", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-remocn-ui",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-remocn-ui .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-remocn-ui .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-remocn-ui .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-remocn-ui .hint",
+        ".hf-remocn-remocn-ui .label",
+        ".hf-remocn-remocn-ui .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-remocn-ui", ".row"],
+      "manifest": {
+        "name": "remocn-ui",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "remocn-ui.html",
+            "target": "compositions/components/remocn-ui.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/remocn-ui.png"
+      }
+    },
+    "resizable": {
+      "classes": [
+        "hf-ui-resizable",
+        "hf-ui-resizable-handle",
+        "hf-ui-resizable-pane",
+        "primary",
+        "secondary"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-resizable",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-resizable-handle",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-resizable-pane",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-resizable-pane.primary",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-resizable-pane.secondary",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-resizable-left"],
+      "timelineSelectors": [".hf-ui-resizable", ".hf-ui-resizable-handle"],
+      "manifest": {
+        "name": "resizable",
+        "type": "hyperframes:component",
+        "tags": ["layout", "remocn-port", "resizable", "ui-primitive"],
+        "files": [
+          {
+            "path": "resizable.html",
+            "target": "compositions/components/resizable.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/resizable.png"
+      }
+    },
+    "scroll-area": {
+      "classes": ["hf-ui-scroll-area", "hf-ui-scroll-content", "hf-ui-scroll-thumb"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-scroll-area",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-scroll-content",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-scroll-content p",
+          "matchCount": 4
+        },
+        {
+          "selector": ".hf-ui-scroll-thumb",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-scroll-content p"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-scroll-thumb-y", "--hf-scroll-y"],
+      "timelineSelectors": [".hf-ui-scroll-content", ".hf-ui-scroll-thumb"],
+      "manifest": {
+        "name": "scroll-area",
+        "type": "hyperframes:component",
+        "tags": ["layout", "remocn-port", "scroll-area", "ui-primitive"],
+        "files": [
+          {
+            "path": "scroll-area.html",
+            "target": "compositions/components/scroll-area.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scroll-area.png"
+      }
+    },
+    "select": {
+      "classes": [
+        "hf-ui-select",
+        "hf-ui-select-menu",
+        "hf-ui-select-option",
+        "hf-ui-select-trigger",
+        "is-active"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-select",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-select-menu",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-select-option",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-select-option.is-active",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-select-trigger",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-select-trigger span",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-select-trigger span"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-select-open"],
+      "timelineSelectors": [],
+      "manifest": {
+        "name": "select",
+        "type": "hyperframes:component",
+        "tags": ["control", "remocn-port", "select", "ui-primitive"],
+        "files": [
+          {
+            "path": "select.html",
+            "target": "compositions/components/select.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/select.png"
+      }
+    },
+    "select-item": {
+      "classes": ["hf-remocn-select-item", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-select-item",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-select-item .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-select-item .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-select-item .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-select-item .hint",
+        ".hf-remocn-select-item .label",
+        ".hf-remocn-select-item .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-select-item", ".row"],
+      "manifest": {
+        "name": "select-item",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "select-item.html",
+            "target": "compositions/components/select-item.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/select-item.png"
+      }
+    },
+    "separator": {
+      "classes": ["hf-ui-separator"],
+      "ids": [],
+      "roles": ["separator"],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-separator",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-separator span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-separator[data-orientation=\"vertical\"]",
+          "matchCount": 0
+        }
+      ],
+      "relationSelectors": [".hf-ui-separator span"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-separator-progress"],
+      "timelineSelectors": [".hf-ui-separator"],
+      "manifest": {
+        "name": "separator",
+        "type": "hyperframes:component",
+        "tags": ["layout", "remocn-port", "separator", "ui-primitive"],
+        "files": [
+          {
+            "path": "separator.html",
+            "target": "compositions/components/separator.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/separator.png"
+      }
+    },
+    "sheet": {
+      "classes": ["hf-ui-sheet", "hf-ui-sheet-field", "hf-ui-sheet-overlay", "hf-ui-sheet-scene"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-sheet",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-sheet h3",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-sheet p",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-sheet-field",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-sheet-overlay",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-sheet-scene",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-sheet h3", ".hf-ui-sheet p"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-sheet", ".hf-ui-sheet-field", ".hf-ui-sheet-overlay"],
+      "manifest": {
+        "name": "sheet",
+        "type": "hyperframes:component",
+        "tags": ["overlay", "remocn-port", "sheet", "ui-primitive"],
+        "files": [
+          {
+            "path": "sheet.html",
+            "target": "compositions/components/sheet.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sheet.png"
+      }
+    },
+    "sidebar": {
+      "classes": ["hf-ui-sidebar"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-current=page"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-sidebar",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-sidebar [aria-current=\"page\"]",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-sidebar a",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-sidebar strong",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-sidebar [aria-current=\"page\"]",
+        ".hf-ui-sidebar a",
+        ".hf-ui-sidebar strong"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-sidebar"],
+      "manifest": {
+        "name": "sidebar",
+        "type": "hyperframes:component",
+        "tags": ["navigation", "remocn-port", "sidebar", "ui-primitive"],
+        "files": [
+          {
+            "path": "sidebar.html",
+            "target": "compositions/components/sidebar.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sidebar.png"
+      }
+    },
+    "skeleton": {
+      "classes": ["avatar", "hf-ui-skeleton", "hf-ui-skeleton-card", "line", "wide"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-skeleton",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-skeleton-card",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-skeleton.avatar",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-skeleton.line",
+          "matchCount": 2
+        },
+        {
+          "selector": ".hf-ui-skeleton.line.wide",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [".hf-ui-skeleton::after"],
+      "customProperties": ["--hf-skeleton-shimmer"],
+      "timelineSelectors": [],
+      "manifest": {
+        "name": "skeleton",
+        "type": "hyperframes:component",
+        "tags": ["loading", "remocn-port", "skeleton", "ui-primitive"],
+        "files": [
+          {
+            "path": "skeleton.html",
+            "target": "compositions/components/skeleton.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton.png"
+      }
+    },
+    "skeleton-block": {
+      "classes": ["hf-remocn-skeleton-block", "hint", "label", "row"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-remocn-skeleton-block",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-remocn-skeleton-block .hint",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-skeleton-block .label",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-remocn-skeleton-block .row",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [
+        ".hf-remocn-skeleton-block .hint",
+        ".hf-remocn-skeleton-block .label",
+        ".hf-remocn-skeleton-block .row"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [
+        "--hf-accent",
+        "--hf-ink",
+        "--hf-muted",
+        "--hf-row-opacity",
+        "--hf-row-x",
+        "--hf-surface"
+      ],
+      "timelineSelectors": [".hf-remocn-skeleton-block", ".row"],
+      "manifest": {
+        "name": "skeleton-block",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "ui-primitive"],
+        "files": [
+          {
+            "path": "skeleton-block.html",
+            "target": "compositions/components/skeleton-block.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton-block.png"
+      }
+    },
+    "slider": {
+      "classes": [
+        "hf-ui-slider",
+        "hf-ui-slider-fill",
+        "hf-ui-slider-thumb",
+        "hf-ui-slider-track",
+        "hf-ui-slider-value"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-slider",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-slider-fill",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-slider-thumb",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-slider-track",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-slider-value",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-slider-value"],
+      "timelineSelectors": [],
+      "manifest": {
+        "name": "slider",
+        "type": "hyperframes:component",
+        "tags": ["control", "remocn-port", "slider", "ui-primitive"],
+        "files": [
+          {
+            "path": "slider.html",
+            "target": "compositions/components/slider.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slider.png"
+      }
+    },
+    "spinner": {
+      "classes": ["hf-ui-spinner", "hf-ui-spinner-ring"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-spinner",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-spinner-ring",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-spinner-ring"],
+      "manifest": {
+        "name": "spinner",
+        "type": "hyperframes:component",
+        "tags": ["loading", "remocn-port", "spinner", "ui-primitive"],
+        "files": [
+          {
+            "path": "spinner.html",
+            "target": "compositions/components/spinner.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spinner.png"
+      }
+    },
+    "stepper": {
+      "classes": [
+        "hf-ui-step",
+        "hf-ui-stepper",
+        "hf-ui-stepper-fill",
+        "hf-ui-stepper-line",
+        "is-active",
+        "is-done"
+      ],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-step",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-step span",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-step strong",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-step.is-active span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-step.is-done span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-stepper",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-stepper-fill",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-stepper-line",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [
+        ".hf-ui-step span",
+        ".hf-ui-step strong",
+        ".hf-ui-step.is-active span",
+        ".hf-ui-step.is-done span"
+      ],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-step", ".hf-ui-stepper-fill"],
+      "manifest": {
+        "name": "stepper",
+        "type": "hyperframes:component",
+        "tags": ["progress", "remocn-port", "stepper", "ui-primitive"],
+        "files": [
+          {
+            "path": "stepper.html",
+            "target": "compositions/components/stepper.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stepper.png"
+      }
+    },
+    "switch": {
+      "classes": ["hf-ui-switch", "hf-ui-switch-label", "hf-ui-switch-row", "hf-ui-switch-thumb"],
+      "ids": [],
+      "roles": ["switch"],
+      "ariaAttributes": ["aria-checked=false"],
+      "dataAttributes": ["data-state=off"],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-switch",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-switch-label",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-switch-row",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-switch-thumb",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-switch[data-state=\"on\"]",
+          "matchCount": 0
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-switch-progress"],
+      "timelineSelectors": [".hf-ui-switch"],
+      "manifest": {
+        "name": "switch",
+        "type": "hyperframes:component",
+        "tags": ["remocn-port", "switch", "toggle", "ui-primitive"],
+        "files": [
+          {
+            "path": "switch.html",
+            "target": "compositions/components/switch.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/switch.png"
+      }
+    },
+    "table": {
+      "classes": ["hf-ui-table"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-table",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-table td",
+          "matchCount": 9
+        },
+        {
+          "selector": ".hf-ui-table th",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-table tr:last-child td",
+          "matchCount": 3
+        }
+      ],
+      "relationSelectors": [".hf-ui-table td", ".hf-ui-table th", ".hf-ui-table tr:last-child td"],
+      "unsupportedSelectors": [],
+      "customProperties": [],
+      "timelineSelectors": [".hf-ui-table"],
+      "manifest": {
+        "name": "table",
+        "type": "hyperframes:component",
+        "tags": ["data", "remocn-port", "table", "ui-primitive"],
+        "files": [
+          {
+            "path": "table.html",
+            "target": "compositions/components/table.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/table.png"
+      }
+    },
+    "tabs": {
+      "classes": [
+        "hf-ui-tabs",
+        "hf-ui-tabs-indicator",
+        "hf-ui-tabs-kicker",
+        "hf-ui-tabs-list",
+        "hf-ui-tabs-panel",
+        "hf-ui-tabs-trigger"
+      ],
+      "ids": [],
+      "roles": ["tab", "tablist", "tabpanel"],
+      "ariaAttributes": ["aria-hidden=true", "aria-selected=false", "aria-selected=true"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-tabs",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tabs-indicator",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tabs-kicker",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tabs-list",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tabs-panel",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tabs-panel strong",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tabs-trigger",
+          "matchCount": 2
+        }
+      ],
+      "relationSelectors": [".hf-ui-tabs-panel strong"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-tabs-index"],
+      "timelineSelectors": [".hf-ui-tabs"],
+      "manifest": {
+        "name": "tabs",
+        "type": "hyperframes:component",
+        "tags": ["navigation", "remocn-port", "tabs", "ui-primitive"],
+        "files": [
+          {
+            "path": "tabs.html",
+            "target": "compositions/components/tabs.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tabs.png"
+      }
+    },
+    "textarea": {
+      "classes": ["hf-ui-textarea-field"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-textarea-field",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-textarea-field span",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-textarea-field textarea",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-textarea-field span", ".hf-ui-textarea-field textarea"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-textarea-ring"],
+      "timelineSelectors": [".hf-ui-textarea-field"],
+      "manifest": {
+        "name": "textarea",
+        "type": "hyperframes:component",
+        "tags": ["field", "remocn-port", "textarea", "ui-primitive"],
+        "files": [
+          {
+            "path": "textarea.html",
+            "target": "compositions/components/textarea.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/textarea.png"
+      }
+    },
+    "toast": {
+      "classes": ["hf-ui-toast", "hf-ui-toast-dot", "hf-ui-toast-rail"],
+      "ids": [],
+      "roles": ["status"],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-toast",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-toast span",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-toast strong",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-toast-dot",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-toast-rail",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-toast span", ".hf-ui-toast strong"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-toast-progress"],
+      "timelineSelectors": [],
+      "manifest": {
+        "name": "toast",
+        "type": "hyperframes:component",
+        "tags": ["notification", "remocn-port", "toast", "ui-primitive"],
+        "files": [
+          {
+            "path": "toast.html",
+            "target": "compositions/components/toast.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toast.png"
+      }
+    },
+    "toggle": {
+      "classes": ["hf-ui-toggle"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": ["aria-pressed=true"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-toggle",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-toggle[aria-pressed=\"true\"]",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-toggle-scale"],
+      "timelineSelectors": [".hf-ui-toggle"],
+      "manifest": {
+        "name": "toggle",
+        "type": "hyperframes:component",
+        "tags": ["control", "remocn-port", "toggle", "ui-primitive"],
+        "files": [
+          {
+            "path": "toggle.html",
+            "target": "compositions/components/toggle.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle.png"
+      }
+    },
+    "toggle-group": {
+      "classes": ["hf-ui-toggle-group", "hf-ui-toggle-indicator"],
+      "ids": [],
+      "roles": [],
+      "ariaAttributes": [],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-toggle-group",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-toggle-group button",
+          "matchCount": 3
+        },
+        {
+          "selector": ".hf-ui-toggle-indicator",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [".hf-ui-toggle-group button"],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-toggle-count", "--hf-toggle-index"],
+      "timelineSelectors": [],
+      "manifest": {
+        "name": "toggle-group",
+        "type": "hyperframes:component",
+        "tags": ["control", "remocn-port", "toggle-group", "ui-primitive"],
+        "files": [
+          {
+            "path": "toggle-group.html",
+            "target": "compositions/components/toggle-group.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle-group.png"
+      }
+    },
+    "tooltip": {
+      "classes": [
+        "hf-ui-tooltip",
+        "hf-ui-tooltip-arrow",
+        "hf-ui-tooltip-content",
+        "hf-ui-tooltip-trigger"
+      ],
+      "ids": [],
+      "roles": ["tooltip"],
+      "ariaAttributes": ["aria-hidden=true"],
+      "dataAttributes": [],
+      "cssSelectors": [
+        {
+          "selector": ".hf-ui-tooltip",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tooltip-arrow",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tooltip-content",
+          "matchCount": 1
+        },
+        {
+          "selector": ".hf-ui-tooltip-trigger",
+          "matchCount": 1
+        }
+      ],
+      "relationSelectors": [],
+      "unsupportedSelectors": [],
+      "customProperties": ["--hf-tooltip-open"],
+      "timelineSelectors": [".hf-ui-tooltip"],
+      "manifest": {
+        "name": "tooltip",
+        "type": "hyperframes:component",
+        "tags": ["overlay", "remocn-port", "tooltip", "ui-primitive"],
+        "files": [
+          {
+            "path": "tooltip.html",
+            "target": "compositions/components/tooltip.html",
+            "type": "hyperframes:snippet"
+          }
+        ],
+        "previewPoster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tooltip.png"
+      }
+    }
+  }
+}

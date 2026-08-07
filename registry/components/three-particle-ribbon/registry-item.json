@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "three-particle-ribbon",
+  "type": "hyperframes:component",
+  "title": "Three Particle Ribbon",
+  "description": "A lightweight Three.js point ribbon with timeline-controlled camera and shader-like color drift.",
+  "tags": ["three-js", "webgl", "hyperframes-native"],
+  "files": [
+    {
+      "path": "three-particle-ribbon.html",
+      "target": "compositions/components/three-particle-ribbon.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/three-particle-ribbon.png"
+  }
+}

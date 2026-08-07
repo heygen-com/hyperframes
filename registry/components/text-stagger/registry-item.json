@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "text-stagger",
+  "type": "hyperframes:component",
+  "title": "Text Stagger",
+  "description": "A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words",
+  "tags": ["transition-primitive", "transitions-dev-port", "text", "stagger"],
+  "files": [
+    {
+      "path": "text-stagger.html",
+      "target": "compositions/components/text-stagger.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-stagger.png"
+  }
+}

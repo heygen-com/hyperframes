@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code Diff Wipe - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        /* ponytail: CSS scale on .demo-frame — GSAP only animates .hf-remocn-code-diff-wipe children */
+        transform: scale(2.05);
+      }
+      .hf-remocn-code-diff-wipe {
+        --hf-accent: #2563eb;
+        --hf-ink: #18181b;
+        --hf-muted: #71717a;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: "ui-monospace", "SFMono-Regular", "Menlo", "Monaco", monospace;
+      }
+      .hf-remocn-code-diff-wipe {
+        position: relative;
+        width: 680px;
+        height: 420px;
+        overflow: hidden;
+        border-radius: 14px;
+        background: #18181b;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+      /* Title bar chrome */
+      .hf-remocn-code-diff-wipe .chrome {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 38px;
+        background: #27272a;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        gap: 7px;
+        z-index: 10;
+      }
+      .hf-remocn-code-diff-wipe .chrome .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+      }
+      .hf-remocn-code-diff-wipe .chrome .dot:nth-child(1) { background: #ef4444; }
+      .hf-remocn-code-diff-wipe .chrome .dot:nth-child(2) { background: #f59e0b; }
+      .hf-remocn-code-diff-wipe .chrome .dot:nth-child(3) { background: #22c55e; }
+      .hf-remocn-code-diff-wipe .chrome .filename {
+        margin-left: 8px;
+        font-size: 11px;
+        color: #71717a;
+        font-family: Inter, system-ui, sans-serif;
+        letter-spacing: 0.01em;
+      }
+      /* Code panels */
+      .hf-remocn-code-diff-wipe .scene {
+        position: absolute;
+        inset: 0;
+        padding: 52px 0 0 0;
+      }
+      .hf-remocn-code-diff-wipe .code-body {
+        padding: 18px 24px;
+        font-size: 13.5px;
+        line-height: 1.75;
+      }
+      .hf-remocn-code-diff-wipe .line {
+        display: flex;
+        gap: 16px;
+        padding: 1px 0;
+        border-radius: 3px;
+        white-space: pre;
+      }
+      .hf-remocn-code-diff-wipe .line .gutter {
+        width: 20px;
+        text-align: right;
+        color: #52525b;
+        font-size: 11.5px;
+        flex-shrink: 0;
+        padding-top: 1px;
+      }
+      .hf-remocn-code-diff-wipe .line .marker {
+        width: 12px;
+        flex-shrink: 0;
+        font-weight: 600;
+      }
+      .hf-remocn-code-diff-wipe .line .code {
+        color: #e4e4e7;
+      }
+      /* From panel — dark neutral */
+      .hf-remocn-code-diff-wipe .from {
+        background: #18181b;
+        transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
+          scale(var(--hf-from-scale, 1));
+        filter: blur(var(--hf-from-blur, 0px));
+      }
+      .hf-remocn-code-diff-wipe .from .line.removed {
+        background: rgba(239, 68, 68, 0.12);
+      }
+      .hf-remocn-code-diff-wipe .from .line.removed .marker { color: #f87171; }
+      .hf-remocn-code-diff-wipe .from .line.removed .code { color: #fca5a5; }
+      /* To panel — same bg, green accents for added lines */
+      .hf-remocn-code-diff-wipe .to {
+        background: #18181b;
+        transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
+        clip-path: inset(
+          var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
+            var(--hf-clip-left, 0%)
+        );
+      }
+      .hf-remocn-code-diff-wipe .to .line.added {
+        background: rgba(34, 197, 94, 0.12);
+      }
+      .hf-remocn-code-diff-wipe .to .line.added .marker { color: #4ade80; }
+      .hf-remocn-code-diff-wipe .to .line.added .code { color: #86efac; }
+      /* Syntax colors shared */
+      .hf-remocn-code-diff-wipe .kw { color: #c084fc; }
+      .hf-remocn-code-diff-wipe .fn { color: #60a5fa; }
+      .hf-remocn-code-diff-wipe .str { color: #fbbf24; }
+      .hf-remocn-code-diff-wipe .cm { color: #52525b; }
+      /* Wipe flash overlay */
+      .hf-remocn-code-diff-wipe .fx {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+        mix-blend-mode: screen;
+        transform: translateX(var(--hf-fx-x, -110%));
+        pointer-events: none;
+      }
+      /* RGB fringe */
+      .hf-remocn-code-diff-wipe .rgb {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--hf-rgb-opacity, 0);
+        background: linear-gradient(
+          90deg,
+          rgba(239, 68, 68, 0.25),
+          transparent,
+          rgba(34, 211, 238, 0.25)
+        );
+        transform: translateX(var(--hf-rgb-x, 0px));
+      }
+      /* Wipe divider line */
+      .hf-remocn-code-diff-wipe .divider {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: rgba(255, 255, 255, 0.18);
+        left: var(--hf-divider-x, -4px);
+        pointer-events: none;
+        z-index: 5;
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="code-diff-wipe-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-code-diff-wipe">
+          <!-- Title bar chrome -->
+          <div class="chrome">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <span class="filename">utils.ts</span>
+          </div>
+
+          <!-- BEFORE panel (old code, red diffs) -->
+          <div class="scene from">
+            <div class="code-body">
+              <div class="line"><span class="gutter">1</span><span class="marker"> </span><span class="code"><span class="kw">function</span> <span class="fn">fetchUser</span>(id: <span class="kw">string</span>) {</span></div>
+              <div class="line removed"><span class="gutter">2</span><span class="marker">-</span><span class="code">  <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/user/${id}`</span>)</span></div>
+              <div class="line removed"><span class="gutter">3</span><span class="marker">-</span><span class="code">  <span class="kw">return</span> res.<span class="fn">json</span>()</span></div>
+              <div class="line"><span class="gutter">4</span><span class="marker"> </span><span class="code">}</span></div>
+              <div class="line"><span class="gutter">5</span><span class="marker"> </span><span class="code"></span></div>
+              <div class="line removed"><span class="gutter">6</span><span class="marker">-</span><span class="code"><span class="kw">export</span> <span class="kw">const</span> cache = <span class="kw">new</span> <span class="fn">Map</span>()</span></div>
+              <div class="line"><span class="gutter">7</span><span class="marker"> </span><span class="code"></span></div>
+              <div class="line"><span class="gutter">8</span><span class="marker"> </span><span class="code"><span class="cm">// TODO: handle errors</span></span></div>
+              <div class="line"><span class="gutter">9</span><span class="marker"> </span><span class="code"><span class="kw">export</span> <span class="kw">default</span> { <span class="fn">fetchUser</span> }</span></div>
+            </div>
+          </div>
+
+          <!-- AFTER panel (new code, green diffs) — wiped in -->
+          <div class="scene to">
+            <div class="code-body">
+              <div class="line"><span class="gutter">1</span><span class="marker"> </span><span class="code"><span class="kw">async function</span> <span class="fn">fetchUser</span>(id: <span class="kw">string</span>) {</span></div>
+              <div class="line added"><span class="gutter">2</span><span class="marker">+</span><span class="code">  <span class="kw">if</span> (cache.<span class="fn">has</span>(id)) <span class="kw">return</span> cache.<span class="fn">get</span>(id)</span></div>
+              <div class="line added"><span class="gutter">3</span><span class="marker">+</span><span class="code">  <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/user/${id}`</span>)</span></div>
+              <div class="line"><span class="gutter">4</span><span class="marker"> </span><span class="code">}</span></div>
+              <div class="line"><span class="gutter">5</span><span class="marker"> </span><span class="code"></span></div>
+              <div class="line added"><span class="gutter">6</span><span class="marker">+</span><span class="code"><span class="kw">const</span> cache = <span class="kw">new</span> <span class="fn">Map</span>&lt;<span class="kw">string</span>, <span class="kw">unknown</span>&gt;()</span></div>
+              <div class="line"><span class="gutter">7</span><span class="marker"> </span><span class="code"></span></div>
+              <div class="line"><span class="gutter">8</span><span class="marker"> </span><span class="code"><span class="cm">// cache hit avoids redundant fetches</span></span></div>
+              <div class="line"><span class="gutter">9</span><span class="marker"> </span><span class="code"><span class="kw">export</span> <span class="kw">default</span> { <span class="fn">fetchUser</span>, cache }</span></div>
+            </div>
+          </div>
+
+          <!-- Wipe divider line -->
+          <div class="divider"></div>
+
+          <!-- Flash sweep -->
+          <div class="fx"></div>
+          <!-- RGB fringe -->
+          <div class="rgb"></div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+
+        // Drive the wipe divider in sync with clip-path
+        tl.fromTo(
+          ".hf-remocn-code-diff-wipe",
+          { "--hf-divider-x": "-4px" },
+          { "--hf-divider-x": "684px", duration: 0.9, ease: "power3.inOut" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-code-diff-wipe .to",
+          { "--hf-clip-right": "100%", "--hf-to-x": "60px", "--hf-to-scale": 1.04 },
+          {
+            "--hf-clip-right": "0%",
+            "--hf-to-x": "0px",
+            "--hf-to-scale": 1,
+            duration: 0.9,
+            ease: "power3.inOut",
+          },
+          startTime,
+        );
+        tl.to(
+          ".hf-remocn-code-diff-wipe .from",
+          {
+            "--hf-from-x": "-70px",
+            "--hf-from-scale": 0.96,
+            "--hf-from-blur": "5px",
+            duration: 0.9,
+            ease: "power3.inOut",
+          },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-code-diff-wipe .fx",
+          { "--hf-fx-x": "-110%" },
+          { "--hf-fx-x": "110%", duration: 0.58, ease: "power2.inOut" },
+          startTime + 0.18,
+        );
+        tl.fromTo(
+          ".hf-remocn-code-diff-wipe .rgb",
+          { "--hf-rgb-opacity": 0, "--hf-rgb-x": "-16px" },
+          {
+            "--hf-rgb-opacity": 1,
+            "--hf-rgb-x": "16px",
+            repeat: 3,
+            yoyo: true,
+            duration: 0.07,
+            ease: "steps(1)",
+          },
+          startTime + 0.32,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["code-diff-wipe-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  soft-blob-touch demo. A full-bleed 1920x1080 dark host mounts the
+  primitive through data-composition-src with non-default variables
+  (touch point low-left, coarse grain, violet accent) to prove the
+  variable path while the primitive stays elastic to its host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Soft Blob Touch Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          #14161b 0%,
+          var(--bg, #0b0c0e) 74%
+        );
+      }
+
+      .mount-stage {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="soft-blob-touch-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="soft-blob-touch-mount"
+        class="mount-stage clip"
+        data-composition-id="soft-blob-touch"
+        data-composition-src="./soft-blob-touch.html"
+        data-variable-values='{"touch_x":30,"touch_y":62,"touch_at":1.4,"grain":"coarse","accent":"violet"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["soft-blob-touch-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

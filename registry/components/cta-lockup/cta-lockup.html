@@ -1,0 +1,258 @@
+<!doctype html>
+<!--
+  cta-lockup: HyperFrames video primitive (ui-props / holdable / ask)
+
+  Concept: a canonical closing lockup with one frozen reveal order. The
+  action line arrives first, the CTA capsule pops beneath it with a restrained
+  overshoot second, and supporting microcopy settles last. The completed
+  lockup then holds with confidence.
+
+  Use when: a product film, launch video, or explainer needs one clear final
+  action without adding a second visual idea.
+
+  Variables:
+    - action_line (string, default "Start building today"): primary close.
+    - button_label (string, default "Get HyperFrames"): CTA capsule label.
+    - microcopy (string, default "Free while in beta"): supporting detail.
+    - accent (green | blue | violet, default green): capsule fill.
+
+  Envelope:
+    IN   1.60s fixed, action line then capsule then microcopy.
+    HOLD elastic, with one nearly imperceptible drift cycle across the full
+         remaining duration so longer mounts stretch only this phase.
+    OUT  none. This closing lockup establishes the final held state.
+    If D is shorter than 1.60s, IN compresses to fit and HOLD becomes zero.
+
+  Mount contract: this file is a template-wrapped sub-composition. #root
+  fills the host box, establishes the container query basis, carries no
+  data-width or data-height, and registers one paused GSAP timeline under
+  the hardcoded literal id "cta-lockup".
+-->
+<html
+  lang="en"
+  data-composition-id="cta-lockup"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "action_line", "type": "string", "role": "content", "label": "Action line", "description": "Primary action statement shown above the CTA.", "default": "Start building today" },
+    { "id": "button_label", "type": "string", "role": "content", "label": "Button label", "description": "Text displayed inside the CTA capsule.", "default": "Get HyperFrames" },
+    { "id": "microcopy", "type": "string", "role": "content", "label": "Microcopy", "description": "Supporting detail shown below the CTA capsule.", "default": "Free while in beta" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Fill color used by the CTA capsule.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>CTA Lockup</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="cta-lockup" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .cl-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .cl-lockup {
+            width: min(88cqw, 150cqh);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            will-change: transform;
+          }
+
+          .cl-action {
+            max-width: 86cqw;
+            margin: 0 0 6.5cqh;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(10cqw, 14cqh);
+            font-weight: 760;
+            line-height: 1.02;
+            letter-spacing: -0.045em;
+            text-wrap: balance;
+            will-change: transform, opacity;
+          }
+
+          .cl-button {
+            min-width: 34cqw;
+            max-width: 78cqw;
+            margin: 0 0 3.8cqh;
+            padding: 3.2cqh 5.5cqw;
+            overflow: hidden;
+            border: 0;
+            border-radius: 50cqh;
+            background: var(--cl-accent, #22c55e);
+            box-shadow: 0 2.2cqh 6cqh color-mix(in srgb, var(--cl-accent, #22c55e) 28%, transparent);
+            color: #07110d;
+            font: inherit;
+            font-size: min(4.3cqw, 6.8cqh);
+            font-weight: 760;
+            line-height: 1;
+            letter-spacing: -0.02em;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .cl-microcopy {
+            max-width: 76cqw;
+            margin: 0;
+            color: var(--muted, #cbd5e1);
+            font-size: min(3cqw, 4.2cqh);
+            font-weight: 520;
+            line-height: 1.25;
+            letter-spacing: 0.01em;
+            text-wrap: balance;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="cta-lockup-clip"
+          class="cl-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="cl-lockup">
+            <h2 class="cl-action"></h2>
+            <button class="cl-button" type="button" tabindex="-1"></button>
+            <p class="cl-microcopy"></p>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var lockup = root.querySelector(".cl-lockup");
+            var actionLine = root.querySelector(".cl-action");
+            var button = root.querySelector(".cl-button");
+            var microcopy = root.querySelector(".cl-microcopy");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var actionText =
+              vars.action_line == null ? "Start building today" : String(vars.action_line);
+            var buttonText =
+              vars.button_label == null ? "Get HyperFrames" : String(vars.button_label);
+            var microcopyText =
+              vars.microcopy == null ? "Free while in beta" : String(vars.microcopy);
+            var accentColors = {
+              green: "#22c55e",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            var accentName = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            actionLine.textContent = actionText;
+            button.textContent = buttonText;
+            microcopy.textContent = microcopyText;
+            root.style.setProperty("--cl-accent", accentColors[accentName]);
+
+            var IN_BASE = 1.6;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var envelopeScale = Math.min(1, duration / IN_BASE);
+            var IN = IN_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN);
+
+            var ACTION_DURATION = 0.5 * envelopeScale;
+            var BUTTON_AT = 0.56 * envelopeScale;
+            var BUTTON_DURATION = 0.6 * envelopeScale;
+            var BUTTON_OPACITY_DURATION = 0.24 * envelopeScale;
+            var MICROCOPY_AT = 1.18 * envelopeScale;
+            var MICROCOPY_DURATION = 0.42 * envelopeScale;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              actionLine,
+              { opacity: 0, y: "3.4cqh" },
+              { opacity: 1, y: 0, duration: ACTION_DURATION, ease: "power3.out" },
+              0,
+            );
+            tl.fromTo(
+              button,
+              { scale: 0.72, y: "2.2cqh" },
+              {
+                scale: 1,
+                y: 0,
+                duration: BUTTON_DURATION,
+                ease: "back.out(1.7)",
+              },
+              BUTTON_AT,
+            );
+            tl.fromTo(
+              button,
+              { opacity: 0 },
+              {
+                opacity: 1,
+                duration: BUTTON_OPACITY_DURATION,
+                ease: "power2.out",
+              },
+              BUTTON_AT,
+            );
+            tl.fromTo(
+              microcopy,
+              { opacity: 0, y: "1.8cqh" },
+              {
+                opacity: 1,
+                y: 0,
+                duration: MICROCOPY_DURATION,
+                ease: "power2.out",
+              },
+              MICROCOPY_AT,
+            );
+
+            if (HOLD > 0) {
+              tl.fromTo(
+                lockup,
+                { y: 0 },
+                {
+                  y: "-0.35cqh",
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                IN,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["cta-lockup"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

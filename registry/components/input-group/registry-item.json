@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "input-group",
+  "type": "hyperframes:component",
+  "title": "Input Group",
+  "description": "A compound input with technical prefix, editable value, and attached action",
+  "tags": ["ui-primitive", "remocn-port", "input-group", "field"],
+  "files": [
+    {
+      "path": "input-group.html",
+      "target": "compositions/components/input-group.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-group.png"
+  }
+}

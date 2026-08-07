@@ -1,0 +1,43 @@
+<!--
+  Icon Swap - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<button class="hf-transition-icon-swap" type="button">
+  <span class="from">+</span><span class="to">OK</span>
+</button>
+
+<style>
+  .hf-transition-icon-swap {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 58px;
+    border: 0;
+    border-radius: 16px;
+    background: #18181b;
+    color: #fff;
+    font:
+      900 28px/1 Inter,
+      system-ui,
+      sans-serif;
+    box-shadow: 0 18px 44px rgba(24, 24, 27, 0.22);
+  }
+  .hf-transition-icon-swap span {
+    position: absolute;
+    filter: blur(var(--hf-icon-blur, 0px));
+    transform: scale(var(--hf-icon-scale, 1)) rotate(var(--hf-icon-rotate, 0deg));
+    will-change: transform, filter, opacity;
+  }
+  .hf-transition-icon-swap .to {
+    opacity: 0;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-transition-icon-swap .from', { opacity: 0, '--hf-icon-scale': 0.55, '--hf-icon-blur': '8px', '--hf-icon-rotate': '-18deg', duration: 0.18, ease: 'power2.in' }, startTime); tl.fromTo('.hf-transition-icon-swap .to', { opacity: 0, '--hf-icon-scale': 1.35, '--hf-icon-blur': '8px', '--hf-icon-rotate': '18deg' }, { opacity: 1, '--hf-icon-scale': 1, '--hf-icon-blur': '0px', '--hf-icon-rotate': '0deg', duration: 0.26, ease: 'back.out(1.7)' }, startTime + 0.12);
+-->

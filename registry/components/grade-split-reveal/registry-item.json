@@ -1,0 +1,15 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "grade-split-reveal",
+  "type": "hyperframes:component",
+  "title": "Grade Split Reveal",
+  "description": "The same picture twice, one flat and one finished, with a hard edge sweeping between them. It stops in the middle long enough to compare, then commits and the graded look takes the frame. Both looks are real HyperFrames color grading run through the WebGL shader, so the preview and the render match.",
+  "tags": ["color-grading", "media", "compare", "reveal", "motion-primitive", "grade"],
+  "files": [
+    {
+      "path": "grade-split-reveal.html",
+      "target": "compositions/components/grade-split-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

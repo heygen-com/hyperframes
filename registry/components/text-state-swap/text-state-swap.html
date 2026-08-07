@@ -1,0 +1,39 @@
+<!--
+  Text State Swap - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-text-state-swap">
+  <span class="from">Saving draft</span><span class="to">Saved</span>
+</div>
+
+<style>
+  .hf-transition-text-state-swap {
+    position: relative;
+    width: 250px;
+    height: 36px;
+    color: #18181b;
+    font:
+      900 28px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-transition-text-state-swap span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    filter: blur(var(--hf-text-blur, 0px));
+    transform: translateY(var(--hf-text-y, 0px));
+    will-change: transform, filter, opacity;
+  }
+  .hf-transition-text-state-swap .to {
+    opacity: 0;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-transition-text-state-swap .from', { opacity: 0, '--hf-text-y': '-18px', '--hf-text-blur': '8px', duration: 0.18, ease: 'power2.in' }, startTime); tl.fromTo('.hf-transition-text-state-swap .to', { opacity: 0, '--hf-text-y': '18px', '--hf-text-blur': '8px' }, { opacity: 1, '--hf-text-y': '0px', '--hf-text-blur': '0px', duration: 0.26, ease: 'power2.out' }, startTime + 0.12);
+-->

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "pull-back-reveal",
+  "type": "hyperframes:component",
+  "title": "Pull Back Reveal",
+  "description": "A tight stat detail holds, then one decelerating camera pull-back reveals the headline and supporting cards that recontextualize it.",
+  "tags": ["motion-primitive", "camera", "pull-back", "reveal", "recontextualize"],
+  "jobs": ["reveal"],
+  "family": "camera",
+  "profile": "reveal",
+  "evidence": "Video Primitives Wave G unit U16",
+  "files": [
+    {
+      "path": "pull-back-reveal.html",
+      "target": "compositions/components/pull-back-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "detail_text",
+      "type": "string",
+      "role": "content",
+      "label": "Detail text",
+      "description": "Stat shown in the detail chip at the center of the reveal.",
+      "default": "+312%"
+    },
+    {
+      "id": "headline",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Headline revealed around the focused detail.",
+      "default": "Growth compounds"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Highlight color used across the composed scene.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

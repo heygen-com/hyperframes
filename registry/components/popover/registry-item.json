@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "popover",
+  "type": "hyperframes:component",
+  "title": "Popover",
+  "description": "An Operator Black anchored popover with a matte surface and trigger-origin Soft Optical motion",
+  "tags": ["ui-primitive", "remocn-port", "popover", "overlay"],
+  "files": [
+    {
+      "path": "popover.html",
+      "target": "compositions/components/popover.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/popover.png"
+  }
+}

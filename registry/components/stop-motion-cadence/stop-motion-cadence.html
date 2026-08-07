@@ -1,0 +1,405 @@
+<!doctype html>
+<!--
+  stop-motion-cadence: HyperFrames video primitive (time law, Wave M10 experiment)
+
+  The stepped-time law as a demo primitive. ONE driver: every frame the
+  timeline time is quantized FIRST,
+
+      ts = floor(t * fps) / fps
+
+  and ts feeds ALL motion. Four token paper-cut shapes throw-and-land in
+  sequence at the quantized cadence, each squashing on its landing hit
+  (transform-origin at the ground contact) and recovering over the next
+  steps. A 2-frame boil rides every shape's edges: jitter offsets are
+  hashed from the boil frame index floor(step / 2), so they are stable
+  within a 2-frame window and pure functions of time. Sparkle accents
+  live EXACTLY 2 or 3 steps on each landing hit, frame-alternating big /
+  small-rotated like a drawn twinkle (per the MotionMarkus sheets).
+
+  Because every hit is defined by an integer step index derived from the
+  quantized driver, seeks land identical frames in any order: forward,
+  reverse, or shuffled evaluation of the same t produces the same step,
+  the same boil seed, the same sparkle state.
+
+  Variables (declared in data-composition-variables below):
+    - fps ("8" | "10" | "12", default "10"): the step cadence.
+    - boil ("on" | "off", default "on"): the 2-frame edge jitter. Off
+      gives a dead-still settle.
+    - accent ("green" | "blue" | "violet", default "green"): the lead
+      shape's color; green rides --brand, blue rides --accent, violet
+      rides --accent-2 (the other shapes take the remaining two tokens).
+    - exit ("none" | "fade" | "up", default "none").
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN_BASE  = 3.0s (all four shapes landed and recovered)
+    HOLD     = max(0, D - IN - OUT); the boil keeps breathing through the
+               hold (that is the register), boil off holds dead still
+    OUT_BASE = 0.45s only when exit != none
+    If D < IN_BASE + OUT_BASE the choreography compresses together; the
+    fps grid itself never scales (the law quantizes absolute time).
+
+  Determinism: no Math.random, no wall clock, no incremental state; the
+  jitter hash is sin-fold on integer indices. Stage size is measured once
+  at mount; per-update writes are transforms and opacity only, all
+  recomputed from tl.time().
+
+  Mount contract: template-wrapped; #root fills the host box (no
+  data-width/height, container-type: size, cqmin units), styled via
+  #root only; one paused timeline under the LITERAL
+  "stop-motion-cadence" key.
+-->
+<html
+  lang="en"
+  data-composition-id="stop-motion-cadence"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "fps", "type": "enum", "role": "timing", "label": "Cadence", "description": "Stepped-time cadence in frames per second.", "default": "10", "options": [{ "value": "8", "label": "8 fps" }, { "value": "10", "label": "10 fps" }, { "value": "12", "label": "12 fps" }] },
+    { "id": "boil", "type": "enum", "role": "style", "label": "Boil", "description": "2-frame edge jitter, seeded per step. Off holds dead still.", "default": "on", "options": [{ "value": "on", "label": "On" }, { "value": "off", "label": "Off" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Lead shape color: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the settled collage holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stop Motion Cadence</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="stop-motion-cadence" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, "Inter", system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .smc-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .smc-stage {
+            position: absolute;
+            inset: 0;
+          }
+
+          /* Paper-cut floor: a hairline plus a soft paper band. */
+          .smc-floor {
+            position: absolute;
+            left: 14cqw;
+            right: 14cqw;
+            top: 72cqh;
+            height: 0.35cqmin;
+            border-radius: 0.2cqmin;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 22%, transparent);
+          }
+
+          .smc-shape {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            filter: drop-shadow(0.5cqmin 0.7cqmin 0 color-mix(in srgb, var(--bg, #000000) 35%, transparent));
+          }
+
+          .smc-shadow {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 12cqmin;
+            height: 2cqmin;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 14%, transparent);
+            opacity: 0;
+          }
+
+          .smc-circle {
+            width: 13cqmin;
+            height: 13cqmin;
+            border-radius: 50%;
+            background: var(--smc-c1);
+          }
+
+          .smc-square {
+            width: 15cqmin;
+            height: 15cqmin;
+            border-radius: 1.6cqmin;
+            background: var(--smc-c2);
+          }
+
+          .smc-tri {
+            width: 16cqmin;
+            height: 14cqmin;
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+            background: var(--smc-c3);
+          }
+
+          .smc-star {
+            width: 9cqmin;
+            height: 9cqmin;
+            clip-path: polygon(
+              50% 0%, 63% 34%, 98% 35%, 70% 57%, 81% 91%,
+              50% 70%, 19% 91%, 30% 57%, 2% 35%, 37% 34%
+            );
+            background: color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--smc-c1));
+          }
+
+          .smc-sparkle {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 5.5cqmin;
+            height: 5.5cqmin;
+            clip-path: polygon(
+              50% 0%, 60% 40%, 100% 50%, 60% 60%,
+              50% 100%, 40% 60%, 0% 50%, 40% 40%
+            );
+            background: var(--fg, #f8fafc);
+            opacity: 0;
+          }
+        </style>
+
+        <div
+          id="stop-motion-cadence-clip"
+          class="smc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="smc-stage">
+            <div class="smc-floor"></div>
+            <div class="smc-shadow" data-for="0"></div>
+            <div class="smc-shadow" data-for="1"></div>
+            <div class="smc-shadow" data-for="2"></div>
+            <div class="smc-shadow" data-for="3"></div>
+            <div class="smc-shape smc-circle"></div>
+            <div class="smc-shape smc-square"></div>
+            <div class="smc-shape smc-tri"></div>
+            <div class="smc-shape smc-star"></div>
+            <div class="smc-sparkle"></div>
+            <div class="smc-sparkle"></div>
+            <div class="smc-sparkle"></div>
+            <div class="smc-sparkle"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".smc-stage");
+            var shapes = root.querySelectorAll(".smc-shape");
+            var shadows = root.querySelectorAll(".smc-shadow");
+            var sparkles = root.querySelectorAll(".smc-sparkle");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var fps = vars.fps === "8" || vars.fps === 8
+              ? 8
+              : vars.fps === "12" || vars.fps === 12
+                ? 12
+                : 10;
+            var boil = vars.boil !== "off";
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // The lead shape rides the chosen accent token; the other two
+            // paper colors take the remaining tokens in rotation.
+            var order = { green: ["green", "blue", "violet"], blue: ["blue", "violet", "green"], violet: ["violet", "green", "blue"] }[accent];
+            root.style.setProperty("--smc-c1", accentColors[order[0]]);
+            root.style.setProperty("--smc-c2", accentColors[order[1]]);
+            root.style.setProperty("--smc-c3", accentColors[order[2]]);
+
+            // One-time stage measurement; all positions in px from here.
+            var W = Math.max(1, stage.clientWidth);
+            var H = Math.max(1, stage.clientHeight);
+            var M = Math.min(W, H);
+            var groundY = 0.72 * H;
+
+            // Envelope: fixed IN/OUT, elastic HOLD; fps grid never scales.
+            var IN_BASE = 3.0;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN_BASE * scale + OUT));
+            var OUT_START = IN_BASE * scale + HOLD;
+
+            // Choreography (seconds, scaled; converted to integer steps).
+            // Each shape: launch, land, from (offstage), to (on the floor),
+            // arc height, spin, squash amount, sparkle life in steps.
+            function shapeSize(el) {
+              return { w: el.offsetWidth, h: el.offsetHeight };
+            }
+            var throws = [
+              { t0: 0.15, t1: 1.0, from: { x: -0.12 * W, yB: 0.28 * H }, to: 0.3 * W, arc: 0.3 * H, rot0: -170, rot1: 8, squash: 0.3, life: 2 },
+              { t0: 0.6, t1: 1.5, from: { x: 1.12 * W, yB: 0.2 * H }, to: 0.56 * W, arc: 0.34 * H, rot0: 150, rot1: -6, squash: 0.34, life: 3 },
+              { t0: 1.25, t1: 2.0, from: { x: 0.78 * W, yB: -0.12 * H }, to: 0.72 * W, arc: 0.06 * H, rot0: -120, rot1: 5, squash: 0.26, life: 2 },
+              { t0: 1.8, t1: 2.55, from: { x: -0.08 * W, yB: 0.1 * H }, to: 0.43 * W, arc: 0.4 * H, rot0: 200, rot1: -12, squash: 0.22, life: 3 },
+            ];
+            for (var s = 0; s < throws.length; s += 1) {
+              var th = throws[s];
+              th.t0 *= scale;
+              th.t1 *= scale;
+              th.landStep = Math.round(th.t1 * fps);
+              th.size = shapeSize(shapes[s]);
+              gsap.set(shapes[s], { transformOrigin: "50% 100%" });
+            }
+
+            // Deterministic per-index hash (sin fold; no Math.random).
+            function rnd(n) {
+              var x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+              return x - Math.floor(x);
+            }
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+            function lerp(a, b, p) {
+              return a + (b - a) * p;
+            }
+
+            // Squash schedule by steps-since-landing: hit, deep, rebound
+            // stretch, settle. Positive widens (scaleX 1+a, scaleY 1-a).
+            var SQUASH_ENV = [1, 0.55, -0.3, 0.1, 0];
+            function squashAt(stepsSince, amount) {
+              if (stepsSince < 0) return 0;
+              if (stepsSince >= SQUASH_ENV.length) return 0;
+              return SQUASH_ENV[stepsSince] * amount;
+            }
+
+            // THE LAW: quantize first, then evaluate everything from ts.
+            // The 1e-6 epsilon absorbs GSAP seek round-trip float error so
+            // a seek landing exactly on a step boundary quantizes the same
+            // way from either direction.
+            function applyTime(timeSeconds) {
+              var step = Math.floor(timeSeconds * fps + 1e-6);
+              var ts = step / fps;
+              var boilIdx = Math.floor(step / 2);
+
+              for (var i = 0; i < throws.length; i += 1) {
+                var th = throws[i];
+                var el = shapes[i];
+                var sw = th.size.w;
+                var sh = th.size.h;
+                var landed = step >= th.landStep;
+                var u = clamp01((ts - th.t0) / Math.max(0.001, th.t1 - th.t0));
+                if (landed) u = 1;
+                var visible = ts >= th.t0;
+
+                // Ballistic arc: linear x, parabolic lift over the line
+                // from launch height to the ground.
+                var xC = lerp(th.from.x, th.to, u);
+                var yB = lerp(th.from.yB, groundY, u) - th.arc * 4 * u * (1 - u);
+                var rot = lerp(th.rot0, th.rot1, 1 - (1 - u) * (1 - u));
+
+                // Squash on the hit, keyed to integer steps since landing.
+                var a = squashAt(step - th.landStep, th.squash);
+                var sxq = 1 + a;
+                var syq = 1 - a * 0.85;
+
+                // 2-frame boil, seeded per boil window, per shape.
+                var bx = 0;
+                var by = 0;
+                var br = 0;
+                if (boil && visible) {
+                  bx = (rnd(boilIdx * 13 + i * 101) - 0.5) * 0.008 * M;
+                  by = (rnd(boilIdx * 29 + i * 211) - 0.5) * 0.008 * M;
+                  br = (rnd(boilIdx * 47 + i * 331) - 0.5) * 1.6;
+                }
+
+                gsap.set(el, {
+                  x: xC - sw / 2 + bx,
+                  y: yB - sh + by,
+                  rotation: rot + br,
+                  scaleX: sxq,
+                  scaleY: syq,
+                  opacity: visible ? 1 : 0,
+                });
+
+                // Contact shadow: grows and darkens as the shape nears
+                // the floor, pinned to the landing spot.
+                var height = clamp01((groundY - yB) / (0.45 * H));
+                var shadowScale = lerp(1.05, 0.55, height);
+                gsap.set(shadows[i], {
+                  x: xC - 0.06 * M,
+                  y: groundY - 0.01 * M,
+                  scaleX: shadowScale * (landed ? sxq : 1),
+                  scaleY: shadowScale * 0.9,
+                  opacity: visible ? lerp(0.85, 0.25, height) : 0,
+                });
+
+                // Sparkle: alive for EXACTLY life steps from the hit,
+                // frame-alternating big / small rotated 45deg.
+                var d = step - th.landStep;
+                var sp = sparkles[i];
+                if (d >= 0 && d < th.life) {
+                  var side = i % 2 === 0 ? -1 : 1;
+                  gsap.set(sp, {
+                    x: xC + side * (sw * 0.62) - 0.0275 * M,
+                    y: groundY - sh * 0.9,
+                    scale: d % 2 === 0 ? 1 : 0.62,
+                    rotation: d % 2 === 0 ? 0 : 45,
+                    opacity: 1,
+                  });
+                } else {
+                  gsap.set(sp, { opacity: 0 });
+                }
+              }
+            }
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                applyTime(tl.time());
+              },
+            });
+
+            // Anchor tween: inert, spans [0, D] so onUpdate fires for
+            // every eventful seek and holds never clamp short.
+            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
+
+            // OUT: optional departure; exit none holds until the cut.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            applyTime(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["stop-motion-cadence"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

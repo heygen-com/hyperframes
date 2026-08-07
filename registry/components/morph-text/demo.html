@@ -1,4 +1,4 @@
-<!-- demo.html — used by scripts/generate-catalog-previews.ts to render the
+<!-- demo.html - used by scripts/generate-catalog-previews.ts to render the
      catalog preview video. Not installed by `hyperframes add morph-text`.
      Keep in sync with morph-text.html. -->
 <!doctype html>
@@ -27,7 +27,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #fff;
+        background: var(--bg, #fff);
       }
 
       #morph-text {
@@ -36,7 +36,7 @@
         height: 1080px;
       }
 
-      /* Word list: hidden source of truth — edit <li> items in Studio. */
+      /* Word list: hidden source of truth - edit <li> items in Studio. */
       #morph-words {
         display: none;
         list-style: none;
@@ -95,7 +95,7 @@
       data-morph-pause="1.5"
     >
       <!--
-        Edit words here — one <li> per word or phrase.
+        Edit words here - one <li> per word or phrase.
         data-font  : CSS font-family (e.g. "'Figtree', sans-serif")
         data-color : text color hex (e.g. "#000000")
         Adjust data-morph-speed (seconds per morph) and data-morph-pause (hold time) above.
@@ -175,12 +175,12 @@
           var wB = words[(stepIdx + 1) % words.length];
 
           elA.textContent = wA.text;
-          elA.style.fontFamily = wA.font;
-          elA.style.color = wA.color;
+          elA.style.fontFamily = "var(--font-display, " + wA.font + ")";
+          elA.style.color = "var(--fg, " + wA.color + ")";
 
           elB.textContent = wB.text;
-          elB.style.fontFamily = wB.font;
-          elB.style.color = wB.color;
+          elB.style.fontFamily = "var(--font-display, " + wB.font + ")";
+          elB.style.color = "var(--fg, " + wB.color + ")";
 
           if (frac <= 0) {
             display.style.filter = "none";
@@ -207,8 +207,8 @@
 
         if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
           elA.textContent = words[0].text;
-          elA.style.fontFamily = words[0].font;
-          elA.style.color = words[0].color;
+          elA.style.fontFamily = "var(--font-display, " + words[0].font + ")";
+          elA.style.color = "var(--fg, " + words[0].color + ")";
           elA.style.opacity = "1";
           display.style.filter = "none";
           return;

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "zoom-through-transition",
+  "type": "hyperframes:component",
+  "title": "Zoom Through Transition",
+  "description": "A transition that zooms through a focal card into the next scene.",
+  "tags": ["transition-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "zoom-through-transition.html",
+      "target": "compositions/components/zoom-through-transition.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/zoom-through-transition.png"
+  }
+}

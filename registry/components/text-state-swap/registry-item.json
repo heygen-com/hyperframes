@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "text-state-swap",
+  "type": "hyperframes:component",
+  "title": "Text State Swap",
+  "description": "A text state swap primitive with outgoing blur and incoming lift",
+  "tags": ["transition-primitive", "transitions-dev-port", "text", "swap"],
+  "files": [
+    {
+      "path": "text-state-swap.html",
+      "target": "compositions/components/text-state-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-state-swap.png"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "halftone-dissolve",
+  "type": "hyperframes:component",
+  "title": "Halftone Dissolve",
+  "description": "Scene A dissolves into scene B through a growing halftone dot field: accent ink dots pop onto a fixed grid smallest-first, each opens into a window onto B, until the windows merge and B fully replaces A.",
+  "tags": ["motion-primitive", "transition", "texture", "halftone", "dissolve"],
+  "jobs": ["bridge"],
+  "family": "transitions",
+  "profile": "texture",
+  "evidence": "Wave L L6: the halftone texture transition from the frame study, a seeded threshold map ordered by a direction enum",
+  "syncPoints": [{ "id": "dissolve", "phase": "in", "offset": 1.1 }],
+  "files": [
+    {
+      "path": "halftone-dissolve.html",
+      "target": "compositions/components/halftone-dissolve.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "dot_size",
+      "type": "enum",
+      "role": "style",
+      "label": "Dot size",
+      "description": "Grid pitch for the halftone field.",
+      "default": "medium",
+      "options": [
+        { "value": "small", "label": "Small" },
+        { "value": "medium", "label": "Medium" },
+        { "value": "large", "label": "Large" }
+      ]
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "timing",
+      "label": "Direction",
+      "description": "Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters.",
+      "default": "ltr",
+      "options": [
+        { "value": "ltr", "label": "Left to right" },
+        { "value": "center", "label": "Center out" },
+        { "value": "noise", "label": "Noise" }
+      ]
+    },
+    {
+      "id": "dissolve_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Dissolve at",
+      "description": "Seconds from mount start when the dissolve begins.",
+      "default": 1.1,
+      "min": 0.2,
+      "max": 10,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the frame leaves. None holds scene B.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

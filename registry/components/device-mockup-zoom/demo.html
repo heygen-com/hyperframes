@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Device Mockup Zoom - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale-up only — demo-frame is not a GSAP target */
+        transform: scale(0.87);
+      }
+      .hf-remocn-device-mockup-zoom {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-device-mockup-zoom {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 28px;
+        padding: 24px;
+        background: linear-gradient(145deg, #f0f9ff 0%, #e8f4fd 50%, #dbeafe 100%);
+        border: 1px solid rgba(37, 99, 235, 0.10);
+        box-shadow: 0 32px 90px rgba(15, 23, 42, 0.14), 0 4px 16px rgba(15, 23, 42, 0.06);
+        display: grid;
+        grid-template-columns: 270px 1fr;
+        gap: 20px;
+        overflow: hidden;
+      }
+      .hf-remocn-device-mockup-zoom .panel {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.76);
+        padding: 22px;
+        backdrop-filter: blur(12px);
+      }
+      .hf-remocn-device-mockup-zoom .prompt {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-device-mockup-zoom .pill {
+        height: 42px;
+        border-radius: 999px;
+        background: #111827;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        font-weight: 800;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-device-mockup-zoom .preview {
+        display: grid;
+        gap: 14px;
+      }
+      .hf-remocn-device-mockup-zoom .card {
+        min-height: 78px;
+        border-radius: 18px;
+        background: #fff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .hf-remocn-device-mockup-zoom .card-bar {
+        height: 10px;
+        border-radius: 6px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-device-mockup-zoom .card-bar.wide { width: 70%; }
+      .hf-remocn-device-mockup-zoom .card-bar.short { width: 45%; }
+      .hf-remocn-device-mockup-zoom .card-bar.accent { width: 30%; background: #2563eb; opacity: 0.25; }
+      .hf-remocn-device-mockup-zoom h3 {
+        margin: 0 0 14px;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #18181b;
+      }
+      .hf-remocn-device-mockup-zoom p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #71717a;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="device-mockup-zoom-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-device-mockup-zoom">
+          <div class="panel prompt">
+            <h3>Device Mockup Zoom</h3>
+            <p>A device frame scales forward while UI panels parallax behind it.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar short"></div>
+              <div class="card-bar accent"></div>
+            </div>
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar short"></div>
+            </div>
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar accent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-device-mockup-zoom .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-device-mockup-zoom .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["device-mockup-zoom-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

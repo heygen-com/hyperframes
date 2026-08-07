@@ -1,0 +1,28 @@
+<!--
+  Tracking In - letter-spacing reveal.
+
+  Add class="hf-tracking-in" to text elements, then animate the CSS variable
+  from wide tracking to the final value in your composition timeline.
+-->
+
+<style>
+  .hf-tracking-in {
+    opacity: 0;
+    letter-spacing: var(--hf-tracking-value, 0.28em);
+    transform: translateY(var(--hf-tracking-y, 8px));
+    will-change: opacity, letter-spacing, transform;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-tracking-in", {
+    opacity: 1,
+    "--hf-tracking-value": "0.02em",
+    y: 0,
+    duration: 0.9,
+    ease: "power3.out",
+    stagger: 0.1,
+  }, startTime);
+-->

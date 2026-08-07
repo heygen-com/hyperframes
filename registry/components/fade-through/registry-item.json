@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "fade-through",
+  "type": "hyperframes:component",
+  "title": "Fade Through",
+  "description": "A calm transition primitive that fades one layer out, passes through a wash, and reveals the next layer",
+  "tags": ["motion-primitive", "transition", "fade", "scene"],
+  "files": [
+    {
+      "path": "fade-through.html",
+      "target": "compositions/components/fade-through.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/fade-through.png"
+  }
+}
