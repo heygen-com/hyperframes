@@ -3,9 +3,35 @@
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes an attribute or token the CSS
+  above already keys off. The timeline recipe below is untouched by them: it
+  targets whichever segment is pressed, so changing activeSegment moves the
+  pop with it.
+
+    - activeSegment (first | second | third, default second): which segment
+      carries aria-pressed, the accent underline, and the entrance pop.
+    - accent (green | blue | violet, default green): colour of that underline.
+      Each option resolves to the matching data token for the active theme.
+    - theme (dark | light, default dark): dark keeps the Operator Black
+      surface, light switches the shared token block to its light values.
+
+  On every default the result is identical to the original: Final pressed,
+  green underline, dark tokens.
 -->
 
-<div data-hf-ui-root class="hf-ui-button-group" role="group" aria-label="Export mode">
+<div
+  data-hf-ui-root
+  class="hf-ui-button-group"
+  role="group"
+  aria-label="Export mode"
+  data-composition-variables='[
+    { "id": "activeSegment", "type": "enum", "role": "content", "label": "Active segment", "description": "Which segment carries the pressed state, the accent underline, and the timeline pop.", "default": "second", "options": [{ "value": "first", "label": "First" }, { "value": "second", "label": "Second" }, { "value": "third", "label": "Third" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the underline under the pressed segment.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Operator Black dark surface or the light-frame token set.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <button type="button" aria-pressed="false">Draft</button>
   <button type="button" aria-pressed="true">Final</button>
   <button type="button" aria-pressed="false">Archive</button>
@@ -205,6 +231,47 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accents = {
+      green: { dark: "#3ce6ac", light: "#087a57" },
+      blue: { dark: "#63a5ff", light: "#245ea8" },
+      violet: { dark: "#a78bfa", light: "#6d3fc0" },
+    };
+    var themes = { dark: true, light: true };
+
+    var segments = { first: 0, second: 1, third: 2 };
+
+    var index = segments[pick(segments, vars.activeSegment, "second")];
+    var theme = pick(themes, vars.theme, "dark");
+    var accent = accents[pick(accents, vars.accent, "green")][theme];
+
+    var roots = document.querySelectorAll(".hf-ui-button-group");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      if (theme === "light") root.setAttribute("data-hf-theme", "light");
+      else root.removeAttribute("data-hf-theme");
+      root.style.setProperty("--hf-ui-accent", accent);
+      var buttons = root.querySelectorAll("button");
+      for (var j = 0; j < buttons.length; j += 1) {
+        buttons[j].setAttribute("aria-pressed", j === index ? "true" : "false");
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

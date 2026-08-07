@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/field.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `state` | `default` | `default`, `invalid`, `disabled` | Control state: default, invalid draws the danger border, disabled dims the control. |
+| `width` | `standard` | `narrow`, `standard`, `wide` | How wide the field sits before it shrinks to the host box. |
+| `density` | `comfortable` | `comfortable`, `compact` | Control height and type size. Compact tightens the field for stacked forms. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="field"
+  data-composition-src="compositions/components/field.html"
+  data-variable-values='{"state":"default","width":"standard","density":"comfortable"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`field.html`}>
@@ -23,9 +45,35 @@ That writes one file: `compositions/components/field.html`.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  or an ARIA state the CSS consumes. The timeline recipe below is untouched by
+  them.
+
+    - state (default | invalid | disabled, default default): control state.
+      invalid sets aria-invalid and draws the danger border, disabled sets
+      aria-disabled and dims the control to 48 percent.
+    - width (narrow | standard | wide, default standard): how wide the field
+      sits, 260px, 340px or 460px before it shrinks to the host box.
+    - density (comfortable | compact, default comfortable): control height and
+      type size. compact drops the control from 40px to 32px.
+
+  On every default the result is identical to the original: a 340px field with
+  a 40px control in its resting state.
 -->
 
-<div data-hf-ui-root class="hf-ui-field" role="group" aria-labelledby="hf-ui-field-label">
+<div
+  data-hf-ui-root
+  class="hf-ui-field"
+  role="group"
+  aria-labelledby="hf-ui-field-label"
+  data-composition-variables='[
+    { "id": "state", "type": "enum", "role": "style", "label": "State", "description": "Control state: default, invalid draws the danger border, disabled dims the control.", "default": "default", "options": [{ "value": "default", "label": "Default" }, { "value": "invalid", "label": "Invalid" }, { "value": "disabled", "label": "Disabled" }] },
+    { "id": "width", "type": "enum", "role": "style", "label": "Width", "description": "How wide the field sits before it shrinks to the host box.", "default": "standard", "options": [{ "value": "narrow", "label": "Narrow" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Control height and type size. Compact tightens the field for stacked forms.", "default": "comfortable", "options": [{ "value": "comfortable", "label": "Comfortable" }, { "value": "compact", "label": "Compact" }] }
+  ]'
+>
   <label id="hf-ui-field-label">Email</label>
   <div
     class="hf-ui-field-control"
@@ -178,13 +226,13 @@ That writes one file: `compositions/components/field.html`.
   .hf-ui-field {
     display: grid;
     gap: 8px;
-    width: min(340px, 100%);
+    width: min(var(--hf-field-width, 340px), 100%);
     color: var(--_hf-ui-text);
     font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-field label {
     color: var(--_hf-ui-text-strong);
-    font-size: 13px;
+    font-size: var(--hf-field-label-size, 13px);
     font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-field-control {
@@ -195,7 +243,7 @@ That writes one file: `compositions/components/field.html`.
     border: 1px solid var(--_hf-ui-control-border);
     border-radius: var(--_hf-ui-radius-control);
     background: var(--_hf-ui-surface);
-    font-size: 14px;
+    font-size: var(--hf-field-text-size, 14px);
     font-weight: var(--_hf-ui-weight-regular);
     box-shadow: var(--_hf-ui-shadow-inset);
   }
@@ -214,7 +262,7 @@ That writes one file: `compositions/components/field.html`.
   .hf-ui-field p {
     margin: 0;
     color: var(--_hf-ui-text-muted);
-    font-size: 12px;
+    font-size: var(--hf-field-help-size, 12px);
     line-height: 1.35;
   }
   @media (pointer: coarse) {
@@ -230,6 +278,47 @@ That writes one file: `compositions/components/field.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var widths = { narrow: "260px", standard: "340px", wide: "460px" };
+    var densities = {
+      comfortable: { control: "40px", label: "13px", text: "14px", help: "12px" },
+      compact: { control: "32px", label: "12px", text: "13px", help: "11px" },
+    };
+    var states = { default: "", invalid: "aria-invalid", disabled: "aria-disabled" };
+
+    var width = widths[pick(widths, vars.width, "standard")];
+    var density = densities[pick(densities, vars.density, "comfortable")];
+    var stateAttr = states[pick(states, vars.state, "default")];
+
+    var roots = document.querySelectorAll(".hf-ui-field");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      style.setProperty("--hf-field-width", width);
+      style.setProperty("--hf-ui-control-height", density.control);
+      style.setProperty("--hf-field-label-size", density.label);
+      style.setProperty("--hf-field-text-size", density.text);
+      style.setProperty("--hf-field-help-size", density.help);
+      var control = roots[i].querySelector(".hf-ui-field-control");
+      if (control && stateAttr) {
+        control.setAttribute(stateAttr, "true");
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

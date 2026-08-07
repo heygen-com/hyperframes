@@ -12,6 +12,62 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "align",
+      "type": "enum",
+      "role": "style",
+      "label": "Align",
+      "description": "How the icon, copy and action sit: centred as a full-width empty state, or flush left inside a panel.",
+      "default": "center",
+      "options": [
+        {
+          "value": "center",
+          "label": "Center"
+        },
+        {
+          "value": "start",
+          "label": "Start"
+        }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Padding, gap and icon size. Compact tightens the block for a small panel.",
+      "default": "comfortable",
+      "options": [
+        {
+          "value": "comfortable",
+          "label": "Comfortable"
+        },
+        {
+          "value": "compact",
+          "label": "Compact"
+        }
+      ]
+    },
+    {
+      "id": "action",
+      "type": "enum",
+      "role": "style",
+      "label": "Action",
+      "description": "Whether the call to action button is present. None leaves an informational empty state with no button.",
+      "default": "button",
+      "options": [
+        {
+          "value": "button",
+          "label": "Button"
+        },
+        {
+          "value": "none",
+          "label": "None"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/empty.png"
   }

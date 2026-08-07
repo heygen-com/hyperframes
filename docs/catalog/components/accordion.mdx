@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/accordion.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `width` | `standard` | `narrow`, `standard`, `wide` | How wide the disclosure row sits. |
+| `density` | `comfortable` | `comfortable`, `compact` | Trigger height, type size and answer padding. Compact tightens the row for stacked lists. |
+| `reveal` | `expand` | `expand`, `fade`, `slide` | How the answer arrives: expand grows the height while it fades, fade keeps the height reserved, slide drops the answer down into place. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="accordion"
+  data-composition-src="compositions/components/accordion.html"
+  data-variable-values='{"width":"standard","density":"comfortable","reveal":"expand"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`accordion.html`}>
@@ -23,9 +45,34 @@ That writes one file: `compositions/components/accordion.html`.
 
   Animate --hf-accordion-open from 0 to 1 on .hf-ui-accordion-item.
   The content uses CSS grid rows, so it can reveal without JS measuring.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them: it still
+  drives one open value from 0 to 1, and these decide what that value does.
+
+    - width (narrow | standard | wide, default standard): how wide the row
+      sits, 380px, 520px or 720px before it shrinks to the host box.
+    - density (comfortable | compact, default comfortable): trigger height,
+      type sizes and answer padding. compact tightens a stacked list.
+    - reveal (expand | fade | slide, default expand): how the answer arrives.
+      expand grows the height while it fades in, fade keeps the full height
+      reserved so only the opacity moves, slide drops the answer down into
+      place as it grows.
+
+  On every default the result is identical to the original: a 520px row whose
+  answer grows from zero height while it fades in.
 -->
 
-<div data-hf-ui-root class="hf-ui-accordion">
+<div
+  data-hf-ui-root
+  class="hf-ui-accordion"
+  data-composition-variables='[
+    { "id": "width", "type": "enum", "role": "style", "label": "Width", "description": "How wide the disclosure row sits.", "default": "standard", "options": [{ "value": "narrow", "label": "Narrow" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Trigger height, type size and answer padding. Compact tightens the row for stacked lists.", "default": "comfortable", "options": [{ "value": "comfortable", "label": "Comfortable" }, { "value": "compact", "label": "Compact" }] },
+    { "id": "reveal", "type": "enum", "role": "style", "label": "Reveal", "description": "How the answer arrives: expand grows the height while it fades, fade keeps the height reserved, slide drops the answer down into place.", "default": "expand", "options": [{ "value": "expand", "label": "Expand" }, { "value": "fade", "label": "Fade" }, { "value": "slide", "label": "Slide" }] }
+  ]'
+>
   <div class="hf-ui-accordion-item" data-state="closed">
     <button
       class="hf-ui-accordion-trigger"
@@ -181,7 +228,7 @@ That writes one file: `compositions/components/accordion.html`.
   }
   /* hf-ui:tokens:end */
   .hf-ui-accordion {
-    width: min(520px, 100%);
+    width: min(var(--hf-accordion-width, 520px), 100%);
     color: var(--_hf-ui-text);
     font-family: var(--_hf-ui-font-sans);
   }
@@ -198,12 +245,13 @@ That writes one file: `compositions/components/accordion.html`.
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    min-height: var(--_hf-ui-control-height);
+    min-height: var(--hf-accordion-trigger-height, var(--_hf-ui-control-height));
     padding: 0;
     border: 0;
     background: transparent;
     color: var(--_hf-ui-text-strong);
-    font: var(--_hf-ui-weight-semibold) 14px/1.3 var(--_hf-ui-font-sans);
+    font: var(--_hf-ui-weight-semibold) var(--hf-accordion-title-size, 14px)/1.3
+      var(--_hf-ui-font-sans);
     text-align: start;
     cursor: pointer;
     transform: translateY(0) scale(1);
@@ -230,15 +278,19 @@ That writes one file: `compositions/components/accordion.html`.
     will-change: transform;
   }
   .hf-ui-accordion-content {
-    max-height: calc(var(--hf-accordion-open) * 112px);
+    max-height: calc(
+      max(var(--hf-accordion-open), var(--hf-accordion-reserve, 0)) *
+        var(--hf-accordion-content-height, 112px)
+    );
     overflow: hidden;
     opacity: var(--hf-accordion-open);
   }
   .hf-ui-accordion-inner {
-    padding: 0 40px calc(var(--hf-accordion-open) * 16px) 0;
+    padding: 0 40px calc(var(--hf-accordion-open) * var(--hf-accordion-answer-gap, 16px)) 0;
     color: var(--_hf-ui-text-muted);
-    font-size: 13px;
+    font-size: var(--hf-accordion-answer-size, 13px);
     line-height: 1.55;
+    transform: var(--hf-accordion-drop, none);
   }
   @media (hover: hover) and (pointer: fine) {
     .hf-ui-accordion-trigger:hover {
@@ -254,6 +306,70 @@ That writes one file: `compositions/components/accordion.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var widths = { narrow: "380px", standard: "520px", wide: "720px" };
+    var densities = {
+      comfortable: {
+        trigger: "var(--_hf-ui-control-height)",
+        title: "14px",
+        answer: "13px",
+        gap: "16px",
+        height: "112px",
+      },
+      compact: {
+        trigger: "32px",
+        title: "13px",
+        answer: "12px",
+        gap: "12px",
+        height: "92px",
+      },
+    };
+    var reveals = {
+      expand: { reserve: "0", drop: "none" },
+      fade: { reserve: "1", drop: "none" },
+      slide: {
+        reserve: "0",
+        drop: "translateY(calc((1 - var(--hf-accordion-open)) * -10px))",
+      },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var width = widths[pick(widths, vars.width, "standard")];
+    var density = densities[pick(densities, vars.density, "comfortable")];
+    var reveal = reveals[pick(reveals, vars.reveal, "expand")];
+
+    var roots = document.querySelectorAll(".hf-ui-accordion");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      style.setProperty("--hf-accordion-width", width);
+      style.setProperty("--hf-accordion-trigger-height", density.trigger);
+      style.setProperty("--hf-accordion-title-size", density.title);
+      style.setProperty("--hf-accordion-answer-size", density.answer);
+      style.setProperty("--hf-accordion-answer-gap", density.gap);
+      style.setProperty("--hf-accordion-content-height", density.height);
+      // Reveal lands on the item: the slide value reads --hf-accordion-open,
+      // which only exists from that element down.
+      var items = roots[i].querySelectorAll(".hf-ui-accordion-item");
+      for (var j = 0; j < items.length; j += 1) {
+        items[j].style.setProperty("--hf-accordion-reserve", reveal.reserve);
+        items[j].style.setProperty("--hf-accordion-drop", reveal.drop);
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

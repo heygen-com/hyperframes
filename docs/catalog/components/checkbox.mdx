@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/checkbox.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `mint` | `mint`, `blue`, `violet` | Token family that fills the box and its border once the check lands. |
+| `size` | `standard` | `compact`, `standard`, `large` | Box edge length; the tick and the label text scale with it. |
+| `label` | `Include captions` | string | Text shown beside the box. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="checkbox"
+  data-composition-src="compositions/components/checkbox.html"
+  data-variable-values='{"accent":"mint","size":"standard","label":"Include captions"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`checkbox.html`}>
@@ -23,6 +45,20 @@ That writes one file: `compositions/components/checkbox.html`.
 
   Toggle data-state between unchecked and checked, or animate
   --hf-checkbox-progress from a paused GSAP timeline.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The check progress stays entirely yours to drive.
+
+    - accent (mint | blue | violet, default mint): the token family the box
+      fills with once the check lands. mint rides the shared accent token,
+      blue and violet ride data tokens 2 and 4, so all three follow the theme.
+    - size (compact | standard | large, default standard): the box edge, 16px
+      / 20px / 28px. The tick and the label text scale with it.
+    - label (any text, default "Include captions"): the text beside the box.
+
+  On every default the result is identical to the original: a 20px mint box
+  with a 15px "Include captions" label.
 -->
 
 <div
@@ -32,6 +68,11 @@ That writes one file: `compositions/components/checkbox.html`.
   role="checkbox"
   aria-checked="false"
   tabindex="0"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Token family that fills the box and its border once the check lands.", "default": "mint", "options": [{ "value": "mint", "label": "Mint" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Box edge length; the tick and the label text scale with it.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
+    { "id": "label", "type": "string", "role": "content", "label": "Label", "description": "Text shown beside the box.", "default": "Include captions", "maxLength": 60 }
+  ]'
 >
   <span class="hf-ui-checkbox-box" aria-hidden="true">
     <svg viewBox="0 0 24 24">
@@ -180,7 +221,7 @@ That writes one file: `compositions/components/checkbox.html`.
     --hf-checkbox-progress: 0;
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: calc(var(--hf-checkbox-size, 20px) * 0.6);
     color: var(--_hf-ui-text);
     font-family: var(--_hf-ui-font-sans);
     cursor: pointer;
@@ -192,26 +233,26 @@ That writes one file: `compositions/components/checkbox.html`.
   .hf-ui-checkbox-box {
     display: grid;
     place-items: center;
-    width: 20px;
-    height: 20px;
+    width: var(--hf-checkbox-size, 20px);
+    height: var(--hf-checkbox-size, 20px);
     border: 1.5px solid
       color-mix(
         in srgb,
-        var(--_hf-ui-accent) calc(var(--hf-checkbox-progress) * 100%),
+        var(--hf-checkbox-accent, var(--_hf-ui-accent)) calc(var(--hf-checkbox-progress) * 100%),
         var(--_hf-ui-control-border)
       );
     border-radius: var(--_hf-ui-radius-control);
     background: color-mix(
       in srgb,
-      var(--_hf-ui-accent) calc(var(--hf-checkbox-progress) * 100%),
+      var(--hf-checkbox-accent, var(--_hf-ui-accent)) calc(var(--hf-checkbox-progress) * 100%),
       var(--_hf-ui-surface)
     );
     transform: scale(calc(0.98 + var(--hf-checkbox-progress) * 0.02));
     box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-checkbox svg {
-    width: 15px;
-    height: 15px;
+    width: calc(var(--hf-checkbox-size, 20px) * 0.75);
+    height: calc(var(--hf-checkbox-size, 20px) * 0.75);
     fill: none;
     stroke: var(--_hf-ui-action-contrast);
     stroke-width: 1.5;
@@ -222,7 +263,7 @@ That writes one file: `compositions/components/checkbox.html`.
     stroke-dashoffset: calc((1 - var(--hf-checkbox-progress)) * 24);
   }
   .hf-ui-checkbox-label {
-    font-size: 15px;
+    font-size: calc(var(--hf-checkbox-size, 20px) * 0.75);
     font-weight: var(--_hf-ui-weight-medium);
     line-height: 1;
   }
@@ -243,6 +284,46 @@ That writes one file: `compositions/components/checkbox.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var accents = {
+      mint: "var(--_hf-ui-accent)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var sizes = { compact: "16px", standard: "20px", large: "28px" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accent = accents[pick(accents, vars.accent, "mint")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var label =
+      typeof vars.label === "string" && vars.label.trim() !== ""
+        ? vars.label.trim()
+        : "Include captions";
+
+    var roots = document.querySelectorAll(".hf-ui-checkbox");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-checkbox-accent", accent);
+      roots[i].style.setProperty("--hf-checkbox-size", size);
+      var text = roots[i].querySelector(".hf-ui-checkbox-label");
+      if (text) {
+        text.textContent = label;
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

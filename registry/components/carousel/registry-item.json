@@ -12,6 +12,47 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Operator Black token theme the carousel renders in.",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Dark" },
+        { "value": "light", "label": "Light" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used for the active page dot and focus rings.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "amber", "label": "Amber" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "peek",
+      "type": "enum",
+      "role": "style",
+      "label": "Peek",
+      "description": "How far the previous slide shows behind the current one, through its offset, scale and opacity.",
+      "default": "standard",
+      "options": [
+        { "value": "subtle", "label": "Subtle" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "deep", "label": "Deep" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/carousel.png"
   }

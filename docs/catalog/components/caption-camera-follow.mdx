@@ -20,6 +20,28 @@ Open `compositions/components/caption-camera-follow.html` and copy what is insid
 A component has no size or duration of its own. It takes both from the composition
 you paste it into.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `gold` | `gold`, `green`, `blue`, `violet` | Colour of the highlighted words. gold is the original. |
+| `framing` | `standard` | `tight`, `standard`, `wide` | Air the camera leaves around the written block, so the words land larger or smaller in frame. |
+| `smear` | `standard` | `off`, `subtle`, `standard`, `heavy` | Scales the radial motion blur each camera move carries, from none to a heavy streak. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="caption-camera-follow"
+  data-composition-src="compositions/components/caption-camera-follow.html"
+  data-variable-values='{"accent":"gold","framing":"standard","smear":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`caption-camera-follow.html`}>
@@ -37,6 +59,22 @@ you paste it into.
   words stay lit and simply become small, piling up toward the top left the way
   handwriting fills a page. The last beat carries the same pull back all the way out
   until the whole sentence is readable at once.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and applies it before the timeline is built.
+  Duration, word order and cadence are untouched by them.
+
+    - accent (gold | green | blue | violet, default gold): the colour of the
+      highlighted words.
+    - framing (tight | standard | wide, default standard): the air the camera
+      leaves around the written block. tight lands each word larger in frame,
+      wide sits further back. Every move and the closing pull back scale
+      together, so the shot stays one continuous camera.
+    - smear (off | subtle | standard | heavy, default standard): scales the
+      radial motion blur each move carries. off renders every frame sharp.
+
+  On every default the result is identical to the original: gold highlights, a
+  1.36 margin around the block and a peak smear of 2.6 percent of frame width.
 
   Every ease is a cubic bezier written out by hand and solved in this file. No preset is
   used anywhere. Motion blur is radial, the way it reads in real camera footage: each word
@@ -63,10 +101,15 @@ you paste it into.
         data-composition-id="caption-camera-follow"
         data-duration="9"
         data-fps="30"
+        data-composition-variables='[
+          { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the highlighted words. gold is the original.", "default": "gold", "options": [{ "value": "gold", "label": "Gold" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+          { "id": "framing", "type": "enum", "role": "style", "label": "Framing", "description": "Air the camera leaves around the written block, so the words land larger or smaller in frame.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+          { "id": "smear", "type": "enum", "role": "style", "label": "Smear", "description": "Scales the radial motion blur each camera move carries, from none to a heavy streak.", "default": "standard", "options": [{ "value": "off", "label": "Off" }, { "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "heavy", "label": "Heavy" }] }
+        ]'
       >
         <style>
           .cf-root {
-            --accent: #ffd84d;
+            --cf-accent: #ffd84d;
             --ink: #ffffff;
             position: absolute;
             inset: 0;
@@ -101,7 +144,7 @@ you paste it into.
             filter: blur(calc(var(--k) * var(--amt)));
           }
           .cf-word.is-accent {
-            color: var(--accent);
+            color: var(--cf-accent);
           }
           #cf-vignette {
             position: absolute;
@@ -174,6 +217,31 @@ you paste it into.
             var EASE_BLUR_UP = bezier(0.2, 0.8, 0.4, 1);
             var EASE_BLUR_DOWN = bezier(0.5, 0, 0.2, 1);
 
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            /* Unrecognised overrides return to their declared defaults. */
+            function pick(table, value, fallback) {
+              return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+            }
+
+            var ACCENTS = {
+              gold: "#ffd84d",
+              green: "#34d399",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            /* Framing scales the margin every camera pose is fitted with, so one
+               number moves the whole shot in or out without touching cadence. */
+            var FRAMINGS = { tight: 0.82, standard: 1, wide: 1.25 };
+            var SMEARS = { off: 0, subtle: 0.5, standard: 1, heavy: 1.9 };
+
+            var ACCENT = ACCENTS[pick(ACCENTS, vars.accent, "gold")];
+            var FRAMING = FRAMINGS[pick(FRAMINGS, vars.framing, "standard")];
+            var SMEAR = SMEARS[pick(SMEARS, vars.smear, "standard")];
+
             var DUR = 9;
             var STEP = 0.52;
             var MOVE = 0.4;
@@ -202,13 +270,14 @@ you paste it into.
             var root = stage.parentElement;
             var FRAME_W = root.clientWidth || 1080;
             var FRAME_H = root.clientHeight || 1920;
+            root.style.setProperty("--cf-accent", ACCENT);
 
             /* Base size is picked so the opening shot sits near 1:1. Everything after it
                is a pull back, so the world is only ever scaled down and type stays crisp. */
             var BASE = Math.max(FRAME_W, FRAME_H) * 0.16;
             /* Each new word is this fraction of the current box height. */
             var RATIO = 0.72;
-            var MARGIN = 1.36;
+            var MARGIN = 1.36 * FRAMING;
 
             var ruler = document.createElement("div");
             ruler.style.cssText =
@@ -259,7 +328,6 @@ you paste it into.
             world.removeChild(ruler);
 
             var FULL = box;
-
 
             function poseFor(b, margin) {
               var bw = (b.x1 - b.x0) * margin;
@@ -321,7 +389,7 @@ you paste it into.
 
             var tl = gsap.timeline({ paused: true });
             /* Peak smear at the rim of the frame, in screen pixels. */
-            var BLUR = FRAME_W * 0.026;
+            var BLUR = FRAME_W * 0.026 * SMEAR;
             var HALF_DIAG = Math.sqrt(FRAME_W * FRAME_W + FRAME_H * FRAME_H) / 2;
 
             /* Radial blur, the way a real zoom smears: a point far from the centre of
@@ -340,8 +408,7 @@ you paste it into.
                 var d =
                   (scale *
                     Math.sqrt(
-                      (cx - centre.x) * (cx - centre.x) +
-                        (cy - centre.y) * (cy - centre.y)
+                      (cx - centre.x) * (cx - centre.x) + (cy - centre.y) * (cy - centre.y),
                     )) /
                   HALF_DIAG;
                 tl.set(el, { "--k": (0.2 + 1.15 * Math.min(1, d)).toFixed(3) }, at);
@@ -351,32 +418,19 @@ you paste it into.
                 world,
                 { "--amt": "0px" },
                 { "--amt": amt + "px", duration: up, ease: EASE_BLUR_UP },
-                at
+                at,
               );
-              tl.to(
-                world,
-                { "--amt": "0px", duration: down, ease: EASE_BLUR_DOWN },
-                at + up
-              );
+              tl.to(world, { "--amt": "0px", duration: down, ease: EASE_BLUR_DOWN }, at + up);
             }
 
             WORDS.forEach(function (wd, i) {
               var t = i * STEP;
               if (i === 0) return;
 
-              tl.fromTo(
-                els[i],
-                { opacity: 0 },
-                { opacity: 1, duration: 0.16, ease: EASE_INK },
-                t
-              );
+              tl.fromTo(els[i], { opacity: 0 }, { opacity: 1, duration: 0.16, ease: EASE_INK }, t);
 
               var p = poseFor(wd.box, MARGIN);
-              tl.to(
-                world,
-                { x: p.x, y: p.y, scale: p.scale, duration: MOVE, ease: EASE_STEP },
-                t
-              );
+              tl.to(world, { x: p.x, y: p.y, scale: p.scale, duration: MOVE, ease: EASE_STEP }, t);
 
               smear(
                 { x: (wd.box.x0 + wd.box.x1) / 2, y: (wd.box.y0 + wd.box.y1) / 2 },
@@ -385,12 +439,12 @@ you paste it into.
                 t,
                 MOVE * 0.24,
                 MOVE * 0.44,
-                BLUR
+                BLUR,
               );
             });
 
             /* The resolve: the same pull back, carried all the way out. */
-            var wide = poseFor(FULL, 1.2);
+            var wide = poseFor(FULL, 1.2 * FRAMING);
             var wideAt = (WORDS.length - 1) * STEP + 0.62;
             tl.to(
               world,
@@ -401,7 +455,7 @@ you paste it into.
                 duration: 0.94,
                 ease: EASE_WIDE,
               },
-              wideAt
+              wideAt,
             );
             smear(
               { x: (FULL.x0 + FULL.x1) / 2, y: (FULL.y0 + FULL.y1) / 2 },
@@ -410,7 +464,7 @@ you paste it into.
               wideAt,
               0.3,
               0.58,
-              BLUR * 0.8
+              BLUR * 0.8,
             );
 
             tl.set({}, {}, DUR);

@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/aspect-ratio.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `ratio` | `16:9` | `16:9`, `4:3`, `1:1`, `9:16`, `21:9` | Frame shape, mirrored into the dimension label. |
+| `size` | `standard` | `small`, `standard`, `large` | Maximum frame width before it shrinks to the host box. |
+| `fill` | `matte` | `matte`, `canvas`, `outline` | Frame interior: matte is the inset surface, canvas is the deeper page colour, outline is a dashed empty placeholder. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="aspect-ratio"
+  data-composition-src="compositions/components/aspect-ratio.html"
+  data-variable-values='{"ratio":"16:9","size":"standard","fill":"matte"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`aspect-ratio.html`}>
@@ -23,9 +45,34 @@ That writes one file: `compositions/components/aspect-ratio.html`.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them.
+
+    - ratio (16:9 | 4:3 | 1:1 | 9:16 | 21:9, default 16:9): frame shape. The
+      dimension label is rewritten to match, so the frame never lies.
+    - size (small | standard | large, default standard): maximum frame width,
+      300px, 420px or 560px, before it shrinks to the host box.
+    - fill (matte | canvas | outline, default matte): frame interior. matte is
+      the inset surface, canvas is the deeper page colour, outline drops the
+      fill and shadow for a dashed empty placeholder.
+
+  On every default the result is identical to the original: a 420px 16:9 matte
+  frame labelled 16:9 Preview.
 -->
 
-<div data-hf-ui-root class="hf-ui-aspect-ratio"><span>16:9 Preview</span></div>
+<div
+  data-hf-ui-root
+  class="hf-ui-aspect-ratio"
+  data-composition-variables='[
+    { "id": "ratio", "type": "enum", "role": "style", "label": "Ratio", "description": "Frame shape, mirrored into the dimension label.", "default": "16:9", "options": [{ "value": "16:9", "label": "16:9" }, { "value": "4:3", "label": "4:3" }, { "value": "1:1", "label": "1:1" }, { "value": "9:16", "label": "9:16" }, { "value": "21:9", "label": "21:9" }] },
+    { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Maximum frame width before it shrinks to the host box.", "default": "standard", "options": [{ "value": "small", "label": "Small" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
+    { "id": "fill", "type": "enum", "role": "style", "label": "Fill", "description": "Frame interior: matte is the inset surface, canvas is the deeper page colour, outline is a dashed empty placeholder.", "default": "matte", "options": [{ "value": "matte", "label": "Matte" }, { "value": "canvas", "label": "Canvas" }, { "value": "outline", "label": "Outline" }] }
+  ]'
+>
+  <span>16:9 Preview</span>
+</div>
 
 <style>
   /* hf-ui:tokens:start */
@@ -165,21 +212,75 @@ That writes one file: `compositions/components/aspect-ratio.html`.
   .hf-ui-aspect-ratio {
     display: grid;
     place-items: center;
-    width: min(420px, 100%);
-    aspect-ratio: 16 / 9;
-    border: 1px solid var(--_hf-ui-border-strong);
+    width: min(var(--hf-aspect-width, 420px), 100%);
+    aspect-ratio: var(--hf-aspect-ratio, 16 / 9);
+    border: 1px var(--hf-aspect-border-style, solid) var(--_hf-ui-border-strong);
     border-radius: var(--_hf-ui-radius-surface);
-    background: var(--_hf-ui-surface-inset);
+    background: var(--hf-aspect-fill, var(--_hf-ui-surface-inset));
     color: var(--_hf-ui-text);
     font: var(--_hf-ui-weight-medium) 12px/1 var(--_hf-ui-font-mono);
     overflow: hidden;
-    box-shadow: var(--_hf-ui-shadow-inset);
+    box-shadow: var(--hf-aspect-shadow, var(--_hf-ui-shadow-inset));
   }
   .hf-ui-aspect-ratio span {
     color: var(--_hf-ui-text-muted);
     font-variant-numeric: tabular-nums;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var ratios = {
+      "16:9": "16 / 9",
+      "4:3": "4 / 3",
+      "1:1": "1 / 1",
+      "9:16": "9 / 16",
+      "21:9": "21 / 9",
+    };
+    var sizes = { small: "300px", standard: "420px", large: "560px" };
+    var fills = {
+      matte: {
+        fill: "var(--_hf-ui-surface-inset)",
+        border: "solid",
+        shadow: "var(--_hf-ui-shadow-inset)",
+      },
+      canvas: {
+        fill: "var(--_hf-ui-canvas)",
+        border: "solid",
+        shadow: "var(--_hf-ui-shadow-inset)",
+      },
+      outline: { fill: "transparent", border: "dashed", shadow: "none" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var ratioName = pick(ratios, vars.ratio, "16:9");
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var fill = fills[pick(fills, vars.fill, "matte")];
+
+    var roots = document.querySelectorAll(".hf-ui-aspect-ratio");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      style.setProperty("--hf-aspect-ratio", ratios[ratioName]);
+      style.setProperty("--hf-aspect-width", size);
+      style.setProperty("--hf-aspect-fill", fill.fill);
+      style.setProperty("--hf-aspect-border-style", fill.border);
+      style.setProperty("--hf-aspect-shadow", fill.shadow);
+      var label = roots[i].querySelector("span");
+      if (label) label.textContent = ratioName + " Preview";
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

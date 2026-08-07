@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/combobox.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label` | `Framework` | string | Field name shown at the left of the trigger. |
+| `value` | `HyperFrames` | string | Chosen value. Written to both the trigger and the checked option. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token behind the selected-option check and the focus ring. |
+| `theme` | `dark` | `dark`, `light` | Token set for the whole control: dark surfaces or light ones. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="combobox"
+  data-composition-src="compositions/components/combobox.html"
+  data-variable-values='{"label":"Framework","value":"HyperFrames","accent":"green","theme":"dark"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`combobox.html`}>
@@ -23,9 +46,37 @@ That writes one file: `compositions/components/combobox.html`.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result into the markup or
+  into the hf-ui token the CSS above already consumes. The timeline recipe at
+  the bottom is untouched by them.
+
+    - label (text, default "Framework"): the field name at the left of the
+      trigger.
+    - value (text, default "HyperFrames"): the chosen value. It writes both the
+      trigger's value and the checked option's label, so the two stay in sync.
+    - accent (green | blue | violet, default green): accent token behind the
+      selected-option check and the focus ring. green is the family accent the
+      primitive already shipped with.
+    - theme (dark | light, default dark): swaps the hf-ui token set, so the
+      whole control renders on a light surface.
+
+  The option list itself stays plain markup: add or remove option rows in the
+  block below.
 -->
 
-<div data-hf-ui-root class="hf-ui-combobox" data-state="open">
+<div
+  data-hf-ui-root
+  class="hf-ui-combobox"
+  data-state="open"
+  data-composition-variables='[
+    { "id": "label", "type": "string", "role": "content", "label": "Field label", "description": "Field name shown at the left of the trigger.", "default": "Framework" },
+    { "id": "value", "type": "string", "role": "content", "label": "Selected value", "description": "Chosen value. Written to both the trigger and the checked option.", "default": "HyperFrames" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token behind the selected-option check and the focus ring.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Token set for the whole control: dark surfaces or light ones.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <button
     class="hf-ui-combobox-trigger"
     type="button"
@@ -331,6 +382,66 @@ That writes one file: `compositions/components/combobox.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+
+    var accents = {
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    // Rewrites the element's own text run, leaving child elements in place.
+    function setOwnText(el, value) {
+      for (var n = 0; n < el.childNodes.length; n += 1) {
+        var node = el.childNodes[n];
+        if (node.nodeType === 3 && node.nodeValue.trim() !== "") {
+          node.nodeValue = value;
+          return;
+        }
+      }
+      el.insertBefore(document.createTextNode(value), el.firstChild);
+    }
+
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var theme = vars.theme === "light" ? "light" : "dark";
+    var label = text(vars.label, "Framework");
+    var value = text(vars.value, "HyperFrames");
+
+    var roots = document.querySelectorAll(".hf-ui-combobox");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-ui-accent", accent);
+      root.setAttribute("data-hf-theme", theme);
+
+      var field = root.querySelector(".hf-ui-combobox-trigger span");
+      if (field) field.textContent = label;
+
+      var current = root.querySelector(".hf-ui-combobox-trigger strong");
+      if (current) current.textContent = value;
+
+      var checked = root.querySelector(".hf-ui-combobox-option.is-active");
+      if (checked) setOwnText(checked, value);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/dropdown-menu.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `mint` | `mint`, `blue`, `violet` | Colour of the selection bar, check mark, and focus ring. |
+| `align` | `right` | `right`, `left` | Which trigger edge the menu hangs from and scales out of. |
+| `density` | `comfortable` | `comfortable`, `compact` | Height of the trigger and of every menu item. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="dropdown-menu"
+  data-composition-src="compositions/components/dropdown-menu.html"
+  data-variable-values='{"accent":"mint","align":"right","density":"comfortable"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`dropdown-menu.html`}>
@@ -23,9 +45,34 @@ That writes one file: `compositions/components/dropdown-menu.html`.
 
   Animate --hf-dropdown-open from 0 to 1 on .hf-ui-dropdown.
   Use --hf-dropdown-item-stagger on each item for staged reveals.
+
+  Variables. The script below reads each one, falls back to the declared
+  default on anything missing or unrecognised, and writes the result as a
+  custom property the CSS consumes. The timeline recipe at the bottom is
+  untouched by them.
+
+    - accent (mint | blue | violet, default mint): colour of the selection bar
+      down the first item, its check mark, and the focus ring. Each option
+      rides an existing theme token, so both palettes stay correct.
+    - align (right | left, default right): which trigger edge the menu hangs
+      from. right keeps the original right edge and top-right scale origin,
+      left flips both so the menu opens under the trigger start.
+    - density (comfortable | compact, default comfortable): height of the
+      trigger and of every item. comfortable is the 40px control height,
+      compact tightens to 32px. Coarse pointers keep the 44px hit target.
+
+  On every default the result is identical to the original.
 -->
 
-<div data-hf-ui-root class="hf-ui-dropdown">
+<div
+  data-hf-ui-root
+  class="hf-ui-dropdown"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the selection bar, check mark, and focus ring.", "default": "mint", "options": [{ "value": "mint", "label": "Mint" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "align", "type": "enum", "role": "style", "label": "Align", "description": "Which trigger edge the menu hangs from and scales out of.", "default": "right", "options": [{ "value": "right", "label": "Right" }, { "value": "left", "label": "Left" }] },
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Height of the trigger and of every menu item.", "default": "comfortable", "options": [{ "value": "comfortable", "label": "Comfortable" }, { "value": "compact", "label": "Compact" }] }
+  ]'
+>
   <button
     class="hf-ui-dropdown-trigger"
     type="button"
@@ -205,7 +252,7 @@ That writes one file: `compositions/components/dropdown-menu.html`.
     color: var(--_hf-ui-text);
   }
   .hf-ui-dropdown-trigger {
-    height: var(--_hf-ui-control-height);
+    height: var(--hf-dropdown-control-height, var(--_hf-ui-control-height));
     padding: 0 18px;
     border: 1px solid var(--_hf-ui-control-border);
     border-radius: var(--_hf-ui-radius-control);
@@ -218,7 +265,8 @@ That writes one file: `compositions/components/dropdown-menu.html`.
   .hf-ui-dropdown-menu {
     position: absolute;
     top: calc(100% + 10px);
-    right: 0;
+    right: var(--hf-dropdown-right, 0);
+    left: var(--hf-dropdown-left, auto);
     width: 184px;
     padding: var(--_hf-ui-space-2);
     border: 1px solid var(--_hf-ui-border-strong);
@@ -227,7 +275,7 @@ That writes one file: `compositions/components/dropdown-menu.html`.
     opacity: var(--hf-dropdown-open);
     transform: translateY(calc((1 - var(--hf-dropdown-open)) * -4px))
       scale(calc(0.98 + var(--hf-dropdown-open) * 0.02));
-    transform-origin: top right;
+    transform-origin: var(--hf-dropdown-origin, top right);
     box-shadow: var(--_hf-ui-shadow-contact);
     will-change: transform, opacity;
   }
@@ -237,7 +285,7 @@ That writes one file: `compositions/components/dropdown-menu.html`.
     align-items: center;
     gap: var(--_hf-ui-space-2);
     width: 100%;
-    min-height: var(--_hf-ui-control-height);
+    min-height: var(--hf-dropdown-control-height, var(--_hf-ui-control-height));
     padding: 0 10px;
     border: 0;
     border-radius: var(--_hf-ui-radius-control);
@@ -280,6 +328,49 @@ That writes one file: `compositions/components/dropdown-menu.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides fall back to their declared defaults.
+    // mint is the token default, so it stays unset and any host theme wins.
+    var accents = {
+      mint: null,
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var aligns = {
+      right: { right: "0", left: "auto", origin: "top right" },
+      left: { right: "auto", left: "0", origin: "top left" },
+    };
+    var densities = { comfortable: "var(--_hf-ui-control-height)", compact: "32px" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accent = accents[pick(accents, vars.accent, "mint")];
+    var align = aligns[pick(aligns, vars.align, "right")];
+    var height = densities[pick(densities, vars.density, "comfortable")];
+
+    var roots = document.querySelectorAll(".hf-ui-dropdown");
+    for (var i = 0; i < roots.length; i += 1) {
+      if (accent) {
+        roots[i].style.setProperty("--hf-ui-accent", accent);
+      }
+      roots[i].style.setProperty("--hf-dropdown-right", align.right);
+      roots[i].style.setProperty("--hf-dropdown-left", align.left);
+      roots[i].style.setProperty("--hf-dropdown-origin", align.origin);
+      roots[i].style.setProperty("--hf-dropdown-control-height", height);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

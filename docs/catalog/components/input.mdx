@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/input.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label` | `Project name` | string | Field label, also used as the accessible name of the shell. |
+| `value` | `Launch recap` | string | Typed value revealed as the progress variable runs. |
+| `state` | `default` | `default`, `invalid`, `disabled` | Resting validation state: neutral, danger border, or dimmed. |
+| `theme` | `dark` | `dark`, `light` | Operator Black dark surface or the light-frame token set. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="input"
+  data-composition-src="compositions/components/input.html"
+  data-variable-values='{"label":"Project name","value":"Launch recap","state":"default","theme":"dark"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`input.html`}>
@@ -23,9 +46,37 @@ That writes one file: `compositions/components/input.html`.
 
   Animate --hf-input-focus and --hf-input-value-progress from a paused GSAP
   timeline to move from empty to focused to typed states.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the text or attribute the CSS
+  below already keys off. The timeline recipe at the bottom is untouched by
+  them: it keeps driving the same focus ring and typed reveal.
+
+    - label (string, default "Project name"): the label above the field, also
+      used as the accessible name of the shell. A blank or non-text override
+      keeps the default.
+    - value (string, default "Launch recap"): the typed value the progress
+      variable reveals.
+    - state (default | invalid | disabled, default default): how the field
+      reads at rest. invalid swaps the shell border to the danger token,
+      disabled dims the shell.
+    - theme (dark | light, default dark): dark keeps the Operator Black
+      surface, light switches the shared token block to its light values.
+
+  On every default the result is identical to the original: a dark-theme field
+  labelled Project name holding Launch recap.
 -->
 
-<label data-hf-ui-root class="hf-ui-input-field">
+<label
+  data-hf-ui-root
+  class="hf-ui-input-field"
+  data-composition-variables='[
+    { "id": "label", "type": "string", "role": "content", "label": "Label", "description": "Field label, also used as the accessible name of the shell.", "default": "Project name" },
+    { "id": "value", "type": "string", "role": "content", "label": "Value", "description": "Typed value revealed as the progress variable runs.", "default": "Launch recap" },
+    { "id": "state", "type": "enum", "role": "style", "label": "State", "description": "Resting validation state: neutral, danger border, or dimmed.", "default": "default", "options": [{ "value": "default", "label": "Default" }, { "value": "invalid", "label": "Invalid" }, { "value": "disabled", "label": "Disabled" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Operator Black dark surface or the light-frame token set.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <span class="hf-ui-input-label">Project name</span>
   <span
     class="hf-ui-input-shell"
@@ -255,6 +306,50 @@ That writes one file: `compositions/components/input.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value : fallback;
+    }
+
+    var states = { default: 1, invalid: 1, disabled: 1 };
+
+    var labelText = text(vars.label, "Project name");
+    var valueText = text(vars.value, "Launch recap");
+    var state = pick(states, vars.state, "default");
+    var theme = vars.theme === "light" ? "light" : "dark";
+
+    var roots = document.querySelectorAll(".hf-ui-input-field");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-hf-theme", theme);
+      var labelEl = root.querySelector(".hf-ui-input-label");
+      if (labelEl) labelEl.textContent = labelText;
+      var valueEl = root.querySelector(".hf-ui-input-value");
+      if (valueEl) valueEl.textContent = valueText;
+      var shell = root.querySelector(".hf-ui-input-shell");
+      if (!shell) continue;
+      shell.setAttribute("aria-label", labelText);
+      if (state === "invalid") shell.setAttribute("aria-invalid", "true");
+      else shell.removeAttribute("aria-invalid");
+      if (state === "disabled") shell.setAttribute("aria-disabled", "true");
+      else shell.removeAttribute("aria-disabled");
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

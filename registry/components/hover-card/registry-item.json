@@ -12,6 +12,45 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Token palette the card paints itself with: matte dark, or the light Operator surface.",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Dark" },
+        { "value": "light", "label": "Light" }
+      ]
+    },
+    {
+      "id": "placement",
+      "type": "enum",
+      "role": "layout",
+      "label": "Placement",
+      "description": "Which side of the trigger the panel is anchored to, including the corner it scales out of.",
+      "default": "below",
+      "options": [
+        { "value": "below", "label": "Below" },
+        { "value": "above", "label": "Above" }
+      ]
+    },
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "layout",
+      "label": "Width",
+      "description": "Width of the trigger column and the panel that hangs off it.",
+      "default": "standard",
+      "options": [
+        { "value": "compact", "label": "Compact" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "wide", "label": "Wide" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hover-card.png"
   }

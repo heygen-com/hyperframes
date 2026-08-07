@@ -12,6 +12,47 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family that colours the caret mark.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "amber", "label": "Amber" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "shape",
+      "type": "enum",
+      "role": "style",
+      "label": "Caret shape",
+      "description": "The caret mark itself: a thin bar, a filled block, or an underscore below the baseline.",
+      "default": "bar",
+      "options": [
+        { "value": "bar", "label": "Bar" },
+        { "value": "block", "label": "Block" },
+        { "value": "underline", "label": "Underline" }
+      ]
+    },
+    {
+      "id": "field",
+      "type": "enum",
+      "role": "style",
+      "label": "Field",
+      "description": "Whether the command field chrome is drawn: framed keeps the bordered input, bare drops it so the line can sit over footage.",
+      "default": "framed",
+      "options": [
+        { "value": "framed", "label": "Framed" },
+        { "value": "bare", "label": "Bare" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caret.png"
   }

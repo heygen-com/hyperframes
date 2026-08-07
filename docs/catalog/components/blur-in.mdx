@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/blur-in.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `size` | `52` | 24px to 120px, step 2px | Type size of the revealed words in pixels; the gap between words scales with it. |
+| `tone` | `strong` | `strong`, `muted`, `accent` | Word colour: strong for headlines, muted for supporting lines, accent for the brand green. |
+| `align` | `left` | `left`, `center`, `right` | Horizontal alignment of the words in the frame. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="blur-in"
+  data-composition-src="compositions/components/blur-in.html"
+  data-variable-values='{"size":52,"tone":"strong","align":"left"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`blur-in.html`}>
@@ -21,11 +43,37 @@ That writes one file: `compositions/components/blur-in.html`.
 <!--
   Blur In - Operator Black content-focus reveal primitive.
 
-  Paste the markup and CSS into a composition. Use the timeline integration
-  note at the bottom as the starting point for deterministic GSAP animation.
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe at the bottom is untouched by
+  them: it keeps resolving the same words out of the same blur.
+
+    - size (24 to 120, default 52, in px): the type size of the words. The gap
+      between words is set in em, so it scales with this.
+    - tone (strong | muted | accent, default strong): word colour. strong is
+      the headline text token, muted the supporting one, accent the theme
+      green, so all three track light and dark frames.
+    - align (left | center | right, default left): where the words sit across
+      the frame.
+
+  On every default the result is identical to the original: 52px strong words,
+  left aligned.
 -->
 
-<div data-hf-ui-root class="hf-ui-blur-in" aria-label="Design systems for video">
+<div
+  data-hf-ui-root
+  class="hf-ui-blur-in"
+  aria-label="Design systems for video"
+  data-composition-variables='[
+    { "id": "size", "type": "number", "role": "style", "label": "Size", "description": "Type size of the revealed words in pixels; the gap between words scales with it.", "default": 52, "min": 24, "max": 120, "step": 2, "unit": "px" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: strong for headlines, muted for supporting lines, accent for the brand green.", "default": "strong", "options": [{ "value": "strong", "label": "Strong" }, { "value": "muted", "label": "Muted" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "align", "type": "enum", "role": "style", "label": "Align", "description": "Horizontal alignment of the words in the frame.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "center", "label": "Center" }, { "value": "right", "label": "Right" }] }
+  ]'
+>
   <span>Design</span>
   <span>systems</span>
   <span>for</span>
@@ -170,9 +218,11 @@ That writes one file: `compositions/components/blur-in.html`.
   .hf-ui-blur-in {
     display: flex;
     flex-wrap: wrap;
+    justify-content: var(--hf-blur-in-align, flex-start);
     gap: 0.28em;
-    color: var(--_hf-ui-text-strong);
+    color: var(--hf-blur-in-color, var(--_hf-ui-text-strong));
     font: var(--_hf-ui-weight-semibold) 52px/1 var(--_hf-ui-font-sans);
+    font-size: var(--hf-blur-in-size, 52px);
     letter-spacing: -0.02em;
   }
   .hf-ui-blur-in span {
@@ -182,6 +232,48 @@ That writes one file: `compositions/components/blur-in.html`.
     will-change: opacity, transform, filter;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = typeof value === "number" ? value : parseFloat(value);
+      if (!isFinite(n)) {
+        return fallback;
+      }
+      return Math.min(max, Math.max(min, n));
+    }
+
+    var tones = {
+      strong: "var(--_hf-ui-text-strong)",
+      muted: "var(--_hf-ui-text-muted)",
+      accent: "var(--_hf-ui-accent)",
+    };
+    var aligns = { left: "flex-start", center: "center", right: "flex-end" };
+
+    var size = clampNumber(vars.size, 24, 120, 52);
+    var tone = tones[pick(tones, vars.tone, "strong")];
+    var align = aligns[pick(aligns, vars.align, "left")];
+
+    var roots = document.querySelectorAll(".hf-ui-blur-in");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-blur-in-size", size + "px");
+      roots[i].style.setProperty("--hf-blur-in-color", tone);
+      roots[i].style.setProperty("--hf-blur-in-align", align);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

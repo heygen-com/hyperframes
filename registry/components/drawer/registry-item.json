@@ -12,6 +12,46 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "style",
+      "label": "Width",
+      "description": "Sheet width, from a narrow tray to full bleed.",
+      "default": "standard",
+      "options": [
+        { "value": "compact", "label": "Compact" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "full", "label": "Full" }
+      ]
+    },
+    {
+      "id": "handle",
+      "type": "enum",
+      "role": "style",
+      "label": "Handle",
+      "description": "Whether the grab handle bar sits above the title.",
+      "default": "visible",
+      "options": [
+        { "value": "visible", "label": "Visible" },
+        { "value": "hidden", "label": "Hidden" }
+      ]
+    },
+    {
+      "id": "rows",
+      "type": "enum",
+      "role": "style",
+      "label": "Rows",
+      "description": "Row surface treatment: filled inset, outlined, or bare.",
+      "default": "inset",
+      "options": [
+        { "value": "inset", "label": "Inset" },
+        { "value": "outlined", "label": "Outlined" },
+        { "value": "plain", "label": "Plain" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drawer.png"
   }

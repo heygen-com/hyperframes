@@ -3,9 +3,39 @@
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them: it keeps
+  driving one progress value, and these decide what that progress does.
+
+    - palette (categorical | mono | muted, default categorical): bar colours.
+      categorical uses the four data tokens, mono is one accent stepped down
+      into the surface, muted is a grey ramp for a background chart.
+    - spacing (tight | standard | airy, default standard): the gap between
+      bars, which also decides how wide each bar is inside the fixed width.
+    - grow (rise | sweep, default rise): what the progress value scales. rise
+      grows the bars up from the baseline, sweep wipes them in from the left
+      at full height.
+    - caption (any text, default "Weekly usage"): the figcaption, also used to
+      rebuild the figure's accessible label.
+
+  On every default the result is identical to the original: four data-token
+  bars 12px apart, growing up from the baseline under "Weekly usage".
 -->
 
-<figure data-hf-ui-root class="hf-ui-chart" role="img" aria-label="Weekly usage bar chart">
+<figure
+  data-hf-ui-root
+  class="hf-ui-chart"
+  role="img"
+  aria-label="Weekly usage bar chart"
+  data-composition-variables='[
+    { "id": "palette", "type": "enum", "role": "style", "label": "Palette", "description": "Bar colours: the four categorical data tokens, one accent stepped down into the surface, or a neutral grey ramp.", "default": "categorical", "options": [{ "value": "categorical", "label": "Categorical" }, { "value": "mono", "label": "Mono" }, { "value": "muted", "label": "Muted" }] },
+    { "id": "spacing", "type": "enum", "role": "style", "label": "Spacing", "description": "Gap between bars, which also decides how wide each bar is inside the fixed chart width.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "airy", "label": "Airy" }] },
+    { "id": "grow", "type": "enum", "role": "motion", "label": "Growth", "description": "What the progress value scales: rise grows bars up from the baseline, sweep wipes them in from the left at full height.", "default": "rise", "options": [{ "value": "rise", "label": "Rise" }, { "value": "sweep", "label": "Sweep" }] },
+    { "id": "caption", "type": "string", "role": "content", "label": "Caption", "description": "Figcaption text, also used to rebuild the figure's accessible label.", "default": "Weekly usage", "maxLength": 60 }
+  ]'
+>
   <div>
     <span style="--h: 0.42"></span><span style="--h: 0.7"></span><span style="--h: 0.55"></span
     ><span style="--h: 0.88"></span>
@@ -162,26 +192,29 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     align-items: end;
-    gap: 12px;
+    gap: var(--hf-chart-gap, 12px);
     height: 160px;
   }
   .hf-ui-chart span {
     display: block;
     height: calc(var(--h) * 100%);
     border-radius: var(--_hf-ui-radius-control) var(--_hf-ui-radius-control) 0 0;
-    background: var(--_hf-ui-data-1);
-    transform: scaleY(var(--hf-chart-progress, 1));
-    transform-origin: bottom;
+    background: var(--hf-chart-bar-1, var(--_hf-ui-data-1));
+    transform: scale(
+      calc(1 - var(--hf-chart-axis-x, 0) + var(--hf-chart-axis-x, 0) * var(--hf-chart-progress, 1)),
+      calc(1 - var(--hf-chart-axis-y, 1) + var(--hf-chart-axis-y, 1) * var(--hf-chart-progress, 1))
+    );
+    transform-origin: var(--hf-chart-origin, bottom);
     will-change: transform;
   }
   .hf-ui-chart span:nth-child(2) {
-    background: var(--_hf-ui-data-2);
+    background: var(--hf-chart-bar-2, var(--_hf-ui-data-2));
   }
   .hf-ui-chart span:nth-child(3) {
-    background: var(--_hf-ui-data-3);
+    background: var(--hf-chart-bar-3, var(--_hf-ui-data-3));
   }
   .hf-ui-chart span:nth-child(4) {
-    background: var(--_hf-ui-data-4);
+    background: var(--hf-chart-bar-4, var(--_hf-ui-data-4));
   }
   .hf-ui-chart figcaption {
     margin: 0;
@@ -190,6 +223,73 @@
     font-weight: var(--_hf-ui-weight-medium);
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var palettes = {
+      categorical: [
+        "var(--_hf-ui-data-1)",
+        "var(--_hf-ui-data-2)",
+        "var(--_hf-ui-data-3)",
+        "var(--_hf-ui-data-4)",
+      ],
+      mono: [
+        "var(--_hf-ui-accent)",
+        "color-mix(in srgb, var(--_hf-ui-accent) 76%, var(--_hf-ui-surface))",
+        "color-mix(in srgb, var(--_hf-ui-accent) 54%, var(--_hf-ui-surface))",
+        "color-mix(in srgb, var(--_hf-ui-accent) 34%, var(--_hf-ui-surface))",
+      ],
+      muted: [
+        "var(--_hf-ui-text-muted)",
+        "color-mix(in srgb, var(--_hf-ui-text-muted) 76%, var(--_hf-ui-surface))",
+        "color-mix(in srgb, var(--_hf-ui-text-muted) 54%, var(--_hf-ui-surface))",
+        "color-mix(in srgb, var(--_hf-ui-text-muted) 34%, var(--_hf-ui-surface))",
+      ],
+    };
+    var gaps = { tight: "6px", standard: "12px", airy: "24px" };
+    var growth = {
+      rise: { x: "0", y: "1", origin: "bottom" },
+      sweep: { x: "1", y: "0", origin: "left" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var bars = palettes[pick(palettes, vars.palette, "categorical")];
+    var gap = gaps[pick(gaps, vars.spacing, "standard")];
+    var grow = growth[pick(growth, vars.grow, "rise")];
+    var caption =
+      typeof vars.caption === "string" && vars.caption.trim() !== ""
+        ? vars.caption.trim()
+        : "Weekly usage";
+
+    var roots = document.querySelectorAll(".hf-ui-chart");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      for (var b = 0; b < bars.length; b += 1) {
+        root.style.setProperty("--hf-chart-bar-" + (b + 1), bars[b]);
+      }
+      root.style.setProperty("--hf-chart-gap", gap);
+      root.style.setProperty("--hf-chart-axis-x", grow.x);
+      root.style.setProperty("--hf-chart-axis-y", grow.y);
+      root.style.setProperty("--hf-chart-origin", grow.origin);
+      root.setAttribute("aria-label", caption + " bar chart");
+      var figcaption = root.querySelector("figcaption");
+      if (figcaption) {
+        figcaption.textContent = caption;
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

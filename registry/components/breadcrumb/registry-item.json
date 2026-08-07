@@ -12,6 +12,70 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "separator",
+      "type": "enum",
+      "role": "style",
+      "label": "Separator",
+      "description": "Glyph drawn between crumbs: a chevron, a slash, or a full arrow.",
+      "default": "chevron",
+      "options": [
+        {
+          "value": "chevron",
+          "label": "Chevron"
+        },
+        {
+          "value": "slash",
+          "label": "Slash"
+        },
+        {
+          "value": "arrow",
+          "label": "Arrow"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "layout",
+      "label": "Size",
+      "description": "Type size, spacing, and separator scale of the whole trail.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "roomy",
+          "label": "Roomy"
+        }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Operator Black dark surface or the light-frame token set.",
+      "default": "dark",
+      "options": [
+        {
+          "value": "dark",
+          "label": "Dark"
+        },
+        {
+          "value": "light",
+          "label": "Light"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/breadcrumb.png"
   }

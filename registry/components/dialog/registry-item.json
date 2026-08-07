@@ -12,6 +12,47 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "style",
+      "label": "Width",
+      "description": "Panel width, from a tight confirm box to a wide form sheet.",
+      "default": "standard",
+      "options": [
+        { "value": "compact", "label": "Compact" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "wide", "label": "Wide" }
+      ]
+    },
+    {
+      "id": "scrim",
+      "type": "enum",
+      "role": "style",
+      "label": "Scrim",
+      "description": "How dark the backdrop sits behind the panel.",
+      "default": "standard",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "blackout", "label": "Blackout" }
+      ]
+    },
+    {
+      "id": "action",
+      "type": "enum",
+      "role": "style",
+      "label": "Action",
+      "description": "Fill of the primary button: neutral, accent, or destructive.",
+      "default": "neutral",
+      "options": [
+        { "value": "neutral", "label": "Neutral" },
+        { "value": "accent", "label": "Accent" },
+        { "value": "danger", "label": "Danger" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dialog.png"
   }

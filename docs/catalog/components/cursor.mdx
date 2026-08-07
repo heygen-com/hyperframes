@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/cursor.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `target` | `Generate` | string | Label on the button the pointer clicks. |
+| `label` | `Click` | string | Callout that rides with the pointer. |
+| `tone` | `neutral` | `neutral`, `accent` | Button fill: neutral is the shipped action chip, accent fills it with the family accent. |
+| `theme` | `dark` | `dark`, `light` | Token set for the whole stage: dark surfaces or light ones. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="cursor"
+  data-composition-src="compositions/components/cursor.html"
+  data-variable-values='{"target":"Generate","label":"Click","tone":"neutral","theme":"dark"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`cursor.html`}>
@@ -23,9 +46,33 @@ That writes one file: `compositions/components/cursor.html`.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result into the markup or
+  into the hf-ui token the CSS above already consumes. The timeline recipe at
+  the bottom is untouched by them: the pointer still travels the same path and
+  the ripple still fires on contact.
+
+    - target (text, default "Generate"): the label on the button the pointer
+      clicks.
+    - label (text, default "Click"): the callout that rides with the pointer.
+    - tone (neutral | accent, default neutral): the button fill. neutral is
+      the shipped action token, a near-white chip on dark; accent fills it with
+      the family accent and flips the label to the canvas colour.
+    - theme (dark | light, default dark): swaps the hf-ui token set, so the
+      whole stage renders on a light surface.
 -->
 
-<div data-hf-ui-root class="hf-ui-cursor-stage">
+<div
+  data-hf-ui-root
+  class="hf-ui-cursor-stage"
+  data-composition-variables='[
+    { "id": "target", "type": "string", "role": "content", "label": "Target label", "description": "Label on the button the pointer clicks.", "default": "Generate" },
+    { "id": "label", "type": "string", "role": "content", "label": "Pointer label", "description": "Callout that rides with the pointer.", "default": "Click" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Button fill: neutral is the shipped action chip, accent fills it with the family accent.", "default": "neutral", "options": [{ "value": "neutral", "label": "Neutral" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Token set for the whole stage: dark surfaces or light ones.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <div class="hf-ui-cursor-target">Generate</div>
   <div class="hf-ui-cursor-ripple"></div>
   <div class="hf-ui-cursor-pointer">
@@ -236,6 +283,47 @@ That writes one file: `compositions/components/cursor.html`.
     box-shadow: var(--_hf-ui-shadow-contact);
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    var theme = vars.theme === "light" ? "light" : "dark";
+    var tone = vars.tone === "accent" ? "accent" : "neutral";
+    var target = text(vars.target, "Generate");
+    var label = text(vars.label, "Click");
+
+    var roots = document.querySelectorAll(".hf-ui-cursor-stage");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-hf-theme", theme);
+
+      // neutral leaves the action tokens alone, which is what the primitive
+      // shipped with; only accent rewrites them.
+      if (tone === "accent") {
+        root.style.setProperty("--hf-ui-action", "var(--_hf-ui-data-1)");
+        root.style.setProperty("--hf-ui-action-contrast", "var(--_hf-ui-canvas)");
+      }
+
+      var targetEl = root.querySelector(".hf-ui-cursor-target");
+      if (targetEl) targetEl.textContent = target;
+
+      var labelEl = root.querySelector(".hf-ui-cursor-label");
+      if (labelEl) labelEl.textContent = label;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

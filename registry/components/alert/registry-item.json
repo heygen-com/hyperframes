@@ -12,6 +12,74 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Status colour for the icon frame and glyph, and for the leading edge when it is enabled.",
+      "default": "info",
+      "options": [
+        {
+          "value": "info",
+          "label": "Info"
+        },
+        {
+          "value": "success",
+          "label": "Success"
+        },
+        {
+          "value": "warning",
+          "label": "Warning"
+        },
+        {
+          "value": "danger",
+          "label": "Danger"
+        }
+      ]
+    },
+    {
+      "id": "edge",
+      "type": "enum",
+      "role": "style",
+      "label": "Edge",
+      "description": "Leading edge treatment: none keeps the hairline border, tone thickens it into a status strip.",
+      "default": "none",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "tone",
+          "label": "Tone"
+        }
+      ]
+    },
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "style",
+      "label": "Width",
+      "description": "How wide the alert sits.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "narrow",
+          "label": "Narrow"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert.png"
   }

@@ -3,11 +3,33 @@
 
   Paste the markup once. Animate --hf-dialog-overlay, --hf-dialog-scale,
   --hf-dialog-y, and --hf-dialog-opacity from a paused GSAP timeline.
+
+  Variables. The script below reads each one, falls back to the declared
+  default on anything missing or unrecognised, and writes the result as a
+  custom property the CSS consumes. The timeline recipe at the bottom is
+  untouched by them.
+
+    - width (compact | standard | wide, default standard): panel width.
+      compact is 360px for a tight confirm, standard 440px, wide 560px for a
+      form sheet. All three still shrink to fit a narrow frame.
+    - scrim (light | standard | blackout, default standard): how dark the
+      backdrop goes at full open, from a 38% veil to an 85% blackout.
+    - action (neutral | accent | danger, default neutral): fill of the primary
+      button. neutral is the near-white default, accent rides the mint accent
+      token, danger the red destructive token. Both themes are respected.
+
+  On every default the result is identical to the original: a 440px panel over
+  a 62% backdrop with a near-white Save button.
 -->
 
 <div
   data-hf-ui-root
   class="hf-ui-dialog"
+  data-composition-variables='[
+    { "id": "width", "type": "enum", "role": "style", "label": "Width", "description": "Panel width, from a tight confirm box to a wide form sheet.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "scrim", "type": "enum", "role": "style", "label": "Scrim", "description": "How dark the backdrop sits behind the panel.", "default": "standard", "options": [{ "value": "light", "label": "Light" }, { "value": "standard", "label": "Standard" }, { "value": "blackout", "label": "Blackout" }] },
+    { "id": "action", "type": "enum", "role": "style", "label": "Action", "description": "Fill of the primary button: neutral, accent, or destructive.", "default": "neutral", "options": [{ "value": "neutral", "label": "Neutral" }, { "value": "accent", "label": "Accent" }, { "value": "danger", "label": "Danger" }] }
+  ]'
   data-state="open"
   role="dialog"
   aria-modal="true"
@@ -176,11 +198,11 @@
   .hf-ui-dialog-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.62));
+    background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * var(--hf-dialog-scrim, 0.62)));
   }
   .hf-ui-dialog-panel {
     position: relative;
-    width: min(440px, calc(100% - 48px));
+    width: min(var(--hf-dialog-width, 440px), calc(100% - 48px));
     padding: var(--_hf-ui-space-6);
     border: 1px solid var(--_hf-ui-border-strong);
     border-radius: var(--_hf-ui-radius-overlay);
@@ -275,6 +297,44 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides fall back to their declared defaults.
+    var widths = { compact: "360px", standard: "440px", wide: "560px" };
+    var scrims = { light: "0.38", standard: "0.62", blackout: "0.85" };
+    var actionFills = {
+      neutral: null,
+      accent: { fill: "var(--_hf-ui-accent)", ink: "var(--_hf-ui-canvas)" },
+      danger: { fill: "var(--_hf-ui-danger)", ink: "var(--_hf-ui-canvas)" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var width = widths[pick(widths, vars.width, "standard")];
+    var scrim = scrims[pick(scrims, vars.scrim, "standard")];
+    var action = actionFills[pick(actionFills, vars.action, "neutral")];
+
+    var roots = document.querySelectorAll(".hf-ui-dialog");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-dialog-width", width);
+      roots[i].style.setProperty("--hf-dialog-scrim", scrim);
+      if (action) {
+        roots[i].style.setProperty("--hf-ui-action", action.fill);
+        roots[i].style.setProperty("--hf-ui-action-contrast", action.ink);
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

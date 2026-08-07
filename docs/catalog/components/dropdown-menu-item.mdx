@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/dropdown-menu-item.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `mint` | `mint`, `blue`, `violet` | Colour of the check mark on the selected row. |
+| `density` | `comfortable` | `comfortable`, `compact` | Row height and horizontal padding. |
+| `hint` | `shortcut` | `shortcut`, `hidden` | Whether the trailing shortcut column is shown. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="dropdown-menu-item"
+  data-composition-src="compositions/components/dropdown-menu-item.html"
+  data-variable-values='{"accent":"mint","density":"comfortable","hint":"shortcut"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`dropdown-menu-item.html`}>
@@ -23,9 +45,35 @@ That writes one file: `compositions/components/dropdown-menu-item.html`.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script below reads each one, falls back to the declared
+  default on anything missing or unrecognised, and writes the result as a
+  custom property the CSS consumes. The timeline recipe at the bottom is
+  untouched by them.
+
+    - accent (mint | blue | violet, default mint): colour of the check mark on
+      the selected row. Each option rides an existing theme token, so both the
+      dark and light palettes stay correct.
+    - density (comfortable | compact, default comfortable): row height and
+      horizontal padding. comfortable is the 40px control height, compact
+      tightens rows to 30px for long menus. Coarse pointers keep the 44px hit
+      target either way.
+    - hint (shortcut | hidden, default shortcut): whether the trailing
+      shortcut column is shown, so the labels can run full width.
+
+  On every default the result is identical to the original.
 -->
 
-<div data-hf-ui-root class="hf-remocn-dropdown-menu-item" role="menu">
+<div
+  data-hf-ui-root
+  class="hf-remocn-dropdown-menu-item"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the check mark on the selected row.", "default": "mint", "options": [{ "value": "mint", "label": "Mint" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Row height and horizontal padding.", "default": "comfortable", "options": [{ "value": "comfortable", "label": "Comfortable" }, { "value": "compact", "label": "Compact" }] },
+    { "id": "hint", "type": "enum", "role": "style", "label": "Hint", "description": "Whether the trailing shortcut column is shown.", "default": "shortcut", "options": [{ "value": "shortcut", "label": "Shortcut" }, { "value": "hidden", "label": "Hidden" }] }
+  ]'
+  role="menu"
+>
   <div class="row" data-state="idle" role="menuitem" tabindex="0">
     <span class="label">Duplicate scene</span><span class="hint">D</span>
   </div>
@@ -191,14 +239,14 @@ That writes one file: `compositions/components/dropdown-menu-item.html`.
     gap: var(--_hf-ui-space-1);
   }
   .hf-remocn-dropdown-menu-item .row {
-    min-height: var(--_hf-ui-control-height);
+    min-height: var(--hf-row-height, var(--_hf-ui-control-height));
     border-radius: var(--_hf-ui-radius-control);
     background: transparent;
     display: grid;
     grid-template-columns: 18px 1fr auto;
     align-items: center;
     gap: var(--_hf-ui-space-2);
-    padding: 0 var(--_hf-ui-space-3);
+    padding: 0 var(--hf-row-pad, var(--_hf-ui-space-3));
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
   }
@@ -208,6 +256,7 @@ That writes one file: `compositions/components/dropdown-menu-item.html`.
     font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-dropdown-menu-item .hint {
+    display: var(--hf-hint-display, block);
     grid-column: 3;
     color: var(--hf-muted);
     font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
@@ -239,6 +288,45 @@ That writes one file: `compositions/components/dropdown-menu-item.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides fall back to their declared defaults.
+    var accents = {
+      mint: "var(--_hf-ui-accent)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var densities = {
+      comfortable: { height: "var(--_hf-ui-control-height)", pad: "var(--_hf-ui-space-3)" },
+      compact: { height: "30px", pad: "var(--_hf-ui-space-2)" },
+    };
+    var hints = { shortcut: "block", hidden: "none" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accent = accents[pick(accents, vars.accent, "mint")];
+    var density = densities[pick(densities, vars.density, "comfortable")];
+    var hint = hints[pick(hints, vars.hint, "shortcut")];
+
+    var roots = document.querySelectorAll(".hf-remocn-dropdown-menu-item");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-accent", accent);
+      roots[i].style.setProperty("--hf-row-height", density.height);
+      roots[i].style.setProperty("--hf-row-pad", density.pad);
+      roots[i].style.setProperty("--hf-hint-display", hint);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

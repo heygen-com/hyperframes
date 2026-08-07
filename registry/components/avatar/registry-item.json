@@ -12,6 +12,47 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Diameter of the avatar frame in pixels. The initials and the status dot scale with it.",
+      "default": 54,
+      "min": 32,
+      "max": 160,
+      "step": 2,
+      "unit": "px"
+    },
+    {
+      "id": "status",
+      "type": "enum",
+      "role": "style",
+      "label": "Status",
+      "description": "Colour and label of the availability dot; none removes the dot entirely.",
+      "default": "available",
+      "options": [
+        { "value": "available", "label": "Available" },
+        { "value": "busy", "label": "Busy" },
+        { "value": "away", "label": "Away" },
+        { "value": "none", "label": "None" }
+      ]
+    },
+    {
+      "id": "shape",
+      "type": "enum",
+      "role": "style",
+      "label": "Shape",
+      "description": "Corner radius of the avatar frame.",
+      "default": "circle",
+      "options": [
+        { "value": "circle", "label": "Circle" },
+        { "value": "rounded", "label": "Rounded" },
+        { "value": "square", "label": "Square" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar.png"
   }

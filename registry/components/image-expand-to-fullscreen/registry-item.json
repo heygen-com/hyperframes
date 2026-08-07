@@ -12,6 +12,60 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the incoming plate. Green rides --brand and --accent.",
+      "default": "blue",
+      "options": [
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" },
+        { "value": "green", "label": "Green" }
+      ]
+    },
+    {
+      "id": "format",
+      "type": "enum",
+      "role": "layout",
+      "label": "Format",
+      "description": "Aspect of the tile the transition plays inside.",
+      "default": "wide",
+      "options": [
+        { "value": "wide", "label": "Wide" },
+        { "value": "square", "label": "Square" },
+        { "value": "portrait", "label": "Portrait" }
+      ]
+    },
+    {
+      "id": "corner",
+      "type": "enum",
+      "role": "style",
+      "label": "Corner",
+      "description": "Corner radius of the tile.",
+      "default": "soft",
+      "options": [
+        { "value": "soft", "label": "Soft" },
+        { "value": "sharp", "label": "Sharp" },
+        { "value": "round", "label": "Round" }
+      ]
+    },
+    {
+      "id": "chroma",
+      "type": "enum",
+      "role": "motion",
+      "label": "Chroma split",
+      "description": "Strength of the red and cyan fringe that stutters over the wipe. Off removes it.",
+      "default": "standard",
+      "options": [
+        { "value": "off", "label": "Off" },
+        { "value": "subtle", "label": "Subtle" },
+        { "value": "standard", "label": "Standard" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/image-expand-to-fullscreen.png"
   }

@@ -1,11 +1,33 @@
 <!--
   Hover Card - Operator Black anchored profile preview.
 
-  Paste the markup and CSS into a composition. Animate the CSS variables
+  Paste the markup, CSS and script into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on anything
+  missing or unrecognised, and writes the result as an attribute or a custom property the
+  CSS above consumes. The timeline recipe below is untouched by them.
+
+    - theme (dark | light, default dark): which half of the Operator Black token set the
+      card paints itself with. A light host frame still wins over dark, by design.
+    - placement (below | above, default below): which side of the trigger the panel hangs
+      off, including the corner it scales out of.
+    - width (compact | standard | wide, default standard): width of the trigger column and
+      the panel beneath it, 220px, 260px or 320px.
+
+  On every default the result is identical to the original: a 260px dark card opening
+  downward from its top left corner.
 -->
 
-<div data-hf-ui-root class="hf-ui-hover-card">
+<div
+  data-hf-ui-root
+  class="hf-ui-hover-card"
+  data-composition-variables='[
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Token palette the card paints itself with: matte dark, or the light Operator surface.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] },
+    { "id": "placement", "type": "enum", "role": "layout", "label": "Placement", "description": "Which side of the trigger the panel is anchored to, including the corner it scales out of.", "default": "below", "options": [{ "value": "below", "label": "Below" }, { "value": "above", "label": "Above" }] },
+    { "id": "width", "type": "enum", "role": "layout", "label": "Width", "description": "Width of the trigger column and the panel that hangs off it.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] }
+  ]'
+>
   <button type="button" aria-expanded="true" aria-controls="hf-ui-hover-card-panel">@maya</button>
   <aside id="hf-ui-hover-card-panel">
     <strong>Maya Chen</strong><span>Motion designer</span>
@@ -151,7 +173,7 @@
   .hf-ui-hover-card {
     position: relative;
     display: inline-grid;
-    width: min(260px, 100%);
+    width: min(var(--hf-hover-card-width, 260px), 100%);
     color: var(--_hf-ui-text);
   }
   .hf-ui-hover-card button {
@@ -174,7 +196,8 @@
   }
   .hf-ui-hover-card aside {
     position: absolute;
-    top: 50px;
+    top: var(--hf-hover-card-top, 50px);
+    bottom: var(--hf-hover-card-bottom, auto);
     left: 0;
     display: grid;
     gap: 6px;
@@ -185,7 +208,7 @@
     background: var(--_hf-ui-surface-raised);
     opacity: var(--hf-hover-open, 1);
     transform: translateY(var(--hf-hover-y, 0px)) scale(var(--hf-hover-open, 1));
-    transform-origin: top left;
+    transform-origin: var(--hf-hover-card-origin, top left);
     box-shadow: var(--_hf-ui-shadow-contact);
     transition:
       opacity var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit),
@@ -211,6 +234,41 @@
     font-size: 14px;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var placements = {
+      below: { top: "50px", bottom: "auto", origin: "top left" },
+      above: { top: "auto", bottom: "50px", origin: "bottom left" },
+    };
+    var widths = { compact: "220px", standard: "260px", wide: "320px" };
+
+    var theme = vars.theme === "light" ? "light" : "dark";
+    var placement = placements[pick(placements, vars.placement, "below")];
+    var width = widths[pick(widths, vars.width, "standard")];
+
+    var roots = document.querySelectorAll(".hf-ui-hover-card");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].setAttribute("data-hf-theme", theme);
+      roots[i].style.setProperty("--hf-hover-card-width", width);
+      roots[i].style.setProperty("--hf-hover-card-top", placement.top);
+      roots[i].style.setProperty("--hf-hover-card-bottom", placement.bottom);
+      roots[i].style.setProperty("--hf-hover-card-origin", placement.origin);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

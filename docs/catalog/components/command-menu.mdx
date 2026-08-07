@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/command-menu.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `query` | `Search commands...` | string | Line typed into the search field. |
+| `active` | `1` | 1 to 8, step 1 | Which command row is highlighted, counting from 1. Out-of-range values clamp. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token behind the check icon and the inset bar on the active row. |
+| `theme` | `dark` | `dark`, `light` | Token set for the palette: dark surfaces or light ones. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="command-menu"
+  data-composition-src="compositions/components/command-menu.html"
+  data-variable-values='{"query":"Search commands...","active":1,"accent":"green","theme":"dark"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`command-menu.html`}>
@@ -23,9 +46,35 @@ That writes one file: `compositions/components/command-menu.html`.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result into the markup or
+  into the hf-ui token the CSS above already consumes. The timeline recipe at
+  the bottom is untouched by them.
+
+    - query (text, default "Search commands..."): the line typed into the
+      search field.
+    - active (number 1 to the number of rows, default 1): which command row is
+      highlighted. The check icon and the accent bar move with it.
+    - accent (green | blue | violet, default green): accent token behind the
+      check icon and the inset bar on the active row.
+    - theme (dark | light, default dark): swaps the hf-ui token set, so the
+      palette renders on a light surface.
+
+  The command rows themselves stay plain markup: add, remove or relabel them in
+  the block below.
 -->
 
-<div data-hf-ui-root class="hf-ui-command-menu">
+<div
+  data-hf-ui-root
+  class="hf-ui-command-menu"
+  data-composition-variables='[
+    { "id": "query", "type": "string", "role": "content", "label": "Query", "description": "Line typed into the search field.", "default": "Search commands..." },
+    { "id": "active", "type": "number", "role": "content", "label": "Active row", "description": "Which command row is highlighted, counting from 1. Out-of-range values clamp.", "default": 1, "min": 1, "max": 8, "step": 1 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token behind the check icon and the inset bar on the active row.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Token set for the palette: dark surfaces or light ones.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <div class="hf-ui-command-search">Search commands...</div>
   <div class="hf-ui-command-group">Create</div>
   <div class="hf-ui-command-item is-active">
@@ -233,6 +282,67 @@ That writes one file: `compositions/components/command-menu.html`.
     stroke-linejoin: miter;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+
+    var accents = {
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    // 1-based row picker: anything unparseable or out of range clamps back in.
+    function slot(value, count, fallback) {
+      var n = typeof value === "number" ? value : parseInt(value, 10);
+      if (!isFinite(n)) n = fallback;
+      n = Math.round(n);
+      if (n < 1) n = 1;
+      if (n > count) n = count;
+      return n - 1;
+    }
+
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var theme = vars.theme === "light" ? "light" : "dark";
+    var query = text(vars.query, "Search commands...");
+
+    var roots = document.querySelectorAll(".hf-ui-command-menu");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-ui-accent", accent);
+      root.setAttribute("data-hf-theme", theme);
+
+      var search = root.querySelector(".hf-ui-command-search");
+      if (search) search.textContent = query;
+
+      var items = root.querySelectorAll(".hf-ui-command-item");
+      if (items.length === 0) continue;
+
+      var target = items[slot(vars.active, items.length, 1)];
+      var check = root.querySelector(".hf-ui-command-item svg");
+      for (var j = 0; j < items.length; j += 1) {
+        items[j].classList.toggle("is-active", items[j] === target);
+      }
+      if (check) target.insertBefore(check, target.firstChild);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

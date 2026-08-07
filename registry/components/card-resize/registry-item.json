@@ -12,6 +12,46 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "surface",
+      "type": "enum",
+      "role": "style",
+      "label": "Surface",
+      "description": "Card colour scheme: paper is the original white card, ink is a dark card for dark frames.",
+      "default": "paper",
+      "options": [
+        { "value": "paper", "label": "Paper" },
+        { "value": "ink", "label": "Ink" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Gradient family painted into the media thumbnail.",
+      "default": "ocean",
+      "options": [
+        { "value": "ocean", "label": "Ocean" },
+        { "value": "forest", "label": "Forest" },
+        { "value": "ember", "label": "Ember" }
+      ]
+    },
+    {
+      "id": "elevation",
+      "type": "enum",
+      "role": "style",
+      "label": "Elevation",
+      "description": "How far the card lifts off the frame, from a contact shadow to a deep drop.",
+      "default": "raised",
+      "options": [
+        { "value": "flat", "label": "Flat" },
+        { "value": "raised", "label": "Raised" },
+        { "value": "floating", "label": "Floating" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
   }

@@ -3,6 +3,25 @@
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes a custom property the CSS above
+  consumes, an attribute the token block keys off, or the heading text. The
+  timeline recipe below is untouched by them.
+
+    - monthLabel (string, default "June 2026"): the heading above the grid.
+      It is mirrored into aria-label so the accessible name stays truthful.
+      A blank or non-text override keeps the default.
+    - density (compact | standard | roomy, default standard): cell height,
+      grid gap, and card width, from a 28px row up to a 42px one.
+    - accent (green | blue | violet, default green): the underline beneath the
+      selected day. Each option resolves to the matching data token for the
+      active theme.
+    - theme (dark | light, default dark): dark keeps the Operator Black
+      surface, light switches the shared token block to its light values.
+
+  On every default the result is identical to the original: a 300px dark card
+  headed June 2026 with 34px cells and a green underline under the 24th.
 -->
 
 <div
@@ -12,6 +31,12 @@
   aria-label="June 2026"
   aria-rowcount="1"
   aria-colcount="7"
+  data-composition-variables='[
+    { "id": "monthLabel", "type": "string", "role": "content", "label": "Month label", "description": "Heading above the date grid, also used as the accessible name.", "default": "June 2026" },
+    { "id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "Cell height, grid gap, and card width of the date row.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "roomy", "label": "Roomy" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the underline beneath the selected day.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Operator Black dark surface or the light-frame token set.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
 >
   <header>June 2026</header>
   <div class="hf-ui-calendar-grid" role="row">
@@ -160,7 +185,7 @@
   .hf-ui-calendar {
     display: grid;
     gap: var(--_hf-ui-space-3);
-    width: min(300px, 100%);
+    width: min(var(--hf-cal-width, 300px), 100%);
     padding: var(--_hf-ui-space-4);
     border: 1px solid var(--_hf-ui-border-strong);
     border-radius: var(--_hf-ui-radius-surface);
@@ -177,12 +202,12 @@
   .hf-ui-calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: var(--_hf-ui-space-1);
+    gap: var(--hf-cal-gap, var(--_hf-ui-space-1));
   }
   .hf-ui-calendar-grid :is(span, strong) {
     display: grid;
     place-items: center;
-    height: 34px;
+    height: var(--hf-cal-cell, 34px);
     border-radius: var(--_hf-ui-radius-control);
     font-size: 13px;
     font-weight: var(--_hf-ui-weight-medium);
@@ -226,6 +251,57 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accents = {
+      green: { dark: "#3ce6ac", light: "#087a57" },
+      blue: { dark: "#63a5ff", light: "#245ea8" },
+      violet: { dark: "#a78bfa", light: "#6d3fc0" },
+    };
+    var themes = { dark: true, light: true };
+
+    var densities = {
+      compact: { cell: "28px", gap: "2px", width: "260px" },
+      standard: { cell: "34px", gap: "4px", width: "300px" },
+      roomy: { cell: "42px", gap: "8px", width: "352px" },
+    };
+
+    var density = densities[pick(densities, vars.density, "standard")];
+    var theme = pick(themes, vars.theme, "dark");
+    var accent = accents[pick(accents, vars.accent, "green")][theme];
+    var monthLabel =
+      typeof vars.monthLabel === "string" && vars.monthLabel.trim() !== ""
+        ? vars.monthLabel
+        : "June 2026";
+
+    var roots = document.querySelectorAll(".hf-ui-calendar");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-cal-cell", density.cell);
+      root.style.setProperty("--hf-cal-gap", density.gap);
+      root.style.setProperty("--hf-cal-width", density.width);
+      root.style.setProperty("--hf-ui-accent", accent);
+      if (theme === "light") root.setAttribute("data-hf-theme", "light");
+      else root.removeAttribute("data-hf-theme");
+      root.setAttribute("aria-label", monthLabel);
+      var header = root.querySelector("header");
+      if (header) header.textContent = monthLabel;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

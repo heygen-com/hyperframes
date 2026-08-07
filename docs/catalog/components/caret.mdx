@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/caret.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `green` | `green`, `blue`, `amber`, `violet` | Accent token family that colours the caret mark. |
+| `shape` | `bar` | `bar`, `block`, `underline` | The caret mark itself: a thin bar, a filled block, or an underscore below the baseline. |
+| `field` | `framed` | `framed`, `bare` | Whether the command field chrome is drawn: framed keeps the bordered input, bare drops it so the line can sit over footage. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="caret"
+  data-composition-src="compositions/components/caret.html"
+  data-variable-values='{"accent":"green","shape":"bar","field":"framed"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`caret.html`}>
@@ -21,11 +43,39 @@ That writes one file: `compositions/components/caret.html`.
 <!--
   Caret - Operator Black typed-command primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Use the timeline integration
-  note at the bottom as the starting point for deterministic GSAP animation.
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe is untouched by them: it keeps
+  typing the same value and blinking on the same cadence. The typed width and
+  the blink live in that recipe, which the user owns, so neither is exposed.
+
+    - accent (green | blue | amber | violet, default green): the data token
+      family that colours the caret mark. green is the theme accent, so the
+      default is unchanged in either theme.
+    - shape (bar | block | underline, default bar): the caret mark itself. bar
+      is the original 2px rule, block is a filled cell, underline sits below
+      the baseline like a terminal underscore.
+    - field (framed | bare, default framed): whether the command field chrome
+      is drawn. bare drops the border, fill and inset shadow so the typed line
+      can sit directly over footage.
+
+  On every default the result is identical to the original: a green 2px caret
+  inside a bordered inset command field.
 -->
 
-<div data-hf-ui-root class="hf-ui-caret-line">
+<div
+  data-hf-ui-root
+  class="hf-ui-caret-line"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family that colours the caret mark.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "amber", "label": "Amber" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "shape", "type": "enum", "role": "style", "label": "Caret shape", "description": "The caret mark itself: a thin bar, a filled block, or an underscore below the baseline.", "default": "bar", "options": [{ "value": "bar", "label": "Bar" }, { "value": "block", "label": "Block" }, { "value": "underline", "label": "Underline" }] },
+    { "id": "field", "type": "enum", "role": "style", "label": "Field", "description": "Whether the command field chrome is drawn: framed keeps the bordered input, bare drops it so the line can sit over footage.", "default": "framed", "options": [{ "value": "framed", "label": "Framed" }, { "value": "bare", "label": "Bare" }] }
+  ]'
+>
   <span class="hf-ui-caret-value">Generate captions</span><span class="hf-ui-caret"></span>
 </div>
 
@@ -169,13 +219,13 @@ That writes one file: `compositions/components/caret.html`.
     display: inline-flex;
     align-items: center;
     min-height: 48px;
-    padding: 0 14px;
-    border: 1px solid var(--_hf-ui-control-border);
+    padding: var(--hf-caret-field-pad, 0 14px);
+    border: 1px solid var(--hf-caret-field-border, var(--_hf-ui-control-border));
     border-radius: var(--_hf-ui-radius-control);
-    background: var(--_hf-ui-surface-inset);
+    background: var(--hf-caret-field-bg, var(--_hf-ui-surface-inset));
     color: var(--_hf-ui-text-strong);
     font: var(--_hf-ui-weight-medium) 18px/1 var(--_hf-ui-font-sans);
-    box-shadow: var(--_hf-ui-shadow-inset);
+    box-shadow: var(--hf-caret-field-shadow, var(--_hf-ui-shadow-inset));
   }
   .hf-ui-caret-value {
     display: inline-block;
@@ -185,13 +235,69 @@ That writes one file: `compositions/components/caret.html`.
   }
   .hf-ui-caret {
     display: inline-block;
-    width: 2px;
-    height: 22px;
+    width: var(--hf-caret-mark-w, 2px);
+    height: var(--hf-caret-mark-h, 22px);
     margin-left: 4px;
     background: var(--_hf-ui-accent);
     opacity: 1;
+    transform: translateY(var(--hf-caret-mark-shift, 0px));
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    // The data tokens are theme-aware, and data-1 is the theme accent itself,
+    // so the default leaves both themes exactly as they shipped.
+    var accents = {
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      amber: "var(--_hf-ui-data-3)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var shapes = {
+      bar: { w: "2px", h: "22px", shift: "0px" },
+      block: { w: "11px", h: "22px", shift: "0px" },
+      underline: { w: "16px", h: "2px", shift: "9px" },
+    };
+    var fields = {
+      framed: {
+        pad: "0 14px",
+        border: "var(--_hf-ui-control-border)",
+        bg: "var(--_hf-ui-surface-inset)",
+        shadow: "var(--_hf-ui-shadow-inset)",
+      },
+      bare: { pad: "0", border: "transparent", bg: "transparent", shadow: "none" },
+    };
+
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var shape = shapes[pick(shapes, vars.shape, "bar")];
+    var field = fields[pick(fields, vars.field, "framed")];
+
+    var roots = document.querySelectorAll(".hf-ui-caret-line");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-ui-accent", accent);
+      roots[i].style.setProperty("--hf-caret-mark-w", shape.w);
+      roots[i].style.setProperty("--hf-caret-mark-h", shape.h);
+      roots[i].style.setProperty("--hf-caret-mark-shift", shape.shift);
+      roots[i].style.setProperty("--hf-caret-field-pad", field.pad);
+      roots[i].style.setProperty("--hf-caret-field-border", field.border);
+      roots[i].style.setProperty("--hf-caret-field-bg", field.bg);
+      roots[i].style.setProperty("--hf-caret-field-shadow", field.shadow);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:
