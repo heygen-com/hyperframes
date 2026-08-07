@@ -3,37 +3,22 @@ title: "Data Chart"
 description: "Animated bar + line chart with staggered reveal, NYT-style typography, and value labels"
 ---
 
-# Data Chart
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Animated bar + line chart with staggered reveal, NYT-style typography, and value labels
-
-`data` `chart` `statistics`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/data-chart.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Data Chart preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add data-chart" />
 
-```bash Terminal
-npx hyperframes add data-chart
-```
+That writes one file: `compositions/data-chart.html`.
 
-</CodeGroup>
+## Change the colors
 
-## Details
+Set these CSS variables on the block:
 
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 15s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `data-chart.html` | `compositions/data-chart.html` | hyperframes:composition |
+- `--bg-color` — Background. Defaults to `#faf9f6`.
+- `--text-color` — Text color. Defaults to `#333333`.
 
 ## Usage
 
@@ -42,3 +27,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="data-chart" data-composition-src="compositions/data-chart.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `data` `chart` `statistics`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

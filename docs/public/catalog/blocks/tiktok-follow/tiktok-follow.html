@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1080px;
+        height: 1920px;
+        font-family: "DM Sans", sans-serif;
+      }
+
+      [data-composition-id="tiktok-follow"] .lower-third {
+        position: absolute;
+        bottom: 160px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        background: #1a1a1a;
+        border-radius: 75px;
+        padding: 25px 40px 25px 25px;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+      }
+
+      [data-composition-id="tiktok-follow"] .avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+        border: 3px solid #333;
+      }
+
+      [data-composition-id="tiktok-follow"] .profile-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-right: 20px;
+      }
+
+      [data-composition-id="tiktok-follow"] .display-name {
+        font-size: 42px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+
+      [data-composition-id="tiktok-follow"] .handle {
+        font-size: 28px;
+        font-weight: 400;
+        color: #a0a0a0;
+        line-height: 1.3;
+      }
+
+      [data-composition-id="tiktok-follow"] .follower-count {
+        font-size: 25px;
+        font-weight: 400;
+        color: #737373;
+        line-height: 1.3;
+      }
+
+      [data-composition-id="tiktok-follow"] .follow-btn {
+        position: relative;
+        width: 250px;
+        height: 80px;
+        border-radius: 40px;
+        background: #fe2c55;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      [data-composition-id="tiktok-follow"] .btn-text {
+        position: absolute;
+        font-family: "DM Sans", sans-serif;
+        font-size: 30px;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+
+      [data-composition-id="tiktok-follow"] .btn-text-follow {
+        opacity: 1;
+      }
+
+      [data-composition-id="tiktok-follow"] .btn-text-following {
+        opacity: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      [data-composition-id="tiktok-follow"] .check-icon {
+        display: inline-block;
+        width: 22px;
+        height: 22px;
+      }
+
+      [data-composition-id="tiktok-follow"] .check-icon svg {
+        width: 22px;
+        height: 22px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="tiktok-follow"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="4.5"
+    >
+      <div
+        id="card"
+        class="clip lower-third"
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+      >
+        <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
+        <div class="profile-info">
+          <div class="display-name">HeyGen</div>
+          <div class="handle">@heygen.com</div>
+          <div class="follower-count">1,999 followers</div>
+        </div>
+        <div id="follow-btn" class="follow-btn">
+          <span id="btn-follow" class="btn-text btn-text-follow">Follow</span>
+          <span id="btn-following" class="btn-text btn-text-following">
+            <span>Following</span>
+            <span class="check-icon"
+              ><svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#fff"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12"></polyline></svg
+            ></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      var tl = gsap.timeline({ paused: true });
+
+      var card = document.getElementById("card");
+      var btn = document.getElementById("follow-btn");
+      var textFollow = document.getElementById("btn-follow");
+      var textFollowing = document.getElementById("btn-following");
+
+      // Start off-screen
+      gsap.set(card, { y: 300, opacity: 0 });
+
+      // Slide in from bottom
+      tl.to(
+        card,
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.5,
+          ease: "power3.out",
+        },
+        0.1,
+      );
+
+      // Hold, then button press-in
+      tl.to(
+        btn,
+        {
+          scale: 0.92,
+          duration: 0.15,
+          ease: "power2.out",
+        },
+        1.0,
+      );
+
+      // Button release with spring bounce
+      tl.to(
+        btn,
+        {
+          scale: 1,
+          duration: 0.4,
+          ease: "elastic.out(1, 0.4)",
+        },
+        1.15,
+      );
+
+      // Button background: rose-red → dark gray
+      tl.to(
+        btn,
+        {
+          backgroundColor: "#2f2f2f",
+          duration: 0.12,
+          ease: "none",
+        },
+        1.15,
+      );
+
+      // Fade out "Follow", fade in "Following"
+      tl.to(
+        textFollow,
+        {
+          opacity: 0,
+          duration: 0.08,
+          ease: "none",
+        },
+        1.15,
+      );
+
+      tl.to(
+        textFollowing,
+        {
+          opacity: 1,
+          duration: 0.08,
+          ease: "none",
+        },
+        1.18,
+      );
+
+      // Slide out to bottom
+      tl.to(
+        card,
+        {
+          y: 300,
+          opacity: 0,
+          duration: 0.25,
+          ease: "power3.in",
+        },
+        3.8,
+      );
+
+      window.__timelines["tiktok-follow"] = tl;
+    </script>
+  </body>
+</html>

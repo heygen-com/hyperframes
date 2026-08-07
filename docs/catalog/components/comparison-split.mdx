@@ -1,0 +1,43 @@
+---
+title: "Comparison Split"
+description: "Two full-bleed panels compare before and after states as a persistent divider wipes the vivid after layer over the muted before layer and rests at a configurable split."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/comparison-split.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Comparison Split preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add comparison-split" />
+
+That writes one file: `compositions/components/comparison-split.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/comparison-split.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `split` | `50` | 0% to 100%, step 1% | Target resting position of the comparison divider. |
+| `orientation` | `horizontal` | `horizontal`, `vertical` | Axis and direction used by the comparison wipe. |
+| `labelA` | `Before` | string | Caption shown on the base before panel. |
+| `labelB` | `After` | string | Caption shown on the revealed after panel. |
+
+{/* hf:generated-footer */}
+
+Tagged `prop` `ui-props` `compare` `holdable` `before-after` `wipe`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

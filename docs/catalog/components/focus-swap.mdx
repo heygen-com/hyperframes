@@ -1,0 +1,42 @@
+---
+title: "Focus Swap"
+description: "Moves attention between two side-by-side cards as one recedes with scale, blur, and dimming while the other advances to full focus."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/focus-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Focus Swap preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add focus-swap" />
+
+That writes one file: `compositions/components/focus-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/focus-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `focus` | `b` | `a`, `b` | Card that ends sharp, full-size, and fully opaque. |
+| `blurPx` | `6` | 0px to 20px, step 1px | Blur applied to the card outside the viewer focus. |
+| `dim` | `0.5` | 0 to 1, step 0.05 | Opacity of the card outside the viewer focus. |
+
+{/* hf:generated-footer */}
+
+Tagged `effect` `ui-props` `focus` `blur` `attention` `demonstrate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

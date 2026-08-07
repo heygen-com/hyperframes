@@ -1,0 +1,35 @@
+<!--
+  Mask Reveal Up - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-mask-reveal-up"><span>Every frame</span><span>under control</span></div>
+
+<style>
+  .hf-remocn-mask-reveal-up {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-mask-reveal-up {
+    display: grid;
+    gap: 10px;
+    font-size: 52px;
+    line-height: 1;
+    overflow: hidden;
+  }
+  .hf-remocn-mask-reveal-up span {
+    display: block;
+    transform: translate(var(--hf-line-x, 0px), var(--hf-line-y, 0px));
+    filter: blur(var(--hf-line-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-mask-reveal-up span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
+-->

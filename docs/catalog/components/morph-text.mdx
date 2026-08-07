@@ -3,38 +3,28 @@ title: "Morph Text"
 description: "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect"
 ---
 
-# Morph Text
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect
-
-`text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/morph-text.mp4" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/components/morph-text.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Morph Text preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add morph-text" />
 
-```bash Terminal
-npx hyperframes add morph-text
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Component |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `morph-text.html` | `compositions/components/morph-text.html` | hyperframes:snippet |
+That writes one file: `compositions/components/morph-text.html`.
 
 ## Usage
 
 Open `compositions/components/morph-text.html` and paste its contents into your composition.
 
 Edit the `<ol id="morph-words">` list to change the statements that cycle through. Each `<li>` accepts `data-font` (CSS font-family) and `data-color` (hex) attributes. Adjust `data-morph-speed` (seconds per transition) and `data-morph-pause` (hold time) on the root element.
+
+{/* hf:generated-footer */}
+
+Tagged `text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

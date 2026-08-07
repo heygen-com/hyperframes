@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Gradient Fill</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+      #gradient-fill {
+        pointer-events: none;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #gr-container {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+      .gr-group {
+        position: absolute;
+        bottom: 120px;
+        left: 0;
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 24px;
+        padding: 0 80px;
+        opacity: 0;
+        visibility: hidden;
+      }
+      .gr-word {
+        font-family: "Montserrat", sans-serif;
+        font-weight: 900;
+        font-size: 100px;
+        display: inline-block;
+        letter-spacing: 0.04em;
+        line-height: 1.15;
+        padding-bottom: 0.05em;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        background-size: 350% 100%;
+        background-position: 100% 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="gradient-fill"
+      data-composition-id="caption-gradient-fill"
+      data-timeline-locked
+      data-start="0"
+      data-duration="8"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="gr-container"></div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        var _fitCanvas = document.createElement("canvas");
+        var _fitCtx = _fitCanvas.getContext("2d");
+        function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
+          var size = baseFontSize;
+          var minSize = Math.floor(baseFontSize * 0.45);
+          while (size > minSize) {
+            _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
+            if (_fitCtx.measureText(text).width <= maxWidth) return size;
+            size -= 2;
+          }
+          return minSize;
+        }
+
+        var WORDS = [
+          { text: "Every", start: 0.0, end: 0.3 },
+          { text: "great", start: 0.3, end: 0.55 },
+          { text: "video", start: 0.55, end: 0.85 },
+          { text: "starts", start: 0.85, end: 1.1 },
+          { text: "with", start: 1.1, end: 1.25 },
+          { text: "a", start: 1.25, end: 1.35 },
+          { text: "single", start: 1.35, end: 1.65 },
+          { text: "frame.", start: 1.65, end: 2.0 },
+          { text: "HyperFrames", start: 2.1, end: 2.65 },
+          { text: "lets", start: 2.65, end: 2.85 },
+          { text: "you", start: 2.85, end: 2.95 },
+          { text: "write", start: 2.95, end: 3.15 },
+          { text: "HTML", start: 3.15, end: 3.55 },
+          { text: "and", start: 3.55, end: 3.65 },
+          { text: "render", start: 3.65, end: 3.95 },
+          { text: "professional", start: 3.95, end: 4.45 },
+          { text: "video.", start: 4.45, end: 4.8 },
+          { text: "No", start: 4.9, end: 5.05 },
+          { text: "timeline.", start: 5.05, end: 5.45 },
+          { text: "No", start: 5.5, end: 5.65 },
+          { text: "drag", start: 5.65, end: 5.85 },
+          { text: "and", start: 5.85, end: 5.95 },
+          { text: "drop.", start: 5.95, end: 6.25 },
+          { text: "Just", start: 6.35, end: 6.55 },
+          { text: "code", start: 6.55, end: 6.8 },
+          { text: "that", start: 6.8, end: 6.95 },
+          { text: "becomes", start: 6.95, end: 7.3 },
+          { text: "cinema.", start: 7.3, end: 7.7 },
+        ];
+
+        var GROUPS = [
+          { wordStart: 0, wordEnd: 3, start: 0.0, end: 1.05 },
+          { wordStart: 4, wordEnd: 7, start: 1.1, end: 2.05 },
+          { wordStart: 8, wordEnd: 8, start: 2.1, end: 2.6 },
+          { wordStart: 9, wordEnd: 12, start: 2.65, end: 3.5 },
+          { wordStart: 13, wordEnd: 14, start: 3.55, end: 3.9 },
+          { wordStart: 15, wordEnd: 16, start: 3.95, end: 4.75 },
+          { wordStart: 17, wordEnd: 18, start: 4.9, end: 5.4 },
+          { wordStart: 19, wordEnd: 22, start: 5.5, end: 6.2 },
+          { wordStart: 23, wordEnd: 24, start: 6.35, end: 6.75 },
+          { wordStart: 25, wordEnd: 27, start: 6.8, end: 7.8 },
+        ];
+
+        var SIRI_GRAD =
+          "linear-gradient(90deg, " +
+          "#fe9f1b 0%, #f76e49 10%, #ff2063 20%, " +
+          "#fd56cb 30%, #ef7aff 40%, #fe9f1b 50%, " +
+          "white 50.5%, white 100%)";
+
+        var container = document.getElementById("gr-container");
+        var tl = gsap.timeline({ paused: true });
+
+        GROUPS.forEach(function (g, gi) {
+          var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
+          var groupText = groupWords
+            .map(function (w) {
+              return w.text;
+            })
+            .join(" ");
+          var fontSize = fitFontSize(groupText, 100, "900", "'Montserrat', sans-serif", 1760);
+          var grp = document.createElement("div");
+          grp.className = "gr-group";
+          grp.id = "gr-grp-" + gi;
+
+          groupWords.forEach(function (w, i) {
+            var wi = g.wordStart + i;
+            var span = document.createElement("span");
+            span.className = "gr-word";
+            span.id = "gr-w-" + wi;
+            span.textContent = w.text;
+            span.style.fontSize = fontSize + "px";
+            span.style.background = SIRI_GRAD;
+            span.style.backgroundSize = "350% 100%";
+            span.style.backgroundPosition = "100% 0";
+            span.style.webkitBackgroundClip = "text";
+            span.style.backgroundClip = "text";
+            grp.appendChild(span);
+          });
+
+          container.appendChild(grp);
+
+          tl.set(grp, { visibility: "visible", opacity: 1 }, g.start);
+
+          var lastWordEnd = groupWords[groupWords.length - 1].end;
+          var nextStart = gi < GROUPS.length - 1 ? GROUPS[gi + 1].start : lastWordEnd + 0.5;
+          var gap = nextStart - lastWordEnd;
+          var fadeDur = Math.min(0.25, gap * 0.8);
+          var fadeStart = nextStart - fadeDur;
+          var groupEnd = nextStart;
+
+          groupWords.forEach(function (w, i) {
+            var wi = g.wordStart + i;
+            var el = document.getElementById("gr-w-" + wi);
+            var dur = w.end - w.start;
+
+            tl.set(el, { backgroundPosition: "100% 0", scale: 1 }, g.start);
+            tl.set(el, { scale: 1.04 }, w.start);
+            tl.fromTo(
+              el,
+              { backgroundPosition: "45% 0" },
+              { backgroundPosition: "0% 0", duration: dur, ease: "none" },
+              w.start,
+            );
+            tl.set(el, { backgroundPosition: "100% 0" }, w.end);
+            tl.to(el, { scale: 1, duration: 0.15, ease: "power2.out" }, w.end);
+          });
+
+          tl.to(grp, { opacity: 0, duration: fadeDur }, fadeStart);
+          tl.set(grp, { visibility: "hidden" }, groupEnd);
+        });
+
+        window.__timelines["caption-gradient-fill"] = tl;
+      })();
+    </script>
+  </body>
+</html>

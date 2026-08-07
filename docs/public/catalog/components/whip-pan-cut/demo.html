@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  whip-pan-cut demo. Full-bleed mount on a dark token stage: the whip runs
+  rightward across the whole 1920x1080 frame with the violet seam accent,
+  proving the pan reads as one continuous surface with the blur peaking at
+  mid-whip and resolving sharp at the catch.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>whip-pan-cut Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #05070d);
+      }
+
+      #root {
+        --bg: #080b14;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #182033;
+        --border: #3b4863;
+        --brand: #22c55e;
+        --accent: #38bdf8;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --radius: 22px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          #10182b 0%,
+          var(--bg, #080b14) 72%
+        );
+      }
+
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="whip-pan-cut-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="1.2"
+      data-fps="30"
+    >
+      <div
+        id="whip-pan-cut-mount"
+        class="mount-stage clip"
+        data-composition-id="whip-pan-cut"
+        data-composition-src="./whip-pan-cut.html"
+        data-variable-values='{"direction":"right","whip_at":0.35,"accent":"violet"}'
+        data-start="0"
+        data-duration="1.2"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["whip-pan-cut-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

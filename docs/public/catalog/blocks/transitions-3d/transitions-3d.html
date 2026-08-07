@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920" />
+    <title>3D Transitions</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      }
+
+      .scene {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        transform-style: preserve-3d;
+      }
+
+      .scene-inner {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        backface-visibility: hidden;
+      }
+
+      #scene1 {
+        z-index: 1;
+      }
+      #scene2 {
+        z-index: 2;
+        opacity: 0;
+      }
+
+      #s1 {
+        background: #1b263b;
+      }
+      #s2 {
+        background: #e07a5f;
+      }
+
+      .big-text {
+        font-size: 200px;
+        font-weight: 900;
+        line-height: 1;
+        user-select: none;
+        pointer-events: none;
+      }
+      #s1 .big-text {
+        color: rgba(255, 255, 255, 0.08);
+      }
+      #s2 .big-text {
+        color: rgba(255, 255, 255, 0.15);
+      }
+
+      .label {
+        font-size: 32px;
+        font-weight: 600;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        margin-top: 12px;
+      }
+      #s1 .label {
+        color: #778da9;
+      }
+      #s2 .label {
+        color: #fff;
+      }
+
+      #info-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 1920px;
+        height: 80px;
+        background: rgba(0, 0, 0, 0.88);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      #info-bar span {
+        color: #fff;
+        font-size: 22px;
+        font-weight: 500;
+        letter-spacing: 2px;
+      }
+
+      #title-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        opacity: 0;
+      }
+      #title-card .category {
+        font-size: 64px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: 8px;
+        text-transform: uppercase;
+      }
+      #title-card .subtitle {
+        font-size: 24px;
+        font-weight: 400;
+        color: #778da9;
+        margin-top: 16px;
+        letter-spacing: 4px;
+      }
+
+      #outro-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #0d1b2a;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        opacity: 0;
+      }
+      #outro-card .category {
+        font-size: 48px;
+        font-weight: 700;
+        color: #778da9;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+      }
+
+      /* 3D perspective wrapper */
+      #composition {
+        perspective: 1200px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="composition"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="11"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="title-card">
+        <div class="category">3D Transitions</div>
+        <div class="subtitle">1 Transition</div>
+      </div>
+
+      <div id="scene1" class="scene">
+        <div id="s1" class="scene-inner">
+          <div class="big-text">ONE</div>
+          <div class="label">Scene A</div>
+        </div>
+      </div>
+
+      <div id="scene2" class="scene">
+        <div id="s2" class="scene-inner">
+          <div class="big-text">TWO</div>
+          <div class="label">Scene B</div>
+        </div>
+      </div>
+
+      <div id="info-bar"><span id="info-text">Transition Name</span></div>
+
+      <div id="outro-card">
+        <div class="category">End of 3D Transitions</div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        var t = 0;
+
+        function resetScenes() {
+          tl.set(
+            "#scene1",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              scaleX: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              clipPath: "none",
+              zIndex: 1,
+              skewX: 0,
+            },
+            t,
+          );
+          tl.set(
+            "#scene2",
+            {
+              opacity: 0,
+              x: 0,
+              y: 0,
+              scale: 1,
+              scaleX: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              clipPath: "none",
+              zIndex: 2,
+              skewX: 0,
+            },
+            t,
+          );
+          tl.set(
+            "#s1",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              skewX: 0,
+              clipPath: "none",
+            },
+            t,
+          );
+          tl.set(
+            "#s2",
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              rotationY: 0,
+              filter: "none",
+              skewX: 0,
+              clipPath: "none",
+            },
+            t,
+          );
+        }
+
+        /* ── Title card (3s) ── */
+        tl.set("#title-card", { opacity: 1 }, 0);
+        tl.to("#title-card", { opacity: 0, duration: 0.5 }, 2.5);
+        t = 3;
+
+        /* ── Demo 1: 3D Card Flip ── */
+        resetScenes();
+        tl.set("#info-text", { textContent: "3D Card Flip" }, t);
+        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
+        t += 1.5;
+        var T = t;
+        tl.set("#scene2", { opacity: 1 }, T);
+        tl.set("#s2", { rotationY: -180 }, T);
+        tl.to("#s1", { rotationY: 180, duration: 0.6, ease: "power2.inOut" }, T);
+        tl.to("#s2", { rotationY: 0, duration: 0.6, ease: "power2.inOut" }, T);
+        tl.set("#scene1", { opacity: 0 }, T + 0.65);
+        t = T + 1.5;
+        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
+        t += 0.5;
+
+        /* ── Outro (3s) ── */
+        tl.set("#outro-card", { opacity: 1 }, t);
+        tl.to("#outro-card", { opacity: 0, duration: 0.5 }, t + 2.5);
+
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

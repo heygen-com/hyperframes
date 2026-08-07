@@ -3,36 +3,26 @@ title: "Glass Code Block"
 description: "A translucent code block with scanned line highlights."
 ---
 
-# Glass Code Block
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-A translucent code block with scanned line highlights.
-
-`code-animation` `remocn-port`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/glass-code-block.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/glass-code-block.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/components/glass-code-block.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Glass Code Block preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add glass-code-block" />
 
-```bash Terminal
-npx hyperframes add glass-code-block
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Component |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `glass-code-block.html` | `compositions/components/glass-code-block.html` | hyperframes:snippet |
+That writes one file: `compositions/components/glass-code-block.html`.
 
 ## Usage
 
 Open `compositions/components/glass-code-block.html` and paste its contents into your composition. See the comment header in the file for timeline integration guidance.
+
+{/* hf:generated-footer */}
+
+Tagged `code-animation` `remocn-port`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

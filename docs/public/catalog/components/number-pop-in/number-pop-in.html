@@ -1,0 +1,40 @@
+<!--
+  Number Pop In - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-number-pop-in">
+  <span>5</span><span>.</span><span>7</span><small>k</small>
+</div>
+
+<style>
+  .hf-transition-number-pop-in {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-transition-number-pop-in span {
+    font-size: 76px;
+    line-height: 0.9;
+    filter: blur(var(--hf-number-blur, 0px));
+    transform: translateY(var(--hf-number-y, 0px)) scale(var(--hf-number-scale, 1));
+    will-change: transform, filter, opacity;
+  }
+  .hf-transition-number-pop-in small {
+    margin-left: 2px;
+    color: #71717a;
+    font-size: 34px;
+    font-weight: 850;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-number-pop-in span, .hf-transition-number-pop-in small', { opacity: 0, '--hf-number-y': '24px', '--hf-number-scale': 0.82, '--hf-number-blur': '8px' }, { opacity: 1, '--hf-number-y': '0px', '--hf-number-scale': 1, '--hf-number-blur': '0px', duration: 0.34, stagger: 0.055, ease: 'back.out(1.8)' }, startTime);
+-->

@@ -1,0 +1,42 @@
+---
+title: "Offset Path Traveler"
+description: "A slotted traveler follows an authored path with tangent rotation, curved entry, and curved exit."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/offset-path-traveler.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Offset Path Traveler preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add offset-path-traveler" />
+
+That writes one file: `compositions/components/offset-path-traveler.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/offset-path-traveler.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `path` | `M -90 390 C 150 490 190 70 430 185 C 650 300 720 105 850 145 C 970 180 1030 85 1090 35` | string | SVG path data authored in a 1000 by 500 route viewBox. |
+| `traveler_label` | `Live preview` | string | Text displayed inside the default traveler chip. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color used by the traveler and route. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `path` `traveler` `auto-rotate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

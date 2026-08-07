@@ -1,0 +1,45 @@
+---
+title: "Kinetic Type Swap"
+description: "A held sentence keeps its fixed text in place while one widest-word masked slot rolls through alternatives and settles on the final option."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/kinetic-type-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Kinetic Type Swap preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add kinetic-type-swap" />
+
+That writes one file: `compositions/components/kinetic-type-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/kinetic-type-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `prefix` | `Ship` | string | Fixed sentence text before the rolling word slot. |
+| `options` | `faster,smarter,together` | string | Comma-separated words shown in the rolling slot. |
+| `suffix` | `` | string | Fixed sentence text after the rolling word slot. |
+| `cues` | `` | string | Comma-separated seconds (from mount start) for each word swap. Empty keeps the authored even spread. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color used by the rolling word slot. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the sentence holds until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `text-effects` `kinetic-type` `word-swap` `reveal`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

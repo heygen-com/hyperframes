@@ -1,0 +1,42 @@
+---
+title: "Headline Slam"
+description: "A heavyweight headline scales down into frame, lands with a deterministic three-frame shake, holds with subtle drift, and whips upward on exit."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/headline-slam.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Headline Slam preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add headline-slam" />
+
+That writes one file: `compositions/components/headline-slam.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/headline-slam.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `Ship it today` | string | Text displayed as the headline. |
+| `accent_word_index` | `1` | number | Zero-based word index to color. Out of range leaves the headline unaccented. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color applied to the selected word. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `typography` `headline` `slam` `impact` `exit`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

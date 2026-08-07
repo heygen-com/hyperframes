@@ -1,0 +1,41 @@
+---
+title: "Pull to Refresh"
+description: "A mobile list pulls through nonlinear rubber-band resistance, arms at a threshold, commits to a bounded loading indicator, then snaps exactly back to rest."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/pull-to-refresh.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Pull to Refresh preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add pull-to-refresh" />
+
+That writes one file: `compositions/components/pull-to-refresh.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pull-to-refresh.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `pullDistance` | `120` | 60 to 220, step 5 | Raw pull distance before nonlinear rubber-band resistance. |
+| `spinnerStyle` | `ring` | `arrow`, `dots`, `ring` | Refresh indicator geometry and loading motion. |
+
+{/* hf:generated-footer */}
+
+Tagged `pointer` `pointers` `mobile` `gesture` `interaction` `refresh` `demonstrate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,43 @@
+---
+title: "Particle Image Reveal"
+description: "A seeded deterministic particle field converges and settles while a slotted image reveals beneath it, the trail thinning until the image holds clean."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/particle-image-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Particle Image Reveal preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add particle-image-reveal" />
+
+That writes one file: `compositions/components/particle-image-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/particle-image-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `density` | `med` | `low`, `med`, `high` | Particle count for the converging field. |
+| `direction` | `ltr` | `ltr`, `center` | ltr sweeps the reveal left to right; center opens an iris from the middle outward. |
+| `accent` | `green` | `green`, `blue`, `violet` | Particle and monogram color: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the revealed image holds until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `intros-reveals` `particles` `reveal` `canvas` `deterministic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

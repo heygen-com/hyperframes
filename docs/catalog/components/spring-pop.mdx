@@ -1,0 +1,42 @@
+---
+title: "Spring Pop"
+description: "A badge pops in from a visible near-rest scale, overshoots full size once, and settles cleanly."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/spring-pop.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Spring Pop preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add spring-pop" />
+
+That writes one file: `compositions/components/spring-pop.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/spring-pop.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `overshoot` | `1.7` | 1.1 to 2, step 0.1 | Strength passed to the back.out entrance curve. |
+| `fromScale` | `0.9` | 0.8 to 0.97, step 0.01 | Scale at the start of the entrance. |
+| `text` | `New` | string | Text displayed inside the badge. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `effects` `spring` `overshoot` `pop` `reveal`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

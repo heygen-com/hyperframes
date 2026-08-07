@@ -1,0 +1,43 @@
+---
+title: "Whip Pan Cut"
+description: "A full-frame whip pan: scene A whips off laterally with capped directional motion blur while scene B enters in the same direction at matched velocity, on a speed-ramp profile with a decelerating catch. Both scenes ride one strip, so seam velocity is exact by construction. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/whip-pan-cut.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Whip Pan Cut preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add whip-pan-cut" />
+
+That writes one file: `compositions/components/whip-pan-cut.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/whip-pan-cut.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `direction` | `left` | `left`, `right` | Shared travel direction for the outgoing and incoming scenes. |
+| `whip_at` | `0.25` | 0s to 8s, step 0.05s | Seconds after mount start when the whip begins. |
+| `accent` | `green` | `green`, `blue`, `violet` | Seam hairline and default after art tint. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure of the landed scene. Default none: it rests until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `whip-pan` `motion-blur` `velocity-match` `speed-ramp` `bridge` `slots`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

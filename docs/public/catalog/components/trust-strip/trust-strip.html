@@ -1,0 +1,226 @@
+<!doctype html>
+<!--
+  trust-strip: HyperFrames video primitive (proof & stats / trust)
+
+  A monochrome trust row: N text wordmarks set in wide-tracked uppercase mono,
+  a single centered row with wide gaps, no boxes, no borders. Marks fade in
+  with an opacity-only stagger from left to right, then the strip holds dead
+  still. Above five marks the row wraps gracefully to a second centered row
+  when width demands (reading order is preserved).
+
+  Variables:
+    - marks (string, comma list): the wordmark texts, 3 to 7 recommended.
+    - tone (muted | ink, default "muted"): mark color, var(--muted) or var(--fg).
+    - cues (string, comma seconds): per-mark reveal starts relative to mount
+      start. Empty = authored rhythm (first mark at 0.2s, 0.15s gap).
+    - accent (green | blue | violet, default "green"): a faint 10% tint mixed
+      into the mark color so the strip sits in the scene palette; the strip
+      still reads monochrome.
+    - exit (none | fade | up, default "none"): none holds to the last frame
+      (frame roots own transitions); fade dissolves; up dissolves with a rise.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN   = last reveal start + 0.5s fade
+    HOLD = max(0, D - IN - OUT), dead still
+    OUT  = 0 when exit is none, else 0.45s
+    If D is shorter than IN + OUT, both compress together (cues included).
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the literal
+  trust-strip key.
+-->
+<html
+  lang="en"
+  data-composition-id="trust-strip"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "marks", "type": "string", "role": "content", "label": "Marks", "description": "Comma-separated wordmark texts (3 to 7 recommended).", "default": "Northwind, Acme Corp, Globex, Initech, Umbra" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Mark color: quiet muted or full-contrast ink.", "default": "muted", "options": [{ "value": "muted", "label": "Muted" }, { "value": "ink", "label": "Ink" }] },
+    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated reveal starts in seconds from mount start. Empty uses the authored 0.15s stagger.", "default": "" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Faint palette tint mixed into the mark color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "End-of-clip behavior. None holds to the last frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Trust Strip</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="trust-strip" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, transparent);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            pointer-events: none;
+          }
+
+          .ts-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .ts-strip {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: center;
+            width: 86cqw;
+            max-width: 86cqw;
+            column-gap: var(--space-3, 4.8cqw);
+            row-gap: var(--space-2, 4.2cqh);
+            will-change: transform, opacity;
+          }
+
+          .ts-mark {
+            /* Monochrome by law: the tone token carries the color; the accent
+               token only tints it 10% so the strip sits in the palette. */
+            color: color-mix(in srgb, var(--ts-tone) 90%, var(--ts-accent));
+            font-size: min(1.9cqw, 6.4cqh);
+            font-weight: 400;
+            line-height: 1;
+            letter-spacing: 0.32em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            will-change: opacity;
+          }
+        </style>
+
+        <div
+          id="trust-strip-clip"
+          class="ts-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="ts-strip" role="img"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var strip = root.querySelector(".ts-strip");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var marks = String(vars.marks == null ? "" : vars.marks)
+              .split(",")
+              .map(function (mark) {
+                return mark.trim();
+              })
+              .filter(Boolean);
+            if (marks.length === 0)
+              marks = ["Northwind", "Acme Corp", "Globex", "Initech", "Umbra"];
+
+            var tone = vars.tone === "ink" ? "ink" : "muted";
+            var toneColors = {
+              muted: "var(--muted, #93939f)",
+              ink: "var(--fg, #f8fafc)",
+            };
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--ts-tone", toneColors[tone]);
+            root.style.setProperty("--ts-accent", accentColors[accent]);
+            strip.setAttribute("aria-label", marks.join(", "));
+
+            var spans = marks.map(function (mark) {
+              var span = document.createElement("span");
+              span.className = "ts-mark";
+              span.textContent = mark;
+              span.setAttribute("aria-hidden", "true");
+              strip.appendChild(span);
+              return span;
+            });
+
+            var LEAD_BASE = 0.2;
+            var GAP_BASE = 0.15;
+            var FADE_BASE = 0.5;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+
+            // Reveal starts: caller cues win; missing tail entries extend from
+            // the last known start by the authored gap.
+            var cues = String(vars.cues == null ? "" : vars.cues)
+              .split(",")
+              .map(function (cue) {
+                return parseFloat(cue);
+              })
+              .filter(function (cue) {
+                return isFinite(cue) && cue >= 0;
+              });
+            var starts = marks.map(function (mark, index) {
+              if (index < cues.length) return cues[index];
+              if (cues.length > 0)
+                return cues[cues.length - 1] + GAP_BASE * (index - cues.length + 1);
+              return LEAD_BASE + GAP_BASE * index;
+            });
+
+            var IN_BASE = Math.max.apply(null, starts) + FADE_BASE;
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var FADE = FADE_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var OUT_START = duration - OUT;
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: opacity-only stagger, left to right in reading order.
+            spans.forEach(function (span, index) {
+              tl.fromTo(
+                span,
+                { opacity: 0 },
+                { opacity: 1, duration: FADE, ease: "power2.out" },
+                starts[index] * scale,
+              );
+            });
+
+            // HOLD: dead still. Nothing is authored here on purpose.
+
+            // OUT: optional whole-strip departure; frame roots own transitions
+            // by default, so exit "none" holds to the last frame.
+            if (exit === "fade") {
+              tl.to(strip, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "up") {
+              tl.to(strip, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(strip, { y: "-1.6cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["trust-strip"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

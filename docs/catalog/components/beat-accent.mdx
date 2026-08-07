@@ -1,0 +1,42 @@
+---
+title: "Beat Accent"
+description: "A single music-hit sting: impact flash, micro scale-pulse on the subject, immediate decay."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/beat-accent.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Beat Accent preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add beat-accent" />
+
+That writes one file: `compositions/components/beat-accent.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/beat-accent.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `BOOM` | string | Word or short label emphasized by the beat hit. |
+| `flashColor` | `accent` | `accent`, `soft`, `bright` | Token-backed accent tone used by the radial flash. |
+| `intensity` | `1` | 0.5 to 2, step 0.1 | Strength of the scale pulse, flash, and shake. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `effects` `burst` `sting` `emphasize` `impact`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

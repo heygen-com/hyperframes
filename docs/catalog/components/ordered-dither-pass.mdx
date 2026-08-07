@@ -1,0 +1,44 @@
+---
+title: "Ordered Dither Pass"
+description: "Bayer-matrix ordered dithering quantizes a slotted scene (rasterized once at mount): the image emerges from pure 2-tone noise to clean, or dissolves the reverse. Stateless per frame, never error diffusion."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/ordered-dither-pass.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Ordered Dither Pass preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add ordered-dither-pass" />
+
+That writes one file: `compositions/components/ordered-dither-pass.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ordered-dither-pass.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `matrix` | `4` | `2`, `4`, `8` | Bayer matrix size: 2 is the coarsest crosshatch, 8 the smoothest ordered grain. |
+| `direction` | `in` | `in`, `out` | in resolves noise to clean; out dissolves clean to noise and holds it. |
+| `levels` | `2` | 2 to 6, step 1 | Quantization levels per color channel during the dithered phase. |
+| `accent` | `green` | `green`, `blue`, `violet` | Light tone of the 2-tone noise phase: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the final state. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `experiment` `texture` `dither` `transition` `quantize`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

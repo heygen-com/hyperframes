@@ -1,0 +1,42 @@
+---
+title: "Stagger Cascade"
+description: "A responsive grid of tile cards that fades and travels into place with an evenly spaced per-item GSAP stagger. The ordered cascade is the only visual mechanic."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/stagger-cascade.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Stagger Cascade preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add stagger-cascade" />
+
+That writes one file: `compositions/components/stagger-cascade.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/stagger-cascade.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `itemCount` | `6` | 3 to 12, step 1 | Number of tiles in the responsive grid. |
+| `stagger` | `60` | 20ms to 150ms, step 1ms | Delay between consecutive tile entrances. |
+| `direction` | `up` | `up`, `down`, `left`, `right` | Direction each tile travels into its resting position. |
+
+{/* hf:generated-footer */}
+
+Tagged `effects` `grid` `stagger` `entrance` `exhibit`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

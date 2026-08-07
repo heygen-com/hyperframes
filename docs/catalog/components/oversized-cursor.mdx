@@ -1,0 +1,44 @@
+---
+title: "Oversized Cursor"
+description: "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/oversized-cursor.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Oversized Cursor preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add oversized-cursor" />
+
+That writes one file: `compositions/components/oversized-cursor.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/oversized-cursor.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `cursor_variant` | `light` | `light`, `dark` |  |
+| `target_x` | `55` | 15% to 85%, step 1% |  |
+| `target_y` | `55` | 15% to 85%, step 1% |  |
+| `click_label` | `Generate` | string |  |
+| `exit` | `none` | `none`, `fade`, `up` | Optional whole-stage departure. Default none: the ignited target stays until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `actor` `cursor` `pointer` `interaction`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

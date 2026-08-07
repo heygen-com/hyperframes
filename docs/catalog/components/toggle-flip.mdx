@@ -1,0 +1,42 @@
+---
+title: "Toggle Flip"
+description: "An oversized UI toggle switch that flips with real physicality: thumb overshoot, track color crossfade, and a soft press-compress before release. The reference prop of the ui-props family."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/toggle-flip.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Toggle Flip preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add toggle-flip" />
+
+That writes one file: `compositions/components/toggle-flip.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/toggle-flip.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `direction` | `on` | `on`, `off` | Target end state the flip lands on. |
+| `label` | `Auto-save` | string | Optional caption under the toggle. Blank hides the line. |
+| `size` | `40` | 20% to 70%, step 1% | Toggle width as a percent of the host box width. |
+
+{/* hf:generated-footer */}
+
+Tagged `prop` `ui-props` `toggle` `interaction` `reference-prop` `demonstrate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

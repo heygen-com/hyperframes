@@ -1,0 +1,42 @@
+---
+title: "Pull Back Reveal"
+description: "A tight stat detail holds, then one decelerating camera pull-back reveals the headline and supporting cards that recontextualize it."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/pull-back-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Pull Back Reveal preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add pull-back-reveal" />
+
+That writes one file: `compositions/components/pull-back-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pull-back-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `detail_text` | `+312%` | string | Stat shown in the detail chip at the center of the reveal. |
+| `headline` | `Growth compounds` | string | Headline revealed around the focused detail. |
+| `accent` | `green` | `green`, `blue`, `violet` | Highlight color used across the composed scene. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `camera` `pull-back` `reveal` `recontextualize`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

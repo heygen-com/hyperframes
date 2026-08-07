@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tool Menu Slide In - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        transform: scale(1.65); /* ponytail: scale wrapper, not GSAP targets */
+        transform-origin: center center;
+      }
+      .hf-remocn-tool-menu-slide-in {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-tool-menu-slide-in {
+        position: relative;
+        width: 760px;
+        height: 428px;
+        overflow: hidden;
+        border-radius: 30px;
+        background: #111827;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+      }
+      .hf-remocn-tool-menu-slide-in .scene {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+        font-size: 58px;
+        letter-spacing: -0.05em;
+        color: #fff;
+      }
+      .hf-remocn-tool-menu-slide-in .from {
+        background: linear-gradient(135deg, #111827, #374151);
+        transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
+          scale(var(--hf-from-scale, 1));
+        filter: blur(var(--hf-from-blur, 0px));
+      }
+      .hf-remocn-tool-menu-slide-in .to {
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
+        clip-path: inset(
+          var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
+            var(--hf-clip-left, 0%)
+        );
+      }
+      .hf-remocn-tool-menu-slide-in .fx {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+        mix-blend-mode: screen;
+        transform: translateX(var(--hf-fx-x, -110%));
+      }
+      .hf-remocn-tool-menu-slide-in .rgb {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--hf-rgb-opacity, 0);
+        background: linear-gradient(
+          90deg,
+          rgba(239, 68, 68, 0.35),
+          transparent,
+          rgba(34, 211, 238, 0.35)
+        );
+        transform: translateX(var(--hf-rgb-x, 0px));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="tool-menu-slide-in-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-tool-menu-slide-in">
+          <div class="scene from">Before</div>
+          <div class="scene to">Tool Menu Slide In</div>
+          <div class="fx"></div>
+          <div class="rgb"></div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-tool-menu-slide-in .to",
+          { "--hf-clip-right": "100%", "--hf-to-x": "60px", "--hf-to-scale": 1.04 },
+          {
+            "--hf-clip-right": "0%",
+            "--hf-to-x": "0px",
+            "--hf-to-scale": 1,
+            duration: 0.9,
+            ease: "power3.inOut",
+          },
+          startTime,
+        );
+        tl.to(
+          ".hf-remocn-tool-menu-slide-in .from",
+          {
+            "--hf-from-x": "-70px",
+            "--hf-from-scale": 0.96,
+            "--hf-from-blur": "5px",
+            duration: 0.9,
+            ease: "power3.inOut",
+          },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-tool-menu-slide-in .fx",
+          { "--hf-fx-x": "-110%" },
+          { "--hf-fx-x": "110%", duration: 0.58, ease: "power2.inOut" },
+          startTime + 0.18,
+        );
+        tl.fromTo(
+          ".hf-remocn-tool-menu-slide-in .rgb",
+          { "--hf-rgb-opacity": 0, "--hf-rgb-x": "-16px" },
+          {
+            "--hf-rgb-opacity": 1,
+            "--hf-rgb-x": "16px",
+            repeat: 3,
+            yoyo: true,
+            duration: 0.07,
+            ease: "steps(1)",
+          },
+          startTime + 0.32,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["tool-menu-slide-in-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

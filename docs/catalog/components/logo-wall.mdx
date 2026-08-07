@@ -1,0 +1,42 @@
+---
+title: "Logo Wall"
+description: "A trusted-by wall of placeholder lettermark logos that fades and scales into place with a deterministic per-cell stagger."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/logo-wall.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Logo Wall preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add logo-wall" />
+
+That writes one file: `compositions/components/logo-wall.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/logo-wall.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `rows` | `3` | 2 to 4, step 1 | Number of logo rows in the wall. |
+| `cols` | `5` | 3 to 6, step 1 | Number of logo columns in the wall. |
+| `stagger` | `45` | 20ms to 75ms, step 1ms | Delay between consecutive logo cell entrances. |
+
+{/* hf:generated-footer */}
+
+Tagged `data` `logos` `social-proof` `stagger` `prove`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

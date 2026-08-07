@@ -1,0 +1,41 @@
+---
+title: "Grain Field"
+description: "A clearly visible accent-tinted dot field drifts over a subtle luminance gradient in an exact ambient loop."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/grain-field.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Grain Field preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add grain-field" />
+
+That writes one file: `compositions/components/grain-field.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/grain-field.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `density` | `fine` | `fine`, `coarse` | Dot size and spacing across the grain field. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used to color the dots and luminance wash. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `background` `grain` `dots` `texture` `ambient` `loopable`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -3,37 +3,15 @@ title: "Cross Warp Morph"
 description: "Shader transition with cross-warped morphing"
 ---
 
-# Cross Warp Morph
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Shader transition with cross-warped morphing
-
-`transition` `shader`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cross-warp-morph.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cross-warp-morph.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/cross-warp-morph.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Cross Warp Morph preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add cross-warp-morph" />
 
-```bash Terminal
-npx hyperframes add cross-warp-morph
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 4s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `cross-warp-morph.html` | `compositions/cross-warp-morph.html` | hyperframes:composition |
+That writes one file: `compositions/cross-warp-morph.html`.
 
 ## Usage
 
@@ -42,3 +20,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="cross-warp-morph" data-composition-src="compositions/cross-warp-morph.html" data-start="0" data-duration="4" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `shader`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,355 @@
+<!doctype html>
+<!--
+  swipe-rail: HyperFrames video primitive (interaction / gesture / demonstrate)
+
+  Concept: a contact circle leads a horizontal card rail through one swipe.
+  The rail follows the drag, carries momentum after release, then snaps the
+  next card into focus with a physical settle.
+
+  Variables:
+    - card_count (number, 3 to 5, default 4): cards rendered in the rail.
+    - accent (enum, default green): active color for focus and contact states.
+    - card_label_prefix (string, default "Feature"): label before each card number.
+
+  Envelope (fixed IN and OUT, elastic HOLD only):
+    IN_BASE  = 2.20s  rail reveal, touch, drag, release, momentum, snap
+    HOLD     = elastic = max(0, D - (IN + OUT)); selected card breathes subtly
+    OUT_BASE = 0.45s  clean stage fade and rise
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the hardcoded swipe-rail id.
+-->
+<html
+  lang="en"
+  data-composition-id="swipe-rail"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "card_count", "type": "number", "role": "content", "label": "Card count", "description": "Number of cards rendered in the rail.", "default": 4, "min": 3, "max": 5, "step": 1 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Active color used by the focused card and contact circle.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "card_label_prefix", "type": "string", "role": "content", "label": "Card label prefix", "description": "Text placed before each card number.", "default": "Feature" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Swipe Rail</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="swipe-rail" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            --sr-card-width: 46;
+            --sr-card-gap: 4;
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: #f8fafc;
+            font-family: Inter, system-ui, sans-serif;
+            pointer-events: none;
+          }
+
+          .sr-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 45%, #1e293b 0%, #0f172a 72%);
+          }
+
+          .sr-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            opacity: 0;
+          }
+
+          .sr-rail {
+            position: absolute;
+            left: 50%;
+            top: 18cqh;
+            display: flex;
+            gap: calc(var(--sr-card-gap) * 1cqw);
+            height: 64cqh;
+            will-change: transform;
+          }
+
+          .sr-card {
+            position: relative;
+            flex: 0 0 calc(var(--sr-card-width) * 1cqw);
+            height: 60cqh;
+            overflow: hidden;
+            padding: 6cqh 4cqw;
+            border: 0.16cqmin solid rgba(148, 163, 184, 0.36);
+            border-radius: 3.2cqmin;
+            background: #f8fafc;
+            color: #0f172a;
+            box-shadow: 0 3cqh 7cqh rgba(2, 6, 23, 0.34);
+            transform-origin: 50% 50%;
+            will-change: transform, border-color, box-shadow;
+          }
+
+          .sr-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 1.2cqh;
+            background: var(--sr-accent);
+            opacity: 0.38;
+          }
+
+          .sr-index {
+            display: block;
+            margin-bottom: 3.2cqh;
+            color: var(--sr-accent);
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 2.2cqw;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+          }
+
+          .sr-label {
+            display: block;
+            overflow: hidden;
+            font-size: 4.2cqw;
+            font-weight: 760;
+            line-height: 1.05;
+            letter-spacing: -0.04em;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .sr-rule {
+            display: block;
+            width: 72%;
+            height: 1.4cqh;
+            margin-top: 7cqh;
+            border-radius: 1cqh;
+            background: #cbd5e1;
+            box-shadow:
+              0 4cqh 0 #e2e8f0,
+              0 8cqh 0 #e2e8f0;
+          }
+
+          .sr-contact {
+            position: absolute;
+            left: 50%;
+            top: 57%;
+            width: 8cqw;
+            aspect-ratio: 1;
+            margin: -4cqw 0 0 -4cqw;
+            border: 0.32cqmin solid rgba(255, 255, 255, 0.88);
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--sr-accent) 44%, transparent);
+            box-shadow:
+              0 0 0 1.2cqmin color-mix(in srgb, var(--sr-accent) 16%, transparent),
+              0 1.8cqh 4cqh rgba(2, 6, 23, 0.34);
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div class="sr-clip clip" data-start="0" data-duration="4" data-track-index="0">
+          <div class="sr-stage">
+            <div class="sr-rail" role="list" aria-label="Feature cards"></div>
+            <div class="sr-contact" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".sr-stage");
+            var rail = root.querySelector(".sr-rail");
+            var contact = root.querySelector(".sr-contact");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var countValue = Number(vars.card_count);
+            var cardCount = Number.isFinite(countValue)
+              ? Math.max(3, Math.min(5, Math.round(countValue)))
+              : 4;
+            var prefix =
+              vars.card_label_prefix == null ? "Feature" : String(vars.card_label_prefix);
+            var accentName =
+              vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
+            var accentColors = {
+              green: "#22c55e",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            root.style.setProperty("--sr-accent", accentColors[accentName]);
+
+            for (var index = 0; index < cardCount; index += 1) {
+              var card = document.createElement("article");
+              card.className = "sr-card";
+              card.setAttribute("role", "listitem");
+
+              var indexEl = document.createElement("span");
+              indexEl.className = "sr-index";
+              indexEl.textContent = String(index + 1).padStart(2, "0");
+
+              var label = document.createElement("span");
+              label.className = "sr-label";
+              label.textContent = prefix + " " + String(index + 1);
+
+              var rule = document.createElement("span");
+              rule.className = "sr-rule";
+              rule.setAttribute("aria-hidden", "true");
+
+              card.append(indexEl, label, rule);
+              rail.appendChild(card);
+            }
+
+            var cards = rail.querySelectorAll(".sr-card");
+            var centerIndex = Math.floor((cardCount - 1) / 2);
+            var targetIndex = centerIndex + 1;
+            var currentCard = cards[centerIndex];
+            var targetCard = cards[targetIndex];
+
+            var rootStyle = getComputedStyle(root);
+            var cardWidth = parseFloat(rootStyle.getPropertyValue("--sr-card-width"));
+            var cardGap = parseFloat(rootStyle.getPropertyValue("--sr-card-gap"));
+            var cardStep = cardWidth + cardGap;
+            var initialX = -(centerIndex * cardStep + cardWidth / 2);
+            var targetX = initialX - cardStep;
+
+            // Fixed gesture and exit phases compress together only for short mounts.
+            var IN_BASE = 2.2;
+            var OUT_BASE = 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var baseTotal = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < baseTotal ? duration / baseTotal : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+            var gestureScale = IN / IN_BASE;
+
+            gsap.set(stage, { opacity: 0, y: "1.5cqh" });
+            gsap.set(rail, { x: initialX + "cqw" });
+            gsap.set(cards, { scale: 0.94, opacity: 0.74 });
+            gsap.set(currentCard, {
+              scale: 1.02,
+              opacity: 1,
+              borderColor: accentColors[accentName],
+            });
+            gsap.set(contact, { x: "0cqw", y: "0cqh", scale: 0.86, opacity: 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(
+              stage,
+              { opacity: 1, y: "0cqh", duration: 0.32 * gestureScale, ease: "power2.out" },
+              0,
+            );
+            tl.to(
+              contact,
+              { opacity: 1, scale: 1, duration: 0.18 * gestureScale, ease: "power2.out" },
+              0.4 * gestureScale,
+            );
+
+            // Fast initial drag decays under friction while the contact leads the rail.
+            tl.to(
+              contact,
+              { x: "-28cqw", duration: 0.62 * gestureScale, ease: "power3.out" },
+              0.66 * gestureScale,
+            );
+            tl.to(
+              rail,
+              { x: initialX - 23 + "cqw", duration: 0.62 * gestureScale, ease: "power3.out" },
+              0.66 * gestureScale,
+            );
+
+            var releaseAt = 1.28 * gestureScale;
+            tl.to(
+              contact,
+              {
+                y: "-5cqh",
+                scale: 0.82,
+                opacity: 0,
+                duration: 0.24 * gestureScale,
+                ease: "power2.out",
+              },
+              releaseAt,
+            );
+            tl.to(
+              rail,
+              {
+                x: initialX - 38 + "cqw",
+                duration: 0.28 * gestureScale,
+                ease: "power2.out",
+              },
+              releaseAt,
+            );
+
+            // The momentum handoff resolves into one exact card-width snap.
+            tl.to(
+              rail,
+              { x: targetX + "cqw", duration: 0.64 * gestureScale, ease: "back.out(1.7)" },
+              1.56 * gestureScale,
+            );
+            tl.to(
+              currentCard,
+              {
+                scale: 0.94,
+                opacity: 0.74,
+                borderColor: "rgba(148, 163, 184, 0.36)",
+                duration: 0.48 * gestureScale,
+                ease: "power2.out",
+              },
+              1.5 * gestureScale,
+            );
+            tl.to(
+              targetCard,
+              {
+                scale: 1.02,
+                opacity: 1,
+                borderColor: accentColors[accentName],
+                boxShadow: "0 3cqh 9cqh rgba(2, 6, 23, 0.42)",
+                duration: 0.64 * gestureScale,
+                ease: "back.out(1.7)",
+              },
+              1.56 * gestureScale,
+            );
+
+            if (HOLD > 0.4) {
+              var driftHalf = Math.min(0.55, HOLD / 2);
+              var driftRepeat = Math.max(0, Math.floor(HOLD / driftHalf) - 1);
+              tl.to(
+                targetCard,
+                {
+                  y: "-0.7cqh",
+                  duration: driftHalf,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: driftRepeat,
+                },
+                IN,
+              );
+            }
+
+            tl.to(stage, { opacity: 0, y: "-1.5cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["swipe-rail"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

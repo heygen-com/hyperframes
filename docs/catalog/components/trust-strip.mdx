@@ -1,0 +1,44 @@
+---
+title: "Trust Strip"
+description: "A monochrome trust row of wide-tracked mono wordmarks that fade in with an opacity-only left-to-right stagger, then hold dead still."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/trust-strip.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Trust Strip preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add trust-strip" />
+
+That writes one file: `compositions/components/trust-strip.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/trust-strip.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `marks` | `Northwind, Acme Corp, Globex, Initech, Umbra` | string | Comma-separated wordmark texts (3 to 7 recommended). |
+| `tone` | `muted` | `muted`, `ink` | Mark color: quiet muted or full-contrast ink. |
+| `cues` | `` | string | Comma-separated reveal starts in seconds from mount start. Empty uses the authored 0.15s stagger. |
+| `accent` | `green` | `green`, `blue`, `violet` | Faint palette tint mixed into the mark color. |
+| `exit` | `none` | `none`, `fade`, `up` | End-of-clip behavior. None holds to the last frame. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `proof` `trust` `logo-strip` `wordmarks`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,45 @@
+---
+title: "Line Swap"
+description: "A masked full-line beat replacement: line A holds center then exits up through an overflow-hidden mask as line B enters bottom-up on the same beat, with an optional accent underline drawing beneath one word of line B."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/line-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Line Swap preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add line-swap" />
+
+That writes one file: `compositions/components/line-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/line-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `line_a` | `Everyone promised you AI.` | string | First line; holds center inside the mask, then exits up on the swap beat. |
+| `line_b` | `Almost nobody promised you control.` | string | Replacement line; enters bottom-up on the swap beat and holds. |
+| `swap_at` | `1.5` | number | Second (from mount start) of the beat replacement. Clamped so the swap and underline complete before any exit. |
+| `underline_word` | `control` | string | First case-insensitive substring match in line B gets the accent underline after landing. Empty disables it. |
+| `accent` | `green` | `green`, `blue`, `violet` | Underline color from the contract token map. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the landed line holds until the frame cuts. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `text-effects` `swap` `beat` `deterministic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

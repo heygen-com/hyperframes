@@ -1,0 +1,44 @@
+---
+title: "Halftone Dissolve"
+description: "Scene A dissolves into scene B through a growing halftone dot field: accent ink dots pop onto a fixed grid smallest-first, each opens into a window onto B, until the windows merge and B fully replaces A."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/halftone-dissolve.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Halftone Dissolve preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add halftone-dissolve" />
+
+That writes one file: `compositions/components/halftone-dissolve.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/halftone-dissolve.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `dot_size` | `medium` | `small`, `medium`, `large` | Grid pitch for the halftone field. |
+| `direction` | `ltr` | `ltr`, `center`, `noise` | Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters. |
+| `dissolve_at` | `1.1` | 0.2s to 10s, step 0.1s | Seconds from mount start when the dissolve begins. |
+| `accent` | `green` | `green`, `blue`, `violet` | Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds scene B. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `transition` `texture` `halftone` `dissolve`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

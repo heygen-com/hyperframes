@@ -1,0 +1,45 @@
+---
+title: "Notification Stack"
+description: "1 to 5 token notification cards slide-settle into a vertical stack on cues, newest on top; one card grows slightly and brightens as the focus while the rest dim by position."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/notification-stack.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Notification Stack preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add notification-stack" />
+
+That writes one file: `compositions/components/notification-stack.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/notification-stack.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `titles` | `Build queued,Checks passed,Deploy live` | string | Comma-separated card titles (1 to 5 cards). |
+| `bodies` | `Pipeline started for main,All 42 checks green,Now serving version 2.4` | string | Comma-separated body lines matched to titles by index. Blank entries hide that body line. |
+| `expand` | `-1` | -1 to 4, step 1 | Index of the focus card in the titles list. -1 focuses the newest card (top of the stack). |
+| `cues` | `` | string | Comma-separated per-card arrival times in seconds. Blank entries use the default rhythm. |
+| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the icon dots. |
+| `exit` | `none` | `none`, `fade`, `up` | How the stack leaves the frame. Default none: the hold ends the film. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `notification` `stack` `stagger`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

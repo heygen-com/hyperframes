@@ -1,0 +1,41 @@
+---
+title: "Multiplayer Cursors"
+description: "Labeled collaborator cursors with token-derived colors and soft glows drift from spread positions into a shared center zone, proving live multiplayer presence."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/multiplayer-cursors.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Multiplayer Cursors preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add multiplayer-cursors" />
+
+That writes one file: `compositions/components/multiplayer-cursors.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/multiplayer-cursors.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `cursorCount` | `4` | 2 to 6, step 1 | Number of labeled collaborator cursors. |
+| `labels` | `Ana,Ken,Wen,Mia` | string | Comma-separated cursor names, in order. |
+
+{/* hf:generated-footer */}
+
+Tagged `cursor` `pointer` `multiplayer` `collaboration` `presence` `loop` `prove`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

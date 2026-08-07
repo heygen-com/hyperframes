@@ -1,0 +1,42 @@
+---
+title: "ASCII Trail Reveal"
+description: "An authored S-curve sweeps through a deterministic ASCII grid, flipping cells away to reveal a labeled panel."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/ascii-trail-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="ASCII Trail Reveal preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add ascii-trail-reveal" />
+
+That writes one file: `compositions/components/ascii-trail-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ascii-trail-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label` | `The reveal` | string | Text shown on the revealed panel. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color used by the trail and revealed panel. |
+| `trail_width` | `narrow` | `narrow`, `wide` | Width of the cell reveal tail around the authored path. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `intro` `reveal` `ascii` `trail` `grid`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

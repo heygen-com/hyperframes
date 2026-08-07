@@ -3,37 +3,15 @@ title: "Blur Transitions"
 description: "Showcase of blur-based transitions between scenes"
 ---
 
-# Blur Transitions
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Showcase of blur-based transitions between scenes
-
-`transition` `showcase`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-blur.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-blur.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/transitions-blur.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Blur Transitions preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add transitions-blur" />
 
-```bash Terminal
-npx hyperframes add transitions-blur
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 20s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `transitions-blur.html` | `compositions/transitions-blur.html` | hyperframes:composition |
+That writes one file: `compositions/transitions-blur.html`.
 
 ## Usage
 
@@ -42,3 +20,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="transitions-blur" data-composition-src="compositions/transitions-blur.html" data-start="0" data-duration="20" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `showcase`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

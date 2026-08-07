@@ -1,0 +1,43 @@
+---
+title: "Morph Swap"
+description: "Two slotted siblings stacked at one shared center: A holds, then condenses or reshapes into B on a shared 50% 50% transform origin. Condense shrink-fades A exactly as B scales up; reshape morphs the silhouette on scaleX/scaleY, never width or height tweens. Token card defaults render when a slot is left empty."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/morph-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Morph Swap preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add morph-swap" />
+
+That writes one file: `compositions/components/morph-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/morph-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `swap_at` | `1.4` | 0.1s to 8s, step 0.05s | Seconds after mount start when the morph begins. |
+| `register` | `condense` | `condense`, `reshape` | Morph mechanic: condense shrink-fades A into B at center; reshape morphs the silhouette on scaleX/scaleY. |
+| `accent` | `green` | `green`, `blue`, `violet` | Incoming card accent color. |
+| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final frame. |
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `morph` `swap` `condense` `reshape` `holdable` `slots`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

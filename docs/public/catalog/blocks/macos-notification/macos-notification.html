@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+        font-family: "Inter", sans-serif;
+      }
+
+      [data-composition-id="macos-notification"] .notification-card {
+        position: absolute;
+        top: 24px;
+        right: 24px;
+        width: 380px;
+        background: rgba(30, 30, 30, 0.82);
+        backdrop-filter: blur(40px);
+        -webkit-backdrop-filter: blur(40px);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow:
+          0 8px 32px rgba(0, 0, 0, 0.4),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      [data-composition-id="macos-notification"] .app-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        flex-shrink: 0;
+        overflow: hidden;
+      }
+
+      [data-composition-id="macos-notification"] .app-icon svg {
+        width: 36px;
+        height: 36px;
+        display: block;
+      }
+
+      [data-composition-id="macos-notification"] .notification-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      [data-composition-id="macos-notification"] .notification-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2px;
+      }
+
+      [data-composition-id="macos-notification"] .app-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      [data-composition-id="macos-notification"] .time-label {
+        font-size: 13px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.35);
+      }
+
+      [data-composition-id="macos-notification"] .notification-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+        line-height: 1.3;
+        margin-bottom: 2px;
+      }
+
+      [data-composition-id="macos-notification"] .notification-body {
+        font-size: 13px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.6);
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="macos-notification"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="5"
+    >
+      <div
+        id="notification"
+        class="clip notification-card"
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+      >
+        <div class="app-icon">
+          <svg viewBox="0 0 36 36" fill="none">
+            <defs>
+              <linearGradient
+                id="icon-grad"
+                x1="0"
+                y1="0"
+                x2="36"
+                y2="36"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0%" stop-color="#6366f1" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+              </linearGradient>
+            </defs>
+            <rect width="36" height="36" rx="8" fill="url(#icon-grad)" />
+            <text
+              x="18"
+              y="23"
+              text-anchor="middle"
+              font-family="Inter, sans-serif"
+              font-size="14"
+              font-weight="700"
+              fill="#fff"
+            >
+              HF
+            </text>
+          </svg>
+        </div>
+        <div class="notification-content">
+          <div class="notification-header">
+            <span class="app-name">HyperFrames</span>
+            <span class="time-label">now</span>
+          </div>
+          <div class="notification-title">Prompt to replace this title</div>
+          <div class="notification-body">
+            Prompt to change this body text, the app icon, and the app name to match your content.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      var tl = gsap.timeline({ paused: true });
+      var notification = document.getElementById("notification");
+
+      // Start off-screen to the right
+      gsap.set(notification, { x: 420, opacity: 0 });
+
+      // Slide in from right
+      tl.to(
+        notification,
+        {
+          x: 0,
+          opacity: 1,
+          duration: 0.5,
+          ease: "power3.out",
+        },
+        0.2,
+      );
+
+      // Slide out to right
+      tl.to(
+        notification,
+        {
+          x: 420,
+          opacity: 0,
+          duration: 0.3,
+          ease: "power3.in",
+        },
+        4.2,
+      );
+
+      window.__timelines["macos-notification"] = tl;
+    </script>
+  </body>
+</html>

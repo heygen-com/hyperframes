@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Matrix Decode - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: scale on wrapper (not a GSAP target), zooms content ~3× for thumbnail legibility */
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        gap: 32px;
+        padding: 72px 96px;
+        background: #18181b;
+        border-radius: 20px;
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.22);
+        transform: scale(3.2);
+        transform-origin: center center;
+      }
+      .demo-label {
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .hf-remocn-matrix-decode {
+        display: inline-flex;
+        gap: 4px;
+        font:
+          700 52px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        color: #4ade80;
+        text-shadow: 0 0 24px rgba(74, 222, 128, 0.45);
+      }
+      .hf-remocn-matrix-decode span {
+        display: inline-block;
+        min-width: 0.64em;
+        opacity: var(--hf-matrix-opacity, 1);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="matrix-decode-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="demo-label">Matrix Decode</div>
+        <div class="hf-remocn-matrix-decode" data-final="HYPERFRAMES">
+          <span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-matrix-decode span",
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["matrix-decode-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

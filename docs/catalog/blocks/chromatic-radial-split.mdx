@@ -3,37 +3,15 @@ title: "Chromatic Radial Split"
 description: "Shader transition with chromatic aberration radial split"
 ---
 
-# Chromatic Radial Split
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Shader transition with chromatic aberration radial split
-
-`transition` `shader`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chromatic-radial-split.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chromatic-radial-split.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/chromatic-radial-split.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Chromatic Radial Split preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add chromatic-radial-split" />
 
-```bash Terminal
-npx hyperframes add chromatic-radial-split
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 4s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `chromatic-radial-split.html` | `compositions/chromatic-radial-split.html` | hyperframes:composition |
+That writes one file: `compositions/chromatic-radial-split.html`.
 
 ## Usage
 
@@ -42,3 +20,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="chromatic-radial-split" data-composition-src="compositions/chromatic-radial-split.html" data-start="0" data-duration="4" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `transition` `shader`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

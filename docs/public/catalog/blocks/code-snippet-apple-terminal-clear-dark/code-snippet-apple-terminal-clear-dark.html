@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Apple Terminal Clear Dark</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #1a1a1a;
+        font-family: "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+      }
+
+      #scene {
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1a1a1a 0%, #111111 100%);
+      }
+
+      .terminal-window {
+        width: 1400px;
+        height: 700px;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow:
+          0 30px 80px rgba(0, 0, 0, 0.7),
+          0 10px 30px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .titlebar {
+        height: 38px;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        flex-shrink: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        position: relative;
+      }
+
+      .traffic-lights {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .traffic-lights span {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+
+      .traffic-lights .close {
+        background: #ff5f57;
+        border: 1px solid #e0443e;
+      }
+
+      .traffic-lights .minimize {
+        background: #ffbd2e;
+        border: 1px solid #dfa123;
+      }
+
+      .traffic-lights .fullscreen {
+        background: #28c840;
+        border: 1px solid #1aab29;
+      }
+
+      .window-title {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 13px;
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        font-weight: 500;
+        letter-spacing: -0.1px;
+      }
+
+      .terminal-canvas {
+        flex: 1;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 18px 20px;
+        overflow: hidden;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #ffffff;
+      }
+
+      .output-lines {
+        margin-bottom: 4px;
+      }
+
+      .output-line {
+        display: block;
+        white-space: pre;
+        opacity: 0;
+        color: #ffffff;
+      }
+
+      .output-line.bold {
+        font-weight: bold;
+        color: #ffffff;
+      }
+
+      .output-line.dim {
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      .input-line {
+        display: flex;
+        align-items: center;
+        white-space: pre;
+      }
+
+      .prompt {
+        color: #888888;
+        font-weight: bold;
+        user-select: none;
+      }
+
+      .typed-command {
+        color: #ffffff;
+      }
+
+      .cursor-block {
+        display: inline-block;
+        width: 9px;
+        height: 16px;
+        background: #888888;
+        vertical-align: text-bottom;
+        margin-left: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="scene"
+      data-composition-id="code-snippet-apple-terminal-clear-dark"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="terminal-window">
+        <div class="titlebar">
+          <div class="traffic-lights">
+            <span class="close"></span>
+            <span class="minimize"></span>
+            <span class="fullscreen"></span>
+          </div>
+          <span class="window-title">bash — 80×24</span>
+        </div>
+        <div class="terminal-canvas">
+          <div class="output-lines">
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys002</span>
+            <span class="output-line">Scanning dependencies...</span>
+            <span class="output-line">Found 3 vulnerabilities (1 moderate, 2 low)</span>
+            <span class="output-line dim"> package: lodash@4.17.20</span>
+            <span class="output-line dim"> severity: moderate</span>
+            <span class="output-line dim"> fix: lodash@4.17.21</span>
+            <span class="output-line dim"> package: minimist@1.2.5</span>
+            <span class="output-line dim"> severity: low</span>
+            <span class="output-line dim"> fix: minimist@1.2.6</span>
+            <span class="output-line bold">Run `npm audit fix` to fix them.</span>
+          </div>
+          <div class="input-line">
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const command = "npm audit";
+      const typedEl = document.querySelector(".typed-command");
+      const cursorEl = document.querySelector(".cursor-block");
+      const outputLines = document.querySelectorAll(".output-line");
+
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(typedEl, { text: "" }, 0);
+
+      const charDuration = 1.5 / command.length;
+      command.split("").forEach((char, i) => {
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
+      });
+
+      tl.set(cursorEl, { opacity: 0 }, 2.2);
+      tl.set(outputLines[0], { opacity: 1 }, 2.3);
+
+      tl.add(() => {
+        typedEl.textContent = "";
+      }, 2.5);
+
+      outputLines.forEach((line, i) => {
+        if (i === 0) return;
+        tl.set(line, { opacity: 1 }, 2.8 + i * 0.1);
+      });
+
+      tl.add(() => {
+        const inputLine = document.querySelector(".input-line");
+        const newPrompt = document.createElement("div");
+        newPrompt.className = "input-line";
+        newPrompt.innerHTML =
+          '<span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block" id="final-cursor"></span>';
+        inputLine.style.display = "none";
+        inputLine.parentNode.appendChild(newPrompt);
+      }, 4.2);
+
+      const blinkTimes = [4.4, 4.8, 5.2, 5.6, 6.0, 6.4];
+      blinkTimes.forEach((t, i) => {
+        tl.add(() => {
+          const fc = document.getElementById("final-cursor");
+          if (fc) fc.style.opacity = i % 2 === 0 ? "0" : "1";
+        }, t);
+      });
+      tl.add(() => {
+        const fc = document.getElementById("final-cursor");
+        if (fc) fc.style.opacity = "1";
+      }, 6.8);
+
+      window.__timelines["code-snippet-apple-terminal-clear-dark"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+---
+title: "Soft Blob Touch"
+description: "A granular soft blob idles with slow internal drift; a scripted touch dot decel-arrives, the blob deforms toward it with an attraction bulge, then recovers with a velocity-preserving spring. No hard edges anywhere."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/soft-blob-touch.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Soft Blob Touch preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add soft-blob-touch" />
+
+That writes one file: `compositions/components/soft-blob-touch.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/soft-blob-touch.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `touch_x` | `66` | 8% to 92%, step 1% | Touch point, percent of host width. |
+| `touch_y` | `38` | 8% to 92%, step 1% | Touch point, percent of host height. |
+| `touch_at` | `1.6` | 0.9s to 10s, step 0.1s | Seconds from mount start when the dot makes contact. |
+| `grain` | `fine` | `fine`, `coarse` | Speck register for the granular body. |
+| `accent` | `green` | `green`, `blue`, `violet` | Body tint: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the settled blob. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `product-demo` `material` `blob` `touch` `grain`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

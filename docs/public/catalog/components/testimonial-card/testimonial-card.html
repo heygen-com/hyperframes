@@ -1,0 +1,325 @@
+<!doctype html>
+<!--
+  testimonial-card: HyperFrames video primitive (ui-props / holdable / prove)
+
+  Concept: a token-themed testimonial card proves a claim in one clean reveal.
+  The rating and quote rise into reading position first, then the avatar,
+  author name, and handle settle beneath with a small stagger.
+
+  Compiled-from evidence: fixture social-proof shelf, GAP evidence from the
+  A1+A2 convergent miss. Both consumer simulations needed a testimonial proof
+  beat, and the fixture freezes reading-pace discipline as its governing law.
+
+  Use when: a scene needs customer testimony to substantiate a product claim
+  without recreating a platform-specific social post.
+
+  Variables:
+    - quote (string, default "This changed how we ship."): testimonial copy.
+    - author (string, default "Ken Tanaka"): attributed customer name.
+    - handle (string, default "@ken"): role or social handle beneath the name.
+    - rating (number, 0 to 5, default 5): visible star rating.
+
+  Envelope (holdable):
+    IN   1.50s fixed quote reveal followed by attribution settle.
+    HOLD elastic and deliberately still for reading.
+    OUT  0.45s fixed release fade.
+    If D is shorter than 1.95s, IN and OUT scale together. The timeline is
+    never time-scaled, and HOLD remains the only elastic phase.
+
+  Sync points:
+    - quote-readable at 0.82s into IN.
+    - attribution-settled at 1.50s, the end of IN.
+    Both offsets compress only with short durations and never enter HOLD.
+
+  Sound cues: none. The proof beat has no discrete impact event.
+
+  Mount contract: this file is a template-wrapped sub-composition. The host
+  owns dimensions. #root fills that box with inset:0 and container-type:size,
+  carries no data-width or data-height, and registers one paused GSAP timeline
+  under the hardcoded composition id "testimonial-card".
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "quote", "type": "string", "role": "content", "label": "Quote", "description": "Customer testimonial copy revealed at reading pace.", "default": "This changed how we ship." },
+    { "id": "author", "type": "string", "role": "content", "label": "Author", "description": "Name attributed to the testimonial.", "default": "Ken Tanaka" },
+    { "id": "handle", "type": "string", "role": "content", "label": "Handle", "description": "Role or social handle shown beneath the author name.", "default": "@ken" },
+    { "id": "rating", "type": "number", "role": "content", "label": "Rating", "description": "Visible customer rating from zero to five stars.", "default": 5, "min": 0, "max": 5, "step": 0.1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Testimonial Card</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="testimonial-card" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: var(--font-body);
+          }
+
+          .tc-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            padding: 6cqh 6cqw;
+          }
+
+          /* EDIT ZONE: card proportions and type scale. Paint is owned only
+             by theme-contract tokens, and every measurement resolves from
+             the host container. GSAP owns all transforms and opacity. */
+          .tc-card {
+            width: min(86cqw, 128cqh);
+            display: grid;
+            gap: min(4.6cqw, 4.6cqh);
+            padding: min(6.5cqw, 6.5cqh);
+            overflow: hidden;
+            border: 0.16cqh solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: 0 3cqh 8cqh color-mix(in srgb, var(--bg) 68%, transparent);
+          }
+
+          .tc-proof {
+            display: grid;
+            gap: min(3.2cqw, 3.2cqh);
+            will-change: transform, opacity;
+          }
+
+          .tc-rating {
+            display: flex;
+            align-items: center;
+            gap: min(2cqw, 2cqh);
+            width: max-content;
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: min(2.4cqw, 2.4cqh);
+            font-weight: 650;
+            line-height: 1;
+          }
+
+          .tc-stars {
+            position: relative;
+            display: inline-block;
+            color: var(--muted);
+            font-size: min(3.4cqw, 3.4cqh);
+            letter-spacing: 0.18em;
+            line-height: 1;
+            white-space: nowrap;
+          }
+
+          .tc-stars-fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: var(--tc-rating-fill);
+            overflow: hidden;
+            color: color-mix(in srgb, var(--brand) 40%, var(--bg));
+            white-space: nowrap;
+          }
+
+          .tc-quote {
+            margin: 0;
+            color: var(--fg);
+            font-family: var(--font-display);
+            font-size: min(5.2cqw, 5.2cqh);
+            font-weight: 650;
+            line-height: 1.23;
+            letter-spacing: -0.025em;
+            text-wrap: balance;
+          }
+
+          .tc-attribution {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            grid-template-rows: auto auto;
+            column-gap: min(2.7cqw, 2.7cqh);
+            row-gap: min(0.65cqw, 0.65cqh);
+            align-items: center;
+          }
+
+          .tc-avatar {
+            grid-row: 1 / 3;
+            display: grid;
+            place-items: center;
+            width: min(8.4cqw, 8.4cqh);
+            aspect-ratio: 1;
+            border: 0.16cqh solid color-mix(in srgb, var(--fg) 20%, transparent);
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--brand), var(--accent));
+            color: var(--bg);
+            font-family: var(--font-display);
+            font-size: min(2.65cqw, 2.65cqh);
+            font-weight: 780;
+            letter-spacing: 0.03em;
+          }
+
+          .tc-author {
+            min-width: 0;
+            align-self: end;
+            color: var(--fg);
+            font-family: var(--font-display);
+            font-size: min(3.2cqw, 3.2cqh);
+            font-weight: 700;
+            line-height: 1.08;
+          }
+
+          .tc-handle {
+            min-width: 0;
+            align-self: start;
+            color: var(--muted);
+            font-size: min(2.35cqw, 2.35cqh);
+            line-height: 1.15;
+          }
+
+          .tc-attribution-item {
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="testimonial-card-clip"
+          class="tc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <article class="tc-card" aria-label="Customer testimonial">
+            <div class="tc-proof">
+              <div class="tc-rating" role="img" aria-label="5 out of 5 stars">
+                <span class="tc-stars" aria-hidden="true">
+                  ★★★★★
+                  <span class="tc-stars-fill">★★★★★</span>
+                </span>
+                <span class="tc-rating-value" aria-hidden="true">5 / 5</span>
+              </div>
+              <blockquote class="tc-quote"></blockquote>
+            </div>
+
+            <footer class="tc-attribution">
+              <div class="tc-avatar tc-attribution-item" aria-hidden="true"></div>
+              <div class="tc-author tc-attribution-item"></div>
+              <div class="tc-handle tc-attribution-item"></div>
+            </footer>
+          </article>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var compositionId = "testimonial-card";
+            var card = root.querySelector(".tc-card");
+            var proof = root.querySelector(".tc-proof");
+            var quoteEl = root.querySelector(".tc-quote");
+            var avatarEl = root.querySelector(".tc-avatar");
+            var authorEl = root.querySelector(".tc-author");
+            var handleEl = root.querySelector(".tc-handle");
+            var ratingEl = root.querySelector(".tc-rating");
+            var ratingValueEl = root.querySelector(".tc-rating-value");
+            var attributionItems = root.querySelectorAll(".tc-attribution-item");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            /* INVARIANT: getVariables() is the sole owner of content. Missing
+               values use the declared defaults, while intentional empty
+               strings remain empty. Rating zero is valid and cannot fall
+               through to the default. */
+            var quoteText = vars.quote == null ? "This changed how we ship." : String(vars.quote);
+            var authorText = vars.author == null ? "Ken Tanaka" : String(vars.author);
+            var handleText = vars.handle == null ? "@ken" : String(vars.handle);
+            var rawRating = Number(vars.rating);
+            var rating = Number.isFinite(rawRating) ? Math.max(0, Math.min(5, rawRating)) : 5;
+            var ratingText = Number.isInteger(rating) ? String(rating) : rating.toFixed(1);
+            var initials = authorText
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map(function (part) {
+                return part.charAt(0);
+              })
+              .join("")
+              .toUpperCase();
+
+            quoteEl.textContent = quoteText;
+            authorEl.textContent = authorText;
+            handleEl.textContent = handleText;
+            avatarEl.textContent = initials === "" ? "?" : initials;
+            ratingEl.style.setProperty("--tc-rating-fill", rating * 20 + "%");
+            ratingEl.setAttribute("aria-label", ratingText + " out of 5 stars");
+            ratingValueEl.textContent = ratingText + " / 5";
+
+            /* RETIME RANGE: these constants own the complete lifecycle. The
+               reveal uses --ease-standard's GSAP form, power2.out, with the
+               quote first and three attribution items staggered beneath. */
+            var IN_BASE = 1.5;
+            var OUT_BASE = 0.45;
+            var QUOTE_START_BASE = 0.12;
+            var QUOTE_DURATION_BASE = 0.7;
+            var ATTRIBUTION_START_BASE = 0.82;
+            var ATTRIBUTION_DURATION_BASE = 0.56;
+            var ATTRIBUTION_STAGGER_BASE = 0.06;
+            var durationValue = Number(root.dataset.duration);
+            var duration = Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 4;
+            var scale = duration < IN_BASE + OUT_BASE ? duration / (IN_BASE + OUT_BASE) : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              proof,
+              { y: "18%", opacity: 0 },
+              {
+                y: "0%",
+                opacity: 1,
+                duration: QUOTE_DURATION_BASE * scale,
+                ease: "power2.out",
+              },
+              QUOTE_START_BASE * scale,
+            );
+            tl.fromTo(
+              attributionItems,
+              { y: "34%", opacity: 0 },
+              {
+                y: "0%",
+                opacity: 1,
+                duration: ATTRIBUTION_DURATION_BASE * scale,
+                stagger: ATTRIBUTION_STAGGER_BASE * scale,
+                ease: "power2.out",
+              },
+              ATTRIBUTION_START_BASE * scale,
+            );
+            tl.to(card, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

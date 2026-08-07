@@ -1,0 +1,1523 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Blue Sweater Intro Video</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --bg: #f7f1ef;
+        --ink: #11110f;
+        --muted: #807d76;
+        --line: #dcd8cf;
+        --panel: #fbfaf6;
+        --claude: #c85f45;
+        --orange: #c86532;
+        --blue: #1486b8;
+        --panel-shadow: rgba(36, 31, 24, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Helvetica Neue", Arial, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        isolation: isolate;
+      }
+
+      .clip,
+      .base {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .clip {
+        opacity: 0;
+      }
+
+      .base {
+        background: var(--bg);
+        opacity: 1;
+      }
+
+      #burst {
+        z-index: 6;
+      }
+
+      #brand {
+        z-index: 5;
+      }
+
+      .scene-content {
+        position: relative;
+        display: flex;
+        width: 100%;
+        height: 100%;
+        padding: 126px 160px 128px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .warm-block {
+        width: 720px;
+        height: 154px;
+        background: var(--orange);
+        border-radius: 6px;
+        clip-path: polygon(2% 4%, 98% 0, 100% 88%, 96% 98%, 4% 94%, 0 12%);
+      }
+
+      .title {
+        color: var(--ink);
+        font-size: 100px;
+        font-weight: 620;
+        line-height: 0.92;
+        letter-spacing: -0.055em;
+        white-space: nowrap;
+      }
+
+      .wordmark {
+        position: absolute;
+        left: 50%;
+        top: 50.5%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        align-items: baseline;
+        gap: 19px;
+        color: var(--ink);
+        font-size: 88px;
+        font-weight: 620;
+        line-height: 0.9;
+        letter-spacing: -0.058em;
+        white-space: nowrap;
+      }
+
+      .brand-algrow {
+        font-weight: 650;
+      }
+
+      .brand-claude {
+        font-weight: 540;
+      }
+
+      .wordmark .brand-x {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 0.84em;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+      }
+
+      .cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        z-index: 20;
+        width: 98px;
+        height: 120px;
+        opacity: 0;
+        filter: drop-shadow(0 10px 22px rgba(20, 134, 184, 0.24));
+        transform-origin: 13px 6px;
+      }
+
+      .cursor svg,
+      .claude-star svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .claude-star {
+        position: absolute;
+        color: var(--claude);
+      }
+
+      .star-center {
+        left: 960px;
+        top: 530px;
+        width: 150px;
+        height: 150px;
+        transform: translate(-50%, -50%);
+      }
+
+      .star-brand {
+        left: 1084px;
+        top: 482px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .star-panel {
+        left: 398px;
+        top: 272px;
+        width: 42px;
+        height: 42px;
+      }
+
+      .burst-block {
+        position: absolute;
+        background: var(--orange);
+        border-radius: 9px;
+        clip-path: polygon(
+          2% 8%,
+          14% 4%,
+          42% 5%,
+          63% 2%,
+          92% 5%,
+          99% 12%,
+          97% 88%,
+          86% 96%,
+          55% 94%,
+          28% 98%,
+          5% 92%,
+          0 18%
+        );
+        z-index: 4;
+        will-change: transform, opacity, filter;
+      }
+
+      .burst-a {
+        left: 735px;
+        top: 418px;
+        width: 162px;
+        height: 90px;
+      }
+
+      .burst-b {
+        left: 920px;
+        top: 414px;
+        width: 172px;
+        height: 92px;
+      }
+
+      .burst-c {
+        left: 1300px;
+        top: 420px;
+        width: 96px;
+        height: 92px;
+      }
+
+      .burst-d {
+        left: 790px;
+        top: 648px;
+        width: 172px;
+        height: 94px;
+      }
+
+      .burst-e {
+        left: 1042px;
+        top: 642px;
+        width: 90px;
+        height: 96px;
+      }
+
+      .burst-f {
+        left: 1110px;
+        top: 476px;
+        width: 64px;
+        height: 44px;
+        opacity: 0;
+      }
+
+      .selection-box {
+        position: absolute;
+        left: 380px;
+        top: 252px;
+        width: 550px;
+        height: 176px;
+        border: 1px solid rgba(198, 173, 144, 0.32);
+        background: rgba(228, 206, 181, 0.34);
+        opacity: 0;
+        transform-origin: 0 0;
+        z-index: 1;
+      }
+
+      .intro-remnants {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .intro-remnant {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        color: var(--ink);
+        font-size: 100px;
+        font-weight: 620;
+        line-height: 0.92;
+        letter-spacing: -0.055em;
+        white-space: nowrap;
+        opacity: 0;
+        will-change: transform, opacity, filter;
+      }
+
+      .rem-a {
+        margin-left: -220px;
+        margin-top: -44px;
+      }
+
+      .rem-b {
+        margin-left: -42px;
+        margin-top: -42px;
+      }
+
+      .rem-c {
+        margin-left: 155px;
+        margin-top: -48px;
+      }
+
+      .rem-d {
+        margin-left: -82px;
+        margin-top: -4px;
+      }
+
+      .fragment-word {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .frag {
+        position: absolute;
+        color: var(--ink);
+        font-size: 88px;
+        font-weight: 590;
+        line-height: 0.9;
+        letter-spacing: -0.055em;
+        opacity: 0;
+        white-space: nowrap;
+        will-change: transform, opacity, filter;
+      }
+
+      .frag-alg {
+        left: 649px;
+        top: 484px;
+      }
+
+      .frag-row {
+        left: 770px;
+        top: 495px;
+      }
+
+      .frag-x {
+        left: 932px;
+        top: 484px;
+      }
+
+      .frag-clau {
+        left: 1000px;
+        top: 480px;
+      }
+
+      .frag-de {
+        left: 1162px;
+        top: 480px;
+      }
+
+      .final-wordmark {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        color: var(--ink);
+        opacity: 0;
+        pointer-events: none;
+        will-change: transform, opacity, filter;
+      }
+
+      .final-wordmark span {
+        position: absolute;
+        white-space: nowrap;
+        line-height: 0.9;
+      }
+
+      .final-algrow {
+        left: 690px;
+        top: 484px;
+        font-size: 88px;
+        font-weight: 590;
+        letter-spacing: -0.055em;
+        transform: scaleX(1);
+        transform-origin: 0 0;
+      }
+
+      .final-x {
+        left: 884px;
+        top: 484px;
+        font-size: 88px;
+        font-weight: 590;
+        letter-spacing: -0.055em;
+      }
+
+      .final-claude {
+        left: 955px;
+        top: 480px;
+        font-size: 88px;
+        font-weight: 590;
+        letter-spacing: -0.055em;
+        transform: scaleX(1);
+        transform-origin: 0 0;
+      }
+
+      .ui-content {
+        align-items: center;
+        justify-content: center;
+      }
+
+      .input-stack {
+        position: relative;
+        width: 1300px;
+        height: 332px;
+        transform-origin: 50% 50%;
+      }
+
+      .input-panel {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 42px;
+        box-shadow: 0 18px 50px var(--panel-shadow);
+        opacity: 0;
+      }
+
+      .panel-empty {
+        top: -54px;
+        height: 306px;
+        opacity: 1;
+      }
+
+      .panel-full {
+        top: 0;
+        height: 318px;
+      }
+
+      .panel-thinking {
+        top: 7px;
+        height: 304px;
+      }
+
+      .placeholder {
+        position: absolute;
+        left: 54px;
+        top: 48px;
+        color: var(--muted);
+        font-size: 34px;
+        line-height: 1.15;
+        letter-spacing: -0.03em;
+      }
+
+      .prompt-text {
+        position: absolute;
+        left: 54px;
+        right: 56px;
+        top: 42px;
+        bottom: 110px;
+        color: var(--ink);
+        font-size: 32px;
+        font-weight: 400;
+        line-height: 1.16;
+        letter-spacing: -0.035em;
+      }
+
+      .prompt-text span {
+        opacity: 0;
+      }
+
+      .panel-plus {
+        position: absolute;
+        left: 52px;
+        bottom: 44px;
+        width: 42px;
+        height: 42px;
+      }
+
+      .panel-plus::before,
+      .panel-plus::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 34px;
+        height: 2px;
+        background: var(--ink);
+        transform: translate(-50%, -50%);
+      }
+
+      .panel-plus::after {
+        transform: translate(-50%, -50%) rotate(90deg);
+      }
+
+      .model {
+        position: absolute;
+        right: 126px;
+        bottom: 48px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: var(--ink);
+        font-size: 30px;
+        line-height: 1;
+        letter-spacing: -0.045em;
+      }
+
+      .panel-empty .model {
+        right: 78px;
+      }
+
+      .model .muted {
+        color: var(--muted);
+      }
+
+      .chevron {
+        width: 14px;
+        height: 14px;
+        border-right: 2px solid var(--muted);
+        border-bottom: 2px solid var(--muted);
+        transform: rotate(45deg) translateY(-5px);
+      }
+
+      .send-button {
+        position: absolute;
+        right: 42px;
+        bottom: 38px;
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        border-radius: 17px;
+        background: var(--claude);
+        box-shadow: 0 10px 20px rgba(200, 95, 69, 0.18);
+        opacity: 0;
+        transform-origin: 50% 50%;
+      }
+
+      .panel-thinking .send-button {
+        opacity: 1;
+      }
+
+      .send-button svg {
+        width: 30px;
+        height: 30px;
+      }
+
+      .thinking-line {
+        position: absolute;
+        left: 54px;
+        top: 48px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: var(--ink);
+        font-size: 30px;
+        line-height: 1;
+        letter-spacing: -0.035em;
+        opacity: 0;
+      }
+
+      .thinking-line .claude-star {
+        position: relative;
+        left: auto;
+        top: auto;
+        width: 24px;
+        height: 24px;
+      }
+
+      .x-result {
+        position: absolute;
+        left: 54px;
+        top: 44px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: var(--ink);
+        font-size: 30px;
+        line-height: 1;
+        letter-spacing: -0.035em;
+        opacity: 0;
+      }
+
+      .x-trigger {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        border-radius: 15px;
+        background: var(--ink);
+        color: var(--panel);
+        font-size: 29px;
+        font-weight: 680;
+        letter-spacing: -0.06em;
+        box-shadow: 0 14px 28px rgba(17, 17, 15, 0.18);
+      }
+
+      .social-card {
+        position: absolute;
+        left: 560px;
+        top: 178px;
+        width: 800px;
+        height: 430px;
+        border: 1px solid var(--line);
+        border-radius: 36px;
+        background: var(--panel);
+        box-shadow: 0 28px 70px rgba(36, 31, 24, 0.13);
+        opacity: 0;
+        overflow: hidden;
+        transform-origin: 50% 50%;
+      }
+
+      .social-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: 150px;
+        background: linear-gradient(135deg, rgba(20, 134, 184, 0.14), rgba(200, 95, 69, 0.12));
+      }
+
+      .social-x {
+        position: absolute;
+        right: 28px;
+        top: 24px;
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        background: var(--ink);
+        color: var(--panel);
+        font-size: 28px;
+        font-weight: 680;
+      }
+
+      .social-avatar {
+        position: absolute;
+        left: 52px;
+        top: 94px;
+        width: 118px;
+        height: 118px;
+        border: 5px solid var(--panel);
+        border-radius: 50%;
+        object-fit: cover;
+        object-position: 50% 50%;
+        box-shadow: 0 18px 34px rgba(20, 134, 184, 0.2);
+      }
+
+      .social-name {
+        position: absolute;
+        left: 52px;
+        top: 236px;
+        color: var(--ink);
+        font-size: 44px;
+        font-weight: 620;
+        line-height: 1;
+        letter-spacing: -0.055em;
+      }
+
+      .social-handle {
+        position: absolute;
+        left: 52px;
+        top: 288px;
+        color: var(--muted);
+        font-size: 26px;
+        line-height: 1;
+        letter-spacing: -0.025em;
+      }
+
+      .social-bio {
+        position: absolute;
+        left: 52px;
+        right: 52px;
+        top: 334px;
+        color: var(--ink);
+        font-size: 25px;
+        line-height: 1.16;
+        letter-spacing: -0.035em;
+      }
+
+      .follow-button {
+        position: absolute;
+        right: 46px;
+        top: 236px;
+        display: grid;
+        place-items: center;
+        width: 174px;
+        height: 54px;
+        border-radius: 18px;
+        background: var(--ink);
+        color: var(--panel);
+        font-size: 24px;
+        font-weight: 620;
+        letter-spacing: -0.035em;
+        overflow: hidden;
+        transform-origin: 50% 50%;
+      }
+
+      .follow-label {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        inset: 0;
+        white-space: nowrap;
+      }
+
+      .follow-label-following {
+        opacity: 0;
+      }
+
+      .follow-check {
+        display: block;
+        width: 20px;
+        height: 20px;
+      }
+
+      .follow-check svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="blue-sweater-intro-video"
+      data-start="0"
+      data-duration="12"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="base"
+        class="clip base"
+        data-start="0"
+        data-duration="12"
+        data-track-index="0"
+        style="z-index: 0"
+      ></div>
+
+      <div
+        id="warmup"
+        class="clip"
+        data-start="0"
+        data-duration="0.48"
+        data-track-index="1"
+        style="z-index: 2"
+      >
+        <div class="scene-content">
+          <div id="warmBlock" class="warm-block"></div>
+        </div>
+      </div>
+
+      <div
+        id="intro"
+        class="clip"
+        data-start="0.38"
+        data-duration="1.28"
+        data-track-index="2"
+        style="z-index: 3"
+      >
+        <div class="scene-content">
+          <h1 id="introTitle" class="title">Introducing</h1>
+        </div>
+      </div>
+
+      <div
+        id="burst"
+        class="clip"
+        data-start="1.38"
+        data-duration="1.54"
+        data-track-index="3"
+        style="z-index: 4"
+      >
+        <div class="scene-content">
+          <div class="selection-box"></div>
+          <div class="intro-remnants" aria-hidden="true">
+            <span class="intro-remnant rem-a">Intro</span>
+            <span class="intro-remnant rem-b">ducin</span>
+            <span class="intro-remnant rem-c">g</span>
+            <span class="intro-remnant rem-d">tro</span>
+          </div>
+          <div class="burst-block burst-a"></div>
+          <div class="burst-block burst-b"></div>
+          <div class="burst-block burst-c"></div>
+          <div class="burst-block burst-d"></div>
+          <div class="burst-block burst-e"></div>
+          <div class="burst-block burst-f"></div>
+          <div class="claude-star star-center burst-star" aria-hidden="true">
+            <svg viewBox="-50 -50 100 100">
+              <g stroke="currentColor" stroke-width="8" stroke-linecap="round">
+                <line x1="0" y1="-38" x2="0" y2="38" />
+                <line x1="-38" y1="0" x2="38" y2="0" />
+                <line x1="-27" y1="-27" x2="27" y2="27" />
+                <line x1="-27" y1="27" x2="27" y2="-27" />
+                <line x1="-14" y1="-35" x2="14" y2="35" />
+                <line x1="-35" y1="-14" x2="35" y2="14" />
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div
+        id="brand"
+        class="clip"
+        data-start="2.04"
+        data-duration="1.04"
+        data-track-index="4"
+        style="z-index: 5"
+      >
+        <div class="scene-content">
+          <div class="fragment-word" aria-hidden="true">
+            <span class="frag frag-alg">blu</span>
+            <span class="frag frag-row">e</span>
+            <span class="frag frag-x">x</span>
+            <span class="frag frag-clau">swea</span>
+            <span class="frag frag-de">ter</span>
+          </div>
+          <div class="final-wordmark" aria-hidden="true">
+            <span class="final-algrow">blue</span>
+            <span class="final-x">x</span>
+            <span class="final-claude">sweater</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        id="ui"
+        class="clip"
+        data-start="2.76"
+        data-duration="9"
+        data-track-index="5"
+        style="z-index: 6"
+      >
+        <div class="scene-content ui-content">
+          <div class="claude-star star-panel" aria-hidden="true">
+            <svg viewBox="-50 -50 100 100">
+              <g stroke="currentColor" stroke-width="8" stroke-linecap="round">
+                <line x1="0" y1="-38" x2="0" y2="38" />
+                <line x1="-38" y1="0" x2="38" y2="0" />
+                <line x1="-27" y1="-27" x2="27" y2="27" />
+                <line x1="-27" y1="27" x2="27" y2="-27" />
+                <line x1="-14" y1="-35" x2="14" y2="35" />
+                <line x1="-35" y1="-14" x2="35" y2="14" />
+              </g>
+            </svg>
+          </div>
+
+          <div class="input-stack">
+            <div class="input-panel panel-empty">
+              <div class="placeholder">How can I help you today?</div>
+              <div class="panel-plus"></div>
+              <div class="model">
+                <span>Opus 5.0 <span class="muted">Extended</span></span>
+                <span class="chevron"></span>
+              </div>
+            </div>
+
+            <div class="input-panel panel-full">
+              <div id="promptText" class="prompt-text">
+                Recommend one X creator who actively explores AI technology and, like me, is
+                building an AI startup. I want someone practical, curious, and worth following.
+              </div>
+              <div class="panel-plus"></div>
+              <div class="model">
+                <span>Opus 5.0 <span class="muted">Extended</span></span>
+                <span class="chevron"></span>
+              </div>
+              <div id="sendFull" class="send-button" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <path
+                    d="M16 25V8M16 8L9 15M16 8L23 15"
+                    stroke="#FBFAF6"
+                    stroke-width="3.3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            <div class="input-panel panel-thinking">
+              <div class="thinking-line">
+                <span class="claude-star" aria-hidden="true">
+                  <svg viewBox="-50 -50 100 100">
+                    <g stroke="currentColor" stroke-width="8" stroke-linecap="round">
+                      <line x1="0" y1="-38" x2="0" y2="38" />
+                      <line x1="-38" y1="0" x2="38" y2="0" />
+                      <line x1="-27" y1="-27" x2="27" y2="27" />
+                      <line x1="-27" y1="27" x2="27" y2="-27" />
+                      <line x1="-14" y1="-35" x2="14" y2="35" />
+                      <line x1="-35" y1="-14" x2="35" y2="14" />
+                    </g>
+                  </svg>
+                </span>
+                <span>thinking</span>
+              </div>
+              <div class="x-result">
+                <span class="x-trigger">x</span>
+                <span>Open the recommended X profile</span>
+              </div>
+              <div class="panel-plus"></div>
+              <div class="model">
+                <span>Opus 5.0 <span class="muted">Extended</span></span>
+                <span class="chevron"></span>
+              </div>
+              <div class="send-button" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <path
+                    d="M16 25V8M16 8L9 15M16 8L23 15"
+                    stroke="#FBFAF6"
+                    stroke-width="3.3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="social-card" aria-hidden="true">
+            <div class="social-x">x</div>
+            <img class="social-avatar" src="assets/joe-sai-avatar.png" alt="" />
+            <div class="social-name">joe sai</div>
+            <div class="social-handle">@_blue_sweater_</div>
+            <div class="follow-button">
+              <span class="follow-label follow-label-follow">Follow</span>
+              <span class="follow-label follow-label-following">
+                <span>Following</span>
+                <span class="follow-check" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#FBFAF6"
+                    stroke-width="2.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </span>
+              </span>
+            </div>
+            <div class="social-bio">
+              Exploring AI technology and building an AI startup in public.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        id="cursor"
+        class="clip cursor"
+        data-start="0"
+        data-duration="12"
+        data-track-index="9"
+        aria-hidden="true"
+        style="z-index: 20"
+      >
+        <svg viewBox="0 0 98 120" fill="none">
+          <path
+            d="M13 6L86 80L51 85L35 114L13 6Z"
+            fill="#1486B8"
+            stroke="#F7F5EF"
+            stroke-width="7"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
+
+      <audio
+        id="audio-mix"
+        data-start="0"
+        data-duration="12"
+        data-track-index="20"
+        src="assets/sfx/integrated-melodic-tech-mix.wav"
+        data-volume="1"
+      ></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const promptEl = document.querySelector("#promptText");
+      const promptText = promptEl.textContent.replace(/\s+/g, " ").trim();
+      promptEl.textContent = "";
+      for (const char of promptText) {
+        const span = document.createElement("span");
+        span.textContent = char;
+        promptEl.appendChild(span);
+      }
+
+      const tl = gsap.timeline({ paused: true, defaults: { ease: "power3.out" } });
+
+      tl.set(["#warmup", "#intro", "#burst", "#brand", "#ui"], { opacity: 0 });
+      tl.set("#cursor", { x: 690, y: 846, rotation: -8, scale: 0.72, opacity: 0 });
+      tl.set(".panel-full", { opacity: 0 });
+      tl.set(".panel-thinking", { opacity: 0 });
+      tl.set(".prompt-text span", { opacity: 0 });
+      tl.set("#sendFull", { opacity: 0, scale: 0.84 });
+      tl.set([".selection-box", ".intro-remnant", ".frag", ".final-wordmark"], { opacity: 0 });
+      tl.set([".x-result", ".social-card"], { opacity: 0 });
+      tl.set(".x-trigger", { scale: 1 });
+
+      tl.to("#warmup", { opacity: 1, duration: 0.01 }, 0);
+      tl.fromTo(
+        "#warmBlock",
+        { x: -820, scaleX: 0.42, opacity: 0, filter: "blur(14px)" },
+        { x: -25, scaleX: 1, opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power2.out" },
+        0.02,
+      );
+      tl.to(
+        "#warmBlock",
+        { x: 620, opacity: 0, filter: "blur(18px)", duration: 0.24, ease: "power2.in" },
+        0.25,
+      );
+      tl.to("#warmup", { opacity: 0, duration: 0.08 }, 0.4);
+
+      tl.to("#intro", { opacity: 1, duration: 0.1 }, 0.44);
+      tl.fromTo(
+        "#introTitle",
+        { opacity: 0, y: 26, filter: "blur(10px)" },
+        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.46, ease: "expo.out" },
+        0.48,
+      );
+      tl.to("#cursor", { opacity: 1, duration: 0.12 }, 0.44);
+      tl.to(
+        "#cursor",
+        { x: 942, y: 604, rotation: -3, duration: 0.36, ease: "power2.inOut", overwrite: "auto" },
+        0.44,
+      );
+      tl.to(
+        "#cursor",
+        { x: 982, y: 642, rotation: -6, duration: 0.24, ease: "power2.inOut", overwrite: "auto" },
+        1.28,
+      );
+      tl.to(
+        "#introTitle",
+        { opacity: 0.26, filter: "blur(4px)", duration: 0.03, ease: "power2.in" },
+        1.43,
+      );
+      tl.fromTo(
+        ".intro-remnant",
+        { opacity: 0, x: 0, y: 0, filter: "blur(2px)" },
+        {
+          opacity: 0.32,
+          x: (index) => [-22, 8, 32, -10][index],
+          y: (index) => [-10, 5, -18, 28][index],
+          filter: "blur(7px)",
+          duration: 0.055,
+          stagger: 0.004,
+          ease: "power2.out",
+        },
+        1.435,
+      );
+      tl.to(
+        "#introTitle",
+        { opacity: 0, y: -8, filter: "blur(10px)", duration: 0.08, ease: "power2.in" },
+        1.47,
+      );
+      tl.to(
+        ".intro-remnant",
+        { opacity: 0, filter: "blur(11px)", duration: 0.07, ease: "power2.in" },
+        1.49,
+      );
+      tl.to("#intro", { opacity: 0, duration: 0.06 }, 1.56);
+
+      tl.to("#burst", { opacity: 1, duration: 0.02 }, 1.4);
+      tl.fromTo(
+        ".burst-star",
+        { opacity: 0, scale: 0.08, rotation: -20 },
+        { opacity: 1, scale: 0.16, rotation: -6, duration: 0.08, ease: "power2.out" },
+        1.43,
+      );
+      tl.to(
+        ".burst-star",
+        { scale: 1, rotation: 0, duration: 0.42, ease: "expo.out", overwrite: "auto" },
+        1.55,
+      );
+      const blockPaths = [
+        {
+          source: [-1, 28],
+          scatter: [-160, -96],
+          drift: [-151, -126],
+          select: [-82, -86],
+          squeeze: [19, -68],
+          release: [19, -68],
+          fade: 2.17,
+        },
+        {
+          source: [-11, 5],
+          scatter: [165, -123],
+          drift: [153, -126],
+          select: [61, -118],
+          squeeze: [-81, -65],
+          release: [-81, -65],
+          fade: 2.17,
+        },
+        {
+          source: [-3, -8],
+          scatter: [169, -28],
+          drift: [174, -24],
+          select: [127, 9],
+          squeeze: [37, 70],
+          release: [-78, 96],
+          fade: 2.33,
+        },
+        {
+          source: [-9, 2],
+          scatter: [-153, 80],
+          drift: [-157, 76],
+          select: [-133, 39],
+          squeeze: [-90, -40],
+          release: [-90, -40],
+          fade: 2.17,
+        },
+        {
+          source: [-7, -13],
+          scatter: [-10, 129],
+          drift: [-17, 128],
+          select: [-38, 83],
+          squeeze: [-67, -18],
+          release: [-92, -87],
+          fade: 2.33,
+        },
+      ];
+      gsap.utils.toArray(".burst-block").forEach((block, index) => {
+        const path = blockPaths[index];
+        if (!path) {
+          tl.set(block, { opacity: 0 });
+          return;
+        }
+        tl.set(
+          block,
+          {
+            x: path.source[0],
+            y: path.source[1],
+            scale: 0.78,
+            rotation: index % 2 ? 3 : -3,
+            filter: "blur(8px)",
+          },
+          1.45,
+        );
+        tl.to(
+          block,
+          {
+            opacity: 1,
+            scale: 1,
+            rotation: 0,
+            filter: "blur(0px)",
+            duration: 0.055,
+            ease: "power3.out",
+          },
+          1.455,
+        );
+        tl.to(
+          block,
+          {
+            x: path.scatter[0],
+            y: path.scatter[1],
+            rotation: index % 2 ? 2 : -2,
+            duration: 0.2,
+            ease: "sine.out",
+          },
+          1.5,
+        );
+        tl.to(
+          block,
+          {
+            x: path.drift[0],
+            y: path.drift[1],
+            rotation: index % 2 ? 1 : -1,
+            duration: 0.2,
+            ease: "sine.inOut",
+          },
+          1.7,
+        );
+        tl.to(
+          block,
+          { x: path.select[0], y: path.select[1], rotation: 0, duration: 0.2, ease: "sine.inOut" },
+          1.9,
+        );
+        tl.to(
+          block,
+          {
+            x: path.squeeze[0],
+            y: path.squeeze[1],
+            scale: 1,
+            rotation: 0,
+            filter: "blur(0.6px)",
+            duration: 0.07,
+            ease: "sine.inOut",
+          },
+          2.1,
+        );
+        tl.to(
+          block,
+          {
+            x: path.release[0],
+            y: path.release[1],
+            scale: 0.84,
+            rotation: 0,
+            filter: "blur(1.5px)",
+            duration: 0.05,
+            ease: "sine.inOut",
+          },
+          2.17,
+        );
+        tl.to(
+          block,
+          { opacity: 0, scale: 0.38, filter: "blur(7px)", duration: 0.05, ease: "power2.in" },
+          path.fade,
+        );
+      });
+      tl.to(
+        "#cursor",
+        { x: 1540, y: 112, rotation: -9, duration: 0.26, ease: "power2.inOut", overwrite: "auto" },
+        1.56,
+      );
+      tl.to(
+        "#cursor",
+        { x: 380, y: 252, rotation: -7, duration: 0.16, ease: "power2.inOut", overwrite: "auto" },
+        1.82,
+      );
+      tl.fromTo(
+        ".selection-box",
+        { opacity: 0, scaleX: 0.06, scaleY: 0.1, x: 0, y: 0, filter: "blur(3px)" },
+        {
+          opacity: 1,
+          scaleX: 1,
+          scaleY: 1,
+          x: 42,
+          y: 52,
+          filter: "blur(0px)",
+          duration: 0.18,
+          ease: "power2.out",
+        },
+        1.96,
+      );
+      tl.to(
+        "#cursor",
+        { x: 930, y: 478, rotation: -4, duration: 0.14, ease: "power2.inOut", overwrite: "auto" },
+        1.96,
+      );
+      tl.to(
+        "#cursor",
+        { x: 1168, y: 560, rotation: -4, duration: 0.14, ease: "power2.inOut", overwrite: "auto" },
+        2.12,
+      );
+      tl.to(
+        ".selection-box",
+        { x: 220, y: 158, width: 640, height: 190, duration: 0.2, ease: "power2.inOut" },
+        2.16,
+      );
+      tl.to(
+        ".burst-star",
+        {
+          x: 118,
+          y: -62,
+          scale: 0.16,
+          opacity: 0.45,
+          duration: 0.18,
+          ease: "power2.inOut",
+          overwrite: "auto",
+        },
+        2.12,
+      );
+
+      tl.to("#brand", { opacity: 1, duration: 0.04 }, 2.08);
+
+      const fragmentMotion = [
+        {
+          selector: ".frag-alg",
+          from: [112, -118, 4],
+          carry: [88, -96],
+          settle: [20, -24],
+          lock: [0, 0],
+          visible: 1,
+        },
+        {
+          selector: ".frag-row",
+          from: [-12, 78, 5],
+          carry: [-22, 56],
+          settle: [-8, 18],
+          lock: [0, 0],
+          visible: 1,
+        },
+        {
+          selector: ".frag-x",
+          from: [38, 70, 7],
+          carry: [18, 48],
+          settle: [6, 14],
+          lock: [0, 0],
+          visible: 0.82,
+        },
+        {
+          selector: ".frag-clau",
+          from: [-82, -108, 4],
+          carry: [-54, -78],
+          settle: [-18, -18],
+          lock: [0, 0],
+          visible: 1,
+        },
+        {
+          selector: ".frag-de",
+          from: [62, 22, 5],
+          carry: [38, 12],
+          settle: [12, 4],
+          lock: [0, 0],
+          visible: 1,
+        },
+      ];
+
+      fragmentMotion.forEach((piece, index) => {
+        tl.fromTo(
+          piece.selector,
+          {
+            opacity: 0,
+            x: piece.from[0],
+            y: piece.from[1],
+            scale: 0.99,
+            filter: `blur(${piece.from[2]}px)`,
+          },
+          {
+            opacity: piece.visible,
+            x: piece.carry[0],
+            y: piece.carry[1],
+            scale: 1,
+            filter: "blur(1.2px)",
+            duration: 0.16,
+            ease: "sine.out",
+            overwrite: "auto",
+          },
+          2.12 + index * 0.004,
+        );
+        tl.to(
+          piece.selector,
+          {
+            x: piece.settle[0],
+            y: piece.settle[1],
+            opacity: piece.visible,
+            filter: "blur(0.35px)",
+            duration: 0.28,
+            ease: "power3.out",
+            overwrite: "auto",
+          },
+          2.28 + index * 0.003,
+        );
+        tl.to(
+          piece.selector,
+          {
+            opacity: 0,
+            x: piece.settle[0] + [8, -6, 2, -8, 6][index],
+            y: piece.settle[1] + [-6, 7, 4, -5, 3][index],
+            filter: "blur(4px)",
+            duration: 0.14,
+            ease: "power2.out",
+            overwrite: "auto",
+          },
+          2.31 + index * 0.002,
+        );
+      });
+
+      tl.fromTo(
+        ".final-wordmark",
+        { opacity: 0, x: -12, y: 8, scale: 0.995, filter: "blur(5px)" },
+        {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          scale: 1,
+          filter: "blur(0px)",
+          duration: 0.24,
+          ease: "power4.out",
+          overwrite: "auto",
+        },
+        2.38,
+      );
+      tl.to(".burst-star", { opacity: 0, duration: 0.12, ease: "power2.in" }, 2.32);
+      tl.to(
+        ".selection-box",
+        { opacity: 0, filter: "blur(5px)", duration: 0.16, ease: "power2.in" },
+        2.33,
+      );
+      tl.to(
+        "#cursor",
+        { x: 1256, y: 587, rotation: -3, duration: 0.3, ease: "power2.inOut", overwrite: "auto" },
+        2.34,
+      );
+      tl.to("#burst", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 2.58);
+      tl.to("#cursor", { opacity: 0, duration: 0.13, ease: "power2.in" }, 2.86);
+      tl.set("#cursor", { opacity: 0 }, 3.0);
+      tl.to(
+        "#brand",
+        { opacity: 0, y: 26, filter: "blur(9px)", duration: 0.22, ease: "power2.in" },
+        2.9,
+      );
+
+      tl.to("#ui", { opacity: 1, duration: 0.08 }, 3.02);
+      tl.fromTo(
+        ".input-stack",
+        { opacity: 0, scale: 0.88, y: 92, filter: "blur(14px)" },
+        { opacity: 1, scale: 1, y: 0, filter: "blur(0px)", duration: 0.66, ease: "expo.out" },
+        3.05,
+      );
+      tl.fromTo(
+        ".star-panel",
+        { opacity: 0, scale: 0.5, rotation: -16 },
+        { opacity: 1, scale: 1, rotation: 0, duration: 0.38, ease: "power3.out" },
+        3.18,
+      );
+      tl.fromTo(".placeholder", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.34 }, 3.3);
+      tl.fromTo(
+        ".panel-empty .panel-plus, .panel-empty .model",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.3, stagger: 0.06 },
+        3.42,
+      );
+
+      tl.to(".panel-empty", { opacity: 0, duration: 0.18, ease: "power2.inOut" }, 4.12);
+      tl.to(".panel-full", { opacity: 1, duration: 0.18, ease: "power2.inOut" }, 4.12);
+      tl.to(
+        ".input-stack",
+        { scale: 1.32, x: 300, y: -100, duration: 0.26, ease: "power2.inOut" },
+        4.14,
+      );
+      tl.to(".input-stack", { scale: 1, x: 0, y: 0, duration: 0.74, ease: "power2.inOut" }, 4.92);
+
+      tl.to(
+        ".prompt-text span",
+        { opacity: 1, duration: 0.01, stagger: { amount: 2.85 }, ease: "none" },
+        4.18,
+      );
+      tl.to("#sendFull", { opacity: 1, scale: 1, duration: 0.24, ease: "power3.out" }, 7.32);
+      tl.fromTo(
+        "#cursor",
+        { x: 1328, y: 900, rotation: -6, scale: 1, opacity: 0 },
+        {
+          x: 1530,
+          y: 900,
+          rotation: -5,
+          scale: 1,
+          opacity: 1,
+          duration: 0.48,
+          ease: "power2.inOut",
+        },
+        6.92,
+      );
+      tl.to(
+        "#cursor",
+        { x: 1512, y: 620, rotation: -5, duration: 0.5, ease: "power2.inOut" },
+        7.44,
+      );
+
+      tl.to("#sendFull", { scale: 0.86, duration: 0.08, ease: "power2.in" }, 7.9);
+      tl.to("#sendFull", { scale: 1, duration: 0.14, ease: "back.out(1.7)" }, 7.98);
+      tl.to(".panel-full", { opacity: 0, duration: 0.16, ease: "power2.inOut" }, 8.15);
+      tl.to(".panel-thinking", { opacity: 1, duration: 0.18, ease: "power2.inOut" }, 8.15);
+      tl.set(".thinking-line", { opacity: 0 }, 8.24);
+      tl.to(
+        ".thinking-line",
+        { opacity: 1, duration: 0.3, ease: "power3.out", overwrite: "auto" },
+        8.25,
+      );
+      tl.to("#cursor", { x: 1554, y: 620, rotation: -5, duration: 0.28, ease: "power2.out" }, 7.94);
+      tl.to(
+        ".thinking-line",
+        { opacity: 0, duration: 0.18, ease: "power2.inOut", overwrite: "auto" },
+        8.64,
+      );
+      tl.fromTo(
+        ".x-result",
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.28, ease: "power3.out" },
+        8.82,
+      );
+      tl.to(
+        "#cursor",
+        { x: 365, y: 418, rotation: -6, duration: 0.58, ease: "power2.inOut", overwrite: "auto" },
+        8.74,
+      );
+      tl.to(
+        ".x-trigger",
+        {
+          keyframes: [
+            { scale: 0.88, duration: 0.08, ease: "power2.in" },
+            { scale: 1, duration: 0.14, ease: "back.out(1.7)" },
+          ],
+          overwrite: "auto",
+        },
+        9.34,
+      );
+      tl.to(".x-result", { opacity: 0, y: -8, duration: 0.18, ease: "power2.inOut" }, 9.5);
+      tl.to(
+        ".input-stack",
+        {
+          opacity: 0,
+          scale: 0.93,
+          y: 26,
+          filter: "blur(12px)",
+          duration: 0.4,
+          ease: "power3.inOut",
+        },
+        9.5,
+      );
+      tl.to(
+        ".star-panel",
+        { opacity: 0, scale: 0.72, rotation: 12, duration: 0.28, ease: "power2.inOut" },
+        9.5,
+      );
+      tl.fromTo(
+        ".social-card",
+        { opacity: 0, y: 34, scale: 0.88, filter: "blur(12px)" },
+        { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.6, ease: "expo.out" },
+        9.86,
+      );
+      tl.to(
+        "#cursor",
+        { x: 1408, y: 246, rotation: -5, duration: 0.42, ease: "power2.inOut", overwrite: "auto" },
+        9.96,
+      );
+      tl.to(
+        "#cursor",
+        { x: 1242, y: 446, rotation: -5, duration: 0.36, ease: "power2.inOut", overwrite: "auto" },
+        10.5,
+      );
+      tl.to(".follow-button", { scale: 0.9, duration: 0.08, ease: "power2.in" }, 10.88);
+      tl.to(
+        ".follow-button",
+        { scale: 1, backgroundColor: "#2f2f2f", duration: 0.28, ease: "elastic.out(1, 0.45)" },
+        10.96,
+      );
+      tl.to(".follow-label-follow", { opacity: 0, duration: 0.08, ease: "none" }, 10.96);
+      tl.to(".follow-label-following", { opacity: 1, duration: 0.08, ease: "none" }, 10.99);
+      tl.to(
+        "#cursor",
+        { x: 1286, y: 472, rotation: -5, duration: 0.16, ease: "power2.out", overwrite: "auto" },
+        11,
+      );
+
+      window.__timelines["blue-sweater-intro-video"] = tl;
+    </script>
+  </body>
+</html>

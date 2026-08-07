@@ -1,0 +1,82 @@
+<!--
+  Zoom Through Transition - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-zoom-through-transition">
+  <div class="scene from">Before</div>
+  <div class="scene to">Zoom Through Transition</div>
+  <div class="fx"></div>
+  <div class="rgb"></div>
+</div>
+
+<style>
+  .hf-remocn-zoom-through-transition {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-zoom-through-transition {
+    position: relative;
+    width: 760px;
+    height: 428px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: #111827;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-zoom-through-transition .scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 58px;
+    letter-spacing: -0.05em;
+    color: #fff;
+  }
+  .hf-remocn-zoom-through-transition .from {
+    background: linear-gradient(135deg, #111827, #374151);
+    transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
+      scale(var(--hf-from-scale, 1));
+    filter: blur(var(--hf-from-blur, 0px));
+  }
+  .hf-remocn-zoom-through-transition .to {
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
+    clip-path: inset(
+      var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
+        var(--hf-clip-left, 0%)
+    );
+  }
+  .hf-remocn-zoom-through-transition .fx {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    mix-blend-mode: screen;
+    transform: translateX(var(--hf-fx-x, -110%));
+  }
+  .hf-remocn-zoom-through-transition .rgb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-rgb-opacity, 0);
+    background: linear-gradient(
+      90deg,
+      rgba(239, 68, 68, 0.35),
+      transparent,
+      rgba(34, 211, 238, 0.35)
+    );
+    transform: translateX(var(--hf-rgb-x, 0px));
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-zoom-through-transition .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-zoom-through-transition .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-zoom-through-transition .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-zoom-through-transition .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+-->

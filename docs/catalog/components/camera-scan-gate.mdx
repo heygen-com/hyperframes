@@ -1,0 +1,42 @@
+---
+title: "Camera Scan Gate"
+description: "A camera and QR recognition moment with a viewfinder sweep, bracket lock, confirmation pulse, and verified next beat."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/camera-scan-gate.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Camera Scan Gate preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add camera-scan-gate" />
+
+That writes one file: `compositions/components/camera-scan-gate.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/camera-scan-gate.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `scanColor` | `var(--brand)` | string | Any CSS color value used by the scan line and recognition glow. |
+| `targetLabel` | `Verified` | string | Confirmation label revealed at recognition lock. Blank hides the line. |
+| `sweepSpeed` | `1` | 0.8x to 1.6x, step 0.1x | Speed multiplier for the scan sweep phase only. |
+
+{/* hf:generated-footer */}
+
+Tagged `prop` `ui-props` `camera` `qr` `scan` `recognition` `interaction` `demonstrate`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

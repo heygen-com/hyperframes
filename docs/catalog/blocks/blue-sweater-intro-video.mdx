@@ -3,41 +3,15 @@ title: "Blue Sweater Intro Video"
 description: "Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_."
 ---
 
-# Blue Sweater Intro Video
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_.
-
-`showcase` `ai` `creator` `sfx`
-
-Created by [Joe Sai](https://x.com/_blue_sweater_).
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/blue-sweater-intro-video.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Blue Sweater Intro Video preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add blue-sweater-intro-video" />
 
-```bash Terminal
-npx hyperframes add blue-sweater-intro-video
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 12s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `blue-sweater-intro-video.html` | `compositions/blue-sweater-intro-video.html` | hyperframes:composition |
-| `assets/joe-sai-avatar.png` | `assets/joe-sai-avatar.png` | hyperframes:asset |
-| `assets/sfx/integrated-melodic-tech-mix.wav` | `assets/sfx/integrated-melodic-tech-mix.wav` | hyperframes:asset |
+That writes `compositions/blue-sweater-intro-video.html`, plus 2 supporting files under `assets/` and `assets/sfx/`.
 
 ## Usage
 
@@ -46,3 +20,15 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="blue-sweater-intro-video" data-composition-src="compositions/blue-sweater-intro-video.html" data-start="0" data-duration="12" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `showcase` `ai` `creator` `sfx`.
+
+Created by [Joe Sai](https://x.com/_blue_sweater_).
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

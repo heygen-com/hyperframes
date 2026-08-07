@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Infinite Bento Pan - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) fills ~65% of 1920×1080 */
+        transform: scale(0.81);
+        transform-origin: center center;
+      }
+      .hf-remocn-infinite-bento-pan {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-infinite-bento-pan {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 34px;
+        padding: 28px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 22px;
+        overflow: hidden;
+      }
+      .hf-remocn-infinite-bento-pan .panel {
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #fafafa;
+        padding: 22px;
+      }
+      .hf-remocn-infinite-bento-pan .prompt {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-infinite-bento-pan .pill {
+        height: 42px;
+        border-radius: 999px;
+        background: #111827;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        font-weight: 800;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-infinite-bento-pan .preview {
+        display: grid;
+        gap: 14px;
+      }
+      .hf-remocn-infinite-bento-pan .card {
+        min-height: 78px;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hf-remocn-infinite-bento-pan .card-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #71717a;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .hf-remocn-infinite-bento-pan .card-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #18181b;
+        letter-spacing: -0.02em;
+      }
+      .hf-remocn-infinite-bento-pan .card-bar {
+        height: 6px;
+        border-radius: 999px;
+        background: #e4e4e7;
+        margin-top: 4px;
+        overflow: hidden;
+      }
+      .hf-remocn-infinite-bento-pan .card-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: #18181b;
+      }
+      .hf-remocn-infinite-bento-pan h3 {
+        margin: 0 0 14px;
+        font-size: 32px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-infinite-bento-pan p {
+        margin: 0;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="infinite-bento-pan-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-infinite-bento-pan">
+          <div class="panel prompt">
+            <h3>Infinite Bento Pan</h3>
+            <p>A bento board pans forever with feature cards at different depths.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="card">
+              <span class="card-label">Scene</span>
+              <span class="card-title">Hero entrance</span>
+              <div class="card-bar"><div class="card-bar-fill" style="width:72%"></div></div>
+            </div>
+            <div class="card">
+              <span class="card-label">Motion</span>
+              <span class="card-title">Parallax depth</span>
+              <div class="card-bar"><div class="card-bar-fill" style="width:48%"></div></div>
+            </div>
+            <div class="card">
+              <span class="card-label">Export</span>
+              <span class="card-title">1920 × 1080 · 60fps</span>
+              <div class="card-bar"><div class="card-bar-fill" style="width:90%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-infinite-bento-pan .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-infinite-bento-pan .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["infinite-bento-pan-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

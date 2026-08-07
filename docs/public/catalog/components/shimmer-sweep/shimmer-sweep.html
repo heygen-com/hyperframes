@@ -1,0 +1,66 @@
+<!--
+  Shimmer Sweep — animated light pass across text or elements.
+
+  Usage: place this snippet AFTER your .shimmer-sweep-target elements.
+  Wrap your text element with class="shimmer-sweep-target" and
+  paste this snippet into your composition. The GSAP timeline drives
+  the sweep position for deterministic frame-by-frame rendering.
+
+  Customize:
+  - --shimmer-color: highlight color (default rgba(255,255,255,0.6))
+  - --shimmer-width: highlight band width as % (default 20%)
+  - --shimmer-angle: sweep angle (default 120deg)
+  - Timeline duration/ease: adjust in the script below
+-->
+
+<style>
+  .shimmer-sweep-target {
+    position: relative;
+    display: inline-block;
+  }
+
+  .shimmer-sweep-target .shimmer-mask {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    background: linear-gradient(
+      var(--shimmer-angle, 120deg),
+      transparent 0%,
+      transparent calc(var(--shimmer-pos, -20%) - var(--shimmer-width, 20%) / 2),
+      var(--shimmer-color, rgba(255, 255, 255, 0.6)) var(--shimmer-pos, -20%),
+      transparent calc(var(--shimmer-pos, -20%) + var(--shimmer-width, 20%) / 2),
+      transparent 100%
+    );
+    mix-blend-mode: overlay;
+  }
+</style>
+
+<script>
+  (function () {
+    // Auto-inject .shimmer-mask into every .shimmer-sweep-target
+    document.querySelectorAll(".shimmer-sweep-target").forEach((el) => {
+      if (!el.querySelector(".shimmer-mask")) {
+        const mask = document.createElement("div");
+        mask.className = "shimmer-mask";
+        el.appendChild(mask);
+      }
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration example (add to your composition's GSAP timeline):
+
+  // Single sweep from left to right
+  tl.fromTo(".shimmer-sweep-target", {
+    "--shimmer-pos": "-20%",
+  }, {
+    "--shimmer-pos": "120%",
+    duration: 1.2,
+    ease: "power2.inOut",
+    stagger: 0.15,
+  }, startTime);
+-->

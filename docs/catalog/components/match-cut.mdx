@@ -1,0 +1,42 @@
+---
+title: "Match Cut"
+description: "A circle accelerates into a hard single-frame scene swap, matches the incoming circle exactly, and continues into a smaller resting pose."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/match-cut.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Match Cut preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add match-cut" />
+
+That writes one file: `compositions/components/match-cut.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/match-cut.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `green` | `green`, `blue`, `violet` | Color shared by the matched circles. |
+| `label_a` | `Start` | string | Text inside the outgoing button. |
+| `label_b` | `Done` | string | Result text revealed after the cut. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `transition` `match-cut` `hard-cut` `continuity`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

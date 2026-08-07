@@ -1,0 +1,42 @@
+---
+title: "Store Badge Lockup"
+description: "Settles a short headline above equal-size App Store and Google Play badges as a token-driven mobile end-card call to action."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/store-badge-lockup.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Store Badge Lockup preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add store-badge-lockup" />
+
+That writes `compositions/components/store-badge-lockup.html`, plus 1 supporting file under `compositions/components/vendor/`.
+
+## Paste it into your composition
+
+Open `compositions/components/store-badge-lockup.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `headline` | `Get the app` | string | Short action line shown above the store badges. |
+| `showApple` | `yes` | `yes`, `no` | Show or hide the App Store badge. |
+| `showGoogle` | `yes` | `yes`, `no` | Show or hide the Google Play badge. |
+
+{/* hf:generated-footer */}
+
+Tagged `prop` `ui-props` `mobile` `store-badges` `cta` `ask`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

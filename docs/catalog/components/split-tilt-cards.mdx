@@ -1,0 +1,45 @@
+---
+title: "Split Tilt Cards"
+description: "Two equal-weight cards arrive from opposite wings with mirrored rotateY book-open tilts under one shared perspective, pill badges spring-pop at each inner edge, and the pair holds with a barely-there phase-opposed idle float. Card bodies are content slots with token skeleton defaults."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/split-tilt-cards.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Split Tilt Cards preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add split-tilt-cards" />
+
+That writes one file: `compositions/components/split-tilt-cards.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/split-tilt-cards.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label_a` | `Before` | string | Mono header on the left card. Blank hides it. |
+| `label_b` | `After` | string | Mono header on the right card. Blank hides it. |
+| `badge_a` | `v1` | string | Pill badge that spring-pops at the left card inner edge. Blank disables it. |
+| `badge_b` | `v2` | string | Pill badge that spring-pops at the right card inner edge. Blank disables it. |
+| `accent` | `green` | `green`, `blue`, `violet` | Right-card tint, right badge, and right ambient glow color. |
+| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final spread. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `layout` `compare` `holdable` `book-open` `tilt` `slots`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

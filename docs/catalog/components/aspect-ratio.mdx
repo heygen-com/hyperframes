@@ -3,36 +3,26 @@ title: "Aspect Ratio"
 description: "A matte aspect-ratio frame for media and previews with a compact technical dimension label"
 ---
 
-# Aspect Ratio
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-A matte aspect-ratio frame for media and previews with a compact technical dimension label
-
-`ui-primitive` `remocn-port` `aspect-ratio` `layout`
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aspect-ratio.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aspect-ratio.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/components/aspect-ratio.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Aspect Ratio preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add aspect-ratio" />
 
-```bash Terminal
-npx hyperframes add aspect-ratio
-```
-
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Component |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `aspect-ratio.html` | `compositions/components/aspect-ratio.html` | hyperframes:snippet |
+That writes one file: `compositions/components/aspect-ratio.html`.
 
 ## Usage
 
 Open `compositions/components/aspect-ratio.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `ui-primitive` `remocn-port` `aspect-ratio` `layout`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,42 @@
+---
+title: "Outline Draw"
+description: "A rounded outline that proves a callout by drawing clockwise as a hollow conic-gradient border with a clean closure."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/outline-draw.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Outline Draw preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add outline-draw" />
+
+That writes one file: `compositions/components/outline-draw.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/outline-draw.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `progress` | `100` | 0% to 100%, step 1% | Final percentage of the outline that is drawn. |
+| `thickness` | `6` | 10.1cqw to 200.1cqw, step 10.1cqw | Outline stroke in tenths of the host width. |
+| `radius` | `24` | 00.1cqmin to 800.1cqmin, step 10.1cqmin | Corner radius in tenths of the host smaller dimension. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `effects` `outline` `border` `mask` `proof`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

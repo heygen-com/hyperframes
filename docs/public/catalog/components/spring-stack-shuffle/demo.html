@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  spring-stack-shuffle demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default cards, cues, and accent prove the
+  variable path; the tight 1.5 / 1.75 cue pair keeps the L1 mid-flight
+  redirect inside the demo choreography.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Spring Stack Shuffle Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          #12151b 0%,
+          var(--bg, #0b0c0e) 74%
+        );
+      }
+
+      .mount-card {
+        position: absolute;
+        width: 62%;
+        height: 82%;
+        left: 19%;
+        top: 9%;
+        container-type: size;
+        overflow: hidden;
+        border-radius: 28px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="spring-stack-shuffle-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="spring-stack-shuffle-mount"
+        class="mount-card clip"
+        data-composition-id="spring-stack-shuffle"
+        data-composition-src="./spring-stack-shuffle.html"
+        data-variable-values='{"cards":5,"cues":"0.9, 1.5, 1.75, 2.6","accent":"violet"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1190"
+        data-height="886"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["spring-stack-shuffle-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

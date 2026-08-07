@@ -1,0 +1,42 @@
+---
+title: "Gesture Tap"
+description: "A contact circle taps a mobile pill button, releases it into a new labeled accent state, and lifts away."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/gesture-tap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Gesture Tap preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add gesture-tap" />
+
+That writes one file: `compositions/components/gesture-tap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/gesture-tap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tap_label` | `Follow` | string | Button label shown before the tap response. |
+| `response_label` | `Following` | string | Button label shown when the tap releases. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color used for the completed button state and response pulse. |
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `gesture` `tap` `interaction` `ui-props`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

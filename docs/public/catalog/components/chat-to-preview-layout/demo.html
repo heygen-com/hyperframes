@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Chat to Preview Layout - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale non-GSAP wrapper; GSAP only animates .pill and .card */
+        transform: scale(0.84);
+        transform-origin: center center;
+      }
+      .hf-remocn-chat-to-preview-layout {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-chat-to-preview-layout {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 34px;
+        padding: 28px;
+        background: linear-gradient(135deg, #f8fafc, #e0f2fe);
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 22px;
+        overflow: hidden;
+      }
+      .hf-remocn-chat-to-preview-layout .panel {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.76);
+        padding: 22px;
+        backdrop-filter: blur(12px);
+      }
+      .hf-remocn-chat-to-preview-layout .prompt {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-chat-to-preview-layout .pill {
+        height: 42px;
+        border-radius: 999px;
+        background: #18181b;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-chat-to-preview-layout .preview {
+        display: grid;
+        gap: 14px;
+      }
+      .hf-remocn-chat-to-preview-layout .card {
+        min-height: 110px;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        border: 1px solid #e4e4e7;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+      }
+      .hf-remocn-chat-to-preview-layout .card .sk {
+        border-radius: 6px;
+        background: #f4f4f5;
+      }
+      .hf-remocn-chat-to-preview-layout .card .sk-title {
+        height: 14px;
+        width: 55%;
+      }
+      .hf-remocn-chat-to-preview-layout .card .sk-body {
+        height: 10px;
+        width: 85%;
+      }
+      .hf-remocn-chat-to-preview-layout .card .sk-body-short {
+        height: 10px;
+        width: 65%;
+      }
+      .hf-remocn-chat-to-preview-layout .card .sk-tag {
+        height: 22px;
+        width: 72px;
+        border-radius: 999px;
+        background: #e4e4e7;
+        margin-top: 4px;
+      }
+      .hf-remocn-chat-to-preview-layout h3 {
+        margin: 0 0 14px;
+        font-size: 32px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-chat-to-preview-layout p {
+        margin: 0 0 4px;
+        color: #71717a;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="chat-to-preview-layout-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-chat-to-preview-layout">
+          <div class="panel prompt">
+            <h3>Chat to Preview Layout</h3>
+            <p>Split-pane chat and preview layout for agent-generated UI.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="card">
+              <div class="sk sk-title"></div>
+              <div class="sk sk-body"></div>
+              <div class="sk sk-body-short"></div>
+              <div class="sk sk-tag"></div>
+            </div>
+            <div class="card">
+              <div class="sk sk-title"></div>
+              <div class="sk sk-body"></div>
+              <div class="sk sk-body-short"></div>
+            </div>
+            <div class="card">
+              <div class="sk sk-title"></div>
+              <div class="sk sk-body"></div>
+              <div class="sk sk-body-short"></div>
+              <div class="sk sk-tag"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-chat-to-preview-layout .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-chat-to-preview-layout .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["chat-to-preview-layout-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

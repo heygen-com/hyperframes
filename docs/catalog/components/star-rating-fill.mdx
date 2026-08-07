@@ -1,0 +1,42 @@
+---
+title: "Star Rating Fill"
+description: "A token-driven star row whose colored layer sweeps to a rating, preserves the fractional final star, and can count the value in sync."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/star-rating-fill.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Star Rating Fill preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add star-rating-fill" />
+
+That writes one file: `compositions/components/star-rating-fill.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/star-rating-fill.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `rating` | `4.8` | 0 to 5, step 0.1 | Target rating in star units from 0 to 5. |
+| `starCount` | `5` | 1 to 10, step 1 | Number of stars shown in the row. |
+| `showValue` | `yes` | `yes`, `no` | Show or hide the synchronized numeric rating. |
+
+{/* hf:generated-footer */}
+
+Tagged `data` `rating` `stars` `fractional` `fill` `prove`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

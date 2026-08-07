@@ -3,45 +3,21 @@ title: "iPhone & MacBook 3D Showcase"
 description: "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable."
 ---
 
-# iPhone & MacBook 3D Showcase
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.
-
-`html-in-canvas` `3d` `device` `iphone` `macbook` `gltf`
-
-<Warning>
-**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
-</Warning>
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png" autoPlay muted loop playsInline />
+<iframe src="/public/catalog/preview/blocks/vfx-iphone-device.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="iPhone & MacBook 3D Showcase preview" />
 
 ## Install
 
-<CodeGroup>
+<InstallCommand command="npx hyperframes add vfx-iphone-device" />
 
-```bash Terminal
-npx hyperframes add vfx-iphone-device
-```
+That writes `compositions/vfx-iphone-device.html`, plus 4 supporting files under `models/`.
 
-</CodeGroup>
-
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 15s |
-
-## Files
-
-| File | Target | Type |
-| --- | --- | --- |
-| `vfx-iphone-device.html` | `compositions/vfx-iphone-device.html` | hyperframes:composition |
-| `models/iphone.glb` | `models/iphone.glb` | asset |
-| `models/macbook.glb` | `models/macbook.glb` | asset |
-| `models/hyperframes-mobile.png` | `models/hyperframes-mobile.png` | asset |
-| `models/hyperframes-desktop.png` | `models/hyperframes-desktop.png` | asset |
+<Warning>
+  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
+  Rendering from the CLI switches it on for you. [How it
+  works](/guides/html-in-canvas)
+</Warning>
 
 ## Usage
 
@@ -50,3 +26,13 @@ After installing, add the block to your host composition:
 ```html
 <div data-composition-id="vfx-iphone-device" data-composition-src="compositions/vfx-iphone-device.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `html-in-canvas` `3d` `device` `iphone` `macbook` `gltf`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

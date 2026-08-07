@@ -1,0 +1,47 @@
+<!--
+  Perspective Marquee - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-perspective-marquee">
+  <div>
+    <span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span><span>AGENTS</span
+    ><span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span><span>AGENTS</span>
+  </div>
+</div>
+
+<style>
+  .hf-remocn-perspective-marquee {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-perspective-marquee {
+    width: 720px;
+    perspective: 900px;
+    overflow: hidden;
+    transform: rotateX(18deg);
+  }
+  .hf-remocn-perspective-marquee div {
+    display: inline-flex;
+    gap: 22px;
+    white-space: nowrap;
+    transform: translateX(var(--hf-marquee-x, 0px));
+  }
+  .hf-remocn-perspective-marquee span {
+    padding: 12px 18px;
+    border-radius: 999px;
+    background: #18181b;
+    color: #fff;
+    font-size: 28px;
+    box-shadow: 0 18px 44px rgba(24, 24, 27, 0.18);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-perspective-marquee div', { '--hf-marquee-x': '0px' }, { '--hf-marquee-x': '-360px', duration: 4.5, ease: 'none' }, startTime);
+-->

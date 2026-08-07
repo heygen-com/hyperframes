@@ -1,0 +1,546 @@
+<!doctype html>
+<!--
+  facet-morph: HyperFrames video primitive (intros and reveals / morph)
+
+  Concept: a faceted low-poly mass (36 triangles, one SVG) continuously
+  reshapes between three authored silhouettes (blob, mark, badge) with
+  per-facet flat shading that recomputes as the vertices move. Light reads
+  from the upper left: facets turned toward it lift toward a pale accent-
+  tinted tone, facets turned away fall toward near-black. The register is
+  the ordinaryfolk reshaping-mass beat: one calm continuous morph, no pops.
+
+  Wave L, unit L2. Reference: motion-reference/ordinaryfolkco
+  2001090228958752945 sheet-02 (the continuously reshaping faceted mass).
+
+  Determinism: vertex positions are authored keyframe tables (per-silhouette
+  radius, jitter, and center rows) interpolated as a PURE FUNCTION of
+  timeline time. One linear driver tween owns the whole life of the mass;
+  its onUpdate recomputes every vertex and every facet fill from t alone,
+  so forward, backward, and shuffled seeks land byte-identical frames.
+  The wobble that keeps the mass alive is built from fixed-phase sine
+  terms (phases from a fixed-seed LCG, baked once at mount).
+
+  Paint law: facet geometry AND facet color are written as ATTRIBUTES
+  (points / fill / stroke) on every update. Nothing tweens a var() color
+  string and nothing relies on CSS repaint of SVG presentation properties
+  under seeks. Contract tokens are resolved to concrete rgb once at mount
+  (via a probe element), then mixed numerically in JS.
+
+  Variables (declared in data-composition-variables below):
+    - forms (string, default "blob,mark,badge"): comma-separated silhouette
+      sequence. Valid names: blob, mark, badge. Unknown names are dropped;
+      an empty result falls back to the default sequence.
+    - hold_last (boolean, default true): true decays the wobble and holds
+      the final silhouette dead still; false keeps the mass slowly
+      breathing between the last two silhouettes through the hold.
+    - accent (green | blue | violet, default green): tint of the lit
+      facets. green maps to --brand, blue to --accent, violet to --accent-2.
+    - exit (none | fade | up, default none): outgoing transition. none
+      holds the settled mass (frame roots own transitions).
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN       = 0.55s entrance + one 1.45s morph leg per silhouette step
+               (0.35s dwell between legs) + 0.55s wobble decay
+    HOLD     = elastic = max(0, D - (IN + OUT))
+    OUT      = 0.45s when exit is fade or up, 0 when exit is none
+    If D < IN + OUT, IN and OUT scale down together so IN + OUT == D.
+
+  Sync point: form-lock when the mass reaches its final silhouette
+  (3.95s at the 3-form default). Dispatches a bubbling hf:sfx CustomEvent
+  with id "facet-settle-soft" there. This primitive never plays audio.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset:0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "facet-morph" key. Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="facet-morph"
+  data-composition-duration="5"
+  data-composition-variables='[
+    { "id": "forms", "type": "string", "role": "content", "label": "Forms", "description": "Comma-separated silhouette sequence from blob, mark, badge.", "default": "blob,mark,badge" },
+    { "id": "hold_last", "type": "boolean", "role": "timing", "label": "Hold last", "description": "True settles dead still on the final silhouette; false keeps the mass slowly breathing through the hold.", "default": true },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Tint of the lit facets.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Outgoing transition. None holds the settled mass.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Facet Morph</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="facet-morph" data-duration="5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .fm-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          /* A very soft stage vignette keeps the mass grounded on flat
+             token backgrounds without inventing a light band (that is
+             light-sweep-pass territory). */
+          .fm-clip::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(
+              ellipse at 42% 38%,
+              color-mix(in srgb, var(--fg, #f8fafc) 4%, transparent) 0%,
+              transparent 68%
+            );
+          }
+
+          .fm-stage {
+            display: grid;
+            place-items: center;
+            width: 100%;
+            height: 100%;
+            will-change: transform, opacity;
+          }
+
+          .fm-svg {
+            width: 74cqmin;
+            height: 74cqmin;
+            overflow: visible;
+          }
+
+          .fm-svg polygon {
+            stroke-width: 0.22;
+            stroke-linejoin: round;
+          }
+        </style>
+
+        <div
+          id="facet-morph-clip"
+          class="fm-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <div class="fm-stage">
+            <svg class="fm-svg" viewBox="0 0 100 100" role="img" aria-label="Reshaping faceted mass">
+              <g class="fm-mesh"></g>
+            </svg>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var SVG_NS = "http://www.w3.org/2000/svg";
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "facet-morph";
+            var stage = root.querySelector(".fm-stage");
+            var mesh = root.querySelector(".fm-mesh");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            /* ---------------- variables ---------------- */
+
+            var accentTokens = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentTokens, vars.accent)
+              ? vars.accent
+              : "green";
+            // The bundler mirrors composition variables as scoped CSS custom
+            // props, so this unit's own accent variable can shadow the contract
+            // --accent token ("blue" is a valid CSS color). When the shadow is
+            // present, fall back to the literal contract value.
+            var shadowedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              shadowedAccent === "green" ||
+              shadowedAccent === "blue" ||
+              shadowedAccent === "violet"
+            ) {
+              accentTokens.blue = "#38bdf8";
+            }
+
+            var holdLast = !(vars.hold_last === false || vars.hold_last === "false");
+            // INVARIANT: only none | fade | up reaches the timeline.
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            /* ---------------- authored keyframe tables ----------------
+               Each silhouette is one row set: 18 outer radii, 18 outer
+               angular jitters (deg), 9 inner radii, 9 inner jitters (deg),
+               a center, and a whole-mass rotation (deg). Angles are fixed
+               spokes (outer every 20deg, inner every 40deg offset 20deg,
+               both starting at 12 o'clock), so any two rows interpolate
+               vertex-for-vertex. */
+
+            var FORMS = {
+              // Irregular craggy rock, the reference's opening mass.
+              blob: {
+                outerR: [34, 39, 31, 36, 41, 33, 29, 37, 40, 32, 35, 30, 38, 34, 28, 36, 39, 33],
+                outerJ: [3, -5, 6, -2, 4, -6, 2, 5, -4, 3, -3, 6, -5, 2, 4, -2, -6, 5],
+                innerR: [16, 19, 14, 20, 17, 13, 18, 15, 19],
+                innerJ: [8, -10, 12, -6, 9, -12, 7, 11, -8],
+                cx: 50,
+                cy: 51,
+                rot: 0,
+              },
+              // A peaked asymmetric shard, the reference's closing frames.
+              mark: {
+                outerR: [48, 40, 28, 22, 19, 17, 16, 17, 19, 21, 23, 22, 19, 17, 19, 25, 34, 44],
+                outerJ: [-2, 6, -8, 4, -3, 5, -6, 2, 4, -5, 3, -4, 6, -2, 5, -7, 3, -4],
+                innerR: [20, 13, 10, 8, 9, 8, 10, 11, 15],
+                innerJ: [-6, 9, -11, 7, -8, 10, -7, 6, -9],
+                cx: 50,
+                cy: 56,
+                rot: -7,
+              },
+              // A wide-shouldered shield settling toward a point.
+              badge: {
+                outerR: [36, 37, 35, 34, 33, 30, 27, 25, 24, 33, 24, 25, 27, 30, 33, 34, 35, 37],
+                outerJ: [0, 2, -2, 1, -1, 2, -2, 1, 3, 0, -3, -1, 2, -2, 1, -1, 2, -2],
+                innerR: [18, 17, 16, 13, 12, 12, 13, 16, 17],
+                innerJ: [4, -5, 6, -4, 5, -6, 4, -5, 6],
+                cx: 50,
+                cy: 49,
+                rot: 5,
+              },
+            };
+
+            var requested = String(vars.forms == null ? "" : vars.forms)
+              .split(",")
+              .map(function (name) {
+                return name.trim().toLowerCase();
+              })
+              .filter(function (name) {
+                return Object.prototype.hasOwnProperty.call(FORMS, name);
+              });
+            var formNames = requested.length > 0 ? requested : ["blob", "mark", "badge"];
+            var formRows = formNames.map(function (name) {
+              return FORMS[name];
+            });
+
+            /* ---------------- fixed-seed facet tables ----------------
+               Wobble phases and per-facet tilts come from one LCG baked at
+               mount. Same seed, same mesh, every mount. */
+
+            var OUTER = 18;
+            var INNER = 9;
+            var lcgState = 0x0f4c37ed;
+            function lcg() {
+              lcgState = (Math.imul(1664525, lcgState) + 1013904223) >>> 0;
+              return lcgState / 4294967296;
+            }
+            var outerPhase = [];
+            for (var i = 0; i < OUTER; i += 1) outerPhase.push(lcg());
+            var innerPhase = [];
+            for (var j = 0; j < INNER; j += 1) innerPhase.push(lcg());
+
+            /* Triangulation: for each inner vertex j, spokes a=2j, b=2j+1,
+               c=2j+2 close the outer ring band (27 triangles), then the
+               inner ring fans to the center (9 triangles). 36 facets. */
+            var facets = [];
+            for (var k = 0; k < INNER; k += 1) {
+              var a = 2 * k;
+              var b = 2 * k + 1;
+              var c = (2 * k + 2) % OUTER;
+              facets.push(["o", a, "o", b, "i", k]);
+              facets.push(["o", b, "o", c, "i", k]);
+              facets.push(["o", c, "i", k, "i", (k + 1) % INNER]);
+            }
+            for (var f = 0; f < INNER; f += 1) {
+              facets.push(["i", f, "i", (f + 1) % INNER, "c", 0]);
+            }
+            var facetTilt = facets.map(function () {
+              return (lcg() - 0.5) * 0.62;
+            });
+
+            var polygons = facets.map(function () {
+              var polygon = document.createElementNS(SVG_NS, "polygon");
+              mesh.appendChild(polygon);
+              return polygon;
+            });
+
+            /* ---------------- token color resolution ----------------
+               Resolve contract tokens to concrete rgb once at mount via a
+               probe element, then mix numerically. Facet fills are literal
+               rgb() attribute strings; no var() ever reaches a tween. */
+
+            var probe = document.createElement("span");
+            probe.style.display = "none";
+            root.appendChild(probe);
+            function resolveColor(cssColor, fallback) {
+              probe.style.color = fallback;
+              probe.style.color = cssColor;
+              var raw = getComputedStyle(probe).color;
+              var match = raw.match(/rgba?\(([^)]+)\)/);
+              if (!match) return [128, 128, 128];
+              var parts = match[1].split(/[,\s/]+/).map(Number);
+              return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+            }
+            var fgRgb = resolveColor("var(--fg, #f8fafc)", "#f8fafc");
+            var surfaceRgb = resolveColor("var(--surface, #14171c)", "#14171c");
+            var accentRgb = resolveColor(accentTokens[accent], "#22c55e");
+            probe.remove();
+
+            function mix(colorA, colorB, amount) {
+              var w = Math.max(0, Math.min(1, amount));
+              return [
+                colorA[0] + (colorB[0] - colorA[0]) * w,
+                colorA[1] + (colorB[1] - colorA[1]) * w,
+                colorA[2] + (colorB[2] - colorA[2]) * w,
+              ];
+            }
+            function rgbString(color) {
+              return (
+                "rgb(" +
+                Math.round(color[0]) +
+                "," +
+                Math.round(color[1]) +
+                "," +
+                Math.round(color[2]) +
+                ")"
+              );
+            }
+
+            // Base mass tone contrasts the background on light and dark
+            // hosts alike (fg-heavy). Lit facets climb toward a pale
+            // accent-tinted white; shadow facets fall toward black.
+            var baseRgb = mix(fgRgb, surfaceRgb, 0.24);
+            var litTarget = mix([255, 255, 255], accentRgb, 0.2);
+            var darkTarget = [8, 9, 11];
+
+            /* ---------------- envelope ---------------- */
+
+            var ENTER_BASE = 0.55;
+            var LEG_BASE = 1.45;
+            var DWELL_BASE = 0.35;
+            var DECAY_BASE = 0.55;
+            var steps = Math.max(0, formRows.length - 1);
+            var MORPH_BASE = steps > 0 ? steps * LEG_BASE + (steps - 1) * DWELL_BASE : 0;
+            var IN_BASE = ENTER_BASE + MORPH_BASE + DECAY_BASE;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var envScale = duration < totalBase ? duration / totalBase : 1;
+            var ENTER = ENTER_BASE * envScale;
+            var LEG = LEG_BASE * envScale;
+            var DWELL = DWELL_BASE * envScale;
+            var DECAY = DECAY_BASE * envScale;
+            var IN = IN_BASE * envScale;
+            var OUT = OUT_BASE * envScale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+            var MORPH_START = ENTER * 0.55;
+            var MORPH_END = MORPH_START + (MORPH_BASE > 0 ? MORPH_BASE * envScale : 0);
+            var DECAY_END = MORPH_END + DECAY;
+
+            /* ---------------- pure functions of time ---------------- */
+
+            function smooth(s) {
+              // sine in-out, the quiet register's ease.
+              return 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, s)));
+            }
+
+            // Form progress p(t): one leg per silhouette step with a dwell
+            // between legs, then (hold_last false) an endless slow breath
+            // between the last two silhouettes. Continuous everywhere.
+            function progressAt(t) {
+              if (steps === 0) return 0;
+              if (t <= MORPH_START) return 0;
+              var local = t - MORPH_START;
+              var span = LEG + DWELL;
+              for (var s = 0; s < steps; s += 1) {
+                var legStart = s * span;
+                if (local < legStart + LEG) {
+                  return s + smooth((local - legStart) / LEG);
+                }
+                if (local < legStart + span) return s + 1;
+              }
+              if (holdLast || steps < 1) return steps;
+              // Breathe between the final two forms: depth 0.45, 6s period,
+              // starting and ending each cycle exactly on the final form.
+              var breathe = t - MORPH_END;
+              return steps - 0.45 * (0.5 - 0.5 * Math.cos((2 * Math.PI * breathe) / 6));
+            }
+
+            // Wobble amplitude a(t): ramps in with the entrance, then decays
+            // to zero before the hold when hold_last is true.
+            function wobbleAmpAt(t) {
+              var ramp = smooth(t / Math.max(0.001, ENTER));
+              if (!holdLast) return ramp;
+              if (t <= MORPH_END) return ramp;
+              return ramp * (1 - smooth((t - MORPH_END) / Math.max(0.001, DECAY)));
+            }
+
+            var WOBBLE_R = 1.6; // radial wobble, viewBox units
+            var WOBBLE_HZ = 0.42;
+
+            function lerp(valueA, valueB, w) {
+              return valueA + (valueB - valueA) * w;
+            }
+
+            // Light arrives from the upper left.
+            var LIGHT_X = -0.62;
+            var LIGHT_Y = -0.78;
+
+            var outerPts = [];
+            for (var oi = 0; oi < OUTER; oi += 1) outerPts.push([0, 0]);
+            var innerPts = [];
+            for (var ii = 0; ii < INNER; ii += 1) innerPts.push([0, 0]);
+            var centerPt = [50, 50];
+
+            function render(t) {
+              var p = progressAt(t);
+              var kA = Math.max(0, Math.min(formRows.length - 1, Math.floor(p)));
+              var kB = Math.min(formRows.length - 1, kA + 1);
+              var w = Math.max(0, Math.min(1, p - kA));
+              var rowA = formRows[kA];
+              var rowB = formRows[kB];
+              var amp = wobbleAmpAt(t) * WOBBLE_R;
+              var cx = lerp(rowA.cx, rowB.cx, w);
+              var cy = lerp(rowA.cy, rowB.cy, w);
+              var rot = (lerp(rowA.rot, rowB.rot, w) * Math.PI) / 180;
+
+              for (var o = 0; o < OUTER; o += 1) {
+                var wobO = amp * Math.sin(2 * Math.PI * (WOBBLE_HZ * t + outerPhase[o]));
+                var radO = lerp(rowA.outerR[o], rowB.outerR[o], w) + wobO;
+                var angO =
+                  ((-90 + o * 20 + lerp(rowA.outerJ[o], rowB.outerJ[o], w)) * Math.PI) / 180 + rot;
+                outerPts[o][0] = cx + radO * Math.cos(angO);
+                outerPts[o][1] = cy + radO * Math.sin(angO);
+              }
+              for (var n = 0; n < INNER; n += 1) {
+                var wobI = amp * 0.7 * Math.sin(2 * Math.PI * (WOBBLE_HZ * t + innerPhase[n]));
+                var radI = lerp(rowA.innerR[n], rowB.innerR[n], w) + wobI;
+                var angI =
+                  ((-70 + n * 40 + lerp(rowA.innerJ[n], rowB.innerJ[n], w)) * Math.PI) / 180 + rot;
+                innerPts[n][0] = cx + radI * Math.cos(angI);
+                innerPts[n][1] = cy + radI * Math.sin(angI);
+              }
+              centerPt[0] = cx;
+              centerPt[1] = cy + amp * 0.4 * Math.sin(2 * Math.PI * (WOBBLE_HZ * t + 0.31));
+
+              for (var fi = 0; fi < facets.length; fi += 1) {
+                var facet = facets[fi];
+                var pts = "";
+                var sumX = 0;
+                var sumY = 0;
+                for (var v = 0; v < 3; v += 1) {
+                  var kind = facet[v * 2];
+                  var index = facet[v * 2 + 1];
+                  var pt = kind === "o" ? outerPts[index] : kind === "i" ? innerPts[index] : centerPt;
+                  pts += pt[0].toFixed(2) + "," + pt[1].toFixed(2) + (v < 2 ? " " : "");
+                  sumX += pt[0];
+                  sumY += pt[1];
+                }
+                var nx = sumX / 3 - cx;
+                var ny = sumY / 3 - cy;
+                var len = Math.hypot(nx, ny) || 1;
+                // Pseudo-normal: outward direction plus the facet's fixed
+                // tilt. Facets turned toward the upper-left light lift.
+                var shade =
+                  (nx / len) * LIGHT_X + (ny / len) * LIGHT_Y + facetTilt[fi];
+                shade = Math.max(-1, Math.min(1, shade));
+                var fill =
+                  shade >= 0
+                    ? mix(baseRgb, litTarget, shade * 0.85)
+                    : mix(baseRgb, darkTarget, -shade * 0.78);
+                var fillString = rgbString(fill);
+                var polygon = polygons[fi];
+                polygon.setAttribute("points", pts);
+                polygon.setAttribute("fill", fillString);
+                polygon.setAttribute("stroke", fillString);
+              }
+            }
+
+            /* ---------------- timeline ---------------- */
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            gsap.set(stage, { opacity: 0, scale: 0.94, y: 0 });
+            render(0);
+
+            var tl = gsap.timeline({ paused: true });
+
+            // ONE linear driver owns every vertex and every fill; render is a
+            // pure function of the driver's time.
+            var driver = { t: 0 };
+            tl.fromTo(
+              driver,
+              { t: 0 },
+              {
+                t: duration,
+                duration: duration,
+                ease: "none",
+                onUpdate: function () {
+                  render(driver.t);
+                },
+              },
+              0,
+            );
+
+            // IN: quiet entrance while the wobble ramps up.
+            tl.to(stage, { opacity: 1, duration: ENTER, ease: "power2.out" }, 0);
+            tl.to(stage, { scale: 1, duration: ENTER * 1.4, ease: "power2.out" }, 0);
+
+            tl.call(
+              function () {
+                fireSfx("facet-settle-soft", MORPH_END);
+              },
+              [],
+              MORPH_END,
+            );
+
+            // HOLD: still (hold_last true) or the slow breath, both inside
+            // the driver's pure function. No extra tweens.
+
+            // OUT: only when the exit variable asks for one.
+            if (exit !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exit === "up") {
+                tl.to(stage, { y: "-6cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
