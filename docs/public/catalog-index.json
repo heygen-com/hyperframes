@@ -1,19 +1,5 @@
 [
   {
-    "name": "accordion",
-    "type": "component",
-    "title": "Accordion",
-    "description": "A precise disclosure row with a machined edge, accessible expansion state, and deterministic reveal hooks",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "accordion",
-      "disclosure"
-    ],
-    "href": "/catalog/components/accordion",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/accordion.png"
-  },
-  {
     "name": "ai-generation-canvas",
     "type": "component",
     "title": "AI Generation Canvas",
@@ -39,34 +25,6 @@
     ],
     "href": "/catalog/components/ai-prompt-flow",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ai-prompt-flow.png"
-  },
-  {
-    "name": "alert",
-    "type": "component",
-    "title": "Alert",
-    "description": "An Operator Black status alert with a matte surface, technical icon, title, and message",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "alert",
-      "status"
-    ],
-    "href": "/catalog/components/alert",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert.png"
-  },
-  {
-    "name": "alert-dialog",
-    "type": "component",
-    "title": "Alert Dialog",
-    "description": "An Operator Black destructive confirmation dialog with a flat backdrop and centered Soft Optical motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "alert-dialog",
-      "overlay"
-    ],
-    "href": "/catalog/components/alert-dialog",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert-dialog.png"
   },
   {
     "name": "animated-bar-chart",
@@ -165,20 +123,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ascii-trail-reveal.png"
   },
   {
-    "name": "aspect-ratio",
-    "type": "component",
-    "title": "Aspect Ratio",
-    "description": "A matte aspect-ratio frame for media and previews with a compact technical dimension label",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "aspect-ratio",
-      "layout"
-    ],
-    "href": "/catalog/components/aspect-ratio",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aspect-ratio.png"
-  },
-  {
     "name": "aurora-drift",
     "type": "component",
     "title": "Aurora Drift",
@@ -193,20 +137,6 @@
     ],
     "href": "/catalog/components/aurora-drift",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aurora-drift.png"
-  },
-  {
-    "name": "avatar",
-    "type": "component",
-    "title": "Avatar",
-    "description": "A matte initials avatar with a functional availability indicator and host-controlled sizing",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "avatar",
-      "identity"
-    ],
-    "href": "/catalog/components/avatar",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar.png"
   },
   {
     "name": "avatar-cloud",
@@ -237,32 +167,6 @@
     ],
     "href": "/catalog/components/avatar-group-hover",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar-group-hover.png"
-  },
-  {
-    "name": "backdrop",
-    "type": "component",
-    "title": "Backdrop",
-    "description": "An Operator Black flat dimming backdrop for dialog, drawer, sheet, and modal scenes.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/backdrop",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/backdrop.png"
-  },
-  {
-    "name": "badge",
-    "type": "component",
-    "title": "Badge",
-    "description": "An Operator Black semantic badge for restrained success, warning, and neutral status labels",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "badge",
-      "status"
-    ],
-    "href": "/catalog/components/badge",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge.png"
   },
   {
     "name": "badge-pop",
@@ -384,20 +288,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
   },
   {
-    "name": "blur-in",
-    "type": "component",
-    "title": "Blur In",
-    "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "blur-in",
-      "text-effect"
-    ],
-    "href": "/catalog/components/blur-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-in.png"
-  },
-  {
     "name": "blur-out-up",
     "type": "component",
     "title": "Blur Out Up",
@@ -423,20 +313,6 @@
     ],
     "href": "/catalog/components/bottom-up-letters",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/bottom-up-letters.png"
-  },
-  {
-    "name": "breadcrumb",
-    "type": "component",
-    "title": "Breadcrumb",
-    "description": "A quiet path-navigation primitive with technical SVG separators and a strong current-page treatment",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "breadcrumb",
-      "navigation"
-    ],
-    "href": "/catalog/components/breadcrumb",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/breadcrumb.png"
   },
   {
     "name": "browser-device-stage",
@@ -466,48 +342,6 @@
     ],
     "href": "/catalog/components/browser-flow",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/browser-flow.png"
-  },
-  {
-    "name": "button",
-    "type": "component",
-    "title": "Button",
-    "description": "A video-safe action button with tactile press, loading, and success states",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "button",
-      "control"
-    ],
-    "href": "/catalog/components/button",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button.png"
-  },
-  {
-    "name": "button-group",
-    "type": "component",
-    "title": "Button Group",
-    "description": "A compact segmented action group with clear pressed-state emphasis",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "button-group",
-      "control"
-    ],
-    "href": "/catalog/components/button-group",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button-group.png"
-  },
-  {
-    "name": "calendar",
-    "type": "component",
-    "title": "Calendar",
-    "description": "A compact date grid with a recessed selected day and deterministic reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "calendar",
-      "date"
-    ],
-    "href": "/catalog/components/calendar",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/calendar.png"
   },
   {
     "name": "camcorder-hud",
@@ -809,20 +643,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-weight-shift.png"
   },
   {
-    "name": "card",
-    "type": "component",
-    "title": "Card",
-    "description": "A single semantic card surface with calm type hierarchy, success status, a review action, and Soft Optical reveal hooks",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "card",
-      "surface"
-    ],
-    "href": "/catalog/components/card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card.png"
-  },
-  {
     "name": "card-resize",
     "type": "component",
     "title": "Card Resize",
@@ -835,34 +655,6 @@
     ],
     "href": "/catalog/components/card-resize",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
-  },
-  {
-    "name": "caret",
-    "type": "component",
-    "title": "Caret",
-    "description": "A matte command-field caret with finite blink timing and a deterministic typed-value reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "caret",
-      "typing"
-    ],
-    "href": "/catalog/components/caret",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caret.png"
-  },
-  {
-    "name": "carousel",
-    "type": "component",
-    "title": "Carousel",
-    "description": "A restrained scene carousel with layered media surfaces, accessible position controls, and deterministic slide motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "carousel",
-      "media"
-    ],
-    "href": "/catalog/components/carousel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/carousel.png"
   },
   {
     "name": "char-slam-explode",
@@ -879,20 +671,6 @@
     ],
     "href": "/catalog/components/char-slam-explode",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/char-slam-explode.png"
-  },
-  {
-    "name": "chart",
-    "type": "component",
-    "title": "Chart",
-    "description": "An Operator Black categorical bar chart using the shared solid data palette and deterministic growth",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "chart",
-      "data"
-    ],
-    "href": "/catalog/components/chart",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chart.png"
   },
   {
     "name": "chart-story",
@@ -925,20 +703,6 @@
     ],
     "href": "/catalog/components/chat-to-preview-layout",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chat-to-preview-layout.png"
-  },
-  {
-    "name": "checkbox",
-    "type": "component",
-    "title": "Checkbox",
-    "description": "An accessible checkbox with tactile feedback and a functional mint check state",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "checkbox",
-      "control"
-    ],
-    "href": "/catalog/components/checkbox",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/checkbox.png"
   },
   {
     "name": "checkout-flow",
@@ -1521,60 +1285,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-typing.png"
   },
   {
-    "name": "collapsible",
-    "type": "component",
-    "title": "Collapsible",
-    "description": "A compact disclosure surface with an accessible trigger, restrained chevron motion, and deterministic height reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "collapsible",
-      "disclosure"
-    ],
-    "href": "/catalog/components/collapsible",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/collapsible.png"
-  },
-  {
-    "name": "combobox",
-    "type": "component",
-    "title": "Combobox",
-    "description": "A searchable combobox with an anchored option list and explicit selection check",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "combobox",
-      "control"
-    ],
-    "href": "/catalog/components/combobox",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/combobox.png"
-  },
-  {
-    "name": "command-menu",
-    "type": "component",
-    "title": "Command Menu",
-    "description": "An Operator Black command palette with a recessed search field and mint selection check",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "command-menu",
-      "overlay"
-    ],
-    "href": "/catalog/components/command-menu",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/command-menu.png"
-  },
-  {
-    "name": "command-menu-item",
-    "type": "component",
-    "title": "Command Menu Item",
-    "description": "An Operator Black command-row specimen with technical shortcuts and restrained selection state.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/command-menu-item",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/command-menu-item.png"
-  },
-  {
     "name": "comparison-split",
     "type": "component",
     "title": "Comparison Split",
@@ -1635,20 +1345,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/constellation-hub.png"
   },
   {
-    "name": "context-menu",
-    "type": "component",
-    "title": "Context Menu",
-    "description": "An Operator Black context menu with a pointer anchor, technical shortcuts, and mint selection check",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "context-menu",
-      "menu"
-    ],
-    "href": "/catalog/components/context-menu",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/context-menu.png"
-  },
-  {
     "name": "count-up",
     "type": "component",
     "title": "Count Up",
@@ -1707,20 +1403,6 @@
     ],
     "href": "/catalog/components/cta-lockup",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cta-lockup.png"
-  },
-  {
-    "name": "cursor",
-    "type": "component",
-    "title": "Cursor",
-    "description": "A technical SVG pointer with guided travel, a functional click ripple, and a compact action callout",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "cursor",
-      "pointer"
-    ],
-    "href": "/catalog/components/cursor",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor.png"
   },
   {
     "name": "cursor-glyph-trail",
@@ -1836,20 +1518,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/device-mockup-zoom.png"
   },
   {
-    "name": "dialog",
-    "type": "component",
-    "title": "Dialog",
-    "description": "An Operator Black centered modal with a flat backdrop, restrained actions, and Soft Optical motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "dialog",
-      "overlay"
-    ],
-    "href": "/catalog/components/dialog",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dialog.png"
-  },
-  {
     "name": "directional-wipe",
     "type": "component",
     "title": "Directional Wipe",
@@ -1886,20 +1554,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drag-and-drop-flow.png"
   },
   {
-    "name": "drawer",
-    "type": "component",
-    "title": "Drawer",
-    "description": "An Operator Black bottom drawer with matte rows and edge-attached Soft Optical motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "drawer",
-      "overlay"
-    ],
-    "href": "/catalog/components/drawer",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drawer.png"
-  },
-  {
     "name": "drift-hold",
     "type": "component",
     "title": "Drift Hold",
@@ -1914,32 +1568,6 @@
     ],
     "href": "/catalog/components/drift-hold",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drift-hold.png"
-  },
-  {
-    "name": "dropdown-menu",
-    "type": "component",
-    "title": "Dropdown Menu",
-    "description": "An Operator Black dropdown menu with origin-aware motion and a mint selection check",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "dropdown-menu",
-      "menu"
-    ],
-    "href": "/catalog/components/dropdown-menu",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu.png"
-  },
-  {
-    "name": "dropdown-menu-item",
-    "type": "component",
-    "title": "Dropdown Menu Item",
-    "description": "An Operator Black menu-row specimen showing idle, hover, selected, and disabled treatments.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/dropdown-menu-item",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu-item.png"
   },
   {
     "name": "dynamic-grid",
@@ -2001,20 +1629,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png"
   },
   {
-    "name": "empty",
-    "type": "component",
-    "title": "Empty",
-    "description": "An Operator Black empty state using open space, a technical icon, clear copy, and neutral action",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "empty",
-      "state"
-    ],
-    "href": "/catalog/components/empty",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/empty.png"
-  },
-  {
     "name": "facet-morph",
     "type": "component",
     "title": "Facet Morph",
@@ -2043,20 +1657,6 @@
     ],
     "href": "/catalog/components/fade-through",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/fade-through.png"
-  },
-  {
-    "name": "field",
-    "type": "component",
-    "title": "Field",
-    "description": "A labeled field wrapper with an accessible control and supporting description",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "field",
-      "form"
-    ],
-    "href": "/catalog/components/field",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/field.png"
   },
   {
     "name": "flash-through-white",
@@ -2361,20 +1961,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hero-device-assemble.png"
   },
   {
-    "name": "hover-card",
-    "type": "component",
-    "title": "Hover Card",
-    "description": "An Operator Black hover card with a matte profile preview and origin-aware Soft Optical reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "hover-card",
-      "overlay"
-    ],
-    "href": "/catalog/components/hover-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hover-card.png"
-  },
-  {
     "name": "hw-arrow",
     "type": "component",
     "title": "Hand-Drawn Arrow",
@@ -2620,20 +2206,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/inline-highlight.png"
   },
   {
-    "name": "input",
-    "type": "component",
-    "title": "Input",
-    "description": "A video-safe text field with label, helper copy, focus state, and typed-value reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "input",
-      "field"
-    ],
-    "href": "/catalog/components/input",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input.png"
-  },
-  {
     "name": "input-feedback",
     "type": "component",
     "title": "Input Feedback",
@@ -2646,34 +2218,6 @@
     ],
     "href": "/catalog/components/input-feedback",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-feedback.png"
-  },
-  {
-    "name": "input-group",
-    "type": "component",
-    "title": "Input Group",
-    "description": "A compound input with technical prefix, editable value, and attached action",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "input-group",
-      "field"
-    ],
-    "href": "/catalog/components/input-group",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-group.png"
-  },
-  {
-    "name": "input-otp",
-    "type": "component",
-    "title": "Input OTP",
-    "description": "A segmented one-time-code field with tabular digits and an active slot",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "input-otp",
-      "field"
-    ],
-    "href": "/catalog/components/input-otp",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-otp.png"
   },
   {
     "name": "instagram-follow",
@@ -2723,34 +2267,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/iris-reveal.png"
   },
   {
-    "name": "item",
-    "type": "component",
-    "title": "Item",
-    "description": "A border-led interactive list row with neutral monogram, compact metadata, and deterministic hover state",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "item",
-      "list"
-    ],
-    "href": "/catalog/components/item",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/item.png"
-  },
-  {
-    "name": "kbd",
-    "type": "component",
-    "title": "Kbd",
-    "description": "A physical keyboard legend with machined keycap depth, system monospace type, and finite press motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "kbd",
-      "shortcut"
-    ],
-    "href": "/catalog/components/kbd",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kbd.png"
-  },
-  {
     "name": "keyframe-scrub-stack",
     "type": "component",
     "title": "Keyframe Scrub Stack",
@@ -2790,20 +2306,6 @@
     ],
     "href": "/catalog/components/kinetic-type-swap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-type-swap.png"
-  },
-  {
-    "name": "label",
-    "type": "component",
-    "title": "Label",
-    "description": "A calm form label with compact requirement metadata for video UI scenes",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "label",
-      "form"
-    ],
-    "href": "/catalog/components/label",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/label.png"
   },
   {
     "name": "landing-code-showcase",
@@ -3288,20 +2790,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menu-morph.png"
   },
   {
-    "name": "menubar",
-    "type": "component",
-    "title": "Menubar",
-    "description": "A compact matte menubar for editor chrome with physical press response and restrained current-item emphasis",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "menubar",
-      "navigation"
-    ],
-    "href": "/catalog/components/menubar",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menubar.png"
-  },
-  {
     "name": "mesh-gradient-bg",
     "type": "component",
     "title": "Mesh Gradient Background",
@@ -3578,34 +3066,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/native-notification-pop.png"
   },
   {
-    "name": "native-select",
-    "type": "component",
-    "title": "Native Select",
-    "description": "A compact native select with a clear label, technical value, and focus state",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "native-select",
-      "control"
-    ],
-    "href": "/catalog/components/native-select",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/native-select.png"
-  },
-  {
-    "name": "navigation-menu",
-    "type": "component",
-    "title": "Navigation Menu",
-    "description": "An anchored navigation menu with a functional selection edge and opaque trigger-origin preview surface",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "navigation-menu",
-      "navigation"
-    ],
-    "href": "/catalog/components/navigation-menu",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/navigation-menu.png"
-  },
-  {
     "name": "news-ticker",
     "type": "block",
     "title": "News Ticker",
@@ -3844,20 +3304,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/page-slide.png"
   },
   {
-    "name": "pagination",
-    "type": "component",
-    "title": "Pagination",
-    "description": "A tactile pagination row with 40px controls, a recessed current page, and deterministic press feedback",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "pagination",
-      "navigation"
-    ],
-    "href": "/catalog/components/pagination",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pagination.png"
-  },
-  {
     "name": "pan-stations",
     "type": "component",
     "title": "Pan Stations",
@@ -4038,20 +3484,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/physical-exit.png"
   },
   {
-    "name": "popover",
-    "type": "component",
-    "title": "Popover",
-    "description": "An Operator Black anchored popover with a matte surface and trigger-origin Soft Optical motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "popover",
-      "overlay"
-    ],
-    "href": "/catalog/components/popover",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/popover.png"
-  },
-  {
     "name": "press-ripple",
     "type": "component",
     "title": "Press Ripple",
@@ -4078,32 +3510,6 @@
     ],
     "href": "/catalog/components/pricing-tier-focus",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pricing-tier-focus.png"
-  },
-  {
-    "name": "progress",
-    "type": "component",
-    "title": "Progress",
-    "description": "An Operator Black progress primitive with a mint active segment and tabular percentage value",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "progress",
-      "status"
-    ],
-    "href": "/catalog/components/progress",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/progress.png"
-  },
-  {
-    "name": "progress-steps",
-    "type": "component",
-    "title": "Progress Steps",
-    "description": "A vertical progress sequence with clear complete, current, and waiting states.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/progress-steps",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/progress-steps.png"
   },
   {
     "name": "pull-back-reveal",
@@ -4170,20 +3576,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/radial-surround.png"
   },
   {
-    "name": "radio",
-    "type": "component",
-    "title": "Radio Group",
-    "description": "An accessible radio group with restrained selection and active-label emphasis",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "radio",
-      "control"
-    ],
-    "href": "/catalog/components/radio",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/radio.png"
-  },
-  {
     "name": "reddit-post",
     "type": "block",
     "title": "Reddit Post Card",
@@ -4195,44 +3587,6 @@
     ],
     "href": "/catalog/blocks/reddit-post",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/reddit-post.png"
-  },
-  {
-    "name": "registry",
-    "type": "component",
-    "title": "Registry",
-    "description": "An Operator Black registry list for compact installable-component metadata.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/registry",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/registry.png"
-  },
-  {
-    "name": "remocn-ui",
-    "type": "component",
-    "title": "Remocn UI",
-    "description": "An Operator Black summary of the UI primitive families available in HyperFrames.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/remocn-ui",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/remocn-ui.png"
-  },
-  {
-    "name": "resizable",
-    "type": "component",
-    "title": "Resizable",
-    "description": "An accessible split-pane primitive with structural edges, a keyboard-focusable handle, and deterministic resizing",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "resizable",
-      "layout"
-    ],
-    "href": "/catalog/components/resizable",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/resizable.png"
   },
   {
     "name": "rgb-glitch-text",
@@ -4360,20 +3714,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/screen-flow-carousel.png"
   },
   {
-    "name": "scroll-area",
-    "type": "component",
-    "title": "Scroll Area",
-    "description": "A focused matte viewport with spacing-led list content and synchronized seek-safe scrollbar motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "scroll-area",
-      "layout"
-    ],
-    "href": "/catalog/components/scroll-area",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scroll-area.png"
-  },
-  {
     "name": "scroll-camera-story",
     "type": "component",
     "title": "Scroll Camera Story",
@@ -4436,46 +3776,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/segmentation-flood.png"
   },
   {
-    "name": "select",
-    "type": "component",
-    "title": "Select",
-    "description": "An origin-aware select with a matte menu and explicit selected option",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "select",
-      "control"
-    ],
-    "href": "/catalog/components/select",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/select.png"
-  },
-  {
-    "name": "select-item",
-    "type": "component",
-    "title": "Select Item",
-    "description": "A compact option list with selection check, technical hints, and disabled state.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/select-item",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/select-item.png"
-  },
-  {
-    "name": "separator",
-    "type": "component",
-    "title": "Separator",
-    "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "separator",
-      "layout"
-    ],
-    "href": "/catalog/components/separator",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/separator.png"
-  },
-  {
     "name": "settings-toggle-flow",
     "type": "component",
     "title": "Settings Toggle Flow",
@@ -4528,20 +3828,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-z.png"
   },
   {
-    "name": "sheet",
-    "type": "component",
-    "title": "Sheet",
-    "description": "An Operator Black side sheet with a flat backdrop and right-edge Soft Optical motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "sheet",
-      "overlay"
-    ],
-    "href": "/catalog/components/sheet",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sheet.png"
-  },
-  {
     "name": "shimmer-sweep",
     "type": "component",
     "title": "Shimmer Sweep",
@@ -4582,20 +3868,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/short-slide-right.png"
   },
   {
-    "name": "sidebar",
-    "type": "component",
-    "title": "Sidebar",
-    "description": "A single-plane sidebar with spacious link rhythm, logical-start selection, and soft deterministic entry motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "sidebar",
-      "navigation"
-    ],
-    "href": "/catalog/components/sidebar",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sidebar.png"
-  },
-  {
     "name": "signup-flow",
     "type": "component",
     "title": "Signup Flow",
@@ -4624,32 +3896,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/simulated-cursor.png"
   },
   {
-    "name": "skeleton",
-    "type": "component",
-    "title": "Skeleton",
-    "description": "An Operator Black loading skeleton using deterministic solid layers instead of gradient shimmer",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "skeleton",
-      "loading"
-    ],
-    "href": "/catalog/components/skeleton",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton.png"
-  },
-  {
-    "name": "skeleton-block",
-    "type": "component",
-    "title": "Skeleton Block",
-    "description": "An Operator Black skeleton block built from deterministic solid loading rows.",
-    "tags": [
-      "ui-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/skeleton-block",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton-block.png"
-  },
-  {
     "name": "skeleton-reveal",
     "type": "component",
     "title": "Skeleton Reveal",
@@ -4662,20 +3908,6 @@
     ],
     "href": "/catalog/components/skeleton-reveal",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton-reveal.png"
-  },
-  {
-    "name": "slider",
-    "type": "component",
-    "title": "Slider",
-    "description": "An accessible slider with semantic progress fill, physical thumb, and value readout",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "slider",
-      "control"
-    ],
-    "href": "/catalog/components/slider",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slider.png"
   },
   {
     "name": "slit-scan-reveal",
@@ -4763,20 +3995,6 @@
     ],
     "href": "/catalog/components/spatial-push",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spatial-push.png"
-  },
-  {
-    "name": "spinner",
-    "type": "component",
-    "title": "Spinner",
-    "description": "An Operator Black finite loading spinner with a 1.5px progress ring and status label",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "spinner",
-      "loading"
-    ],
-    "href": "/catalog/components/spinner",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spinner.png"
   },
   {
     "name": "split-tilt-cards",
@@ -4936,20 +4154,6 @@
     ],
     "href": "/catalog/components/state-chip-rail",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/state-chip-rail.png"
-  },
-  {
-    "name": "stepper",
-    "type": "component",
-    "title": "Stepper",
-    "description": "A horizontal stepper with numbered milestones, semantic progress, and current-step emphasis",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "stepper",
-      "progress"
-    ],
-    "href": "/catalog/components/stepper",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stepper.png"
   },
   {
     "name": "sticky-mock-swap",
@@ -5117,48 +4321,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/swirl-vortex.png"
   },
   {
-    "name": "switch",
-    "type": "component",
-    "title": "Switch",
-    "description": "A tactile switch with a physical thumb and semantic on/off treatment",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "switch",
-      "toggle"
-    ],
-    "href": "/catalog/components/switch",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/switch.png"
-  },
-  {
-    "name": "table",
-    "type": "component",
-    "title": "Table",
-    "description": "A compact structured-data table with machined row rules, semantic statuses, and tabular time values",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "table",
-      "data"
-    ],
-    "href": "/catalog/components/table",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/table.png"
-  },
-  {
-    "name": "tabs",
-    "type": "component",
-    "title": "Tabs",
-    "description": "A minimal tab primitive with an inset mint selection edge, open content hierarchy, and a seek-safe indicator",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "tabs",
-      "navigation"
-    ],
-    "href": "/catalog/components/tabs",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tabs.png"
-  },
-  {
     "name": "tabs-slide-indicator",
     "type": "component",
     "title": "Tabs Slide Indicator",
@@ -5285,20 +4447,6 @@
     ],
     "href": "/catalog/components/text-state-swap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-state-swap.png"
-  },
-  {
-    "name": "textarea",
-    "type": "component",
-    "title": "Textarea",
-    "description": "A resilient multiline field with a precise focus treatment and readable copy",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "textarea",
-      "field"
-    ],
-    "href": "/catalog/components/textarea",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/textarea.png"
   },
   {
     "name": "texture-mask-text",
@@ -5428,34 +4576,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/titlecard-lockup.png"
   },
   {
-    "name": "toast",
-    "type": "component",
-    "title": "Toast",
-    "description": "An Operator Black toast with a semantic success check, progress rail, and stack-origin motion",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "toast",
-      "notification"
-    ],
-    "href": "/catalog/components/toast",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toast.png"
-  },
-  {
-    "name": "toggle",
-    "type": "component",
-    "title": "Toggle",
-    "description": "A tactile toggle button with distinct pressed and unpressed states",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "toggle",
-      "control"
-    ],
-    "href": "/catalog/components/toggle",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle.png"
-  },
-  {
     "name": "toggle-flip",
     "type": "component",
     "title": "Toggle Flip",
@@ -5472,20 +4592,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle-flip.png"
   },
   {
-    "name": "toggle-group",
-    "type": "component",
-    "title": "Toggle Group",
-    "description": "A segmented toggle group with a recessed sliding selection indicator",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "toggle-group",
-      "control"
-    ],
-    "href": "/catalog/components/toggle-group",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle-group.png"
-  },
-  {
     "name": "tool-menu-slide-in",
     "type": "component",
     "title": "Tool Menu Slide In",
@@ -5496,20 +4602,6 @@
     ],
     "href": "/catalog/components/tool-menu-slide-in",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tool-menu-slide-in.png"
-  },
-  {
-    "name": "tooltip",
-    "type": "component",
-    "title": "Tooltip",
-    "description": "An Operator Black tooltip with a technical trigger icon and origin-aware Soft Optical reveal",
-    "tags": [
-      "ui-primitive",
-      "remocn-port",
-      "tooltip",
-      "overlay"
-    ],
-    "href": "/catalog/components/tooltip",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tooltip.png"
   },
   {
     "name": "top-down-letters",
