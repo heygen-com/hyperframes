@@ -3,41 +3,42 @@ title: "App Showcase"
 description: "Fitness app product showcase with three floating smartphone screens"
 ---
 
+# App Showcase
+
+Fitness app product showcase with three floating smartphone screens
+
+`showcase` `app` `3d`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/app-showcase.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/app-showcase.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add app-showcase
 ```
 
-That writes one file: `compositions/app-showcase.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 5.5 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 5.5s |
 
-```html index.html
-<div
-  data-composition-id="app-showcase"
-  data-composition-src="compositions/app-showcase.html"
-  data-start="0"
-  data-duration="5.5"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `app-showcase.html` | `compositions/app-showcase.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="app-showcase" data-composition-src="compositions/app-showcase.html" data-start="0" data-duration="5.5" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `showcase` `app` `3d`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

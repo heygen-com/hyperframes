@@ -3,54 +3,46 @@ title: "Magnetic"
 description: "VFX composition block"
 ---
 
+# Magnetic
+
+VFX composition block
+
+`html-in-canvas` `webgl`
+
+<Warning>
+**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
+</Warning>
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add vfx-magnetic
 ```
 
-That writes one file: `compositions/vfx-magnetic.html`.
+</CodeGroup>
 
-<Warning>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Rendering from the CLI switches it on for you. [How it
-  works](/guides/html-in-canvas)
-</Warning>
+## Details
 
-## Add it to your video
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 15s |
 
-It runs for 15 seconds at 1920×1080. Paste this into your composition:
+## Files
 
-```html index.html
-<div
-  data-composition-id="vfx-magnetic"
-  data-composition-src="compositions/vfx-magnetic.html"
-  data-start="0"
-  data-duration="15"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+| File | Target | Type |
+| --- | --- | --- |
+| `vfx-magnetic.html` | `compositions/vfx-magnetic.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="vfx-magnetic" data-composition-src="compositions/vfx-magnetic.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change the colors
-
-Set these CSS variables on the block:
-
-- `--bg-color` — Background. Defaults to `#0c0c0c`.
-- `--text-color` — Text color. Defaults to `#e8e8e8`.
-
-{/* hf:generated-footer */}
-
-Tagged `html-in-canvas` `webgl`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

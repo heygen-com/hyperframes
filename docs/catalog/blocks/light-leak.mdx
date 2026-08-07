@@ -3,41 +3,42 @@ title: "Light Leak"
 description: "Shader transition with cinematic light leak overlay"
 ---
 
+# Light Leak
+
+Shader transition with cinematic light leak overlay
+
+`transition` `shader`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add light-leak
 ```
 
-That writes one file: `compositions/light-leak.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 4 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 4s |
 
-```html index.html
-<div
-  data-composition-id="light-leak"
-  data-composition-src="compositions/light-leak.html"
-  data-start="0"
-  data-duration="4"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `light-leak.html` | `compositions/light-leak.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="light-leak" data-composition-src="compositions/light-leak.html" data-start="0" data-duration="4" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `transition` `shader`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

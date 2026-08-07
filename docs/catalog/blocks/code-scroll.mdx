@@ -3,41 +3,42 @@ title: "Code Scroll To Line"
 description: "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules."
 ---
 
+# Code Scroll To Line
+
+The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules.
+
+`code` `code-animation` `scroll` `developer`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-scroll.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-scroll.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add code-scroll
 ```
 
-That writes one file: `compositions/code-scroll.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 6 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 6s |
 
-```html index.html
-<div
-  data-composition-id="code-scroll"
-  data-composition-src="compositions/code-scroll.html"
-  data-start="0"
-  data-duration="6"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `code-scroll.html` | `compositions/code-scroll.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="code-scroll" data-composition-src="compositions/code-scroll.html" data-start="0" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `code` `code-animation` `scroll` `developer`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

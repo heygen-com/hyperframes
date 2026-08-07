@@ -3,47 +3,46 @@ title: "Liquid Glass Notification"
 description: "Frosted glass notification cards floating over an aurora shader background"
 ---
 
+# Liquid Glass Notification
+
+Frosted glass notification cards floating over an aurora shader background
+
+`html-in-canvas` `liquid-glass-html-in-canvas` `webgpu`
+
+<Warning>
+**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
+</Warning>
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add liquid-glass-notification
 ```
 
-That writes `compositions/liquid-glass-notification.html`, plus 2 supporting files under `compositions/lib/` and `compositions/assets/`.
+</CodeGroup>
 
-<Warning>
-  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
-  Rendering from the CLI switches it on for you. [How it
-  works](/guides/html-in-canvas)
-</Warning>
+## Details
 
-## Add it to your video
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 8s |
 
-It runs for 8 seconds at 1920×1080. Paste this into your composition:
+## Files
 
-```html index.html
-<div
-  data-composition-id="liquid-glass-notification"
-  data-composition-src="compositions/liquid-glass-notification.html"
-  data-start="0"
-  data-duration="8"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+| File | Target | Type |
+| --- | --- | --- |
+| `liquid-glass-notification.html` | `compositions/liquid-glass-notification.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="liquid-glass-notification" data-composition-src="compositions/liquid-glass-notification.html" data-start="0" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `html-in-canvas` `liquid-glass-html-in-canvas` `webgpu`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

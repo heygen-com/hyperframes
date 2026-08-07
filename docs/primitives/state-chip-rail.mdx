@@ -1,0 +1,44 @@
+---
+title: "State Chip Rail"
+description: "A row of status chips snaps through ordered states on scheduled cues while active, completed, and pending chips take distinct appearances."
+---
+
+import { PrimitivePlayer } from "/snippets/PrimitivePlayer.jsx";
+
+<span className="hf-primitive-eyebrow">Process sequences</span>
+
+<PrimitivePlayer name="state-chip-rail" width={1920} height={1080} />
+
+## Variables
+
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `states` | `string` | `Queued,Reading,Drafting,Done` | Comma-separated chip labels in machine order (2 to 8 states). |
+| `times` | `string` | `""` | Comma-separated activation times in seconds, one per advance (state 1 onward). Blank entries use the default even rhythm. |
+| `badge_state` | `number` | `1` | Index of the state the badges pop beside. |
+| `badges` | `string` | `""` | Comma-separated badge labels shown beside the badge state. Empty disables. |
+| `accent` | `enum` | `green` | Accent token family used by the active chip. |
+| `exit` | `enum` | `none` | How the rail leaves the frame. Default none: the hold ends the film. |
+
+## When to use it
+
+A discrete state machine needs seek-exact, instantaneous advances and optional badges beside one activated state.
+
+## When to avoid it
+
+Avoid it when more than eight states or more than four badges are required, because extra states are dropped and badges are capped at four.
+
+## Pairs with
+
+- [pill-row-collapse](/primitives/pill-row-collapse)
+- [press-ripple](/primitives/press-ripple)
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add state-chip-rail
+```
+
+</CodeGroup>

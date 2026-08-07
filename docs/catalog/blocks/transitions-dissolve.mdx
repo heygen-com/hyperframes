@@ -3,41 +3,42 @@ title: "Dissolve Transitions"
 description: "Showcase of dissolve and fade transitions"
 ---
 
+# Dissolve Transitions
+
+Showcase of dissolve and fade transitions
+
+`transition` `showcase`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-dissolve.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-dissolve.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add transitions-dissolve
 ```
 
-That writes one file: `compositions/transitions-dissolve.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 24 seconds at 1920×1080. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 24s |
 
-```html index.html
-<div
-  data-composition-id="transitions-dissolve"
-  data-composition-src="compositions/transitions-dissolve.html"
-  data-start="0"
-  data-duration="24"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `transitions-dissolve.html` | `compositions/transitions-dissolve.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="transitions-dissolve" data-composition-src="compositions/transitions-dissolve.html" data-start="0" data-duration="24" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `transition` `showcase`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)

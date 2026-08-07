@@ -3,41 +3,42 @@ title: "Spotify Now Playing"
 description: "Animated Spotify now-playing card with album art and progress bar"
 ---
 
+# Spotify Now Playing
+
+Animated Spotify now-playing card with album art and progress bar
+
+`social` `overlay` `spotify`
+
 <video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spotify-card.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spotify-card.png" autoPlay muted loop playsInline />
 
 ## Install
+
+<CodeGroup>
 
 ```bash Terminal
 npx hyperframes add spotify-card
 ```
 
-That writes one file: `compositions/spotify-card.html`.
+</CodeGroup>
 
-## Add it to your video
+## Details
 
-It runs for 5 seconds at 1080×1920. Paste this into your composition:
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1080×1920 |
+| Duration | 5s |
 
-```html index.html
-<div
-  data-composition-id="spotify-card"
-  data-composition-src="compositions/spotify-card.html"
-  data-start="0"
-  data-duration="5"
-  data-track-index="1"
-  data-width="1080"
-  data-height="1920"
-></div>
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `spotify-card.html` | `compositions/spotify-card.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="spotify-card" data-composition-src="compositions/spotify-card.html" data-start="0" data-duration="5" data-track-index="1" data-width="1080" data-height="1920"></div>
 ```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-{/* hf:generated-footer */}
-
-Tagged `social` `overlay` `spotify`.
-
-## Related topics
-
-- [Browse the complete Catalog](/catalog)
-- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
-- [Build a richer composition](/go-further)
