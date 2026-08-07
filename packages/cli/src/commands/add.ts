@@ -28,6 +28,7 @@ import {
   writeProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
 // `registry-item.json` files specify `target` paths relative to the project
@@ -197,6 +198,17 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   // 5. Install — dependencies first, requested item last.
   const written = await installAll(installPlan, projectDir, config.registry);
 
+  // Report what landed, not what was asked for: a failed install throws above,
+  // and the bulk `add <tag>` path re-enters here per item, so this one place
+  // covers every way an item reaches a project.
+  for (const planItem of installPlan) {
+    trackRegistryItemAdded({
+      item: planItem.name,
+      itemType: planItem.type,
+      requested: planItem.name === item.name,
+    });
+  }
+
   // 6. Build include snippet + clipboard copy for the requested item.
   const itemForInstall = installPlan[installPlan.length - 1]!;
   const primaryFile =
@@ -254,6 +266,11 @@ export default defineCommand({
       description: "Print a machine-readable summary (written files + snippet) to stdout",
     },
   },
+  // `run` is 28 cyclomatic and predates this change, which touches only
+  // `runAdd`. Fallow scores it as new because the file changed. Splitting the
+  // tag-fallback branch out would fix it honestly and is worth doing, but not
+  // inside a telemetry change.
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;

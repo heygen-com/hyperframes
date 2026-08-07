@@ -498,6 +498,37 @@ export function trackInitTemplate(templateId: string, props?: { tailwind?: boole
   trackEvent("init_template", { template: templateId, tailwind: props?.tailwind });
 }
 
+/**
+ * One event per registry item written into a project.
+ *
+ * `cli_command` records that `add` ran, never what it installed, so the
+ * catalog cannot be ranked by what people actually pull — and the registry is
+ * served from raw.githubusercontent.com, which gives us no per-item counter
+ * either. `add` is the only place an item lands in a project, so this is the
+ * one signal that answers "which block is worth building more of".
+ *
+ * `requested` separates the item the user named from the transitive
+ * `registryDependencies` dragged in behind it. A dependency installed
+ * alongside something else is not a vote for itself, and collapsing the two
+ * would rank a popular dependency above everything that depends on it.
+ *
+ * Item names are public registry identifiers, never user content or project
+ * data. This routes through `trackEvent`, so an install that opted out
+ * (`hyperframes telemetry disable`, `HYPERFRAMES_NO_TELEMETRY`, `DO_NOT_TRACK`)
+ * emits nothing.
+ */
+export function trackRegistryItemAdded(props: {
+  item: string;
+  itemType: string;
+  requested: boolean;
+}): void {
+  trackEvent("registry_item_added", {
+    item: props.item,
+    item_type: props.itemType,
+    requested: props.requested,
+  });
+}
+
 export function trackBrowserInstall(): void {
   trackEvent("browser_install", {});
 }
