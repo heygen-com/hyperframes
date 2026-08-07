@@ -12,6 +12,86 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "value",
+      "type": "number",
+      "role": "content",
+      "label": "Value",
+      "description": "Where the handle rests, and the number in the readout and the accessible value. Values outside the range are clamped to it.",
+      "default": 35,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family for the fill and the thumb ring. Theme leaves the inherited accent token alone.",
+      "default": "theme",
+      "options": [
+        {
+          "value": "theme",
+          "label": "Theme"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        },
+        {
+          "value": "amber",
+          "label": "Amber"
+        }
+      ]
+    },
+    {
+      "id": "thickness",
+      "type": "enum",
+      "role": "layout",
+      "label": "Thickness",
+      "description": "Height of the track and the diameter of the thumb riding on it.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "slim",
+          "label": "Slim"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "chunky",
+          "label": "Chunky"
+        }
+      ]
+    },
+    {
+      "id": "readout",
+      "type": "enum",
+      "role": "layout",
+      "label": "Readout",
+      "description": "Percent readout beside the track. Hidden removes it and gives the track the full width.",
+      "default": "percent",
+      "options": [
+        {
+          "value": "percent",
+          "label": "Percent"
+        },
+        {
+          "value": "hidden",
+          "label": "Hidden"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slider.png"
   }
