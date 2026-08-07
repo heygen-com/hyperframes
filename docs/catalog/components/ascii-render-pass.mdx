@@ -31,7 +31,7 @@ want to change on the element:
 | `grid` | `med` | `coarse`, `med`, `fine` | Final cell pitch the resolve lands on. |
 | `resolve_at` | `1.4` | 0.6s to 10s, step 0.1s | Seconds from mount start when the coarse-to-fine resolve begins. |
 | `accent` | `green` | `green`, `blue`, `violet` | Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the fine render. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the fine render holds until the frame cuts. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:

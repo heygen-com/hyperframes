@@ -12,6 +12,100 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Which way the words travel in: up rises from below the baseline, down settles from above, left and right carry the same offset sideways instead.",
+      "default": "up",
+      "options": [
+        {
+          "value": "up",
+          "label": "Up"
+        },
+        {
+          "value": "down",
+          "label": "Down"
+        },
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "id": "distance",
+      "type": "enum",
+      "role": "motion",
+      "label": "Distance",
+      "description": "Scales the travel offset, so the words cover a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
+      ]
+    },
+    {
+      "id": "pop",
+      "type": "enum",
+      "role": "motion",
+      "label": "Pop",
+      "description": "How far the words shrink before they settle, scaling the dip away from full size while the resting frame stays at full size.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "subtle",
+          "label": "Subtle"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "deep",
+          "label": "Deep"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/short-slide-right.png"
   }

@@ -9,7 +9,13 @@
   "family": "product-demo",
   "profile": "material",
   "evidence": "Wave L L4: the AI-orb material beat from the frame study (alexwidua 1702356241186476225 sheet-02, a granular blob leaning toward a finger and springing back)",
-  "syncPoints": [{ "id": "touch", "phase": "in", "offset": 1.6 }],
+  "syncPoints": [
+    {
+      "id": "touch",
+      "phase": "in",
+      "offset": 1.6
+    }
+  ],
   "files": [
     {
       "path": "soft-blob-touch.html",
@@ -62,8 +68,14 @@
       "description": "Speck register for the granular body.",
       "default": "fine",
       "options": [
-        { "value": "fine", "label": "Fine" },
-        { "value": "coarse", "label": "Coarse" }
+        {
+          "value": "fine",
+          "label": "Fine"
+        },
+        {
+          "value": "coarse",
+          "label": "Coarse"
+        }
       ]
     },
     {
@@ -74,9 +86,18 @@
       "description": "Body tint: green rides --brand, blue rides --accent, violet rides --accent-2.",
       "default": "green",
       "options": [
-        { "value": "green", "label": "Green" },
-        { "value": "blue", "label": "Blue" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     },
     {
@@ -84,12 +105,21 @@
       "type": "enum",
       "role": "timing",
       "label": "Exit",
-      "description": "How the frame leaves. None holds the settled blob.",
+      "description": "Optional departure. Default none: the settled blob holds until the frame cuts.",
       "default": "none",
       "options": [
-        { "value": "none", "label": "None" },
-        { "value": "fade", "label": "Fade" },
-        { "value": "up", "label": "Up" }
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "fade",
+          "label": "Fade"
+        },
+        {
+          "value": "up",
+          "label": "Up"
+        }
       ]
     }
   ]

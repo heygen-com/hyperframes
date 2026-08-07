@@ -9,7 +9,13 @@
   "family": "transitions",
   "profile": "texture",
   "evidence": "Wave L L6: the halftone texture transition from the frame study, a seeded threshold map ordered by a direction enum",
-  "syncPoints": [{ "id": "dissolve", "phase": "in", "offset": 1.1 }],
+  "syncPoints": [
+    {
+      "id": "dissolve",
+      "phase": "in",
+      "offset": 1.1
+    }
+  ],
   "files": [
     {
       "path": "halftone-dissolve.html",
@@ -26,9 +32,18 @@
       "description": "Grid pitch for the halftone field.",
       "default": "medium",
       "options": [
-        { "value": "small", "label": "Small" },
-        { "value": "medium", "label": "Medium" },
-        { "value": "large", "label": "Large" }
+        {
+          "value": "small",
+          "label": "Small"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "large",
+          "label": "Large"
+        }
       ]
     },
     {
@@ -39,9 +54,18 @@
       "description": "Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters.",
       "default": "ltr",
       "options": [
-        { "value": "ltr", "label": "Left to right" },
-        { "value": "center", "label": "Center out" },
-        { "value": "noise", "label": "Noise" }
+        {
+          "value": "ltr",
+          "label": "Left to right"
+        },
+        {
+          "value": "center",
+          "label": "Center out"
+        },
+        {
+          "value": "noise",
+          "label": "Noise"
+        }
       ]
     },
     {
@@ -64,9 +88,18 @@
       "description": "Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2.",
       "default": "green",
       "options": [
-        { "value": "green", "label": "Green" },
-        { "value": "blue", "label": "Blue" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     },
     {
@@ -74,12 +107,21 @@
       "type": "enum",
       "role": "timing",
       "label": "Exit",
-      "description": "How the frame leaves. None holds scene B.",
+      "description": "Optional departure. Default none: scene B holds until the frame cuts.",
       "default": "none",
       "options": [
-        { "value": "none", "label": "None" },
-        { "value": "fade", "label": "Fade" },
-        { "value": "up", "label": "Up" }
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "fade",
+          "label": "Fade"
+        },
+        {
+          "value": "up",
+          "label": "Up"
+        }
       ]
     }
   ]
