@@ -1,2 +1,5 @@
-curl -X GET "https://api.heygen.com/v3/users/me" \
-  -H "X-Api-Key: $HEYGEN_API_KEY"
+{
+  "removed": true,
+  "note": "Sensitive content removed on 2026-08-07. Original file contained an example curl command with an API key placeholder and has been redacted to avoid leaking secrets. If you need the original content, retrieve it from your local git history or the commit immediately prior to this change.",
+  "action": "Rotate any exposed API keys and secrets, and check repository for other occurrences. Consider using GitHub repository secrets or environment variables instead of storing keys in files."
+}
