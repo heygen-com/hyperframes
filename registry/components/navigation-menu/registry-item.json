@@ -12,6 +12,60 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Token family behind the underline under the current tab. green keeps the accent token, blue and violet borrow the data-2 and data-4 tokens, so all three follow the light and dark themes.",
+      "default": "green",
+      "options": [
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "active",
+      "type": "enum",
+      "role": "content",
+      "label": "Current tab",
+      "description": "Which tab carries the current-page underline and the brighter label.",
+      "default": "second",
+      "options": [
+        {
+          "value": "first",
+          "label": "First"
+        },
+        {
+          "value": "second",
+          "label": "Second"
+        },
+        {
+          "value": "third",
+          "label": "Third"
+        }
+      ]
+    },
+    {
+      "id": "featured",
+      "type": "string",
+      "role": "content",
+      "label": "Featured text",
+      "description": "Text printed in the featured resource panel under the tabs.",
+      "default": "Featured: launch video kit"
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/navigation-menu.png"
   }

@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/native-select.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label` | `Quality` | string | The field name above the control. |
+| `options` | `1080p, 4K` | string | Comma separated choices. The first one is the value on show. |
+| `width` | `standard` | `compact`, `standard`, `wide` | How wide the control sits, from 180px through 240px to 320px. |
+| `accent` | `green` | `green`, `blue`, `violet` | Colour family of the focus ring the timeline pushes out. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="native-select"
+  data-composition-src="compositions/components/native-select.html"
+  data-variable-values='{"label":"Quality","options":"1080p, 4K","width":"standard","accent":"green"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`native-select.html`}>
@@ -23,9 +46,38 @@ That writes one file: `compositions/components/native-select.html`.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes either the control wording or a
+  custom property the CSS below consumes. The focus ring recipe at the bottom
+  is untouched by them.
+
+    - label (any short text, default Quality): the field name above the
+      control. Blank or non-text input falls back to the default.
+    - options (comma separated list, default 1080p, 4K): the choices. The first
+      entry is the value on show, and the list also decides how many options
+      the menu carries. An empty list falls back to the default.
+    - width (compact | standard | wide, default standard): how wide the control
+      sits, from 180px through 240px to 320px, still capped by the space it is
+      given.
+    - accent (green | blue | violet, default green): colour family of the ring
+      the timeline pushes out around the control. Each option rides a data
+      token, so it tracks the dark and the light theme. The ring is 0px wide at
+      rest, so this only shows once the ring recipe runs.
+
+  On every default the result is identical to the original: a 240px control
+  labelled Quality reading 1080p, with a green ring on focus.
 -->
 
-<label data-hf-ui-root class="hf-ui-native-select"
+<label
+  data-hf-ui-root
+  class="hf-ui-native-select"
+  data-composition-variables='[
+    {"id": "label", "type": "string", "role": "content", "label": "Label", "description": "The field name above the control.", "default": "Quality"},
+    {"id": "options", "type": "string", "role": "content", "label": "Options", "description": "Comma separated choices. The first one is the value on show.", "default": "1080p, 4K"},
+    {"id": "width", "type": "enum", "role": "layout", "label": "Width", "description": "How wide the control sits, from 180px through 240px to 320px.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "wide", "label": "Wide"}]},
+    {"id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the focus ring the timeline pushes out.", "default": "green", "options": [{"value": "green", "label": "Green"}, {"value": "blue", "label": "Blue"}, {"value": "violet", "label": "Violet"}]}
+  ]'
   ><span>Quality</span
   ><select>
     <option>1080p</option>
@@ -174,7 +226,7 @@ That writes one file: `compositions/components/native-select.html`.
     position: relative;
     display: grid;
     gap: 8px;
-    width: min(240px, 100%);
+    width: min(var(--hf-select-width, 240px), 100%);
     color: var(--_hf-ui-text);
     font-family: var(--_hf-ui-font-sans);
   }
@@ -237,6 +289,73 @@ That writes one file: `compositions/components/native-select.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    function list(value, fallback) {
+      var raw = typeof value === "string" ? value.split(",") : [];
+      var parts = [];
+      for (var i = 0; i < raw.length; i += 1) {
+        if (raw[i].trim() !== "") parts.push(raw[i].trim());
+      }
+      return parts.length > 0 ? parts : fallback;
+    }
+
+    var widths = { compact: "180px", standard: "240px", wide: "320px" };
+    var accents = {
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+
+    var width = widths[pick(widths, vars.width, "standard")];
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var labelText = text(vars.label, "Quality");
+    var choices = list(vars.options, ["1080p", "4K"]);
+
+    var roots = document.querySelectorAll(".hf-ui-native-select");
+    for (var r = 0; r < roots.length; r += 1) {
+      var root = roots[r];
+      root.style.setProperty("--hf-select-width", width);
+      root.style.setProperty("--hf-ui-accent", accent);
+
+      var caption = root.querySelector("span");
+      if (caption) caption.textContent = labelText;
+
+      var select = root.querySelector("select");
+      if (!select) continue;
+      var options = select.querySelectorAll("option");
+      for (var i = 0; i < choices.length; i += 1) {
+        var option = options[i];
+        if (!option) {
+          option = document.createElement("option");
+          select.appendChild(option);
+        }
+        option.textContent = choices[i];
+      }
+      for (var j = options.length - 1; j >= choices.length; j -= 1) {
+        options[j].remove();
+      }
+      select.selectedIndex = 0;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

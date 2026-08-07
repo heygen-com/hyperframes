@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/label.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `Workspace name` | string | The field name the label announces. |
+| `badge` | `Required` | string | Wording inside the small chip that follows the field name. |
+| `tone` | `muted` | `muted`, `accent`, `warning`, `danger` | Colour family of the chip: quiet grey, accent green, warning amber, or danger red. |
+| `size` | `standard` | `compact`, `standard`, `roomy` | Label size, chip size, and the gap between them. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="label"
+  data-composition-src="compositions/components/label.html"
+  data-variable-values='{"text":"Workspace name","badge":"Required","tone":"muted","size":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`label.html`}>
@@ -23,9 +46,36 @@ That writes one file: `compositions/components/label.html`.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes either the label wording or a
+  custom property the CSS below consumes. The fade-in recipe at the bottom is
+  untouched by them.
+
+    - text (any short text, default Workspace name): the field name. Blank or
+      non-text input falls back to the default.
+    - badge (any short text, default Required): the wording inside the small
+      chip that follows the field name.
+    - tone (muted | accent | warning | danger, default muted): colour family of
+      that chip, from the quiet grey default through the green accent token to
+      the warning and danger tokens.
+    - size (compact | standard | roomy, default standard): label size, chip
+      size, and the gap between them, from 12px through 13px to 15px type.
+
+  On every default the result is identical to the original: 13px semibold type
+  reading Workspace name, an 8px gap, and an 11px muted REQUIRED chip.
 -->
 
-<label data-hf-ui-root class="hf-ui-label">Workspace name <span>Required</span></label>
+<label
+  data-hf-ui-root
+  class="hf-ui-label"
+  data-composition-variables='[
+    {"id": "text", "type": "string", "role": "content", "label": "Text", "description": "The field name the label announces.", "default": "Workspace name"},
+    {"id": "badge", "type": "string", "role": "content", "label": "Badge", "description": "Wording inside the small chip that follows the field name.", "default": "Required"},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Colour family of the chip: quiet grey, accent green, warning amber, or danger red.", "default": "muted", "options": [{"value": "muted", "label": "Muted"}, {"value": "accent", "label": "Accent"}, {"value": "warning", "label": "Warning"}, {"value": "danger", "label": "Danger"}]},
+    {"id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Label size, chip size, and the gap between them.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "roomy", "label": "Roomy"}]}
+  ]'
+>Workspace name <span>Required</span></label>
 
 <style>
   /* hf-ui:tokens:start */
@@ -165,17 +215,17 @@ That writes one file: `compositions/components/label.html`.
   .hf-ui-label {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--hf-label-gap, 8px);
     color: var(--_hf-ui-text-strong);
-    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
+    font: var(--_hf-ui-weight-semibold) var(--hf-label-size, 13px) / 1 var(--_hf-ui-font-sans);
   }
   .hf-ui-label span {
     padding: 3px 6px;
-    border: 1px solid var(--_hf-ui-border);
+    border: 1px solid var(--hf-label-badge-border, var(--_hf-ui-border));
     border-radius: var(--_hf-ui-radius-control);
     background: var(--_hf-ui-surface-inset);
-    color: var(--_hf-ui-text-muted);
-    font-size: 11px;
+    color: var(--hf-label-badge-color, var(--_hf-ui-text-muted));
+    font-size: var(--hf-label-badge-size, 11px);
     font-weight: var(--_hf-ui-weight-medium);
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -186,6 +236,64 @@ That writes one file: `compositions/components/label.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    var tones = {
+      muted: {
+        color: "var(--_hf-ui-text-muted)",
+        border: "var(--_hf-ui-border)",
+      },
+      accent: { color: "var(--_hf-ui-accent)", border: "var(--_hf-ui-accent)" },
+      warning: {
+        color: "var(--_hf-ui-warning)",
+        border: "var(--_hf-ui-warning)",
+      },
+      danger: { color: "var(--_hf-ui-danger)", border: "var(--_hf-ui-danger)" },
+    };
+    var sizes = {
+      compact: { size: "12px", gap: "6px", badge: "10px" },
+      standard: { size: "13px", gap: "8px", badge: "11px" },
+      roomy: { size: "15px", gap: "12px", badge: "13px" },
+    };
+
+    var tone = tones[pick(tones, vars.tone, "muted")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var labelText = text(vars.text, "Workspace name");
+    var badgeText = text(vars.badge, "Required");
+
+    var roots = document.querySelectorAll(".hf-ui-label");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-label-size", size.size);
+      root.style.setProperty("--hf-label-gap", size.gap);
+      root.style.setProperty("--hf-label-badge-size", size.badge);
+      root.style.setProperty("--hf-label-badge-color", tone.color);
+      root.style.setProperty("--hf-label-badge-border", tone.border);
+      if (root.firstChild && root.firstChild.nodeType === 3) {
+        root.firstChild.nodeValue = labelText + " ";
+      }
+      var badge = root.querySelector("span");
+      if (badge) badge.textContent = badgeText;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

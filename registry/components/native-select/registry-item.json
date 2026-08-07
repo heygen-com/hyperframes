@@ -12,6 +12,68 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Label",
+      "description": "The field name above the control.",
+      "default": "Quality"
+    },
+    {
+      "id": "options",
+      "type": "string",
+      "role": "content",
+      "label": "Options",
+      "description": "Comma separated choices. The first one is the value on show.",
+      "default": "1080p, 4K"
+    },
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "layout",
+      "label": "Width",
+      "description": "How wide the control sits, from 180px through 240px to 320px.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the focus ring the timeline pushes out.",
+      "default": "green",
+      "options": [
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/native-select.png"
   }

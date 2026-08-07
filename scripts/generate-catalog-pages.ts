@@ -652,7 +652,7 @@ function generateVariableUsage(manifest: RegistryItem, target: string): string[]
     "Set them with `data-variable-values` on the element that mounts it. These are the",
     "defaults, so this behaves exactly like the preview above until you change one:",
     "",
-    "```html",
+    "```html wrap",
     "<div",
     `  data-composition-id="${manifest.name}"`,
     `  data-composition-src="${target}"`,
