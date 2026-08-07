@@ -212,3 +212,63 @@ it(`sweeps ${CASES.length} animated shapes without a stale id or a mixed tween`,
 
   expect(failures).toEqual([]);
 });
+
+/**
+ * Which tween a resize edits when the element has several in the same group.
+ *
+ * A composition animates the same property more than once — a scale-in early
+ * and a scale-out late — and the one the user means is the one under the
+ * playhead. Editing the wrong one changes a moment they are not looking at and
+ * leaves the moment they ARE looking at unchanged, which reads as "the resize
+ * did nothing".
+ */
+function scaleAt(id: string, position: number): GsapAnimation {
+  return {
+    ...tween(id, { scale: 1 }, 2),
+    position,
+    resolvedStart: position,
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { scale: 1 } },
+        { percentage: 100, properties: { scale: 1.4 } },
+      ],
+    },
+  } as unknown as GsapAnimation;
+}
+
+const PLAYHEADS: Array<[number, string]> = [
+  [0.5, "#el-early"],
+  [1.9, "#el-early"],
+  [3, "#el-early"],
+  [3.1, "#el-late"],
+  [4.5, "#el-late"],
+  [9, "#el-late"],
+];
+
+it.each(PLAYHEADS)("at t=%s edits the tween under the playhead (%s)", async (time, expected) => {
+  document.body.innerHTML = "";
+  const el = document.createElement("div");
+  el.id = "el";
+  el.setAttribute("data-hf-studio-original-box-width", "630");
+  el.setAttribute("data-hf-studio-original-box-height", "408");
+  document.body.append(el);
+  usePlayerStore.setState({ currentTime: time, activeKeyframePct: null });
+
+  const animations = [scaleAt("#el-early", 0), scaleAt("#el-late", 4)];
+  const commitMutation = vi.fn();
+  await tryGsapResizeIntercept(
+    { id: "el", selector: "#el", element: el } as DomEditSelection,
+    { width: 326, height: 213 },
+    animations,
+    null,
+    commitMutation as never,
+    async () => animations,
+  );
+
+  const touched = new Set(
+    commitMutation.mock.calls
+      .map((call) => (call[1] as { animationId?: string }).animationId)
+      .filter((id): id is string => id != null),
+  );
+  expect([...touched]).toEqual([expected]);
+});
