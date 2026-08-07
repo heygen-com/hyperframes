@@ -983,7 +983,6 @@ function main(): void {
     Data: 8,
     "Motion Primitives": 9,
     "Typography & Text": 10,
-    "UI Primitives": 11,
     "Camera & 3D": 12,
     "Product Demo": 13,
     Texture: 14,
@@ -1029,7 +1028,6 @@ function main(): void {
     ) {
       return "Typography & Text";
     }
-    if (tags.includes("ui-primitive") || tags.includes("ui-props")) return "UI Primitives";
     if (tags.includes("motion-primitive")) return "Motion Primitives";
     if (entry.type === "component") return "Effects";
     // Remaining blocks
