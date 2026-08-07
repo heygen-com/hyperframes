@@ -60,6 +60,11 @@ function renderPanelLayout() {
   return renderPanelLayoutWith(usePanelLayout);
 }
 
+function resizeWindowTo(width: number) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  window.dispatchEvent(new Event("resize"));
+}
+
 describe("usePanelLayout — right inspector panes", () => {
   it("opens Design with the intended viewport-scaled panel widths", () => {
     const harness = renderPanelLayout();
@@ -157,6 +162,74 @@ describe("usePanelLayout — right inspector panes", () => {
     // Legacy (split-view) behavior: additive, both panes end up open.
     expect(harness.getState().rightInspectorPanes).toEqual({ layers: true, design: true });
 
+    harness.unmount();
+  });
+
+  it("caps a panel relative to the window instead of at a flat 600px", () => {
+    resizeWindowTo(700);
+    const harness = renderPanelLayout();
+    // The old flat cap let the inspector claim 600 of a 700px window.
+    expect(harness.getState().rightWidth).toBeLessThanOrEqual(280);
+    harness.unmount();
+  });
+
+  it("rails both panels once the window cannot fit them", () => {
+    resizeWindowTo(560);
+    const harness = renderPanelLayout();
+    expect(harness.getState()).toMatchObject({
+      effectiveLeftCollapsed: true,
+      effectiveRightCollapsed: true,
+      leftCollapsed: false,
+      rightCollapsed: false,
+    });
+    harness.unmount();
+  });
+
+  it("auto-collapse never writes the user's persisted or URL-synced intent", () => {
+    const harness = renderPanelLayout();
+    act(() => resizeWindowTo(560));
+
+    expect(harness.getState().effectiveLeftCollapsed).toBe(true);
+    // localStorage carries leftCollapsed; the shareable URL carries rightCollapsed.
+    // A ten-second window drag must rewrite neither.
+    expect(readStudioUiPreferences().leftCollapsed).toBeUndefined();
+    expect(harness.getState().leftCollapsed).toBe(false);
+    expect(harness.getState().rightCollapsed).toBe(false);
+    harness.unmount();
+  });
+
+  it("returns the user's own width when the window grows back", () => {
+    const harness = renderPanelLayout();
+    const wide = harness.getState().leftWidth;
+
+    act(() => resizeWindowTo(560));
+    expect(harness.getState().leftWidth).toBeLessThan(wide);
+
+    act(() => resizeWindowTo(1496));
+    expect(harness.getState().leftWidth).toBe(wide);
+    harness.unmount();
+  });
+
+  it("keeps an explicitly collapsed sidebar collapsed after a narrow trip", () => {
+    const harness = renderPanelLayout();
+    act(() => harness.getState().toggleLeftSidebar());
+    expect(readStudioUiPreferences().leftCollapsed).toBe(true);
+
+    act(() => resizeWindowTo(560));
+    act(() => resizeWindowTo(1496));
+
+    expect(harness.getState().effectiveLeftCollapsed).toBe(true);
+    harness.unmount();
+  });
+
+  it("lets the user reopen a panel the window auto-collapsed", () => {
+    const harness = renderPanelLayout();
+    act(() => resizeWindowTo(560));
+    expect(harness.getState().effectiveRightCollapsed).toBe(true);
+
+    // Without this the header Inspector button would be dead below 700px.
+    act(() => harness.getState().setRightCollapsed(false));
+    expect(harness.getState().effectiveRightCollapsed).toBe(false);
     harness.unmount();
   });
 

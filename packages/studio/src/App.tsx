@@ -399,7 +399,7 @@ export function StudioApp() {
   } = useInspectorState(
     panelLayout.rightPanelTab,
     panelLayout.rightInspectorPanes,
-    panelLayout.rightCollapsed,
+    panelLayout.effectiveRightCollapsed,
     isPlaying,
     domEditSession.domEditSelection,
     gestureState === "recording",
@@ -512,7 +512,7 @@ export function StudioApp() {
                       />
                     }
                     right={
-                      panelLayout.rightCollapsed ? null : (
+                      panelLayout.effectiveRightCollapsed ? null : (
                         <StudioRightPanel
                           designPanelActive={designPanelActive}
                           activeBlockParams={activeBlockParams}
