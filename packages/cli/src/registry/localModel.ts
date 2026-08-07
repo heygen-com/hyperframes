@@ -109,11 +109,6 @@ export function localModelStatus(): LocalModelStatus {
   return { status: "unavailable", reason: "model not downloaded yet" };
 }
 
-export function modelsDirectory(): string {
-  mkdirSync(MODELS_DIR, { recursive: true });
-  return MODELS_DIR;
-}
-
 /**
  * Put the model on disk, once.
  *

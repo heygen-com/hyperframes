@@ -56,6 +56,8 @@ function arg(name: string): string | undefined {
 }
 
 /** Batched so a 424-move shelf does not depend on one oversized request. */
+// request assembly plus the error cases a remote embedder can return
+// fallow-ignore-next-line complexity
 const openAiEmbedder: Embedder = async (texts) => {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is not set");
@@ -83,6 +85,8 @@ const openAiEmbedder: Embedder = async (texts) => {
   return vectors;
 };
 
+// a script entry point
+// fallow-ignore-next-line complexity
 async function main(): Promise<void> {
   const shelfPath = arg("shelf");
   const revision = arg("revision");

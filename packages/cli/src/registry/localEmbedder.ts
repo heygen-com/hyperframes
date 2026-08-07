@@ -19,7 +19,7 @@ import {
   localModelPath,
   localTokenizerPath,
 } from "./localModel.js";
-import { configFromTokenizerJson, encode, type WordPieceConfig } from "./wordpiece.js";
+import { configFromTokenizerJson, encode } from "./wordpiece.js";
 
 export interface LocalEmbedder {
   embed(texts: string[], options?: { isQuery?: boolean }): Promise<number[][]>;
@@ -110,7 +110,7 @@ function truncate(encoding: ReturnType<typeof encode>): ReturnType<typeof encode
   return { ids, attentionMask: ids.map(() => 1), tokenTypeIds: ids.map(() => 0) };
 }
 
-export function normalize(vector: number[]): number[] {
+function normalize(vector: number[]): number[] {
   const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
   return norm === 0 ? vector : vector.map((value) => value / norm);
 }
@@ -120,5 +120,3 @@ export function cosine(a: number[], b: number[]): number {
   for (let i = 0; i < a.length; i += 1) sum += (a[i] as number) * (b[i] as number);
   return sum;
 }
-
-export type { WordPieceConfig };
