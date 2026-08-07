@@ -15,6 +15,7 @@ import { c } from "../ui/colors.js";
 import { listRegistryItems, loadAllItems } from "../registry/resolver.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { resolve } from "node:path";
+import { finishCommand } from "../utils/commandResult.js";
 import { runAdd } from "./add.js";
 import { searchByWords } from "../registry/localSearch.js";
 import {
@@ -38,6 +39,63 @@ import {
   smartSearchConsent,
   type SmartSearchOutcome,
 } from "../registry/smartSearch.js";
+
+/**
+ * Get the offline tier ready, and report every reason it could not be.
+ *
+ * A per-run opt-in, so an agent or CI run can reach the offline tier at all:
+ * the only other route is a prompt that fires exclusively on a terminal.
+ *
+ * Warnings are returned as well as printed so `--json` can carry the same
+ * reasons the terminal shows.
+ */
+// a consent gate: each branch is a distinct reason the tier cannot run, and each has to be reported separately
+// fallow-ignore-next-line complexity
+async function prepareOnDeviceTier(opts: {
+  assumedYes: boolean;
+  registry: string;
+}): Promise<string[]> {
+  const warnings: string[] = [];
+  const warn = (message: string): void => {
+    warnings.push(message);
+    console.error(message);
+  };
+
+  // The flag is the record that a person agreed. The CLI cannot ask here, so it
+  // trusts the caller to have asked, and says as much in the docs. A person
+  // present gets asked. The flag only stands in for consent when there is
+  // nobody to ask, or when they said so with --yes.
+  if (!opts.assumedYes && localModelStatus().status === "not-asked") {
+    const answer = await clack.confirm({
+      message: downloadOfferMessage(0),
+      initialValue: true,
+    });
+    if (clack.isCancel(answer) || answer !== true) {
+      recordLocalModelConsent(false);
+      warn("on-device search skipped: the download was declined.");
+    }
+  }
+
+  if (localModelConsent() !== false && !(await localRuntimeAvailable())) {
+    // Checked before downloading. Fetching 32 MB and then discovering the
+    // runtime is missing wastes the bandwidth the consent was granted for.
+    warn(
+      "on-device search needs the native ONNX runtime, which a single-file build cannot load. " +
+        "Install the CLI normally (npm i -g hyperframes) to use this tier.",
+    );
+    return warnings;
+  }
+
+  recordLocalModelConsent(true);
+  const model = await ensureLocalModel();
+  const vectors = hasLocalVectors() || (await fetchLocalVectors(opts.registry));
+  if (!model || !vectors) {
+    warn(
+      `on-device search unavailable: ${!model ? "model" : "catalog vectors"} could not be fetched`,
+    );
+  }
+  return warnings;
+}
 
 export default defineCommand({
   meta: {
@@ -87,6 +145,8 @@ export default defineCommand({
       description: "Use on-device meaning search, downloading the model if needed",
     },
   },
+  // one flag-parsing entry point feeding three output paths (json, interactive, table); splitting those is its own change
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     const json = args.json === true;
     const interactive = args["human-friendly"] === true;
@@ -98,7 +158,7 @@ export default defineCommand({
     else if (args.type === "component") typeFilter = "hyperframes:component";
     else if (args.type) {
       console.error(`Invalid --type: "${args.type}". Use "block" or "component".`);
-      process.exit(1);
+      finishCommand(1);
     }
 
     const entries = await listRegistryItems(typeFilter ? { type: typeFilter } : undefined, {
@@ -127,50 +187,16 @@ export default defineCommand({
           json,
         })
       : null;
-    // A per-run opt-in, so an agent or CI run can reach the offline tier at all:
-    // the only other route is a prompt that fires exclusively on a terminal.
     // Collected rather than only printed, so --json can carry the same reasons
     // the terminal shows. A machine that asked for a tier deserves to be told
     // it did not run.
-    const warnings: string[] = [];
-    const onDeviceRequested = args["on-device"] === true;
-    if (query && onDeviceRequested) {
-      // The flag is the record that a person agreed. The CLI cannot ask here,
-      // so it trusts the caller to have asked, and says as much in the docs.
-      // A person present gets asked. The flag only stands in for consent when
-      // there is nobody to ask, or when they said so with --yes.
-      const assumedYes = args.yes === true || !process.stdout.isTTY || json;
-      if (!assumedYes && localModelStatus().status === "not-asked") {
-        const answer = await clack.confirm({
-          message: downloadOfferMessage(0),
-          initialValue: true,
-        });
-        if (clack.isCancel(answer) || answer !== true) {
-          recordLocalModelConsent(false);
-          const message = "on-device search skipped: the download was declined.";
-          warnings.push(message);
-          console.error(message);
-        }
-      }
-      if (localModelConsent() !== false && !(await localRuntimeAvailable())) {
-        // Checked before downloading. Fetching 32 MB and then discovering the
-        // runtime is missing wastes the bandwidth the consent was granted for.
-        const message =
-          "on-device search needs the native ONNX runtime, which a single-file build cannot load. " +
-          "Install the CLI normally (npm i -g hyperframes) to use this tier.";
-        warnings.push(message);
-        console.error(message);
-      } else {
-        recordLocalModelConsent(true);
-        const model = await ensureLocalModel();
-        const vectors = hasLocalVectors() || (await fetchLocalVectors(config.registry));
-        if (!model || !vectors) {
-          const message = `on-device search unavailable: ${!model ? "model" : "catalog vectors"} could not be fetched`;
-          warnings.push(message);
-          console.error(message);
-        }
-      }
-    }
+    const warnings =
+      query && args["on-device"] === true
+        ? await prepareOnDeviceTier({
+            assumedYes: args.yes === true || !process.stdout.isTTY || json,
+            registry: config.registry,
+          })
+        : [];
     const searched = query ? await applySearch(tagged, query, outcome) : null;
     const matching = searched ? searched.items : tagged;
 
@@ -294,7 +320,7 @@ export default defineCommand({
 
       if (clack.isCancel(selected)) {
         clack.cancel("Cancelled.");
-        process.exit(0);
+        finishCommand(0);
       }
 
       const result = await runAdd({
@@ -393,6 +419,8 @@ function pickByName<T extends { name: string }>(
   return { ranked, missing: names.length - ranked.length };
 }
 
+// one branch per retrieval tier, which is the point of the function
+// fallow-ignore-next-line complexity
 async function applySearch<T extends { name: string; title: string; description: string }>(
   items: T[],
   query: string,

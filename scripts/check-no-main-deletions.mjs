@@ -41,6 +41,8 @@ export function parseBase(argv, fallback = "origin/main") {
  * would file that under "deleted", which is the false alarm this guards
  * against being noisy enough to ignore.
  */
+// one branch per git status code
+// fallow-ignore-next-line complexity
 export function classify(nameStatus) {
   const deleted = [];
   const renamed = [];
@@ -53,6 +55,8 @@ export function classify(nameStatus) {
   return { deleted, renamed };
 }
 
+// a script entry point
+// fallow-ignore-next-line complexity
 function main() {
   const base = parseBase(process.argv.slice(2));
   let diff;

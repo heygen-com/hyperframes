@@ -178,6 +178,8 @@ function isPunctuation(char: string): boolean {
   return asciiSymbol || /\p{P}/u.test(char);
 }
 
+// a Unicode block test; the ranges are data, and 16 cyclomatic is what checking them costs
+// fallow-ignore-next-line complexity
 function isChinese(code: number): boolean {
   return (
     (code >= 0x4e00 && code <= 0x9fff) ||

@@ -36,6 +36,8 @@ export interface BuiltArtifact {
 /** Embed texts in the order given. Injected so tests never make a paid call. */
 export type Embedder = (texts: string[]) => Promise<number[][]>;
 
+// tolerant parser for a hand-edited file
+// fallow-ignore-next-line complexity
 export function parseShelf(text: string): Map<string, string> {
   const entries = new Map<string, string>();
   const blocks = text.split(/^### /m).slice(1);
@@ -80,6 +82,8 @@ export function itemRetrievalText(item: {
  * Items with no usable text are skipped rather than embedded empty: an
  * all-zero-signal entry still occupies a slot in every ranking.
  */
+// walks the registry and skips several kinds of item, each for a different reason
+// fallow-ignore-next-line complexity
 export function catalogFromRegistry(
   registryDir: string,
   read: (path: string) => string,
@@ -138,6 +142,8 @@ function serialize(record: Record<string, unknown>): Buffer {
   return Buffer.from(`${JSON.stringify(sorted, null, 2)}\n`, "utf-8");
 }
 
+// assembles one artifact from several optional inputs; each branch is an input that may be absent
+// fallow-ignore-next-line complexity
 export async function buildArtifact(options: {
   shelfText: string;
   sourceRevision: string;
@@ -234,6 +240,8 @@ export function manifestBytes(manifest: CatalogManifest): Buffer {
 }
 
 /** Recompute the published digest and compare it to what the manifest claims. */
+// one check per way an artifact can be wrong; collapsing them would lose which one failed
+// fallow-ignore-next-line complexity
 export function verifyArtifact(input: {
   manifest: CatalogManifest;
   catalogBytes: Buffer;
