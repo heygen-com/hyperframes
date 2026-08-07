@@ -16,6 +16,10 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
+import { RotateCcw, RotateCw } from "../icons/SystemIcons";
+import { useStudioShellContextOptional } from "../contexts/StudioContext";
+import { getHistoryShortcutLabel } from "../utils/studioHelpers";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
@@ -160,6 +164,10 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
 
   // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
   // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
+  // Optional: the player package mounts this timeline standalone, where there
+  // is no project and so no edit history to step through.
+  const shell = useStudioShellContextOptional();
+
   const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
   const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200 active:scale-[0.98]`;
   const flatActive = `${flatBtn} bg-white/[0.08] text-neutral-100 active:scale-[0.98]`;
@@ -171,6 +179,55 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     <div className="border-b border-neutral-800/60">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
+          {/* Undo/redo sit with the editing actions rather than in the header:
+              they act on the timeline and the canvas, which are both down here,
+              and the header is for the project rather than the edit. */}
+          {shell ? (
+            <>
+              <Tooltip
+                label={
+                  shell.editHistory.undoLabel
+                    ? `Undo ${shell.editHistory.undoLabel} (${getHistoryShortcutLabel("undo")})`
+                    : `Undo (${getHistoryShortcutLabel("undo")})`
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    trackStudioEvent("toolbar_action", { action: "undo" });
+                    void shell.handleUndo();
+                  }}
+                  disabled={!shell.editHistory.canUndo}
+                  aria-label="Undo"
+                  className={shell.editHistory.canUndo ? flatIdle : flatDisabled}
+                >
+                  <RotateCcw size={16} />
+                </button>
+              </Tooltip>
+              <Tooltip
+                label={
+                  shell.editHistory.redoLabel
+                    ? `Redo ${shell.editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
+                    : `Redo (${getHistoryShortcutLabel("redo")})`
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    trackStudioEvent("toolbar_action", { action: "redo" });
+                    void shell.handleRedo();
+                  }}
+                  disabled={!shell.editHistory.canRedo}
+                  aria-label="Redo"
+                  className={shell.editHistory.canRedo ? flatIdle : flatDisabled}
+                >
+                  <RotateCw size={16} />
+                </button>
+              </Tooltip>
+              {/* Divider: history | tool-mode */}
+              <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
+            </>
+          ) : null}
           <Tooltip label="Selection tool (V)">
             <button
               type="button"

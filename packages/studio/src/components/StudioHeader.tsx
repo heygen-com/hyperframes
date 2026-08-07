@@ -1,6 +1,5 @@
 import { useRef, type MouseEvent } from "react";
-import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
-import { getHistoryShortcutLabel } from "../utils/studioHelpers";
+import { Camera } from "../icons/SystemIcons";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useViewMode, type StudioViewMode } from "../contexts/ViewModeContext";
@@ -207,7 +206,7 @@ export function StudioHeader({
   inspectorPanelActive,
   onExport,
 }: StudioHeaderProps) {
-  const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
+  const { projectId, renderQueue } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const isRendering = renderQueue.isRendering;
 
@@ -225,56 +224,6 @@ export function StudioHeader({
       <ViewModeToggle />
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
-        <Tooltip
-          label={
-            editHistory.undoLabel
-              ? `Undo ${editHistory.undoLabel} (${getHistoryShortcutLabel("undo")})`
-              : `Undo (${getHistoryShortcutLabel("undo")})`
-          }
-          side="bottom"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              trackStudioEvent("toolbar_action", { action: "undo" });
-              void handleUndo();
-            }}
-            disabled={!editHistory.canUndo}
-            className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors active:scale-[0.98] ${
-              editHistory.canUndo
-                ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
-                : "text-neutral-700 cursor-default"
-            }`}
-            aria-label="Undo"
-          >
-            <RotateCcw size={14} />
-          </button>
-        </Tooltip>
-        <Tooltip
-          label={
-            editHistory.redoLabel
-              ? `Redo ${editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
-              : `Redo (${getHistoryShortcutLabel("redo")})`
-          }
-          side="bottom"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              trackStudioEvent("toolbar_action", { action: "redo" });
-              void handleRedo();
-            }}
-            disabled={!editHistory.canRedo}
-            className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors active:scale-[0.98] ${
-              editHistory.canRedo
-                ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
-                : "text-neutral-700 cursor-default"
-            }`}
-            aria-label="Redo"
-          >
-            <RotateCw size={14} />
-          </button>
-        </Tooltip>
         <Tooltip label={capturing ? "Capturing frame…" : "Capture current frame"} side="bottom">
           <a
             href={captureFrameHref}

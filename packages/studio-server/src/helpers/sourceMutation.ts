@@ -3,7 +3,7 @@ import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { EXCLUDED_TAGS, ensureHfIds, mintHfId } from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
@@ -159,6 +159,36 @@ function resolveOperationTarget(parent: HTMLElement, op: PatchOperation): HTMLEl
   }
 }
 
+/**
+ * Give the elements a rich-text patch just introduced their stable ids, here,
+ * in the bytes about to be written and handed back.
+ *
+ * Otherwise the next preview request mints them and writes the file a second
+ * time, after Studio has already recorded the edit in its history. The recorded
+ * "after" stops matching disk, the content check refuses, and undo reports the
+ * file as changed outside Studio — for every colour applied to a run of
+ * characters and every text layer added. The clip split stamps its own clone
+ * for exactly this reason.
+ *
+ * Minted one element at a time with the same function `ensureHfIds` uses, so
+ * these ids are the ones the next pass would have assigned. Not `ensureHfIds`
+ * itself: it takes a whole document, and handing it this element's markup would
+ * put the markup back as one.
+ */
+function stampNewChildIds(parent: Element): void {
+  const assigned = new Set<string>();
+  const root = parent.ownerDocument?.body ?? parent;
+  for (const el of root.querySelectorAll("[data-hf-id]")) {
+    const id = el.getAttribute("data-hf-id");
+    if (id) assigned.add(id);
+  }
+  for (const el of parent.querySelectorAll("*")) {
+    if (el.getAttribute("data-hf-id")) continue;
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    el.setAttribute("data-hf-id", mintHfId(el, assigned));
+  }
+}
+
 // fallow-ignore-next-line complexity
 export function patchElementInHtml(
   source: string,
@@ -224,6 +254,7 @@ export function patchElementInHtml(
         if (op.value != null) {
           opTarget.innerHTML = op.value;
           sanitizeRichTextChildren(opTarget);
+          stampNewChildIds(opTarget);
         }
         break;
     }

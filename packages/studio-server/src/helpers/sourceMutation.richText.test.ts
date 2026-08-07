@@ -25,7 +25,9 @@ describe("rich-text patch operation", () => {
     );
 
     expect(matched).toBe(true);
-    expect(html).toContain('<span style="color: red">o</span>');
+    // The id is minted here so the bytes Studio records match the bytes on
+    // disk — see stampNewChildIds.
+    expect(html).toMatch(/<span data-hf-id="hf-[^"]+" style="color: red">o<\/span>/);
   });
 
   it("keeps the words and drops the script when the payload is hostile", () => {
@@ -34,7 +36,7 @@ describe("rich-text patch operation", () => {
     expect(html).not.toContain("script");
     expect(html).not.toContain("alert");
     expect(html).toContain("still");
-    expect(html).toContain("<b>here</b>");
+    expect(html).toMatch(/<b data-hf-id="hf-[^"]+">here<\/b>/);
   });
 
   it("strips an event handler smuggled onto an allowed tag", () => {
@@ -115,7 +117,7 @@ describe("rich-text round trips what a real composition contains", () => {
   it("keeps a line break", () => {
     const { html } = patchTitle("safe", "a<br>b", "rich-text");
 
-    expect(html).toContain("<br>");
+    expect(html).toMatch(/<br data-hf-id="hf-[^"]+">/);
   });
 
   it("keeps the wrapper span a flex element needs", () => {
@@ -125,7 +127,9 @@ describe("rich-text round trips what a real composition contains", () => {
       "rich-text",
     );
 
-    expect(html).toContain('<span>a <span style="color: red">b</span> c</span>');
+    expect(html).toMatch(
+      /<span data-hf-id="hf-[^"]+">a <span data-hf-id="hf-[^"]+" style="color: red">b<\/span> c<\/span>/,
+    );
   });
 
   it("empties the element when every character was deleted", () => {
