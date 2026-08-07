@@ -12,6 +12,70 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "distance",
+      "type": "enum",
+      "role": "motion",
+      "label": "Distance",
+      "description": "How far the element is offset before it slides home: 14px, 28px or 52px.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
+      ]
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "up starts the element below its resting place so it rises in, down starts it above so it drops in.",
+      "default": "up",
+      "options": [
+        {
+          "value": "up",
+          "label": "Up"
+        },
+        {
+          "value": "down",
+          "label": "Down"
+        }
+      ]
+    },
+    {
+      "id": "blur",
+      "type": "enum",
+      "role": "style",
+      "label": "Blur",
+      "description": "Starting blur radius, from a light haze to a full smear.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "soft",
+          "label": "Soft"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "heavy",
+          "label": "Heavy"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/soft-blur-in.png"
   }

@@ -12,6 +12,50 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "from-text",
+      "type": "string",
+      "role": "content",
+      "label": "From text",
+      "description": "The outgoing panel label, on screen before the wipe.",
+      "default": "Before"
+    },
+    {
+      "id": "to-text",
+      "type": "string",
+      "role": "content",
+      "label": "To text",
+      "description": "The incoming panel label. It stays clipped until the timeline wipes it open.",
+      "default": "Tool Menu Slide In"
+    },
+    {
+      "id": "distance",
+      "type": "enum",
+      "role": "motion",
+      "label": "Distance",
+      "description": "Scales the sideways offset the timeline drives on both panels, so they cover a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        { "value": "close", "label": "Close" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "far", "label": "Far" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the incoming panel gradient, revealed as the timeline wipes that panel open.",
+      "default": "blue",
+      "options": [
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" },
+        { "value": "emerald", "label": "Emerald" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tool-menu-slide-in.png"
   }
