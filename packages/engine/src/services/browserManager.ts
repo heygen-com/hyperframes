@@ -910,20 +910,33 @@ export function buildChromeArgs(
     chromeArgs.push(WEBGPU_FLAG);
   }
 
+  // SwiftShader's GPU compositor can retain a transformed layer for several
+  // sequential frames after a GSAP yoyo/reversal, and it re-presents stale
+  // raster for a partially invalidated layer: content already drawn in an
+  // earlier seek is never cleared, so successive captures accumulate copies of
+  // it (HF#3049 — a moving SVG group smears wider on every frame, and static
+  // siblings appear duplicated one band lower). The DOM and timeline are
+  // already at the requested time; the defect is in the compositor surface both
+  // BeginFrame and Page.captureScreenshot read, so it is not specific to a
+  // capture mode — it is specific to compositing on SwiftShader.
+  //
+  // Routing compositing through Chrome's software path is the only mitigation
+  // that holds: capture-side changes (fromSurface, captureBeyondViewport, a
+  // second capture, extra rAF ticks, a 250ms settle) and every raster/tiling
+  // flag (--disable-partial-raster, --disable-checker-imaging, --disable-zero-copy,
+  // forced tile sizes) leave the accumulation untouched. The cost is that
+  // SwiftShader rasterizes thin strokes and glyph edges slightly differently
+  // (antialiased edges only — measured on HF#3049's frame 0: 96 opaque pixels
+  // differ, by 1/255). Duplicated content in 68% of frames is the worse defect.
+  //
+  // Remove this workaround once the pinned chrome-headless-shell includes
+  // https://issues.chromium.org/issues/535256667.
+  if (browserGpuMode === "software") {
+    chromeArgs.push("--disable-gpu-compositing");
+  }
+
   // BeginFrame flags — only when using chrome-headless-shell on Linux
   if (options.captureMode !== "screenshot") {
-    // SwiftShader's GPU compositor can retain a transformed layer for several
-    // sequential frames after a GSAP yoyo/reversal. The DOM and timeline are
-    // already at the requested time, but both BeginFrame and
-    // Page.captureScreenshot read the stale surface (the duplicate is present
-    // in the raw JPEG before encoding). Keep deterministic BeginFrame capture,
-    // but route compositing through Chrome's software path when the browser is
-    // already in software-GPU mode. Hardware-GPU and screenshot captures keep
-    // their existing compositor paths. Remove this workaround once the pinned
-    // chrome-headless-shell includes https://issues.chromium.org/issues/535256667.
-    if (browserGpuMode === "software") {
-      chromeArgs.push("--disable-gpu-compositing");
-    }
     chromeArgs.push(
       "--deterministic-mode",
       "--enable-begin-frame-control",

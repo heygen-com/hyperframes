@@ -132,7 +132,7 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).not.toContain("--enable-gpu-rasterization");
   });
 
-  it("disables GPU compositing only for software BeginFrame capture", () => {
+  it("disables GPU compositing for every software capture, whatever the capture mode", () => {
     const softwareBeginFrame = buildChromeArgs(
       { ...base, captureMode: "beginframe" },
       { browserGpuMode: "software" },
@@ -146,9 +146,15 @@ describe("buildChromeArgs browser GPU mode", () => {
       { browserGpuMode: "hardware" },
     );
 
+    // HF#3049: the stale-raster accumulation lives in SwiftShader's compositor,
+    // so the screenshot path (which every alpha render is forced onto) needs the
+    // same workaround the BeginFrame path already had.
     expect(softwareBeginFrame).toContain("--disable-gpu-compositing");
-    expect(softwareScreenshot).not.toContain("--disable-gpu-compositing");
+    expect(softwareScreenshot).toContain("--disable-gpu-compositing");
     expect(hardwareBeginFrame).not.toContain("--disable-gpu-compositing");
+    expect(
+      buildChromeArgs({ ...base, captureMode: "screenshot" }, { browserGpuMode: "hardware" }),
+    ).not.toContain("--disable-gpu-compositing");
   });
 
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
