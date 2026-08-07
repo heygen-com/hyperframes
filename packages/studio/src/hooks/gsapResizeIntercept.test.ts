@@ -98,7 +98,7 @@ it("updates a duration-zero size hold in place instead of converting it to keyfr
     commitMutation,
   );
 
-  expect(handled).toEqual({ status: "persisted" });
+  expect(handled).toMatchObject({ status: "persisted" });
   expect(commitMutation).toHaveBeenCalledTimes(1);
   expect(commitMutation.mock.calls[0]![1]).toEqual({
     type: "update-properties",
@@ -246,7 +246,7 @@ async function runResize(
     commitMutation as never,
     async () => [keyframedScaleFixture()],
   );
-  expect(handled).toEqual({ status: "persisted" });
+  expect(handled).toMatchObject({ status: "persisted" });
   return committed;
 }
 

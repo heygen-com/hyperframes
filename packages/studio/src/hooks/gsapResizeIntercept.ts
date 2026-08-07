@@ -422,7 +422,7 @@ export async function tryGsapResizeIntercept(
       "Resize animation",
     );
     await finalizeScaleResizeCommit();
-    return { status: "persisted" };
+    return { status: "persisted", ownsDragOffset: true };
   }
 
   const ct = usePlayerStore.getState().currentTime;
@@ -534,7 +534,7 @@ export async function tryGsapResizeIntercept(
       },
     );
     await finalizeScaleResizeCommit();
-    return { status: "persisted" };
+    return { status: "persisted", ownsDragOffset: true };
   }
 
   const SIZE_PROPS = new Set(["width", "height"]);
@@ -556,7 +556,7 @@ export async function tryGsapResizeIntercept(
     { label: `Resize (keyframe ${pct}%)`, softReload: true },
   );
   await finalizeScaleResizeCommit();
-  return { status: "persisted" };
+  return { status: "persisted", ownsDragOffset: true };
 }
 
 // ── Rotation intercept ────────────────────────────────────────────────────

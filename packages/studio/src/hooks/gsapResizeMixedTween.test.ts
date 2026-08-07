@@ -137,3 +137,32 @@ it("does not write size into the tween that carries scale", async () => {
   expect(intoScaleHold).not.toContain("width");
   expect(intoScaleHold).not.toContain("height");
 });
+
+/**
+ * Whether the caller must persist the drag offset is the resize's answer to
+ * give, not something to infer from the element's tweens.
+ *
+ * An element whose scale is an instant hold HAS a scale-group tween and still
+ * commits width/height. Guessing from the tweens withheld an offset nobody had
+ * written, and the element snapped back to its authored position on every drag.
+ */
+it("leaves the drag offset to the caller when it commits size, not scale", async () => {
+  const el = document.createElement("div");
+  el.id = "card";
+  el.setAttribute("data-hf-studio-original-box-width", "630");
+  el.setAttribute("data-hf-studio-original-box-height", "408");
+  document.body.append(el);
+
+  const scaleHold = hold("#card-to-0-scale", "scale", { scale: 1.2 });
+  const outcome = await tryGsapResizeIntercept(
+    { id: "card", selector: "#card", element: el } as DomEditSelection,
+    { width: 326, height: 213 },
+    [scaleHold],
+    null,
+    vi.fn() as never,
+    async () => [scaleHold],
+  );
+
+  expect(outcome.status).toBe("persisted");
+  expect(outcome.status === "persisted" && outcome.ownsDragOffset).not.toBe(true);
+});

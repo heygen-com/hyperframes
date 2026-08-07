@@ -258,13 +258,21 @@ export function useGsapAwareEditing({
                 makeFetchFallback(selection),
               );
               assertGsapEditPersisted(outcome);
+              // What the resize actually did, not what its animations suggest
+              // it would do. An element whose scale is an instant hold has a
+              // scale-group tween and still commits width/height, so guessing
+              // from the tweens withheld an offset nobody had written and the
+              // element snapped back to its authored position on every drag.
+              const ownsDragOffset =
+                outcome.status === "persisted" && outcome.ownsDragOffset === true;
               logResize("intercept-handled", {
                 scaleRoute,
-                willForwardOffset: !!(offset && !scaleRoute),
+                ownsDragOffset,
+                willForwardOffset: !!(offset && !ownsDragOffset),
               });
-              // Scale-route resize persists its residual position internally.
-              // Width/height persists the already-settled anchor through drag.
-              if (offset && !scaleRoute) {
+              // A resize that moved the element itself has already written
+              // where it landed. Everything else leaves the anchor to the drag.
+              if (offset && !ownsDragOffset) {
                 const dragOutcome = await tryGsapDragIntercept(
                   selection,
                   offset,
@@ -275,7 +283,7 @@ export function useGsapAwareEditing({
                 );
                 assertGsapEditPersisted(dragOutcome);
               }
-              logResizeSettle(selection.element, scaleRoute ? "gsap-scale" : "gsap-size");
+              logResizeSettle(selection.element, ownsDragOffset ? "gsap-scale" : "gsap-size");
               return;
             } catch (error) {
               trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");

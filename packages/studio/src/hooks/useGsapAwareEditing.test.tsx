@@ -313,13 +313,30 @@ describe("useGsapAwareEditing anchored resize", () => {
     act(() => h.root.unmount());
   });
 
-  it("does not apply the anchor twice when scale route already settles the drop point", async () => {
-    mocks.resize.mockResolvedValue({ status: "persisted" });
+  it("does not apply the anchor twice when the resize already settled the drop point", async () => {
+    mocks.resize.mockResolvedValue({ status: "persisted", ownsDragOffset: true });
     const scale = { propertyGroup: "scale" } as GsapAnimation;
     const h = mountResizeHandler([scale]);
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
     expect(mocks.drag).not.toHaveBeenCalled();
     expect(h.fallback).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  /**
+   * The same element, and the resize says it did NOT settle the drop point.
+   *
+   * This is the shape that broke: an element whose scale is an instant hold has
+   * a scale-group tween and still commits width/height. Reading the tweens said
+   * "scale route, it settles its own position", so the offset was withheld,
+   * nobody wrote it, and the element snapped back on every drag.
+   */
+  it("applies the anchor when the resize leaves the drop point to the caller", async () => {
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    const scale = { propertyGroup: "scale" } as GsapAnimation;
+    const h = mountResizeHandler([scale]);
+    await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
+    expect(mocks.drag).toHaveBeenCalledTimes(1);
     act(() => h.root.unmount());
   });
 });

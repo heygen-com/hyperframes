@@ -3,7 +3,25 @@ import { editabilityForProvenance, type GsapAnimation } from "@hyperframes/core/
 export type GsapEditBlockReason = "no-selector" | "unroll-required" | "source-uneditable";
 
 export type GsapEditOutcome =
-  | { status: "persisted" }
+  | {
+      status: "persisted";
+      /**
+       * Whether this edit already accounted for where the gesture left the
+       * element, so the caller must not persist the drag offset on top.
+       *
+       * The scale route needs it: a committed scale renders around the element
+       * centre rather than the dragged corner, so it measures the difference
+       * and writes the position itself. Every other route moves nothing the
+       * caller has not already been told about, and the caller owns the offset.
+       *
+       * It has to be reported rather than inferred. The caller used to guess
+       * from "does this element have a scale-group tween", which is true for an
+       * element whose scale is an instant hold — but that resize commits
+       * width/height, not scale, so the guess withheld an offset nobody wrote
+       * and the element snapped back to its authored position on every drag.
+       */
+      ownsDragOffset?: boolean;
+    }
   | { status: "blocked"; reason: GsapEditBlockReason };
 
 const COPY: Record<GsapEditBlockReason, string> = {
