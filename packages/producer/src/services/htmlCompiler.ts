@@ -21,6 +21,7 @@ import {
   shouldClampResolvedMediaDuration,
   CSS_URL_RE,
   isNonRelativeUrl,
+  redactTelemetryString,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -445,6 +446,24 @@ async function resolveMediaDuration(
     return { duration: 0, resolvedPath: filePath };
   }
 
+  // STUDIO-5433: attach the remote `src` to any ffprobe failure surfaced from
+  // this branch. `extractMediaMetadata` → `runFfprobe` intentionally redacts
+  // its local `filePath` out of the error message (see
+  // engine/utils/ffprobe.ts::redactFfprobeInput), so a bare `moov atom not
+  // found` in Datadog carries no attribution and requires a Temporal history
+  // dump to identify the offending source. Re-throwing with the `src`
+  // (query-string redacted via `redactTelemetryString` so pre-signed URL
+  // signatures never reach telemetry) makes the next occurrence diagnosable
+  // directly from the render error. Fail-fast semantics for the video branch
+  // are preserved — only the message is enriched.
+  const withSrcContext = (error: unknown): Error => {
+    const originalMessage = error instanceof Error ? error.message : String(error);
+    const safeSrc = redactTelemetryString(src);
+    const wrapped = new Error(`${originalMessage} [src=${safeSrc}]`);
+    if (error instanceof Error && error.stack) wrapped.stack = error.stack;
+    return wrapped;
+  };
+
   return withMediaProbeSlot(async () => {
     let profile: MediaProbeProfile;
     try {
@@ -454,13 +473,17 @@ async function resolveMediaDuration(
       // probe failure, while invalid/unreadable audio sources resolve to zero
       // duration and are excluded by the compiler.
       if (tagName !== "video") return { duration: 0, resolvedPath: filePath };
-      throw error;
+      throw withSrcContext(error);
     }
     assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, elementIdentity);
 
     let metadata: { durationSeconds: number };
     if (tagName === "video") {
-      metadata = await extractMediaMetadata(filePath);
+      try {
+        metadata = await extractMediaMetadata(filePath);
+      } catch (error) {
+        throw withSrcContext(error);
+      }
     } else {
       try {
         metadata = await extractAudioMetadata(filePath);
