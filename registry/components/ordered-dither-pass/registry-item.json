@@ -9,7 +9,13 @@
   "family": "effects",
   "profile": "texture",
   "evidence": "Wave M M2: Codrops 'Building a Real-Time Dithering Shader' (Niccolo Fanton, 2025-06-04), the ordered-not-error-diffusion pass from the wild scout",
-  "syncPoints": [{ "id": "ramp", "phase": "in", "offset": 0.4 }],
+  "syncPoints": [
+    {
+      "id": "ramp",
+      "phase": "in",
+      "offset": 0.4
+    }
+  ],
   "files": [
     {
       "path": "ordered-dither-pass.html",
@@ -26,9 +32,18 @@
       "description": "Bayer matrix size: 2 is the coarsest crosshatch, 8 the smoothest ordered grain.",
       "default": "4",
       "options": [
-        { "value": "2", "label": "2 x 2" },
-        { "value": "4", "label": "4 x 4" },
-        { "value": "8", "label": "8 x 8" }
+        {
+          "value": "2",
+          "label": "2 x 2"
+        },
+        {
+          "value": "4",
+          "label": "4 x 4"
+        },
+        {
+          "value": "8",
+          "label": "8 x 8"
+        }
       ]
     },
     {
@@ -39,8 +54,14 @@
       "description": "in resolves noise to clean; out dissolves clean to noise and holds it.",
       "default": "in",
       "options": [
-        { "value": "in", "label": "Noise to clean" },
-        { "value": "out", "label": "Clean to noise" }
+        {
+          "value": "in",
+          "label": "Noise to clean"
+        },
+        {
+          "value": "out",
+          "label": "Clean to noise"
+        }
       ]
     },
     {
@@ -62,9 +83,18 @@
       "description": "Light tone of the 2-tone noise phase: green rides --brand, blue rides --accent, violet rides --accent-2.",
       "default": "green",
       "options": [
-        { "value": "green", "label": "Green" },
-        { "value": "blue", "label": "Blue" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     },
     {
@@ -72,12 +102,21 @@
       "type": "enum",
       "role": "timing",
       "label": "Exit",
-      "description": "How the frame leaves. None holds the final state.",
+      "description": "Optional departure. Default none: the final state holds until the frame cuts.",
       "default": "none",
       "options": [
-        { "value": "none", "label": "None" },
-        { "value": "fade", "label": "Fade" },
-        { "value": "up", "label": "Up" }
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "fade",
+          "label": "Fade"
+        },
+        {
+          "value": "up",
+          "label": "Up"
+        }
       ]
     }
   ]

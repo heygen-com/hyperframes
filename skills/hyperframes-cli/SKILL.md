@@ -16,7 +16,7 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 ## Development loop
 
 1. **Scaffold:** `npx hyperframes init <project>` or capture a site. In non-TTY mode, pass `--non-interactive --example=<name>`.
-2. **Find the move:** before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time" --smart`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
+2. **Find the move:** before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
 3. **Author:** write the composition using `/hyperframes-core`.
 4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
 5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
@@ -62,8 +62,8 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
 
 ## Agent conventions
 
-- **Search the catalog by meaning before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain language>" --smart`. `--smart` is a per-run opt-in that needs no prompt, so it works non-interactively; it is also the only part of the catalog flow that sends anything to HeyGen (the query text), and it is free for signed-in users. Without it the command falls back to matching words the description happens to share, which misses any phrasing that does not reuse the catalog's own vocabulary.
-- **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `tier` (`meaning`, `on-device` or `words`), `top_score`, `dropped` and `warnings`. A weak result on the weakest tier is expected; the same result on the best tier is a bug. `top_score` is reported, not judged: real short queries and gibberish overlap on this catalog, so there is no "nothing matched" and you should not invent one without your own evidence.
+- **Search the catalog before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain language>"`. Everything runs locally: nothing is sent anywhere. Without the on-device tier the command matches words the description happens to share, which misses any phrasing that does not reuse the catalog's own vocabulary.
+- **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `tier` (`on-device` or `words`), `dropped` and `warnings`. A weak result on the weakest tier is expected; the same result on the best tier is a bug.
 - **`dropped` above zero means the registry is a different generation from the search index.** The strongest matches are the ones being lost, so refresh the registry rather than rewording the query.
 - **Offer the offline tier; never enable it silently.** A one-time ~33 MB model plus catalog vectors, cached under `~/.hyperframes`, not added to the project or any package. It ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The CLI only offers it on a TTY, so in an agent or CI run the offer never appears and the user has to be told.
 

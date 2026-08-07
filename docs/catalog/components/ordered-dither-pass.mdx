@@ -31,7 +31,7 @@ want to change on the element:
 | `direction` | `in` | `in`, `out` | in resolves noise to clean; out dissolves clean to noise and holds it. |
 | `levels` | `2` | 2 to 6, step 1 | Quantization levels per color channel during the dithered phase. |
 | `accent` | `green` | `green`, `blue`, `violet` | Light tone of the 2-tone noise phase: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the final state. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the final state holds until the frame cuts. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:

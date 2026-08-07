@@ -31,7 +31,7 @@ want to change on the element:
 | `direction` | `ltr` | `ltr`, `center`, `noise` | Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters. |
 | `dissolve_at` | `1.1` | 0.2s to 10s, step 0.1s | Seconds from mount start when the dissolve begins. |
 | `accent` | `green` | `green`, `blue`, `violet` | Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds scene B. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: scene B holds until the frame cuts. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:

@@ -12,6 +12,72 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Title",
+      "description": "Wordmark printed above the links. Blank or missing falls back to HyperFrames.",
+      "default": "HyperFrames"
+    },
+    {
+      "id": "width",
+      "type": "number",
+      "role": "layout",
+      "label": "Width",
+      "description": "Width of the whole rail. Values outside the range clamp to the nearest end and anything that is not a number falls back to 240.",
+      "default": 240,
+      "min": 180,
+      "max": 420,
+      "step": 4,
+      "unit": "px"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour of the marker on the selected link. theme leaves the shared accent token in charge, the rest borrow a data colour from the same palette.",
+      "default": "theme",
+      "options": [
+        {
+          "value": "theme",
+          "label": "Theme"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "amber",
+          "label": "Amber"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Operator Black dark surface or the light-frame token set.",
+      "default": "dark",
+      "options": [
+        {
+          "value": "dark",
+          "label": "Dark"
+        },
+        {
+          "value": "light",
+          "label": "Light"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sidebar.png"
   }

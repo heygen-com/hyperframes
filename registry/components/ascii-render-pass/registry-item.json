@@ -9,7 +9,13 @@
   "family": "effects",
   "profile": "texture",
   "evidence": "Wave M M1: Codrops 'Efecto: Building Real-Time ASCII and Dithering Effects with WebGL Shaders' (2026-01-04), the coded-motion ASCII wave from the wild scout",
-  "syncPoints": [{ "id": "resolve", "phase": "in", "offset": 1.4 }],
+  "syncPoints": [
+    {
+      "id": "resolve",
+      "phase": "in",
+      "offset": 1.4
+    }
+  ],
   "files": [
     {
       "path": "ascii-render-pass.html",
@@ -34,9 +40,18 @@
       "description": "Final cell pitch the resolve lands on.",
       "default": "med",
       "options": [
-        { "value": "coarse", "label": "Coarse" },
-        { "value": "med", "label": "Medium" },
-        { "value": "fine", "label": "Fine" }
+        {
+          "value": "coarse",
+          "label": "Coarse"
+        },
+        {
+          "value": "med",
+          "label": "Medium"
+        },
+        {
+          "value": "fine",
+          "label": "Fine"
+        }
       ]
     },
     {
@@ -59,9 +74,18 @@
       "description": "Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2.",
       "default": "green",
       "options": [
-        { "value": "green", "label": "Green" },
-        { "value": "blue", "label": "Blue" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     },
     {
@@ -69,12 +93,21 @@
       "type": "enum",
       "role": "timing",
       "label": "Exit",
-      "description": "How the frame leaves. None holds the fine render.",
+      "description": "Optional departure. Default none: the fine render holds until the frame cuts.",
       "default": "none",
       "options": [
-        { "value": "none", "label": "None" },
-        { "value": "fade", "label": "Fade" },
-        { "value": "up", "label": "Up" }
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "fade",
+          "label": "Fade"
+        },
+        {
+          "value": "up",
+          "label": "Up"
+        }
       ]
     }
   ]
