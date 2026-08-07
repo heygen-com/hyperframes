@@ -252,7 +252,14 @@ export async function tryGsapResizeIntercept(
     // and the longhands win: the resize commits correctly and then does
     // nothing, and the element snaps back to its old size on release. The
     // tween never mixes the two forms in either direction.
-    nonUniformScale = Math.abs(newScaleX - newScaleY) > 0.01;
+    //
+    // "Agree" is measured in PIXELS, not in scale. A fixed 0.01 of scale is
+    // invisible on a 40px box and two pixels of height on a 408px one, so a
+    // free drag whose axes happened to land within it silently gave back a box
+    // shorter than the one dropped. The question is only ever whether using one
+    // value for both axes would move an edge, so ask that.
+    const uniformDrift = Math.abs(newScaleX - newScaleY) * cssH;
+    nonUniformScale = uniformDrift > 0.5;
     useScaleLonghands = nonUniformScale || tweenUsesScaleLonghands(anim);
     resizeProps = useScaleLonghands
       ? { scaleX: newScaleX, scaleY: newScaleY }
