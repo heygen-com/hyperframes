@@ -82,22 +82,42 @@ interface Case {
   /** The box the user dragged to, and where the draft put it. */
   drop: { w: number; h: number; x: number; y: number };
   animations: () => GsapAnimation[];
+  /** Whether this route takes responsibility for where the box lands. */
+  settles: boolean;
 }
 
 const ROTATIONS = [0, -8, 45, -47, 90, 180];
 
-/** The routes a resize can take, each as the animations that select it. */
+/**
+ * The routes a resize can take, and whether each SETTLES the drop point.
+ *
+ * Only a committed scale moves the box: it renders about the element centre
+ * rather than the dragged corner, so the route measures the difference and
+ * writes the position. Every other route commits width and height and moves
+ * nothing, which leaves the anchor to the drag. An element whose scale is an
+ * instant hold has a scale tween and still commits size, so it belongs with
+ * the size routes here however it looks from the animation list.
+ */
 const ROUTES = {
-  "scale tween": () => [tween("#el-scale", { scale: 1 }, 2)],
-  "scale longhands": () => [tween("#el-scale", { scaleX: 1, scaleY: 1 }, 2)],
-  "scale instant hold": () => [tween("#el-scale", { scale: 1 }, 0)],
-  "size tween": () => [tween("#el-size", { width: 630, height: 408 }, 2)],
-  "size instant hold": () => [tween("#el-size", { width: 630, height: 408 }, 0)],
+  "scale tween": { animations: () => [tween("#el-scale", { scale: 1 }, 2)], settles: true },
+  "scale longhands": {
+    animations: () => [tween("#el-scale", { scaleX: 1, scaleY: 1 }, 2)],
+    settles: true,
+  },
+  "scale instant hold": { animations: () => [tween("#el-scale", { scale: 1 }, 0)], settles: false },
+  "size tween": {
+    animations: () => [tween("#el-size", { width: 630, height: 408 }, 2)],
+    settles: false,
+  },
+  "size instant hold": {
+    animations: () => [tween("#el-size", { width: 630, height: 408 }, 0)],
+    settles: false,
+  },
 } as const;
 
 function buildCases(): Case[] {
   const cases: Case[] = [];
-  for (const [routeName, animations] of Object.entries(ROUTES)) {
+  for (const [routeName, route] of Object.entries(ROUTES)) {
     for (const rotation of ROTATIONS) {
       for (const [dropName, drop] of Object.entries({
         shrink: { w: 326, h: 213, x: 60, y: 40 },
@@ -112,7 +132,8 @@ function buildCases(): Case[] {
           liveScale: { x: 1, y: 1 },
           rotation,
           drop,
-          animations,
+          animations: route.animations,
+          settles: route.settles,
         });
       }
     }
@@ -194,7 +215,7 @@ function mountCase(testCase: Case, live: Pose) {
   return { el, iframe };
 }
 
-/** One run, and what it got wrong. 1px: position rounds, scale keeps 3dp. */
+/** One run: mount the case, drive the intercept, hand the result to the judge. */
 async function runCase(testCase: Case): Promise<string[]> {
   document.body.innerHTML = "";
   usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
@@ -222,15 +243,36 @@ async function runCase(testCase: Case): Promise<string[]> {
     { box: size ?? testCase.box, pos: { ...live.pos }, scale: scale ?? testCase.liveScale },
     testCase.rotation,
   );
-  const off = (a: number, b: number) => Math.abs(a - b) > 1;
+  const owns = outcome.status === "persisted" && outcome.ownsDragOffset === true;
+  return judge(testCase, dropped, settled, owns);
+}
 
+/**
+ * What the run got wrong, if anything. 1px: position rounds to whole pixels and
+ * scale keeps three decimals.
+ */
+function judge(
+  testCase: Case,
+  dropped: DOMRect,
+  settled: { x: number; y: number; w: number; h: number },
+  owns: boolean,
+): string[] {
+  const off = (a: number, b: number) => Math.abs(a - b) > 1;
   if (off(settled.w, dropped.width) || off(settled.h, dropped.height)) {
     return [
       `${testCase.name} — box ${settled.w.toFixed(1)}x${settled.h.toFixed(1)}` +
         `, dropped ${dropped.width.toFixed(1)}x${dropped.height.toFixed(1)}`,
     ];
   }
-  const owns = outcome.status === "persisted" && outcome.ownsDragOffset === true;
+  // Claiming the drop point is only honest for the routes that settle it. The
+  // size routes commit width and height and move nothing, so the drag still owns
+  // the anchor — and a run that claims otherwise makes the caller withhold an
+  // offset nobody writes. The position check below cannot see that on its own:
+  // the fixture's live pose starts at the drop, which is where the gesture
+  // leaves it, so a size route trivially "lands" there.
+  if (owns !== testCase.settles) {
+    return [`${testCase.name} — ownsDragOffset ${owns}, expected ${testCase.settles}`];
+  }
   if (owns && (off(settled.x, dropped.x) || off(settled.y, dropped.y))) {
     return [
       `${testCase.name} — landed ${settled.x.toFixed(1)},${settled.y.toFixed(1)}` +
