@@ -42,6 +42,10 @@ const FORMATTING_STYLE_PROPS = new Set([
   "font-size",
   "letter-spacing",
   "line-height",
+  // Paints the glyph fill and inherits, so an ancestor that sets it wins over
+  // any `color` below. The editor mirrors a run's colour into it when that is
+  // happening, and stripping it here would put the colour back to invisible.
+  "-webkit-text-fill-color",
 ]);
 
 /**

@@ -93,8 +93,49 @@ export function applyInlineStyle(range: Range, style: InlineStyleDelta): void {
   );
   if (!span) return;
 
-  render(host, restyle(runs, span.start, span.end, style));
+  const next = restyle(runs, span.start, span.end, style);
+  render(host, next);
+  // A colour that does not paint is the same to the user as a colour that did
+  // not save, so check rather than assume. See `mirrorFillColor`.
+  if (colourIsOverpainted(host)) render(host, next.map(mirrorFillColor));
   selectRange(host, span.start, span.end);
+}
+
+/**
+ * Whether something above the run is painting the glyphs a different colour.
+ *
+ * `-webkit-text-fill-color` inherits and paints the glyph fill, so an ancestor
+ * that sets it wins over any `color` a descendant sets. A composition doing so
+ * is not doing anything wrong, but from the editor it reads as the colour
+ * picker being broken: the run is saved with the colour asked for and renders
+ * in someone else's.
+ *
+ * Asked of the rendered span rather than worked out from the stylesheet. Its
+ * own `color` is set, so its computed colour IS the one that was asked for, and
+ * if the fill differs from it then something else is painting it. Both sides
+ * come from the same computed style, so neither notation nor inheritance has to
+ * be untangled by hand.
+ */
+function colourIsOverpainted(host: Element): boolean {
+  const view = host.ownerDocument.defaultView;
+  if (!view?.getComputedStyle) return false;
+  for (const span of host.querySelectorAll<HTMLElement>("span[style*='color']")) {
+    if (!span.style.color) continue;
+    const computed = view.getComputedStyle(span) as CSSStyleDeclaration & {
+      webkitTextFillColor?: string;
+    };
+    const fill = computed.webkitTextFillColor;
+    if (!fill || !computed.color) continue;
+    if (fill !== computed.color) return true;
+  }
+  return false;
+}
+
+/** The same run, with its colour also stated as the fill that actually paints. */
+function mirrorFillColor(run: StyledRun): StyledRun {
+  const colour = run.style.color;
+  if (!colour) return run;
+  return { ...run, style: { ...run.style, "-webkit-text-fill-color": colour } };
 }
 
 /**
