@@ -146,10 +146,14 @@ export default defineCommand({
       finishCommand(1);
     }
 
-    const entries = await listRegistryItems(typeFilter ? { type: typeFilter } : undefined, {
-      baseUrl: config.registry,
-    });
-    const filtered = entries.filter((e) => e.type !== "hyperframes:example");
+    // Asked for unnarrowed on purpose. `listRegistryItems` filters the same
+    // in-memory manifest either way, so the whole list costs no extra fetch,
+    // and its names are the only honest definition of "in this registry" once
+    // the user's own --type/--tag has narrowed what gets loaded.
+    const entries = await listRegistryItems(undefined, { baseUrl: config.registry });
+    const catalog = entries.filter((e) => e.type !== "hyperframes:example");
+    const registryNames = new Set(catalog.map((e) => e.name));
+    const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;
 
     if (filtered.length === 0) {
       if (json) console.log("[]");
@@ -175,7 +179,7 @@ export default defineCommand({
             registry: config.registry,
           })
         : [];
-    const searched = query ? await applySearch(tagged, query) : null;
+    const searched = query ? await applySearch(tagged, query, registryNames) : null;
     const matching = searched ? searched.items : tagged;
 
     if (matching.length === 0) {
@@ -331,25 +335,33 @@ export default defineCommand({
 /**
  * Resolve ranked names against the items this registry actually has.
  *
- * `missing` is the count the ranking returned and this registry cannot show.
- * It is reported rather than swallowed: the catalog artifact and the registry
- * are published separately, so they can be different generations, and the
- * moves lost that way are the top-ranked ones.
+ * `missing` counts the ranked names this registry has no item for at all,
+ * measured against `registryNames` — the whole catalog, not the post-filter
+ * `items`. It is reported rather than swallowed: the catalog artifact and the
+ * registry are published separately, so they can be different generations, and
+ * the moves lost that way are the top-ranked ones.
+ *
+ * A move the user's own --type or --tag removed is not one of them. It is in
+ * the registry and installable; they excluded it. Counting it here made every
+ * filtered search report a skew that was not there, and made a real skew
+ * indistinguishable from a filter doing its job.
  */
-function pickByName<T extends { name: string }>(
+export function pickByName<T extends { name: string }>(
   items: T[],
   names: string[],
+  registryNames: ReadonlySet<string>,
 ): { ranked: T[]; missing: number } {
   const byName = new Map(items.map((item) => [item.name, item]));
   const ranked = names
     .map((name) => byName.get(name))
     .filter((item): item is T => item !== undefined);
-  return { ranked, missing: names.length - ranked.length };
+  return { ranked, missing: names.filter((name) => !registryNames.has(name)).length };
 }
 
 async function applySearch<T extends { name: string; title: string; description: string }>(
   items: T[],
   query: string,
+  registryNames: ReadonlySet<string>,
 ): Promise<{ items: T[]; localMode: LocalMode; missing: number }> {
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
@@ -357,7 +369,7 @@ async function applySearch<T extends { name: string; title: string; description:
     try {
       const ranking = await localSemanticRanking(query);
       if (ranking) {
-        const { ranked, missing } = pickByName(items, ranking);
+        const { ranked, missing } = pickByName(items, ranking, registryNames);
         if (ranked.length > 0) {
           return { items: ranked.slice(0, 25), localMode: "local-model", missing };
         }
