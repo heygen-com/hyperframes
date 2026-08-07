@@ -18,7 +18,7 @@ import {
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import { readGsapPositionFromIframe } from "./gsapPositionDetection";
-import { selectorFromSelection } from "./gsapShared";
+import { isInstantHold, selectorFromSelection } from "./gsapShared";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
 import {
   useGsapSaveFailureTelemetry,
@@ -181,7 +181,19 @@ export function useGsapAwareEditing({
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
     ) => {
-      const scaleRoute = selectedGsapAnimations.some((anim) => anim.propertyGroup === "scale");
+      // Whether the resize will settle its own position, not merely whether the
+      // element has a scale tween.
+      //
+      // A committed scale renders around the element centre rather than the
+      // dragged corner, so the scale route measures the difference and writes
+      // the position itself — and the offset must not be applied on top. But an
+      // element whose scale is an INSTANT HOLD has a scale-group tween and
+      // still commits width/height, which moves nothing. Treating that as the
+      // scale route withheld an offset nobody wrote, and the element snapped
+      // back to its authored position on every drag.
+      const scaleRoute = selectedGsapAnimations.some(
+        (anim) => anim.propertyGroup === "scale" && !isInstantHold(anim),
+      );
       const selector = selectorFromSelection(selection);
       const hasLivePositionTween = selector
         ? hasNonHoldTweenForElement(
