@@ -12,6 +12,76 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "value",
+      "type": "number",
+      "role": "content",
+      "label": "Value",
+      "description": "Where the bar lands when the fill is complete, and the number shown beside the label. Values outside the range are clamped to it.",
+      "default": 64,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Label",
+      "description": "Text shown to the left of the readout.",
+      "default": "Rendering"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family for the filled bar. Theme leaves the inherited accent token alone.",
+      "default": "theme",
+      "options": [
+        {
+          "value": "theme",
+          "label": "Theme"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        },
+        {
+          "value": "amber",
+          "label": "Amber"
+        }
+      ]
+    },
+    {
+      "id": "thickness",
+      "type": "enum",
+      "role": "layout",
+      "label": "Thickness",
+      "description": "Height of the track and the bar riding in it.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "slim",
+          "label": "Slim"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "chunky",
+          "label": "Chunky"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/progress.png"
   }

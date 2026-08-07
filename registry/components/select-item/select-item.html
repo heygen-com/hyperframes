@@ -1,11 +1,44 @@
 <!--
   Select Item - Operator Black option-list primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Drive the timeline integration
-  from a paused GSAP timeline so renders remain deterministic.
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe stays untouched by them: it keeps
+  driving one row offset and one row opacity, and these decide how the rows are
+  sized and coloured and how far that offset carries.
+
+    - accent (theme | blue | amber | violet, default theme): colour of the tick
+      on the selected row. theme leaves the shared --hf-ui-accent token in
+      charge, so a project palette still wins; the other three pin a specific
+      hue for that tick only and never touch the shared token.
+    - density (compact | standard | roomy, default standard): row height, label
+      size and the gap between rows, from 32px rows of 12px type through 40px
+      rows of 13px type to 48px rows of 14px type.
+    - hints (show | hide, default show): the mono status column on the right.
+      hide removes it and lets the labels take the full width.
+    - travel (near | standard | far, default standard): scales the sideways
+      offset the timeline drives, so the rows slide in from half as close, from
+      where they do now, or from well over twice as far, in the same time.
+
+  On every default the result is identical to the original: 40px rows, 13px
+  labels, mono hints on the right, a theme-accent tick, and a 4px slide.
 -->
 
-<div data-hf-ui-root class="hf-remocn-select-item" role="listbox" aria-label="Codec">
+<div
+  data-hf-ui-root
+  class="hf-remocn-select-item"
+  role="listbox"
+  aria-label="Codec"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the tick on the selected row. theme leaves the shared accent token in charge.", "default": "theme", "options": [{ "value": "theme", "label": "Theme" }, { "value": "blue", "label": "Blue" }, { "value": "amber", "label": "Amber" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "Row height, label size and the gap between rows.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "roomy", "label": "Roomy" }] },
+    { "id": "hints", "type": "enum", "role": "content", "label": "Hints", "description": "The mono status column on the right. Hiding it lets the labels take the full width.", "default": "show", "options": [{ "value": "show", "label": "Show" }, { "value": "hide", "label": "Hide" }] },
+    { "id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "Scales the sideways offset the timeline drives, so the rows slide in from nearer or further.", "default": "standard", "options": [{ "value": "near", "label": "Near" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] }
+  ]'
+>
   <div class="row" role="option" aria-selected="false" tabindex="-1">
     <span class="label">ProRes 422</span><span class="hint">Master</span>
   </div>
@@ -155,7 +188,7 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-select-item {
-    --hf-accent: var(--_hf-ui-accent);
+    --hf-accent: var(--hf-select-item-accent, var(--_hf-ui-accent));
     --hf-ink: var(--_hf-ui-text);
     --hf-muted: var(--_hf-ui-text-muted);
     --hf-surface: var(--_hf-ui-surface-raised);
@@ -170,10 +203,10 @@
     padding: var(--_hf-ui-space-1);
     box-shadow: var(--_hf-ui-shadow-contact);
     display: grid;
-    gap: 2px;
+    gap: var(--hf-list-gap, 2px);
   }
   .hf-remocn-select-item .row {
-    min-height: 40px;
+    min-height: var(--hf-row-height, 40px);
     border-radius: var(--_hf-ui-radius-control);
     background: transparent;
     display: grid;
@@ -181,7 +214,7 @@
     align-items: center;
     gap: var(--_hf-ui-space-2);
     padding: 0 var(--_hf-ui-space-2);
-    transform: translateX(var(--hf-row-x, 0px));
+    transform: translateX(calc(var(--hf-row-x, 0px) * var(--hf-row-travel, 1)));
     opacity: var(--hf-row-opacity, 1);
   }
   .hf-remocn-select-item .row[aria-selected="true"] {
@@ -196,10 +229,11 @@
     outline-offset: 3px;
   }
   .hf-remocn-select-item .label {
-    font-size: 13px;
+    font-size: var(--hf-label-size, 13px);
     font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-select-item .hint {
+    display: var(--hf-hint-display, block);
     grid-column: 3;
     color: var(--hf-muted);
     font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
@@ -230,6 +264,49 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    // theme is null on purpose: it leaves the shared accent token in charge.
+    var accents = { theme: null, blue: "#63a5ff", amber: "#e9ab55", violet: "#a78bfa" };
+    var densities = {
+      compact: { row: "32px", label: "12px", gap: "1px" },
+      standard: { row: "40px", label: "13px", gap: "2px" },
+      roomy: { row: "48px", label: "14px", gap: "4px" },
+    };
+    var hints = { show: "block", hide: "none" };
+    var travels = { near: 0.5, standard: 1, far: 2.5 };
+
+    var accent = accents[pick(accents, vars.accent, "theme")];
+    var density = densities[pick(densities, vars.density, "standard")];
+    var hint = hints[pick(hints, vars.hints, "show")];
+    var travel = travels[pick(travels, vars.travel, "standard")];
+
+    var roots = document.querySelectorAll(".hf-remocn-select-item");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      if (accent) root.style.setProperty("--hf-select-item-accent", accent);
+      else root.style.removeProperty("--hf-select-item-accent");
+      root.style.setProperty("--hf-row-height", density.row);
+      root.style.setProperty("--hf-label-size", density.label);
+      root.style.setProperty("--hf-list-gap", density.gap);
+      root.style.setProperty("--hf-hint-display", hint);
+      root.style.setProperty("--hf-row-travel", String(travel));
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

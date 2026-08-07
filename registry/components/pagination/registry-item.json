@@ -12,6 +12,46 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "layout",
+      "label": "Size",
+      "description": "Scales the control height, the side padding and the label size together.",
+      "default": "standard",
+      "options": [
+        { "value": "compact", "label": "Compact" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "roomy", "label": "Roomy" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour of the seated underline on the current page. green keeps the themed accent, blue and violet borrow the data colours.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "labels",
+      "type": "enum",
+      "role": "content",
+      "label": "Step labels",
+      "description": "Whether the step buttons read Prev and Next or show single angle marks. The aria labels never change.",
+      "default": "words",
+      "options": [
+        { "value": "words", "label": "Words" },
+        { "value": "arrows", "label": "Arrows" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pagination.png"
   }

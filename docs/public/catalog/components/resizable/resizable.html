@@ -3,9 +3,34 @@
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The drag itself stays yours to drive: the timeline keeps
+  animating --hf-resizable-left, and split only scales whatever it reports.
+
+    - split (inspector | standard | preview, default standard): multiplies the
+      driven divide, so the primary pane holds a narrower or wider share at
+      every point of the drag, not only at rest. The handle reports the
+      resting share through aria-valuenow to match.
+    - size (compact | standard | wide, default standard): the footprint of the
+      whole pane, 460x210 / 620x280 / 820x360.
+    - panes (comma separated text, default "Preview, Inspector"): the name
+      shown in the primary pane and in the secondary pane, in order.
+
+  On every default the result is identical to the original: a 620x280 frame
+  split 58 percent to Preview and the rest to Inspector.
 -->
 
-<div data-hf-ui-root class="hf-ui-resizable">
+<div
+  data-hf-ui-root
+  class="hf-ui-resizable"
+  data-composition-variables='[
+    { "id": "split", "type": "enum", "role": "layout", "label": "Split", "description": "Scales the driven pane divide, so the primary pane keeps a narrower or wider share of the frame at every point of the drag.", "default": "standard", "options": [{ "value": "inspector", "label": "Inspector heavy" }, { "value": "standard", "label": "Standard" }, { "value": "preview", "label": "Preview heavy" }] },
+    { "id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Overall footprint of the split pane on the frame.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "panes", "type": "string", "role": "content", "label": "Pane labels", "description": "Comma separated names for the primary and secondary pane, in order.", "default": "Preview, Inspector", "maxLength": 80 }
+  ]'
+>
   <div class="hf-ui-resizable-pane primary">Preview</div>
   <div
     class="hf-ui-resizable-handle"
@@ -158,9 +183,12 @@
   .hf-ui-resizable {
     --hf-resizable-left: 58%;
     display: grid;
-    grid-template-columns: var(--hf-resizable-left) 12px 1fr;
-    width: min(620px, 100%);
-    height: 280px;
+    grid-template-columns:
+      calc(var(--hf-resizable-left) * var(--hf-resizable-bias, 1))
+      12px
+      1fr;
+    width: min(var(--hf-resizable-width, 620px), 100%);
+    height: var(--hf-resizable-height, 280px);
     border: 1px solid var(--_hf-ui-border-strong);
     border-radius: var(--_hf-ui-radius-surface);
     background: var(--_hf-ui-surface);
@@ -228,6 +256,61 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var splits = { inspector: 0.62, standard: 1, preview: 1.34 };
+    var sizes = {
+      compact: { width: "460px", height: "210px" },
+      standard: { width: "620px", height: "280px" },
+      wide: { width: "820px", height: "360px" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var bias = splits[pick(splits, vars.split, "standard")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+
+    var names = [];
+    if (typeof vars.panes === "string") {
+      names = vars.panes.split(",").map(function (part) {
+        return part.trim();
+      });
+    }
+    if (names.join("") === "") {
+      names = ["Preview", "Inspector"];
+    }
+
+    var roots = document.querySelectorAll(".hf-ui-resizable");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-resizable-bias", String(bias));
+      roots[i].style.setProperty("--hf-resizable-width", size.width);
+      roots[i].style.setProperty("--hf-resizable-height", size.height);
+
+      var panes = roots[i].querySelectorAll(".hf-ui-resizable-pane");
+      for (var j = 0; j < panes.length; j += 1) {
+        if (typeof names[j] === "string" && names[j] !== "") {
+          panes[j].textContent = names[j];
+        }
+      }
+
+      var handle = roots[i].querySelector(".hf-ui-resizable-handle");
+      if (handle) {
+        handle.setAttribute("aria-valuenow", String(Math.round(58 * bias)));
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

@@ -1,11 +1,36 @@
 <!--
   Sheet - Operator Black right-attached overlay primitive.
 
-  Paste the markup and CSS into a composition. Use the timeline integration
-  note at the bottom as the starting point for deterministic GSAP animation.
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes or as panel text. The timeline recipe below is
+  untouched by them.
+
+    - size (compact | standard | wide, default standard): width of the panel,
+      260px, 320px or 400px. The recipe slides the panel in from x: 100%, one
+      panel width, so a wider panel also travels further in the same time.
+    - scrim (soft | dim | blackout, default dim): how far the backdrop darkens
+      the scene behind the panel, from a light wash to near black.
+    - title (any text, default Layer settings): the heading line at the top of
+      the panel. Blank or non-text input keeps the default.
+
+  On every default the result is identical to the original: a 320px panel over
+  a 58 percent black scrim, headed Layer settings.
 -->
 
-<div data-hf-ui-root class="hf-ui-sheet-scene">
+<div
+  data-hf-ui-root
+  class="hf-ui-sheet-scene"
+  data-composition-variables='[
+    { "id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Width of the panel, which is also how far it slides because the timeline pushes it one panel width off screen.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "scrim", "type": "enum", "role": "style", "label": "Scrim", "description": "How far the backdrop darkens the scene behind the panel.", "default": "dim", "options": [{ "value": "soft", "label": "Soft" }, { "value": "dim", "label": "Dim" }, { "value": "blackout", "label": "Blackout" }] },
+    { "id": "title", "type": "string", "role": "content", "label": "Title", "description": "Heading line at the top of the panel. Blank or missing text keeps the default.", "default": "Layer settings" }
+  ]'
+>
   <div class="hf-ui-sheet-overlay"></div>
   <aside class="hf-ui-sheet" role="dialog" aria-modal="true" aria-labelledby="hf-ui-sheet-title">
     <h3 id="hf-ui-sheet-title">Layer settings</h3>
@@ -162,7 +187,7 @@
   .hf-ui-sheet-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.58);
+    background: rgba(0, 0, 0, var(--hf-sheet-scrim, 0.58));
   }
   .hf-ui-sheet {
     position: absolute;
@@ -171,7 +196,7 @@
     display: grid;
     align-content: start;
     gap: var(--_hf-ui-space-4);
-    width: min(320px, 100%);
+    width: min(var(--hf-sheet-width, 320px), 100%);
     height: 100%;
     padding: var(--_hf-ui-space-8);
     border-inline-start: 1px solid var(--_hf-ui-border-strong);
@@ -208,6 +233,42 @@
     font-weight: var(--_hf-ui-weight-medium);
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var widths = { compact: "260px", standard: "320px", wide: "400px" };
+    var scrims = { soft: "0.35", dim: "0.58", blackout: "0.82" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var width = widths[pick(widths, vars.size, "standard")];
+    var scrim = scrims[pick(scrims, vars.scrim, "dim")];
+    var title =
+      typeof vars.title === "string" && vars.title.trim() !== ""
+        ? vars.title
+        : "Layer settings";
+
+    var roots = document.querySelectorAll(".hf-ui-sheet-scene");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-sheet-width", width);
+      roots[i].style.setProperty("--hf-sheet-scrim", scrim);
+      var heading = roots[i].querySelector(".hf-ui-sheet h3");
+      if (heading) {
+        heading.textContent = title;
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

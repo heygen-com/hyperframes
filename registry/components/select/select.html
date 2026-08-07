@@ -1,5 +1,40 @@
-<!-- Select - animate --hf-select-open from 0 to 1. -->
-<div data-hf-ui-root class="hf-ui-select" data-state="closed">
+<!--
+  Select - animate --hf-select-open from 0 to 1.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes either a custom property the CSS
+  below consumes or an attribute the stylesheet already keys off. The open and
+  close recipe stays untouched by them.
+
+    - label (text, default "1080p"): the value shown on the trigger and on the
+      selected row of the menu, so the two never drift apart. Blank or non-text
+      input falls back to the default.
+    - width (compact | standard | wide, default standard): minimum width of the
+      trigger, and with it the menu, which tracks the trigger. 120px, 160px, or
+      240px.
+    - placement (below | above, default below): which side the menu opens on.
+      below drops it under the trigger and slides down into place, above lifts
+      it over the trigger and slides up. Visible once the menu is open.
+    - accent (theme | blue | amber | violet, default theme): colour of the tick
+      on the selected row. theme leaves the shared --hf-ui-accent token in
+      charge, so a project palette still wins; the other three pin a specific
+      hue for that tick only and never touch the shared token. Visible once the
+      menu is open.
+
+  On every default the result is identical to the original: a 160px trigger
+  reading 1080p, a menu that drops below it, and a theme-accent tick.
+-->
+<div
+  data-hf-ui-root
+  class="hf-ui-select"
+  data-state="closed"
+  data-composition-variables='[
+    { "id": "label", "type": "string", "role": "content", "label": "Label", "description": "Value shown on the trigger and on the selected row of the menu.", "default": "1080p" },
+    { "id": "width", "type": "enum", "role": "layout", "label": "Width", "description": "Minimum width of the trigger, which the menu tracks.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "placement", "type": "enum", "role": "layout", "label": "Placement", "description": "Which side the menu opens on, under the trigger or over it.", "default": "below", "options": [{ "value": "below", "label": "Below" }, { "value": "above", "label": "Above" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the tick on the selected row. theme leaves the shared accent token in charge.", "default": "theme", "options": [{ "value": "theme", "label": "Theme" }, { "value": "blue", "label": "Blue" }, { "value": "amber", "label": "Amber" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
   <button
     class="hf-ui-select-trigger"
     type="button"
@@ -176,7 +211,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
-    min-width: 160px;
+    min-width: var(--hf-select-width, 160px);
     height: var(--_hf-ui-control-height);
     padding: 0 var(--_hf-ui-space-3);
     border: 1px solid var(--_hf-ui-control-border);
@@ -252,6 +287,13 @@
     transition-duration: var(--_hf-ui-duration-overlay-enter);
     transition-timing-function: var(--_hf-ui-ease-enter);
   }
+  .hf-ui-select[data-hf-placement="above"] .hf-ui-select-menu {
+    top: auto;
+    bottom: calc(100% + 8px);
+    transform: translateY(calc((1 - var(--hf-select-open)) * 4px))
+      scale(calc(0.98 + var(--hf-select-open) * 0.02));
+    transform-origin: bottom left;
+  }
   .hf-ui-select-option {
     min-height: 40px;
     padding: 0 var(--_hf-ui-space-2);
@@ -269,7 +311,7 @@
   }
   .hf-ui-select-option svg {
     margin-inline-start: auto;
-    color: var(--_hf-ui-accent);
+    color: var(--hf-select-accent, var(--_hf-ui-accent));
   }
   .hf-ui-select-option[aria-disabled="true"] {
     color: var(--_hf-ui-text-faint);
@@ -302,3 +344,54 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var widths = { compact: "120px", standard: "160px", wide: "240px" };
+    var placements = { below: true, above: true };
+    // theme is null on purpose: it leaves the shared accent token in charge.
+    var accents = { theme: null, blue: "#63a5ff", amber: "#e9ab55", violet: "#a78bfa" };
+
+    var width = widths[pick(widths, vars.width, "standard")];
+    var placement = pick(placements, vars.placement, "below");
+    var accent = accents[pick(accents, vars.accent, "theme")];
+    var label = typeof vars.label === "string" && vars.label.trim() ? vars.label.trim() : "1080p";
+
+    // Rewrites the label in place so the surrounding whitespace is preserved.
+    function relabel(el) {
+      if (!el) return;
+      for (var n = 0; n < el.childNodes.length; n += 1) {
+        var node = el.childNodes[n];
+        var current = node.nodeType === 3 ? node.nodeValue.trim() : "";
+        if (current) {
+          node.nodeValue = node.nodeValue.replace(current, label);
+          return;
+        }
+      }
+    }
+
+    var roots = document.querySelectorAll(".hf-ui-select");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-select-width", width);
+      if (accent) root.style.setProperty("--hf-select-accent", accent);
+      else root.style.removeProperty("--hf-select-accent");
+      if (placement === "above") root.setAttribute("data-hf-placement", "above");
+      else root.removeAttribute("data-hf-placement");
+      relabel(root.querySelector(".hf-ui-select-trigger"));
+      relabel(root.querySelector(".hf-ui-select-option.is-active"));
+    }
+  })();
+</script>

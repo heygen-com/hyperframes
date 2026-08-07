@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/progress-steps.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `fill` | `50` | 0% to 100%, step 1% | How much of the rail is filled, as a percentage of the list height. Values outside the range are clamped to it. |
+| `accent` | `theme` | `theme`, `blue`, `violet`, `amber` | Colour family for the filled rail and the step markers. Theme leaves the inherited accent token alone. |
+| `density` | `standard` | `compact`, `standard`, `roomy` | Row height, with the rail insets kept centred on the first and last markers. |
+| `entrance` | `standard` | `subtle`, `standard`, `bold` | Scales the sideways offset the timeline drives, so rows slide in from closer or further out in the same time. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="progress-steps"
+  data-composition-src="compositions/components/progress-steps.html"
+  data-variable-values='{"fill":50,"accent":"theme","density":"standard","entrance":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`progress-steps.html`}>
@@ -23,9 +46,42 @@ That writes one file: `compositions/components/progress-steps.html`.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or invalid, and writes the result as a custom property the
+  CSS below consumes. The timeline recipe stays untouched: it keeps driving one
+  row offset and one row opacity, and these decide how far that offset carries
+  and what the list looks like underneath it.
+
+    - fill (number 0 to 100, default 50, %): how much of the rail is filled,
+      as a percentage of the list height. Values outside the range are clamped
+      to it.
+    - accent (theme | blue | violet | amber, default theme): colour family for
+      the filled rail and the step markers. Theme sets nothing, so a palette
+      that restyles the inherited accent token is left alone. The theme accent
+      is already the green data colour, so green is not offered again here.
+    - density (compact | standard | roomy, default standard): row height. The
+      rail insets follow so the line still starts and ends on a marker.
+    - entrance (subtle | standard | bold, default standard): scales the
+      sideways offset the timeline drives, so rows slide in from closer or
+      further out in the same time.
+
+  On every default the result is identical to the original: three 48px rows on
+  a half filled rail in the inherited accent.
 -->
 
-<div data-hf-ui-root class="hf-remocn-progress-steps" role="list" aria-label="Publish progress">
+<div
+  data-hf-ui-root
+  class="hf-remocn-progress-steps"
+  role="list"
+  aria-label="Publish progress"
+  data-composition-variables='[
+    { "id": "fill", "type": "number", "role": "content", "label": "Fill", "description": "How much of the rail is filled, as a percentage of the list height. Values outside the range are clamped to it.", "default": 50, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family for the filled rail and the step markers. Theme leaves the inherited accent token alone.", "default": "theme", "options": [{ "value": "theme", "label": "Theme" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
+    { "id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "Row height, with the rail insets kept centred on the first and last markers.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "roomy", "label": "Roomy" }] },
+    { "id": "entrance", "type": "enum", "role": "motion", "label": "Entrance", "description": "Scales the sideways offset the timeline drives, so rows slide in from closer or further out in the same time.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] }
+  ]'
+>
   <div class="row" role="listitem">
     <span class="label">Import footage</span><span class="hint">Complete</span>
   </div>
@@ -173,7 +229,7 @@ That writes one file: `compositions/components/progress-steps.html`.
   }
   /* hf-ui:tokens:end */
   .hf-remocn-progress-steps {
-    --hf-accent: var(--_hf-ui-accent);
+    --hf-accent: var(--hf-steps-accent, var(--_hf-ui-accent));
     --hf-ink: var(--_hf-ui-text);
     --hf-muted: var(--_hf-ui-text-muted);
     --hf-surface: var(--_hf-ui-surface);
@@ -192,28 +248,28 @@ That writes one file: `compositions/components/progress-steps.html`.
   .hf-remocn-progress-steps::after {
     position: absolute;
     inset-inline-start: 17px;
-    top: 20px;
+    top: var(--hf-steps-rail-inset, 20px);
     width: 1px;
     content: "";
   }
   .hf-remocn-progress-steps::before {
-    bottom: 20px;
+    bottom: var(--hf-steps-rail-inset, 20px);
     background: var(--_hf-ui-border-strong);
   }
   .hf-remocn-progress-steps::after {
-    height: 50%;
+    height: var(--hf-steps-fill, 50%);
     background: var(--hf-accent);
   }
   .hf-remocn-progress-steps .row {
     position: relative;
-    min-height: 48px;
+    min-height: var(--hf-steps-row-height, 48px);
     border-radius: var(--_hf-ui-radius-control);
     background: transparent;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--_hf-ui-space-3);
-    transform: translateX(var(--hf-row-x, 0px));
+    transform: translateX(calc(var(--hf-row-x, 0px) * var(--hf-steps-reach, 1)));
     opacity: var(--hf-row-opacity, 1);
     counter-increment: hf-progress-step;
   }
@@ -261,6 +317,52 @@ That writes one file: `compositions/components/progress-steps.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var accents = {
+      theme: null,
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+      amber: "var(--_hf-ui-data-3)",
+    };
+    var densities = { compact: 36, standard: 48, roomy: 64 };
+    var reaches = { subtle: 0.5, standard: 1, bold: 2.5 };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = typeof value === "string" ? Number(value.trim()) : value;
+      if (typeof n !== "number" || !isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    var accent = accents[pick(accents, vars.accent, "theme")];
+    var rowHeight = densities[pick(densities, vars.density, "standard")];
+    var reach = reaches[pick(reaches, vars.entrance, "standard")];
+    var fill = clampNumber(vars.fill, 0, 100, 50);
+
+    var roots = document.querySelectorAll(".hf-remocn-progress-steps");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      style.setProperty("--hf-steps-fill", fill + "%");
+      style.setProperty("--hf-steps-row-height", rowHeight + "px");
+      style.setProperty("--hf-steps-rail-inset", rowHeight / 2 - 4 + "px");
+      style.setProperty("--hf-steps-reach", String(reach));
+      if (accent) style.setProperty("--hf-steps-accent", accent);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:
