@@ -149,7 +149,20 @@ export async function tryGsapResizeIntercept(
   if (!anim || isInstantHold(anim)) {
     const sel = selectorFromSelection(selection) ?? writeTargetSelector(selection);
     if (!sel) return { status: "blocked", reason: "no-selector" };
-    const sizeSet = anim ?? findSizeSetAnimation(workingAnimations, sel, selection.element);
+    // A scale hold is not a size hold.
+    //
+    // `anim` is the tween resolved for THIS resize's group, and for a
+    // scale-driven element that is the one carrying `scale`. Handing it to the
+    // size commit wrote `width` and `height` into it, leaving one tween that
+    // spans two property groups — which the parser then classifies as neither,
+    // so it loses its group suffix and its id along with it. Every later edit
+    // of that element looked for a scale tween and a size tween, found no
+    // group at all, and the element became uneditable: "animation not found".
+    // Size goes to a size hold of its own, and the scale hold is left alone.
+    const sizeSet =
+      resizeGroup === "size"
+        ? (anim ?? findSizeSetAnimation(workingAnimations, sel, selection.element))
+        : findSizeSetAnimation(workingAnimations, sel, selection.element);
 
     // If the element is animated (has a real tween, not just a static size
     // hold), keyframe the size at the playhead so other keyframes keep theirs —
