@@ -117,6 +117,28 @@ interface ElementTransformSnapshot {
   cs: CSSStyleDeclaration;
 }
 
+/**
+ * The transform from the element's own box to the composition's, ACCUMULATED
+ * over its ancestors rather than read from the element alone.
+ *
+ * What the user sees is the product of every transform between the element and
+ * the composition root, and an element is routinely a child of something
+ * scaled or rotated. Reading only its own transform drew the selection box at
+ * the element's untransformed size: a text layer inside a card carrying
+ * `scale(1.2)` got a box at 1/1.2 of the text, with the top-left correct (the
+ * caller anchors that to the real bounding rect) and the right and bottom
+ * edges falling short. The same read decides whether to draw the box rotated,
+ * so an element inside a rotated parent got an upright box too.
+ *
+ * Only the linear part matters here. Each transform's origin contributes
+ * translation, and the caller discards translation by matching the corners'
+ * bounding box to the element's real one, so composing the matrices alone is
+ * enough and there is no per-ancestor origin to unpick.
+ *
+ * The walk stops at the composition document's root. The canvas zoom lives on
+ * the iframe element in Studio's own document and is applied separately by
+ * `computeOverlayRootScale`; including it here would count it twice.
+ */
 function readElementTransformSnapshot(
   win: Window,
   element: HTMLElement,
@@ -125,7 +147,13 @@ function readElementTransformSnapshot(
   if (!DOMMatrixCtor) return null;
   const cs = win.getComputedStyle(element);
   try {
-    const matrix = new DOMMatrixCtor(cs.transform === "none" ? "" : cs.transform);
+    let matrix = new DOMMatrixCtor();
+    for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+      const transform = node === element ? cs.transform : win.getComputedStyle(node).transform;
+      if (!transform || transform === "none") continue;
+      // An ancestor applies outside, so it multiplies on the left.
+      matrix = new DOMMatrixCtor(transform).multiply(matrix);
+    }
     return { matrix, cs };
   } catch {
     return null;
