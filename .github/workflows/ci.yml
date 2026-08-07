@@ -755,6 +755,13 @@ jobs:
 
           test -s /tmp/hf-cli-inside/renders/inside.mp4
 
+      # Belongs in this job because it needs the BUILT CLI: `shouldTrack()`
+      # short-circuits whenever `isDevMode()` is true, which it is for any `.ts`
+      # entry, so under vitest a real event and no event look identical. Sends
+      # nothing to PostHog — the script wraps fetch and captures the batch.
+      - name: Smoke-test `add` telemetry end to end
+        run: node scripts/ci/cli-telemetry-e2e.mjs
+
       - name: Assert page.goto completes under 5s budget
         run: |
           set -euo pipefail
