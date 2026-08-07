@@ -120,6 +120,7 @@ const GENERATED_HEADINGS = new Set([
   // current template
   "install",
   "variables",
+  "source",
   "add it to your video",
   "paste it into your composition",
   "change the colors",
@@ -492,14 +493,26 @@ function writePlayerPreview(kind: ItemKind, manifest: RegistryItem): boolean {
     '<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>',
     `<hyperframes-player id="p" src="../../${dir}/${manifest.name}/${entry}" controls muted></hyperframes-player>`,
     "<script>",
-    "  // Poll rather than wait on an event: `ready` is a getter, and the element",
-    "  // may already be ready by the time this script runs.",
+    "  // Retry until the clock actually moves. `ready` can flip before the runtime",
+    "  // the player injects for a mounted sub-composition has finished wiring up, and",
+    "  // a play() that lands in that window silently does nothing.",
+    "  //",
+    "  // It stops rather than spinning forever: the clock runs on requestAnimationFrame,",
+    "  // which browsers suspend in a hidden tab, so a preview nobody is looking at will",
+    "  // never advance and there is nothing here to fix by retrying. An automated check",
+    "  // of a background tab reads currentTime 0 for that reason, not for a broken one.",
     "  const player = document.getElementById('p');",
+    "  let last = -1;",
+    "  let tries = 0;",
     "  const start = setInterval(() => {",
-    "    if (!player.ready) return;",
-    "    clearInterval(start);",
-    "    player.play();",
-    "  }, 100);",
+    "    if (player.currentTime > 0 && player.currentTime !== last) {",
+    "      clearInterval(start);",
+    "      return;",
+    "    }",
+    "    last = player.currentTime;",
+    "    if (player.ready) player.play();",
+    "    if (++tries > 30) clearInterval(start);",
+    "  }, 500);",
     "  player.addEventListener('ended', () => { player.seek(0); player.play(); });",
     "</script>",
     "",
@@ -620,6 +633,36 @@ function variableRange(v: ItemVariable): string {
   return v.type;
 }
 
+/**
+ * A mount element carrying this item's variables, with its own defaults filled in.
+ *
+ * The table above lists what can be set; without this the reader is told to "set
+ * them on the element" by a page that never shows the element. Defaults are used
+ * as the values so the snippet is copy-and-run correct before it is edited.
+ */
+function generateVariableUsage(manifest: RegistryItem, target: string): string[] {
+  const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  const withDefaults = raw.filter((v) => v.default !== undefined);
+  if (withDefaults.length === 0) return [];
+
+  const values = JSON.stringify(Object.fromEntries(withDefaults.map((v) => [v.id, v.default])));
+  return [
+    "Set them with `data-variable-values` on the element that mounts it. These are the",
+    "defaults, so this behaves exactly like the preview above until you change one:",
+    "",
+    "```html",
+    "<div",
+    `  data-composition-id="${manifest.name}"`,
+    `  data-composition-src="${target}"`,
+    `  data-variable-values='${values}'`,
+    "></div>",
+    "```",
+    "",
+  ];
+}
+
 function generateVariables(manifest: RegistryItem): string[] {
   const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
   if (!Array.isArray(raw) || raw.length === 0) return [];
@@ -645,6 +688,37 @@ function generateVariables(manifest: RegistryItem): string[] {
 }
 
 // fallow-ignore-next-line complexity
+/**
+ * The item's own source, collapsed.
+ *
+ * Without this the page can only tell the reader to go and open a file they have
+ * not installed yet. Collapsed because these run to several hundred lines and an
+ * expanded wall of markup would push everything else off the page.
+ */
+function generateSource(kind: ItemKind, manifest: RegistryItem): string[] {
+  const file = primaryFileFor(manifest);
+  if (!file) return [];
+  const path = join(registryDir, typeDir(kind), manifest.name, file.path);
+  if (!existsSync(path)) return [];
+
+  const source = readFileSync(path, "utf-8").trimEnd();
+  // A fence inside the source would close this one early.
+  if (source.includes("```")) return [];
+
+  return [
+    "## Source",
+    "",
+    "<Accordion title={`" + file.path + "`}>",
+    "",
+    "```html",
+    source,
+    "```",
+    "",
+    "</Accordion>",
+    "",
+  ];
+}
+
 function generateItemMdx(
   kind: ItemKind,
   manifest: RegistryItem,
@@ -772,6 +846,9 @@ function generateItemMdx(
 
   lines.push(...generateParams(manifest));
   lines.push(...generateVariables(manifest));
+  lines.push(...generateVariableUsage(manifest, primaryTarget));
+
+  lines.push(...generateSource(kind, manifest));
 
   if (textureGroups.length > 0) {
     lines.push(...generateTextureAgentUsage(manifest, textureGroups));
