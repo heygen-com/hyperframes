@@ -2,9 +2,37 @@
   Popover - anchored panel primitive.
 
   Animate --hf-popover-open from 0 to 1 on .hf-ui-popover.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or invalid, and writes the result as a custom property the
+  CSS below consumes. The timeline recipe stays untouched: it keeps driving one
+  open value from 0 to 1, and these decide where the panel sits and how it
+  looks while that value runs.
+
+    - placement (below | above, default below): which side of the anchor the
+      panel sits on. Below drops down into place, above rises up, and the
+      transform origin follows so the panel still grows out of the button.
+    - gap (number 4 to 40, default 12, px): distance between the anchor and the
+      near edge of the panel. Values outside the range are clamped to it.
+    - accent (neutral | green | blue | violet, default neutral): colour family
+      for the panel outline and its heading. Neutral sets nothing, so a theme
+      that restyles the shared border and text tokens is left alone.
+    - label (string, default Format): text on the anchor button.
+
+  On every default the result is identical to the original: a Format button
+  with a neutral panel 12px below it.
 -->
 
-<div data-hf-ui-root class="hf-ui-popover">
+<div
+  data-hf-ui-root
+  class="hf-ui-popover"
+  data-composition-variables='[
+    { "id": "placement", "type": "enum", "role": "layout", "label": "Placement", "description": "Which side of the anchor the panel sits on, and therefore which way it settles as it opens.", "default": "below", "options": [{ "value": "below", "label": "Below" }, { "value": "above", "label": "Above" }] },
+    { "id": "gap", "type": "number", "role": "layout", "label": "Gap", "description": "Distance between the anchor and the panel edge.", "default": 12, "min": 4, "max": 40, "step": 1, "unit": "px" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family for the panel outline and its heading. Neutral leaves the theme border and heading colours alone.", "default": "neutral", "options": [{ "value": "neutral", "label": "Neutral" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "label", "type": "string", "role": "content", "label": "Anchor label", "description": "Text on the button the panel is anchored to.", "default": "Format" }
+  ]'
+>
   <button
     class="hf-ui-popover-anchor"
     type="button"
@@ -182,18 +210,20 @@
   .hf-ui-popover-panel {
     position: absolute;
     left: 50%;
-    top: calc(100% + 12px);
+    top: var(--hf-popover-top, calc(100% + 12px));
+    bottom: var(--hf-popover-bottom, auto);
     width: 240px;
     display: grid;
     gap: 7px;
     padding: 16px;
-    border: 1px solid var(--_hf-ui-border-strong);
+    border: 1px solid var(--hf-popover-border, var(--_hf-ui-border-strong));
     border-radius: var(--_hf-ui-radius-overlay);
     background: var(--_hf-ui-surface-raised);
     opacity: var(--hf-popover-open);
-    transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * -4px))
+    transform: translateX(-50%)
+      translateY(calc((1 - var(--hf-popover-open)) * var(--hf-popover-slide, -4px)))
       scale(calc(0.98 + var(--hf-popover-open) * 0.02));
-    transform-origin: top center;
+    transform-origin: var(--hf-popover-origin, top center);
     box-shadow: var(--_hf-ui-shadow-contact);
     will-change: transform, opacity;
     transition:
@@ -201,7 +231,7 @@
       transform var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit);
   }
   .hf-ui-popover-panel strong {
-    color: var(--_hf-ui-text-strong);
+    color: var(--hf-popover-heading, var(--_hf-ui-text-strong));
     font-size: 14px;
     font-weight: var(--_hf-ui-weight-semibold);
   }
@@ -216,6 +246,62 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var placements = {
+      below: { slide: "-4px", origin: "top center", side: "top" },
+      above: { slide: "4px", origin: "bottom center", side: "bottom" },
+    };
+    var accents = {
+      neutral: null,
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var defaultLabel = "Format";
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = typeof value === "string" ? Number(value.trim()) : value;
+      if (typeof n !== "number" || !isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    var placement = placements[pick(placements, vars.placement, "below")];
+    var accent = accents[pick(accents, vars.accent, "neutral")];
+    var gap = clampNumber(vars.gap, 4, 40, 12);
+    var label = typeof vars.label === "string" && vars.label.trim() ? vars.label.trim() : defaultLabel;
+    var near = "calc(100% + " + gap + "px)";
+
+    var roots = document.querySelectorAll(".hf-ui-popover");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      style.setProperty("--hf-popover-slide", placement.slide);
+      style.setProperty("--hf-popover-origin", placement.origin);
+      style.setProperty("--hf-popover-top", placement.side === "top" ? near : "auto");
+      style.setProperty("--hf-popover-bottom", placement.side === "bottom" ? near : "auto");
+      if (accent) {
+        style.setProperty("--hf-popover-border", accent);
+        style.setProperty("--hf-popover-heading", accent);
+      }
+
+      var anchor = roots[i].querySelector(".hf-ui-popover-anchor");
+      if (anchor) anchor.textContent = label;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

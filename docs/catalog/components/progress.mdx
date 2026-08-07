@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/progress.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `value` | `64` | 0% to 100%, step 1% | Where the bar lands when the fill is complete, and the number shown beside the label. Values outside the range are clamped to it. |
+| `label` | `Rendering` | string | Text shown to the left of the readout. |
+| `accent` | `theme` | `theme`, `blue`, `violet`, `amber` | Colour family for the filled bar. Theme leaves the inherited accent token alone. |
+| `thickness` | `standard` | `slim`, `standard`, `chunky` | Height of the track and the bar riding in it. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="progress"
+  data-composition-src="compositions/components/progress.html"
+  data-variable-values='{"value":64,"label":"Rendering","accent":"theme","thickness":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`progress.html`}>
@@ -23,6 +46,27 @@ That writes one file: `compositions/components/progress.html`.
 
   Animate --hf-progress-value from 0 to 1. Use data-value for semantic state if
   the composition needs to expose the same number to captions or labels.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or invalid, and writes the result as a custom property the
+  CSS below consumes, or straight onto the header text. The timeline recipe
+  stays untouched: it keeps driving --hf-progress-value from 0 to 0.64, and
+  value scales what that fill means rather than replacing it, so the bar still
+  lands where the readout says it does.
+
+    - value (number 0 to 100, default 64, %): where the bar lands when the fill
+      is complete, and the number shown beside the label. It also updates
+      aria-valuenow. Values outside the range are clamped to it.
+    - label (string, default Rendering): text to the left of the readout.
+    - accent (theme | blue | violet | amber, default theme): colour family for
+      the filled bar. Theme sets nothing, so a palette that restyles the
+      inherited accent token is left alone. The theme accent is already the
+      green data colour, so green is not offered again here.
+    - thickness (slim | standard | chunky, default standard): height of the
+      track and the bar riding in it.
+
+  On every default the result is identical to the original: Rendering at 64
+  percent on an 8px accent bar.
 -->
 
 <div
@@ -34,6 +78,12 @@ That writes one file: `compositions/components/progress.html`.
   aria-valuemin="0"
   aria-valuemax="100"
   aria-valuenow="64"
+  data-composition-variables='[
+    { "id": "value", "type": "number", "role": "content", "label": "Value", "description": "Where the bar lands when the fill is complete, and the number shown beside the label. Values outside the range are clamped to it.", "default": 64, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "label", "type": "string", "role": "content", "label": "Label", "description": "Text shown to the left of the readout.", "default": "Rendering" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family for the filled bar. Theme leaves the inherited accent token alone.", "default": "theme", "options": [{ "value": "theme", "label": "Theme" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
+    { "id": "thickness", "type": "enum", "role": "layout", "label": "Thickness", "description": "Height of the track and the bar riding in it.", "default": "standard", "options": [{ "value": "slim", "label": "Slim" }, { "value": "standard", "label": "Standard" }, { "value": "chunky", "label": "Chunky" }] }
+  ]'
 >
   <div class="hf-ui-progress-header">
     <span>Rendering</span>
@@ -196,7 +246,7 @@ That writes one file: `compositions/components/progress.html`.
   }
   .hf-ui-progress-track {
     position: relative;
-    height: 8px;
+    height: var(--hf-progress-thickness, 8px);
     border-radius: 999px;
     background: var(--_hf-ui-surface-inset);
     overflow: hidden;
@@ -205,8 +255,8 @@ That writes one file: `compositions/components/progress.html`.
     width: 100%;
     height: 100%;
     border-radius: inherit;
-    background: var(--_hf-ui-accent);
-    transform: scaleX(var(--hf-progress-value));
+    background: var(--hf-progress-accent, var(--_hf-ui-accent));
+    transform: scaleX(calc(var(--hf-progress-value) * var(--hf-progress-scale, 1)));
     transform-origin: left;
     will-change: transform;
   }
@@ -216,6 +266,61 @@ That writes one file: `compositions/components/progress.html`.
     font-variant-numeric: tabular-nums;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var accents = {
+      theme: null,
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+      amber: "var(--_hf-ui-data-3)",
+    };
+    var thicknesses = { slim: 4, standard: 8, chunky: 14 };
+    var defaultValue = 64;
+    var defaultLabel = "Rendering";
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = typeof value === "string" ? Number(value.trim()) : value;
+      if (typeof n !== "number" || !isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    var accent = accents[pick(accents, vars.accent, "theme")];
+    var thickness = thicknesses[pick(thicknesses, vars.thickness, "standard")];
+    var value = Math.round(clampNumber(vars.value, 0, 100, defaultValue));
+    var label =
+      typeof vars.label === "string" && vars.label.trim() ? vars.label.trim() : defaultLabel;
+
+    var roots = document.querySelectorAll(".hf-ui-progress");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      // The timeline drives --hf-progress-value to 0.64, so scale that fill
+      // rather than replacing it: the bar still lands on the chosen value.
+      style.setProperty("--hf-progress-scale", String(value / defaultValue));
+      style.setProperty("--hf-progress-thickness", thickness + "px");
+      if (accent) style.setProperty("--hf-progress-accent", accent);
+      roots[i].setAttribute("aria-valuenow", String(value));
+
+      var cells = roots[i].querySelectorAll(".hf-ui-progress-header span");
+      if (cells.length > 1) {
+        cells[0].textContent = label;
+        cells[cells.length - 1].textContent = value + "%";
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

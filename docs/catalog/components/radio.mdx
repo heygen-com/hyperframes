@@ -13,13 +13,69 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/radio.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `mint` | `mint`, `blue`, `violet` | Token family for the selected dot and the ring it sits in. |
+| `size` | `standard` | `compact`, `standard`, `large` | Ring diameter; the dot, the gap and the label text scale with it. |
+| `orientation` | `stacked` | `stacked`, `inline` | Stack the options down the frame or lay them out in a single row. |
+| `options` | `Fast, Cinematic` | string | Comma separated option labels, one per radio, in order. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="radio"
+  data-composition-src="compositions/components/radio.html"
+  data-variable-values='{"accent":"mint","size":"standard","orientation":"stacked","options":"Fast, Cinematic"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`radio.html`}>
 
 ```html
-<!-- Radio Group - animate --hf-radio-selected between 0 and 1 on each option. -->
-<div data-hf-ui-root class="hf-ui-radio-group" role="radiogroup" aria-label="Render mode">
+<!--
+  Radio Group - Operator Black single-choice primitive for HyperFrames.
+
+  Animate --hf-radio-selected between 0 and 1 on each option from a paused
+  GSAP timeline so renders stay deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The selection progress stays entirely yours to drive.
+
+    - accent (mint | blue | violet, default mint): the token family the
+      selected dot and its ring use. mint rides the shared accent token, blue
+      and violet ride data tokens 2 and 4, so all three follow the theme.
+    - size (compact | standard | large, default standard): the ring diameter,
+      16px / 20px / 26px. The dot, the gap and the label text scale with it.
+    - orientation (stacked | inline, default stacked): stack the options down
+      the frame, or lay them out in a single row.
+    - options (comma separated text, default "Fast, Cinematic"): the label
+      beside each ring, in order. Extra names past the last radio are ignored.
+
+  On every default the result is identical to the original: two stacked 20px
+  mint options labelled Fast and Cinematic.
+-->
+<div
+  data-hf-ui-root
+  class="hf-ui-radio-group"
+  role="radiogroup"
+  aria-label="Render mode"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Token family for the selected dot and the ring it sits in.", "default": "mint", "options": [{ "value": "mint", "label": "Mint" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Ring diameter; the dot, the gap and the label text scale with it.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
+    { "id": "orientation", "type": "enum", "role": "layout", "label": "Orientation", "description": "Stack the options down the frame or lay them out in a single row.", "default": "stacked", "options": [{ "value": "stacked", "label": "Stacked" }, { "value": "inline", "label": "Inline" }] },
+    { "id": "options", "type": "string", "role": "content", "label": "Options", "description": "Comma separated option labels, one per radio, in order.", "default": "Fast, Cinematic", "maxLength": 80 }
+  ]'
+>
   <label
     class="hf-ui-radio"
     style="--hf-radio-selected: 1"
@@ -174,16 +230,20 @@ That writes one file: `compositions/components/radio.html`.
   /* hf-ui:tokens:end */
   .hf-ui-radio-group {
     display: grid;
-    gap: 12px;
+    grid-auto-flow: var(--hf-radio-flow, row);
+    justify-content: var(--hf-radio-justify, normal);
+    gap: var(--hf-radio-gap, 12px);
     color: var(--_hf-ui-text);
     font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-radio {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: calc(var(--hf-radio-size, 20px) * 0.6);
     color: var(--_hf-ui-text-muted);
-    font: var(--_hf-ui-weight-medium) 14px/1 var(--_hf-ui-font-sans);
+    font:
+      var(--_hf-ui-weight-medium) calc(var(--hf-radio-size, 20px) * 0.7) / 1
+      var(--_hf-ui-font-sans);
     cursor: pointer;
     transition: transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
@@ -191,8 +251,8 @@ That writes one file: `compositions/components/radio.html`.
     color: var(--_hf-ui-text-strong);
   }
   .hf-ui-radio span {
-    width: 20px;
-    height: 20px;
+    width: var(--hf-radio-size, 20px);
+    height: var(--hf-radio-size, 20px);
     display: grid;
     place-items: center;
     border: 1.5px solid var(--_hf-ui-control-border);
@@ -201,13 +261,13 @@ That writes one file: `compositions/components/radio.html`.
     box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-radio[aria-checked="true"] span {
-    border-color: var(--_hf-ui-accent);
+    border-color: var(--hf-radio-accent, var(--_hf-ui-accent));
   }
   .hf-ui-radio span::after {
-    width: 8px;
-    height: 8px;
+    width: calc(var(--hf-radio-size, 20px) * 0.4);
+    height: calc(var(--hf-radio-size, 20px) * 0.4);
     border-radius: 50%;
-    background: var(--_hf-ui-accent);
+    background: var(--hf-radio-accent, var(--_hf-ui-accent));
     content: "";
     opacity: var(--hf-radio-selected);
     transform: scale(calc(0.75 + var(--hf-radio-selected) * 0.25));
@@ -233,6 +293,68 @@ That writes one file: `compositions/components/radio.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var accents = {
+      mint: "var(--_hf-ui-accent)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var sizes = { compact: "16px", standard: "20px", large: "26px" };
+    var layouts = {
+      stacked: { flow: "row", justify: "normal", gap: "12px" },
+      inline: { flow: "column", justify: "start", gap: "24px" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accent = accents[pick(accents, vars.accent, "mint")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var layout = layouts[pick(layouts, vars.orientation, "stacked")];
+
+    var labels = [];
+    if (typeof vars.options === "string") {
+      labels = vars.options.split(",").map(function (part) {
+        return part.trim();
+      });
+    }
+    if (labels.length === 0 || labels.join("") === "") {
+      labels = ["Fast", "Cinematic"];
+    }
+
+    var groups = document.querySelectorAll(".hf-ui-radio-group");
+    for (var g = 0; g < groups.length; g += 1) {
+      groups[g].style.setProperty("--hf-radio-flow", layout.flow);
+      groups[g].style.setProperty("--hf-radio-justify", layout.justify);
+      groups[g].style.setProperty("--hf-radio-gap", layout.gap);
+
+      var radios = groups[g].querySelectorAll(".hf-ui-radio");
+      for (var i = 0; i < radios.length; i += 1) {
+        radios[i].style.setProperty("--hf-radio-accent", accent);
+        radios[i].style.setProperty("--hf-radio-size", size);
+        if (typeof labels[i] !== "string" || labels[i] === "") continue;
+        var node = radios[i].lastChild;
+        while (node && node.nodeType !== 3) {
+          node = node.previousSibling;
+        }
+        if (node) {
+          node.nodeValue = labels[i];
+        }
+      }
+    }
+  })();
+</script>
 ```
 
 </Accordion>

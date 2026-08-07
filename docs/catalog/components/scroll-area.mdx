@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/scroll-area.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `height` | `standard` | `compact`, `standard`, `tall` | Height of the viewport, which decides how much of the list is visible at once. |
+| `density` | `standard` | `compact`, `standard`, `roomy` | Row height, padding, type size and the gap between rows. |
+| `scrollbar` | `subtle` | `subtle`, `prominent`, `hidden` | Thumb treatment: a thin muted bar, a wider brighter one, or no bar at all. |
+| `travel` | `standard` | `near`, `standard`, `far` | Scales the scroll offsets the timeline drives, so the list covers more or less ground in the same time. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="scroll-area"
+  data-composition-src="compositions/components/scroll-area.html"
+  data-variable-values='{"height":"standard","density":"standard","scrollbar":"subtle","travel":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`scroll-area.html`}>
@@ -21,11 +44,47 @@ That writes one file: `compositions/components/scroll-area.html`.
 <!--
   Scroll Area - Operator Black bounded-content primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Animate the CSS variables
-  from a paused GSAP timeline for deterministic video renders.
+  Paste the markup, CSS and script into a composition. Animate the CSS
+  variables from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe stays untouched by them: it keeps
+  driving one content offset and one thumb offset, and these decide how large
+  the viewport is, how tall the rows are, how the bar looks, and how far that
+  pair of offsets carries.
+
+    - height (compact | standard | tall, default standard): height of the
+      viewport, which decides how much of the list is visible at once. 140px,
+      190px, or 260px.
+    - density (compact | standard | roomy, default standard): row height,
+      padding, type size and the gap between rows, from 28px rows of 12px type
+      through 36px rows of 13px type to 46px rows of 14px type.
+    - scrollbar (subtle | prominent | hidden, default subtle): the thumb. subtle
+      is the thin muted 4px bar, prominent a 7px brighter one, hidden removes it
+      entirely.
+    - travel (near | standard | far, default standard): scales the scroll
+      offsets the timeline drives, so the list covers roughly half, all, or half
+      again as much ground in the same time. Content and thumb scale together,
+      so they stay in sync.
+
+  On every default the result is identical to the original: a 190px viewport,
+  36px rows of 13px type, a thin 4px thumb, and the full 64px scroll.
 -->
 
-<div data-hf-ui-root class="hf-ui-scroll-area" role="region" tabindex="0" aria-label="Scene list">
+<div
+  data-hf-ui-root
+  class="hf-ui-scroll-area"
+  role="region"
+  tabindex="0"
+  aria-label="Scene list"
+  data-composition-variables='[
+    { "id": "height", "type": "enum", "role": "layout", "label": "Height", "description": "Height of the viewport, which decides how much of the list is visible at once.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "tall", "label": "Tall" }] },
+    { "id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "Row height, padding, type size and the gap between rows.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "roomy", "label": "Roomy" }] },
+    { "id": "scrollbar", "type": "enum", "role": "style", "label": "Scrollbar", "description": "Thumb treatment: a thin muted bar, a wider brighter one, or no bar at all.", "default": "subtle", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "prominent", "label": "Prominent" }, { "value": "hidden", "label": "Hidden" }] },
+    { "id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "Scales the scroll offsets the timeline drives, so the list covers more or less ground in the same time.", "default": "standard", "options": [{ "value": "near", "label": "Near" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] }
+  ]'
+>
   <div class="hf-ui-scroll-content">
     <p>Intro scene</p>
     <p>Feature sweep</p>
@@ -173,7 +232,7 @@ That writes one file: `compositions/components/scroll-area.html`.
   .hf-ui-scroll-area {
     position: relative;
     width: min(320px, 100%);
-    height: 190px;
+    height: var(--hf-scroll-height, 190px);
     padding: 16px 28px 16px 16px;
     overflow: hidden;
     border: 1px solid var(--_hf-ui-border);
@@ -185,16 +244,16 @@ That writes one file: `compositions/components/scroll-area.html`.
   }
   .hf-ui-scroll-content {
     display: grid;
-    gap: 4px;
-    transform: translateY(var(--hf-scroll-y, 0px));
+    gap: var(--hf-scroll-gap, 4px);
+    transform: translateY(calc(var(--hf-scroll-y, 0px) * var(--hf-scroll-travel, 1)));
     will-change: transform;
   }
   .hf-ui-scroll-content p {
     margin: 0;
-    min-height: 36px;
-    padding: 10px 12px;
+    min-height: var(--hf-scroll-row-height, 36px);
+    padding: var(--hf-scroll-row-pad, 10px 12px);
     color: var(--_hf-ui-text-muted);
-    font-size: 13px;
+    font-size: var(--hf-scroll-row-size, 13px);
     font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-scroll-content p:first-child {
@@ -204,11 +263,12 @@ That writes one file: `compositions/components/scroll-area.html`.
     position: absolute;
     inset-block-start: 16px;
     inset-inline-end: 9px;
-    width: 4px;
+    display: var(--hf-scroll-thumb-display, block);
+    width: var(--hf-scroll-thumb-width, 4px);
     height: 52px;
     border-radius: 999px;
-    background: var(--_hf-ui-control-border);
-    transform: translateY(var(--hf-scroll-thumb-y, 0px));
+    background: var(--hf-scroll-thumb-color, var(--_hf-ui-control-border));
+    transform: translateY(calc(var(--hf-scroll-thumb-y, 0px) * var(--hf-scroll-travel, 1)));
     will-change: transform;
   }
   .hf-ui-scroll-area:focus-visible {
@@ -216,6 +276,54 @@ That writes one file: `compositions/components/scroll-area.html`.
     outline-offset: 3px;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var heights = { compact: "140px", standard: "190px", tall: "260px" };
+    var densities = {
+      compact: { row: "28px", pad: "6px 12px", size: "12px", gap: "2px" },
+      standard: { row: "36px", pad: "10px 12px", size: "13px", gap: "4px" },
+      roomy: { row: "46px", pad: "14px 12px", size: "14px", gap: "8px" },
+    };
+    var scrollbars = {
+      subtle: { display: "block", width: "4px", color: "var(--_hf-ui-control-border)" },
+      prominent: { display: "block", width: "7px", color: "var(--_hf-ui-text-muted)" },
+      hidden: { display: "none", width: "4px", color: "var(--_hf-ui-control-border)" },
+    };
+    var travels = { near: 0.55, standard: 1, far: 1.6 };
+
+    var height = heights[pick(heights, vars.height, "standard")];
+    var density = densities[pick(densities, vars.density, "standard")];
+    var scrollbar = scrollbars[pick(scrollbars, vars.scrollbar, "subtle")];
+    var travel = travels[pick(travels, vars.travel, "standard")];
+
+    var roots = document.querySelectorAll(".hf-ui-scroll-area");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-scroll-height", height);
+      root.style.setProperty("--hf-scroll-row-height", density.row);
+      root.style.setProperty("--hf-scroll-row-pad", density.pad);
+      root.style.setProperty("--hf-scroll-row-size", density.size);
+      root.style.setProperty("--hf-scroll-gap", density.gap);
+      root.style.setProperty("--hf-scroll-thumb-display", scrollbar.display);
+      root.style.setProperty("--hf-scroll-thumb-width", scrollbar.width);
+      root.style.setProperty("--hf-scroll-thumb-color", scrollbar.color);
+      root.style.setProperty("--hf-scroll-travel", String(travel));
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

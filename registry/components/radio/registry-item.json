@@ -12,6 +12,79 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Token family for the selected dot and the ring it sits in.",
+      "default": "mint",
+      "options": [
+        {
+          "value": "mint",
+          "label": "Mint"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "style",
+      "label": "Size",
+      "description": "Ring diameter; the dot, the gap and the label text scale with it.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "large",
+          "label": "Large"
+        }
+      ]
+    },
+    {
+      "id": "orientation",
+      "type": "enum",
+      "role": "layout",
+      "label": "Orientation",
+      "description": "Stack the options down the frame or lay them out in a single row.",
+      "default": "stacked",
+      "options": [
+        {
+          "value": "stacked",
+          "label": "Stacked"
+        },
+        {
+          "value": "inline",
+          "label": "Inline"
+        }
+      ]
+    },
+    {
+      "id": "options",
+      "type": "string",
+      "role": "content",
+      "label": "Options",
+      "description": "Comma separated option labels, one per radio, in order.",
+      "default": "Fast, Cinematic",
+      "maxLength": 80
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/radio.png"
   }

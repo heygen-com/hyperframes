@@ -12,6 +12,60 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "layout",
+      "label": "Size",
+      "description": "Width of the panel, which is also how far it slides because the timeline pushes it one panel width off screen.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    },
+    {
+      "id": "scrim",
+      "type": "enum",
+      "role": "style",
+      "label": "Scrim",
+      "description": "How far the backdrop darkens the scene behind the panel.",
+      "default": "dim",
+      "options": [
+        {
+          "value": "soft",
+          "label": "Soft"
+        },
+        {
+          "value": "dim",
+          "label": "Dim"
+        },
+        {
+          "value": "blackout",
+          "label": "Blackout"
+        }
+      ]
+    },
+    {
+      "id": "title",
+      "type": "string",
+      "role": "content",
+      "label": "Title",
+      "description": "Heading line at the top of the panel. Blank or missing text keeps the default.",
+      "default": "Layer settings"
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sheet.png"
   }

@@ -12,6 +12,96 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour of the tick on the selected row. theme leaves the shared accent token in charge.",
+      "default": "theme",
+      "options": [
+        {
+          "value": "theme",
+          "label": "Theme"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "amber",
+          "label": "Amber"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "layout",
+      "label": "Density",
+      "description": "Row height, label size and the gap between rows.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "roomy",
+          "label": "Roomy"
+        }
+      ]
+    },
+    {
+      "id": "hints",
+      "type": "enum",
+      "role": "content",
+      "label": "Hints",
+      "description": "The mono status column on the right. Hiding it lets the labels take the full width.",
+      "default": "show",
+      "options": [
+        {
+          "value": "show",
+          "label": "Show"
+        },
+        {
+          "value": "hide",
+          "label": "Hide"
+        }
+      ]
+    },
+    {
+      "id": "travel",
+      "type": "enum",
+      "role": "motion",
+      "label": "Travel",
+      "description": "Scales the sideways offset the timeline drives, so the rows slide in from nearer or further.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "near",
+          "label": "Near"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/select-item.png"
   }
