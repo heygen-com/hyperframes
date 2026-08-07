@@ -527,6 +527,22 @@ export function buildDomEditTextPatchOperation(
   };
 }
 
+/**
+ * Replace an element's whole contents with markup, for a change no per-child
+ * operation can express — a text layer added, removed or reordered.
+ *
+ * The same operation an inline style edit uses, because it is the same thing:
+ * this element's children are now these. Both ends run the markup through the
+ * one sanitizer before it reaches a file.
+ */
+export function buildDomEditRichTextPatchOperation(value: string): PatchOperation {
+  return {
+    type: "rich-text",
+    property: "",
+    value,
+  };
+}
+
 // ─── Non-editable reason ─────────────────────────────────────────────────────
 
 function hasSupportedDirectEdit(capabilities: DomEditCapabilities): boolean {

@@ -65,12 +65,48 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(out).toContain("color: red");
   });
 
-  it("strips every attribute that is not style", () => {
+  it("strips every attribute that is neither style nor an identity", () => {
     const out = clean('<span id="a" class="b" data-x="c" style="color: red">x</span>', parse);
     expect(out).not.toContain("id=");
     expect(out).not.toContain("class=");
     expect(out).not.toContain("data-x");
     expect(out).toContain("color: red");
+  });
+
+  // The design panel tracks each text layer by this. Stripping it left the
+  // panel unable to match a layer to its source after any inline style edit.
+  it("keeps the attributes a text layer is tracked by", () => {
+    const out = clean(
+      '<span data-hf-text-key="child:1" data-hf-id="hf-abc" style="color: red">x</span>',
+      parse,
+    );
+    expect(out).toContain('data-hf-text-key="child:1"');
+    expect(out).toContain('data-hf-id="hf-abc"');
+  });
+
+  it("drops an identity attribute whose value is not a bare token", () => {
+    const out = clean(`<span data-hf-text-key='a" onload="alert(1)'>x</span>`, parse);
+    expect(out).not.toContain("onload");
+    expect(out).not.toContain("data-hf-text-key");
+  });
+
+  // These are what the design panel writes onto those same spans. Sanitizing
+  // them away did not stop a text edit changing layout, it deleted the layout
+  // the user had already set: colouring one word dropped a sibling's size.
+  it("keeps the typography the design panel authors on a text layer", () => {
+    const out = clean(
+      '<span style="font-family: Inter; font-size: 48px; letter-spacing: -1px; line-height: 1.2">x</span>',
+      parse,
+    );
+    expect(out).toContain("font-family: Inter");
+    expect(out).toContain("font-size: 48px");
+    expect(out).toContain("letter-spacing: -1px");
+    expect(out).toContain("line-height: 1.2");
+  });
+
+  it("still refuses a value that reaches outside the stylesheet", () => {
+    const out = clean(`<span style="font-family: url(http://x/f.woff)">x</span>`, parse);
+    expect(out).not.toContain("url(");
   });
 
   it("unwraps a tag that is not formatting, keeping its words in place", () => {

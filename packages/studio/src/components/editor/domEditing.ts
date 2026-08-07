@@ -27,6 +27,7 @@ export {
 export {
   buildDefaultDomEditTextField,
   buildDomEditPatchTarget,
+  buildDomEditRichTextPatchOperation,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   collectDomEditLayerItems,

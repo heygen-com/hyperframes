@@ -28,6 +28,23 @@ import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
 interface StyledRun {
   text: string;
   style: Record<string, string>;
+  /**
+   * The child element these characters came out of, when they came out of one.
+   *
+   * Carried because an element's children are not always anonymous formatting:
+   * the design panel keeps them as text layers and tracks each by an attribute
+   * on it. Rebuilding from style alone emitted fresh, bare spans, which threw
+   * that identity away — after colouring a single word the panel could no
+   * longer match a layer to its source, so every edit it offered failed to
+   * save. The rebuild puts the identity back on the run that still holds it.
+   */
+  origin: Element | null;
+  /**
+   * That identity as a value, so two runs can be compared without comparing
+   * the nodes they came from. A child with nothing on it but a style has no
+   * identity to lose, and merges with its neighbour exactly as before.
+   */
+  identity: string;
 }
 
 export type InlineStyleDelta = Record<string, string | null>;
@@ -124,7 +141,9 @@ export function readInlineStyle(range: Range, properties: string[]): Record<stri
   const end = offsetOf(host, range.endContainer, range.endOffset);
   if (start === null || end === null) return {};
 
-  const covered = charStyles(readRuns(host)).slice(start, Math.max(end, start + 1));
+  const covered = charRuns(readRuns(host))
+    .slice(start, Math.max(end, start + 1))
+    .map((entry) => entry.style);
   if (covered.length === 0) return {};
 
   const styles: Record<string, string> = {};
@@ -157,25 +176,47 @@ function editingHost(node: Node): HTMLElement | null {
 /** Read the element as a flat list of runs, in document order. */
 function readRuns(host: Element): StyledRun[] {
   const runs: StyledRun[] = [];
-  walk(host, {}, runs);
+  // Text sitting directly in the host belongs to no child, so it has no origin.
+  walk(host, {}, runs, null);
   return runs;
 }
 
-function walk(node: Node, inherited: Record<string, string>, runs: StyledRun[]): void {
+function walk(
+  node: Node,
+  inherited: Record<string, string>,
+  runs: StyledRun[],
+  origin: Element | null,
+): void {
   for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === 3) {
       const text = child.textContent ?? "";
-      if (text) runs.push({ text, style: inherited });
+      if (text) runs.push({ text, style: inherited, origin, identity: identityOf(origin) });
       continue;
     }
     if (child.nodeType !== 1) continue;
     const element = child as HTMLElement;
     if (element.tagName === "BR") {
-      runs.push({ text: BREAK, style: inherited });
+      runs.push({ text: BREAK, style: inherited, origin, identity: identityOf(origin) });
       continue;
     }
-    walk(element, { ...inherited, ...TAG_STYLES[element.tagName], ...ownStyle(element) }, runs);
+    // The outermost child is the one the panel knows as a layer, so nesting
+    // below it keeps pointing at it rather than at its inner formatting.
+    walk(
+      element,
+      { ...inherited, ...TAG_STYLES[element.tagName], ...ownStyle(element) },
+      runs,
+      origin ?? element,
+    );
   }
+}
+
+/** A child's identity as a comparable string, empty when it has none. */
+function identityOf(element: Element | null): string {
+  if (!element) return "";
+  return [...preservedAttributes(element)]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([name, value]) => `${name}=${value}`)
+    .join("&");
 }
 
 function ownStyle(element: HTMLElement): Record<string, string> {
@@ -188,12 +229,14 @@ function ownStyle(element: HTMLElement): Record<string, string> {
 }
 
 /** One entry per character, which is the easiest thing to slice and compare. */
-function charStyles(runs: StyledRun[]): Array<Record<string, string>> {
-  const styles: Array<Record<string, string>> = [];
+function charRuns(runs: StyledRun[]): Array<Omit<StyledRun, "text">> {
+  const perChar: Array<Omit<StyledRun, "text">> = [];
   for (const run of runs) {
-    for (let index = 0; index < run.text.length; index += 1) styles.push(run.style);
+    for (let index = 0; index < run.text.length; index += 1) {
+      perChar.push({ style: run.style, origin: run.origin, identity: run.identity });
+    }
   }
-  return styles;
+  return perChar;
 }
 
 /** Apply the delta to `[start, end)` and hand back runs covering the element. */
@@ -204,16 +247,22 @@ function restyle(
   delta: InlineStyleDelta,
 ): StyledRun[] {
   const text = runs.map((run) => run.text).join("");
-  const styles = charStyles(runs);
+  const perChar = charRuns(runs);
   const next: StyledRun[] = [];
 
   for (let index = 0; index < text.length; index += 1) {
     const inside = index >= start && index < end;
-    const style = inside ? withDelta(styles[index] ?? {}, delta) : (styles[index] ?? {});
+    const previous = perChar[index]?.style ?? {};
+    const style = inside ? withDelta(previous, delta) : previous;
+    const origin = perChar[index]?.origin ?? null;
+    const identity = perChar[index]?.identity ?? "";
     const last = next[next.length - 1];
-    // Merged as it is built, so equal neighbours never become two spans.
-    if (last && sameStyle(last.style, style)) last.text += text[index];
-    else next.push({ text: text[index] ?? "", style });
+    // Merged as it is built, so equal neighbours never become two spans. Two
+    // that the design panel tracks as separate layers stay apart even when
+    // they now look identical, because merging them deletes one of them.
+    if (last && last.identity === identity && sameStyle(last.style, style))
+      last.text += text[index];
+    else next.push({ text: text[index] ?? "", style, origin, identity });
   }
   return next;
 }
@@ -261,22 +310,45 @@ function render(host: Element, runs: StyledRun[]): void {
 
 function runNodes(doc: Document, runs: StyledRun[]): Node[] {
   const nodes: Node[] = [];
+  // One span per origin keeps its attributes: an identity that appeared twice
+  // would be two layers claiming to be the same one. A run split off from an
+  // origin is a new layer and is written as one.
+  const claimed = new Set<Element>();
   for (const run of runs) {
     const key = styleKey(run.style);
+    const carried =
+      run.origin && !claimed.has(run.origin) ? preservedAttributes(run.origin) : new Map();
+    if (carried.size > 0 && run.origin) claimed.add(run.origin);
     for (const [index, piece] of run.text.split(BREAK).entries()) {
       if (index > 0) nodes.push(doc.createElement("br"));
       if (!piece) continue;
-      if (!key) {
+      if (!key && carried.size === 0) {
         nodes.push(doc.createTextNode(piece));
         continue;
       }
       const span = doc.createElement("span");
-      span.setAttribute("style", key);
+      for (const [name, value] of carried) span.setAttribute(name, value);
+      if (key) span.setAttribute("style", key);
       span.textContent = piece;
       nodes.push(span);
+      carried.clear();
     }
   }
   return nodes;
+}
+
+/**
+ * What a child carries besides its styling: the identity the design panel
+ * tracks it by. Its style is not copied — that is what the run holds, already
+ * merged with whatever the edit changed.
+ */
+function preservedAttributes(element: Element): Map<string, string> {
+  const kept = new Map<string, string>();
+  for (const name of element.getAttributeNames()) {
+    if (name === "style") continue;
+    kept.set(name, element.getAttribute(name) ?? "");
+  }
+  return kept;
 }
 
 /** Displays whose children are boxes it positions, rather than text it flows. */

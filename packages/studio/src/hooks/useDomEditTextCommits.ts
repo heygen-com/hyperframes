@@ -11,6 +11,7 @@ import {
   ensureImportedFontFace,
 } from "../utils/studioFontHelpers";
 import {
+  buildDomEditRichTextPatchOperation,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   findElementForSelection,
@@ -24,10 +25,7 @@ import {
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { buildTextFieldChildOperations } from "./domEditTextFieldCommitOps";
-import {
-  DomEditPersistUnsupportedTextStructureError,
-  reportDomEditPersistFailure,
-} from "./domEditPersistFailure";
+import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
   bumpDomEditCommitMapVersion,
   bumpDomEditCommitVersion,
@@ -102,9 +100,20 @@ function planDomTextCommit(
   const childOperations = usesSerializedTextFields
     ? buildTextFieldChildOperations(originalTextFields, nextTextFields)
     : null;
+  // Per-child operations when the layers still line up one-for-one, and the
+  // element's whole markup when they do not.
+  //
+  // `buildTextFieldChildOperations` can only address children that already
+  // exist, so it returns null for any change in how many there are — which is
+  // every delete and every add. That used to end here with "Couldn't save this
+  // text structure change": the panel offered a remove button and an Add text
+  // field row, and neither could ever save. A structure change has one honest
+  // operation, which is to write the structure.
   const operations =
     childOperations ??
-    (usesSerializedTextFields ? [] : [buildDomEditTextPatchOperation(nextContent)]);
+    (usesSerializedTextFields
+      ? [buildDomEditRichTextPatchOperation(nextContent)]
+      : [buildDomEditTextPatchOperation(nextContent)]);
 
   return {
     usesSerializedTextFields,
@@ -269,9 +278,6 @@ export function useDomEditTextCommits({
           }
         },
         persist: async () => {
-          if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
-            throw new DomEditPersistUnsupportedTextStructureError();
-          }
           await persistDomEditOperations(domEditSelection, textCommit.operations, {
             label: "Edit text",
             skipRefresh: true,
@@ -412,9 +418,6 @@ export function useDomEditTextCommits({
           }
         },
         persist: async () => {
-          if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
-            throw new DomEditPersistUnsupportedTextStructureError();
-          }
           await persistDomEditOperations(selection, textCommit.operations, {
             label: "Edit text",
             skipRefresh: true,

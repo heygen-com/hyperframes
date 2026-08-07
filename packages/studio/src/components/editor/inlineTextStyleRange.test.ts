@@ -390,3 +390,58 @@ describe("applyInlineStyle edge cases", () => {
     expect(host.textContent).toBe("abcdef");
   });
 });
+
+/**
+ * An element's children are not always anonymous formatting. The design panel
+ * keeps them as text layers and tracks each by an attribute on it, so a rebuild
+ * that emits fresh bare spans throws that identity away — and after colouring a
+ * single word the panel could no longer match a layer to its source, so every
+ * edit it offered failed with "Couldn't save this text structure change".
+ */
+describe("applyInlineStyle keeps what the design panel tracks", () => {
+  it("keeps a layer's key when the styling changes", () => {
+    const host = mount(
+      '<span data-hf-text-key="child:0" style="color: red">Hello</span>' +
+        '<span data-hf-text-key="child:1" style="color: blue">world</span>',
+    );
+    applyInlineStyle(rangeOver(host, 0, 5), { color: "green" });
+
+    expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
+    expect(host.innerHTML).toContain('data-hf-text-key="child:1"');
+    expect(host.innerHTML).toContain("color: green");
+  });
+
+  it("keeps a layer's typography, which the edit never mentioned", () => {
+    const host = mount(
+      '<span data-hf-text-key="child:0" style="font-size: 48px; color: red">Hello</span>',
+    );
+    applyInlineStyle(rangeOver(host, 0, 5), { color: "green" });
+
+    expect(host.innerHTML).toContain("font-size: 48px");
+  });
+
+  it("does not put one layer's key on two spans when its text is split", () => {
+    const host = mount('<span data-hf-text-key="child:0">Hello</span>');
+    applyInlineStyle(rangeOver(host, 0, 2), { color: "green" });
+
+    expect(host.innerHTML.match(/data-hf-text-key="child:0"/g) ?? []).toHaveLength(1);
+  });
+
+  it("still merges neighbours that carry no identity to lose", () => {
+    const host = mount('<span style="color: red">ab</span>cd');
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "red" });
+
+    expect(host.innerHTML).toBe('<span style="color: red">abcd</span>');
+  });
+
+  it("does not merge two tracked layers that end up looking alike", () => {
+    const host = mount(
+      '<span data-hf-text-key="child:0" style="color: red">ab</span>' +
+        '<span data-hf-text-key="child:1" style="color: blue">cd</span>',
+    );
+    applyInlineStyle(rangeOver(host, 2, 4), { color: "red" });
+
+    expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
+    expect(host.innerHTML).toContain('data-hf-text-key="child:1"');
+  });
+});

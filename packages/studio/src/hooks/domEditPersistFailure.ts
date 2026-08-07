@@ -19,13 +19,6 @@ export class DomEditPersistUnsafeValueError extends Error {
   }
 }
 
-export class DomEditPersistUnsupportedTextStructureError extends Error {
-  constructor() {
-    super("Couldn't save this text structure change");
-    this.name = "DomEditPersistUnsupportedTextStructureError";
-  }
-}
-
 export type DomEditPersistFailureSelection = Pick<
   DomEditSelection,
   "label" | "hfId" | "id" | "selector" | "selectorIndex" | "sourceFile"

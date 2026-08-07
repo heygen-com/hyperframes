@@ -22,9 +22,15 @@ const FORMATTING_TAGS = new Set(["SPAN", "B", "STRONG", "I", "EM", "U", "BR"]);
 /**
  * Style properties a formatting tag may carry.
  *
- * Deliberately paint-only. A property that moves or resizes text would let an
- * edit inside one element change the composition's layout, which is the design
- * panel's job and is bounded by the geometry commits rather than by this.
+ * This was paint-only, on the reasoning that a property which moves or resizes
+ * text would let an edit inside one element change the composition's layout,
+ * and layout is the design panel's job. The reasoning was wrong about who was
+ * being restricted: the design panel writes exactly these typography
+ * properties onto exactly these spans, as its text layers. Sanitizing them
+ * away did not stop text from changing layout, it deleted the layout the user
+ * had already set — colouring one word silently dropped a sibling layer's font
+ * size. The line that matters is the one below, values that reach outside the
+ * stylesheet, not which of its own properties the editor is allowed to keep.
  */
 const FORMATTING_STYLE_PROPS = new Set([
   "color",
@@ -32,7 +38,23 @@ const FORMATTING_STYLE_PROPS = new Set([
   "font-weight",
   "font-style",
   "text-decoration-line",
+  "font-family",
+  "font-size",
+  "letter-spacing",
+  "line-height",
 ]);
+
+/**
+ * Attributes a formatting tag may carry.
+ *
+ * The identity a text layer is tracked by. Everything else is dropped: a
+ * contenteditable is a paste target, and an event handler or an id that
+ * shadows a composition's own is not formatting.
+ */
+const FORMATTING_ATTRS = new Set(["data-hf-text-key", "data-hf-id"]);
+
+/** What those attributes are allowed to look like: a bare token, nothing else. */
+const SAFE_ATTR_VALUE = /^[A-Za-z0-9_:-]+$/;
 
 /**
  * Tags dropped whole rather than unwrapped.
@@ -109,15 +131,18 @@ function unwrap(element: Element): void {
   parent.removeChild(element);
 }
 
-/** Leave a kept tag with a filtered style attribute and nothing else. */
+/** Leave a kept tag with a filtered style attribute and its identity, no more. */
 function stripAttributes(element: Element): void {
   const style = element.getAttribute("style");
   for (const name of Array.from(element.getAttributeNames())) {
+    const value = element.getAttribute(name) ?? "";
+    if (FORMATTING_ATTRS.has(name.toLowerCase()) && SAFE_ATTR_VALUE.test(value)) continue;
     element.removeAttribute(name);
   }
   if (style === null) return;
   const safe = filterStyle(style);
   if (safe) element.setAttribute("style", safe);
+  else element.removeAttribute("style");
 }
 
 /** Keep only the allowlisted declarations, and only if their values are inert. */
