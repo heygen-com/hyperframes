@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/carousel.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `theme` | `dark` | `dark`, `light` | Operator Black token theme the carousel renders in. |
+| `accent` | `green` | `green`, `blue`, `amber`, `violet` | Accent token family used for the active page dot and focus rings. |
+| `peek` | `standard` | `subtle`, `standard`, `deep` | How far the previous slide shows behind the current one, through its offset, scale and opacity. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="carousel"
+  data-composition-src="compositions/components/carousel.html"
+  data-variable-values='{"theme":"dark","accent":"green","peek":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`carousel.html`}>
@@ -21,13 +43,35 @@ That writes one file: `compositions/components/carousel.html`.
 <!--
   Carousel - Operator Black scene-navigation primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Animate the CSS variables
-  from a paused GSAP timeline for deterministic video renders.
+  Paste the markup, CSS and script into a composition. Animate the CSS
+  variables from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and applies it to the carousel root. The
+  timeline recipe at the bottom is untouched by them: it keeps sliding the
+  current scene in the same way, and these decide the stack it slides onto.
+
+    - theme (dark | light, default dark): which Operator Black token set the
+      carousel renders in.
+    - accent (green | blue | amber | violet, default green): the data token
+      family behind the active page dot and focus rings. green is the theme
+      accent in both themes, so the default reads correctly on either.
+    - peek (subtle | standard | deep, default standard): how far the previous
+      slide shows behind the current one, through its offset, scale and
+      opacity.
+
+  On every default the result is identical to the original: a dark stack whose
+  back slide sits 8px up at 98 percent and 0.6 opacity, under a green dot.
 -->
 
 <div
   data-hf-ui-root
   class="hf-ui-carousel"
+  data-composition-variables='[
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Operator Black token theme the carousel renders in.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family used for the active page dot and focus rings.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "amber", "label": "Amber" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "peek", "type": "enum", "role": "style", "label": "Peek", "description": "How far the previous slide shows behind the current one, through its offset, scale and opacity.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "deep", "label": "Deep" }] }
+  ]'
   role="region"
   aria-roledescription="carousel"
   aria-label="Scene preview"
@@ -203,8 +247,9 @@ That writes one file: `compositions/components/carousel.html`.
     box-shadow: var(--_hf-ui-shadow-inset), var(--_hf-ui-shadow-contact);
   }
   .hf-ui-carousel section:first-child {
-    transform: translateY(-8px) scale(0.98);
-    opacity: 0.6;
+    transform: translateY(var(--hf-carousel-peek-y, -8px))
+      scale(var(--hf-carousel-peek-scale, 0.98));
+    opacity: var(--hf-carousel-peek-opacity, 0.6);
   }
   .hf-ui-carousel nav {
     position: absolute;
@@ -259,6 +304,49 @@ That writes one file: `compositions/components/carousel.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    // The data tokens are theme-aware, and data-1 is the theme accent itself,
+    // so the default leaves both themes exactly as they shipped.
+    var accents = {
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      amber: "var(--_hf-ui-data-3)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var peeks = {
+      subtle: { y: "-4px", scale: "0.99", opacity: "0.72" },
+      standard: { y: "-8px", scale: "0.98", opacity: "0.6" },
+      deep: { y: "-18px", scale: "0.94", opacity: "0.42" },
+    };
+
+    var theme = vars.theme === "light" ? "light" : "dark";
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var peek = peeks[pick(peeks, vars.peek, "standard")];
+
+    var roots = document.querySelectorAll(".hf-ui-carousel");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].setAttribute("data-hf-theme", theme);
+      roots[i].style.setProperty("--hf-ui-accent", accent);
+      roots[i].style.setProperty("--hf-carousel-peek-y", peek.y);
+      roots[i].style.setProperty("--hf-carousel-peek-scale", peek.scale);
+      roots[i].style.setProperty("--hf-carousel-peek-opacity", peek.opacity);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

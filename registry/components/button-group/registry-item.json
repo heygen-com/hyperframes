@@ -12,6 +12,70 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "activeSegment",
+      "type": "enum",
+      "role": "content",
+      "label": "Active segment",
+      "description": "Which segment carries the pressed state, the accent underline, and the timeline pop.",
+      "default": "second",
+      "options": [
+        {
+          "value": "first",
+          "label": "First"
+        },
+        {
+          "value": "second",
+          "label": "Second"
+        },
+        {
+          "value": "third",
+          "label": "Third"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour of the underline under the pressed segment.",
+      "default": "green",
+      "options": [
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Operator Black dark surface or the light-frame token set.",
+      "default": "dark",
+      "options": [
+        {
+          "value": "dark",
+          "label": "Dark"
+        },
+        {
+          "value": "light",
+          "label": "Light"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button-group.png"
   }

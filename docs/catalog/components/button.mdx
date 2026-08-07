@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/button.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `label` | `Continue` | string | Text shown on the button while it is idle. |
+| `variant` | `default` | `default`, `secondary`, `outline` | Filled action, raised secondary surface, or a transparent outline. |
+| `theme` | `dark` | `dark`, `light` | Operator Black dark surface or the light-frame token set. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="button"
+  data-composition-src="compositions/components/button.html"
+  data-variable-values='{"label":"Continue","variant":"default","theme":"dark"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`button.html`}>
@@ -26,9 +48,37 @@ That writes one file: `compositions/components/button.html`.
 
   Add data-state and data-variant to the .hf-ui-button element, or animate the
   CSS variables from a paused GSAP timeline.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the attribute or text the CSS
+  above already keys off. The timeline recipe below is untouched by them: it
+  still drives data-state through loading and success on top of whatever
+  variant and theme are chosen.
+
+    - label (string, default "Continue"): the text shown while idle. A blank
+      or non-text override keeps the default.
+    - variant (default | secondary | outline, default default): filled action,
+      raised secondary surface, or transparent outline. Each maps to the
+      data-variant rules already in the stylesheet.
+    - theme (dark | light, default dark): dark keeps the Operator Black
+      surface, light switches the shared token block to its light values.
+
+  On every default the result is identical to the original: a filled dark-theme
+  button reading Continue.
 -->
 
-<button data-hf-ui-root class="hf-ui-button" data-variant="default" data-state="idle" type="button">
+<button
+  data-hf-ui-root
+  class="hf-ui-button"
+  data-variant="default"
+  data-state="idle"
+  type="button"
+  data-composition-variables='[
+    { "id": "label", "type": "string", "role": "content", "label": "Label", "description": "Text shown on the button while it is idle.", "default": "Continue" },
+    { "id": "variant", "type": "enum", "role": "style", "label": "Variant", "description": "Filled action, raised secondary surface, or a transparent outline.", "default": "default", "options": [{ "value": "default", "label": "Default" }, { "value": "secondary", "label": "Secondary" }, { "value": "outline", "label": "Outline" }] },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Operator Black dark surface or the light-frame token set.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <span class="hf-ui-button-label">Continue</span>
   <span class="hf-ui-button-spinner" aria-hidden="true"></span>
   <svg class="hf-ui-button-check" viewBox="0 0 24 24" aria-hidden="true">
@@ -274,6 +324,40 @@ That writes one file: `compositions/components/button.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var variants = { default: true, secondary: true, outline: true };
+    var themes = { dark: true, light: true };
+
+    var variant = pick(variants, vars.variant, "default");
+    var theme = pick(themes, vars.theme, "dark");
+    var label =
+      typeof vars.label === "string" && vars.label.trim() !== "" ? vars.label : "Continue";
+
+    var roots = document.querySelectorAll(".hf-ui-button");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-variant", variant);
+      if (theme === "light") root.setAttribute("data-hf-theme", "light");
+      else root.removeAttribute("data-hf-theme");
+      var text = root.querySelector(".hf-ui-button-label");
+      if (text) text.textContent = label;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

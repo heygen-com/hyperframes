@@ -12,6 +12,50 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "prefix",
+      "type": "string",
+      "role": "content",
+      "label": "Prefix",
+      "description": "Static technical prefix shown before the value.",
+      "default": "https://"
+    },
+    {
+      "id": "value",
+      "type": "string",
+      "role": "content",
+      "label": "Value",
+      "description": "Text held by the field itself.",
+      "default": "hyperframes.dev"
+    },
+    {
+      "id": "action",
+      "type": "string",
+      "role": "content",
+      "label": "Action",
+      "description": "Label on the attached trailing button.",
+      "default": "Copy"
+    },
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Operator Black dark surface or the light-frame token set.",
+      "default": "dark",
+      "options": [
+        {
+          "value": "dark",
+          "label": "Dark"
+        },
+        {
+          "value": "light",
+          "label": "Light"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-group.png"
   }

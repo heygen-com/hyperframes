@@ -1,11 +1,35 @@
 <!--
   Input Group - Operator Black compound field primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Animate the CSS variables
-  from a paused GSAP timeline for deterministic video renders.
+  Paste the markup, CSS and script into a composition. Animate the CSS
+  variables from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes it into the markup the CSS
+  below already styles. The timeline recipe at the bottom is untouched by
+  them: it keeps revealing the same row.
+
+    - prefix (string, default "https://"): the static segment in the leading
+      slot. A blank or non-text override keeps the default.
+    - value (string, default "hyperframes.dev"): the text held by the field.
+    - action (string, default "Copy"): the label on the attached button.
+    - theme (dark | light, default dark): dark keeps the Operator Black
+      surface, light switches the shared token block to its light values.
+
+  On every default the result is identical to the original: a dark-theme row
+  reading https:// hyperframes.dev with a Copy button.
 -->
 
-<div data-hf-ui-root class="hf-ui-input-group">
+<div
+  data-hf-ui-root
+  class="hf-ui-input-group"
+  data-composition-variables='[
+    { "id": "prefix", "type": "string", "role": "content", "label": "Prefix", "description": "Static technical prefix shown before the value.", "default": "https://" },
+    { "id": "value", "type": "string", "role": "content", "label": "Value", "description": "Text held by the field itself.", "default": "hyperframes.dev" },
+    { "id": "action", "type": "string", "role": "content", "label": "Action", "description": "Label on the attached trailing button.", "default": "Copy" },
+    { "id": "theme", "type": "enum", "role": "style", "label": "Theme", "description": "Operator Black dark surface or the light-frame token set.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] }
+  ]'
+>
   <span>https://</span><input aria-label="Project URL" value="hyperframes.dev" readonly /><button
     type="button"
   >
@@ -231,6 +255,46 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value : fallback;
+    }
+
+    var prefix = text(vars.prefix, "https://");
+    var value = text(vars.value, "hyperframes.dev");
+    var action = text(vars.action, "Copy");
+    var theme = vars.theme === "light" ? "light" : "dark";
+
+    var roots = document.querySelectorAll(".hf-ui-input-group");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-hf-theme", theme);
+      var prefixEl = root.querySelector("span");
+      if (prefixEl) prefixEl.textContent = prefix;
+      var field = root.querySelector("input");
+      if (field) {
+        field.value = value;
+        field.setAttribute("value", value);
+      }
+      var button = root.querySelector("button");
+      if (button) button.textContent = action;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

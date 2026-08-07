@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/badge.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tone` | `success` | `success`, `neutral`, `warning`, `danger` | Semantic colour of the badge. |
+| `emphasis` | `outline` | `outline`, `solid`, `quiet` | How loudly the badge reads: outlined, filled, or borderless. |
+| `size` | `standard` | `compact`, `standard`, `large` | Height, text size and padding of the badge. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="badge"
+  data-composition-src="compositions/components/badge.html"
+  data-variable-values='{"tone":"success","emphasis":"outline","size":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`badge.html`}>
@@ -21,11 +43,38 @@ That writes one file: `compositions/components/badge.html`.
 <!--
   Badge - Operator Black compact semantic status primitive.
 
-  Paste the markup and CSS into a composition. Animate the CSS variables
-  from a paused GSAP timeline for deterministic video renders.
+  Paste the markup, CSS and script into a composition. Animate the CSS
+  variables from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a data attribute
+  or a custom property the CSS below consumes. The timeline recipe at the
+  bottom is untouched by them: it keeps fading and settling the same pill.
+
+    - tone (success | neutral | warning | danger, default success): the
+      semantic colour, riding the theme accent, text, warning and danger
+      tokens so it tracks light and dark frames.
+    - emphasis (outline | solid | quiet, default outline): how loudly the
+      badge reads. outline is the bordered pill, solid fills it with the tone,
+      quiet drops both border and fill.
+    - size (compact | standard | large, default standard): height, text size
+      and side padding together.
+
+  On every default the result is identical to the original: a 26px outlined
+  green success pill.
 -->
 
-<span data-hf-ui-root class="hf-ui-badge" data-tone="success">Published</span>
+<span
+  data-hf-ui-root
+  class="hf-ui-badge"
+  data-tone="success"
+  data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Semantic colour of the badge.", "default": "success", "options": [{ "value": "success", "label": "Success" }, { "value": "neutral", "label": "Neutral" }, { "value": "warning", "label": "Warning" }, { "value": "danger", "label": "Danger" }] },
+    { "id": "emphasis", "type": "enum", "role": "style", "label": "Emphasis", "description": "How loudly the badge reads: outlined, filled, or borderless.", "default": "outline", "options": [{ "value": "outline", "label": "Outline" }, { "value": "solid", "label": "Solid" }, { "value": "quiet", "label": "Quiet" }] },
+    { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Height, text size and padding of the badge.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] }
+  ]'
+  >Published</span
+>
 
 <style>
   /* hf-ui:tokens:start */
@@ -164,30 +213,81 @@ That writes one file: `compositions/components/badge.html`.
   /* hf-ui:tokens:end */
   .hf-ui-badge {
     --hf-badge-scale: 1;
+    --hf-badge-tone: var(--_hf-ui-accent);
+    --hf-badge-edge: var(--_hf-ui-accent);
     display: inline-flex;
     align-items: center;
-    min-height: 26px;
-    padding: 0 10px;
+    min-height: var(--hf-badge-min-h, 26px);
+    padding: 0 var(--hf-badge-pad-x, 10px);
     border-radius: 999px;
-    border: 1px solid var(--_hf-ui-accent);
+    border: 1px solid var(--hf-badge-edge);
     background: var(--_hf-ui-surface-inset);
-    color: var(--_hf-ui-accent);
+    color: var(--hf-badge-tone);
     font: var(--_hf-ui-weight-semibold) 12px/1 var(--_hf-ui-font-sans);
+    font-size: var(--hf-badge-font-size, 12px);
     letter-spacing: 0.01em;
     transform: scale(var(--hf-badge-scale));
     transform-origin: center;
   }
   .hf-ui-badge[data-tone="neutral"] {
-    border-color: var(--_hf-ui-border-strong);
-    background: var(--_hf-ui-surface-inset);
-    color: var(--_hf-ui-text);
+    --hf-badge-tone: var(--_hf-ui-text);
+    --hf-badge-edge: var(--_hf-ui-border-strong);
   }
   .hf-ui-badge[data-tone="warning"] {
-    border-color: var(--_hf-ui-warning);
-    background: var(--_hf-ui-surface-inset);
-    color: var(--_hf-ui-warning);
+    --hf-badge-tone: var(--_hf-ui-warning);
+    --hf-badge-edge: var(--_hf-ui-warning);
+  }
+  .hf-ui-badge[data-tone="danger"] {
+    --hf-badge-tone: var(--_hf-ui-danger);
+    --hf-badge-edge: var(--_hf-ui-danger);
+  }
+  .hf-ui-badge[data-emphasis="solid"] {
+    background: var(--hf-badge-tone);
+    color: var(--_hf-ui-canvas);
+  }
+  .hf-ui-badge[data-emphasis="quiet"] {
+    --hf-badge-edge: transparent;
+    background: transparent;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var tones = { success: 1, neutral: 1, warning: 1, danger: 1 };
+    var emphases = { outline: 1, solid: 1, quiet: 1 };
+    var sizes = {
+      compact: { height: "22px", font: "11px", pad: "8px" },
+      standard: { height: "26px", font: "12px", pad: "10px" },
+      large: { height: "32px", font: "14px", pad: "14px" },
+    };
+
+    var tone = pick(tones, vars.tone, "success");
+    var emphasis = pick(emphases, vars.emphasis, "outline");
+    var size = sizes[pick(sizes, vars.size, "standard")];
+
+    var roots = document.querySelectorAll(".hf-ui-badge");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-tone", tone);
+      root.setAttribute("data-emphasis", emphasis);
+      root.style.setProperty("--hf-badge-min-h", size.height);
+      root.style.setProperty("--hf-badge-font-size", size.font);
+      root.style.setProperty("--hf-badge-pad-x", size.pad);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

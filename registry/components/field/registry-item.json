@@ -12,6 +12,70 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "state",
+      "type": "enum",
+      "role": "style",
+      "label": "State",
+      "description": "Control state: default, invalid draws the danger border, disabled dims the control.",
+      "default": "default",
+      "options": [
+        {
+          "value": "default",
+          "label": "Default"
+        },
+        {
+          "value": "invalid",
+          "label": "Invalid"
+        },
+        {
+          "value": "disabled",
+          "label": "Disabled"
+        }
+      ]
+    },
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "style",
+      "label": "Width",
+      "description": "How wide the field sits before it shrinks to the host box.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "narrow",
+          "label": "Narrow"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Control height and type size. Compact tightens the field for stacked forms.",
+      "default": "comfortable",
+      "options": [
+        {
+          "value": "comfortable",
+          "label": "Comfortable"
+        },
+        {
+          "value": "compact",
+          "label": "Compact"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/field.png"
   }

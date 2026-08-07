@@ -20,6 +20,29 @@ Open `compositions/components/grade-split-reveal.html` and copy what is inside i
 A component has no size or duration of its own. It takes both from the composition
 you paste it into.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `look` | `warm-cinematic` | `warm-cinematic`, `cool-teal`, `bleach-bypass` | Grade carried by the upper copy, and the label printed over it. All three are real grading blocks handed to the shader, not CSS filters. |
+| `split` | `62` | 25% to 85%, step 1% | How far across the plate the edge stops to hold the comparison, before it commits and takes the rest. |
+| `edge` | `hairline` | `hairline`, `bold`, `hidden` | The divider line riding the wipe. Hidden drops it entirely so the grade arrives with no seam. |
+| `labels` | `on` | `on`, `off` | Show or hide the two captions naming each half of the plate. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="grade-split-reveal"
+  data-composition-src="compositions/components/grade-split-reveal.html"
+  data-variable-values='{"look":"warm-cinematic","split":62,"edge":"hairline","labels":"on"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`grade-split-reveal.html`}>
@@ -53,12 +76,33 @@ you paste it into.
   Every ease is a cubic bezier written out by hand and solved in this file. No preset is used
   anywhere.
 
+  Variables. Each one is read once at mount, falls back to its declared default on anything
+  missing or unrecognised, and changes what lands on screen. Timing is untouched: same six
+  seconds, same 30fps, same beats.
+
+    - look (warm-cinematic | cool-teal | bleach-bypass, default warm-cinematic): the grade the
+      upper copy carries, and the label printed over it. All three are real grading blocks
+      handed to the shader, not CSS filters.
+    - split (25 to 85, default 62, percent of the plate width): where the edge stops to hold
+      the comparison before it commits and takes the rest.
+    - edge (hairline | bold | hidden, default hairline): the divider line riding the wipe.
+      hidden removes it, so the grade arrives with no visible seam.
+    - labels (on | off, default on): the two captions naming each half of the plate.
+
   Mount contract: everything lives inside <template>, styles and scripts included, and the
   scripts sit INSIDE the composition root. A host clones template content into its own mount
   and only runs scripts found inside the root; markup left outside is copied without its
   behaviour, which renders a black card with no timeline at all.
 -->
-<html lang="en">
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "look", "type": "enum", "role": "style", "label": "Look", "description": "Grade carried by the upper copy, and the label printed over it. All three are real grading blocks handed to the shader, not CSS filters.", "default": "warm-cinematic", "options": [{ "value": "warm-cinematic", "label": "Warm Cinematic" }, { "value": "cool-teal", "label": "Cool Teal" }, { "value": "bleach-bypass", "label": "Bleach Bypass" }] },
+    { "id": "split", "type": "number", "role": "motion", "label": "Split point", "description": "How far across the plate the edge stops to hold the comparison, before it commits and takes the rest.", "default": 62, "min": 25, "max": 85, "step": 1, "unit": "%" },
+    { "id": "edge", "type": "enum", "role": "style", "label": "Edge", "description": "The divider line riding the wipe. Hidden drops it entirely so the grade arrives with no seam.", "default": "hairline", "options": [{ "value": "hairline", "label": "Hairline" }, { "value": "bold", "label": "Bold" }, { "value": "hidden", "label": "Hidden" }] },
+    { "id": "labels", "type": "enum", "role": "style", "label": "Labels", "description": "Show or hide the two captions naming each half of the plate.", "default": "on", "options": [{ "value": "on", "label": "Show" }, { "value": "off", "label": "Hide" }] }
+  ]'
+>
   <head>
     <meta charset="UTF-8" />
     <title>Grade Split Reveal</title>
@@ -271,6 +315,72 @@ you paste it into.
               colorSpace: "rec709",
             };
 
+            /* ---- variables. Unrecognised overrides return to their declared defaults. ---- */
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            function pick(table, value, fallback) {
+              return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+            }
+
+            var LOOKS = {
+              "warm-cinematic": { label: "Warm Cinematic", grade: AFTER_GRADE },
+              "cool-teal": {
+                label: "Cool Teal",
+                grade: {
+                  preset: "deep-contrast",
+                  intensity: 1,
+                  adjust: {
+                    exposure: 0,
+                    contrast: 0.32,
+                    highlights: -0.2,
+                    shadows: 0.14,
+                    whites: 0.04,
+                    blacks: -0.2,
+                    temperature: -0.26,
+                    tint: 0.08,
+                    vibrance: 0.22,
+                    saturation: 0.04,
+                  },
+                  details: { vignette: 0.34, vignetteFeather: 0.68, grain: 0.1, grainSize: 0.3 },
+                  colorSpace: "rec709",
+                },
+              },
+              "bleach-bypass": {
+                label: "Bleach Bypass",
+                grade: {
+                  preset: "neutral",
+                  intensity: 1,
+                  adjust: {
+                    exposure: 0.08,
+                    contrast: 0.54,
+                    highlights: 0.12,
+                    shadows: -0.1,
+                    whites: 0.18,
+                    blacks: -0.28,
+                    temperature: 0.04,
+                    vibrance: -0.18,
+                    saturation: -0.46,
+                  },
+                  details: { vignette: 0.24, vignetteFeather: 0.72, grain: 0.18, grainSize: 0.34 },
+                  colorSpace: "rec709",
+                },
+              },
+            };
+            var LOOK = LOOKS[pick(LOOKS, vars.look, "warm-cinematic")];
+
+            var EDGE_WIDTHS = { hairline: "2px", bold: "6px", hidden: "0px" };
+            var EDGE = pick(EDGE_WIDTHS, vars.edge, "hairline");
+
+            /* A number arrives as a number from --variables, but a hand written override can
+               still be a string or nonsense. parseFloat plus a range test covers both. */
+            var SPLIT = parseFloat(vars.split);
+            if (!isFinite(SPLIT) || SPLIT < 25 || SPLIT > 85) SPLIT = 62;
+
+            var LABELS_ON = vars.labels !== "off";
+
             var root = document.getElementById("gs-plate").parentElement;
             var FRAME_W = root.clientWidth || 1920;
             var FRAME_H = root.clientHeight || 1080;
@@ -298,7 +408,7 @@ you paste it into.
                clean crop rather than a squeeze. */
             [
               [document.getElementById("gs-img-before"), BEFORE_GRADE],
-              [document.getElementById("gs-img-after"), AFTER_GRADE],
+              [document.getElementById("gs-img-after"), LOOK.grade],
             ].forEach(function (pair) {
               pair[0].style.width = PW + "px";
               pair[0].style.height = PH + "px";
@@ -318,6 +428,15 @@ you paste it into.
             tagAfter.style.left = PAD + "px";
             tagBefore.style.right = PAD + "px";
             tagBefore.style.textAlign = "right";
+
+            tagAfter.textContent = LOOK.label;
+            edge.style.width = EDGE_WIDTHS[EDGE];
+            /* The edge also casts a shadow, so zero width alone would leave a smudge. */
+            if (EDGE === "hidden") edge.style.display = "none";
+            if (!LABELS_ON) {
+              tagBefore.style.display = "none";
+              tagAfter.style.display = "none";
+            }
 
             /* Rest state lives outside the timeline so frame zero is already correct. */
             /* The plate is lit at frame zero and arrives on scale alone. Fading it up from
@@ -340,7 +459,7 @@ you paste it into.
             );
 
             /* The grade sweeps in and stops short, so both halves are readable together. */
-            var HOLD = Math.round(PW * 0.62);
+            var HOLD = Math.round(PW * (SPLIT / 100));
             tl.fromTo(after, { width: 0 }, { width: HOLD, duration: 1.6, ease: EASE_WIPE }, 0.7);
             tl.fromTo(edge, { x: 0 }, { x: HOLD, duration: 1.6, ease: EASE_WIPE }, 0.7);
             tl.fromTo(edge, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: EASE_FADE }, 0.7);
@@ -352,12 +471,7 @@ you paste it into.
             );
 
             /* Then it commits and takes the whole plate. */
-            tl.fromTo(
-              after,
-              { width: HOLD },
-              { width: PW, duration: 1.2, ease: EASE_COMMIT },
-              3.1,
-            );
+            tl.fromTo(after, { width: HOLD }, { width: PW, duration: 1.2, ease: EASE_COMMIT }, 3.1);
             tl.fromTo(edge, { x: HOLD }, { x: PW, duration: 1.2, ease: EASE_COMMIT }, 3.1);
             tl.fromTo(
               tagBefore,

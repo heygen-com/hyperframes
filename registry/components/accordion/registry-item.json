@@ -12,6 +12,70 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "style",
+      "label": "Width",
+      "description": "How wide the disclosure row sits.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "narrow",
+          "label": "Narrow"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Trigger height, type size and answer padding. Compact tightens the row for stacked lists.",
+      "default": "comfortable",
+      "options": [
+        {
+          "value": "comfortable",
+          "label": "Comfortable"
+        },
+        {
+          "value": "compact",
+          "label": "Compact"
+        }
+      ]
+    },
+    {
+      "id": "reveal",
+      "type": "enum",
+      "role": "style",
+      "label": "Reveal",
+      "description": "How the answer arrives: expand grows the height while it fades, fade keeps the height reserved, slide drops the answer down into place.",
+      "default": "expand",
+      "options": [
+        {
+          "value": "expand",
+          "label": "Expand"
+        },
+        {
+          "value": "fade",
+          "label": "Fade"
+        },
+        {
+          "value": "slide",
+          "label": "Slide"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/accordion.png"
   }

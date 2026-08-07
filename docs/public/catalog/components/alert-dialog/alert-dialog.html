@@ -2,11 +2,31 @@
   Alert Dialog - Operator Black destructive confirmation primitive.
 
   The modal stays centered and uses the modal Soft Optical timing tier.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them.
+
+    - tone (danger | warning | accent, default danger): colour family for the
+      warning icon and the confirm button. danger is the destructive red,
+      accent turns the same dialog into a benign confirmation.
+    - scrim (light | standard | blackout, default standard): how dark the
+      backdrop sits, from a 40 percent veil to an 86 percent blackout.
+    - size (compact | standard | wide, default standard): panel width, 360px,
+      420px or 520px.
+
+  On every default the result is identical to the original: a 420px panel with
+  a red icon and confirm button over a 62 percent black scrim.
 -->
 
 <div
   data-hf-ui-root
   class="hf-ui-alert-dialog"
+  data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Colour family for the warning icon and the confirm button.", "default": "danger", "options": [{ "value": "danger", "label": "Danger" }, { "value": "warning", "label": "Warning" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "scrim", "type": "enum", "role": "style", "label": "Scrim", "description": "How dark the backdrop behind the panel sits.", "default": "standard", "options": [{ "value": "light", "label": "Light" }, { "value": "standard", "label": "Standard" }, { "value": "blackout", "label": "Blackout" }] },
+    { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Panel width, from a terse confirm to a roomy one.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] }
+  ]'
   data-state="open"
   role="alertdialog"
   aria-modal="true"
@@ -180,14 +200,14 @@
   .hf-ui-alert-dialog-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.62);
+    background: rgba(0, 0, 0, var(--hf-alert-scrim, 0.62));
     opacity: var(--hf-alert-open);
   }
   .hf-ui-alert-dialog-panel {
     position: relative;
     display: grid;
     gap: var(--_hf-ui-space-4);
-    width: min(420px, calc(100% - 32px));
+    width: min(var(--hf-alert-panel-width, 420px), calc(100% - 32px));
     padding: var(--_hf-ui-space-6);
     border: 1px solid var(--_hf-ui-border-strong);
     border-radius: var(--_hf-ui-radius-overlay);
@@ -210,10 +230,10 @@
     place-items: center;
     width: 44px;
     height: 44px;
-    border: 1px solid var(--_hf-ui-danger);
+    border: 1px solid var(--hf-alert-tone, var(--_hf-ui-danger));
     border-radius: var(--_hf-ui-radius-surface);
     background: var(--_hf-ui-surface-inset);
-    color: var(--_hf-ui-danger);
+    color: var(--hf-alert-tone, var(--_hf-ui-danger));
   }
   .hf-ui-alert-dialog-icon svg {
     width: 20px;
@@ -261,8 +281,8 @@
     color: var(--_hf-ui-text);
   }
   .hf-ui-alert-dialog-confirm {
-    border: 1px solid var(--_hf-ui-danger);
-    background: var(--_hf-ui-danger);
+    border: 1px solid var(--hf-alert-tone, var(--_hf-ui-danger));
+    background: var(--hf-alert-tone, var(--_hf-ui-danger));
     color: var(--_hf-ui-action-contrast);
   }
   @media (pointer: coarse) {
@@ -271,6 +291,42 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var tones = {
+      danger: "var(--_hf-ui-danger)",
+      warning: "var(--_hf-ui-warning)",
+      accent: "var(--_hf-ui-accent)",
+    };
+    var scrims = { light: "0.4", standard: "0.62", blackout: "0.86" };
+    var sizes = { compact: "360px", standard: "420px", wide: "520px" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var tone = tones[pick(tones, vars.tone, "danger")];
+    var scrim = scrims[pick(scrims, vars.scrim, "standard")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+
+    var roots = document.querySelectorAll(".hf-ui-alert-dialog");
+    for (var i = 0; i < roots.length; i += 1) {
+      var style = roots[i].style;
+      style.setProperty("--hf-alert-tone", tone);
+      style.setProperty("--hf-alert-scrim", scrim);
+      style.setProperty("--hf-alert-panel-width", size);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

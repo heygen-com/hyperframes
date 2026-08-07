@@ -12,6 +12,48 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "target",
+      "type": "string",
+      "role": "content",
+      "label": "Target label",
+      "description": "Label on the button the pointer clicks.",
+      "default": "Generate"
+    },
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Pointer label",
+      "description": "Callout that rides with the pointer.",
+      "default": "Click"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Button fill: neutral is the shipped action chip, accent fills it with the family accent.",
+      "default": "neutral",
+      "options": [
+        { "value": "neutral", "label": "Neutral" },
+        { "value": "accent", "label": "Accent" }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Token set for the whole stage: dark surfaces or light ones.",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Dark" },
+        { "value": "light", "label": "Light" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor.png"
   }

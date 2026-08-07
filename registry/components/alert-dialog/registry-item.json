@@ -12,6 +12,74 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Colour family for the warning icon and the confirm button.",
+      "default": "danger",
+      "options": [
+        {
+          "value": "danger",
+          "label": "Danger"
+        },
+        {
+          "value": "warning",
+          "label": "Warning"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    },
+    {
+      "id": "scrim",
+      "type": "enum",
+      "role": "style",
+      "label": "Scrim",
+      "description": "How dark the backdrop behind the panel sits.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "light",
+          "label": "Light"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "blackout",
+          "label": "Blackout"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "style",
+      "label": "Size",
+      "description": "Panel width, from a terse confirm to a roomy one.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert-dialog.png"
   }

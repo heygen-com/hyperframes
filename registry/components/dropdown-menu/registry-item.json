@@ -12,6 +12,45 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour of the selection bar, check mark, and focus ring.",
+      "default": "mint",
+      "options": [
+        { "value": "mint", "label": "Mint" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "align",
+      "type": "enum",
+      "role": "style",
+      "label": "Align",
+      "description": "Which trigger edge the menu hangs from and scales out of.",
+      "default": "right",
+      "options": [
+        { "value": "right", "label": "Right" },
+        { "value": "left", "label": "Left" }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Height of the trigger and of every menu item.",
+      "default": "comfortable",
+      "options": [
+        { "value": "comfortable", "label": "Comfortable" },
+        { "value": "compact", "label": "Compact" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu.png"
   }

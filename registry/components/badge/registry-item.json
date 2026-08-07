@@ -12,6 +12,48 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Semantic colour of the badge.",
+      "default": "success",
+      "options": [
+        { "value": "success", "label": "Success" },
+        { "value": "neutral", "label": "Neutral" },
+        { "value": "warning", "label": "Warning" },
+        { "value": "danger", "label": "Danger" }
+      ]
+    },
+    {
+      "id": "emphasis",
+      "type": "enum",
+      "role": "style",
+      "label": "Emphasis",
+      "description": "How loudly the badge reads: outlined, filled, or borderless.",
+      "default": "outline",
+      "options": [
+        { "value": "outline", "label": "Outline" },
+        { "value": "solid", "label": "Solid" },
+        { "value": "quiet", "label": "Quiet" }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "style",
+      "label": "Size",
+      "description": "Height, text size and padding of the badge.",
+      "default": "standard",
+      "options": [
+        { "value": "compact", "label": "Compact" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "large", "label": "Large" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge.png"
   }

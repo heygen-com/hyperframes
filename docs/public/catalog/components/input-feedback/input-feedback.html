@@ -1,11 +1,36 @@
 <!--
   Input Feedback - transitions.dev-inspired primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Use the timeline integration
-  note at the bottom as the starting point for deterministic GSAP animation.
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the text or state attribute the
+  CSS below already keys off. The timeline recipe at the bottom is untouched
+  by them: it keeps shaking the same shell and popping the same chip.
+
+    - status (valid | error, default valid): whether the field reads as
+      accepted or rejected. valid is the green border, chip and hint; error
+      turns all three red and swaps the chip glyph to an exclamation mark.
+      Pair it with a matching hint.
+    - value (string, default "mia@example.com"): the text held by the field.
+      A blank or non-text override keeps the default.
+    - hint (string, default "Looks good."): the helper line under the field.
+
+  On every default the result is identical to the original: a green valid
+  field holding mia@example.com over Looks good.
 -->
 
-<div class="hf-transition-input-feedback" data-state="valid">
+<div
+  class="hf-transition-input-feedback"
+  data-state="valid"
+  data-composition-variables='[
+    { "id": "status", "type": "enum", "role": "style", "label": "Status", "description": "Whether the field reads as accepted or rejected, colouring the border, chip and hint.", "default": "valid", "options": [{ "value": "valid", "label": "Valid" }, { "value": "error", "label": "Error" }] },
+    { "id": "value", "type": "string", "role": "content", "label": "Value", "description": "Text held by the field.", "default": "mia@example.com" },
+    { "id": "hint", "type": "string", "role": "content", "label": "Hint", "description": "Helper line under the field.", "default": "Looks good." }
+  ]'
+>
   <label>Email</label>
   <div class="hf-transition-input-shell">
     <span class="hf-transition-input-value">mia@example.com</span>
@@ -17,6 +42,10 @@
 
 <style>
   .hf-transition-input-feedback {
+    --hf-fb-border: #d4d4d8;
+    --hf-fb-chip-bg: #dcfce7;
+    --hf-fb-chip-fg: #166534;
+    --hf-fb-hint: #16a34a;
     display: grid;
     gap: 10px;
     width: 430px;
@@ -34,7 +63,7 @@
     gap: 12px;
     height: 62px;
     padding: 0 16px;
-    border: 1px solid #d4d4d8;
+    border: 1px solid var(--hf-fb-border);
     border-radius: 16px;
     background: #ffffff;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
@@ -62,16 +91,60 @@
   .hf-transition-input-check {
     min-width: 38px;
     padding: 0 8px;
-    background: #dcfce7;
-    color: #166534;
+    background: var(--hf-fb-chip-bg);
+    color: var(--hf-fb-chip-fg);
   }
   .hf-transition-input-hint {
     margin: 0;
-    color: #16a34a;
+    color: var(--hf-fb-hint);
     font-size: 14px;
     font-weight: 800;
   }
+  .hf-transition-input-feedback[data-state="error"] {
+    --hf-fb-border: #fca5a5;
+    --hf-fb-chip-bg: #fee2e2;
+    --hf-fb-chip-fg: #991b1b;
+    --hf-fb-hint: #dc2626;
+  }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value : fallback;
+    }
+
+    var statuses = { valid: "OK", error: "!" };
+
+    var status = pick(statuses, vars.status, "valid");
+    var value = text(vars.value, "mia@example.com");
+    var hint = text(vars.hint, "Looks good.");
+
+    var roots = document.querySelectorAll(".hf-transition-input-feedback");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-state", status);
+      var valueEl = root.querySelector(".hf-transition-input-value");
+      if (valueEl) valueEl.textContent = value;
+      var hintEl = root.querySelector(".hf-transition-input-hint");
+      if (hintEl) hintEl.textContent = hint;
+      var chip = root.querySelector(".hf-transition-input-check");
+      if (chip) chip.textContent = statuses[status];
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

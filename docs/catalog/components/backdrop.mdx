@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/backdrop.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `dim` | `standard` | `sheer`, `standard`, `blackout` | How far the backdrop darkens the scene underneath once its fade lands. |
+| `tint` | `black` | `black`, `ink`, `plum` | Colour the dimming layer is mixed from: neutral black, a cool ink, or a warm plum. |
+| `frost` | `none` | `none`, `soft`, `heavy` | Optional blur applied to whatever the backdrop covers, for a frosted glass sheet. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="backdrop"
+  data-composition-src="compositions/components/backdrop.html"
+  data-variable-values='{"dim":"standard","tint":"black","frost":"none"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`backdrop.html`}>
@@ -21,11 +43,36 @@ That writes one file: `compositions/components/backdrop.html`.
 <!--
   Backdrop - Operator Black flat dimming layer specimen.
 
-  Paste the markup and CSS into a composition. Drive the timeline integration
-  from a paused GSAP timeline so renders remain deterministic.
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe at the bottom is untouched by
+  them: it keeps fading one opacity in, and these decide what that opacity
+  looks like when it lands.
+
+    - dim (sheer | standard | blackout, default standard): scales the settled
+      darkness. sheer leaves the scene readable underneath, blackout takes it
+      almost to solid.
+    - tint (black | ink | plum, default black): the colour the dimming layer
+      is mixed from, for a neutral, a cool, or a warm scrim.
+    - frost (none | soft | heavy, default none): an optional blur of whatever
+      the backdrop covers, turning the scrim into frosted glass.
+
+  On every default the result is identical to the original: a flat black scrim
+  fading to 62% with no blur.
 -->
 
-<div data-hf-ui-root class="hf-remocn-backdrop">
+<div
+  data-hf-ui-root
+  class="hf-remocn-backdrop"
+  data-composition-variables='[
+    { "id": "dim", "type": "enum", "role": "style", "label": "Dim", "description": "How far the backdrop darkens the scene underneath once its fade lands.", "default": "standard", "options": [{ "value": "sheer", "label": "Sheer" }, { "value": "standard", "label": "Standard" }, { "value": "blackout", "label": "Blackout" }] },
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Colour the dimming layer is mixed from: neutral black, a cool ink, or a warm plum.", "default": "black", "options": [{ "value": "black", "label": "Black" }, { "value": "ink", "label": "Ink" }, { "value": "plum", "label": "Plum" }] },
+    { "id": "frost", "type": "enum", "role": "style", "label": "Frost", "description": "Optional blur applied to whatever the backdrop covers, for a frosted glass sheet.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "soft", "label": "Soft" }, { "value": "heavy", "label": "Heavy" }] }
+  ]'
+>
   <div class="row"><span class="label">Timeline</span><span class="hint">00:04.00</span></div>
   <div class="row"><span class="label">Layers</span><span class="hint">12 visible</span></div>
   <div class="row"><span class="label">Export</span><span class="hint">1080p</span></div>
@@ -191,7 +238,10 @@ That writes one file: `compositions/components/backdrop.html`.
     content: "";
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, var(--hf-backdrop-open));
+    background: rgb(
+      var(--hf-backdrop-tint, 0 0 0) / calc(var(--hf-backdrop-open) * var(--hf-backdrop-dim, 1))
+    );
+    backdrop-filter: var(--hf-backdrop-frost, none);
     pointer-events: none;
   }
   .hf-remocn-backdrop .row {
@@ -214,6 +264,37 @@ That writes one file: `compositions/components/backdrop.html`.
     font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var dims = { sheer: 0.55, standard: 1, blackout: 1.45 };
+    var tints = { black: "0 0 0", ink: "8 12 26", plum: "28 10 26" };
+    var frosts = { none: "none", soft: "blur(4px)", heavy: "blur(12px)" };
+
+    var dim = dims[pick(dims, vars.dim, "standard")];
+    var tint = tints[pick(tints, vars.tint, "black")];
+    var frost = frosts[pick(frosts, vars.frost, "none")];
+
+    var roots = document.querySelectorAll(".hf-remocn-backdrop");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-backdrop-dim", String(dim));
+      roots[i].style.setProperty("--hf-backdrop-tint", tint);
+      roots[i].style.setProperty("--hf-backdrop-frost", frost);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

@@ -13,6 +13,29 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `blue` | `blue`, `violet`, `green` | Colour family of the incoming plate. Green rides --brand and --accent. |
+| `format` | `wide` | `wide`, `square`, `portrait` | Aspect of the tile the transition plays inside. |
+| `corner` | `soft` | `soft`, `sharp`, `round` | Corner radius of the tile. |
+| `chroma` | `standard` | `off`, `subtle`, `standard` | Strength of the red and cyan fringe that stutters over the wipe. Off removes it. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="image-expand-to-fullscreen"
+  data-composition-src="compositions/components/image-expand-to-fullscreen.html"
+  data-variable-values='{"accent":"blue","format":"wide","corner":"soft","chroma":"standard"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`image-expand-to-fullscreen.html`}>
@@ -21,11 +44,34 @@ That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
 <!--
   Image Expand to Fullscreen - remocn component ported to HyperFrames authoring format.
 
-  Paste the markup and CSS into a composition. Drive the timeline integration
+  Paste the markup, CSS and script into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on anything
+  missing or unrecognised, and writes the result as a custom property the CSS above
+  consumes. The timeline recipe below is untouched by them.
+
+    - accent (blue | violet | green, default blue): colour family of the incoming plate.
+      green rides --brand and --accent.
+    - format (wide | square | portrait, default wide): aspect of the tile the transition
+      plays inside, 760x428, 560x560 or 428x760.
+    - corner (soft | sharp | round, default soft): corner radius of the tile, 30px, 0 or 60px.
+    - chroma (off | subtle | standard, default standard): strength of the red and cyan fringe
+      that stutters over the wipe. off removes it entirely.
+
+  On every default the result is identical to the original: a 760x428 tile with 30px
+  corners, a blue to violet destination plate and a full strength chroma stutter.
 -->
 
-<div class="hf-remocn-image-expand-to-fullscreen">
+<div
+  class="hf-remocn-image-expand-to-fullscreen"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the incoming plate. Green rides --brand and --accent.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "green", "label": "Green" }] },
+    { "id": "format", "type": "enum", "role": "layout", "label": "Format", "description": "Aspect of the tile the transition plays inside.", "default": "wide", "options": [{ "value": "wide", "label": "Wide" }, { "value": "square", "label": "Square" }, { "value": "portrait", "label": "Portrait" }] },
+    { "id": "corner", "type": "enum", "role": "style", "label": "Corner", "description": "Corner radius of the tile.", "default": "soft", "options": [{ "value": "soft", "label": "Soft" }, { "value": "sharp", "label": "Sharp" }, { "value": "round", "label": "Round" }] },
+    { "id": "chroma", "type": "enum", "role": "motion", "label": "Chroma split", "description": "Strength of the red and cyan fringe that stutters over the wipe. Off removes it.", "default": "standard", "options": [{ "value": "off", "label": "Off" }, { "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }] }
+  ]'
+>
   <div class="scene from">Before</div>
   <div class="scene to">Image Expand to Fullscreen</div>
   <div class="fx"></div>
@@ -43,10 +89,10 @@ That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
   }
   .hf-remocn-image-expand-to-fullscreen {
     position: relative;
-    width: 760px;
-    height: 428px;
+    width: var(--hf-plate-w, 760px);
+    height: var(--hf-plate-h, 428px);
     overflow: hidden;
-    border-radius: 30px;
+    border-radius: var(--hf-plate-radius, 30px);
     background: #111827;
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
   }
@@ -67,7 +113,7 @@ That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
     filter: blur(var(--hf-from-blur, 0px));
   }
   .hf-remocn-image-expand-to-fullscreen .to {
-    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    background: linear-gradient(135deg, var(--hf-accent), var(--hf-plate-2, #7c3aed));
     transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
     clip-path: inset(
       var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
@@ -85,7 +131,7 @@ That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: var(--hf-rgb-opacity, 0);
+    opacity: calc(var(--hf-rgb-opacity, 0) * var(--hf-rgb-strength, 1));
     background: linear-gradient(
       90deg,
       rgba(239, 68, 68, 0.35),
@@ -95,6 +141,50 @@ That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
     transform: translateX(var(--hf-rgb-x, 0px));
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accents = {
+      blue: { a: "#2563eb", b: "#7c3aed" },
+      violet: { a: "#7c3aed", b: "#db2777" },
+      green: { a: "var(--brand, #34d399)", b: "var(--accent, #38bdf8)" },
+    };
+    var formats = {
+      wide: { w: "760px", h: "428px" },
+      square: { w: "560px", h: "560px" },
+      portrait: { w: "428px", h: "760px" },
+    };
+    var corners = { soft: "30px", sharp: "0px", round: "60px" };
+    var chromas = { off: 0, subtle: 0.4, standard: 1 };
+
+    var accent = accents[pick(accents, vars.accent, "blue")];
+    var format = formats[pick(formats, vars.format, "wide")];
+    var corner = corners[pick(corners, vars.corner, "soft")];
+    var chroma = chromas[pick(chromas, vars.chroma, "standard")];
+
+    var roots = document.querySelectorAll(".hf-remocn-image-expand-to-fullscreen");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-accent", accent.a);
+      roots[i].style.setProperty("--hf-plate-2", accent.b);
+      roots[i].style.setProperty("--hf-plate-w", format.w);
+      roots[i].style.setProperty("--hf-plate-h", format.h);
+      roots[i].style.setProperty("--hf-plate-radius", corner);
+      roots[i].style.setProperty("--hf-rgb-strength", String(chroma));
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

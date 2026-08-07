@@ -12,6 +12,60 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Button fill and glyph colour. Accent rides --brand.",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Dark" },
+        { "value": "light", "label": "Light" },
+        { "value": "accent", "label": "Accent" }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "layout",
+      "label": "Size",
+      "description": "Button box and glyph size, from a toolbar chip to a hero action.",
+      "default": "standard",
+      "options": [
+        { "value": "small", "label": "Small" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "large", "label": "Large" }
+      ]
+    },
+    {
+      "id": "shape",
+      "type": "enum",
+      "role": "style",
+      "label": "Shape",
+      "description": "Corner treatment of the button box.",
+      "default": "rounded",
+      "options": [
+        { "value": "rounded", "label": "Rounded" },
+        { "value": "circle", "label": "Circle" },
+        { "value": "square", "label": "Square" }
+      ]
+    },
+    {
+      "id": "blur",
+      "type": "enum",
+      "role": "motion",
+      "label": "Blur",
+      "description": "Scales the blur radius the timeline drives through the swap, from a light haze to a full smear.",
+      "default": "standard",
+      "options": [
+        { "value": "soft", "label": "Soft" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "heavy", "label": "Heavy" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/icon-swap.png"
   }

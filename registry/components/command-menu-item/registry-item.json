@@ -12,6 +12,52 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "labels",
+      "type": "string",
+      "role": "content",
+      "label": "Labels",
+      "description": "Comma-separated row labels matched to rows by position. Blank entries keep the authored label.",
+      "default": "New composition,Render preview,Publish project"
+    },
+    {
+      "id": "hover",
+      "type": "number",
+      "role": "content",
+      "label": "Hover row",
+      "description": "Which row carries the hover state, counting from 1. Out-of-range values clamp.",
+      "default": 2,
+      "min": 1,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token behind the check icon and the focus ring.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "enum",
+      "role": "style",
+      "label": "Theme",
+      "description": "Token set for the rows: dark surfaces or light ones.",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Dark" },
+        { "value": "light", "label": "Light" }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/command-menu-item.png"
   }

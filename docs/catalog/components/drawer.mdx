@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/drawer.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `width` | `standard` | `compact`, `standard`, `full` | Sheet width, from a narrow tray to full bleed. |
+| `handle` | `visible` | `visible`, `hidden` | Whether the grab handle bar sits above the title. |
+| `rows` | `inset` | `inset`, `outlined`, `plain` | Row surface treatment: filled inset, outlined, or bare. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html
+<div
+  data-composition-id="drawer"
+  data-composition-src="compositions/components/drawer.html"
+  data-variable-values='{"width":"standard","handle":"visible","rows":"inset"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`drawer.html`}>
@@ -23,11 +45,33 @@ That writes one file: `compositions/components/drawer.html`.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
+
+  Variables. The script below reads each one, falls back to the declared
+  default on anything missing or unrecognised, and writes the result as a
+  custom property the CSS consumes. The timeline recipe at the bottom is
+  untouched by them.
+
+    - width (compact | standard | full, default standard): sheet width.
+      compact is a 400px tray, standard the original 520px, full spans the
+      whole frame. All three still cap at the available width.
+    - handle (visible | hidden, default visible): whether the grab handle bar
+      sits above the title. Hiding it pulls the content up by its 26px slot.
+    - rows (inset | outlined | plain, default inset): row surface. inset is
+      the original filled slab, outlined swaps the fill for a hairline border,
+      plain leaves the rows bare on the sheet.
+
+  On every default the result is identical to the original: a 520px sheet with
+  a handle and two filled rows.
 -->
 
 <div
   data-hf-ui-root
   class="hf-ui-drawer"
+  data-composition-variables='[
+    { "id": "width", "type": "enum", "role": "style", "label": "Width", "description": "Sheet width, from a narrow tray to full bleed.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "full", "label": "Full" }] },
+    { "id": "handle", "type": "enum", "role": "style", "label": "Handle", "description": "Whether the grab handle bar sits above the title.", "default": "visible", "options": [{ "value": "visible", "label": "Visible" }, { "value": "hidden", "label": "Hidden" }] },
+    { "id": "rows", "type": "enum", "role": "style", "label": "Rows", "description": "Row surface treatment: filled inset, outlined, or bare.", "default": "inset", "options": [{ "value": "inset", "label": "Inset" }, { "value": "outlined", "label": "Outlined" }, { "value": "plain", "label": "Plain" }] }
+  ]'
   role="dialog"
   aria-modal="true"
   aria-labelledby="hf-ui-drawer-title"
@@ -174,7 +218,7 @@ That writes one file: `compositions/components/drawer.html`.
   }
   /* hf-ui:tokens:end */
   .hf-ui-drawer {
-    width: min(520px, 100%);
+    width: min(var(--hf-drawer-width, 520px), 100%);
     padding: var(--_hf-ui-space-3) var(--_hf-ui-space-6) var(--_hf-ui-space-6);
     border: 1px solid var(--_hf-ui-border-strong);
     border-block-end: 0;
@@ -184,6 +228,7 @@ That writes one file: `compositions/components/drawer.html`.
     box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.3);
   }
   .hf-ui-drawer-handle {
+    display: var(--hf-drawer-handle-display, block);
     width: 56px;
     height: 4px;
     margin: 0 auto 22px;
@@ -202,8 +247,9 @@ That writes one file: `compositions/components/drawer.html`.
     align-items: center;
     min-height: var(--_hf-ui-control-height);
     padding-inline: var(--_hf-ui-space-3);
+    border: var(--hf-drawer-row-border, 0 solid currentColor);
     border-radius: var(--_hf-ui-radius-control);
-    background: var(--_hf-ui-surface-inset);
+    background: var(--hf-drawer-row-bg, var(--_hf-ui-surface-inset));
     font-size: 14px;
     font-weight: var(--_hf-ui-weight-medium);
   }
@@ -213,6 +259,42 @@ That writes one file: `compositions/components/drawer.html`.
     text-transform: uppercase;
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides fall back to their declared defaults.
+    var widths = { compact: "400px", standard: "520px", full: "100%" };
+    var handles = { visible: "block", hidden: "none" };
+    var rowStyles = {
+      inset: { bg: "var(--_hf-ui-surface-inset)", border: "0 solid currentColor" },
+      outlined: { bg: "transparent", border: "1px solid var(--_hf-ui-border)" },
+      plain: { bg: "transparent", border: "0 solid currentColor" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var width = widths[pick(widths, vars.width, "standard")];
+    var handle = handles[pick(handles, vars.handle, "visible")];
+    var row = rowStyles[pick(rowStyles, vars.rows, "inset")];
+
+    var roots = document.querySelectorAll(".hf-ui-drawer");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-drawer-width", width);
+      roots[i].style.setProperty("--hf-drawer-handle-display", handle);
+      roots[i].style.setProperty("--hf-drawer-row-bg", row.bg);
+      roots[i].style.setProperty("--hf-drawer-row-border", row.border);
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:
