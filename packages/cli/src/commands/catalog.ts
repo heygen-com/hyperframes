@@ -32,13 +32,6 @@ import {
   hasLocalVectors,
   localSemanticRanking,
 } from "../registry/localSemantic.js";
-import {
-  describeOutcome,
-  recordSmartSearchConsent,
-  smartSearch,
-  smartSearchConsent,
-  type SmartSearchOutcome,
-} from "../registry/smartSearch.js";
 
 /**
  * Get the offline tier ready, and report every reason it could not be.
@@ -122,15 +115,7 @@ export default defineCommand({
     query: {
       type: "string",
       description:
-        "Search by meaning when smart search is on, otherwise by name, title and description",
-    },
-    smart: {
-      type: "boolean",
-      description: "Force smart search for this run (sends the query to HeyGen)",
-    },
-    "no-smart": {
-      type: "boolean",
-      description: "Force local word matching for this run",
+        "Search by meaning when the on-device model is on, otherwise by name, title and description",
     },
     yes: {
       type: "boolean",
@@ -139,9 +124,9 @@ export default defineCommand({
     },
     "on-device": {
       type: "boolean",
-      // The counterpart to --smart. Consent for the model download is otherwise
-      // only reachable through a prompt that fires on a TTY, which leaves every
-      // agent and CI run unable to opt in at all.
+      // Consent for the model download is otherwise only reachable through a
+      // prompt that fires on a TTY, which leaves every agent and CI run unable
+      // to opt in at all.
       description: "Use on-device meaning search, downloading the model if needed",
     },
   },
@@ -180,13 +165,6 @@ export default defineCommand({
       : items;
 
     const query = typeof args.query === "string" ? args.query.trim() : "";
-    const outcome = query
-      ? await runSearch(query, {
-          forceSmart: args.smart === true,
-          forceLocal: args["no-smart"] === true,
-          json,
-        })
-      : null;
     // Collected rather than only printed, so --json can carry the same reasons
     // the terminal shows. A machine that asked for a tier deserves to be told
     // it did not run.
@@ -197,7 +175,7 @@ export default defineCommand({
             registry: config.registry,
           })
         : [];
-    const searched = query ? await applySearch(tagged, query, outcome) : null;
+    const searched = query ? await applySearch(tagged, query) : null;
     const matching = searched ? searched.items : tagged;
 
     if (matching.length === 0) {
@@ -209,8 +187,8 @@ export default defineCommand({
           JSON.stringify(
             {
               query,
-              tier: tierToken(searched, outcome),
-              tier_detail: outcome ? describeOutcome(outcome) : "local word match",
+              tier: tierToken(searched),
+              tier_detail: tierDetail(searched),
               dropped: searched?.missing ?? 0,
               shown: 0,
               total: tagged.length,
@@ -230,14 +208,12 @@ export default defineCommand({
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
         console.log(`No items match ${criteria.join(" and ")}.`);
-        if (outcome) console.log(c.dim(`  ${describeOutcome(outcome)}`));
       }
       if (query) await offerLocalModel(0, json, config.registry);
       return;
     }
 
     if (json) {
-      if (outcome) console.error(`search: ${describeOutcome(outcome)}`);
       const output = matching.map((item) => ({
         name: item.name,
         type: item.type.replace("hyperframes:", ""),
@@ -257,17 +233,8 @@ export default defineCommand({
         JSON.stringify(
           {
             query,
-            tier: tierToken(searched, outcome),
-            tier_detail: outcome ? describeOutcome(outcome) : "local word match",
-            ...(outcome?.status === "ok"
-              ? {
-                  ranking: outcome.result.mode,
-                  catalog_version: outcome.result.catalogVersion,
-                  ...(outcome.result.topScore === undefined
-                    ? {}
-                    : { top_score: outcome.result.topScore }),
-                }
-              : {}),
+            tier: tierToken(searched),
+            tier_detail: tierDetail(searched),
             dropped: searched?.missing ?? 0,
             shown: output.length,
             total: tagged.length,
@@ -284,12 +251,7 @@ export default defineCommand({
     if (searched) {
       // Name the search that actually ran. A user seeing worse results has to
       // be able to tell which tier produced them.
-      const how =
-        searched.localMode === "local-model"
-          ? "on-device meaning search"
-          : outcome
-            ? describeOutcome(outcome)
-            : "local word match";
+      const how = tierDetail(searched);
       const unshowable =
         searched.missing > 0
           ? ` · ${searched.missing} ranked ${searched.missing === 1 ? "move" : "moves"} not in this registry`
@@ -367,40 +329,6 @@ export default defineCommand({
 });
 
 /**
- * Decide whether this run may search remotely, asking once if it never has.
- *
- * Consent is remembered rather than demanded every time. A flag only power users
- * discover would leave everyone else on substring matching, which is the weaker
- * path precisely for the people least able to notice.
- */
-async function runSearch(
-  query: string,
-  options: { forceSmart: boolean; forceLocal: boolean; json: boolean },
-): Promise<SmartSearchOutcome> {
-  if (options.forceLocal) return { status: "declined" };
-
-  let consented = smartSearchConsent();
-  if (consented === undefined && !options.forceSmart) {
-    // Never prompt when the output is being consumed by a script. Silence is
-    // not consent, so an unattended run stays local.
-    if (options.json || !process.stdout.isTTY) return { status: "declined" };
-
-    const answer = await clack.confirm({
-      message: "Search the full catalog by meaning? Your query text is sent to HeyGen.",
-      initialValue: true,
-    });
-    if (clack.isCancel(answer)) return { status: "declined" };
-    consented = answer === true;
-    recordSmartSearchConsent(consented);
-  }
-
-  const allowed = consented === true || options.forceSmart;
-  if (!allowed) return { status: "declined" };
-  return await smartSearch(query, { limit: 25, consented: allowed });
-}
-
-/** Order by the remote ranking when there is one, otherwise search locally. */
-/**
  * Resolve ranked names against the items this registry actually has.
  *
  * `missing` is the count the ranking returned and this registry cannot show.
@@ -419,21 +347,10 @@ function pickByName<T extends { name: string }>(
   return { ranked, missing: names.length - ranked.length };
 }
 
-// one branch per retrieval tier, which is the point of the function
-// fallow-ignore-next-line complexity
 async function applySearch<T extends { name: string; title: string; description: string }>(
   items: T[],
   query: string,
-  outcome: SmartSearchOutcome | null,
 ): Promise<{ items: T[]; localMode: LocalMode; missing: number }> {
-  if (outcome?.status === "ok" && outcome.result.matches.length > 0) {
-    const { ranked, missing } = pickByName(
-      items,
-      outcome.result.matches.map((match) => match.name),
-    );
-    if (ranked.length > 0) return { items: ranked, localMode: "remote", missing };
-  }
-
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
   if (localModelStatus().status === "ready") {
@@ -470,27 +387,20 @@ async function applySearch<T extends { name: string; title: string; description:
 /**
  * Which tier answered, as a stable token.
  *
- * Deliberately not the printed sentence: "smart search (meaning)" is written
+ * Deliberately not the printed sentence: "on-device meaning search" is written
  * for a person and will be reworded. A machine consumer needs something that
  * will not move underneath it.
  */
-function tierToken(
-  searched: { localMode: LocalMode } | null,
-  outcome: SmartSearchOutcome | null,
-): "meaning" | "on-device" | "words" {
-  if (searched?.localMode === "remote") {
-    // The server can answer a smart search with its own lexical fallback. That
-    // is a word-match result however it was reached, and saying otherwise
-    // would overstate it.
-    return outcome?.status === "ok" && outcome.result.mode === "lexical_fallback"
-      ? "words"
-      : "meaning";
-  }
-  if (searched?.localMode === "local-model") return "on-device";
-  return "words";
+function tierToken(searched: { localMode: LocalMode } | null): "on-device" | "words" {
+  return searched?.localMode === "local-model" ? "on-device" : "words";
 }
 
-type LocalMode = "remote" | "local-model" | "words";
+/** The same tier, as the sentence a person reads. */
+function tierDetail(searched: { localMode: LocalMode } | null): string {
+  return searched?.localMode === "local-model" ? "on-device meaning search" : "local word match";
+}
+
+type LocalMode = "local-model" | "words";
 
 /**
  * Offer the on-device model when word matching came up thin, and only then.
