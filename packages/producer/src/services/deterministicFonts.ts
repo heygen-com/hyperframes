@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
 
-import { FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
+import { CANONICAL_FONT_DISPLAY_NAMES, FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
 import {
   locateSystemFontVariants,
   SYSTEM_FONT_SIZE_LIMIT,
@@ -487,8 +487,14 @@ async function buildFontFaceCss(
       // Fetch all weights from Google Fonts and add any that aren't
       // already covered by the embedded bundle. This ensures that
       // compositions requesting e.g. wght@200 get that weight even
-      // if the bundle only ships 400/700/900.
-      const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
+      // if the bundle only ships 400/700/900. Query the CANONICAL
+      // family, not the authored one: for a cross-typeface alias
+      // (helvetica → inter) the authored name is a different typeface,
+      // so supplementing from it would mix two typefaces under one
+      // font-family. The faces are still emitted under
+      // `originalCaseFamily` so the authored CSS keeps matching.
+      const canonicalFamily = CANONICAL_FONT_DISPLAY_NAMES[canonicalKey] ?? originalCaseFamily;
+      const googleFaces = await fetchGoogleFont(canonicalFamily, options, fontText);
       for (const face of googleFaces) {
         // A weight covered by the embedded bundle is already full-coverage —
         // skip it. For weights the bundle lacks, add EVERY subset face (a
