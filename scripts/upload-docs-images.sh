@@ -28,4 +28,15 @@ aws --profile "$PROFILE" s3 sync "$SRC" "$DEST" \
   --cache-control "public, max-age=31536000, immutable" \
   --metadata-directive REPLACE
 
+# Preview URLs are stable, and the objects go up `immutable` with a one-year
+# max-age, so a re-upload alone changes nothing a reader sees: the edge keeps
+# serving the old file until the TTL expires. Republishing a corrected preview
+# is not done until the cache is dropped.
+DISTRIBUTION="${DOCS_CDN_DISTRIBUTION_ID:-E2BSLVSZ7FG3U0}"
+echo "Invalidating $DISTRIBUTION"
+aws --profile "$PROFILE" cloudfront create-invalidation \
+  --distribution-id "$DISTRIBUTION" \
+  --paths "/hyperframes-oss/docs/images/*" \
+  --query "Invalidation.Id" --output text
+
 echo "Done. Files are live at https://static.heygen.ai/hyperframes-oss/docs/images/"
