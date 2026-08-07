@@ -151,95 +151,97 @@ function committed(calls: unknown[][]) {
   return { scale, size };
 }
 
+/** The element as the gesture leaves it: drafted box, base pose, live pose. */
+function mountCase(testCase: Case, live: Pose) {
+  const el = document.createElement("div");
+  el.id = "el";
+  el.setAttribute("data-hf-studio-original-box-width", String(testCase.box.w));
+  el.setAttribute("data-hf-studio-original-box-height", String(testCase.box.h));
+  el.setAttribute("data-hf-drag-gsap-base-x", String(testCase.base.x));
+  el.setAttribute("data-hf-drag-gsap-base-y", String(testCase.base.y));
+  el.setAttribute("data-hf-studio-box-size", "true");
+  el.style.width = `${testCase.drop.w}px`;
+  el.style.height = `${testCase.drop.h}px`;
+  document.body.append(el);
+
+  el.getBoundingClientRect = () => {
+    const w = Number.parseFloat(el.style.width) || live.box.w;
+    const h = Number.parseFloat(el.style.height) || live.box.h;
+    const rect = renderRect({ ...live, box: { w, h } }, testCase.rotation);
+    return { ...rect, width: rect.w, height: rect.h } as unknown as DOMRect;
+  };
+  const gsap = {
+    set: (_target: Element, vars: Props) => {
+      if (vars.x != null) live.pos.x = vars.x;
+      if (vars.y != null) live.pos.y = vars.y;
+      if (vars.scaleX != null) live.scale.x = vars.scaleX;
+      if (vars.scaleY != null) live.scale.y = vars.scaleY;
+    },
+    getProperty: (_target: Element, prop: string) =>
+      ({
+        scaleX: live.scale.x,
+        scaleY: live.scale.y,
+        x: live.pos.x,
+        y: live.pos.y,
+        rotation: testCase.rotation,
+      })[prop] ?? 0,
+  };
+  Object.assign(window, { gsap });
+  const iframe = {
+    contentWindow: { gsap, __timelines: { main: { getChildren: () => [] } } },
+    contentDocument: document,
+  } as unknown as HTMLIFrameElement;
+  return { el, iframe };
+}
+
+/** One run, and what it got wrong. 1px: position rounds, scale keeps 3dp. */
+async function runCase(testCase: Case): Promise<string[]> {
+  document.body.innerHTML = "";
+  usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
+  const live: Pose = {
+    box: { ...testCase.box },
+    pos: { x: testCase.drop.x, y: testCase.drop.y },
+    scale: { ...testCase.liveScale },
+  };
+  const { el, iframe } = mountCase(testCase, live);
+  const dropped = el.getBoundingClientRect();
+  const animations = testCase.animations();
+  const commitMutation = vi.fn();
+
+  const outcome = await tryGsapResizeIntercept(
+    { id: "el", selector: "#el", element: el } as DomEditSelection,
+    { width: testCase.drop.w, height: testCase.drop.h },
+    animations,
+    iframe,
+    commitMutation as never,
+    async () => animations,
+  );
+
+  const { scale, size } = committed(commitMutation.mock.calls);
+  const settled = renderRect(
+    { box: size ?? testCase.box, pos: { ...live.pos }, scale: scale ?? testCase.liveScale },
+    testCase.rotation,
+  );
+  const off = (a: number, b: number) => Math.abs(a - b) > 1;
+
+  if (off(settled.w, dropped.width) || off(settled.h, dropped.height)) {
+    return [
+      `${testCase.name} — box ${settled.w.toFixed(1)}x${settled.h.toFixed(1)}` +
+        `, dropped ${dropped.width.toFixed(1)}x${dropped.height.toFixed(1)}`,
+    ];
+  }
+  const owns = outcome.status === "persisted" && outcome.ownsDragOffset === true;
+  if (owns && (off(settled.x, dropped.x) || off(settled.y, dropped.y))) {
+    return [
+      `${testCase.name} — landed ${settled.x.toFixed(1)},${settled.y.toFixed(1)}` +
+        `, dropped ${dropped.x.toFixed(1)},${dropped.y.toFixed(1)}`,
+    ];
+  }
+  return [];
+}
+
 it(`sweeps ${CASES.length} rotations and drops for the box the user dropped`, async () => {
   const failures: string[] = [];
-
-  for (const testCase of CASES) {
-    document.body.innerHTML = "";
-    const el = document.createElement("div");
-    el.id = "el";
-    el.setAttribute("data-hf-studio-original-box-width", String(testCase.box.w));
-    el.setAttribute("data-hf-studio-original-box-height", String(testCase.box.h));
-    el.setAttribute("data-hf-drag-gsap-base-x", String(testCase.base.x));
-    el.setAttribute("data-hf-drag-gsap-base-y", String(testCase.base.y));
-    el.setAttribute("data-hf-studio-box-size", "true");
-    el.style.width = `${testCase.drop.w}px`;
-    el.style.height = `${testCase.drop.h}px`;
-    document.body.append(el);
-    usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
-
-    const live: Pose = {
-      box: { ...testCase.box },
-      pos: { x: testCase.drop.x, y: testCase.drop.y },
-      scale: { ...testCase.liveScale },
-    };
-    el.getBoundingClientRect = () => {
-      const w = Number.parseFloat(el.style.width) || live.box.w;
-      const h = Number.parseFloat(el.style.height) || live.box.h;
-      const rect = renderRect({ ...live, box: { w, h } }, testCase.rotation);
-      return { ...rect, width: rect.w, height: rect.h } as unknown as DOMRect;
-    };
-    const gsapStub = {
-      set: (_target: Element, vars: Props) => {
-        if (vars.x != null) live.pos.x = vars.x;
-        if (vars.y != null) live.pos.y = vars.y;
-        if (vars.scaleX != null) live.scale.x = vars.scaleX;
-        if (vars.scaleY != null) live.scale.y = vars.scaleY;
-      },
-      getProperty: (_target: Element, prop: string) =>
-        ({
-          scaleX: live.scale.x,
-          scaleY: live.scale.y,
-          x: live.pos.x,
-          y: live.pos.y,
-          rotation: testCase.rotation,
-        })[prop] ?? 0,
-    };
-    Object.assign(window, { gsap: gsapStub });
-    const iframe = {
-      contentWindow: { gsap: gsapStub, __timelines: { main: { getChildren: () => [] } } },
-      contentDocument: document,
-    } as unknown as HTMLIFrameElement;
-
-    const dropped = el.getBoundingClientRect();
-    const animations = testCase.animations();
-    const commitMutation = vi.fn();
-    const outcome = await tryGsapResizeIntercept(
-      { id: "el", selector: "#el", element: el } as DomEditSelection,
-      { width: testCase.drop.w, height: testCase.drop.h },
-      animations,
-      iframe,
-      commitMutation as never,
-      async () => animations,
-    );
-
-    const { scale, size } = committed(commitMutation.mock.calls);
-    const settled = renderRect(
-      {
-        box: size ?? testCase.box,
-        pos: { x: live.pos.x, y: live.pos.y },
-        scale: scale ?? testCase.liveScale,
-      },
-      testCase.rotation,
-    );
-
-    // 1px: position rounds to whole pixels and scale to three decimals.
-    const off = (a: number, b: number) => Math.abs(a - b) > 1;
-    if (off(settled.w, dropped.width) || off(settled.h, dropped.height)) {
-      failures.push(
-        `${testCase.name} — box ${settled.w.toFixed(1)}x${settled.h.toFixed(1)}` +
-          `, dropped ${dropped.width.toFixed(1)}x${dropped.height.toFixed(1)}`,
-      );
-      continue;
-    }
-    const ownsDragOffset = outcome.status === "persisted" && outcome.ownsDragOffset === true;
-    if (ownsDragOffset && (off(settled.x, dropped.x) || off(settled.y, dropped.y))) {
-      failures.push(
-        `${testCase.name} — landed ${settled.x.toFixed(1)},${settled.y.toFixed(1)}` +
-          ` , dropped ${dropped.x.toFixed(1)},${dropped.y.toFixed(1)}`,
-      );
-    }
-  }
-
+  for (const testCase of CASES) failures.push(...(await runCase(testCase)));
   expect(failures).toEqual([]);
 });

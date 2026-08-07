@@ -118,47 +118,57 @@ function fakeSource(initial: GsapAnimation[]) {
     ];
   };
 
+  const apply = (mutation: Record<string, unknown>, id: string | undefined) => {
+    const properties = (mutation.properties ?? {}) as Props;
+    if (mutation.type === "split-into-property-groups") return id && split(id);
+    if (!id) {
+      if (mutation.type === "add")
+        current = [...current, tween(`#el-added-${current.length}`, properties, 0)];
+      return;
+    }
+    mergeInto(id, properties);
+    const framed = (mutation.keyframes as Array<{ properties: Props }> | undefined) ?? [];
+    for (const frame of framed) mergeInto(id, frame.properties);
+  };
+
   const commitMutation = vi.fn(async (_selection: unknown, mutation: Record<string, unknown>) => {
     const id = mutation.animationId as string | undefined;
     if (id && !current.some((animation) => animation.id === id)) {
       recorded.rejected.push(`${String(mutation.type)}:${id}`);
       throw new Error("animation not found");
     }
-    const properties = (mutation.properties ?? {}) as Props;
-    const framed = (mutation.keyframes as Array<{ properties: Props }> | undefined) ?? [];
-    if (mutation.type === "split-into-property-groups" && id) split(id);
-    else if (id) {
-      mergeInto(id, properties);
-      for (const frame of framed) mergeInto(id, frame.properties);
-    } else if (mutation.type === "add") {
-      current = [...current, tween(`#el-added-${current.length}`, properties, 0)];
-    }
+    apply(mutation, id);
   });
 
   return { commitMutation, recorded, animations: () => current };
 }
 
+type Dimension = Array<[string, () => GsapAnimation[]]>;
+
+function dimension(
+  entries: Record<string, null | (() => GsapAnimation | GsapAnimation[])>,
+): Dimension {
+  return Object.entries(entries).map(([name, make]) => [
+    name,
+    () => {
+      if (!make) return [];
+      const made = make();
+      return Array.isArray(made) ? made : [made];
+    },
+  ]);
+}
+
 function buildCases() {
-  const cases: Array<{ name: string; animations: GsapAnimation[] }> = [];
-  for (const [scaleName, scale] of Object.entries(SCALE)) {
-    for (const [sizeName, size] of Object.entries(SIZE)) {
-      for (const [positionName, position] of Object.entries(POSITION)) {
-        for (const [extraName, extra] of Object.entries(EXTRA)) {
-          const animations = [
-            ...(scale ? [scale()] : []),
-            ...(size ? [size()] : []),
-            ...(position ? [position()] : []),
-            ...(extra ? extra() : []),
-          ];
-          cases.push({
-            name: `scale ${scaleName} / size ${sizeName} / position ${positionName} / ${extraName}`,
-            animations,
-          });
-        }
-      }
-    }
+  const dimensions = [dimension(SCALE), dimension(SIZE), dimension(POSITION), dimension(EXTRA)];
+  let combos: Array<Array<[string, () => GsapAnimation[]]>> = [[]];
+  for (const next of dimensions) {
+    combos = combos.flatMap((combo) => next.map((entry) => [...combo, entry]));
   }
-  return cases;
+  const labels = ["scale", "size", "position", "extra"];
+  return combos.map((combo) => ({
+    name: combo.map(([name], index) => `${labels[index]} ${name}`).join(" / "),
+    animations: combo.flatMap(([, make]) => make()),
+  }));
 }
 
 const CASES = buildCases();
