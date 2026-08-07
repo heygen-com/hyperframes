@@ -24,6 +24,7 @@ import {
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
+import { canEditElementTextInline } from "../components/editor/domEditInlineText";
 import { buildTextFieldChildOperations } from "./domEditTextFieldCommitOps";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
@@ -326,7 +327,16 @@ export function useDomEditTextCommits({
   const handleDomRichTextCommit = useCallback(
     async (html: string) => {
       if (!domEditSelection) return;
-      if (!isTextEditableSelection(domEditSelection)) return;
+      // The same gate that let the edit open, not the design panel's.
+      //
+      // The panel's rule is about its text fields, and it has none for an
+      // element whose text contains a line break: a `<span>` holding `<br>`s
+      // is not a leaf, so nothing inside is a field and the element reports no
+      // editable text at all. Editing in place does not use fields — it
+      // rewrites the element's own markup — so refusing on that rule refused
+      // elements the caret had just been opened in, and every colour the user
+      // chose was dropped on the way out with nothing said about it.
+      if (!canEditElementTextInline(domEditSelection.element)) return;
       const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
       const operations: PatchOperation[] = [{ type: "rich-text", property: "", value: html }];
       const iframe = previewIframeRef.current;

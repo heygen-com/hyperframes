@@ -451,6 +451,20 @@ describe("applyInlineStyle keeps what the design panel tracks", () => {
     expect(host.innerHTML).not.toContain("color: red");
   });
 
+  // Stamped by the writer on every element on the way to disk, so carrying it
+  // preserves nothing — and it made the wrapper this rebuild adds look like a
+  // layer as soon as the file had been saved once.
+  it("does not treat the writer's own id as a layer identity", () => {
+    document.body.innerHTML =
+      '<div style="display: flex" contenteditable="true">' +
+      '<span data-hf-id="hf-wrap"><span data-hf-text-key="child:0">one<br>two</span></span></div>';
+    const host = document.body.firstElementChild as HTMLElement;
+    applyInlineStyle(rangeOver(host, 4, 6), { color: "red" });
+
+    expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
+    expect(host.innerHTML).not.toContain("hf-wrap");
+  });
+
   it("does not merge two tracked layers that end up looking alike", () => {
     const host = mount(
       '<span data-hf-text-key="child:0" style="color: red">ab</span>' +

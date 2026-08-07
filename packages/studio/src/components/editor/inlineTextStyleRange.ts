@@ -342,6 +342,16 @@ function runNodes(doc: Document, runs: StyledRun[]): Node[] {
 }
 
 /**
+ * The one attribute the writer assigns rather than the author.
+ *
+ * Left out on purpose. It is stamped onto every element on the way to disk, so
+ * carrying it preserves nothing — and it made the wrapper this rebuild adds
+ * inside a flex container look like a layer as soon as the file had been saved
+ * once, which put it back to shadowing the real layers underneath it.
+ */
+const DERIVED_ATTR = "data-hf-id";
+
+/**
  * What a child carries besides its styling: the identity the design panel
  * tracks it by. Its style is not copied — that is what the run holds, already
  * merged with whatever the edit changed.
@@ -349,7 +359,7 @@ function runNodes(doc: Document, runs: StyledRun[]): Node[] {
 function preservedAttributes(element: Element): Map<string, string> {
   const kept = new Map<string, string>();
   for (const name of element.getAttributeNames()) {
-    if (name === "style") continue;
+    if (name === "style" || name === DERIVED_ATTR) continue;
     kept.set(name, element.getAttribute(name) ?? "");
   }
   return kept;
