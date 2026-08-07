@@ -12,6 +12,72 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "The field name the label announces.",
+      "default": "Workspace name"
+    },
+    {
+      "id": "badge",
+      "type": "string",
+      "role": "content",
+      "label": "Badge",
+      "description": "Wording inside the small chip that follows the field name.",
+      "default": "Required"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Colour family of the chip: quiet grey, accent green, warning amber, or danger red.",
+      "default": "muted",
+      "options": [
+        {
+          "value": "muted",
+          "label": "Muted"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        },
+        {
+          "value": "warning",
+          "label": "Warning"
+        },
+        {
+          "value": "danger",
+          "label": "Danger"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "layout",
+      "label": "Size",
+      "description": "Label size, chip size, and the gap between them.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "roomy",
+          "label": "Roomy"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/label.png"
   }

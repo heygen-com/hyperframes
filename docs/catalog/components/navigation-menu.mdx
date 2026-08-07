@@ -13,6 +13,28 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
 That writes one file: `compositions/components/navigation-menu.html`.
 
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `green` | `green`, `blue`, `violet` | Token family behind the underline under the current tab. green keeps the accent token, blue and violet borrow the data-2 and data-4 tokens, so all three follow the light and dark themes. |
+| `active` | `second` | `first`, `second`, `third` | Which tab carries the current-page underline and the brighter label. |
+| `featured` | `Featured: launch video kit` | string | Text printed in the featured resource panel under the tabs. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="navigation-menu"
+  data-composition-src="compositions/components/navigation-menu.html"
+  data-variable-values='{"accent":"green","active":"second","featured":"Featured: launch video kit"}'
+></div>
+```
+
 ## Source
 
 <Accordion title={`navigation-menu.html`}>
@@ -21,11 +43,37 @@ That writes one file: `compositions/components/navigation-menu.html`.
 <!--
   Navigation Menu - Operator Black anchored navigation primitive for HyperFrames.
 
-  Paste the markup and CSS into a composition. Animate the CSS variables
+  Paste the markup, CSS and script into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and either rewrites the markup or writes a
+  custom property the CSS above consumes. The timeline recipe stays untouched:
+  it keeps revealing the featured panel.
+
+    - accent (green | blue | violet, default green): the token family behind the
+      underline under the current tab. green keeps the accent token, blue and
+      violet borrow the data-2 and data-4 tokens, so all three follow the light
+      and dark themes.
+    - active (first | second | third, default second): which tab carries the
+      current-page underline and the brighter label.
+    - featured (any text, default Featured: launch video kit): the text printed
+      in the featured resource panel under the tabs.
+
+  On every default the result is identical to the original: three tabs with the
+  second one underlined in accent, over the featured resource panel.
 -->
 
-<nav data-hf-ui-root class="hf-ui-navigation-menu" aria-label="Primary navigation">
+<nav
+  data-hf-ui-root
+  class="hf-ui-navigation-menu"
+  aria-label="Primary navigation"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Token family behind the underline under the current tab. green keeps the accent token, blue and violet borrow the data-2 and data-4 tokens, so all three follow the light and dark themes.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "active", "type": "enum", "role": "content", "label": "Current tab", "description": "Which tab carries the current-page underline and the brighter label.", "default": "second", "options": [{ "value": "first", "label": "First" }, { "value": "second", "label": "Second" }, { "value": "third", "label": "Third" }] },
+    { "id": "featured", "type": "string", "role": "content", "label": "Featured text", "description": "Text printed in the featured resource panel under the tabs.", "default": "Featured: launch video kit" }
+  ]'
+>
   <a href="#product">Product</a><a href="#templates" aria-current="page">Templates</a
   ><a href="#docs">Docs</a>
   <div role="region" aria-label="Featured resource">Featured: launch video kit</div>
@@ -198,7 +246,7 @@ That writes one file: `compositions/components/navigation-menu.html`.
   }
   .hf-ui-navigation-menu [aria-current="page"] {
     color: var(--_hf-ui-text-strong);
-    box-shadow: inset 0 -2px 0 var(--_hf-ui-accent);
+    box-shadow: inset 0 -2px 0 var(--hf-nav-accent, var(--_hf-ui-accent));
   }
   .hf-ui-navigation-menu a:focus-visible {
     outline: 2px solid var(--_hf-ui-accent);
@@ -237,6 +285,49 @@ That writes one file: `compositions/components/navigation-menu.html`.
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    // green stays empty so the underline keeps falling back to --_hf-ui-accent.
+    var accents = { green: "", blue: "var(--_hf-ui-data-2)", violet: "var(--_hf-ui-data-4)" };
+    var actives = { first: 0, second: 1, third: 2 };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var active = actives[pick(actives, vars.active, "second")];
+    var featured =
+      typeof vars.featured === "string" && vars.featured !== ""
+        ? vars.featured
+        : "Featured: launch video kit";
+
+    var roots = document.querySelectorAll(".hf-ui-navigation-menu");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      if (accent !== "") root.style.setProperty("--hf-nav-accent", accent);
+
+      var links = root.querySelectorAll("a");
+      var index = Math.min(active, links.length - 1);
+      for (var l = 0; l < links.length; l += 1) {
+        if (l === index) links[l].setAttribute("aria-current", "page");
+        else links[l].removeAttribute("aria-current");
+      }
+
+      var panel = root.querySelector("div");
+      if (panel) panel.textContent = featured;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

@@ -7,9 +7,36 @@
 
   Animate --hf-micro-progress from 0 to 1, then optionally animate
   --hf-micro-tab from 0 to 1 for the segmented control.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes either the panel wording or a
+  custom property the CSS below consumes. The two progress drivers above are
+  untouched by them.
+
+    - badge (any short text, default 3): the count inside the red chip on the
+      bell. Blank or non-text input falls back to the default.
+    - tooltip (any short text, default Copied): wording inside the small dark
+      tooltip.
+    - tone (red | amber | violet, default red): colour of that badge chip.
+    - travel (close | standard | far, default standard): scales how far every
+      panel starts from its resting place, so the whole pack drifts half as far
+      or nearly twice as far into position over the same progress run. At full
+      progress each panel lands in exactly the same place.
+
+  On every default the result is identical to the original: a red 3 on the
+  bell, a Copied tooltip, and panels that rise between 6px and 18px.
 -->
 
-<div class="hf-micro-transitions" style="--hf-micro-progress: 0; --hf-micro-tab: 0">
+<div
+  class="hf-micro-transitions"
+  style="--hf-micro-progress: 0; --hf-micro-tab: 0"
+  data-composition-variables='[
+    {"id": "badge", "type": "string", "role": "content", "label": "Badge", "description": "Count inside the notification badge on the bell.", "default": "3"},
+    {"id": "tooltip", "type": "string", "role": "content", "label": "Tooltip", "description": "Wording inside the small dark tooltip.", "default": "Copied"},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Badge tone", "description": "Colour of the notification badge chip.", "default": "red", "options": [{"value": "red", "label": "Red"}, {"value": "amber", "label": "Amber"}, {"value": "violet", "label": "Violet"}]},
+    {"id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "Scales how far every panel starts from its resting place before it settles.", "default": "standard", "options": [{"value": "close", "label": "Close"}, {"value": "standard", "label": "Standard"}, {"value": "far", "label": "Far"}]}
+  ]'
+>
   <div class="hf-micro-bell"><span>3</span></div>
   <div class="hf-micro-dropdown">
     <strong>Actions</strong>
@@ -70,14 +97,14 @@
     place-items: center;
     border: 3px solid #fff;
     border-radius: 999px;
-    background: #ef4444;
+    background: var(--hf-micro-badge, #ef4444);
     color: #fff;
     font-size: 12px;
     font-weight: 850;
     opacity: var(--hf-micro-progress);
     transform: translate(
-        calc((1 - var(--hf-micro-progress)) * -7px),
-        calc((1 - var(--hf-micro-progress)) * 10px)
+        calc((1 - var(--hf-micro-progress)) * -7px * var(--hf-micro-travel, 1)),
+        calc((1 - var(--hf-micro-progress)) * 10px * var(--hf-micro-travel, 1))
       )
       scale(calc(0.25 + var(--hf-micro-progress) * 0.75));
   }
@@ -90,7 +117,7 @@
     border-radius: 18px;
     background: #fff;
     opacity: var(--hf-micro-progress);
-    transform: translateY(calc((1 - var(--hf-micro-progress)) * -12px))
+    transform: translateY(calc((1 - var(--hf-micro-progress)) * -12px * var(--hf-micro-travel, 1)))
       scale(calc(0.95 + var(--hf-micro-progress) * 0.05));
     transform-origin: top left;
     box-shadow: 0 24px 65px rgba(0, 0, 0, 0.16);
@@ -117,7 +144,7 @@
     border-radius: 22px;
     background: #fff;
     opacity: var(--hf-micro-progress);
-    transform: translateY(calc((1 - var(--hf-micro-progress)) * 18px))
+    transform: translateY(calc((1 - var(--hf-micro-progress)) * 18px * var(--hf-micro-travel, 1)))
       scale(calc(0.96 + var(--hf-micro-progress) * 0.04));
     box-shadow: 0 32px 80px rgba(0, 0, 0, 0.2);
   }
@@ -132,7 +159,7 @@
     border-radius: 14px;
     background: #f4f4f5;
     opacity: var(--hf-micro-progress);
-    transform: translateY(calc((1 - var(--hf-micro-progress)) * 14px));
+    transform: translateY(calc((1 - var(--hf-micro-progress)) * 14px * var(--hf-micro-travel, 1)));
   }
   .hf-micro-tabs i {
     position: absolute;
@@ -164,7 +191,7 @@
     font-size: 12px;
     font-weight: 750;
     opacity: var(--hf-micro-progress);
-    transform: translateY(calc((1 - var(--hf-micro-progress)) * 6px))
+    transform: translateY(calc((1 - var(--hf-micro-progress)) * 6px * var(--hf-micro-travel, 1)))
       scale(calc(0.96 + var(--hf-micro-progress) * 0.04));
   }
   .hf-micro-check {
@@ -184,6 +211,45 @@
     stroke-dashoffset: calc((1 - var(--hf-micro-progress)) * 42);
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    var tones = { red: "#ef4444", amber: "#f59e0b", violet: "#8b5cf6" };
+    var travels = { close: 0.5, standard: 1, far: 1.9 };
+
+    var tone = tones[pick(tones, vars.tone, "red")];
+    var travel = travels[pick(travels, vars.travel, "standard")];
+    var badgeText = text(vars.badge, "3");
+    var tooltipText = text(vars.tooltip, "Copied");
+
+    var roots = document.querySelectorAll(".hf-micro-transitions");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-micro-badge", tone);
+      root.style.setProperty("--hf-micro-travel", String(travel));
+      var badge = root.querySelector(".hf-micro-bell span");
+      var tooltip = root.querySelector(".hf-micro-tooltip");
+      if (badge) badge.textContent = badgeText;
+      if (tooltip) tooltip.textContent = tooltipText;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

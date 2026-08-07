@@ -3,9 +3,40 @@
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes either the menu wording or a
+  custom property the CSS below consumes. The stagger recipe at the bottom is
+  untouched by them.
+
+    - items (comma separated list, default File, Edit, View, Export): the menu
+      wording. Each entry becomes one button, so the list also decides how many
+      buttons the bar carries. An empty list falls back to the default.
+    - current (1 to 8, default 1): which button reads as the open menu, taking
+      the accent underline and the brightest text. Values past the end of the
+      list fall back to the first button.
+    - accent (green | blue | violet, default green): colour family of that
+      underline. Each option rides a data token, so it tracks the dark and the
+      light theme.
+    - density (compact | standard | roomy, default standard): bar height and
+      the padding either side of each label, from a 32px bar through 40px to
+      48px.
+
+  On every default the result is identical to the original: a 40px bar reading
+  File, Edit, View, Export with a green underline under File.
 -->
 
-<nav data-hf-ui-root class="hf-ui-menubar" aria-label="Editor menu">
+<nav
+  data-hf-ui-root
+  class="hf-ui-menubar"
+  aria-label="Editor menu"
+  data-composition-variables='[
+    {"id": "items", "type": "string", "role": "content", "label": "Items", "description": "Comma separated menu wording. Each entry becomes one button.", "default": "File, Edit, View, Export"},
+    {"id": "current", "type": "number", "role": "content", "label": "Current item", "description": "Which button reads as the open menu, counting from the left.", "default": 1, "min": 1, "max": 8, "step": 1},
+    {"id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the underline under the open menu.", "default": "green", "options": [{"value": "green", "label": "Green"}, {"value": "blue", "label": "Blue"}, {"value": "violet", "label": "Violet"}]},
+    {"id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "Bar height and the padding either side of each label.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "roomy", "label": "Roomy"}]}
+  ]'
+>
   <button type="button" aria-current="page">File</button><button type="button">Edit</button
   ><button type="button">View</button><button type="button">Export</button>
 </nav>
@@ -159,7 +190,7 @@
   .hf-ui-menubar button {
     position: relative;
     height: var(--_hf-ui-control-height);
-    padding: 0 12px;
+    padding: 0 var(--hf-menubar-pad, 12px);
     border: 0;
     border-block-end: 2px solid transparent;
     background: transparent;
@@ -201,6 +232,72 @@
     }
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function list(value, fallback) {
+      var raw = typeof value === "string" ? value.split(",") : [];
+      var parts = [];
+      for (var i = 0; i < raw.length; i += 1) {
+        if (raw[i].trim() !== "") parts.push(raw[i].trim());
+      }
+      return parts.length > 0 ? parts : fallback;
+    }
+
+    var accents = {
+      green: "var(--_hf-ui-data-1)",
+      blue: "var(--_hf-ui-data-2)",
+      violet: "var(--_hf-ui-data-4)",
+    };
+    var densities = {
+      compact: { height: "32px", pad: "9px" },
+      standard: { height: "40px", pad: "12px" },
+      roomy: { height: "48px", pad: "18px" },
+    };
+
+    var items = list(vars.items, ["File", "Edit", "View", "Export"]);
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var density = densities[pick(densities, vars.density, "standard")];
+    var current = Math.round(Number(vars.current));
+    if (!isFinite(current) || current < 1 || current > items.length) current = 1;
+
+    var roots = document.querySelectorAll(".hf-ui-menubar");
+    for (var r = 0; r < roots.length; r += 1) {
+      var root = roots[r];
+      root.style.setProperty("--hf-ui-accent", accent);
+      root.style.setProperty("--hf-ui-control-height", density.height);
+      root.style.setProperty("--hf-menubar-pad", density.pad);
+
+      var buttons = root.querySelectorAll("button");
+      for (var i = 0; i < items.length; i += 1) {
+        var button = buttons[i];
+        if (!button) {
+          button = document.createElement("button");
+          button.type = "button";
+          root.appendChild(button);
+        }
+        button.textContent = items[i];
+        if (i === current - 1) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      }
+      for (var j = buttons.length - 1; j >= items.length; j -= 1) {
+        buttons[j].remove();
+      }
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:

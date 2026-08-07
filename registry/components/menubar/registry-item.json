@@ -12,6 +12,71 @@
       "type": "hyperframes:snippet"
     }
   ],
+  "variables": [
+    {
+      "id": "items",
+      "type": "string",
+      "role": "content",
+      "label": "Items",
+      "description": "Comma separated menu wording. Each entry becomes one button.",
+      "default": "File, Edit, View, Export"
+    },
+    {
+      "id": "current",
+      "type": "number",
+      "role": "content",
+      "label": "Current item",
+      "description": "Which button reads as the open menu, counting from the left.",
+      "default": 1,
+      "min": 1,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the underline under the open menu.",
+      "default": "green",
+      "options": [
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "layout",
+      "label": "Density",
+      "description": "Bar height and the padding either side of each label.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "roomy",
+          "label": "Roomy"
+        }
+      ]
+    }
+  ],
   "preview": {
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menubar.png"
   }

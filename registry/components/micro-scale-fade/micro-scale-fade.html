@@ -3,9 +3,38 @@
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes either the scene wording or a
+  custom property the CSS above consumes. The timeline recipe below is
+  untouched by them: it keeps driving one clip, two offsets and one sweep, and
+  these decide what the scenes say, what colour the incoming one is, and how
+  far the offsets carry.
+
+    - fromLabel (any short text, default Before): wording on the outgoing
+      scene. Blank or non-text input falls back to the default.
+    - toLabel (any short text, default Micro Scale Fade): wording on the
+      incoming scene.
+    - accent (blue | green | ember, default blue): gradient the incoming scene
+      is painted with, from the blue to violet default through a green to blue
+      ramp to a warm orange to pink one. The outgoing slate scene never moves.
+    - travel (close | standard | far, default standard): scales the sideways
+      run both scenes cover during the wipe, half the distance or nearly double
+      it in the same time.
+
+  On every default the result is identical to the original: Before slides 70px
+  left under a blue to violet panel reading Micro Scale Fade.
 -->
 
-<div class="hf-remocn-micro-scale-fade">
+<div
+  class="hf-remocn-micro-scale-fade"
+  data-composition-variables='[
+    {"id": "fromLabel", "type": "string", "role": "content", "label": "From label", "description": "Wording on the outgoing scene.", "default": "Before"},
+    {"id": "toLabel", "type": "string", "role": "content", "label": "To label", "description": "Wording on the incoming scene.", "default": "Micro Scale Fade"},
+    {"id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Gradient the incoming scene is painted with.", "default": "blue", "options": [{"value": "blue", "label": "Blue"}, {"value": "green", "label": "Green"}, {"value": "ember", "label": "Ember"}]},
+    {"id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "Scales the sideways run both scenes cover during the wipe.", "default": "standard", "options": [{"value": "close", "label": "Close"}, {"value": "standard", "label": "Standard"}, {"value": "far", "label": "Far"}]}
+  ]'
+>
   <div class="scene from">Before</div>
   <div class="scene to">Micro Scale Fade</div>
   <div class="fx"></div>
@@ -42,13 +71,17 @@
   }
   .hf-remocn-micro-scale-fade .from {
     background: linear-gradient(135deg, #111827, #374151);
-    transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
+    transform: translate(
+        calc(var(--hf-from-x, 0px) * var(--hf-travel, 1)),
+        var(--hf-from-y, 0px)
+      )
       scale(var(--hf-from-scale, 1));
     filter: blur(var(--hf-from-blur, 0px));
   }
   .hf-remocn-micro-scale-fade .to {
-    background: linear-gradient(135deg, #2563eb, #7c3aed);
-    transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
+    background: linear-gradient(135deg, var(--hf-to-a, #2563eb), var(--hf-to-b, #7c3aed));
+    transform: translate(calc(var(--hf-to-x, 0px) * var(--hf-travel, 1)), var(--hf-to-y, 0px))
+      scale(var(--hf-to-scale, 1));
     clip-path: inset(
       var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
         var(--hf-clip-left, 0%)
@@ -75,6 +108,50 @@
     transform: translateX(var(--hf-rgb-x, 0px));
   }
 </style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+    }
+
+    var accents = {
+      blue: { a: "#2563eb", b: "#7c3aed" },
+      green: { a: "#059669", b: "#2563eb" },
+      ember: { a: "#f97316", b: "#db2777" },
+    };
+    var travels = { close: 0.5, standard: 1, far: 1.8 };
+
+    var accent = accents[pick(accents, vars.accent, "blue")];
+    var travel = travels[pick(travels, vars.travel, "standard")];
+    var fromLabel = text(vars.fromLabel, "Before");
+    var toLabel = text(vars.toLabel, "Micro Scale Fade");
+
+    var roots = document.querySelectorAll(".hf-remocn-micro-scale-fade");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-to-a", accent.a);
+      root.style.setProperty("--hf-to-b", accent.b);
+      root.style.setProperty("--hf-travel", String(travel));
+      var from = root.querySelector(".from");
+      var to = root.querySelector(".to");
+      if (from) from.textContent = fromLabel;
+      if (to) to.textContent = toLabel;
+    }
+  })();
+</script>
 
 <!--
   Timeline integration:
