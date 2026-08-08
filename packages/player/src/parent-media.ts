@@ -26,14 +26,46 @@ const MIRROR_DRIFT_THRESHOLD_SECONDS = 0.05;
  */
 const MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES = 2;
 
+function clampVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.max(0, Math.min(1, volume));
+}
+
+function readAuthorVolume(source: HTMLMediaElement): number {
+  const raw = Number.parseFloat(source.dataset.volume ?? "");
+  return clampVolume(Number.isFinite(raw) ? raw : 1);
+}
+
+function readMediaStart(source: HTMLMediaElement): number {
+  const raw = Number.parseFloat(source.dataset.playbackStart ?? source.dataset.mediaStart ?? "");
+  return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+}
+
+function normalizePlaybackRate(rate: number): number {
+  return Number.isFinite(rate) && rate > 0 ? Math.max(0.1, Math.min(5, rate)) : 1;
+}
+
+function readAuthorPlaybackRate(source: HTMLMediaElement): number {
+  const authored = Number.parseFloat(source.dataset.playbackRate ?? "");
+  return normalizePlaybackRate(
+    Number.isFinite(authored) && authored > 0 ? authored : source.defaultPlaybackRate,
+  );
+}
+
 export interface ProxyEntry {
   el: HTMLMediaElement;
   start: number;
   duration: number;
+  /** Offset into the source media at the start of the timeline clip. Defaults to 0. */
+  mediaStart?: number;
+  /** Per-track authored gain before global volume is applied. Defaults to 1. */
+  authorVolume?: number;
+  /** Per-clip source playback rate before global playback rate. Defaults to 1. */
+  authorPlaybackRate?: number;
   /**
    * The iframe media element this proxy mirrors, when adopted from the DOM.
-   * Its `data-start`/`data-duration` are re-read each tick so live timeline
-   * edits (trim/move) bound the proxy correctly. Null for URL-driven proxies.
+   * Its timing, media offset, authored volume, and authored playback rate are
+   * re-read each tick so live edits stay reflected. Null for URL-driven proxies.
    */
   source?: HTMLMediaElement | null;
   /**
@@ -55,6 +87,7 @@ export class ParentMediaManager {
    *  replaced or cleared instead of accumulating on every attribute change. */
   private _urlAudioEntry: ProxyEntry | null = null;
   private _urlAudioSrc: string | null = null;
+  private _userVolume: number;
 
   private readonly _dispatchEvent: (event: Event) => void;
   private readonly _getMuted: () => boolean;
@@ -77,6 +110,7 @@ export class ParentMediaManager {
     this._getPlaybackRate = opts.getPlaybackRate;
     this._getCurrentTime = opts.getCurrentTime;
     this._isPaused = opts.isPaused;
+    this._userVolume = clampVolume(opts.getVolume());
   }
 
   get audioOwner(): "runtime" | "parent" {
@@ -94,6 +128,7 @@ export class ParentMediaManager {
     this._audioOwner = "runtime";
     this.pauseAll();
     this.teardownObserver();
+    this._userVolume = clampVolume(this._getVolume());
     if (wasPromoted) {
       this._dispatchEvent(
         new CustomEvent("audioownershipchange", {
@@ -114,6 +149,7 @@ export class ParentMediaManager {
     this._urlAudioSrc = null;
     this._audioOwner = "runtime";
     this._playbackErrorPosted = false;
+    this._userVolume = clampVolume(this._getVolume());
   }
 
   updateMuted(muted: boolean): void {
@@ -121,11 +157,29 @@ export class ParentMediaManager {
   }
 
   updateVolume(volume: number): void {
-    for (const m of this._entries) m.el.volume = volume;
+    const userVolume = clampVolume(volume);
+    for (const m of this._entries) {
+      this._refreshEntryContract(m);
+      if (m.source?.isConnected) {
+        // The iframe runtime owns GSAP volume envelopes and will publish the
+        // authoritative effective gain on `source.volume`. Never reconstruct
+        // that envelope from the static data-volume attribute. A zero player
+        // volume is safe to apply immediately; non-zero changes keep the last
+        // effective gain until the runtime's next state tick reaches us.
+        if (userVolume === 0) m.el.volume = 0;
+      } else {
+        m.el.volume = clampVolume((m.authorVolume ?? 1) * userVolume);
+      }
+    }
+    this._userVolume = userVolume;
   }
 
   updatePlaybackRate(rate: number): void {
-    for (const m of this._entries) m.el.playbackRate = rate;
+    const globalPlaybackRate = normalizePlaybackRate(rate);
+    for (const m of this._entries) {
+      this._refreshEntryContract(m);
+      m.el.playbackRate = (m.authorPlaybackRate ?? 1) * globalPlaybackRate;
+    }
   }
 
   private _playEntry(m: ProxyEntry): void {
@@ -137,15 +191,18 @@ export class ParentMediaManager {
   // bulk starts (playAll / adopt) don't blip audio for clips outside their
   // window until the next mirrorTime tick gates them off.
   private _playEntryIfActive(m: ProxyEntry): void {
-    this._refreshEntryBounds(m);
+    this._refreshEntryContract(m);
     const relTime = this._getCurrentTime() - m.start;
     if (relTime < 0 || relTime >= m.duration) return;
+    this._syncEntryVolume(m);
+    this._syncEntryPlaybackRate(m);
     this._playEntry(m);
   }
 
-  // Re-read the source clip's live timing so trims/moves bound the proxy
-  // (adopt-time values go stale when the timeline is edited).
-  private _refreshEntryBounds(m: ProxyEntry): void {
+  // Re-read the source clip's live contract so edits made after adoption are
+  // reflected by the proxy. URL-driven entries have no source and retain the
+  // defaults captured at creation.
+  private _refreshEntryContract(m: ProxyEntry): void {
     if (!m.source?.isConnected) return;
     // Guard against a malformed (non-numeric) attribute parsing to NaN: an NaN
     // duration makes every `relTime >= m.duration` window check false, so the
@@ -154,6 +211,36 @@ export class ParentMediaManager {
     m.start = timing.start ?? 0;
     m.duration =
       timing.duration != null && timing.duration > 0 ? timing.duration : Number.POSITIVE_INFINITY;
+    m.mediaStart = readMediaStart(m.source);
+    m.authorVolume = readAuthorVolume(m.source);
+    m.authorPlaybackRate = readAuthorPlaybackRate(m.source);
+  }
+
+  // The runtime owns animation envelopes and writes their effective gain to
+  // the iframe media element. Copy that value directly: it already includes
+  // the player's global volume, so multiplying it again would attenuate the
+  // proxy twice. Entries without a live source use their authored ratio.
+  private _syncEntryVolume(m: ProxyEntry): void {
+    // Keep zero authoritative while the iframe's set-volume message is still
+    // in flight; otherwise a mirror tick could briefly restore stale audio.
+    if (this._userVolume === 0) {
+      m.el.volume = 0;
+      return;
+    }
+    if (m.source?.isConnected) {
+      m.el.volume = clampVolume(m.source.volume);
+      return;
+    }
+    m.el.volume = clampVolume((m.authorVolume ?? 1) * this._userVolume);
+  }
+
+  private _syncEntryPlaybackRate(m: ProxyEntry): void {
+    m.el.playbackRate =
+      (m.authorPlaybackRate ?? 1) * normalizePlaybackRate(this._getPlaybackRate());
+  }
+
+  private _sourceTime(m: ProxyEntry, relTime: number): number {
+    return (m.mediaStart ?? 0) + relTime * (m.authorPlaybackRate ?? 1);
   }
 
   // Pause the proxy outside its clip window; resume it on re-entry during
@@ -186,9 +273,13 @@ export class ParentMediaManager {
     for (const m of this._entries) {
       // Re-read live bounds so a trim/move just before a paused scrub gates and
       // positions against the current clip window, not the adopt-time one.
-      this._refreshEntryBounds(m);
+      this._refreshEntryContract(m);
       const relTime = timeInSeconds - m.start;
-      if (relTime >= 0 && relTime < m.duration) m.el.currentTime = relTime;
+      if (relTime >= 0 && relTime < m.duration) {
+        m.el.currentTime = this._sourceTime(m, relTime);
+        this._syncEntryVolume(m);
+        this._syncEntryPlaybackRate(m);
+      }
     }
   }
 
@@ -201,10 +292,12 @@ export class ParentMediaManager {
   // for output). Out-of-window proxies are paused.
   scrubAll(timeInSeconds: number): void {
     for (const m of this._entries) {
-      this._refreshEntryBounds(m);
+      this._refreshEntryContract(m);
       const relTime = timeInSeconds - m.start;
       if (relTime >= 0 && relTime < m.duration) {
-        m.el.currentTime = relTime;
+        m.el.currentTime = this._sourceTime(m, relTime);
+        this._syncEntryVolume(m);
+        this._syncEntryPlaybackRate(m);
         this._playEntry(m);
       } else if (!m.el.paused) {
         m.el.pause();
@@ -221,13 +314,16 @@ export class ParentMediaManager {
   mirrorTime(timelineSeconds: number, options?: { force?: boolean }): void {
     const force = options?.force === true;
     for (const m of this._entries) {
-      this._refreshEntryBounds(m);
+      this._refreshEntryContract(m);
       const relTime = timelineSeconds - m.start;
       if (!this._gateEntryPlayback(m, relTime)) continue;
-      if (Math.abs(m.el.currentTime - relTime) > MIRROR_DRIFT_THRESHOLD_SECONDS) {
+      this._syncEntryVolume(m);
+      this._syncEntryPlaybackRate(m);
+      const mediaTime = this._sourceTime(m, relTime);
+      if (Math.abs(m.el.currentTime - mediaTime) > MIRROR_DRIFT_THRESHOLD_SECONDS) {
         m.driftSamples += 1;
         if (force || m.driftSamples >= MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES) {
-          m.el.currentTime = relTime;
+          m.el.currentTime = mediaTime;
           m.driftSamples = 0;
         }
       } else {
@@ -358,11 +454,24 @@ export class ParentMediaManager {
     el.src = src;
     el.load();
     el.muted = this._getMuted();
-    el.volume = this._getVolume();
-    const rate = this._getPlaybackRate();
-    if (rate !== 1) el.playbackRate = rate;
+    const authorVolume = source ? readAuthorVolume(source) : 1;
+    const mediaStart = source ? readMediaStart(source) : 0;
+    const authorPlaybackRate = source ? readAuthorPlaybackRate(source) : 1;
+    el.volume = clampVolume(authorVolume * this._userVolume);
+    const effectivePlaybackRate =
+      authorPlaybackRate * normalizePlaybackRate(this._getPlaybackRate());
+    if (effectivePlaybackRate !== 1) el.playbackRate = effectivePlaybackRate;
 
-    const entry: ProxyEntry = { el, start, duration, driftSamples: 0, source };
+    const entry: ProxyEntry = {
+      el,
+      start,
+      duration,
+      mediaStart,
+      authorVolume,
+      authorPlaybackRate,
+      driftSamples: 0,
+      source,
+    };
     this._entries.push(entry);
     return entry;
   }
