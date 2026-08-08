@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "pricing-tier-focus",
+  "type": "hyperframes:component",
+  "title": "Pricing Tier Focus",
+  "description": "Pricing cards shift focus from free to pro with spotlight emphasis.",
+  "tags": ["showcase", "remocn-port"],
+  "files": [
+    {
+      "path": "pricing-tier-focus.html",
+      "target": "compositions/components/pricing-tier-focus.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pricing-tier-focus.png"
+  }
+}

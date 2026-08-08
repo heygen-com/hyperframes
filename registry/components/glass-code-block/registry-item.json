@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "glass-code-block",
+  "type": "hyperframes:component",
+  "title": "Glass Code Block",
+  "description": "A translucent code block with scanned line highlights.",
+  "tags": ["code-animation", "remocn-port"],
+  "files": [
+    {
+      "path": "glass-code-block.html",
+      "target": "compositions/components/glass-code-block.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/glass-code-block.png"
+  }
+}

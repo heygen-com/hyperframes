@@ -1,0 +1,23 @@
+---
+title: "Grade Split Reveal"
+description: "A hard vertical edge sweeps left to right across two aligned copies of one plate, pauses at the midpoint for comparison, then reveals the graded copy across the full frame."
+---
+
+import { PrimitivePlayer } from "/snippets/PrimitivePlayer.jsx";
+
+<span className="hf-primitive-eyebrow">Transitions</span>
+
+<PrimitivePlayer name="grade-split-reveal" width={1920} height={1080} />
+
+## When to use it
+
+The same image or video must show a direct before-and-after color comparison in one frame.
+
+## When to avoid it
+
+Avoid it for text, SVG, or ordinary DOM content, because the documented color grading applies only to image and video media.
+
+## Pairs with
+
+- [halftone-dissolve](/primitives/halftone-dissolve)
+- [match-cut](/primitives/match-cut)

@@ -1,0 +1,167 @@
+<!--
+  Code Diff Wipe - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them: it keeps
+  driving one clip edge, one pair of offsets and one light sweep, and these
+  decide which way that edge travels and what it reveals.
+
+    - direction (left | right | up | down, default left): the direction the
+      reveal travels. Both scenes slide the same way and the wipe edge follows,
+      so up and down turn the horizontal wipe into a vertical one.
+    - tone (neutral | added | removed, default neutral): the incoming scene's
+      diff colour. neutral keeps the stock blue/violet, added goes green for a
+      line that landed, removed goes red for one that went away.
+    - sheen (subtle | standard | bright, default standard): brightness of the
+      white light sweep crossing the wipe edge.
+
+  On every default the result is identical to the original: a left-to-right
+  wipe into the blue/violet scene under a 0.75-alpha sheen.
+-->
+
+<div
+  class="hf-remocn-code-diff-wipe"
+  data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "The direction the reveal travels; both scenes slide the same way and the wipe edge follows.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Diff colour of the incoming scene: neutral keeps the stock blue/violet, added goes green, removed goes red.", "default": "neutral", "options": [{ "value": "neutral", "label": "Neutral" }, { "value": "added", "label": "Added" }, { "value": "removed", "label": "Removed" }] },
+    { "id": "sheen", "type": "enum", "role": "style", "label": "Sheen", "description": "Brightness of the white light sweep that crosses the wipe edge.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bright", "label": "Bright" }] }
+  ]'
+>
+  <div class="scene from">Before</div>
+  <div class="scene to">Code Diff Wipe</div>
+  <div class="fx"></div>
+  <div class="rgb"></div>
+</div>
+
+<style>
+  .hf-remocn-code-diff-wipe {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-code-diff-wipe {
+    position: relative;
+    width: 760px;
+    height: 428px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: #111827;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-code-diff-wipe .scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 58px;
+    letter-spacing: -0.05em;
+    color: #fff;
+  }
+  .hf-remocn-code-diff-wipe .from {
+    background: linear-gradient(135deg, #111827, #374151);
+    transform: translate(
+        calc(var(--hf-from-x, 0px) * var(--hf-wipe-ax, 1)),
+        calc(var(--hf-from-y, 0px) + var(--hf-from-x, 0px) * var(--hf-wipe-ay, 0))
+      )
+      scale(var(--hf-from-scale, 1));
+    filter: blur(var(--hf-from-blur, 0px));
+  }
+  .hf-remocn-code-diff-wipe .to {
+    background: linear-gradient(135deg, var(--hf-scene-a, #2563eb), var(--hf-scene-b, #7c3aed));
+    transform: translate(
+        calc(var(--hf-to-x, 0px) * var(--hf-wipe-ax, 1)),
+        calc(var(--hf-to-y, 0px) + var(--hf-to-x, 0px) * var(--hf-wipe-ay, 0))
+      )
+      scale(var(--hf-to-scale, 1));
+    clip-path: inset(
+      calc(var(--hf-clip-top, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-t, 0))
+        calc(var(--hf-clip-right, 100%) * var(--hf-wipe-r, 1))
+        calc(var(--hf-clip-bottom, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-b, 0))
+        calc(var(--hf-clip-left, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-l, 0))
+    );
+  }
+  .hf-remocn-code-diff-wipe .fx {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, calc(0.75 * var(--hf-fx-strength, 1))),
+      transparent
+    );
+    mix-blend-mode: screen;
+    transform: translateX(var(--hf-fx-x, -110%));
+  }
+  .hf-remocn-code-diff-wipe .rgb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-rgb-opacity, 0);
+    background: linear-gradient(
+      90deg,
+      rgba(239, 68, 68, 0.35),
+      transparent,
+      rgba(34, 211, 238, 0.35)
+    );
+    transform: translateX(var(--hf-rgb-x, 0px));
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var directions = {
+      left: { ax: "1", ay: "0", t: "0", r: "1", b: "0", l: "0" },
+      right: { ax: "-1", ay: "0", t: "0", r: "0", b: "0", l: "1" },
+      up: { ax: "0", ay: "1", t: "1", r: "0", b: "0", l: "0" },
+      down: { ax: "0", ay: "-1", t: "0", r: "0", b: "1", l: "0" },
+    };
+    var tones = {
+      neutral: ["#2563eb", "#7c3aed"],
+      added: ["#166534", "#22c55e"],
+      removed: ["#7f1d1d", "#ef4444"],
+    };
+    var sheens = { subtle: "0.4", standard: "1", bright: "1.3" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var direction = directions[pick(directions, vars.direction, "left")];
+    var tone = tones[pick(tones, vars.tone, "neutral")];
+    var sheen = sheens[pick(sheens, vars.sheen, "standard")];
+
+    var roots = document.querySelectorAll(".hf-remocn-code-diff-wipe");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-wipe-ax", direction.ax);
+      roots[i].style.setProperty("--hf-wipe-ay", direction.ay);
+      roots[i].style.setProperty("--hf-wipe-t", direction.t);
+      roots[i].style.setProperty("--hf-wipe-r", direction.r);
+      roots[i].style.setProperty("--hf-wipe-b", direction.b);
+      roots[i].style.setProperty("--hf-wipe-l", direction.l);
+      roots[i].style.setProperty("--hf-scene-a", tone[0]);
+      roots[i].style.setProperty("--hf-scene-b", tone[1]);
+      roots[i].style.setProperty("--hf-fx-strength", sheen);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-code-diff-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-code-diff-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-code-diff-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-code-diff-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+-->

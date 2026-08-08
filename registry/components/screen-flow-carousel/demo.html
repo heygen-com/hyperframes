@@ -1,0 +1,91 @@
+<!doctype html>
+<!--
+  screen-flow-carousel demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default screens, captions, cues, and
+  accent values prove the variable path while the primitive stays elastic to
+  its host box.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Screen Flow Carousel Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #8b93a3;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 40%,
+          var(--bg, #171a20) 0%,
+          var(--bg, #0b0c0e) 74%
+        );
+      }
+
+      .mount-card {
+        width: 84%;
+        height: 78%;
+        left: 8%;
+        top: 11%;
+        container-type: size;
+        overflow: hidden;
+        border-radius: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="screen-flow-carousel-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+      data-fps="30"
+    >
+      <div
+        id="screen-flow-carousel-mount"
+        class="mount-card clip"
+        data-composition-id="screen-flow-carousel"
+        data-composition-src="./screen-flow-carousel.html"
+        data-variable-values='{"screens":4,"captions":"Capture,Compose,Render,Publish","cues":"1.3,2.4,3.5","accent":"blue"}'
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+        data-width="1613"
+        data-height="842"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["screen-flow-carousel-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+  </head>
+  <body style="margin: 0; overflow: hidden">
+    <div
+      id="root"
+      data-composition-id="vfx-liquid-background"
+      data-root="true"
+      data-start="0"
+      data-duration="12"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- ═══════════════ PANEL A: Fintech Dashboard ═══════════════ -->
+      <div
+        id="panel-a"
+        data-panel-a
+        style="
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 1920px;
+          height: 1080px;
+          opacity: 0;
+          pointer-events: none;
+        "
+      >
+        <div
+          style="
+            width: 100%;
+            height: 100%;
+            background: #0a0e17;
+            color: #e2e8f0;
+            font-family:
+              &quot;Inter&quot;,
+              -apple-system,
+              BlinkMacSystemFont,
+              sans-serif;
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+          "
+        >
+          <!-- Top bar -->
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 48px;
+            "
+          >
+            <div style="display: flex; align-items: center; gap: 12px">
+              <div
+                style="
+                  width: 36px;
+                  height: 36px;
+                  border-radius: 10px;
+                  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                "
+              ></div>
+              <span style="font-size: 22px; font-weight: 700; letter-spacing: -0.02em">Vault</span>
+            </div>
+            <div style="display: flex; gap: 32px; font-size: 15px; color: #64748b">
+              <span style="color: #e2e8f0">Portfolio</span>
+              <span>Markets</span>
+              <span>Activity</span>
+              <span>Settings</span>
+            </div>
+            <div
+              style="
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: #1e293b;
+                border: 2px solid #334155;
+              "
+            ></div>
+          </div>
+
+          <!-- Balance section -->
+          <div style="margin-bottom: 40px">
+            <div
+              style="
+                font-size: 14px;
+                color: #64748b;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                margin-bottom: 8px;
+              "
+            >
+              Total Balance
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 16px">
+              <span
+                style="font-size: 72px; font-weight: 800; letter-spacing: -0.03em; color: #f8fafc"
+                >$2,847,391.24</span
+              >
+              <span
+                style="
+                  padding: 6px 14px;
+                  border-radius: 20px;
+                  background: rgba(34, 197, 94, 0.15);
+                  color: #4ade80;
+                  font-size: 16px;
+                  font-weight: 600;
+                "
+                >+12.4%</span
+              >
+            </div>
+          </div>
+
+          <!-- Chart area -->
+          <div style="flex: 1; min-height: 0; margin-bottom: 40px; position: relative">
+            <svg
+              viewBox="0 0 1760 360"
+              style="width: 100%; height: 100%"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#6366f1" stop-opacity="0.4" />
+                  <stop offset="100%" stop-color="#6366f1" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M0,280 C150,260 300,180 450,200 C600,220 700,120 880,140 C1060,160 1150,60 1320,80 C1490,100 1600,40 1760,30 L1760,360 L0,360 Z"
+                fill="url(#chart-grad)"
+              />
+              <path
+                d="M0,280 C150,260 300,180 450,200 C600,220 700,120 880,140 C1060,160 1150,60 1320,80 C1490,100 1600,40 1760,30"
+                fill="none"
+                stroke="#6366f1"
+                stroke-width="3"
+              />
+            </svg>
+          </div>
+
+          <!-- Holdings row -->
+          <div style="display: flex; gap: 24px">
+            <div style="flex: 1; background: #111827; border-radius: 16px; padding: 24px">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 12px;
+                "
+              >
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div
+                    style="
+                      width: 32px;
+                      height: 32px;
+                      border-radius: 8px;
+                      background: #1e293b;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      font-size: 12px;
+                      font-weight: 700;
+                      color: #94a3b8;
+                    "
+                  >
+                    AA
+                  </div>
+                  <div>
+                    <div style="font-weight: 600; font-size: 16px">AAPL</div>
+                    <div style="font-size: 13px; color: #64748b">Apple Inc.</div>
+                  </div>
+                </div>
+                <span style="color: #4ade80; font-size: 14px; font-weight: 600">+2.31%</span>
+              </div>
+              <div style="font-size: 28px; font-weight: 700">$189.84</div>
+            </div>
+            <div style="flex: 1; background: #111827; border-radius: 16px; padding: 24px">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 12px;
+                "
+              >
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div
+                    style="
+                      width: 32px;
+                      height: 32px;
+                      border-radius: 8px;
+                      background: #1e293b;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      font-size: 12px;
+                      font-weight: 700;
+                      color: #94a3b8;
+                    "
+                  >
+                    NV
+                  </div>
+                  <div>
+                    <div style="font-weight: 600; font-size: 16px">NVDA</div>
+                    <div style="font-size: 13px; color: #64748b">NVIDIA Corp.</div>
+                  </div>
+                </div>
+                <span style="color: #4ade80; font-size: 14px; font-weight: 600">+5.67%</span>
+              </div>
+              <div style="font-size: 28px; font-weight: 700">$721.33</div>
+            </div>
+            <div style="flex: 1; background: #111827; border-radius: 16px; padding: 24px">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 12px;
+                "
+              >
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div
+                    style="
+                      width: 32px;
+                      height: 32px;
+                      border-radius: 8px;
+                      background: #1e293b;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      font-size: 12px;
+                      font-weight: 700;
+                      color: #94a3b8;
+                    "
+                  >
+                    TS
+                  </div>
+                  <div>
+                    <div style="font-weight: 600; font-size: 16px">TSLA</div>
+                    <div style="font-size: 13px; color: #64748b">Tesla Inc.</div>
+                  </div>
+                </div>
+                <span style="color: #f87171; font-size: 14px; font-weight: 600">-1.42%</span>
+              </div>
+              <div style="font-size: 28px; font-weight: 700">$248.50</div>
+            </div>
+          </div>
+
+          <!-- Bottom nav -->
+          <div
+            style="
+              display: flex;
+              justify-content: center;
+              gap: 48px;
+              margin-top: 32px;
+              padding-top: 24px;
+              border-top: 1px solid #1e293b;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                color: #6366f1;
+              "
+            >
+              <div
+                style="
+                  width: 24px;
+                  height: 24px;
+                  border-radius: 6px;
+                  background: #6366f1;
+                  opacity: 0.2;
+                "
+              ></div>
+              <span style="font-size: 12px; font-weight: 500">Home</span>
+            </div>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                color: #64748b;
+              "
+            >
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: #334155"></div>
+              <span style="font-size: 12px">Trade</span>
+            </div>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                color: #64748b;
+              "
+            >
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: #334155"></div>
+              <span style="font-size: 12px">Wallet</span>
+            </div>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                color: #64748b;
+              "
+            >
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: #334155"></div>
+              <span style="font-size: 12px">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════ PANEL B: Social Feed ═══════════════ -->
+      <div
+        id="panel-b"
+        data-panel-b
+        style="
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 1920px;
+          height: 1080px;
+          opacity: 0;
+          pointer-events: none;
+        "
+      >
+        <div
+          style="
+            width: 100%;
+            height: 100%;
+            background: #0f1419;
+            color: #e7e9ea;
+            font-family:
+              &quot;Inter&quot;,
+              -apple-system,
+              BlinkMacSystemFont,
+              sans-serif;
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+          "
+        >
+          <!-- Profile header -->
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 16px;
+              margin-bottom: 32px;
+              padding-bottom: 28px;
+              border-bottom: 1px solid #2f3336;
+            "
+          >
+            <div
+              style="
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #1d9bf0, #7856ff);
+              "
+            ></div>
+            <div>
+              <div style="font-size: 22px; font-weight: 700">Sarah Chen</div>
+              <div style="font-size: 16px; color: #71767b">@sarahchen</div>
+            </div>
+            <div
+              style="
+                margin-left: auto;
+                padding: 8px 20px;
+                border-radius: 20px;
+                background: #1d9bf0;
+                color: #fff;
+                font-size: 15px;
+                font-weight: 600;
+              "
+            >
+              Follow
+            </div>
+          </div>
+
+          <!-- Compose -->
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 16px;
+              padding: 20px 0;
+              margin-bottom: 24px;
+              border-bottom: 1px solid #2f3336;
+            "
+          >
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: #1e293b"></div>
+            <span style="font-size: 20px; color: #71767b">What's happening?</span>
+          </div>
+
+          <!-- Post 1 -->
+          <div style="padding: 24px 0; border-bottom: 1px solid #2f3336">
+            <div style="display: flex; gap: 14px">
+              <div
+                style="
+                  width: 44px;
+                  height: 44px;
+                  border-radius: 50%;
+                  background: linear-gradient(135deg, #1d9bf0, #7856ff);
+                  flex-shrink: 0;
+                "
+              ></div>
+              <div style="flex: 1">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
+                  <span style="font-weight: 700; font-size: 16px">Sarah Chen</span>
+                  <span style="color: #71767b; font-size: 15px">@sarahchen · 2h</span>
+                </div>
+                <div style="font-size: 17px; line-height: 1.5; margin-bottom: 14px">
+                  Just shipped the new real-time collaboration feature. The CRDT sync engine handles
+                  50k concurrent edits without breaking a sweat. This is what engineering craft
+                  looks like.
+                </div>
+                <div style="display: flex; gap: 48px; color: #71767b; font-size: 14px">
+                  <span>42 replies</span>
+                  <span style="color: #00ba7c">1.2K retweets</span>
+                  <span style="color: #f91880">8.4K likes</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post 2 -->
+          <div style="padding: 24px 0; border-bottom: 1px solid #2f3336">
+            <div style="display: flex; gap: 14px">
+              <div
+                style="
+                  width: 44px;
+                  height: 44px;
+                  border-radius: 50%;
+                  background: linear-gradient(135deg, #ff6b35, #ffc107);
+                  flex-shrink: 0;
+                "
+              ></div>
+              <div style="flex: 1">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
+                  <span style="font-weight: 700; font-size: 16px">Alex Rivera</span>
+                  <span style="color: #71767b; font-size: 15px">@alexrivera · 4h</span>
+                </div>
+                <div style="font-size: 17px; line-height: 1.5; margin-bottom: 14px">
+                  The secret to great developer tools: make the easy things instant and the hard
+                  things possible. Stop adding config options and start removing them.
+                </div>
+                <div style="display: flex; gap: 48px; color: #71767b; font-size: 14px">
+                  <span>18 replies</span>
+                  <span style="color: #00ba7c">847 retweets</span>
+                  <span style="color: #f91880">3.1K likes</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post 3 -->
+          <div style="padding: 24px 0">
+            <div style="display: flex; gap: 14px">
+              <div
+                style="
+                  width: 44px;
+                  height: 44px;
+                  border-radius: 50%;
+                  background: linear-gradient(135deg, #10b981, #06b6d4);
+                  flex-shrink: 0;
+                "
+              ></div>
+              <div style="flex: 1">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
+                  <span style="font-weight: 700; font-size: 16px">Maya Patel</span>
+                  <span style="color: #71767b; font-size: 15px">@mayapatel · 6h</span>
+                </div>
+                <div style="font-size: 17px; line-height: 1.5; margin-bottom: 14px">
+                  Benchmarked our new rendering pipeline against the previous version. 4.7x faster
+                  on large scenes. Sometimes the best optimization is rewriting the architecture
+                  from scratch.
+                </div>
+                <div style="display: flex; gap: 48px; color: #71767b; font-size: 14px">
+                  <span>31 replies</span>
+                  <span style="color: #00ba7c">2.3K retweets</span>
+                  <span style="color: #f91880">11K likes</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════ THREE.JS CANVAS ═══════════════ -->
+      <canvas
+        id="liquid-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="12"
+        data-track-index="0"
+        style="position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 10"
+      ></canvas>
+
+      <!-- ═══════════════ STYLES ═══════════════ -->
+      <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block");
+
+        [data-composition-id="vfx-liquid-background"] {
+          background: #000;
+          position: relative;
+          overflow: hidden;
+        }
+      </style>
+
+      <!-- ═══════════════ SCRIPTS ═══════════════ -->
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+
+      <script>
+        window.__timelines = window.__timelines || {};
+
+        setTimeout(function () {
+          // ── Capture panel textures via html2canvas-like rasterization ──
+          // We use hidden canvases + drawImage of the panels for texture source.
+          // Since drawElementImage requires chrome flags, we rasterize the panels
+          // into canvas textures using SVG foreignObject serialization.
+
+          var W = 1920;
+          var H = 1080;
+          var canvas = document.getElementById("liquid-canvas");
+
+          // ── Rasterize an HTML panel into a canvas texture ──
+          function rasterizePanel(panelEl) {
+            return new Promise(function (resolve) {
+              // Clone the panel, make it visible for serialization
+              var clone = panelEl.cloneNode(true);
+              clone.style.opacity = "1";
+              clone.style.position = "relative";
+              clone.style.left = "0";
+              clone.style.top = "0";
+
+              var svgNS = "http://www.w3.org/2000/svg";
+              var xhtmlNS = "http://www.w3.org/1999/xhtml";
+
+              var svg = document.createElementNS(svgNS, "svg");
+              svg.setAttribute("width", W);
+              svg.setAttribute("height", H);
+              svg.setAttribute("xmlns", svgNS);
+
+              var fo = document.createElementNS(svgNS, "foreignObject");
+              fo.setAttribute("width", "100%");
+              fo.setAttribute("height", "100%");
+
+              // Wrap in a body-like container with the font
+              var wrapper = document.createElementNS(xhtmlNS, "div");
+              wrapper.setAttribute("xmlns", xhtmlNS);
+              wrapper.style.cssText =
+                "width:" + W + "px;height:" + H + "px;margin:0;padding:0;overflow:hidden;";
+              wrapper.innerHTML = clone.innerHTML;
+              fo.appendChild(wrapper);
+              svg.appendChild(fo);
+
+              var svgData = new XMLSerializer().serializeToString(svg);
+              var img = new Image();
+              var blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+              var url = URL.createObjectURL(blob);
+
+              img.onload = function () {
+                var c = document.createElement("canvas");
+                c.width = W;
+                c.height = H;
+                var ctx = c.getContext("2d");
+                ctx.drawImage(img, 0, 0, W, H);
+                URL.revokeObjectURL(url);
+                resolve(c);
+              };
+              img.onerror = function () {
+                // Fallback: solid color canvas
+                var c = document.createElement("canvas");
+                c.width = W;
+                c.height = H;
+                var ctx = c.getContext("2d");
+                ctx.fillStyle = panelEl.id === "panel-a" ? "#0a0e17" : "#0f1419";
+                ctx.fillRect(0, 0, W, H);
+                URL.revokeObjectURL(url);
+                resolve(c);
+              };
+              img.src = url;
+            });
+          }
+
+          // ── Fallback: create panel textures from direct canvas drawing ──
+          function drawPanelATexture() {
+            var c = document.createElement("canvas");
+            c.width = W;
+            c.height = H;
+            var ctx = c.getContext("2d");
+
+            // Background
+            ctx.fillStyle = "#0a0e17";
+            ctx.fillRect(0, 0, W, H);
+
+            // Logo
+            var grad = ctx.createLinearGradient(80, 60, 116, 96);
+            grad.addColorStop(0, "#6366f1");
+            grad.addColorStop(1, "#8b5cf6");
+            roundRect(ctx, 80, 60, 36, 36, 10, grad);
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "700 22px Inter, sans-serif";
+            ctx.fillText("Vault", 126, 86);
+
+            // Nav
+            ctx.font = "400 15px Inter, sans-serif";
+            ctx.fillStyle = "#e2e8f0";
+            ctx.fillText("Portfolio", 600, 82);
+            ctx.fillStyle = "#64748b";
+            ctx.fillText("Markets", 700, 82);
+            ctx.fillText("Activity", 800, 82);
+            ctx.fillText("Settings", 900, 82);
+
+            // Balance label
+            ctx.fillStyle = "#64748b";
+            ctx.font = "400 14px Inter, sans-serif";
+            ctx.letterSpacing = "0.08em";
+            ctx.fillText("TOTAL BALANCE", 80, 150);
+
+            // Balance amount
+            ctx.fillStyle = "#f8fafc";
+            ctx.font = "800 72px Inter, sans-serif";
+            ctx.fillText("$2,847,391.24", 80, 230);
+
+            // Badge
+            ctx.fillStyle = "rgba(34,197,94,0.15)";
+            roundRect(ctx, 780, 195, 100, 32, 16, "rgba(34,197,94,0.15)");
+            ctx.fillStyle = "#4ade80";
+            ctx.font = "600 16px Inter, sans-serif";
+            ctx.fillText("+12.4%", 793, 217);
+
+            // Chart area - gradient fill
+            ctx.beginPath();
+            ctx.moveTo(80, 500);
+            ctx.bezierCurveTo(280, 480, 460, 400, 640, 420);
+            ctx.bezierCurveTo(820, 440, 920, 340, 1100, 360);
+            ctx.bezierCurveTo(1280, 380, 1370, 280, 1540, 300);
+            ctx.bezierCurveTo(1710, 320, 1780, 260, 1840, 250);
+            ctx.lineTo(1840, 600);
+            ctx.lineTo(80, 600);
+            ctx.closePath();
+            var chartGrad = ctx.createLinearGradient(0, 250, 0, 600);
+            chartGrad.addColorStop(0, "rgba(99,102,241,0.4)");
+            chartGrad.addColorStop(1, "rgba(99,102,241,0)");
+            ctx.fillStyle = chartGrad;
+            ctx.fill();
+
+            // Chart line
+            ctx.beginPath();
+            ctx.moveTo(80, 500);
+            ctx.bezierCurveTo(280, 480, 460, 400, 640, 420);
+            ctx.bezierCurveTo(820, 440, 920, 340, 1100, 360);
+            ctx.bezierCurveTo(1280, 380, 1370, 280, 1540, 300);
+            ctx.bezierCurveTo(1710, 320, 1780, 260, 1840, 250);
+            ctx.strokeStyle = "#6366f1";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Holding cards
+            var cardY = 660;
+            var cards = [
+              {
+                sym: "AAPL",
+                name: "Apple Inc.",
+                price: "$189.84",
+                change: "+2.31%",
+                color: "#4ade80",
+              },
+              {
+                sym: "NVDA",
+                name: "NVIDIA Corp.",
+                price: "$721.33",
+                change: "+5.67%",
+                color: "#4ade80",
+              },
+              {
+                sym: "TSLA",
+                name: "Tesla Inc.",
+                price: "$248.50",
+                change: "-1.42%",
+                color: "#f87171",
+              },
+            ];
+            var cardW = 540;
+            for (var i = 0; i < 3; i++) {
+              var cx = 80 + i * (cardW + 24);
+              roundRect(ctx, cx, cardY, cardW, 150, 16, "#111827");
+
+              ctx.fillStyle = "#1e293b";
+              roundRect(ctx, cx + 24, cardY + 24, 32, 32, 8, "#1e293b");
+
+              ctx.fillStyle = "#94a3b8";
+              ctx.font = "700 12px Inter, sans-serif";
+              ctx.fillText(cards[i].sym.substring(0, 2), cx + 32, cardY + 46);
+
+              ctx.fillStyle = "#e2e8f0";
+              ctx.font = "600 16px Inter, sans-serif";
+              ctx.fillText(cards[i].sym, cx + 68, cardY + 40);
+
+              ctx.fillStyle = "#64748b";
+              ctx.font = "400 13px Inter, sans-serif";
+              ctx.fillText(cards[i].name, cx + 68, cardY + 58);
+
+              ctx.fillStyle = cards[i].color;
+              ctx.font = "600 14px Inter, sans-serif";
+              ctx.fillText(cards[i].change, cx + cardW - 80, cardY + 44);
+
+              ctx.fillStyle = "#e2e8f0";
+              ctx.font = "700 28px Inter, sans-serif";
+              ctx.fillText(cards[i].price, cx + 24, cardY + 120);
+            }
+
+            // Bottom nav bar
+            ctx.strokeStyle = "#1e293b";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(80, 880);
+            ctx.lineTo(1840, 880);
+            ctx.stroke();
+
+            var navItems = ["Home", "Trade", "Wallet", "Profile"];
+            var navCx = W / 2 - ((navItems.length - 1) * 48) / 2;
+            for (var n = 0; n < navItems.length; n++) {
+              var nx = navCx + (n - 1.5) * 96;
+              ctx.fillStyle = n === 0 ? "rgba(99,102,241,0.2)" : "#334155";
+              roundRect(ctx, nx - 12, 900, 24, 24, 6, ctx.fillStyle);
+              ctx.fillStyle = n === 0 ? "#6366f1" : "#64748b";
+              ctx.font = (n === 0 ? "500" : "400") + " 12px Inter, sans-serif";
+              ctx.fillText(navItems[n], nx - 12, 944);
+            }
+
+            return c;
+          }
+
+          function drawPanelBTexture() {
+            var c = document.createElement("canvas");
+            c.width = W;
+            c.height = H;
+            var ctx = c.getContext("2d");
+
+            // Background
+            ctx.fillStyle = "#0f1419";
+            ctx.fillRect(0, 0, W, H);
+
+            // Profile header
+            var profileGrad = ctx.createLinearGradient(80, 60, 136, 116);
+            profileGrad.addColorStop(0, "#1d9bf0");
+            profileGrad.addColorStop(1, "#7856ff");
+            ctx.beginPath();
+            ctx.arc(108, 88, 28, 0, Math.PI * 2);
+            ctx.fillStyle = profileGrad;
+            ctx.fill();
+
+            ctx.fillStyle = "#e7e9ea";
+            ctx.font = "700 22px Inter, sans-serif";
+            ctx.fillText("Sarah Chen", 150, 82);
+            ctx.fillStyle = "#71767b";
+            ctx.font = "400 16px Inter, sans-serif";
+            ctx.fillText("@sarahchen", 150, 104);
+
+            // Follow button
+            roundRect(ctx, 1720, 68, 100, 40, 20, "#1d9bf0");
+            ctx.fillStyle = "#fff";
+            ctx.font = "600 15px Inter, sans-serif";
+            ctx.fillText("Follow", 1744, 94);
+
+            // Separator
+            ctx.strokeStyle = "#2f3336";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(80, 140);
+            ctx.lineTo(1840, 140);
+            ctx.stroke();
+
+            // Compose
+            ctx.beginPath();
+            ctx.arc(102, 178, 22, 0, Math.PI * 2);
+            ctx.fillStyle = "#1e293b";
+            ctx.fill();
+            ctx.fillStyle = "#71767b";
+            ctx.font = "400 20px Inter, sans-serif";
+            ctx.fillText("What's happening?", 140, 184);
+
+            ctx.beginPath();
+            ctx.moveTo(80, 216);
+            ctx.lineTo(1840, 216);
+            ctx.strokeStyle = "#2f3336";
+            ctx.stroke();
+
+            // Posts
+            var posts = [
+              {
+                name: "Sarah Chen",
+                handle: "@sarahchen",
+                time: "2h",
+                grad: ["#1d9bf0", "#7856ff"],
+                text: "Just shipped the new real-time collaboration feature. The CRDT sync engine handles 50k concurrent edits without breaking a sweat.",
+                replies: "42",
+                retweets: "1.2K",
+                likes: "8.4K",
+              },
+              {
+                name: "Alex Rivera",
+                handle: "@alexrivera",
+                time: "4h",
+                grad: ["#ff6b35", "#ffc107"],
+                text: "The secret to great developer tools: make the easy things instant and the hard things possible. Stop adding config options.",
+                replies: "18",
+                retweets: "847",
+                likes: "3.1K",
+              },
+              {
+                name: "Maya Patel",
+                handle: "@mayapatel",
+                time: "6h",
+                grad: ["#10b981", "#06b6d4"],
+                text: "Benchmarked our new rendering pipeline against the previous version. 4.7x faster on large scenes. Architecture rewrite pays off.",
+                replies: "31",
+                retweets: "2.3K",
+                likes: "11K",
+              },
+            ];
+
+            var py = 240;
+            for (var p = 0; p < posts.length; p++) {
+              var post = posts[p];
+              // Avatar
+              var ag = ctx.createLinearGradient(80, py + 4, 124, py + 48);
+              ag.addColorStop(0, post.grad[0]);
+              ag.addColorStop(1, post.grad[1]);
+              ctx.beginPath();
+              ctx.arc(102, py + 26, 22, 0, Math.PI * 2);
+              ctx.fillStyle = ag;
+              ctx.fill();
+
+              // Name and handle
+              ctx.fillStyle = "#e7e9ea";
+              ctx.font = "700 16px Inter, sans-serif";
+              ctx.fillText(post.name, 140, py + 20);
+              ctx.fillStyle = "#71767b";
+              ctx.font = "400 15px Inter, sans-serif";
+              ctx.fillText(
+                post.handle + " · " + post.time,
+                140 + ctx.measureText(post.name).width + 10,
+                py + 20,
+              );
+
+              // Post text
+              ctx.fillStyle = "#e7e9ea";
+              ctx.font = "400 17px Inter, sans-serif";
+              wrapText(ctx, post.text, 140, py + 50, 1680, 26);
+
+              // Engagement
+              var ey = py + 120;
+              ctx.font = "400 14px Inter, sans-serif";
+              ctx.fillStyle = "#71767b";
+              ctx.fillText(post.replies + " replies", 140, ey);
+              ctx.fillStyle = "#00ba7c";
+              ctx.fillText(post.retweets + " retweets", 340, ey);
+              ctx.fillStyle = "#f91880";
+              ctx.fillText(post.likes + " likes", 560, ey);
+
+              // Separator
+              py += 160;
+              if (p < 2) {
+                ctx.beginPath();
+                ctx.moveTo(80, py);
+                ctx.lineTo(1840, py);
+                ctx.strokeStyle = "#2f3336";
+                ctx.stroke();
+              }
+              py += 20;
+            }
+
+            return c;
+          }
+
+          function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+            var words = text.split(" ");
+            var line = "";
+            for (var n = 0; n < words.length; n++) {
+              var testLine = line + words[n] + " ";
+              if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+                ctx.fillText(line.trim(), x, y);
+                line = words[n] + " ";
+                y += lineHeight;
+              } else {
+                line = testLine;
+              }
+            }
+            ctx.fillText(line.trim(), x, y);
+          }
+
+          function roundRect(ctx, x, y, w, h, r, fill) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            if (fill) {
+              ctx.fillStyle = fill;
+              ctx.fill();
+            }
+          }
+
+          // ── Build textures (canvas-drawn fallback — works everywhere) ──
+          var canvasA = drawPanelATexture();
+          var canvasB = drawPanelBTexture();
+
+          // ═══════════════════════════════════════════════════════
+          // THREE.JS LIQUID SIMULATION
+          // ═══════════════════════════════════════════════════════
+
+          var renderer = new THREE.WebGLRenderer({
+            canvas: canvas,
+            antialias: true,
+            alpha: false,
+          });
+          renderer.setSize(W, H, false);
+          renderer.setPixelRatio(1);
+          renderer.setClearColor(0x000000, 1);
+
+          var scene = new THREE.Scene();
+
+          // Camera: slight perspective to show surface deformation
+          var camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
+          camera.position.set(0, 0, 2.8);
+          camera.lookAt(0, 0, 0);
+
+          // Create textures from panel canvases
+          var textureA = new THREE.CanvasTexture(canvasA);
+          textureA.minFilter = THREE.LinearFilter;
+          textureA.magFilter = THREE.LinearFilter;
+
+          var textureB = new THREE.CanvasTexture(canvasB);
+          textureB.minFilter = THREE.LinearFilter;
+          textureB.magFilter = THREE.LinearFilter;
+
+          // ── Shader material ──
+          var vertexShader = [
+            "uniform float uTime;",
+            "uniform float uWaveIntensity;",
+            "uniform float uRippleIntensity;",
+            "varying vec2 vUv;",
+            "varying float vDisplacement;",
+            "",
+            "void main() {",
+            "  vUv = uv;",
+            "  vec3 pos = position;",
+            "",
+            "  // Wave 1: large slow horizontal wave",
+            "  float wave1 = sin(pos.x * 3.0 + uTime * 1.2) * 0.04 * uWaveIntensity;",
+            "",
+            "  // Wave 2: medium diagonal wave",
+            "  float wave2 = sin((pos.x + pos.y) * 5.0 + uTime * 1.8) * 0.025 * uWaveIntensity;",
+            "",
+            "  // Wave 3: small fast ripples",
+            "  float wave3 = sin(pos.x * 12.0 - uTime * 3.0) * sin(pos.y * 10.0 + uTime * 2.5) * 0.015 * uRippleIntensity;",
+            "",
+            "  float displacement = wave1 + wave2 + wave3;",
+            "  pos.z += displacement;",
+            "  vDisplacement = displacement;",
+            "",
+            "  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);",
+            "}",
+          ].join("\n");
+
+          var fragmentShader = [
+            "uniform sampler2D uTextureA;",
+            "uniform sampler2D uTextureB;",
+            "uniform float uTime;",
+            "uniform float uMix;",
+            "uniform float uWaveIntensity;",
+            "uniform float uRippleIntensity;",
+            "varying vec2 vUv;",
+            "varying float vDisplacement;",
+            "",
+            "void main() {",
+            "  // Distort UVs to match vertex displacement for consistency",
+            "  vec2 distortedUv = vUv;",
+            "  distortedUv.x += sin(vUv.y * 10.0 + uTime * 1.8) * 0.008 * uWaveIntensity;",
+            "  distortedUv.y += sin(vUv.x * 8.0 + uTime * 1.2) * 0.006 * uWaveIntensity;",
+            "",
+            "  // Small ripple distortion",
+            "  distortedUv.x += sin(vUv.x * 20.0 - uTime * 3.0) * 0.003 * uRippleIntensity;",
+            "  distortedUv.y += cos(vUv.y * 18.0 + uTime * 2.5) * 0.003 * uRippleIntensity;",
+            "",
+            "  vec4 colorA = texture2D(uTextureA, distortedUv);",
+            "  vec4 colorB = texture2D(uTextureB, distortedUv);",
+            "",
+            "  // Crossfade between panels",
+            "  vec4 color = mix(colorA, colorB, uMix);",
+            "",
+            "  // Subtle specular highlight from displacement",
+            "  float highlight = vDisplacement * 3.0;",
+            "  color.rgb += vec3(highlight * 0.15, highlight * 0.12, highlight * 0.2);",
+            "",
+            "  // Slight vignette",
+            "  float vignette = 1.0 - 0.3 * length((vUv - 0.5) * 1.4);",
+            "  color.rgb *= vignette;",
+            "",
+            "  gl_FragColor = color;",
+            "}",
+          ].join("\n");
+
+          var uniforms = {
+            uTime: { value: 0.0 },
+            uTextureA: { value: textureA },
+            uTextureB: { value: textureB },
+            uMix: { value: 0.0 },
+            uWaveIntensity: { value: 0.0 },
+            uRippleIntensity: { value: 0.0 },
+          };
+
+          var material = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: uniforms,
+            side: THREE.FrontSide,
+          });
+
+          // Subdivided plane: 100x60 segments for smooth deformation
+          // Size matches camera frustum at z=0 for the perspective camera
+          var planeW = 4.8;
+          var planeH = planeW * (H / W);
+          var geometry = new THREE.PlaneGeometry(planeW, planeH, 100, 60);
+          var mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
+
+          // ── Render function ──
+          function renderAt(t) {
+            uniforms.uTime.value = t;
+            renderer.render(scene, camera);
+          }
+
+          // ═══════════════════════════════════════════════════════
+          // GSAP DRIVER TIMELINE
+          // ═══════════════════════════════════════════════════════
+
+          var tl = gsap.timeline({ paused: true });
+
+          // Phase 1 (0-2s): Panel A appears, gentle waves begin
+          tl.to(
+            uniforms.uWaveIntensity,
+            {
+              value: 1.0,
+              duration: 2,
+              ease: "power2.out",
+            },
+            0,
+          );
+
+          tl.to(
+            uniforms.uRippleIntensity,
+            {
+              value: 0.6,
+              duration: 2.5,
+              ease: "power2.out",
+            },
+            0.5,
+          );
+
+          // Phase 2 (2-4.5s): Waves flowing, camera tilts slightly
+          tl.to(
+            camera.rotation,
+            {
+              x: 0.06,
+              y: -0.04,
+              duration: 2.5,
+              ease: "power1.inOut",
+            },
+            2,
+          );
+
+          // Phase 3 (4.5-5.5s): Waves intensify for transition
+          tl.to(
+            uniforms.uWaveIntensity,
+            {
+              value: 2.5,
+              duration: 1.0,
+              ease: "power2.in",
+            },
+            4.5,
+          );
+
+          tl.to(
+            uniforms.uRippleIntensity,
+            {
+              value: 2.0,
+              duration: 1.0,
+              ease: "power2.in",
+            },
+            4.5,
+          );
+
+          // Phase 4 (5-7s): Crossfade from Panel A to Panel B
+          tl.to(
+            uniforms.uMix,
+            {
+              value: 1.0,
+              duration: 2.0,
+              ease: "power2.inOut",
+            },
+            5,
+          );
+
+          // Phase 5 (6.5-8.5s): Waves settle back down
+          tl.to(
+            uniforms.uWaveIntensity,
+            {
+              value: 1.0,
+              duration: 2.0,
+              ease: "power2.out",
+            },
+            6.5,
+          );
+
+          tl.to(
+            uniforms.uRippleIntensity,
+            {
+              value: 0.5,
+              duration: 2.0,
+              ease: "power2.out",
+            },
+            6.5,
+          );
+
+          // Camera returns to center
+          tl.to(
+            camera.rotation,
+            {
+              x: -0.03,
+              y: 0.03,
+              duration: 2.5,
+              ease: "power1.inOut",
+            },
+            6.5,
+          );
+
+          // Phase 6 (9-11s): Gentle breathing waves on Panel B
+          tl.to(
+            uniforms.uWaveIntensity,
+            {
+              value: 0.7,
+              duration: 2.0,
+              ease: "sine.inOut",
+            },
+            9,
+          );
+
+          tl.to(
+            uniforms.uRippleIntensity,
+            {
+              value: 0.3,
+              duration: 2.0,
+              ease: "sine.inOut",
+            },
+            9,
+          );
+
+          // Phase 7 (10.5-12s): Waves fade to still
+          tl.to(
+            uniforms.uWaveIntensity,
+            {
+              value: 0.0,
+              duration: 1.5,
+              ease: "power2.inOut",
+            },
+            10.5,
+          );
+
+          tl.to(
+            uniforms.uRippleIntensity,
+            {
+              value: 0.0,
+              duration: 1.5,
+              ease: "power2.inOut",
+            },
+            10.5,
+          );
+
+          tl.to(
+            camera.rotation,
+            {
+              x: 0,
+              y: 0,
+              duration: 1.5,
+              ease: "power2.inOut",
+            },
+            10.5,
+          );
+
+          // Driver tween: runs the full 12s, drives uTime and renders each frame
+          tl.to(
+            { frame: 0 },
+            {
+              frame: 1,
+              duration: 12,
+              ease: "none",
+              onUpdate: function () {
+                var time = tl.time();
+                uniforms.uTime.value = time;
+                renderer.render(scene, camera);
+              },
+            },
+            0,
+          );
+
+          window.__timelines["vfx-liquid-background"] = tl;
+
+          // ── hf-seek integration for Three.js adapter ──
+          window.addEventListener("hf-seek", function (e) {
+            var t = e.detail.time;
+            tl.seek(t);
+            uniforms.uTime.value = t;
+            renderer.render(scene, camera);
+          });
+
+          // Initial render
+          renderAt(0);
+        }, 0);
+      </script>
+    </div>
+  </body>
+</html>

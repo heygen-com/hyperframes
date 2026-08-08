@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 130px;
+        bottom: 122px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 14px;
+      }
+      #root .lt-kickwrap {
+        overflow: hidden;
+      }
+      #root .lt-kicker {
+        display: inline-block;
+        font-family: "Space Mono", monospace;
+        font-size: 22px;
+        font-weight: 700;
+        color: #141518;
+        background: #46e5b7;
+        padding: 6px 14px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #root .lt-name {
+        font-family: "Archivo Black", sans-serif;
+        font-size: 70px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height: 0.98;
+        letter-spacing: -0.015em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        text-shadow: 0 2px 22px rgba(0, 0, 0, 0.5);
+      }
+      #root .lt-baseline {
+        height: 5px;
+        width: 100%;
+        background: #46e5b7;
+        border-radius: 3px;
+        transform-origin: 0% 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-kicker-name"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div class="lt-kickwrap">
+            <span id="lt-kicker" class="lt-kicker">Episode 47</span>
+          </div>
+          <div id="lt-name" class="lt-name">Maya Chen</div>
+          <div id="lt-baseline" class="lt-baseline"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var kicker = document.getElementById("lt-kicker");
+      var nameEl = document.getElementById("lt-name");
+      var baseline = document.getElementById("lt-baseline");
+
+      // Kicker drops in, name slams up, accent baseline draws.
+      gsap.set(kicker, { y: -40 });
+      gsap.set(nameEl, { y: 34, opacity: 0 });
+      gsap.set(baseline, { scaleX: 0 });
+
+      tl.to(kicker, { y: 0, duration: 0.42, ease: "back.out(2)" }, 0.1);
+      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.45, ease: "back.out(1.5)" }, 0.32);
+      tl.to(baseline, { scaleX: 1, duration: 0.5, ease: "power4.out" }, 0.5);
+
+      // Exit: baseline retracts, text lifts, hard kill.
+      tl.to(baseline, { scaleX: 0, duration: 0.3, ease: "power2.in" }, 4.25);
+      tl.to(nameEl, { y: -16, opacity: 0, duration: 0.32, ease: "power2.in" }, 4.3);
+      tl.to(kicker, { y: -40, duration: 0.3, ease: "power2.in" }, 4.32);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-kicker-name"] = tl;
+    </script>
+  </body>
+</html>

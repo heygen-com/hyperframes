@@ -1,0 +1,111 @@
+<!--
+  Short Slide Down - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe below is untouched by them: it
+  keeps driving one horizontal offset, one vertical offset and one blur, and
+  these decide what those offsets and that blur mean on screen.
+
+    - direction (up | down | left | right, default up): where the lines travel
+      in from. up keeps the original diagonal, lines rising into place from
+      below and to the left. down mirrors the vertical leg so they settle from
+      above. left drops the vertical leg entirely for a flat entry from the
+      left, right flips that flat entry to the opposite side.
+    - distance (close | standard | far, default standard): scales both offsets,
+      so the lines cover half the run, the original run, or nearly double it,
+      always in the same time.
+    - blur (soft | standard | heavy, default standard): scales the blur radius,
+      from a light haze to a full smear.
+    - tone (ink | paper | accent, default ink): line colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+
+  On every default the result is identical to the original: lines arrive from
+  36px left and 18px below through a 6px blur in near-black.
+-->
+
+<div
+  class="hf-remocn-short-slide-down"
+  data-composition-variables='[
+    {"id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Where the lines travel in from: up rises from below the baseline, down settles from above, left and right slide in flat with no vertical leg.", "default": "up", "options": [{"value": "up", "label": "Up"}, {"value": "down", "label": "Down"}, {"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]},
+    {"id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales both offsets, so the lines cover a shorter or longer run in the same time.", "default": "standard", "options": [{"value": "close", "label": "Close"}, {"value": "standard", "label": "Standard"}, {"value": "far", "label": "Far"}]},
+    {"id": "blur", "type": "enum", "role": "style", "label": "Blur", "description": "Scales the blur radius the timeline drives, from a light haze to a full smear.", "default": "standard", "options": [{"value": "soft", "label": "Soft"}, {"value": "standard", "label": "Standard"}, {"value": "heavy", "label": "Heavy"}]},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]}
+  ]'
+><span>Fast</span><span>Clean</span><span>Local</span></div>
+
+<style>
+  .hf-remocn-short-slide-down {
+    color: var(--hf-line-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-short-slide-down {
+    display: grid;
+    gap: 10px;
+    font-size: 52px;
+    line-height: 1;
+    overflow: hidden;
+  }
+  .hf-remocn-short-slide-down span {
+    display: block;
+    transform: translate(
+      calc(var(--hf-line-x, 0px) * var(--hf-line-dx, 1)),
+      calc(var(--hf-line-y, 0px) * var(--hf-line-dy, 1))
+    );
+    filter: blur(calc(var(--hf-line-blur, 0px) * var(--hf-line-blur-scale, 1)));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var axes = {
+      up: { x: 1, y: 1 },
+      down: { x: 1, y: -1 },
+      left: { x: 1, y: 0 },
+      right: { x: -1, y: 0 },
+    };
+    var reaches = { close: 0.5, standard: 1, far: 1.85 };
+    var blurScales = { soft: 0.45, standard: 1, heavy: 2.2 };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    var axis = axes[pick(axes, vars.direction, "up")];
+    var reach = reaches[pick(reaches, vars.distance, "standard")];
+    var blurScale = blurScales[pick(blurScales, vars.blur, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-remocn-short-slide-down");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-line-dx", String(axis.x * reach));
+      roots[i].style.setProperty("--hf-line-dy", String(axis.y * reach));
+      roots[i].style.setProperty("--hf-line-blur-scale", String(blurScale));
+      roots[i].style.setProperty("--hf-line-color", tone);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-short-slide-down span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
+-->

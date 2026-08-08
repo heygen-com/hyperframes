@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Skeleton Reveal - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~60% of frame */
+        transform: scale(1.51);
+      }
+      .hf-transition-skeleton-reveal {
+        position: relative;
+        width: 400px;
+        height: 96px;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-transition-skeleton-reveal .skeleton,
+      .hf-transition-skeleton-reveal .content {
+        position: absolute;
+        inset: 0;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+      }
+      .hf-transition-skeleton-reveal .skeleton {
+        background: linear-gradient(90deg, #f4f4f5, #e4e4e7, #f4f4f5);
+        background-size: 240% 100%;
+        opacity: 1;
+        box-shadow: none;
+      }
+      .hf-transition-skeleton-reveal .content {
+        display: grid;
+        align-content: center;
+        gap: 6px;
+        padding: 20px 22px;
+        opacity: 0;
+        color: #18181b;
+      }
+      .hf-transition-skeleton-reveal strong {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .hf-transition-skeleton-reveal span {
+        color: #71717a;
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="skeleton-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-transition-skeleton-reveal">
+          <div class="skeleton"></div>
+          <div class="content"><strong>Jane Cooper</strong><span>jane@example.com</span></div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.to(
+          ".hf-transition-skeleton-reveal .skeleton",
+          { backgroundPosition: "100% 0", duration: 0.7, ease: "none" },
+          startTime,
+        );
+        tl.to(
+          ".hf-transition-skeleton-reveal .skeleton",
+          { opacity: 0, duration: 0.22 },
+          startTime + 0.72,
+        );
+        tl.to(
+          ".hf-transition-skeleton-reveal .content",
+          { opacity: 1, duration: 0.24 },
+          startTime + 0.78,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["skeleton-reveal-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

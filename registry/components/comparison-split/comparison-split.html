@@ -1,0 +1,459 @@
+<!doctype html>
+<!--
+  comparison-split: HyperFrames video primitive (ui-props / holdable / compare)
+
+  Concept: two full-bleed treatments share one frame. The muted before panel
+  stays fully visible as the base, while the vivid after panel wipes over it
+  from the leading edge. A persistent divider marks the shared clip boundary.
+  One mechanic, one job: compare two visual states.
+
+  Compiled-from evidence: fixture + blueprint (re-filed from prove), from the
+  video-primitives compare shelf.
+
+  Use when: a scene needs a direct before-and-after comparison, a redesign
+  reveal, or a visual treatment contrast that must remain readable during a
+  long hold.
+
+  Variables (declared in data-composition-variables below):
+    - split (number, default 50, range 0 to 100%): target resting position.
+    - orientation (horizontal | vertical, default horizontal): horizontal uses
+      a vertical divider traveling left to right, vertical uses a horizontal
+      divider traveling top to bottom.
+    - labelA (string, default "Before"): caption on the base panel.
+    - labelB (string, default "After"): caption on the revealed panel.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 1.40s  stage settles, then the divider wipes from 0% to split
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); deliberately still
+               so the target comparison remains easy to inspect
+    OUT_BASE = 0.50s  release fade
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so IN + OUT == D
+    and HOLD == 0.
+
+  Sync point: wipe-land is fixed at WIPE_END_BASE = 1.30s inside IN. It scales
+  proportionally only when the full envelope is shorter than 1.90s, and never
+  moves into elastic HOLD.
+
+  Sound cue: a soft wipe landing hook fires at wipe-land. This primitive never
+  plays audio. It dispatches a bubbling `hf:sfx` CustomEvent with id
+  "wipe-land-soft", so scene-level audio mixing owns playback.
+
+  Mount contract: this file is a MOUNTABLE SUB-COMPOSITION. A host loads it via
+  data-composition-src, and the runtime clones only <template> contents. All
+  live styles, markup, GSAP, and timeline registration therefore live inside
+  <template>. #root is styled by id, fills the host with inset:0, establishes
+  the cqw/cqh container, and has no data-width or data-height. The composition
+  id is the hardcoded literal "comparison-split" because mount flattening
+  strips data-composition-id from the live root. Variables come from
+  window.__hyperframes.getVariables(), which merges declared defaults with
+  per-instance host overrides.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "split", "type": "number", "role": "layout", "label": "Split position", "description": "Target resting position of the comparison divider.", "default": 50, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "orientation", "type": "enum", "role": "layout", "label": "Orientation", "description": "Axis and direction used by the comparison wipe.", "default": "horizontal", "options": [{ "value": "horizontal", "label": "Horizontal" }, { "value": "vertical", "label": "Vertical" }] },
+    { "id": "labelA", "type": "string", "role": "content", "label": "Before label", "description": "Caption shown on the base before panel.", "default": "Before" },
+    { "id": "labelB", "type": "string", "role": "content", "label": "After label", "description": "Caption shown on the revealed after panel.", "default": "After" }
+  ]'
+>
+  <head>
+    <!-- The mount runtime reads variables from <html>, then discards everything
+         outside <template>, including this head. -->
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="comparison-split" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host-owned box. Every internal measurement uses
+             cqw/cqh, and every painted color comes from a theme token. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #07111f);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .cs-clip,
+          .cs-stage,
+          .cs-panel {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .cs-clip {
+            overflow: hidden;
+          }
+
+          .cs-stage {
+            --cs-split: 0;
+            opacity: 0;
+          }
+
+          .cs-before {
+            background:
+              linear-gradient(
+                  color-mix(in srgb, var(--border, #334155) 38%, transparent) 0.12cqw,
+                  transparent 0.12cqw
+                )
+                0 0 / 5cqw 5cqw,
+              linear-gradient(
+                  90deg,
+                  color-mix(in srgb, var(--border, #334155) 38%, transparent) 0.12cqw,
+                  transparent 0.12cqw
+                )
+                0 0 / 5cqw 5cqw,
+              var(--surface, #172033);
+          }
+
+          .cs-after {
+            z-index: 2;
+            clip-path: inset(0 calc((100 - var(--cs-split)) * 1%) 0 0);
+            background: linear-gradient(
+              135deg,
+              var(--brand, #8b5cf6) 0%,
+              color-mix(in srgb, var(--brand, #8b5cf6) 46%, var(--surface, #172033)) 54%,
+              var(--accent, #22d3ee) 100%
+            );
+          }
+
+          .cs-window {
+            position: absolute;
+            left: 14cqw;
+            top: 18cqh;
+            width: 72cqw;
+            height: 64cqh;
+            overflow: hidden;
+            border-radius: min(3cqw, 5cqh);
+            border: 0.16cqw solid var(--border, #334155);
+            background: color-mix(in srgb, var(--surface, #172033) 90%, var(--muted, #94a3b8));
+            box-shadow: 0 2.2cqh 6cqw color-mix(in srgb, var(--bg, #07111f) 50%, transparent);
+          }
+
+          .cs-after .cs-window {
+            border-color: color-mix(in srgb, var(--accent, #22d3ee) 52%, var(--fg, #f8fafc));
+            background: color-mix(in srgb, var(--surface, #172033) 86%, var(--brand, #8b5cf6));
+            box-shadow: 0 2.2cqh 7cqw color-mix(in srgb, var(--accent, #22d3ee) 34%, transparent);
+          }
+
+          .cs-toolbar {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1, 1.2cqw);
+            height: 12cqh;
+            padding: 0 var(--space-2, 2.4cqw);
+            border-bottom: 0.14cqw solid var(--border, #334155);
+          }
+
+          .cs-dot {
+            width: min(2.2cqw, 3.2cqh);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: var(--muted, #94a3b8);
+            opacity: 0.55;
+          }
+
+          .cs-after .cs-dot {
+            background: var(--accent, #22d3ee);
+            opacity: 1;
+          }
+
+          .cs-content {
+            position: relative;
+            height: 52cqh;
+          }
+
+          .cs-copy {
+            position: absolute;
+            left: 7cqw;
+            top: 9cqh;
+            width: 31cqw;
+          }
+
+          .cs-line {
+            height: 2.3cqh;
+            margin-bottom: var(--space-2, 2.4cqh);
+            border-radius: 2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.48;
+          }
+
+          .cs-line:nth-child(1) {
+            width: 94%;
+          }
+
+          .cs-line:nth-child(2) {
+            width: 72%;
+          }
+
+          .cs-line:nth-child(3) {
+            width: 48%;
+          }
+
+          .cs-after .cs-line {
+            background: var(--brand, #8b5cf6);
+            opacity: 0.9;
+          }
+
+          .cs-visual {
+            position: absolute;
+            right: 7cqw;
+            top: 7cqh;
+            width: min(22cqw, 32cqh);
+            aspect-ratio: 1;
+            border-radius: 36% 64% 58% 42%;
+            border: 0.3cqw solid var(--border, #334155);
+            background: var(--muted, #94a3b8);
+            opacity: 0.5;
+          }
+
+          .cs-after .cs-visual {
+            border-color: var(--accent, #22d3ee);
+            background: radial-gradient(
+              circle at 34% 30%,
+              var(--fg, #f8fafc) 0%,
+              var(--accent, #22d3ee) 24%,
+              var(--brand, #8b5cf6) 72%
+            );
+            box-shadow: 0 0 5cqw color-mix(in srgb, var(--accent, #22d3ee) 58%, transparent);
+            opacity: 1;
+          }
+
+          .cs-label {
+            position: absolute;
+            z-index: 4;
+            top: var(--space-3, 4cqh);
+            padding: var(--space-1, 1.2cqh) var(--space-2, 2.2cqw);
+            border: 0.14cqw solid var(--border, #334155);
+            border-radius: 999cqw;
+            background: var(--surface, #172033);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(3cqw, 4.2cqh);
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .cs-before .cs-label {
+            right: var(--space-3, 4cqw);
+            color: var(--muted, #94a3b8);
+          }
+
+          .cs-after .cs-label {
+            left: var(--space-3, 4cqw);
+            border-color: color-mix(in srgb, var(--accent, #22d3ee) 62%, var(--fg, #f8fafc));
+            background: color-mix(in srgb, var(--surface, #172033) 82%, var(--brand, #8b5cf6));
+          }
+
+          .cs-divider {
+            position: absolute;
+            z-index: 5;
+            top: 0;
+            bottom: 0;
+            left: calc(var(--cs-split) * 1%);
+            width: 0.45cqw;
+            transform: translateX(-50%);
+            background: var(--fg, #f8fafc);
+            box-shadow:
+              0 0 1.4cqw var(--accent, #22d3ee),
+              0 0 3cqw color-mix(in srgb, var(--brand, #8b5cf6) 70%, transparent);
+            pointer-events: none;
+          }
+
+          .cs-divider::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: min(5cqw, 7cqh);
+            aspect-ratio: 1;
+            transform: translate(-50%, -50%);
+            border: 0.3cqw solid var(--brand, #8b5cf6);
+            border-radius: 50%;
+            background: var(--fg, #f8fafc);
+            box-shadow: 0 0 2.2cqw color-mix(in srgb, var(--accent, #22d3ee) 66%, transparent);
+          }
+
+          /* INVARIANT: vertical changes only the axis mapping. The after clip
+             and divider still read the same --cs-split value. */
+          #root[data-orientation="vertical"] .cs-after {
+            clip-path: inset(0 0 calc((100 - var(--cs-split)) * 1%) 0);
+          }
+
+          #root[data-orientation="vertical"] .cs-before .cs-label {
+            top: auto;
+            right: var(--space-3, 4cqw);
+            bottom: var(--space-3, 4cqh);
+          }
+
+          #root[data-orientation="vertical"] .cs-divider {
+            top: calc(var(--cs-split) * 1%);
+            right: 0;
+            bottom: auto;
+            left: 0;
+            width: 100%;
+            height: 0.45cqh;
+            transform: translateY(-50%);
+          }
+        </style>
+
+        <div
+          id="comparison-split-clip"
+          class="cs-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="cs-stage">
+            <section class="cs-panel cs-before" aria-label="Before panel">
+              <div class="cs-label"></div>
+              <div class="cs-window">
+                <div class="cs-toolbar">
+                  <span class="cs-dot"></span>
+                  <span class="cs-dot"></span>
+                  <span class="cs-dot"></span>
+                </div>
+                <div class="cs-content">
+                  <div class="cs-copy">
+                    <div class="cs-line"></div>
+                    <div class="cs-line"></div>
+                    <div class="cs-line"></div>
+                  </div>
+                  <div class="cs-visual"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="cs-panel cs-after" aria-label="After panel">
+              <div class="cs-label"></div>
+              <div class="cs-window">
+                <div class="cs-toolbar">
+                  <span class="cs-dot"></span>
+                  <span class="cs-dot"></span>
+                  <span class="cs-dot"></span>
+                </div>
+                <div class="cs-content">
+                  <div class="cs-copy">
+                    <div class="cs-line"></div>
+                    <div class="cs-line"></div>
+                    <div class="cs-line"></div>
+                  </div>
+                  <div class="cs-visual"></div>
+                </div>
+              </div>
+            </section>
+
+            <div class="cs-divider" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Hardcoded because mount flattening strips data-composition-id
+            // from the live root before this timeline registers.
+            var compositionId = "comparison-split";
+            var stage = root.querySelector(".cs-stage");
+            var labelAEl = root.querySelector(".cs-before .cs-label");
+            var labelBEl = root.querySelector(".cs-after .cs-label");
+
+            // EDIT ZONE: declarations above and registry metadata change
+            // together. This API owns defaults plus per-instance overrides.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var rawSplit = vars.split == null ? 50 : Number(vars.split);
+            // INVARIANT: split always clamps into the declared 0 to 100 range.
+            var splitPct = Number.isFinite(rawSplit) ? Math.max(0, Math.min(100, rawSplit)) : 50;
+            // INVARIANT: only horizontal or vertical reaches the renderer.
+            var orientation = vars.orientation === "vertical" ? "vertical" : "horizontal";
+            var labelAText = vars.labelA == null ? "" : String(vars.labelA);
+            var labelBText = vars.labelB == null ? "" : String(vars.labelB);
+
+            root.setAttribute("data-orientation", orientation);
+            labelAEl.textContent = labelAText;
+            labelBEl.textContent = labelBText;
+
+            // RETIME RANGE: fixed IN and OUT scale together only when D is too
+            // short. HOLD is the sole elastic phase. Never use timeScale().
+            var IN_BASE = 1.4;
+            var OUT_BASE = 0.5;
+            var STAGE_IN_BASE = 0.32;
+            var WIPE_AT_BASE = 0.25;
+            var WIPE_DURATION_BASE = 1.05;
+            var WIPE_END_BASE = WIPE_AT_BASE + WIPE_DURATION_BASE;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var STAGE_IN = STAGE_IN_BASE * scale;
+            var WIPE_AT = WIPE_AT_BASE * scale;
+            var WIPE_DURATION = WIPE_DURATION_BASE * scale;
+            var WIPE_END = WIPE_END_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // Explicit both-endpoints state makes tl.seek(0) deterministic.
+            // --cs-split is the only owner of both clip and divider progress.
+            gsap.set(stage, { opacity: 0, "--cs-split": 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: stage settle, then one shared wipe value travels to split.
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+            tl.to(
+              stage,
+              { "--cs-split": splitPct, duration: WIPE_DURATION, ease: "sine.inOut" },
+              WIPE_AT,
+            );
+            tl.call(
+              function () {
+                fireSfx("wipe-land-soft", WIPE_END);
+              },
+              [],
+              WIPE_END,
+            );
+
+            // HOLD: deliberately steady at the target split.
+
+            // OUT: release fade.
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.out" }, OUT_START);
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

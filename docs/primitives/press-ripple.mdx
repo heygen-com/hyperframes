@@ -1,0 +1,45 @@
+---
+title: "Press Ripple"
+description: "A cursor decelerates onto a positioned target, compresses with it, releases two ripple rings, and exits while the pressed state remains."
+---
+
+import { PrimitivePlayer } from "/snippets/PrimitivePlayer.jsx";
+
+<span className="hf-primitive-eyebrow">Interaction</span>
+
+<PrimitivePlayer name="press-ripple" width={1920} height={1080} />
+
+## Variables
+
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `label` | `string` | `Get started` | Text inside the default pill target. |
+| `target_x` | `number` | `50` | Zone center, percent of host width. |
+| `target_y` | `number` | `50` | Zone center, percent of host height. |
+| `press_at` | `number` | `1.4` | Seconds from mount start when the press begins. |
+| `cursor` | `enum` | `light` | Pointer tone. |
+| `accent` | `enum` | `green` | Contract color for the ripple ink and pressed fill. |
+| `exit` | `enum` | `none` | How the frame leaves. None holds the pressed state. |
+
+## When to use it
+
+A caller-supplied interface target needs one explicit press gesture with a visible impact and release.
+
+## When to avoid it
+
+Avoid cueing the press outside the safe gesture window, because press_at is clamped so arrival, compression, ripple, and exit all fit inside the duration.
+
+## Pairs with
+
+- [chevron-pill-card-morph](/primitives/chevron-pill-card-morph)
+- [state-chip-rail](/primitives/state-chip-rail)
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add press-ripple
+```
+
+</CodeGroup>

@@ -1,0 +1,237 @@
+---
+title: "Zoom Through Transition"
+description: "A transition that zooms through a focal card into the next scene."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/zoom-through-transition.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Zoom Through Transition preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add zoom-through-transition" />
+
+That writes one file: `compositions/components/zoom-through-transition.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `from-label` | `Before` | string | Caption on the outgoing scene, the one on screen when the transition starts. |
+| `to-label` | `Zoom Through Transition` | string | Caption on the incoming scene, the one the timeline wipes into frame. |
+| `depth` | `standard` | `close`, `standard`, `far` | Multiplies how far both scenes travel and how hard the outgoing one blurs, so the push covers a shorter or longer run in the same time. |
+| `accent` | `blue` | `blue`, `green`, `violet` | Colour pair behind the incoming scene: the shipped indigo ramp, a --brand green, or an --accent-2 violet. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="zoom-through-transition"
+  data-composition-src="compositions/components/zoom-through-transition.html"
+  data-variable-values='{"from-label":"Before","to-label":"Zoom Through Transition","depth":"standard","accent":"blue"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`zoom-through-transition.html`}>
+
+```html
+<!--
+  Zoom Through Transition - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result either into the
+  markup or into a custom property the CSS above consumes. The timeline recipe
+  below is untouched by them: it keeps driving the same offsets, scales, blur
+  and wipe, and these decide how far that push carries, what the two scenes
+  say, and what colour the incoming scene is.
+
+    - from-label (string, default Before): caption on the outgoing scene. It
+      is the one on screen when the transition starts. Anything that is not a
+      non-empty string keeps the shipped caption.
+    - to-label (string, default Zoom Through Transition): caption on the
+      incoming scene. It stays clipped out of frame until the timeline wipes
+      it in. Anything that is not a non-empty string keeps the shipped
+      caption.
+    - depth (close | standard | far, default standard): multiplies how far
+      both scenes travel and how hard the outgoing one blurs, so the push
+      covers a shorter or longer run in the same time. close covers a little
+      over half the shipped push, far a little under double it. Every input it
+      multiplies is zero at rest, so it collapses to the shipped pose there.
+      It deliberately leaves the two scale tracks alone: the timeline drives
+      those from their own start values, which a multiplier would distort.
+    - accent (blue | green | violet, default blue): colour pair behind the
+      incoming scene. blue is the shipped indigo to violet ramp, green rides
+      --brand into teal, violet rides --accent-2 into magenta. It only reads
+      once the timeline has wiped the incoming scene into frame.
+
+  On every default the result is identical to the original: Before pushing
+  left and blurring while the indigo to violet scene wipes through.
+-->
+
+<div
+  class="hf-remocn-zoom-through-transition"
+  data-composition-variables='[
+    { "id": "from-label", "type": "string", "role": "content", "label": "Outgoing label", "description": "Caption on the outgoing scene, the one on screen when the transition starts.", "default": "Before" },
+    { "id": "to-label", "type": "string", "role": "content", "label": "Incoming label", "description": "Caption on the incoming scene, the one the timeline wipes into frame.", "default": "Zoom Through Transition" },
+    { "id": "depth", "type": "enum", "role": "motion", "label": "Depth", "description": "Multiplies how far both scenes travel and how hard the outgoing one blurs, so the push covers a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour pair behind the incoming scene: the shipped indigo ramp, a --brand green, or an --accent-2 violet.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "green", "label": "Green" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <div class="scene from">Before</div>
+  <div class="scene to">Zoom Through Transition</div>
+  <div class="fx"></div>
+  <div class="rgb"></div>
+</div>
+
+<style>
+  .hf-remocn-zoom-through-transition {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-zoom-through-transition {
+    position: relative;
+    width: 760px;
+    height: 428px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: #111827;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-zoom-through-transition .scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 58px;
+    letter-spacing: -0.05em;
+    color: #fff;
+  }
+  .hf-remocn-zoom-through-transition .from {
+    background: linear-gradient(135deg, #111827, #374151);
+    transform: translate(
+        calc(var(--hf-from-x, 0px) * var(--hf-depth, 1)),
+        calc(var(--hf-from-y, 0px) * var(--hf-depth, 1))
+      )
+      scale(var(--hf-from-scale, 1));
+    filter: blur(calc(var(--hf-from-blur, 0px) * var(--hf-depth, 1)));
+  }
+  .hf-remocn-zoom-through-transition .to {
+    background: linear-gradient(135deg, var(--hf-scene-a, #2563eb), var(--hf-scene-b, #7c3aed));
+    transform: translate(
+        calc(var(--hf-to-x, 0px) * var(--hf-depth, 1)),
+        calc(var(--hf-to-y, 0px) * var(--hf-depth, 1))
+      )
+      scale(var(--hf-to-scale, 1));
+    clip-path: inset(
+      var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
+        var(--hf-clip-left, 0%)
+    );
+  }
+  .hf-remocn-zoom-through-transition .fx {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    mix-blend-mode: screen;
+    transform: translateX(var(--hf-fx-x, -110%));
+  }
+  .hf-remocn-zoom-through-transition .rgb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-rgb-opacity, 0);
+    background: linear-gradient(
+      90deg,
+      rgba(239, 68, 68, 0.35),
+      transparent,
+      rgba(34, 211, 238, 0.35)
+    );
+    transform: translateX(var(--hf-rgb-x, 0px));
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var depths = { close: 0.55, standard: 1, far: 1.7 };
+    // Each choice routes to a different contract token so the variable stays
+    // meaningful under a theme rather than collapsing into one themed accent.
+    var accents = {
+      blue: { a: "#2563eb", b: "#7c3aed" },
+      green: { a: "var(--brand, #34d399)", b: "#0f766e" },
+      violet: { a: "var(--accent-2, #a78bfa)", b: "#db2777" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function label(value) {
+      return typeof value === "string" && value !== "" ? value : null;
+    }
+
+    var depth = depths[pick(depths, vars.depth, "standard")];
+    var accent = accents[pick(accents, vars.accent, "blue")];
+    var fromLabel = label(vars["from-label"]);
+    var toLabel = label(vars["to-label"]);
+
+    var roots = document.querySelectorAll(".hf-remocn-zoom-through-transition");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-depth", String(depth));
+      root.style.setProperty("--hf-scene-a", accent.a);
+      root.style.setProperty("--hf-scene-b", accent.b);
+
+      var fromScene = root.querySelector(".from");
+      var toScene = root.querySelector(".to");
+      if (fromLabel !== null && fromScene) {
+        fromScene.textContent = fromLabel;
+      }
+      if (toLabel !== null && toScene) {
+        toScene.textContent = toLabel;
+      }
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-zoom-through-transition .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-zoom-through-transition .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-zoom-through-transition .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-zoom-through-transition .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/zoom-through-transition.html` and paste its contents into your composition. See the comment header in the file for timeline integration guidance.
+
+{/* hf:generated-footer */}
+
+Tagged `transition-primitive` `remocn-port`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

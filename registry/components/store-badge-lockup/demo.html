@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  store-badge-lockup demo: standalone 1920x1080 host composition. It mounts
+  the primitive through data-composition-src into a definite end-card panel.
+  Default variable values keep both CSS-drawn badges visible for screening.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Store Badge Lockup Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root {
+        --bg: #080b13;
+        --fg: #f7f9fc;
+        --muted: #aab4c5;
+        --surface: #151c29;
+        --border: #3b4659;
+        --brand: #7c6cff;
+        --accent: #42d3b2;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, monospace;
+        --radius: 2.4cqh;
+        --space-1: 1.2cqh;
+        --space-2: 2.4cqh;
+        --space-3: 4.8cqh;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          color-mix(in srgb, var(--surface) 72%, var(--bg)),
+          var(--bg) 72%
+        );
+      }
+
+      .mount-card {
+        width: 66%;
+        height: 58%;
+        left: 17%;
+        top: 21%;
+        overflow: hidden;
+        border: 0.14cqh solid var(--border);
+        border-radius: calc(var(--radius) * 1.45);
+        background: var(--bg);
+        box-shadow: 0 4cqh 11cqh color-mix(in srgb, var(--fg) 11%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="store-badge-lockup-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="store-badge-lockup-mount"
+        class="mount-card clip"
+        data-composition-id="store-badge-lockup"
+        data-composition-src="./store-badge-lockup.html"
+        data-variable-values='{"headline":"Get the app","showApple":"yes","showGoogle":"yes"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1267"
+        data-height="626"
+      ></div>
+    </div>
+
+    <script src="./vendor/gsap-3.14.2.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["store-badge-lockup-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -3,23 +3,103 @@ title: "Grain Overlay"
 description: "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition"
 ---
 
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grain-overlay.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grain-overlay.png" autoPlay muted loop playsInline />
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/grain-overlay.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Grain Overlay preview" />
 
 ## Install
 
-```bash Terminal
-npx hyperframes add grain-overlay
-```
+<InstallCommand command="npx hyperframes add grain-overlay" />
 
 That writes one file: `compositions/components/grain-overlay.html`.
 
-## Paste it into your composition
+## Source
 
-Open `compositions/components/grain-overlay.html` and copy what is inside into your own composition.
-The file opens with a comment header that walks you through it.
+<Accordion title={`grain-overlay.html`}>
 
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
+```html
+<!--
+  Grain Overlay — animated film grain texture.
+
+  Usage: paste this snippet into your composition's HTML.
+  The overlay covers the full viewport with pointer-events: none
+  so it sits on top of all content without blocking interaction.
+
+  Customize:
+  - opacity: adjust .grain-texture opacity (default 0.15)
+  - speed: change animation duration (default 0.5s)
+  - texture: swap the background URL for a different pattern
+  - z-index: adjust #grain-overlay z-index to layer correctly
+-->
+
+<div
+  id="grain-overlay"
+  style="
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+  "
+>
+  <div class="grain-texture"></div>
+</div>
+
+<style>
+  @keyframes hf-grain-noise {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    10% {
+      transform: translate(-5%, -5%);
+    }
+    20% {
+      transform: translate(-10%, 5%);
+    }
+    30% {
+      transform: translate(5%, -10%);
+    }
+    40% {
+      transform: translate(-5%, 15%);
+    }
+    50% {
+      transform: translate(-10%, 5%);
+    }
+    60% {
+      transform: translate(15%, 0);
+    }
+    70% {
+      transform: translate(0, 10%);
+    }
+    80% {
+      transform: translate(-15%, 0);
+    }
+    90% {
+      transform: translate(10%, 5%);
+    }
+  }
+
+  #grain-overlay .grain-texture {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.15;
+    animation: hf-grain-noise 0.5s steps(1) infinite;
+  }
+</style>
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/grain-overlay.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
 
 {/* hf:generated-footer */}
 

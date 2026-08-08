@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Soft Blur In - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101418;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 25% 20%, #3b5b7a 0, transparent 30%),
+          linear-gradient(135deg, #101418, #20282f);
+        color: white;
+      }
+      .wrap {
+        position: absolute;
+        left: 180px;
+        top: 310px;
+        width: 1200px;
+      }
+      .eyebrow {
+        color: #80d9ff;
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+      }
+      .title {
+        margin-top: 28px;
+        font-size: 132px;
+        line-height: 0.92;
+        font-weight: 850;
+        letter-spacing: -0.02em;
+      }
+      .copy {
+        margin-top: 42px;
+        width: 780px;
+        color: #d7e3ea;
+        font-size: 42px;
+        line-height: 1.18;
+      }
+      .hf-soft-blur-in {
+        opacity: 0;
+        transform: translate3d(0, 28px, 0);
+        filter: blur(18px);
+        will-change: transform, opacity, filter;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="soft-blur-in-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="wrap">
+        <div class="eyebrow hf-soft-blur-in">Motion Primitive</div>
+        <div class="title hf-soft-blur-in">Soft blur reveals that feel cinematic.</div>
+        <div class="copy hf-soft-blur-in">
+          Use it for titles, labels, stats, and scene intros without adding a framework.
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-soft-blur-in",
+          {
+            opacity: 1,
+            y: 0,
+            filter: "blur(0px)",
+            duration: 0.8,
+            ease: "power3.out",
+            stagger: 0.12,
+          },
+          0.35,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["soft-blur-in-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Simulated Cursor - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #ecf1f3;
+        font-family: Inter, system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        color: #152026;
+      }
+      .demo-frame {
+        /* ponytail: zoom on wrapper so GSAP can freely animate .card transform */
+        zoom: 1.5;
+      }
+      .card {
+        width: 880px;
+        padding: 72px;
+        background: white;
+        border: 1px solid #dce4e8;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(37, 55, 66, 0.10);
+      }
+      .title {
+        font-size: 64px;
+        font-weight: 850;
+        letter-spacing: -0.03em;
+      }
+      .button {
+        margin-top: 48px;
+        display: inline-flex;
+        padding: 22px 36px;
+        background: #141a20;
+        color: white;
+        font-size: 28px;
+        font-weight: 760;
+        border-radius: 10px;
+      }
+      .hf-simulated-cursor {
+        --hf-cursor-x: 420px;
+        --hf-cursor-y: 360px;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 44px;
+        height: 44px;
+        transform: translate3d(var(--hf-cursor-x), var(--hf-cursor-y), 0);
+        pointer-events: none;
+        z-index: 999;
+        filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.24));
+      }
+      .hf-simulated-cursor-pulse {
+        position: absolute;
+        left: 9px;
+        top: 9px;
+        width: 22px;
+        height: 22px;
+        border: 2px solid rgba(20, 26, 32, 0.75);
+        border-radius: 999px;
+        opacity: 0;
+        transform: scale(0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="simulated-cursor-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="card">
+          <div class="title">Point at the action without screen recording.</div>
+          <div class="button">Generate video</div>
+        </div>
+      </div>
+      <div class="hf-simulated-cursor" aria-hidden="true">
+        <div class="hf-simulated-cursor-pulse"></div>
+        <svg viewBox="0 0 24 24" width="34" height="34" style="filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.3))">
+          <path
+            d="M5.5 3.2 L5.5 19.6 L9.7 15.7 L12.5 21.9 L15.0 20.7 L12.3 14.6 L17.9 14.2 Z"
+            fill="#18181b"
+            stroke="#ffffff"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.from(".card", { opacity: 0, y: 30, duration: 0.6, ease: "power3.out" }, 0.2);
+        tl.to(
+          ".hf-simulated-cursor",
+          {
+            "--hf-cursor-x": "1030px",
+            "--hf-cursor-y": "620px",
+            duration: 1,
+            ease: "power2.inOut",
+          },
+          1.0,
+        );
+        tl.fromTo(
+          ".hf-simulated-cursor-pulse",
+          { opacity: 0.8, scale: 0.2 },
+          { opacity: 0, scale: 2.4, duration: 0.45, ease: "power2.out" },
+          2.02,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["simulated-cursor-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

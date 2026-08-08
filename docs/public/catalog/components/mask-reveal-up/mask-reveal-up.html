@@ -1,0 +1,103 @@
+<!--
+  Mask Reveal Up - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them: it keeps
+  driving one horizontal offset, one vertical offset and one blur, and these
+  decide what that pair of offsets means on screen.
+
+    - origin (left | right | straight, default left): which side the lines
+      swing in from. left is the original diagonal, right mirrors it, straight
+      drops the horizontal part so the lines rise vertically.
+    - distance (close | standard | far, default standard): scales both offsets.
+      close covers half the run, far nearly double, in the same time.
+    - line_gap (tight | standard | loose, default standard): vertical space
+      between the two lines, 4px, 10px or 20px.
+    - tone (ink | paper | accent, default ink): line colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+
+  On every default the result is identical to the original: lines arrive from
+  36px left and 18px below through a 6px blur, near-black, 10px apart.
+-->
+
+<div
+  class="hf-remocn-mask-reveal-up"
+  data-composition-variables='[
+    { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Which side the lines swing in from before they settle.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "straight", "label": "Straight" }] },
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the travel offsets, so the lines cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "line_gap", "type": "enum", "role": "layout", "label": "Line gap", "description": "Vertical space between the stacked lines.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "loose", "label": "Loose" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+><span>Every frame</span><span>under control</span></div>
+
+<style>
+  .hf-remocn-mask-reveal-up {
+    color: var(--hf-line-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-mask-reveal-up {
+    display: grid;
+    gap: var(--hf-line-gap, 10px);
+    font-size: 52px;
+    line-height: 1;
+    overflow: hidden;
+  }
+  .hf-remocn-mask-reveal-up span {
+    display: block;
+    transform: translate(
+      calc(var(--hf-line-x, 0px) * var(--hf-line-reach-x, 1)),
+      calc(var(--hf-line-y, 0px) * var(--hf-line-reach-y, 1))
+    );
+    filter: blur(var(--hf-line-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var origins = { left: 1, right: -1, straight: 0 };
+    var reaches = { close: 0.5, standard: 1, far: 1.85 };
+    var gaps = { tight: "4px", standard: "10px", loose: "20px" };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var originX = origins[pick(origins, vars.origin, "left")];
+    var reach = reaches[pick(reaches, vars.distance, "standard")];
+    var gap = gaps[pick(gaps, vars.line_gap, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-remocn-mask-reveal-up");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-line-reach-x", String(originX * reach));
+      roots[i].style.setProperty("--hf-line-reach-y", String(reach));
+      roots[i].style.setProperty("--hf-line-gap", gap);
+      roots[i].style.setProperty("--hf-line-color", tone);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-mask-reveal-up span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
+-->

@@ -1,0 +1,178 @@
+<!--
+  Spatial Push - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe stays untouched by them: it keeps
+  driving one wipe, one pair of offsets, one scale, one blur and one sheen
+  sweep, and these decide which way that wipe runs, how hard the old scene is
+  pushed back, how hot the sheen burns and what colour the new scene is.
+
+    - direction (right | left, default right): which way the push runs. right
+      wipes the new scene in from the left edge across to the right and shoves
+      the old one out to the left; left mirrors the whole move, wipe, offsets,
+      sheen sweep and chromatic split included.
+    - depth (subtle | standard | deep, default standard): scales how hard the
+      old scene is pressed backward, its sideways shove, its shrink and its
+      blur together. subtle keeps it nearly flat, deep nearly doubles the
+      recession, in the same time.
+    - sheen (none | soft | standard | bright, default standard): the strength
+      of the white light sweep that crosses the seam. none removes it entirely,
+      bright takes it to full white.
+    - accent (blue | violet | green, default blue): the incoming scene gradient.
+      blue defers to the component --hf-accent token, so a host that retints
+      that token retints the scene with it. The other two are self-contained
+      pairs. Note the incoming scene is fully clipped at rest, so this only
+      shows once the timeline wipe reveals it.
+
+  On every default the result is identical to the original: a blue to violet
+  scene wiping in from the left while the old one recedes 70px behind a 5px
+  blur.
+-->
+
+<div
+  class="hf-remocn-spatial-push"
+  data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which way the push runs. right wipes the new scene in from the left edge, left mirrors the whole move.", "default": "right", "options": [{ "value": "right", "label": "Rightward" }, { "value": "left", "label": "Leftward" }] },
+    { "id": "depth", "type": "enum", "role": "motion", "label": "Depth", "description": "Scales how hard the old scene is pressed backward: its shove, its shrink and its blur together.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "deep", "label": "Deep" }] },
+    { "id": "sheen", "type": "enum", "role": "style", "label": "Sheen", "description": "Strength of the white light sweep that crosses the seam, from removed entirely to full white.", "default": "standard", "options": [{ "value": "none", "label": "None" }, { "value": "soft", "label": "Soft" }, { "value": "standard", "label": "Standard" }, { "value": "bright", "label": "Bright" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Incoming scene gradient. blue defers to the --hf-accent token so a retinted host retints the scene.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "green", "label": "Green" }] }
+  ]'
+>
+  <div class="scene from">Before</div>
+  <div class="scene to">Spatial Push</div>
+  <div class="fx"></div>
+  <div class="rgb"></div>
+</div>
+
+<style>
+  .hf-remocn-spatial-push {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-spatial-push {
+    position: relative;
+    width: 760px;
+    height: 428px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: #111827;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-spatial-push .scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 58px;
+    letter-spacing: -0.05em;
+    color: #fff;
+  }
+  .hf-remocn-spatial-push .from {
+    background: linear-gradient(135deg, #111827, #374151);
+    transform: translate(
+        calc(var(--hf-from-x, 0px) * var(--hf-push-axis, 1) * var(--hf-push-depth, 1)),
+        var(--hf-from-y, 0px)
+      )
+      scale(calc(1 + (var(--hf-from-scale, 1) - 1) * var(--hf-push-depth, 1)));
+    filter: blur(calc(var(--hf-from-blur, 0px) * var(--hf-push-depth, 1)));
+  }
+  .hf-remocn-spatial-push .to {
+    background: linear-gradient(
+      135deg,
+      var(--hf-push-accent-a, var(--hf-accent, #2563eb)),
+      var(--hf-push-accent-b, #7c3aed)
+    );
+    transform: translate(calc(var(--hf-to-x, 0px) * var(--hf-push-axis, 1)), var(--hf-to-y, 0px))
+      scale(var(--hf-to-scale, 1));
+    clip-path: inset(
+      var(--hf-clip-top, 0%)
+        calc(var(--hf-clip-right, 100%) * var(--hf-push-clip-right, 1))
+        var(--hf-clip-bottom, 0%)
+        calc(var(--hf-clip-left, 0%) + var(--hf-clip-right, 100%) * var(--hf-push-clip-left, 0))
+    );
+  }
+  .hf-remocn-spatial-push .fx {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, calc(0.75 * var(--hf-push-sheen, 1))),
+      transparent
+    );
+    mix-blend-mode: screen;
+    transform: translateX(calc(var(--hf-fx-x, -110%) * var(--hf-push-axis, 1)));
+  }
+  .hf-remocn-spatial-push .rgb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-rgb-opacity, 0);
+    background: linear-gradient(
+      90deg,
+      rgba(239, 68, 68, 0.35),
+      transparent,
+      rgba(34, 211, 238, 0.35)
+    );
+    transform: translateX(calc(var(--hf-rgb-x, 0px) * var(--hf-push-axis, 1)));
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var directions = { right: 1, left: -1 };
+    var depths = { subtle: 0.4, standard: 1, deep: 1.8 };
+    var sheens = { none: 0, soft: 0.45, standard: 1, bright: 1.33 };
+    var accents = {
+      blue: ["var(--hf-accent, #2563eb)", "#7c3aed"],
+      violet: ["#7c3aed", "#db2777"],
+      green: ["#10b981", "#0ea5e9"],
+    };
+
+    var axis = directions[pick(directions, vars.direction, "right")];
+    var depth = depths[pick(depths, vars.depth, "standard")];
+    var sheen = sheens[pick(sheens, vars.sheen, "standard")];
+    var accent = accents[pick(accents, vars.accent, "blue")];
+
+    var roots = document.querySelectorAll(".hf-remocn-spatial-push");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-push-axis", String(axis));
+      root.style.setProperty("--hf-push-depth", String(depth));
+      root.style.setProperty("--hf-push-sheen", String(sheen));
+      // The wipe the timeline drives is fed into the right inset going one way
+      // and into the left inset going the other, so the seam mirrors too.
+      root.style.setProperty("--hf-push-clip-right", axis === 1 ? "1" : "0");
+      root.style.setProperty("--hf-push-clip-left", axis === 1 ? "0" : "1");
+      // A new pair of properties, so the shared --hf-accent token is left alone.
+      root.style.setProperty("--hf-push-accent-a", accent[0]);
+      root.style.setProperty("--hf-push-accent-b", accent[1]);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-spatial-push .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-spatial-push .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-spatial-push .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-spatial-push .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+-->

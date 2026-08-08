@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Parallax Zoom — Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #1a1a20;
+        font-family: "Inter", system-ui, sans-serif;
+      }
+
+      .demo-canvas {
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .parallax-zoom-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 360px);
+        grid-template-rows: repeat(3, 341px);
+        gap: 30px;
+      }
+
+      .parallax-zoom-card {
+        border-radius: 22px;
+        overflow: hidden;
+        position: relative;
+        box-shadow: 0 12px 36px rgba(20, 20, 30, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+
+      .card-glyph {
+        font-size: 92px;
+        font-weight: 800;
+        color: rgba(255, 255, 255, 0.92);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+
+      .pz-c0 {
+        background: linear-gradient(135deg, #3a8b6f, #1d4d3d);
+      }
+      .pz-c1 {
+        background: linear-gradient(135deg, #8b4a3a, #4a2418);
+      }
+      .pz-c2 {
+        background: linear-gradient(135deg, #c89868, #8a6038);
+      }
+      .pz-c3 {
+        background: linear-gradient(135deg, #3a6088, #1a2f4a);
+      }
+      .pz-c4 {
+        background: linear-gradient(135deg, #b03838, #6a1818);
+      }
+      .pz-c5 {
+        background: linear-gradient(135deg, #bcbcbc, #6e6e6e);
+      }
+      .pz-c6 {
+        background: linear-gradient(135deg, #8a5fa0, #4a2860);
+      }
+      .pz-c7-focus {
+        background: linear-gradient(135deg, #f5c93f, #d99a18);
+      }
+      .pz-c8 {
+        background: linear-gradient(135deg, #d8d8d8, #9a9a9a);
+      }
+      .pz-c9 {
+        background: linear-gradient(135deg, #5fa37e, #2a6a4a);
+      }
+      .pz-c10 {
+        background: linear-gradient(135deg, #d1b66a, #8a7028);
+      }
+      .pz-c11 {
+        background: linear-gradient(135deg, #4f7fc0, #1f3f80);
+      }
+      .pz-c12 {
+        background: linear-gradient(135deg, #5a3a8f, #2a1858);
+      }
+      .pz-c13 {
+        background: linear-gradient(135deg, #b85a3a, #6a2818);
+      }
+      .pz-c14 {
+        background: linear-gradient(135deg, #f0f0e8, #c8c8be);
+      }
+
+      .parallax-zoom-card[data-pz-focus="true"] {
+        grid-column: 3;
+        grid-row: 2;
+      }
+
+      .focus-label {
+        font-weight: 900;
+        font-size: 56px;
+        letter-spacing: -0.04em;
+        color: #1a1208;
+        text-align: center;
+        line-height: 1;
+      }
+
+      .focus-label small {
+        display: block;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        margin-bottom: 14px;
+        color: rgba(26, 18, 8, 0.7);
+      }
+
+      .zoom-backdrop {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, #f5c93f, #d99a18);
+        opacity: 0;
+        z-index: 0;
+      }
+
+      .hero-headline {
+        position: absolute;
+        top: 80px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 68px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: #1a1a1a;
+        opacity: 0;
+        z-index: 20;
+      }
+
+      .parallax-zoom-grid {
+        --pz-progress: 0;
+        --pz-focus-scale: 6;
+        --pz-sibling-push: 900px;
+        --pz-sibling-fade: 1;
+        position: relative;
+      }
+
+      .parallax-zoom-card {
+        transform-origin: center center;
+        will-change: transform, opacity;
+        transform: translate3d(
+            calc(var(--pz-dx, 0px) * var(--pz-progress)),
+            calc(var(--pz-dy, 0px) * var(--pz-progress)),
+            0
+          )
+          scale(calc(1 - var(--pz-progress) * 0.4));
+      }
+
+      .parallax-zoom-card[data-pz-focus="true"] {
+        z-index: 10;
+        transform: translate3d(0, 0, 0)
+          scale(calc(1 + var(--pz-progress) * (var(--pz-focus-scale) - 1)));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="parallax-zoom-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+      data-start="0"
+    >
+      <div class="demo-canvas">
+        <div class="zoom-backdrop"></div>
+        <div class="hero-headline">Inspired by how people discover.</div>
+
+        <div class="parallax-zoom-grid">
+          <div class="parallax-zoom-card pz-c0" data-pz-row="0" data-pz-col="0">
+            <span class="card-glyph">◇</span>
+          </div>
+          <div class="parallax-zoom-card pz-c1" data-pz-row="0" data-pz-col="1">
+            <span class="card-glyph">◐</span>
+          </div>
+          <div class="parallax-zoom-card pz-c2" data-pz-row="0" data-pz-col="2">
+            <span class="card-glyph">◯</span>
+          </div>
+          <div class="parallax-zoom-card pz-c3" data-pz-row="0" data-pz-col="3">
+            <span class="card-glyph">◑</span>
+          </div>
+          <div class="parallax-zoom-card pz-c4" data-pz-row="0" data-pz-col="4">
+            <span class="card-glyph">▲</span>
+          </div>
+
+          <div class="parallax-zoom-card pz-c5" data-pz-row="1" data-pz-col="0">
+            <span class="card-glyph">✦</span>
+          </div>
+          <div class="parallax-zoom-card pz-c6" data-pz-row="1" data-pz-col="1">
+            <span class="card-glyph">❖</span>
+          </div>
+          <div
+            class="parallax-zoom-card pz-c7-focus"
+            data-pz-row="1"
+            data-pz-col="2"
+            data-pz-focus="true"
+          >
+            <div class="focus-label">
+              <small>EBAY PLAYBOOK</small>
+              DISCOVER
+            </div>
+          </div>
+          <div class="parallax-zoom-card pz-c8" data-pz-row="1" data-pz-col="3">
+            <span class="card-glyph">✧</span>
+          </div>
+          <div class="parallax-zoom-card pz-c9" data-pz-row="1" data-pz-col="4">
+            <span class="card-glyph">◈</span>
+          </div>
+
+          <div class="parallax-zoom-card pz-c10" data-pz-row="2" data-pz-col="0">
+            <span class="card-glyph">▼</span>
+          </div>
+          <div class="parallax-zoom-card pz-c11" data-pz-row="2" data-pz-col="1">
+            <span class="card-glyph">◆</span>
+          </div>
+          <div class="parallax-zoom-card pz-c12" data-pz-row="2" data-pz-col="2">
+            <span class="card-glyph">●</span>
+          </div>
+          <div class="parallax-zoom-card pz-c13" data-pz-row="2" data-pz-col="3">
+            <span class="card-glyph">◭</span>
+          </div>
+          <div class="parallax-zoom-card pz-c14" data-pz-row="2" data-pz-col="4">
+            <span class="card-glyph" style="color: rgba(40, 40, 40, 0.7)">◇</span>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          const grids = document.querySelectorAll(".parallax-zoom-grid");
+          grids.forEach((grid) => {
+            const cards = Array.from(grid.querySelectorAll(".parallax-zoom-card"));
+            if (cards.length === 0) return;
+            let focal = cards.find((c) => c.dataset.pzFocus === "true");
+            if (!focal) {
+              focal = cards[Math.floor(cards.length / 2)];
+              focal.dataset.pzFocus = "true";
+            }
+            const focusRow = Number(focal.dataset.pzRow ?? 0);
+            const focusCol = Number(focal.dataset.pzCol ?? 0);
+            const push =
+              parseFloat(getComputedStyle(grid).getPropertyValue("--pz-sibling-push")) || 900;
+            cards.forEach((card) => {
+              if (card === focal) return;
+              const row = Number(card.dataset.pzRow ?? 0);
+              const col = Number(card.dataset.pzCol ?? 0);
+              const dCol = col - focusCol;
+              const dRow = row - focusRow;
+              const mag = Math.hypot(dCol, dRow) || 1;
+              const nx = (dCol / mag) * push * mag;
+              const ny = (dRow / mag) * push * mag;
+              card.style.setProperty("--pz-dx", `${nx}px`);
+              card.style.setProperty("--pz-dy", `${ny}px`);
+            });
+          });
+
+          const tl = gsap.timeline({ paused: true });
+
+          tl.to(
+            ".parallax-zoom-card",
+            {
+              opacity: 1,
+              duration: 0.5,
+              ease: "power2.out",
+              stagger: { each: 0.03, from: "center" },
+            },
+            0,
+          );
+
+          tl.fromTo(
+            ".parallax-zoom-grid",
+            { "--pz-progress": 0 },
+            {
+              "--pz-progress": 1,
+              duration: 3.0,
+              ease: "power2.inOut",
+            },
+            1.7,
+          );
+
+          tl.to(
+            ".parallax-zoom-card:not([data-pz-focus='true'])",
+            {
+              opacity: 0,
+              duration: 1.0,
+              ease: "power2.in",
+            },
+            3.5,
+          );
+
+          tl.to(
+            ".focus-label",
+            {
+              opacity: 0,
+              duration: 1.0,
+              ease: "power2.in",
+            },
+            2.5,
+          );
+
+          tl.to(
+            ".hero-headline",
+            {
+              opacity: 1,
+              duration: 0.7,
+              ease: "power2.out",
+            },
+            4.2,
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["parallax-zoom-demo"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

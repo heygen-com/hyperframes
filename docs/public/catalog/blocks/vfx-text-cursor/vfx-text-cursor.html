@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>VFX Text Cursor</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  </head>
+  <body style="margin: 0; overflow: hidden">
+    <div
+      id="vfx-text-cursor"
+      data-composition-id="vfx-text-cursor"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+      data-root="true"
+    >
+      <canvas id="vfx-canvas" width="1920" height="1080" aria-hidden="true"></canvas>
+      <div class="stage-logo-wrap" aria-hidden="true">
+        <svg
+          class="stage-logo"
+          width="263"
+          height="79"
+          viewBox="0 0 263 79"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M0 16.6738H4.96V23.3838H11.53V16.6738H16.49V35.4538H11.53V27.6738H4.96V35.4538H0V16.6738Z"
+            fill="white"
+          />
+          <path
+            d="M17.8899 28.0137C17.8899 23.4237 21.2399 20.0237 25.7999 20.0237C30.0099 20.0237 32.9399 23.0837 32.9399 27.5637C32.9399 28.2037 32.8599 28.8237 32.8299 29.3337H22.6099C23.0399 31.1337 24.6199 32.1237 27.1399 32.1237C28.7199 32.1237 30.2199 31.7237 31.2999 31.0237V34.6737C30.1699 35.3937 28.2999 35.8537 26.3599 35.8537C21.2599 35.8537 17.8799 32.6037 17.8799 28.0237L17.8899 28.0137ZM28.5699 26.1937C28.4899 24.5337 27.3899 23.5637 25.7499 23.5637C24.1099 23.5637 22.9599 24.5337 22.6099 26.1937H28.5699Z"
+            fill="white"
+          />
+          <path
+            d="M37.85 33.8638L32 20.4238H37.29L40.46 28.1538L43.6 20.4238H48.48L40.33 39.5738H35.26L37.86 33.8638H37.85Z"
+            fill="white"
+          />
+          <path
+            d="M48.1797 26.1138C48.1797 20.4238 52.7097 16.2438 58.9397 16.2438C61.2997 16.2438 63.5297 16.8038 64.8197 17.7238V21.9338C63.5597 20.9138 61.6797 20.2938 59.7497 20.2938C55.7797 20.2938 53.2597 22.6238 53.2597 26.1438C53.2597 29.6638 55.5697 31.8838 58.8897 31.8838C59.6397 31.8838 60.4997 31.7538 61.1997 31.5038V27.8838H57.4697V24.2338H65.5197V33.7038C63.6697 35.0938 61.1997 35.8738 58.5997 35.8738C52.5397 35.8738 48.1897 31.7438 48.1897 26.1138H48.1797Z"
+            fill="white"
+          />
+          <path
+            d="M66.6604 28.0137C66.6604 23.4237 70.0104 20.0237 74.5704 20.0237C78.7804 20.0237 81.7104 23.0837 81.7104 27.5637C81.7104 28.2037 81.6304 28.8237 81.6004 29.3337H71.3804C71.8104 31.1337 73.3904 32.1237 75.9104 32.1237C77.4904 32.1237 78.9904 31.7237 80.0704 31.0237V34.6737C78.9404 35.3937 77.0704 35.8537 75.1304 35.8537C70.0304 35.8537 66.6504 32.6037 66.6504 28.0237L66.6604 28.0137ZM77.3404 26.1937C77.2604 24.5337 76.1604 23.5637 74.5204 23.5637C72.8804 23.5637 71.7304 24.5337 71.3804 26.1937H77.3404Z"
+            fill="white"
+          />
+          <path
+            d="M82.9697 20.4238H87.8497V22.4138C88.7597 20.9638 90.3497 20.1038 92.3297 20.1038C95.4997 20.1038 97.3997 22.3338 97.3997 25.8138V35.4438H92.5197V26.8638C92.5197 25.0438 91.8197 24.1838 90.4797 24.1838C88.9497 24.1838 87.8497 25.3638 87.8497 27.2638V35.4438H82.9697V20.4238Z"
+            fill="white"
+          />
+          <path
+            d="M195.219 26.1937L213.529 38.9937C216.009 40.7237 220.239 38.7637 221.009 35.5337L228.419 4.33374C229.189 1.10374 225.879 -0.856262 222.589 0.873738L198.199 13.6737C192.649 16.5837 191.059 23.2837 195.219 26.1937Z"
+            fill="url(#paint0_linear_2204_3044)"
+          />
+          <path
+            d="M256.97 25.9638L232.58 38.7638C229.28 40.4938 225.98 38.5338 226.75 35.3038L234.16 4.10376C234.93 0.873757 239.16 -1.08624 241.64 0.643757L259.95 13.4438C264.12 16.3538 262.52 23.0538 256.97 25.9638Z"
+            fill="url(#paint1_linear_2204_3044)"
+          />
+          <path
+            d="M252.115 72.502C250.192 72.502 248.268 72.0838 246.93 71.3728V65.6853C247.808 66.3126 248.937 66.689 250.066 66.689C251.739 66.689 252.784 65.8526 252.784 64.5562C252.784 63.8452 252.492 63.0925 251.655 62.0888L249.899 59.956C248.728 58.4923 248.226 56.9031 248.226 55.2721C248.226 51.0065 251.864 48.0791 256.883 48.0791C258.723 48.0791 260.438 48.4555 261.65 49.0828V54.7703C260.898 54.2266 259.768 53.8503 258.723 53.8503C257.092 53.8503 256.046 54.6867 256.046 55.8994C256.046 56.6522 256.423 57.405 257.259 58.4086L258.974 60.4996C260.187 62.047 260.73 63.5943 260.73 65.2671C260.73 69.5746 257.05 72.502 252.115 72.502Z"
+            fill="white"
+          />
+          <path
+            d="M236.338 72.6269C228.392 72.6269 223.123 67.5667 223.123 60.4155C223.123 53.2643 228.351 47.9531 235.46 47.9531C242.026 47.9531 246.584 52.7206 246.584 59.7045C246.584 60.7082 246.459 61.6701 246.417 62.4647H230.483C231.152 65.2666 233.62 66.8139 237.551 66.8139C240.018 66.8139 242.36 66.1866 244.033 65.0993V70.7868C242.277 71.916 239.349 72.6269 236.338 72.6269ZM230.483 57.5717H239.767C239.642 54.9789 237.927 53.4734 235.376 53.4734C232.867 53.4734 231.027 54.9789 230.483 57.5717Z"
+            fill="white"
+          />
+          <path
+            d="M184.998 72.0001V48.5809H192.609V51.6756C193.989 49.4173 196.373 48.0791 199.426 48.0791C202.521 48.0791 204.779 49.5428 206.075 52.052C207.497 49.5846 210.132 48.0791 213.352 48.0791C218.245 48.0791 221.214 51.592 221.214 57.0286V72.0001H213.603V58.5341C213.603 55.774 212.557 54.4357 210.634 54.4357C208.459 54.4357 206.912 56.234 206.912 59.0778V72.0001H199.3V58.5341C199.3 55.774 198.255 54.4357 196.373 54.4357C194.157 54.4357 192.609 56.234 192.609 59.0778V72.0001H184.998Z"
+            fill="white"
+          />
+          <path
+            d="M167.26 72.4602C161.154 72.4602 156.596 67.2745 156.596 60.3324C156.596 53.3066 161.196 48.0791 167.302 48.0791C170.438 48.0791 173.031 49.4173 174.536 51.8429V48.5809H182.148V72.0001H174.536V68.4873C173.031 71.0801 170.438 72.4602 167.26 72.4602ZM169.393 66.1872C172.78 66.1872 174.536 63.3434 174.536 60.876V59.6632C174.536 57.2377 172.78 54.4357 169.393 54.4357C166.298 54.4357 164.207 56.7777 164.207 60.2905C164.207 63.7616 166.298 66.1872 169.393 66.1872Z"
+            fill="white"
+          />
+          <path
+            d="M141.258 72V48.5808H148.827V52.9719C149.831 50.0445 151.796 48.2881 154.306 48.2881C154.975 48.2881 155.602 48.4135 156.02 48.6645V55.8993C155.435 55.5648 154.724 55.4393 153.887 55.4393C150.751 55.4393 148.869 57.6558 148.869 61.2941V72H141.258Z"
+            fill="white"
+          />
+          <path
+            d="M122.643 71.9996V42.7256H139.371V49.124H130.379V54.477H138.911V60.5827H130.379V71.9996H122.643Z"
+            fill="white"
+          />
+          <path
+            d="M105.645 72V48.5808H113.214V52.9719C114.218 50.0445 116.183 48.2881 118.692 48.2881C119.361 48.2881 119.989 48.4135 120.407 48.6645V55.8993C119.822 55.5648 119.111 55.4393 118.274 55.4393C115.138 55.4393 113.256 57.6558 113.256 61.2941V72H105.645Z"
+            fill="white"
+          />
+          <path
+            d="M93.4397 72.6269C85.4939 72.6269 80.2246 67.5667 80.2246 60.4155C80.2246 53.2643 85.4521 47.9531 92.5615 47.9531C99.1273 47.9531 103.686 52.7206 103.686 59.7045C103.686 60.7082 103.56 61.6701 103.518 62.4647H87.5849C88.2541 65.2666 90.7214 66.8139 94.6525 66.8139C97.1199 66.8139 99.4618 66.1866 101.135 65.0993V70.7868C99.3782 71.916 96.4508 72.6269 93.4397 72.6269ZM87.5849 57.5717H96.869C96.7435 54.9789 95.0289 53.4734 92.4779 53.4734C89.9687 53.4734 88.1286 54.9789 87.5849 57.5717Z"
+            fill="white"
+          />
+          <path
+            d="M53.3711 78.4404V48.5809H60.9823V52.052C62.446 49.501 65.0807 48.0791 68.3008 48.0791C74.3647 48.0791 78.9649 53.3066 78.9649 60.2487C78.9649 67.2745 74.3229 72.4602 68.259 72.4602C65.0807 72.4602 62.446 71.1637 60.9823 68.78V78.4404H53.3711ZM66.1262 66.1872C69.2627 66.1872 71.3119 63.7616 71.3119 60.2905C71.3119 56.8195 69.2627 54.4357 66.1262 54.4357C62.7388 54.4357 60.9823 57.2795 60.9823 59.7051V60.9178C60.9823 63.3434 62.7388 66.1872 66.1262 66.1872Z"
+            fill="white"
+          />
+          <path
+            d="M31.9606 78.4405L36.0171 69.5329L26.9004 48.5811H35.1389L40.0737 60.6252L44.9666 48.5811H52.5779L39.8646 78.4405H31.9606Z"
+            fill="white"
+          />
+          <path
+            d="M0 71.9996V42.7256H7.7367V53.1806H17.9826V42.7256H25.7193V71.9996H17.9826V59.8718H7.7367V71.9996H0Z"
+            fill="white"
+          />
+          <defs>
+            <linearGradient
+              id="paint0_linear_2204_3044"
+              x1="225.869"
+              y1="-3.06048e-05"
+              x2="222.845"
+              y2="37.4821"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stop-color="#06E3FA" />
+              <stop offset="1" stop-color="#4FDB5E" />
+            </linearGradient>
+            <linearGradient
+              id="paint1_linear_2204_3044"
+              x1="230.87"
+              y1="39"
+              x2="244.661"
+              y2="6.30303"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stop-color="#06E3FA" />
+              <stop offset="1" stop-color="#4FDB5E" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <div id="next-card" aria-hidden="true">
+        <h1 id="phrase-a" class="card-text">
+          <span
+            ><span class="headline-word html-word"
+              ><span class="html-type"></span><span class="html-caret">|</span></span
+            >
+            <span class="headline-word supporting-word">in</span></span
+          >
+          <span><span class="headline-word supporting-word canvas-word">canvas</span></span>
+        </h1>
+        <h2 id="phrase-b" class="card-text availability">
+          <span>Now available</span>
+          <span>in HyperFrames</span>
+        </h2>
+      </div>
+
+      <!-- Driver clip -->
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+
+      <style>
+        @import url("https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&display=block");
+
+        [data-composition-id="vfx-text-cursor"] {
+          position: relative;
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          background: #000000;
+          font-family: Inter, "Arial Black", Arial, sans-serif;
+        }
+
+        [data-composition-id="vfx-text-cursor"] #vfx-canvas {
+          position: absolute;
+          inset: 0;
+          width: 1920px;
+          height: 1080px;
+          z-index: 1;
+        }
+
+        [data-composition-id="vfx-text-cursor"] .stage-logo-wrap {
+          position: absolute;
+          left: 420px;
+          top: 369.8px;
+          z-index: 2;
+          width: 1080px;
+          height: 324.4px;
+          opacity: 0;
+          filter: drop-shadow(0 0 22px rgba(73, 242, 255, 0.12));
+        }
+
+        [data-composition-id="vfx-text-cursor"] .stage-logo {
+          display: block;
+          width: 100%;
+          height: auto;
+        }
+
+        [data-composition-id="vfx-text-cursor"] #next-card {
+          position: absolute;
+          left: 120px;
+          top: 67.5px;
+          width: 1680px;
+          height: 945px;
+          padding: 96px 126px;
+          box-sizing: border-box;
+          border-radius: 56px;
+          background: linear-gradient(
+            160deg,
+            rgba(255, 255, 255, 0.11) 0%,
+            rgba(255, 255, 255, 0.045) 42%,
+            rgba(255, 255, 255, 0.018) 70%,
+            rgba(255, 255, 255, 0.075) 100%
+          );
+          backdrop-filter: blur(14px) saturate(1.12);
+          -webkit-backdrop-filter: blur(14px) saturate(1.12);
+          border: 1px solid rgba(255, 255, 255, 0.17);
+          box-shadow:
+            0 30px 90px rgba(0, 0, 0, 0.42),
+            inset 0 1px 0 rgba(255, 255, 255, 0.22);
+          transform-origin: 50% 50%;
+          z-index: 3;
+          opacity: 0;
+          overflow: hidden;
+        }
+
+        [data-composition-id="vfx-text-cursor"] #next-card::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(circle at 18% 78%, rgba(73, 242, 255, 0.14), transparent 38%),
+            radial-gradient(circle at 82% 22%, rgba(255, 79, 216, 0.11), transparent 34%);
+          pointer-events: none;
+        }
+
+        [data-composition-id="vfx-text-cursor"] #next-card::after {
+          content: "";
+          position: absolute;
+          inset: 1px;
+          border-radius: 55px;
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+          pointer-events: none;
+        }
+
+        [data-composition-id="vfx-text-cursor"] .card-text {
+          position: absolute;
+          z-index: 1;
+          left: 126px;
+          right: 126px;
+          top: 96px;
+          bottom: 96px;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: #ffffff;
+          font-size: 292px;
+          line-height: 0.88;
+          font-weight: 900;
+          letter-spacing: 0;
+          text-align: center;
+          text-shadow:
+            -5px 0 18px rgba(73, 242, 255, 0.38),
+            5px 0 18px rgba(255, 79, 216, 0.28),
+            0 24px 80px rgba(0, 0, 0, 0.58);
+        }
+
+        [data-composition-id="vfx-text-cursor"] .card-text > span {
+          display: block;
+          white-space: nowrap;
+        }
+
+        [data-composition-id="vfx-text-cursor"] .headline-word {
+          display: inline-block;
+        }
+
+        [data-composition-id="vfx-text-cursor"] .html-word {
+          position: relative;
+          width: 1.78em;
+          margin-right: 0.08em;
+          text-align: left;
+          color: #f6ff7a;
+          font-family: "Big Shoulders Display", Impact, "Arial Black", sans-serif;
+          font-weight: 900;
+          letter-spacing: 0.015em;
+          text-transform: uppercase;
+          text-shadow:
+            -6px 0 16px rgba(73, 242, 255, 0.48),
+            6px 0 16px rgba(255, 79, 216, 0.34),
+            0 0 24px rgba(246, 255, 122, 0.34),
+            0 24px 72px rgba(0, 0, 0, 0.56);
+        }
+
+        [data-composition-id="vfx-text-cursor"] .html-type,
+        [data-composition-id="vfx-text-cursor"] .html-caret {
+          display: inline-block;
+        }
+
+        [data-composition-id="vfx-text-cursor"] .html-caret {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: auto;
+          margin-left: 0;
+          opacity: 0;
+          color: #f6ff7a;
+          text-shadow:
+            0 0 12px rgba(246, 255, 122, 0.7),
+            -4px 0 14px rgba(73, 242, 255, 0.36),
+            4px 0 14px rgba(255, 79, 216, 0.26);
+        }
+
+        [data-composition-id="vfx-text-cursor"] .canvas-word {
+          color: #ffffff;
+          text-shadow:
+            -4px 0 18px rgba(246, 255, 122, 0.26),
+            5px 0 18px rgba(255, 79, 216, 0.25),
+            0 22px 72px rgba(0, 0, 0, 0.58);
+        }
+
+        [data-composition-id="vfx-text-cursor"] .availability {
+          font-size: 178px;
+          line-height: 0.94;
+        }
+      </style>
+
+      <script>
+        window.__timelines = window.__timelines || {};
+
+        (function () {
+          var WIDTH = 1920;
+          var HEIGHT = 1080;
+          var LOGO_VIEWBOX = { width: 263, height: 79 };
+          var LOGO_WIDTH = 1080;
+          var LOGO_SCALE = LOGO_WIDTH / LOGO_VIEWBOX.width;
+          var LOGO_HEIGHT = LOGO_VIEWBOX.height * LOGO_SCALE;
+          var LOGO_X = (WIDTH - LOGO_WIDTH) * 0.5;
+          var LOGO_Y = (HEIGHT - LOGO_HEIGHT) * 0.5 - 8;
+          var root = document.querySelector('[data-composition-id="vfx-text-cursor"]');
+          var canvas = root.querySelector("#vfx-canvas");
+          var nextCard = root.querySelector("#next-card");
+          var phraseA = root.querySelector("#phrase-a");
+          var phraseB = root.querySelector("#phrase-b");
+          var htmlWord = root.querySelector(".html-word");
+          var htmlType = root.querySelector(".html-type");
+          var htmlCaret = root.querySelector(".html-caret");
+          var supportingWords = Array.from(root.querySelectorAll(".supporting-word"));
+          var stageLogo = root.querySelector(".stage-logo-wrap");
+          var gl = canvas.getContext("webgl", {
+            premultipliedAlpha: false,
+            preserveDrawingBuffer: true,
+          });
+          var state = { progress: 0, logoY: 760, effectMix: 0, logoScale: 1 };
+          var mouse = { x: 0, y: HEIGHT * 0.5 };
+          var entryEase = function (t) {
+            return -0.806 * t * t + 1.806 * t;
+          };
+          var htmlText = "HTML";
+
+          function getTitleOffset() {
+            var cardRect = nextCard.getBoundingClientRect();
+            htmlType.textContent = htmlText;
+            var htmlRect = htmlType.getBoundingClientRect();
+            htmlType.textContent = "";
+            return {
+              x: cardRect.left + cardRect.width * 0.5 - (htmlRect.left + htmlRect.width * 0.5),
+              y: cardRect.top + cardRect.height * 0.5 - (htmlRect.top + htmlRect.height * 0.5),
+            };
+          }
+
+          function addTextCardSequence(tl, htmlStart) {
+            var typeStep = 0.085;
+            var titleHold = 0.25;
+            var typeEnd = htmlStart + (htmlText.length - 1) * typeStep;
+            var slideStart = typeEnd + titleHold;
+            var slideEnd = slideStart + 0.05;
+            var titleOffset = getTitleOffset();
+
+            tl.call(
+              function () {
+                htmlType.textContent = "";
+                htmlCaret.style.left = "0px";
+              },
+              [],
+              0,
+            );
+            tl.set(
+              htmlWord,
+              { x: titleOffset.x, y: titleOffset.y, scale: 1.8, transformOrigin: "50% 50%" },
+              0,
+            );
+            tl.set(htmlCaret, { opacity: 0 }, 0);
+            tl.set(htmlCaret, { opacity: 1 }, htmlStart - 0.05);
+
+            for (var i = 1; i <= htmlText.length; i += 1) {
+              (function (idx) {
+                tl.call(
+                  function () {
+                    htmlType.textContent = htmlText.slice(0, idx);
+                    htmlCaret.style.left = htmlType.offsetWidth + "px";
+                    if (idx === htmlText.length) {
+                      htmlCaret.style.opacity = "0";
+                    }
+                  },
+                  [],
+                  htmlStart + (idx - 1) * typeStep,
+                );
+              })(i);
+            }
+
+            tl.to(
+              htmlWord,
+              {
+                x: 0,
+                y: 0,
+                scale: 1,
+                duration: 0.05,
+                ease: "power2.out",
+              },
+              slideStart,
+            );
+            tl.to(
+              supportingWords,
+              {
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                filter: "blur(0px)",
+                duration: 0.42,
+                stagger: 0.08,
+                ease: "expo.out",
+              },
+              slideEnd,
+            );
+
+            return slideEnd + 0.42 + (supportingWords.length - 1) * 0.08;
+          }
+
+          if (!gl) {
+            var ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            var tl = gsap.timeline({ paused: true });
+            tl.set(nextCard, { opacity: 0, scale: 1.45, filter: "blur(14px)" }, 0);
+            tl.set(phraseA, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }, 0);
+            tl.set(supportingWords, { opacity: 0, y: 54, scale: 0.96, filter: "blur(10px)" }, 0);
+            tl.set(phraseB, { opacity: 0, x: 1480, y: 0, scale: 1, filter: "blur(8px)" }, 0);
+            tl.to(state, { logoY: 0, duration: 1, ease: "power4.out" }, 0);
+            tl.set(nextCard, { opacity: 1, scale: 1.45, filter: "blur(14px)" }, 3.1);
+            tl.to(
+              nextCard,
+              { scale: 0.88, filter: "blur(0px)", duration: 0.9, ease: entryEase },
+              3.1,
+            );
+            tl.to(
+              nextCard,
+              { scale: 0.84, filter: "blur(1.5px)", duration: 0.4, ease: "none" },
+              4.0,
+            );
+            var phraseAReady = addTextCardSequence(tl, 3.15);
+            var phraseAExit = phraseAReady + 0.5;
+            var phraseBStart = phraseAExit + 0.36;
+            tl.to(
+              phraseA,
+              { x: -1480, filter: "blur(8px)", duration: 0.36, ease: "power2.in" },
+              phraseAExit,
+            );
+            tl.set(phraseA, { opacity: 0 }, phraseBStart);
+            tl.set(
+              phraseB,
+              { opacity: 1, x: 1480, y: 0, scale: 1, filter: "blur(8px)" },
+              phraseBStart,
+            );
+            tl.to(
+              phraseB,
+              { x: 0, filter: "blur(0px)", duration: 0.48, ease: "expo.out" },
+              phraseBStart,
+            );
+            window.__timelines["vfx-text-cursor"] = tl;
+            return;
+          }
+
+          var vertexSource = [
+            "attribute vec2 position;",
+            "varying vec2 vUv;",
+            "void main() {",
+            "  vUv = position * 0.5 + 0.5;",
+            "  gl_Position = vec4(position, 0.0, 1.0);",
+            "}",
+          ].join("\n");
+
+          var fragmentSource = [
+            "precision highp float;",
+            "varying vec2 vUv;",
+            "uniform vec2 resolution;",
+            "uniform vec2 mouse;",
+            "uniform float logoY;",
+            "uniform float logoScale;",
+            "uniform float effectMix;",
+            "uniform sampler2D src;",
+            "uniform sampler2D colorSrc;",
+            "",
+            "#define PI 3.141593",
+            "#define SAMPLES 112.0",
+            "",
+            "float hash(vec2 p) {",
+            "  return fract(sin(dot(p, vec2(489.0, 589.0))) * 492.0) * 2.0 - 1.0;",
+            "}",
+            "",
+            "float hash(vec3 p) {",
+            "  return fract(sin(dot(p, vec3(489.0, 589.0, 58.0))) * 492.0) * 2.0 - 1.0;",
+            "}",
+            "",
+            "vec2 hash2(vec3 p) {",
+            "  return vec2(hash(p), hash(p + 1.0));",
+            "}",
+            "",
+            "vec4 readMask(vec2 uv) {",
+            "  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {",
+            "    return vec4(0.0);",
+            "  }",
+            "  return texture2D(src, uv);",
+            "}",
+            "",
+            "vec4 readColor(vec2 uv) {",
+            "  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {",
+            "    return vec4(0.0);",
+            "  }",
+            "  return texture2D(colorSrc, uv);",
+            "}",
+            "",
+            "vec3 spectrum(float x) {",
+            "  return cos((x - vec3(0.0, 0.5, 1.0)) * vec3(0.6, 1.0, 0.5) * PI);",
+            "}",
+            "",
+            "void main() {",
+            "  vec2 uv = vUv;",
+            "  vec2 logoCenter = vec2(0.5, 0.5);",
+            "  vec2 logoUv = (uv - logoCenter) / logoScale + logoCenter + vec2(0.0, logoY / resolution.y);",
+            "  float mask = readMask(logoUv).r;",
+            "  vec4 logo = readColor(logoUv);",
+            "  vec2 p = uv * 2.0 - 1.0;",
+            "  p.x *= resolution.x / resolution.y;",
+            "",
+            "  vec2 mp = mouse / resolution;",
+            "  mp.y = 1.0 - mp.y;",
+            "  mp = mp * 2.0 - 1.0;",
+            "  mp.x *= resolution.x / resolution.y;",
+            "",
+            "  vec2 rp = p;",
+            "  vec2 d = (mp - p) / SAMPLES;",
+            "  float acc = 0.0;",
+            "",
+            "  for (float i = 0.0; i < SAMPLES; i++) {",
+            "    rp += d;",
+            "    rp += hash2(vec3(rp, i)) * 0.5 / SAMPLES;",
+            "",
+            "    vec2 uv2 = rp;",
+            "    uv2.x /= resolution.x / resolution.y;",
+            "    uv2 = uv2 * 0.5 + 0.5;",
+            "    vec2 rayLogoUv = (uv2 - logoCenter) / logoScale + logoCenter + vec2(0.0, logoY / resolution.y);",
+            "    acc += readMask(rayLogoUv).r / SAMPLES;",
+            "  }",
+            "",
+            "  vec4 c = vec4(0.0, 0.0, 0.0, 1.0);",
+            "  c -= acc * 0.24;",
+            "  c += vec4(spectrum(cos(acc * 4.9)), 1.0) * acc * 3.65;",
+            "  c.rgb = max(c.rgb - 0.035, 0.0);",
+            "  c.rgb *= 1.16;",
+            "  float cursorX = mouse.x / resolution.x;",
+            "  float sweep = exp(-pow((uv.x - cursorX) * 6.2, 2.0));",
+            "  float textProximity = smoothstep(0.006, 0.34, acc);",
+            "  float longRay = smoothstep(0.004, 0.18, acc);",
+            "  vec3 sweepColor = vec3(0.14, 0.65, 0.85) + spectrum(cursorX * 1.8) * 0.28;",
+            "  c.rgb += sweepColor * sweep * (0.34 + textProximity * 2.35);",
+            "  c.rgb += spectrum(cursorX + acc * 2.0) * longRay * 0.58;",
+            "  c.rgb += logo.rgb * acc * 1.18;",
+            "  c.rgb += logo.rgb * sweep * mask * 0.92;",
+            "  c.rgb *= effectMix;",
+            "  c.rgb = mix(c.rgb, logo.rgb, smoothstep(0.02, 0.75, logo.a));",
+            "  c.rgb += vec3(1.0) * smoothstep(0.04, 0.38, mask) * 0.12 * effectMix;",
+            "  float grain = hash(vec3(uv.xyy + mouse.x * 0.0007));",
+            "  float logoDust = smoothstep(0.02, 0.38, acc) + smoothstep(0.03, 0.22, mask);",
+            "  c.rgb += grain * 0.07 * (0.42 + logoDust) * effectMix;",
+            "  c.rgb += spectrum(grain + cursorX) * abs(grain) * 0.045 * smoothstep(0.02, 0.5, acc) * effectMix;",
+            "  c.a = 1.0;",
+            "  gl_FragColor = c;",
+            "}",
+          ].join("\n");
+
+          function compile(type, source) {
+            var shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+              throw new Error(gl.getShaderInfoLog(shader));
+            }
+            return shader;
+          }
+
+          var program = gl.createProgram();
+          gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexSource));
+          gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentSource));
+          gl.linkProgram(program);
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+          }
+
+          var mask = document.createElement("canvas");
+          mask.width = WIDTH;
+          mask.height = HEIGHT;
+          var maskCtx = mask.getContext("2d");
+          var colorMask = document.createElement("canvas");
+          colorMask.width = WIDTH;
+          colorMask.height = HEIGHT;
+          var colorCtx = colorMask.getContext("2d");
+
+          function parseOffset(value) {
+            if (!value) return 0;
+            return value.indexOf("%") > -1 ? parseFloat(value) / 100 : parseFloat(value);
+          }
+
+          function makeFill(ctx, fill) {
+            if (!fill || fill === "none") return null;
+            var match = fill.match(/^url\(#(.+)\)$/);
+            if (!match) return fill;
+
+            var gradient = root.querySelector("#" + match[1]);
+            if (!gradient) return "#ffffff";
+
+            var x1 = parseFloat(gradient.getAttribute("x1") || "0");
+            var y1 = parseFloat(gradient.getAttribute("y1") || "0");
+            var x2 = parseFloat(gradient.getAttribute("x2") || "0");
+            var y2 = parseFloat(gradient.getAttribute("y2") || "0");
+            var canvasGradient = ctx.createLinearGradient(x1, y1, x2, y2);
+            gradient.querySelectorAll("stop").forEach(function (stop) {
+              var offset = parseOffset(stop.getAttribute("offset") || "0");
+              var color = stop.getAttribute("stop-color") || "#ffffff";
+              canvasGradient.addColorStop(Math.max(0, Math.min(1, offset)), color);
+            });
+            return canvasGradient;
+          }
+
+          function drawLogoMasks() {
+            maskCtx.clearRect(0, 0, WIDTH, HEIGHT);
+            colorCtx.clearRect(0, 0, WIDTH, HEIGHT);
+            maskCtx.save();
+            colorCtx.save();
+            maskCtx.translate(LOGO_X, LOGO_Y);
+            colorCtx.translate(LOGO_X, LOGO_Y);
+            maskCtx.scale(LOGO_SCALE, LOGO_SCALE);
+            colorCtx.scale(LOGO_SCALE, LOGO_SCALE);
+            maskCtx.fillStyle = "#fff";
+
+            root.querySelectorAll(".stage-logo path[d]").forEach(function (path) {
+              var shape = new Path2D(path.getAttribute("d"));
+              var fill = makeFill(colorCtx, path.getAttribute("fill"));
+              maskCtx.fill(shape);
+              if (fill) {
+                colorCtx.fillStyle = fill;
+                colorCtx.fill(shape);
+              }
+            });
+
+            maskCtx.restore();
+            colorCtx.restore();
+          }
+          drawLogoMasks();
+
+          function createTexture(source) {
+            var texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            return texture;
+          }
+
+          var texture = createTexture(mask);
+          var colorTexture = createTexture(colorMask);
+
+          var buffer = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.bufferData(
+            gl.ARRAY_BUFFER,
+            new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+            gl.STATIC_DRAW,
+          );
+
+          var positionLoc = gl.getAttribLocation(program, "position");
+          var resolutionLoc = gl.getUniformLocation(program, "resolution");
+          var mouseLoc = gl.getUniformLocation(program, "mouse");
+          var logoYLoc = gl.getUniformLocation(program, "logoY");
+          var logoScaleLoc = gl.getUniformLocation(program, "logoScale");
+          var effectMixLoc = gl.getUniformLocation(program, "effectMix");
+          var srcLoc = gl.getUniformLocation(program, "src");
+          var colorSrcLoc = gl.getUniformLocation(program, "colorSrc");
+
+          function render() {
+            mouse.x = state.progress * WIDTH;
+            mouse.y = HEIGHT * 0.5;
+
+            gl.viewport(0, 0, WIDTH, HEIGHT);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.useProgram(program);
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.enableVertexAttribArray(positionLoc);
+            gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.uniform1i(srcLoc, 0);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, colorTexture);
+            gl.uniform1i(colorSrcLoc, 1);
+            gl.uniform2f(resolutionLoc, WIDTH, HEIGHT);
+            gl.uniform2f(mouseLoc, mouse.x, mouse.y);
+            gl.uniform1f(logoYLoc, state.logoY);
+            gl.uniform1f(logoScaleLoc, state.logoScale);
+            gl.uniform1f(effectMixLoc, state.effectMix);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+          }
+
+          render();
+          var tl = gsap.timeline({
+            paused: true,
+            onUpdate: render,
+          });
+
+          tl.set(canvas, { opacity: 1, filter: "blur(0px)" }, 0);
+          tl.set(nextCard, { opacity: 0, scale: 1.45, filter: "blur(14px)" }, 0);
+          tl.set(phraseA, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }, 0);
+          tl.set(supportingWords, { opacity: 0, y: 54, scale: 0.96, filter: "blur(10px)" }, 0);
+          tl.set(phraseB, { opacity: 0, x: 1480, y: 0, scale: 1, filter: "blur(8px)" }, 0);
+          tl.set(state, { logoY: 760, effectMix: 0, progress: 0, logoScale: 1 }, 0);
+          tl.to(
+            state,
+            {
+              logoY: 0,
+              duration: 1,
+              ease: "power4.out",
+              onUpdate: render,
+            },
+            0,
+          );
+
+          tl.to(
+            state,
+            {
+              effectMix: 1,
+              duration: 0.34,
+              ease: "power3.out",
+              onUpdate: render,
+            },
+            0.72,
+          );
+
+          tl.to(
+            state,
+            {
+              progress: 1,
+              duration: 2.28,
+              ease: "none",
+              onUpdate: render,
+            },
+            0.72,
+          );
+
+          tl.to(
+            state,
+            {
+              logoScale: 0.4,
+              duration: 0.2,
+              ease: "expo.in",
+              onUpdate: render,
+            },
+            2.9,
+          );
+
+          tl.to(
+            canvas,
+            {
+              opacity: 0,
+              filter: "blur(16px)",
+              duration: 0.2,
+              ease: "expo.in",
+            },
+            2.9,
+          );
+
+          tl.set(nextCard, { opacity: 1, scale: 1.45, filter: "blur(14px)" }, 3.1);
+          tl.to(
+            nextCard,
+            {
+              scale: 0.88,
+              filter: "blur(0px)",
+              duration: 0.9,
+              ease: entryEase,
+            },
+            3.1,
+          );
+          tl.to(
+            nextCard,
+            {
+              scale: 0.84,
+              filter: "blur(1.5px)",
+              duration: 0.4,
+              ease: "none",
+            },
+            4.0,
+          );
+          var phraseAReady = addTextCardSequence(tl, 3.15);
+          var phraseAExit = phraseAReady + 0.5;
+          var phraseBStart = phraseAExit + 0.36;
+          tl.to(
+            phraseA,
+            {
+              x: -1480,
+              filter: "blur(8px)",
+              duration: 0.36,
+              ease: "power2.in",
+            },
+            phraseAExit,
+          );
+          tl.set(phraseA, { opacity: 0 }, phraseBStart);
+          tl.set(
+            phraseB,
+            {
+              opacity: 1,
+              x: 1480,
+              y: 0,
+              scale: 1,
+              filter: "blur(8px)",
+            },
+            phraseBStart,
+          );
+          tl.to(
+            phraseB,
+            {
+              x: 0,
+              filter: "blur(0px)",
+              duration: 0.48,
+              ease: "expo.out",
+            },
+            phraseBStart,
+          );
+
+          window.__timelines["vfx-text-cursor"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

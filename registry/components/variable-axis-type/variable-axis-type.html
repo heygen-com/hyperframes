@@ -1,0 +1,192 @@
+<!doctype html>
+<!--
+  variable-axis-type -- HyperFrames video primitive (typography / burst / emphasize)
+
+  Concept: one headline gains emphasis by morphing a single variable-font axis.
+  The glyphs change shape while the text element itself stays fixed.
+
+  Compiled-from evidence: hyperframes-research-type-svg.md, VariableAxisType.
+  The research identifies variable axes as deterministic numeric seek handles and
+  requires a complete, stable axis list, a font-ready gate, and midpoint checks.
+
+  Use when: a word or short headline needs a decisive emphasis beat without a
+  position, opacity, or scale animation.
+
+  Variables:
+    - text (string, default "IMPACT"): headline copy.
+    - axis ("wght" | "wdth", default "wght"): axis that performs the beat.
+    - fromValue (number, default 200): starting coordinate on the chosen axis.
+    - toValue (number, default 900): ending coordinate on the chosen axis.
+
+  Envelope: IN = up to 1.4s for the axis morph; HOLD = any remaining duration;
+  OUT = 0s. Short hosts compress IN directly. Never use gsap.timeScale().
+
+  Sync point: axis-land at 1.4s into IN, scaled proportionally when the host
+  duration is shorter. It is never placed in the elastic HOLD.
+
+  Sound: none. The changing glyph mass is the entire emphasis mechanic.
+
+  Mount contract: this is a template-wrapped sub-composition. The root has no
+  data-width or data-height, fills its host with inset:0, and registers one
+  paused GSAP timeline under the hardcoded id "variable-axis-type".
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Word or short headline to emphasize.", "default": "IMPACT" },
+    { "id": "axis", "type": "enum", "role": "motion", "label": "Axis", "description": "Variable-font axis used for the emphasis morph.", "default": "wght", "options": [{ "value": "wght", "label": "Weight" }, { "value": "wdth", "label": "Width" }] },
+    { "id": "fromValue", "type": "number", "role": "motion", "label": "From value", "description": "Starting coordinate on the selected font axis.", "default": 200, "min": 25, "max": 1000, "step": 1 },
+    { "id": "toValue", "type": "number", "role": "motion", "label": "To value", "description": "Ending coordinate on the selected font axis.", "default": 900, "min": 25, "max": 1000, "step": 1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Variable Axis Type</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="variable-axis-type" data-duration="1.6" data-fps="30">
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&amp;display=block"
+          rel="stylesheet"
+        />
+
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #0b1120);
+            color: var(--fg, #f8fafc);
+          }
+
+          .vat-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+          }
+
+          /* INVARIANT: width-axis changes may alter glyph advances, so the
+             authored line lives in a fixed box and can never wrap mid-tween. */
+          .vat-lock {
+            width: 92cqw;
+            height: 58cqh;
+            display: grid;
+            place-items: center;
+            overflow: visible;
+          }
+
+          /* EDIT ZONE: font size and tracking are the only composition-level
+             typography controls. Axis endpoints remain owned by variables. */
+          .vat-headline {
+            display: block;
+            width: 100%;
+            white-space: nowrap;
+            text-align: center;
+            color: var(--fg, #f8fafc);
+            font-family: "Roboto Flex", var(--font-display, sans-serif);
+            font-size: 19cqw;
+            font-weight: 400;
+            font-stretch: 100%;
+            font-optical-sizing: none;
+            font-synthesis: none;
+            line-height: 0.9;
+            letter-spacing: -0.045em;
+          }
+        </style>
+
+        <div
+          id="variable-axis-type-clip"
+          class="vat-clip clip"
+          data-start="0"
+          data-duration="1.6"
+          data-track-index="0"
+        >
+          <div class="vat-lock">
+            <div class="vat-headline">IMPACT</div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var headline = root.querySelector(".vat-headline");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "IMPACT" : String(vars.text);
+            var axis = vars.axis === "wdth" ? "wdth" : "wght";
+            var minimum = axis === "wdth" ? 25 : 100;
+            var maximum = axis === "wdth" ? 151 : 1000;
+            var fromNumber = Number(vars.fromValue);
+            var toNumber = Number(vars.toValue);
+            var fromValue = Number.isFinite(fromNumber) ? fromNumber : 200;
+            var toValue = Number.isFinite(toNumber) ? toNumber : 900;
+            fromValue = Math.max(minimum, Math.min(maximum, fromValue));
+            toValue = Math.max(minimum, Math.min(maximum, toValue));
+
+            headline.textContent = text;
+
+            // Both endpoints list the same complete axis set in the same order.
+            // Omitting even an unchanged axis can silently disable interpolation.
+            var fromSettings =
+              axis === "wdth"
+                ? '"wght" 700, "wdth" ' + fromValue + ', "opsz" 96'
+                : '"wght" ' + fromValue + ', "wdth" 100, "opsz" 96';
+            var toSettings =
+              axis === "wdth"
+                ? '"wght" 700, "wdth" ' + toValue + ', "opsz" 96'
+                : '"wght" ' + toValue + ', "wdth" 100, "opsz" 96';
+
+            // RETIME RANGE: the morph is the fixed IN phase. Any time after it
+            // is an elastic still HOLD, which preserves the landed emphasis.
+            var IN_BASE = 1.4;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "1.6"));
+            var IN = Math.min(IN_BASE, duration);
+
+            // Font readiness owns timeline registration. This prevents fallback
+            // glyph metrics from leaking into any captured or midpoint frame.
+            document.fonts
+              .load('700 64px "Roboto Flex"', text)
+              .then(function () {
+                return document.fonts.ready;
+              })
+              .then(function () {
+                if (!document.fonts.check('700 64px "Roboto Flex"', text)) {
+                  throw new Error("Roboto Flex failed to load");
+                }
+
+                var tl = gsap.timeline({ paused: true });
+                tl.fromTo(
+                  headline,
+                  { fontVariationSettings: fromSettings },
+                  { fontVariationSettings: toSettings, duration: IN, ease: "expo.out" },
+                  0,
+                );
+                tl.seek(0);
+
+                window.__timelines = window.__timelines || {};
+                window.__timelines["variable-axis-type"] = tl;
+              });
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

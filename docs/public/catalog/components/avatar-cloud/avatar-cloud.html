@@ -1,0 +1,474 @@
+<!doctype html>
+<!--
+  avatar-cloud: HyperFrames video primitive (effects / holdable / prove)
+
+  Concept: lettermark avatars populate a loose elliptical cloud around a
+  central proof label. Fine SVG links draw from the hub to every avatar, plus
+  selected avatar-to-avatar edges, so the beat communicates connection rather
+  than quantity alone. One mechanic, one job: prove community participation.
+
+  Compiled-from evidence: consumer-sim fixture plus the
+  avatar-cloud-network animation rule. The rule establishes the elliptical
+  cluster, layered hub, staggered avatar arrival, outward SVG link draw, and
+  readable climax dwell.
+
+  Use when: a scene needs to show an active builder, customer, creator, or
+  collaborator community without external photos or brand assets.
+
+  Variables (declared in data-composition-variables below):
+    - avatarCount (number, default 10, range 6 to 16): visible lettermarks.
+    - showLinks ("yes" | "no", default "yes"): include network links.
+    - label (string, default "50k builders"): proof copy in the center hub.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 2.20s  hub settles, avatars cascade in, then links draw.
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); deterministic,
+               out-of-phase sine drift keeps the formed network alive.
+    OUT_BASE = 0.50s  the complete proof beat accelerates into a clean fade.
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT scale together so
+    IN + OUT equals D and HOLD equals 0.
+
+  Sync point: network-formed at 2.15s into IN. It is a fixed offset before the
+  elastic HOLD and scales proportionally only when the envelope is compressed.
+
+  Sound cue: none. The distributed community assembly has no truthful single
+  impact, so this primitive does not dispatch an hf:sfx event.
+
+  Mount contract: this file is a mountable sub-composition. A host loads it via
+  data-composition-src, and the runtime clones only <template> contents. Styles,
+  markup, GSAP, and registration therefore live inside <template>. #root fills
+  the host with inset:0 and container-type:size and has no data-width or
+  data-height. The hardcoded id "avatar-cloud" matches the host id and timeline
+  key after mount flattening. Variables come from
+  window.__hyperframes.getVariables(), which merges declarations with host
+  data-variable-values overrides.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "avatarCount", "type": "number", "role": "layout", "label": "Avatar count", "description": "Number of lettermark avatars in the network cloud.", "default": 10, "min": 6, "max": 16, "step": 1 },
+    { "id": "showLinks", "type": "enum", "role": "content", "label": "Show links", "description": "Show or hide the connecting network lines.", "default": "yes", "options": [{ "value": "yes", "label": "Yes" }, { "value": "no", "label": "No" }] },
+    { "id": "label", "type": "string", "role": "content", "label": "Proof label", "description": "Community proof copy shown in the center hub.", "default": "50k builders" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Avatar Cloud</title>
+    <!-- Metadata only. Mounting discards everything outside <template>. -->
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="avatar-cloud"
+        data-start="0"
+        data-duration="5"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* INVARIANT: the host owns the box. The primitive owns one isolated,
+             position-blind size container and no viewport-relative geometry. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .ac-clip,
+          .ac-stage,
+          .ac-avatar-layer,
+          .ac-links {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .ac-clip {
+            overflow: hidden;
+            background:
+              radial-gradient(
+                ellipse at 50% 47.5%,
+                color-mix(in srgb, var(--brand, #6366f1) 16%, transparent),
+                transparent 48%
+              ),
+              var(--bg, #0b0c10);
+          }
+
+          .ac-stage {
+            overflow: hidden;
+            transform-origin: center;
+          }
+
+          /* EDIT ZONE: lines use the same token pair as the avatars and hub.
+             The SVG viewBox owns all endpoints, so links and positions cannot
+             derive independently. */
+          .ac-links {
+            z-index: 1;
+            overflow: visible;
+            pointer-events: none;
+          }
+
+          .ac-link {
+            fill: none;
+            stroke: color-mix(in srgb, var(--accent, #38bdf8) 56%, transparent);
+            stroke-width: 1.8;
+            vector-effect: non-scaling-stroke;
+          }
+
+          .ac-link-secondary {
+            stroke: color-mix(in srgb, var(--brand, #6366f1) 38%, transparent);
+            stroke-width: 1.2;
+          }
+
+          .ac-avatar-layer {
+            z-index: 2;
+          }
+
+          .ac-avatar-position {
+            position: absolute;
+            transform: translate(-50%, -50%);
+          }
+
+          .ac-avatar {
+            display: grid;
+            place-items: center;
+            width: min(calc(var(--ac-size) * 1cqw), calc(var(--ac-size) * 1.65cqh));
+            aspect-ratio: 1;
+            border: 0.16cqw solid color-mix(in srgb, var(--fg, #f8fafc) 32%, transparent);
+            border-radius: var(--radius, 999cqw);
+            background: var(--ac-color, var(--brand, #6366f1));
+            color: var(--bg, #0b0c10);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(calc(var(--ac-size) * 0.35cqw), calc(var(--ac-size) * 0.58cqh));
+            font-weight: 780;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            box-shadow:
+              0 1.2cqh 2.8cqh color-mix(in srgb, var(--bg, #0b0c10) 48%, transparent),
+              0 0 2.2cqw color-mix(in srgb, var(--ac-color, var(--brand, #6366f1)) 32%, transparent),
+              inset 0 0.12cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 26%, transparent);
+            will-change: transform, opacity;
+          }
+
+          .ac-avatar[data-tone="0"] {
+            --ac-color: var(--brand, #6366f1);
+          }
+
+          .ac-avatar[data-tone="1"] {
+            --ac-color: var(--accent, #38bdf8);
+          }
+
+          .ac-avatar[data-tone="2"] {
+            --ac-color: color-mix(
+              in oklch longer hue,
+              var(--brand, #6366f1) 72%,
+              var(--accent, #38bdf8)
+            );
+          }
+
+          .ac-avatar[data-tone="3"] {
+            --ac-color: color-mix(in srgb, var(--brand, #6366f1) 54%, var(--fg, #f8fafc));
+          }
+
+          .ac-avatar[data-tone="4"] {
+            --ac-color: color-mix(in oklch, var(--accent, #38bdf8) 62%, var(--brand, #6366f1));
+          }
+
+          .ac-hub {
+            position: absolute;
+            left: 50%;
+            top: 47.5%;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 24cqw;
+            max-width: 48cqw;
+            min-height: 16cqh;
+            padding: var(--space-2, 2cqh) var(--space-3, 3cqw);
+            overflow: hidden;
+            border: 0.16cqw solid color-mix(in srgb, var(--border, #334155) 82%, transparent);
+            border-radius: var(--radius, 2.4cqw);
+            background: color-mix(in srgb, var(--surface, #1e293b) 92%, var(--brand, #6366f1));
+            box-shadow:
+              0 2cqh 5cqh color-mix(in srgb, var(--bg, #0b0c10) 56%, transparent),
+              0 0 4cqw color-mix(in srgb, var(--brand, #6366f1) 20%, transparent),
+              inset 0 0.14cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 18%, transparent);
+            transform: translate(-50%, -50%);
+            transform-origin: center;
+          }
+
+          .ac-kicker {
+            color: var(--accent, #38bdf8);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(1.6cqw, 2.8cqh);
+            font-weight: 720;
+            letter-spacing: 0.16em;
+            line-height: 1;
+            text-transform: uppercase;
+          }
+
+          .ac-label {
+            max-width: 40cqw;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(5.2cqw, 9cqh);
+            font-weight: 820;
+            letter-spacing: -0.045em;
+            line-height: 1.05;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="avatar-cloud-clip"
+          class="ac-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <section class="ac-stage" aria-label="Community network proof">
+            <svg
+              class="ac-links"
+              viewBox="0 0 1000 600"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+              focusable="false"
+            ></svg>
+            <div class="ac-avatar-layer" aria-hidden="true"></div>
+            <div class="ac-hub">
+              <span class="ac-kicker">Community</span>
+              <span class="ac-label"></span>
+            </div>
+          </section>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.currentScript.closest("#root") || document.getElementById("root");
+            var compositionId = "avatar-cloud";
+            var stage = root.querySelector(".ac-stage");
+            var linksLayer = root.querySelector(".ac-links");
+            var avatarLayer = root.querySelector(".ac-avatar-layer");
+            var hub = root.querySelector(".ac-hub");
+            var labelElement = root.querySelector(".ac-label");
+
+            // EDIT ZONE: getVariables is the only owner of declared defaults
+            // plus host overrides. Values are normalized exactly once here.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var rawCount = Number(vars.avatarCount);
+            var avatarCount = Number.isFinite(rawCount) ? Math.round(rawCount) : 10;
+            avatarCount = Math.max(6, Math.min(16, avatarCount));
+            var showLinks = vars.showLinks === "no" ? "no" : "yes";
+            var label = vars.label == null ? "50k builders" : String(vars.label);
+            labelElement.textContent = label;
+
+            // One normalized coordinate table owns both DOM placement and SVG
+            // endpoints. Index-based sine offsets make the ellipse loose while
+            // remaining identical under every seek and render.
+            var CENTER = { x: 500, y: 285 };
+            var positions = [];
+            var avatars = [];
+            var lettermarks = [
+              "AK",
+              "BM",
+              "CR",
+              "DL",
+              "ES",
+              "FT",
+              "GN",
+              "HP",
+              "IV",
+              "JO",
+              "KQ",
+              "LU",
+              "MW",
+              "NX",
+              "OY",
+              "PZ",
+            ];
+            var avatarFragment = document.createDocumentFragment();
+
+            for (var index = 0; index < avatarCount; index += 1) {
+              var angle = -Math.PI / 2 + (index / avatarCount) * Math.PI * 2;
+              var radiusX = 356 + Math.sin((index + 1) * 2.37) * 24;
+              var radiusY = 194 + Math.sin((index + 1) * 1.61) * 18;
+              var x = CENTER.x + Math.cos(angle) * radiusX;
+              var y = CENTER.y + Math.sin(angle) * radiusY;
+              var size = 7.5 + Math.sin((index + 1) * 1.93) * 0.8;
+
+              positions.push({ x: x, y: y });
+
+              var positionElement = document.createElement("div");
+              positionElement.className = "ac-avatar-position";
+              positionElement.style.left = x / 10 + "%";
+              positionElement.style.top = y / 6 + "%";
+
+              var avatar = document.createElement("div");
+              avatar.className = "ac-avatar";
+              avatar.dataset.tone = String(index % 5);
+              avatar.style.setProperty("--ac-size", size.toFixed(2));
+              avatar.textContent = lettermarks[index];
+              positionElement.appendChild(avatar);
+              avatarFragment.appendChild(positionElement);
+              avatars.push(avatar);
+            }
+
+            avatarLayer.replaceChildren(avatarFragment);
+
+            var lines = [];
+
+            function appendLine(from, to, secondary) {
+              var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+              var length = Math.hypot(to.x - from.x, to.y - from.y);
+              line.setAttribute("x1", String(from.x));
+              line.setAttribute("y1", String(from.y));
+              line.setAttribute("x2", String(to.x));
+              line.setAttribute("y2", String(to.y));
+              line.setAttribute("class", secondary ? "ac-link ac-link-secondary" : "ac-link");
+              line.style.strokeDasharray = length + " " + length;
+              line.dataset.length = String(length);
+              linksLayer.appendChild(line);
+              lines.push(line);
+            }
+
+            if (showLinks === "yes") {
+              positions.forEach(function (position) {
+                appendLine(CENTER, position, false);
+              });
+
+              positions.forEach(function (position, positionIndex) {
+                if (positionIndex % 3 === 0) {
+                  appendLine(position, positions[(positionIndex + 2) % avatarCount], true);
+                }
+              });
+            }
+
+            // RETIME RANGE: these values own the complete lifecycle. The link
+            // wave fits the maximum 22-line network before the fixed sync point.
+            var IN_BASE = 2.2;
+            var OUT_BASE = 0.5;
+            var HUB_START_BASE = 0.05;
+            var HUB_DURATION_BASE = 0.5;
+            var AVATAR_START_BASE = 0.24;
+            var AVATAR_DURATION_BASE = 0.5;
+            var AVATAR_STAGGER_BASE = 0.055;
+            var LINES_START_BASE = 1.02;
+            var LINES_DURATION_BASE = 0.55;
+            var LINE_STAGGER_BASE = 0.025;
+
+            var durationValue = Number(root.dataset.duration);
+            var duration = Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 5;
+            var envelopeScale = duration < IN_BASE + OUT_BASE ? duration / (IN_BASE + OUT_BASE) : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var HUB_START = HUB_START_BASE * envelopeScale;
+            var HUB_DURATION = HUB_DURATION_BASE * envelopeScale;
+            var AVATAR_START = AVATAR_START_BASE * envelopeScale;
+            var AVATAR_DURATION = AVATAR_DURATION_BASE * envelopeScale;
+            var AVATAR_STAGGER = AVATAR_STAGGER_BASE * envelopeScale;
+            var LINES_START = LINES_START_BASE * envelopeScale;
+            var LINES_DURATION = LINES_DURATION_BASE * envelopeScale;
+            var LINE_STAGGER = LINE_STAGGER_BASE * envelopeScale;
+
+            gsap.set(stage, { opacity: 1, scale: 1 });
+            gsap.set(hub, { opacity: 0, scale: 0.94 });
+            gsap.set(avatars, { opacity: 0, scale: 0.92, x: 0, y: 0 });
+            lines.forEach(function (line) {
+              gsap.set(line, { opacity: 0, strokeDashoffset: Number(line.dataset.length) });
+            });
+
+            var timeline = gsap.timeline({ paused: true });
+
+            // IN: --ease-standard maps to GSAP power2.out in the shared easing
+            // vocabulary. No entrance starts at scale zero.
+            timeline.to(
+              hub,
+              { opacity: 1, scale: 1, duration: HUB_DURATION, ease: "power2.out" },
+              HUB_START,
+            );
+            timeline.to(
+              avatars,
+              {
+                opacity: 1,
+                scale: 1,
+                duration: AVATAR_DURATION,
+                ease: "power2.out",
+                stagger: { each: AVATAR_STAGGER, from: "start" },
+              },
+              AVATAR_START,
+            );
+
+            lines.forEach(function (line, lineIndex) {
+              timeline.to(
+                line,
+                {
+                  opacity: 1,
+                  strokeDashoffset: 0,
+                  duration: LINES_DURATION,
+                  ease: "power2.out",
+                },
+                LINES_START + lineIndex * LINE_STAGGER,
+              );
+            });
+
+            // HOLD: deterministic index-derived endpoints with --ease-drift's
+            // sine.inOut curve. One finite leg fills the elastic hold exactly.
+            if (HOLD > 0) {
+              avatars.forEach(function (avatar, avatarIndex) {
+                var driftX = Math.sin((avatarIndex + 1) * 1.73) * 0.85;
+                var driftY = Math.sin((avatarIndex + 1) * 2.41) * 1.15;
+                timeline.fromTo(
+                  avatar,
+                  { x: -driftX + "cqw", y: -driftY + "cqh" },
+                  {
+                    x: driftX + "cqw",
+                    y: driftY + "cqh",
+                    duration: HOLD,
+                    ease: "sine.inOut",
+                    immediateRender: false,
+                  },
+                  HOLD_START,
+                );
+              });
+            }
+
+            // OUT: the complete network leaves once with the asymmetric exit
+            // curve. HOLD motion resolves before this phase begins.
+            timeline.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            timeline.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = timeline;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

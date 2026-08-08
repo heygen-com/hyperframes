@@ -1,0 +1,401 @@
+<!doctype html>
+<!--
+  gesture-tap: HyperFrames video primitive (ui-props / interaction / demonstrate)
+
+  Concept: a contact circle appears directly over a real pill button, presses
+  it, releases it into a new state, then lifts away. One mechanic, one job:
+  showing a decisive mobile tap response.
+
+  Variables:
+    - tap_label (string, default "Follow"): button label before release.
+    - response_label (string, default "Following"): button label after release.
+    - accent (enum, green | blue | violet, default green): response color.
+
+  Envelope: fixed IN and OUT with elastic HOLD only.
+    IN_BASE = 1.35s. The stage fades in, contact fades up at the target,
+    presses, then releases. The label swap, accent response, and pulse share
+    one release timestamp.
+    HOLD = max(0, D - IN - OUT). Only this phase stretches for longer mounts.
+    A barely visible card drift keeps the held state alive.
+    OUT_BASE = 0.55s. The completed mobile state fades cleanly.
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, carries no data-width or
+  data-height, and registers one paused timeline under the literal
+  gesture-tap key.
+-->
+<html
+  lang="en"
+  data-composition-id="gesture-tap"
+  data-composition-duration="3"
+  data-composition-variables='[
+    { "id": "tap_label", "type": "string", "role": "content", "label": "Tap label", "description": "Button label shown before the tap response.", "default": "Follow" },
+    { "id": "response_label", "type": "string", "role": "content", "label": "Response label", "description": "Button label shown when the tap releases.", "default": "Following" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used for the completed button state and response pulse.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gesture Tap</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="gesture-tap" data-duration="3" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: #eef2ff;
+            font-family: Inter, system-ui, sans-serif;
+            pointer-events: none;
+          }
+
+          .gt-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 44%, #1c2537 0%, #101521 68%);
+          }
+
+          .gt-stage {
+            width: 100cqw;
+            height: 100cqh;
+            display: grid;
+            place-items: center;
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+
+          .gt-phone {
+            position: relative;
+            width: 46cqw;
+            height: 78cqh;
+            overflow: hidden;
+            border: 0.18cqmin solid rgba(255, 255, 255, 0.24);
+            border-radius: 5cqmin;
+            background: #f7f8fb;
+            box-shadow: 0 4cqh 10cqh rgba(2, 6, 23, 0.44);
+            color: #111827;
+            will-change: transform;
+          }
+
+          .gt-status {
+            height: 9cqh;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 4cqw;
+            border-bottom: 0.12cqmin solid #e5e7eb;
+            color: #64748b;
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 2.1cqh;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+
+          .gt-signal {
+            width: 4.8cqw;
+            height: 1.4cqh;
+            border-radius: 999cqw;
+            background: #cbd5e1;
+          }
+
+          .gt-profile {
+            height: 50cqh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2.2cqh;
+            padding: 0 5cqw;
+            text-align: center;
+          }
+
+          .gt-avatar {
+            width: 12cqmin;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #e2e8f0, #cbd5e1);
+            box-shadow: inset 0 0 0 0.8cqmin #ffffff;
+          }
+
+          .gt-name {
+            max-width: 34cqw;
+            overflow: hidden;
+            color: #0f172a;
+            font-size: 4.2cqh;
+            font-weight: 780;
+            line-height: 1.05;
+            letter-spacing: -0.035em;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .gt-detail {
+            max-width: 34cqw;
+            color: #64748b;
+            font-size: 2.35cqh;
+            font-weight: 520;
+            line-height: 1.35;
+          }
+
+          .gt-button-shell {
+            position: relative;
+            width: 34cqw;
+            height: 11cqh;
+            margin: 0 auto;
+          }
+
+          .gt-button {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 0.16cqmin solid #273449;
+            border-radius: 999cqw;
+            background: #172033;
+            color: #f8fafc;
+            font: inherit;
+            font-size: 2.9cqh;
+            font-weight: 760;
+            letter-spacing: -0.01em;
+            transform-origin: 50% 50%;
+            will-change: transform, background-color, border-color;
+          }
+
+          .gt-button-label {
+            display: block;
+            max-width: 28cqw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .gt-response-pulse {
+            position: absolute;
+            inset: -1.7cqh -1.7cqw;
+            z-index: 1;
+            border: 0.28cqmin solid var(--gt-accent, #34d399);
+            border-radius: 999cqw;
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+
+          .gt-contact {
+            position: absolute;
+            top: calc(50% - 7cqmin);
+            left: calc(50% - 7cqmin);
+            z-index: 4;
+            width: 14cqmin;
+            aspect-ratio: 1;
+            border: 0.24cqmin solid rgba(255, 255, 255, 0.78);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.34);
+            box-shadow:
+              inset 0 0 0 0.8cqmin rgba(255, 255, 255, 0.12),
+              0 1.2cqh 3cqh rgba(15, 23, 42, 0.28);
+            opacity: 0;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="gesture-tap-clip"
+          class="gt-clip clip"
+          data-start="0"
+          data-duration="3"
+          data-track-index="0"
+        >
+          <div class="gt-stage">
+            <article class="gt-phone" aria-label="Mobile profile card">
+              <div class="gt-status">
+                <span>Profile</span>
+                <span class="gt-signal" aria-hidden="true"></span>
+              </div>
+              <div class="gt-profile">
+                <div class="gt-avatar" aria-hidden="true"></div>
+                <div class="gt-name">Maya Chen</div>
+                <div class="gt-detail">Product designer sharing practical interaction notes.</div>
+              </div>
+              <div class="gt-button-shell">
+                <div class="gt-response-pulse" aria-hidden="true"></div>
+                <button class="gt-button" type="button" aria-pressed="false" tabindex="-1">
+                  <span class="gt-button-label"></span>
+                </button>
+                <div class="gt-contact" aria-hidden="true"></div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".gt-stage");
+            var card = root.querySelector(".gt-phone");
+            var button = root.querySelector(".gt-button");
+            var label = root.querySelector(".gt-button-label");
+            var contact = root.querySelector(".gt-contact");
+            var pulse = root.querySelector(".gt-response-pulse");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var tapLabel = vars.tap_label == null ? "Follow" : String(vars.tap_label);
+            var responseLabel =
+              vars.response_label == null ? "Following" : String(vars.response_label);
+            var accentName =
+              vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
+            var accentColors = {
+              green: "#34d399",
+              blue: "#60a5fa",
+              violet: "#a78bfa",
+            };
+            var accentColor = accentColors[accentName];
+
+            label.textContent = tapLabel;
+            button.setAttribute("aria-label", tapLabel);
+            root.style.setProperty("--gt-accent", accentColor);
+
+            var IN_BASE = 1.35;
+            var OUT_BASE = 0.55;
+            var STAGE_IN_BASE = 0.24;
+            var CONTACT_AT_BASE = 0.28;
+            var CONTACT_IN_BASE = 0.18;
+            var PRESS_AT_BASE = 0.54;
+            var PRESS_DURATION_BASE = 0.18;
+            var RELEASE_AT_BASE = 0.72;
+            var RELEASE_DURATION_BASE = 0.28;
+            var CONTACT_OUT_BASE = 0.34;
+            var PULSE_DURATION_BASE = 0.56;
+
+            var parsedDuration = Number.parseFloat(root.dataset.duration);
+            var duration =
+              Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 3;
+            var fixedBase = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedBase ? duration / fixedBase : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var STAGE_IN = STAGE_IN_BASE * phaseScale;
+            var CONTACT_AT = CONTACT_AT_BASE * phaseScale;
+            var CONTACT_IN = CONTACT_IN_BASE * phaseScale;
+            var PRESS_AT = PRESS_AT_BASE * phaseScale;
+            var PRESS_DURATION = PRESS_DURATION_BASE * phaseScale;
+            var RELEASE_AT = RELEASE_AT_BASE * phaseScale;
+            var RELEASE_DURATION = RELEASE_DURATION_BASE * phaseScale;
+            var CONTACT_OUT = CONTACT_OUT_BASE * phaseScale;
+            var PULSE_DURATION = PULSE_DURATION_BASE * phaseScale;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+
+            // IN: the contact appears at the target. No x or y tween precedes the press.
+            tl.fromTo(
+              contact,
+              { opacity: 0, scale: 0.82 },
+              { opacity: 0.68, scale: 1, duration: CONTACT_IN, ease: "power2.out" },
+              CONTACT_AT,
+            );
+            tl.to(
+              button,
+              {
+                scale: 0.93,
+                backgroundColor: "#26324a",
+                duration: PRESS_DURATION,
+                ease: "power4.in",
+              },
+              PRESS_AT,
+            );
+            tl.to(contact, { scale: 0.78, duration: PRESS_DURATION, ease: "power4.in" }, PRESS_AT);
+
+            // Release owns the response. Label, state, accent fill, and pulse
+            // all begin at RELEASE_AT so the UI answers on the release frame.
+            tl.set(label, { innerText: responseLabel }, RELEASE_AT);
+            tl.set(
+              button,
+              { attr: { "aria-label": responseLabel, "aria-pressed": "true" } },
+              RELEASE_AT,
+            );
+            tl.to(
+              button,
+              {
+                scale: 1,
+                backgroundColor: accentColor,
+                borderColor: accentColor,
+                color: "#071015",
+                duration: RELEASE_DURATION,
+                ease: "back.out(1.7)",
+              },
+              RELEASE_AT,
+            );
+            tl.set(pulse, { opacity: 0.58, scale: 0.76 }, RELEASE_AT);
+            tl.to(
+              pulse,
+              { opacity: 0, scale: 1.14, duration: PULSE_DURATION, ease: "power2.out" },
+              RELEASE_AT,
+            );
+            tl.to(
+              contact,
+              {
+                opacity: 0,
+                scale: 1.04,
+                y: "-5cqh",
+                duration: CONTACT_OUT,
+                ease: "power2.in",
+              },
+              RELEASE_AT,
+            );
+
+            // HOLD: only this phase stretches. One slow yoyo returns the card
+            // to its resting position exactly when OUT starts.
+            if (HOLD > 0) {
+              tl.to(
+                card,
+                {
+                  y: "-0.6cqh",
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            // OUT: the completed state remains intact while the stage exits.
+            tl.to(stage, { opacity: 0, y: "-1.4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["gesture-tap"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

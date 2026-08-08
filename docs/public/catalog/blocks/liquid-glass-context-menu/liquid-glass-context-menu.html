@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Liquid Glass Context Menu</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="lib/liquid-glass.iife.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0a0218;
+        overflow: hidden;
+        font-family: "Inter", system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #three-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 0;
+      }
+      #glass-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 1;
+      }
+
+      /* ── Glass Panel ── */
+      .menu-panel {
+        position: absolute;
+        width: 390px;
+        height: 506px;
+        background: rgba(255, 255, 255, 0.15);
+        --lg-blur: 0.56;
+        --lg-refraction: 0.52;
+        --lg-corner-radius: 30;
+        --lg-z-radius: 48;
+        --lg-specular: 0.26;
+        --lg-fresnel: 1;
+        --lg-edge-highlight: 0.2;
+        --lg-chrom-aberration: 0.035;
+        --lg-tint: 0.88;
+        --lg-brightness: 0.54;
+        --lg-shadow-opacity: 0;
+        --lg-shadow-spread: 0;
+        --lg-shadow-offset-y: 0;
+        --lg-saturation: -0.24;
+      }
+      #glass-menu {
+        top: 270px;
+        left: 1980px;
+      }
+      .file-panel {
+        position: absolute;
+        top: 372px;
+        left: 500px;
+        width: 360px;
+        height: 104px;
+        background: rgba(255, 255, 255, 0.11);
+        --lg-blur: 0.52;
+        --lg-refraction: 0.48;
+        --lg-corner-radius: 28;
+        --lg-z-radius: 36;
+        --lg-specular: 0.28;
+        --lg-fresnel: 0.94;
+        --lg-edge-highlight: 0.18;
+        --lg-chrom-aberration: 0.03;
+        --lg-tint: 0.74;
+        --lg-brightness: 0.34;
+        --lg-shadow-opacity: 0;
+        --lg-shadow-spread: 0;
+        --lg-shadow-offset-y: 0;
+        --lg-saturation: -0.18;
+      }
+      .submenu-panel {
+        position: absolute;
+        top: 456px;
+        left: 1980px;
+        width: 230px;
+        height: 58px;
+        background: rgba(255, 255, 255, 0.11);
+        --lg-blur: 0.52;
+        --lg-refraction: 0.5;
+        --lg-corner-radius: 20;
+        --lg-z-radius: 28;
+        --lg-specular: 0.3;
+        --lg-fresnel: 0.96;
+        --lg-edge-highlight: 0.18;
+        --lg-chrom-aberration: 0.03;
+        --lg-tint: 0.74;
+        --lg-brightness: 0.36;
+        --lg-shadow-opacity: 0;
+        --lg-shadow-spread: 0;
+        --lg-shadow-offset-y: 0;
+        --lg-saturation: -0.2;
+      }
+
+      /* ── Text Overlay ── */
+      .text-overlay {
+        position: absolute;
+        z-index: 2;
+        pointer-events: none;
+      }
+      .context-file {
+        position: absolute;
+        top: 340px;
+        left: 500px;
+        z-index: 2;
+        width: 360px;
+        height: 104px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 18px 22px;
+        border-radius: 26px;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.095) 0%,
+          rgba(255, 255, 255, 0.036) 38%,
+          rgba(255, 255, 255, 0.006) 100%
+        );
+        box-shadow: none;
+      }
+      .file-icon {
+        width: 58px;
+        height: 68px;
+        flex-shrink: 0;
+        border-radius: 16px;
+        background:
+          linear-gradient(135deg, rgba(6, 227, 250, 0.92), rgba(79, 219, 94, 0.85)),
+          rgba(255, 255, 255, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+      }
+      .file-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .file-title {
+        color: rgba(5, 17, 28, 0.9);
+        font-size: 21px;
+        font-weight: 780;
+        letter-spacing: 0;
+        text-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.24),
+          0 10px 20px rgba(255, 255, 255, 0.14);
+      }
+      .file-subtitle {
+        color: rgba(5, 17, 28, 0.72);
+        font-size: 15px;
+        font-weight: 650;
+        text-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.2),
+          0 8px 18px rgba(255, 255, 255, 0.12);
+      }
+      .pointer {
+        position: absolute;
+        top: 395px;
+        left: 778px;
+        z-index: 4;
+        width: 34px;
+        height: 44px;
+        border-radius: 2px;
+        background: #fff;
+        clip-path: polygon(0 0, 0 100%, 31% 73%, 47% 100%, 62% 93%, 46% 67%, 82% 67%);
+        filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.4));
+      }
+      .click-ring {
+        position: absolute;
+        top: 390px;
+        left: 770px;
+        z-index: 3;
+        width: 46px;
+        height: 46px;
+        border: 2px solid rgba(255, 255, 255, 0.75);
+        border-radius: 50%;
+        opacity: 0;
+      }
+      .menu-text {
+        width: 390px;
+        height: 506px;
+        display: flex;
+        flex-direction: column;
+        padding: 18px 0;
+        background: transparent;
+        border-radius: 30px;
+        box-shadow: none;
+        overflow: hidden;
+      }
+      #text-menu {
+        top: 270px;
+        left: 1980px;
+      }
+
+      .menu-highlight {
+        position: absolute;
+        top: 17px;
+        left: 14px;
+        z-index: 0;
+        width: 362px;
+        height: 52px;
+        border-radius: 17px;
+        background:
+          radial-gradient(circle at 24% 22%, rgba(255, 255, 255, 0.48), transparent 42%),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.29), rgba(255, 255, 255, 0.12));
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.38),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+        opacity: 0;
+      }
+      .menu-item {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 28px;
+        font-size: 18px;
+        font-weight: 650;
+        color: rgb(0, 7, 14);
+        cursor: default;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.26);
+      }
+      .menu-item svg {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+        stroke: rgb(0, 7, 14);
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .menu-sep {
+        height: 1px;
+        margin: 10px 28px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+      }
+      .menu-footer {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 26px;
+        margin-top: auto;
+      }
+      .menu-footer-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+        font-weight: 650;
+        color: rgba(0, 7, 14, 0.9);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
+      }
+      .menu-footer-item svg {
+        width: 24px;
+        height: 24px;
+        stroke: rgba(0, 7, 14, 0.84);
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .menu-kbd {
+        margin-left: auto;
+        font-size: 14px;
+        font-weight: 650;
+        color: rgba(0, 7, 14, 0.82);
+        font-variant-numeric: tabular-nums;
+      }
+      .submenu-preview {
+        position: absolute;
+        top: 456px;
+        left: 1980px;
+        z-index: 2;
+        width: 230px;
+        height: 58px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 20px;
+        background: transparent;
+        box-shadow: none;
+        color: rgba(0, 7, 14, 0.92);
+        font-size: 15px;
+        font-weight: 760;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="liquid-glass-context-menu"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="8"
+      data-root="true"
+    >
+      <canvas id="three-canvas" width="1920" height="1080"></canvas>
+
+      <canvas id="glass-canvas" layoutsubtree width="1920" height="1080">
+        <div id="glass-file" class="file-panel liquid-glass"></div>
+        <div id="glass-menu" class="menu-panel liquid-glass"></div>
+        <div id="glass-submenu" class="submenu-panel liquid-glass"></div>
+      </canvas>
+
+      <div id="context-file" class="context-file">
+        <div class="file-icon"></div>
+        <div class="file-meta">
+          <div class="file-title">liquid-glass.mov</div>
+          <div class="file-subtitle">Preview render - 08s</div>
+        </div>
+      </div>
+      <div id="click-ring" class="click-ring"></div>
+      <div id="pointer" class="pointer"></div>
+
+      <div id="text-menu" class="text-overlay menu-text">
+        <div id="menu-highlight" class="menu-highlight"></div>
+        <div class="menu-item">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+            <polyline points="16 6 12 2 8 6" />
+            <line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+          <span>Share</span>
+        </div>
+        <div class="menu-item">
+          <svg viewBox="0 0 24 24">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+          </svg>
+          <span>Add to Bookmarks</span>
+        </div>
+        <div class="menu-item">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+          <span>Add Bookmark to...</span>
+        </div>
+        <div class="menu-sep"></div>
+        <div class="menu-item">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+          <span>New Tab</span>
+          <span class="menu-kbd">&#8984;T</span>
+        </div>
+        <div class="menu-item">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <path d="M9 3v18" />
+            <path d="M14 9l3 3-3 3" />
+          </svg>
+          <span>New Private Tab</span>
+          <span class="menu-kbd">&#8679;&#8984;N</span>
+        </div>
+        <div class="menu-sep"></div>
+        <div class="menu-footer">
+          <div class="menu-footer-item">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            <span>Bookmarks</span>
+          </div>
+          <div class="menu-footer-item">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+            </svg>
+            <span>All Tabs</span>
+          </div>
+        </div>
+      </div>
+      <div id="submenu-preview" class="submenu-preview">Open in New Tab</div>
+
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+
+    <script>
+      var W = 1920,
+        H = 1080,
+        DURATION = 8;
+
+      /* ── Three.js Aurora Shader ─────────────────────────────────────── */
+      var vs = "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }";
+      var fs = [
+        "precision highp float;",
+        "varying vec2 vUv;",
+        "uniform float uTime;",
+        "vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}",
+        "vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}",
+        "vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}",
+        "vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}",
+        "float snoise(vec3 v){",
+        "  const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);",
+        "  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);",
+        "  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;",
+        "  vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);",
+        "  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;",
+        "  i=mod289(i);",
+        "  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));",
+        "  float n_=0.142857142857;vec3 ns=n_*D.wyz-D.xzx;",
+        "  vec4 j=p-49.0*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);",
+        "  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);",
+        "  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);",
+        "  vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;",
+        "  vec4 sh=-step(h,vec4(0.0));",
+        "  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;",
+        "  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);",
+        "  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));",
+        "  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;",
+        "  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;",
+        "  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));",
+        "}",
+        "void main(){",
+        "  vec2 uv=vUv;float ar=1920.0/1080.0;vec2 p=vec2(uv.x*ar,uv.y);float t=uTime*0.06;",
+        "  float wx=snoise(vec3(p*1.4,t*0.5))*0.2;float wy=snoise(vec3(p*1.4+100.0,t*0.5))*0.2;",
+        "  vec2 wp=p+vec2(wx,wy);",
+        "  vec3 base=mix(vec3(0.10,0.02,0.22),vec3(0.04,0.10,0.25),smoothstep(0.0,1.0,uv.x*0.6+uv.y*0.4));",
+        "  float angle=0.65;float ridgeUv=dot(wp,vec2(cos(angle),sin(angle)));",
+        "  float ridge1=sin(ridgeUv*8.0+t*2.0+snoise(vec3(wp*0.8,t))*1.5);",
+        "  float ridge2=sin(ridgeUv*5.5-t*1.4+snoise(vec3(wp*1.2+50.0,t*0.7))*2.0);",
+        "  float ridge3=sin(ridgeUv*12.0+t*3.0+snoise(vec3(wp*0.6+80.0,t*0.4))*1.0);",
+        "  float crease1=pow(abs(ridge1),0.35)*sign(ridge1)*0.5+0.5;",
+        "  float crease2=pow(abs(ridge2),0.4)*sign(ridge2)*0.5+0.5;",
+        "  float crease3=pow(abs(ridge3),0.5)*sign(ridge3)*0.5+0.5;",
+        "  vec3 warm=mix(vec3(0.9,0.4,0.08),vec3(0.95,0.65,0.15),crease1);",
+        "  float warmZone=smoothstep(0.15,0.75,uv.x+uv.y*0.4+snoise(vec3(uv*2.0,t))*0.3);",
+        "  vec3 cool=mix(vec3(0.02,0.4,0.55),vec3(0.25,0.7,0.82),crease2);",
+        "  float coolZone=smoothstep(0.25,0.85,1.2-uv.x+uv.y*0.5+snoise(vec3(uv*2.0+40.0,t*0.8))*0.25);",
+        "  vec3 hot=mix(vec3(0.8,0.1,0.4),vec3(0.6,0.08,0.65),crease3);",
+        "  float hotZone=smoothstep(0.5,0.9,snoise(vec3(uv*2.5+20.0,t*0.6))*0.5+0.5);",
+        "  vec3 col=base;",
+        "  col=mix(col,warm,warmZone*0.75*smoothstep(0.3,0.7,crease1));",
+        "  col=mix(col,cool,coolZone*0.65*smoothstep(0.2,0.65,crease2));",
+        "  col=mix(col,hot,hotZone*0.5*smoothstep(0.35,0.8,crease3));",
+        "  float edgeGlow=pow(1.0-abs(ridge1),6.0)*0.4+pow(1.0-abs(ridge2),5.0)*0.25;",
+        "  col+=edgeGlow*mix(warm,cool,uv.x)*0.8;",
+        "  col*=1.0-pow(abs(ridge1),4.0)*0.15;",
+        "  float vig=1.0-smoothstep(0.5,1.5,length((uv-0.5)*vec2(1.3,1.0)));",
+        "  col*=0.65+vig*0.5;",
+        "  float luma=dot(col,vec3(0.299,0.587,0.114));col=mix(vec3(luma),col,1.5);",
+        "  col=clamp(col,0.0,1.0);col=pow(col,vec3(0.9));",
+        "  gl_FragColor=vec4(col,1.0);",
+        "}",
+      ].join("\n");
+
+      /* ── Three.js Setup ─────────────────────────────────────────────── */
+      var threeCanvas = document.getElementById("three-canvas");
+      var renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: false });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+
+      var scene = new THREE.Scene();
+      var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      var uniforms = { uTime: { value: 0 } };
+      var mat = new THREE.ShaderMaterial({
+        vertexShader: vs,
+        fragmentShader: fs,
+        uniforms: uniforms,
+      });
+      var quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+      scene.add(quad);
+
+      /* ── Glass Canvas ───────────────────────────────────────────────── */
+      var glassCanvas = document.getElementById("glass-canvas");
+      var ctx = glassCanvas.getContext("2d");
+      var lg = new LiquidGlass.LiquidGlassCanvas(glassCanvas);
+      var lgReady = false;
+
+      function renderGlass(time) {
+        if (!lgReady) return;
+        uniforms.uTime.value = time;
+        renderer.render(scene, camera);
+        ctx.clearRect(0, 0, W, H);
+        ctx.drawImage(threeCanvas, 0, 0, W, H);
+        lg.renderGlassElements();
+      }
+
+      function requestGlassRender(time) {
+        if (glassCanvas.requestPaint) {
+          glassCanvas.onpaint = function () {
+            renderGlass(time);
+          };
+          glassCanvas.requestPaint();
+          return;
+        }
+        renderGlass(time);
+      }
+
+      lg.waitForInit().then(function (ok) {
+        if (!ok) return;
+        lgReady = true;
+        requestGlassRender(0);
+      });
+
+      /* ── GSAP Timeline ──────────────────────────────────────────────── */
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var gm = document.getElementById("glass-menu");
+      var gf = document.getElementById("glass-file");
+      var gsm = document.getElementById("glass-submenu");
+      var tm = document.getElementById("text-menu");
+      var pointer = document.getElementById("pointer");
+      var fileCard = document.getElementById("context-file");
+
+      gsap.set([gm, tm], {
+        left: 860,
+        top: 270,
+        opacity: 0,
+        scale: 0.82,
+        y: -8,
+        transformOrigin: "0% 18%",
+      });
+      // glass (#glass-file) is html-in-canvas — stays on left/top (exempt, no stutter)
+      gsap.set(gf, { top: 372, opacity: 1, scale: 1, transformOrigin: "78% 54%" });
+      // plain DOM (#context-file) — CSS resting top is 340px, so top:372 becomes y:32
+      gsap.set(fileCard, { y: 32, opacity: 1, scale: 1, transformOrigin: "78% 54%" });
+      gsap.set([gsm, "#submenu-preview"], {
+        left: 1980,
+        opacity: 0,
+        scale: 0.86,
+        x: -12,
+        transformOrigin: "0% 50%",
+      });
+      gsap.set(".menu-item", { y: -4, opacity: 0 });
+      // #menu-highlight plain DOM — CSS resting top:17; top:17 seed is y:0, tweens use y
+      gsap.set("#menu-highlight", { y: 0, opacity: 0 });
+
+      tl.to(gf, { top: 340, duration: 0.38, ease: "power3.out" }, 0.1);
+      tl.to(fileCard, { y: 0, duration: 0.38, ease: "power3.out" }, 0.1);
+      // #pointer plain DOM — CSS resting left:778 top:395; convert left/top → x/y offsets
+      tl.fromTo(
+        pointer,
+        { x: -158, y: 125 },
+        { x: 0, y: 0, duration: 0.55, ease: "power3.out" },
+        0.35,
+      );
+      tl.set("#click-ring", { left: 756, top: 372, scale: 0.72 }, 0.84);
+      tl.to("#click-ring", { opacity: 0.7, scale: 1.18, duration: 0.16, ease: "power2.out" }, 0.86);
+      tl.to("#click-ring", { opacity: 0, scale: 1.8, duration: 0.28, ease: "power2.out" }, 1.02);
+      tl.to(
+        [gf, fileCard],
+        { scale: 0.985, duration: 0.08, ease: "power2.out", yoyo: true, repeat: 1 },
+        0.86,
+      );
+
+      tl.to([gm, tm], { opacity: 1, scale: 1, y: 0, duration: 0.36, ease: "back.out(1.08)" }, 0.98);
+      tl.to(
+        ".menu-item",
+        { y: 0, opacity: 1, duration: 0.24, ease: "power3.out", stagger: 0.026 },
+        1.07,
+      );
+
+      tl.to("#menu-highlight", { opacity: 1, duration: 0.12, ease: "none" }, 1.35);
+      tl.to("#menu-highlight", { y: 52, duration: 0.22, ease: "power2.out" }, 2.0);
+      tl.to(pointer, { x: 350, y: 73, duration: 0.46, ease: "power3.inOut" }, 2.48);
+      tl.to("#menu-highlight", { y: 170, duration: 0.22, ease: "power2.out" }, 2.58);
+      tl.set([gsm, "#submenu-preview"], { left: 1236 }, 3.04);
+      tl.fromTo(
+        [gsm, "#submenu-preview"],
+        { scale: 0.86, opacity: 0, x: -12 },
+        { scale: 1, opacity: 1, x: 0, duration: 0.24, ease: "back.out(1.04)" },
+        3.08,
+      );
+      tl.to(pointer, { x: 540, y: 89, duration: 0.5, ease: "power3.inOut" }, 3.32);
+      tl.set("#click-ring", { left: 1295, top: 461, scale: 0.72 }, 3.86);
+      tl.to(
+        "#click-ring",
+        { opacity: 0.72, scale: 1.08, duration: 0.12, ease: "power2.out" },
+        3.88,
+      );
+      tl.to("#click-ring", { opacity: 0, scale: 1.58, duration: 0.24, ease: "power2.out" }, 4.0);
+      tl.to(
+        [gsm, "#submenu-preview"],
+        { scale: 0.965, duration: 0.09, ease: "power2.out", yoyo: true, repeat: 1 },
+        3.92,
+      );
+
+      tl.to(pointer, { opacity: 0, duration: 0.35, ease: "power2.out" }, 5.85);
+
+      /* Duration driver */
+      tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);
+
+      tl.eventCallback("onUpdate", function () {
+        requestGlassRender(tl.time());
+      });
+
+      window.__timelines["liquid-glass-context-menu"] = tl;
+    </script>
+  </body>
+</html>

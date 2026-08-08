@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Liquid Glass Media Controls</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="lib/liquid-glass.iife.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0a0218;
+        overflow: hidden;
+        font-family: "Inter", system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #three-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 0;
+      }
+      #glass-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 1;
+      }
+
+      /* ── Glass Panels ── */
+      .glass-panel {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.055);
+        --lg-blur: 0.42;
+        --lg-refraction: 0.92;
+        --lg-corner-radius: 36;
+        --lg-z-radius: 58;
+        --lg-specular: 0.46;
+        --lg-fresnel: 1.15;
+        --lg-edge-highlight: 0.34;
+        --lg-chrom-aberration: 0.08;
+        --lg-shadow-opacity: 0;
+        --lg-shadow-spread: 0;
+        --lg-shadow-offset-y: 0;
+        --lg-saturation: 1.1;
+      }
+      .search-panel {
+        width: 640px;
+        height: 72px;
+        --lg-corner-radius: 24;
+      }
+      .toggle-panel {
+        width: 640px;
+        height: 64px;
+        --lg-corner-radius: 44;
+      }
+      .media-panel {
+        width: 640px;
+        height: 116px;
+        --lg-corner-radius: 44;
+      }
+      .slider-panel {
+        width: 640px;
+        height: 76px;
+        --lg-corner-radius: 28;
+      }
+
+      #glass-search {
+        top: 300px;
+        left: 640px;
+      }
+      #glass-toggle {
+        top: 390px;
+        left: 640px;
+      }
+      #glass-media {
+        top: 476px;
+        left: 640px;
+      }
+      #glass-slider {
+        top: 616px;
+        left: 640px;
+      }
+
+      /* ── Text Overlays ── */
+      .text-overlay {
+        position: absolute;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      /* Search bar */
+      .search-text {
+        width: 640px;
+        height: 72px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 28px;
+        background: transparent;
+        border-radius: 24px;
+        box-shadow: none;
+      }
+      .search-text svg {
+        width: 22px;
+        height: 22px;
+        stroke: rgba(255, 255, 255, 0.86);
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
+      .search-label {
+        font-size: 19px;
+        font-weight: 650;
+        color: #fff;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+      }
+      .search-caret {
+        width: 2px;
+        height: 25px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.82);
+        opacity: 0;
+      }
+      #text-search {
+        top: 300px;
+        left: 640px;
+      }
+
+      /* Toggle row */
+      .toggle-text {
+        width: 640px;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        position: relative;
+        padding: 6px;
+        background: transparent;
+        border-radius: 44px;
+        box-shadow: none;
+      }
+      .toggle-active-pill {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        z-index: 0;
+        width: 209px;
+        height: 52px;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.32), transparent 42%),
+          rgba(255, 255, 255, 0.14);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.32),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.09);
+      }
+      .toggle-item {
+        flex: 1;
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        font-size: 16px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.96);
+        line-height: 52px;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+      }
+      .toggle-item.active {
+        color: #fff;
+      }
+      #text-toggle {
+        top: 390px;
+        left: 640px;
+      }
+
+      /* Media pill */
+      .media-text {
+        width: 640px;
+        height: 116px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 0 24px;
+        background: transparent;
+        border-radius: 44px;
+        box-shadow: none;
+      }
+      .album-art {
+        position: relative;
+        overflow: hidden;
+        width: 78px;
+        height: 78px;
+        border-radius: 20px;
+        background:
+          radial-gradient(circle at 70% 28%, rgba(255, 255, 255, 0.78), transparent 16%),
+          conic-gradient(from 210deg, #06e3fa, #4fdb5e, #f59e0b, #ec4899, #06e3fa);
+        flex-shrink: 0;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.28),
+          0 12px 26px rgba(0, 0, 0, 0.24);
+      }
+      .album-sheen {
+        position: absolute;
+        top: -10px;
+        left: -70px;
+        width: 38px;
+        height: 110px;
+        background: rgba(255, 255, 255, 0.34);
+        filter: blur(8px);
+        transform: rotate(24deg);
+      }
+      .media-info {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        flex: 1;
+        min-width: 0;
+      }
+      .media-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+      }
+      .media-artist {
+        font-size: 16px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.84);
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+      }
+      .media-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4ade80;
+        box-shadow: 0 0 14px rgba(74, 222, 128, 0.76);
+      }
+      .sound-wave {
+        display: flex;
+        align-items: end;
+        gap: 3px;
+        height: 16px;
+      }
+      .sound-wave span {
+        width: 3px;
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.74);
+      }
+      .transport {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-left: auto;
+        padding-right: 4px;
+      }
+      .transport svg {
+        width: 28px;
+        height: 28px;
+        fill: #fff;
+        stroke: none;
+      }
+      .transport .play-btn svg {
+        width: 38px;
+        height: 38px;
+      }
+      #text-media {
+        top: 476px;
+        left: 640px;
+      }
+
+      /* Brightness slider */
+      .slider-text {
+        width: 640px;
+        height: 76px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 0 28px;
+        background: transparent;
+        border-radius: 28px;
+        box-shadow: none;
+      }
+      .slider-text svg {
+        width: 26px;
+        height: 26px;
+        stroke: rgba(255, 255, 255, 0.88);
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
+      .slider-track {
+        flex: 1;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.24);
+        border-radius: 4px;
+        position: relative;
+      }
+      .slider-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 34%;
+        height: 100%;
+        background: #fff;
+        border-radius: 3px;
+        box-shadow: 0 0 14px rgba(255, 255, 255, 0.5);
+      }
+      .slider-pct {
+        font-size: 17px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.9);
+        font-variant-numeric: tabular-nums;
+        width: 42px;
+        text-align: right;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+      }
+      #text-slider {
+        top: 616px;
+        left: 640px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="liquid-glass-media-controls"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="8"
+      data-root="true"
+    >
+      <canvas id="three-canvas" width="1920" height="1080"></canvas>
+
+      <canvas id="glass-canvas" layoutsubtree width="1920" height="1080">
+        <div id="glass-search" class="glass-panel search-panel liquid-glass"></div>
+        <div id="glass-toggle" class="glass-panel toggle-panel liquid-glass"></div>
+        <div id="glass-media" class="glass-panel media-panel liquid-glass"></div>
+        <div id="glass-slider" class="glass-panel slider-panel liquid-glass"></div>
+      </canvas>
+
+      <!-- Search bar -->
+      <div id="text-search" class="text-overlay search-text">
+        <svg viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <span id="search-label" class="search-label">Search</span>
+        <span id="search-caret" class="search-caret"></span>
+      </div>
+
+      <!-- Toggle row -->
+      <div id="text-toggle" class="text-overlay toggle-text">
+        <div id="toggle-pill" class="toggle-active-pill"></div>
+        <div class="toggle-item active">All</div>
+        <div class="toggle-item">Favorites</div>
+        <div class="toggle-item">Recent</div>
+      </div>
+
+      <!-- Media pill -->
+      <div id="text-media" class="text-overlay media-text">
+        <div class="album-art"><span id="album-sheen" class="album-sheen"></span></div>
+        <div class="media-info">
+          <div class="media-title">Midnight Drive</div>
+          <div class="media-meta-row">
+            <span id="live-dot" class="live-dot"></span>
+            <div class="media-artist">Glass Resonance</div>
+            <div id="sound-wave" class="sound-wave">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+        <div class="transport">
+          <span>
+            <svg viewBox="0 0 24 24">
+              <polygon points="19 20 9 12 19 4" />
+              <line x1="5" y1="4" x2="5" y2="20" stroke="#fff" stroke-width="2" />
+            </svg>
+          </span>
+          <span class="play-btn">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21" /></svg>
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24">
+              <polygon points="5 4 15 12 5 20" />
+              <line x1="19" y1="4" x2="19" y2="20" stroke="#fff" stroke-width="2" />
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <!-- Brightness slider -->
+      <div id="text-slider" class="text-overlay slider-text">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+        <div class="slider-track"><div id="slider-fill" class="slider-fill"></div></div>
+        <span id="slider-pct" class="slider-pct">34%</span>
+      </div>
+
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+
+    <script>
+      var W = 1920,
+        H = 1080,
+        DURATION = 8;
+
+      /* ── Three.js Aurora Shader ─────────────────────────────────────── */
+      var vs = "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }";
+      var fs = [
+        "precision highp float;",
+        "varying vec2 vUv;",
+        "uniform float uTime;",
+        "vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}",
+        "vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}",
+        "vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}",
+        "vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}",
+        "float snoise(vec3 v){",
+        "  const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);",
+        "  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);",
+        "  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;",
+        "  vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);",
+        "  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;",
+        "  i=mod289(i);",
+        "  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));",
+        "  float n_=0.142857142857;vec3 ns=n_*D.wyz-D.xzx;",
+        "  vec4 j=p-49.0*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);",
+        "  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);",
+        "  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);",
+        "  vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;",
+        "  vec4 sh=-step(h,vec4(0.0));",
+        "  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;",
+        "  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);",
+        "  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));",
+        "  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;",
+        "  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;",
+        "  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));",
+        "}",
+        "void main(){",
+        "  vec2 uv=vUv;float ar=1920.0/1080.0;vec2 p=vec2(uv.x*ar,uv.y);float t=uTime*0.06;",
+        "  float wx=snoise(vec3(p*1.4,t*0.5))*0.2;float wy=snoise(vec3(p*1.4+100.0,t*0.5))*0.2;",
+        "  vec2 wp=p+vec2(wx,wy);",
+        "  vec3 base=mix(vec3(0.10,0.02,0.22),vec3(0.04,0.10,0.25),smoothstep(0.0,1.0,uv.x*0.6+uv.y*0.4));",
+        "  float angle=0.65;float ridgeUv=dot(wp,vec2(cos(angle),sin(angle)));",
+        "  float ridge1=sin(ridgeUv*8.0+t*2.0+snoise(vec3(wp*0.8,t))*1.5);",
+        "  float ridge2=sin(ridgeUv*5.5-t*1.4+snoise(vec3(wp*1.2+50.0,t*0.7))*2.0);",
+        "  float ridge3=sin(ridgeUv*12.0+t*3.0+snoise(vec3(wp*0.6+80.0,t*0.4))*1.0);",
+        "  float crease1=pow(abs(ridge1),0.35)*sign(ridge1)*0.5+0.5;",
+        "  float crease2=pow(abs(ridge2),0.4)*sign(ridge2)*0.5+0.5;",
+        "  float crease3=pow(abs(ridge3),0.5)*sign(ridge3)*0.5+0.5;",
+        "  vec3 warm=mix(vec3(0.9,0.4,0.08),vec3(0.95,0.65,0.15),crease1);",
+        "  float warmZone=smoothstep(0.15,0.75,uv.x+uv.y*0.4+snoise(vec3(uv*2.0,t))*0.3);",
+        "  vec3 cool=mix(vec3(0.02,0.4,0.55),vec3(0.25,0.7,0.82),crease2);",
+        "  float coolZone=smoothstep(0.25,0.85,1.2-uv.x+uv.y*0.5+snoise(vec3(uv*2.0+40.0,t*0.8))*0.25);",
+        "  vec3 hot=mix(vec3(0.8,0.1,0.4),vec3(0.6,0.08,0.65),crease3);",
+        "  float hotZone=smoothstep(0.5,0.9,snoise(vec3(uv*2.5+20.0,t*0.6))*0.5+0.5);",
+        "  vec3 col=base;",
+        "  col=mix(col,warm,warmZone*0.75*smoothstep(0.3,0.7,crease1));",
+        "  col=mix(col,cool,coolZone*0.65*smoothstep(0.2,0.65,crease2));",
+        "  col=mix(col,hot,hotZone*0.5*smoothstep(0.35,0.8,crease3));",
+        "  float edgeGlow=pow(1.0-abs(ridge1),6.0)*0.4+pow(1.0-abs(ridge2),5.0)*0.25;",
+        "  col+=edgeGlow*mix(warm,cool,uv.x)*0.8;",
+        "  col*=1.0-pow(abs(ridge1),4.0)*0.15;",
+        "  float vig=1.0-smoothstep(0.5,1.5,length((uv-0.5)*vec2(1.3,1.0)));",
+        "  col*=0.65+vig*0.5;",
+        "  float luma=dot(col,vec3(0.299,0.587,0.114));col=mix(vec3(luma),col,1.5);",
+        "  col=clamp(col,0.0,1.0);col=pow(col,vec3(0.9));",
+        "  gl_FragColor=vec4(col,1.0);",
+        "}",
+      ].join("\n");
+
+      /* ── Three.js Setup ─────────────────────────────────────────────── */
+      var threeCanvas = document.getElementById("three-canvas");
+      var renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: false });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+
+      var scene = new THREE.Scene();
+      var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      var uniforms = { uTime: { value: 0 } };
+      var shaderMat = new THREE.ShaderMaterial({
+        vertexShader: vs,
+        fragmentShader: fs,
+        uniforms: uniforms,
+      });
+      var quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), shaderMat);
+      scene.add(quad);
+
+      /* ── Glass Canvas ───────────────────────────────────────────────── */
+      var glassCanvas = document.getElementById("glass-canvas");
+      var ctx = glassCanvas.getContext("2d");
+      var lg = new LiquidGlass.LiquidGlassCanvas(glassCanvas);
+      var lgReady = false;
+
+      function renderGlass(time) {
+        if (!lgReady) return;
+        uniforms.uTime.value = time;
+        renderer.render(scene, camera);
+        ctx.clearRect(0, 0, W, H);
+        ctx.drawImage(threeCanvas, 0, 0, W, H);
+        lg.renderGlassElements();
+      }
+
+      function requestGlassRender(time) {
+        if (glassCanvas.requestPaint) {
+          glassCanvas.onpaint = function () {
+            renderGlass(time);
+          };
+          glassCanvas.requestPaint();
+          return;
+        }
+        renderGlass(time);
+      }
+
+      lg.waitForInit().then(function (ok) {
+        if (!ok) return;
+        lgReady = true;
+        requestGlassRender(0);
+      });
+
+      /* ── GSAP Timeline ──────────────────────────────────────────────── */
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var gs = document.getElementById("glass-search");
+      var gt = document.getElementById("glass-toggle");
+      var gm = document.getElementById("glass-media");
+      var gsl = document.getElementById("glass-slider");
+      var ts = document.getElementById("text-search");
+      var tt = document.getElementById("text-toggle");
+      var tm = document.getElementById("text-media");
+      var tsl = document.getElementById("text-slider");
+      var searchLabel = document.getElementById("search-label");
+      var sliderPct = document.getElementById("slider-pct");
+      var sliderValue = { value: 34 };
+
+      // Glass panels live inside <canvas layoutsubtree> (html-in-canvas): the canvas lib
+      // reads their sub-pixel computed top/left, so animating layout props on them does
+      // NOT stutter and is exempt from gsap_non_transform_motion. They keep top/left.
+      // Plain-DOM text overlays DO stutter on layout props, so they use transforms (x/y).
+      // CSS resting tops — search 300, toggle 390, media 476, slider 616 — are the
+      // transform base; the original set seeded top:1160, i.e. y = 1160 - restingTop.
+      gsap.set([gs, gt, gm, gsl], { top: 1160, opacity: 1 });
+      gsap.set(ts, { y: 860, opacity: 1 });
+      gsap.set(tt, { y: 770, opacity: 1 });
+      gsap.set(tm, { y: 684, opacity: 1 });
+      gsap.set(tsl, { y: 544, opacity: 1 });
+      gsap.set("#sound-wave span", { height: 7 });
+
+      tl.to(gs, { top: 300, duration: 0.48, ease: "power3.out" }, 0.12);
+      tl.to(ts, { y: 0, duration: 0.48, ease: "power3.out" }, 0.12);
+      tl.to(gt, { top: 390, duration: 0.44, ease: "power3.out" }, 0.22);
+      tl.to(tt, { y: 0, duration: 0.44, ease: "power3.out" }, 0.22);
+      tl.to(gm, { top: 476, duration: 0.44, ease: "power3.out" }, 0.32);
+      tl.to(tm, { y: 0, duration: 0.44, ease: "power3.out" }, 0.32);
+      tl.to(gsl, { top: 616, duration: 0.46, ease: "power3.out" }, 0.42);
+      tl.to(tsl, { y: 0, duration: 0.46, ease: "power3.out" }, 0.42);
+
+      tl.call(
+        function () {
+          searchLabel.textContent = "Search Music";
+        },
+        null,
+        0.9,
+      );
+      tl.to(
+        "#search-caret",
+        { opacity: 1, duration: 0.1, yoyo: true, repeat: 5, ease: "none" },
+        0.94,
+      );
+      tl.call(
+        function () {
+          searchLabel.textContent = "Midnight Drive";
+        },
+        null,
+        1.55,
+      );
+      tl.to("#toggle-pill", { x: 209, duration: 0.24, ease: "power2.out" }, 1.82);
+      tl.to(
+        ".play-btn",
+        { scale: 0.86, duration: 0.12, ease: "power2.out", yoyo: true, repeat: 1 },
+        2.18,
+      );
+      tl.to("#album-sheen", { x: 182, duration: 0.75, ease: "power2.out" }, 2.2);
+      tl.to(
+        "#sound-wave span",
+        { height: 15, duration: 0.22, ease: "power2.inOut", stagger: 0.05, yoyo: true, repeat: 12 },
+        2.2,
+      );
+      tl.to(
+        sliderValue,
+        {
+          value: 82,
+          duration: 4.4,
+          ease: "none",
+          onUpdate: function () {
+            sliderPct.textContent = Math.round(sliderValue.value) + "%";
+          },
+        },
+        1.2,
+      );
+      tl.to("#slider-fill", { width: "82%", duration: 4.4, ease: "none" }, 1.2);
+      tl.to(
+        "#live-dot",
+        { scale: 1.45, duration: 0.24, ease: "power2.out", yoyo: true, repeat: 4 },
+        2.6,
+      );
+      tl.to("#toggle-pill", { x: 419, duration: 0.24, ease: "power2.out" }, 4.15);
+
+      // Settle + exit. Split so glass panels keep relative top (exempt, html-in-canvas)
+      // and plain-DOM text overlays use the relative transform equivalent (y). Inline
+      // array literals so the linter can resolve each group's targets; a pre-declared
+      // array variable resolves to __unresolved__ and would lose the canvas exemption.
+      tl.to(
+        [gs, gt, gm, gsl],
+        { top: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.55,
+      );
+      tl.to(
+        [ts, tt, tm, tsl],
+        { y: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.55,
+      );
+      tl.to([gs, gt, gm, gsl], { top: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
+      tl.to([ts, tt, tm, tsl], { y: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
+
+      /* Duration driver */
+      tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);
+
+      tl.eventCallback("onUpdate", function () {
+        requestGlassRender(tl.time());
+      });
+
+      window.__timelines["liquid-glass-media-controls"] = tl;
+    </script>
+  </body>
+</html>

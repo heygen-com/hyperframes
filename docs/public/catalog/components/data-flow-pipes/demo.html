@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Data Flow Pipes - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale wrapper — GSAP never touches .demo-frame */
+        transform: scale(1.5);
+        transform-origin: center center;
+      }
+      .hf-remocn-data-flow-pipes {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-data-flow-pipes {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 34px;
+        padding: 28px;
+        background: linear-gradient(135deg, #f8fafc, #e0f2fe);
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 22px;
+        overflow: hidden;
+      }
+      .hf-remocn-data-flow-pipes .panel {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.76);
+        padding: 22px;
+        backdrop-filter: blur(12px);
+      }
+      .hf-remocn-data-flow-pipes .prompt {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-data-flow-pipes .pill {
+        height: 42px;
+        border-radius: 999px;
+        background: #111827;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        font-weight: 800;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-data-flow-pipes .preview {
+        display: grid;
+        gap: 14px;
+      }
+      .hf-remocn-data-flow-pipes .card {
+        min-height: 78px;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        border: 1px solid #e4e4e7;
+      }
+      .hf-remocn-data-flow-pipes .node-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .hf-remocn-data-flow-pipes .node-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #18181b;
+        flex: 1;
+      }
+      .hf-remocn-data-flow-pipes .node-stat {
+        font-size: 12px;
+        color: #71717a;
+        font-variant-numeric: tabular-nums;
+      }
+      .hf-remocn-data-flow-pipes h3 {
+        margin: 0 0 14px;
+        font-size: 32px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-data-flow-pipes p {
+        margin: 0;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="data-flow-pipes-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-data-flow-pipes">
+          <div class="panel prompt">
+            <h3>Data Flow Pipes</h3>
+            <p>Animated pipe routes move packets between data nodes.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="card">
+              <span class="node-dot" style="background:#2563eb;"></span>
+              <span class="node-label">Source Node</span>
+              <span class="node-stat">12 packets/s</span>
+            </div>
+            <div class="card">
+              <span class="node-dot" style="background:#16a34a;"></span>
+              <span class="node-label">Transform Pipe</span>
+              <span class="node-stat">8 active</span>
+            </div>
+            <div class="card">
+              <span class="node-dot" style="background:#d97706;"></span>
+              <span class="node-label">Sink Node</span>
+              <span class="node-stat">99.2% uptime</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-data-flow-pipes .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-data-flow-pipes .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["data-flow-pipes-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

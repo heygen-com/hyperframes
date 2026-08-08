@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 120px;
+        bottom: 116px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      #root .lt-namebar {
+        background: #141518;
+        padding: 14px 30px;
+        will-change: clip-path;
+      }
+      #root .lt-name {
+        font-family: "Archivo Black", sans-serif;
+        font-size: 52px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height: 1;
+        letter-spacing: -0.015em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #root .lt-rolebar {
+        background: #ffd23f;
+        padding: 9px 22px;
+        margin-left: 14px;
+        will-change: clip-path;
+      }
+      #root .lt-role {
+        font-family: "Space Mono", monospace;
+        font-size: 23px;
+        font-weight: 700;
+        color: #141518;
+        line-height: 1;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-stack-bars"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div id="lt-namebar" class="lt-namebar">
+            <div id="lt-name" class="lt-name">Maya Chen</div>
+          </div>
+          <div id="lt-rolebar" class="lt-rolebar">
+            <div id="lt-role" class="lt-role">Host · Neuroscientist</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var namebar = document.getElementById("lt-namebar");
+      var rolebar = document.getElementById("lt-rolebar");
+
+      // Name bar wipes in from the left; role bar wipes in from the right (opposing).
+      gsap.set(namebar, { clipPath: "inset(0 100% 0 0)" });
+      gsap.set(rolebar, { clipPath: "inset(0 0 0 100%)" });
+
+      tl.to(namebar, { clipPath: "inset(0 0% 0 0)", duration: 0.5, ease: "power4.out" }, 0.1);
+      tl.to(rolebar, { clipPath: "inset(0 0% 0 0%)", duration: 0.5, ease: "power4.out" }, 0.34);
+
+      // Exit: both wipe back out, hard kill.
+      tl.to(rolebar, { clipPath: "inset(0 0 0 100%)", duration: 0.32, ease: "power3.in" }, 4.25);
+      tl.to(namebar, { clipPath: "inset(0 100% 0 0)", duration: 0.36, ease: "power3.in" }, 4.32);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-stack-bars"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,137 @@
+<!--
+  Directional Wipe - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script below reads each one, falls back to the declared
+  default on anything missing or unrecognised, and writes the result as a
+  custom property the CSS consumes. The timeline recipe at the bottom is
+  untouched by them.
+
+    - palette (slate | teal | ember, default slate): recolours both slabs as a
+      pair, the outgoing panel and the card behind it plus the incoming panel
+      the wipe reveals. slate is the original grey to indigo pairing, teal a
+      cool ink to cyan, ember a warm charcoal to orange.
+    - corner (square | rounded | soft, default rounded): corner radius of the
+      card. square is 0, rounded the original 30px, soft 56px.
+
+  On every default the result is identical to the original.
+-->
+
+<div
+  class="hf-remocn-directional-wipe"
+  data-composition-variables='[
+    { "id": "palette", "type": "enum", "role": "style", "label": "Palette", "description": "Colour family for both slabs, the outgoing panel and the incoming reveal.", "default": "slate", "options": [{ "value": "slate", "label": "Slate" }, { "value": "teal", "label": "Teal" }, { "value": "ember", "label": "Ember" }] },
+    { "id": "corner", "type": "enum", "role": "style", "label": "Corner", "description": "Corner radius of the transition card.", "default": "rounded", "options": [{ "value": "square", "label": "Square" }, { "value": "rounded", "label": "Rounded" }, { "value": "soft", "label": "Soft" }] }
+  ]'
+>
+  <div class="scene from">Before</div>
+  <div class="scene to">Directional Wipe</div>
+  <div class="fx"></div>
+  <div class="rgb"></div>
+</div>
+
+<style>
+  .hf-remocn-directional-wipe {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-directional-wipe {
+    position: relative;
+    width: 760px;
+    height: 428px;
+    overflow: hidden;
+    border-radius: var(--hf-corner, 30px);
+    background: var(--hf-from-a, #111827);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-directional-wipe .scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 58px;
+    letter-spacing: -0.05em;
+    color: #fff;
+  }
+  .hf-remocn-directional-wipe .from {
+    background: linear-gradient(135deg, var(--hf-from-a, #111827), var(--hf-from-b, #374151));
+    transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
+      scale(var(--hf-from-scale, 1));
+    filter: blur(var(--hf-from-blur, 0px));
+  }
+  .hf-remocn-directional-wipe .to {
+    background: linear-gradient(135deg, var(--hf-to-a, #2563eb), var(--hf-to-b, #7c3aed));
+    transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
+    clip-path: inset(
+      var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
+        var(--hf-clip-left, 0%)
+    );
+  }
+  .hf-remocn-directional-wipe .fx {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    mix-blend-mode: screen;
+    transform: translateX(var(--hf-fx-x, -110%));
+  }
+  .hf-remocn-directional-wipe .rgb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-rgb-opacity, 0);
+    background: linear-gradient(
+      90deg,
+      rgba(239, 68, 68, 0.35),
+      transparent,
+      rgba(34, 211, 238, 0.35)
+    );
+    transform: translateX(var(--hf-rgb-x, 0px));
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides fall back to their declared defaults.
+    var palettes = {
+      slate: { fromA: "#111827", fromB: "#374151", toA: "#2563eb", toB: "#7c3aed" },
+      teal: { fromA: "#0f172a", fromB: "#134e4a", toA: "#0d9488", toB: "#22d3ee" },
+      ember: { fromA: "#1c1917", fromB: "#44403c", toA: "#ea580c", toB: "#db2777" },
+    };
+    var corners = { square: "0px", rounded: "30px", soft: "56px" };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var palette = palettes[pick(palettes, vars.palette, "slate")];
+    var corner = corners[pick(corners, vars.corner, "rounded")];
+
+    var roots = document.querySelectorAll(".hf-remocn-directional-wipe");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-from-a", palette.fromA);
+      roots[i].style.setProperty("--hf-from-b", palette.fromB);
+      roots[i].style.setProperty("--hf-to-a", palette.toA);
+      roots[i].style.setProperty("--hf-to-b", palette.toB);
+      roots[i].style.setProperty("--hf-corner", corner);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-directional-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-directional-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-directional-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-directional-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+-->

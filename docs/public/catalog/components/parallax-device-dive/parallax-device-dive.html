@@ -1,0 +1,451 @@
+<!doctype html>
+<!--
+  parallax-device-dive: HyperFrames video primitive (camera / device / transition)
+
+  Concept: a canonical phone rises into view, then the camera pushes through
+  its screen. The app header, hero card, and supporting cards separate at
+  different apparent depths during the push, then settle into one coherent UI
+  that fills the frame.
+
+  Variables:
+    - accent (green | blue | violet, default "blue"): app highlight color.
+    - app_title (string, default "Dashboard"): title in the app header.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 1.05s  phone rises and settles on stage
+    HOLD     = elastic subtle device drift before the camera move
+    OUT_BASE = 1.65s  camera dives through the screen and the UI becomes stage
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together and
+    HOLD becomes zero. OUT is a camera exit from the hardware, not a fade.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, carries no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  parallax-device-dive id.
+-->
+<html
+  lang="en"
+  data-composition-id="parallax-device-dive"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Highlight color used throughout the app UI.", "default": "blue", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "app_title", "type": "string", "role": "content", "label": "App title", "description": "Title displayed in the app header.", "default": "Dashboard" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Parallax Device Dive</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="parallax-device-dive" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #0b0c0e;
+            color: #f8fafc;
+            font-family: Inter, system-ui, sans-serif;
+          }
+
+          .pdd-clip,
+          .pdd-camera {
+            position: absolute;
+            inset: 0;
+          }
+
+          .pdd-clip {
+            overflow: hidden;
+            background:
+              radial-gradient(
+                circle at 50% 48%,
+                color-mix(in srgb, var(--pdd-accent) 17%, transparent),
+                transparent 34%
+              ),
+              #0b0c0e;
+          }
+
+          .pdd-camera {
+            display: grid;
+            place-items: center;
+            perspective: 125cqw;
+          }
+
+          .pdd-phone {
+            position: relative;
+            height: 82cqh;
+            aspect-ratio: 9 / 19.5;
+            padding: 0.72cqh;
+            border: 0.08cqw solid rgba(255, 255, 255, 0.28);
+            border-radius: 4.4cqh;
+            background: linear-gradient(145deg, #3c4049, #17191e 44%, #08090c);
+            box-shadow:
+              0 4.8cqh 10cqh rgba(0, 0, 0, 0.5),
+              0 1.4cqh 3cqh rgba(0, 0, 0, 0.4),
+              inset 0 0.12cqh 0 rgba(255, 255, 255, 0.3),
+              inset 0 0 0 0.08cqw rgba(0, 0, 0, 0.72);
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .pdd-screen {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border-radius: 3.72cqh;
+            background: #f4f6fb;
+            box-shadow: inset 0 0 0 0.08cqw rgba(15, 23, 42, 0.28);
+            color: #111827;
+            isolation: isolate;
+          }
+
+          .pdd-app-glow {
+            position: absolute;
+            inset: 0;
+            background:
+              radial-gradient(
+                circle at 76% 8%,
+                color-mix(in srgb, var(--pdd-accent) 28%, transparent),
+                transparent 31%
+              ),
+              linear-gradient(180deg, #ffffff, #eef2f8);
+          }
+
+          .pdd-cutout {
+            position: absolute;
+            z-index: 10;
+            top: 1.2cqh;
+            left: 50%;
+            width: 7.2cqh;
+            height: 2.1cqh;
+            border-radius: 1.2cqh;
+            background: #050607;
+            transform: translateX(-50%);
+          }
+
+          .pdd-ui {
+            position: absolute;
+            inset: 0;
+            padding: 6.2cqh 2.1cqh 2.2cqh;
+            display: flex;
+            flex-direction: column;
+            gap: 1.55cqh;
+          }
+
+          .pdd-header,
+          .pdd-hero,
+          .pdd-stats {
+            position: relative;
+            z-index: 2;
+            transform-origin: 50% 50%;
+            will-change: transform;
+          }
+
+          .pdd-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+
+          .pdd-heading {
+            min-width: 0;
+          }
+
+          .pdd-kicker {
+            color: #788397;
+            font-size: 0.75cqw;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            line-height: 1;
+            text-transform: uppercase;
+          }
+
+          .pdd-title {
+            max-width: 13cqw;
+            overflow: hidden;
+            color: #111827;
+            font-size: 1.5cqw;
+            font-weight: 780;
+            letter-spacing: -0.04em;
+            line-height: 1.12;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .pdd-avatar {
+            flex: 0 0 auto;
+            width: 3.7cqh;
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--pdd-accent);
+            color: #ffffff;
+            font-size: 0.72cqw;
+            font-weight: 800;
+            box-shadow: 0 0.55cqh 1.4cqh color-mix(in srgb, var(--pdd-accent) 32%, transparent);
+          }
+
+          .pdd-hero {
+            min-height: 24cqh;
+            padding: 2.1cqh;
+            overflow: hidden;
+            border: 0.08cqw solid rgba(255, 255, 255, 0.12);
+            border-radius: 2.1cqh;
+            background: #101722;
+            box-shadow: 0 1.7cqh 3.8cqh rgba(15, 23, 42, 0.2);
+          }
+
+          .pdd-hero-label {
+            color: #a9b4c7;
+            font-size: 0.72cqw;
+            font-weight: 650;
+          }
+
+          .pdd-value {
+            margin-top: 0.45cqh;
+            color: #ffffff;
+            font-size: 2.15cqw;
+            font-weight: 790;
+            letter-spacing: -0.055em;
+            line-height: 1;
+          }
+
+          .pdd-value span {
+            color: var(--pdd-accent);
+            font-size: 0.76cqw;
+            letter-spacing: 0;
+          }
+
+          .pdd-chart {
+            position: absolute;
+            left: 2.1cqh;
+            right: 2.1cqh;
+            bottom: 2.2cqh;
+            height: 8.2cqh;
+            display: flex;
+            align-items: end;
+            gap: 0.55cqh;
+          }
+
+          .pdd-bar {
+            flex: 1 1 0;
+            min-width: 0;
+            border-radius: 0.55cqh 0.55cqh 0.18cqh 0.18cqh;
+            background: color-mix(in srgb, var(--pdd-accent) 38%, #263244);
+          }
+
+          .pdd-bar:nth-child(1) {
+            height: 38%;
+          }
+
+          .pdd-bar:nth-child(2) {
+            height: 54%;
+          }
+
+          .pdd-bar:nth-child(3) {
+            height: 46%;
+          }
+
+          .pdd-bar:nth-child(4) {
+            height: 72%;
+          }
+
+          .pdd-bar:nth-child(5) {
+            height: 64%;
+          }
+
+          .pdd-bar:nth-child(6) {
+            height: 92%;
+            background: var(--pdd-accent);
+            box-shadow: 0 0.55cqh 1.5cqh color-mix(in srgb, var(--pdd-accent) 30%, transparent);
+          }
+
+          .pdd-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.15cqh;
+          }
+
+          .pdd-stat {
+            min-height: 11.5cqh;
+            padding: 1.55cqh;
+            border: 0.08cqw solid rgba(55, 65, 81, 0.08);
+            border-radius: 1.7cqh;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 1.1cqh 2.6cqh rgba(71, 85, 105, 0.12);
+          }
+
+          .pdd-stat-label {
+            color: #7b8799;
+            font-size: 0.65cqw;
+            font-weight: 650;
+          }
+
+          .pdd-stat-value {
+            margin-top: 1cqh;
+            color: #18202d;
+            font-size: 1.25cqw;
+            font-weight: 780;
+            letter-spacing: -0.035em;
+          }
+
+          .pdd-stat-value span {
+            color: var(--pdd-accent);
+          }
+        </style>
+
+        <div
+          id="parallax-device-dive-clip"
+          class="pdd-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="pdd-camera">
+            <div class="pdd-phone">
+              <div class="pdd-screen">
+                <div class="pdd-app-glow"></div>
+                <div class="pdd-ui">
+                  <div class="pdd-header">
+                    <div class="pdd-heading">
+                      <div class="pdd-kicker">Overview</div>
+                      <div class="pdd-title"></div>
+                    </div>
+                    <div class="pdd-avatar">HF</div>
+                  </div>
+
+                  <div class="pdd-hero">
+                    <div class="pdd-hero-label">Weekly activity</div>
+                    <div class="pdd-value">24.8k <span>+18%</span></div>
+                    <div class="pdd-chart" aria-hidden="true">
+                      <span class="pdd-bar"></span>
+                      <span class="pdd-bar"></span>
+                      <span class="pdd-bar"></span>
+                      <span class="pdd-bar"></span>
+                      <span class="pdd-bar"></span>
+                      <span class="pdd-bar"></span>
+                    </div>
+                  </div>
+
+                  <div class="pdd-stats">
+                    <div class="pdd-stat">
+                      <div class="pdd-stat-label">Conversion</div>
+                      <div class="pdd-stat-value"><span>8.4%</span></div>
+                    </div>
+                    <div class="pdd-stat">
+                      <div class="pdd-stat-label">Active users</div>
+                      <div class="pdd-stat-value">12,604</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="pdd-cutout" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var phone = root.querySelector(".pdd-phone");
+            var cutout = root.querySelector(".pdd-cutout");
+            var header = root.querySelector(".pdd-header");
+            var hero = root.querySelector(".pdd-hero");
+            var stats = root.querySelector(".pdd-stats");
+            var title = root.querySelector(".pdd-title");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var accent = vars.accent;
+            var accentColors = {
+              green: "#22c55e",
+              blue: "#3b82f6",
+              violet: "#8b5cf6",
+            };
+            var accentColor = accentColors[accent] || accentColors.blue;
+            var appTitle = vars.app_title == null ? "Dashboard" : String(vars.app_title);
+
+            root.style.setProperty("--pdd-accent", accentColor);
+            title.textContent = appTitle;
+
+            var IN_BASE = 1.05;
+            var OUT_BASE = 1.65;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var RISE = IN * 0.78;
+            var SETTLE = IN - RISE;
+            var DIVE = OUT * 0.72;
+            var DEPTH_SETTLE = OUT - DIVE;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              phone,
+              { opacity: 0, y: "18cqh", scale: 0.86 },
+              { opacity: 1, y: "-1cqh", scale: 1.02, duration: RISE, ease: "power3.out" },
+              0,
+            );
+            tl.to(phone, { y: 0, scale: 1, duration: SETTLE, ease: "power2.out" }, RISE);
+
+            if (HOLD > 0) {
+              tl.to(phone, { y: "-0.55cqh", duration: HOLD * 0.5, ease: "sine.inOut" }, HOLD_START);
+              tl.to(
+                phone,
+                { y: 0, duration: HOLD * 0.5, ease: "sine.inOut" },
+                HOLD_START + HOLD * 0.5,
+              );
+            }
+
+            tl.to(phone, { scale: 6.4, y: "2.4cqh", duration: OUT, ease: "power4.in" }, OUT_START);
+            tl.to(cutout, { opacity: 0, duration: DIVE * 0.45, ease: "power2.out" }, OUT_START);
+            tl.to(
+              header,
+              { y: "-1.2cqh", scale: 1.035, duration: DIVE, ease: "power4.in" },
+              OUT_START,
+            );
+            tl.to(
+              hero,
+              { y: "-2.1cqh", scale: 1.09, duration: DIVE, ease: "power4.in" },
+              OUT_START,
+            );
+            tl.to(
+              stats,
+              { y: "2.4cqh", scale: 1.16, duration: DIVE, ease: "power4.in" },
+              OUT_START,
+            );
+            tl.to(
+              [header, hero, stats],
+              { y: 0, scale: 1, duration: DEPTH_SETTLE, ease: "power4.out" },
+              OUT_START + DIVE,
+            );
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["parallax-device-dive"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

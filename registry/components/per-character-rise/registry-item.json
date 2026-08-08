@@ -1,0 +1,70 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "per-character-rise",
+  "type": "hyperframes:component",
+  "title": "Per Character Rise",
+  "description": "Letters slide up from below with crisp, deliberate kinetic timing.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "per-character-rise.html",
+      "target": "compositions/components/per-character-rise.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "origin",
+      "type": "enum",
+      "role": "motion",
+      "label": "Origin",
+      "description": "Which side of the line the letters travel from. above is the shipped motion, below mirrors it.",
+      "default": "above",
+      "options": [
+        { "value": "above", "label": "Above" },
+        { "value": "below", "label": "Below" }
+      ]
+    },
+    {
+      "id": "distance",
+      "type": "enum",
+      "role": "motion",
+      "label": "Distance",
+      "description": "Scales the travel offset, so the letters cover a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        { "value": "close", "label": "Close" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "far", "label": "Far" }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "role": "layout",
+      "label": "Size",
+      "description": "Type size, which also sets how tall the clipping window is.",
+      "default": 74,
+      "min": 32,
+      "max": 160,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Letter colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        { "value": "ink", "label": "Ink" },
+        { "value": "paper", "label": "Paper" },
+        { "value": "accent", "label": "Accent" }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/per-character-rise.png"
+  }
+}

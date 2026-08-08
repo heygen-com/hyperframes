@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Liquid Glass Widgets</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="lib/liquid-glass.iife.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0a0218;
+        overflow: hidden;
+        font-family: "Inter", system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #three-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 0;
+      }
+      #glass-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 1;
+      }
+
+      /* ── Glass Panels ── */
+      .glass-panel {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.025);
+        --lg-blur: 0.42;
+        --lg-refraction: 0.82;
+        --lg-corner-radius: 28;
+        --lg-z-radius: 46;
+        --lg-specular: 0.34;
+        --lg-fresnel: 1.25;
+        --lg-edge-highlight: 0.26;
+        --lg-chrom-aberration: 0.08;
+        --lg-shadow-opacity: 0;
+        --lg-shadow-spread: 0;
+        --lg-shadow-offset-y: 0;
+        --lg-saturation: 0.38;
+      }
+      .stat-card {
+        width: 220px;
+        height: 220px;
+      }
+      .showcase-card {
+        width: 500px;
+        height: 320px;
+      }
+      .pill-chip {
+        width: 130px;
+        height: 36px;
+        --lg-corner-radius: 40;
+      }
+
+      #glass-stat1 {
+        top: 300px;
+        left: 200px;
+      }
+      #glass-stat2 {
+        top: 300px;
+        left: 460px;
+      }
+      #glass-stat3 {
+        top: 300px;
+        left: 720px;
+      }
+      #glass-showcase {
+        top: 380px;
+        left: 1100px;
+      }
+      #glass-pill1 {
+        top: 720px;
+        left: 300px;
+      }
+      #glass-pill2 {
+        top: 720px;
+        left: 460px;
+      }
+      #glass-pill3 {
+        top: 720px;
+        left: 620px;
+      }
+
+      /* ── Text Overlays ── */
+      .text-overlay {
+        position: absolute;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      /* Stat cards */
+      .stat-text {
+        width: 220px;
+        height: 220px;
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 22px;
+        border-radius: 28px;
+        background:
+          linear-gradient(
+            150deg,
+            rgba(255, 255, 255, 0.28),
+            rgba(255, 255, 255, 0.06) 46%,
+            rgba(255, 255, 255, 0.16)
+          ),
+          linear-gradient(180deg, rgba(9, 18, 31, 0.2), rgba(255, 255, 255, 0.04));
+        border: 1px solid rgba(255, 255, 255, 0.36);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.5),
+          inset 0 -18px 38px rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.38);
+      }
+      .stat-text::before,
+      .showcase-text::before,
+      .pill-text::before {
+        content: "";
+        position: absolute;
+        inset: 1px;
+        border-radius: inherit;
+        pointer-events: none;
+        background: linear-gradient(
+          120deg,
+          rgba(255, 255, 255, 0.44),
+          transparent 28%,
+          transparent 66%,
+          rgba(255, 255, 255, 0.2)
+        );
+        opacity: 0.32;
+        mix-blend-mode: screen;
+      }
+      .stat-label {
+        position: relative;
+        font-size: 14px;
+        font-weight: 650;
+        color: #fff;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+      }
+      .stat-value {
+        position: relative;
+        font-size: 52px;
+        font-weight: 700;
+        color: #fff;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+      .stat-unit {
+        position: relative;
+        font-size: 24px;
+        font-weight: 500;
+        color: #fff;
+      }
+      .mini-meter {
+        position: relative;
+        width: 140px;
+        height: 6px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.28);
+      }
+      .mini-meter-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+        box-shadow: 0 0 12px rgba(79, 219, 94, 0.55);
+      }
+      .battery-shell {
+        position: relative;
+        width: 118px;
+        height: 40px;
+        padding: 4px;
+        border: 2px solid rgba(255, 255, 255, 0.66);
+        border-radius: 12px;
+      }
+      .battery-shell::after {
+        content: "";
+        position: absolute;
+        top: 12px;
+        right: -9px;
+        width: 5px;
+        height: 14px;
+        border-radius: 0 5px 5px 0;
+        background: rgba(255, 255, 255, 0.66);
+      }
+      .battery-fill {
+        width: 72%;
+        height: 100%;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #4ade80, #06e3fa);
+        box-shadow: 0 0 18px rgba(74, 222, 128, 0.45);
+      }
+      .steps-ring {
+        width: 106px;
+        height: 106px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: conic-gradient(#a78bfa 0deg, #06e3fa 180deg, rgba(255, 255, 255, 0.18) 180deg);
+      }
+      .steps-ring-inner {
+        width: 78px;
+        height: 78px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(7, 10, 18, 0.36);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.22),
+          inset 0 -8px 20px rgba(0, 0, 0, 0.14);
+        color: #fff;
+        font-size: 30px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+      #text-stat1 {
+        top: 300px;
+        left: 200px;
+      }
+      #text-stat2 {
+        top: 300px;
+        left: 460px;
+      }
+      #text-stat3 {
+        top: 300px;
+        left: 720px;
+      }
+
+      /* Showcase card */
+      .showcase-text {
+        width: 500px;
+        height: 320px;
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 32px;
+        border-radius: 28px;
+        background:
+          radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.38), transparent 24%),
+          linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.24),
+            rgba(255, 255, 255, 0.07) 52%,
+            rgba(255, 255, 255, 0.18)
+          );
+        border: 1px solid rgba(255, 255, 255, 0.38);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.5),
+          inset 0 -24px 48px rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.4);
+      }
+      .showcase-icon {
+        position: relative;
+        width: 168px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .showcase-logo {
+        width: 150px;
+        height: auto;
+        display: block;
+      }
+      .showcase-title {
+        position: relative;
+        font-size: 28px;
+        font-weight: 700;
+        color: #fff;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .showcase-desc {
+        position: relative;
+        font-size: 15px;
+        font-weight: 500;
+        color: #fff;
+        text-align: center;
+        line-height: 1.5;
+        max-width: 380px;
+      }
+      .showcase-status {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .showcase-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4ade80;
+        box-shadow: 0 0 14px rgba(74, 222, 128, 0.7);
+      }
+      .showcase-progress {
+        position: relative;
+        width: 300px;
+        height: 7px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .showcase-progress-fill {
+        width: 18%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+      }
+      #text-showcase {
+        top: 380px;
+        left: 1100px;
+      }
+
+      /* Pill chips */
+      .pill-text {
+        width: 130px;
+        height: 36px;
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 40px;
+        background: linear-gradient(130deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.1));
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
+        overflow: hidden;
+      }
+      .pill-dot {
+        position: relative;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot-green {
+        background: #4ade80;
+      }
+      .dot-blue {
+        background: #60a5fa;
+      }
+      .dot-violet {
+        background: #a78bfa;
+      }
+      .pill-label {
+        position: relative;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+      }
+      #text-pill1 {
+        top: 720px;
+        left: 300px;
+      }
+      #text-pill2 {
+        top: 720px;
+        left: 460px;
+      }
+      #text-pill3 {
+        top: 720px;
+        left: 620px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="liquid-glass-widgets"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="8"
+      data-root="true"
+    >
+      <canvas id="three-canvas" width="1920" height="1080"></canvas>
+
+      <canvas id="glass-canvas" layoutsubtree width="1920" height="1080">
+        <div id="glass-stat1" class="glass-panel stat-card liquid-glass"></div>
+        <div id="glass-stat2" class="glass-panel stat-card liquid-glass"></div>
+        <div id="glass-stat3" class="glass-panel stat-card liquid-glass"></div>
+        <div id="glass-showcase" class="glass-panel showcase-card liquid-glass"></div>
+        <div id="glass-pill1" class="glass-panel pill-chip liquid-glass"></div>
+        <div id="glass-pill2" class="glass-panel pill-chip liquid-glass"></div>
+        <div id="glass-pill3" class="glass-panel pill-chip liquid-glass"></div>
+      </canvas>
+
+      <!-- Stat cards -->
+      <div id="text-stat1" class="text-overlay stat-text">
+        <span class="stat-label">Temperature</span>
+        <span class="stat-value"
+          ><span id="temp-value">21</span><span class="stat-unit">&deg;</span></span
+        >
+        <div class="mini-meter"><div id="temp-meter" class="mini-meter-fill"></div></div>
+      </div>
+      <div id="text-stat2" class="text-overlay stat-text">
+        <span class="stat-label">Battery</span>
+        <div class="battery-shell"><div id="battery-fill" class="battery-fill"></div></div>
+        <span class="stat-value"
+          ><span id="battery-value">87</span><span class="stat-unit">%</span></span
+        >
+      </div>
+      <div id="text-stat3" class="text-overlay stat-text">
+        <span class="stat-label">Steps</span>
+        <div id="steps-ring" class="steps-ring">
+          <div id="steps-value" class="steps-ring-inner">8.2K</div>
+        </div>
+      </div>
+
+      <!-- Showcase card -->
+      <div id="text-showcase" class="text-overlay showcase-text">
+        <div class="showcase-icon">
+          <img class="showcase-logo" src="assets/hyperframes-logo-dark.svg" alt="HyperFrames" />
+        </div>
+        <div class="showcase-title">Preview pipeline</div>
+        <div class="showcase-desc">
+          Write HTML, render video. Ship compositions at the speed of code.
+        </div>
+        <div class="showcase-status">
+          <span class="showcase-dot" id="showcase-dot"></span
+          ><span id="showcase-status">Encoding frames</span>
+        </div>
+        <div class="showcase-progress">
+          <div id="showcase-progress" class="showcase-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Pill chips -->
+      <div id="text-pill1" class="text-overlay pill-text">
+        <span class="pill-dot dot-green"></span>
+        <span class="pill-label">Connected</span>
+      </div>
+      <div id="text-pill2" class="text-overlay pill-text">
+        <span class="pill-dot dot-blue"></span>
+        <span class="pill-label">Bluetooth</span>
+      </div>
+      <div id="text-pill3" class="text-overlay pill-text">
+        <span class="pill-dot dot-violet"></span>
+        <span class="pill-label">Focus</span>
+      </div>
+
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+
+    <script>
+      var W = 1920,
+        H = 1080,
+        DURATION = 8;
+
+      /* ── Three.js Aurora Shader ─────────────────────────────────────── */
+      var vs = "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }";
+      var fs = [
+        "precision highp float;",
+        "varying vec2 vUv;",
+        "uniform float uTime;",
+        "vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}",
+        "vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}",
+        "vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}",
+        "vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}",
+        "float snoise(vec3 v){",
+        "  const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);",
+        "  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);",
+        "  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;",
+        "  vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);",
+        "  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;",
+        "  i=mod289(i);",
+        "  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));",
+        "  float n_=0.142857142857;vec3 ns=n_*D.wyz-D.xzx;",
+        "  vec4 j=p-49.0*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);",
+        "  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);",
+        "  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);",
+        "  vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;",
+        "  vec4 sh=-step(h,vec4(0.0));",
+        "  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;",
+        "  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);",
+        "  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));",
+        "  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;",
+        "  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;",
+        "  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));",
+        "}",
+        "void main(){",
+        "  vec2 uv=vUv;float ar=1920.0/1080.0;vec2 p=vec2(uv.x*ar,uv.y);float t=uTime*0.06;",
+        "  float wx=snoise(vec3(p*1.4,t*0.5))*0.2;float wy=snoise(vec3(p*1.4+100.0,t*0.5))*0.2;",
+        "  vec2 wp=p+vec2(wx,wy);",
+        "  vec3 base=mix(vec3(0.10,0.02,0.22),vec3(0.04,0.10,0.25),smoothstep(0.0,1.0,uv.x*0.6+uv.y*0.4));",
+        "  float angle=0.65;float ridgeUv=dot(wp,vec2(cos(angle),sin(angle)));",
+        "  float ridge1=sin(ridgeUv*8.0+t*2.0+snoise(vec3(wp*0.8,t))*1.5);",
+        "  float ridge2=sin(ridgeUv*5.5-t*1.4+snoise(vec3(wp*1.2+50.0,t*0.7))*2.0);",
+        "  float ridge3=sin(ridgeUv*12.0+t*3.0+snoise(vec3(wp*0.6+80.0,t*0.4))*1.0);",
+        "  float crease1=pow(abs(ridge1),0.35)*sign(ridge1)*0.5+0.5;",
+        "  float crease2=pow(abs(ridge2),0.4)*sign(ridge2)*0.5+0.5;",
+        "  float crease3=pow(abs(ridge3),0.5)*sign(ridge3)*0.5+0.5;",
+        "  vec3 warm=mix(vec3(0.9,0.4,0.08),vec3(0.95,0.65,0.15),crease1);",
+        "  float warmZone=smoothstep(0.15,0.75,uv.x+uv.y*0.4+snoise(vec3(uv*2.0,t))*0.3);",
+        "  vec3 cool=mix(vec3(0.02,0.4,0.55),vec3(0.25,0.7,0.82),crease2);",
+        "  float coolZone=smoothstep(0.25,0.85,1.2-uv.x+uv.y*0.5+snoise(vec3(uv*2.0+40.0,t*0.8))*0.25);",
+        "  vec3 hot=mix(vec3(0.8,0.1,0.4),vec3(0.6,0.08,0.65),crease3);",
+        "  float hotZone=smoothstep(0.5,0.9,snoise(vec3(uv*2.5+20.0,t*0.6))*0.5+0.5);",
+        "  vec3 col=base;",
+        "  col=mix(col,warm,warmZone*0.75*smoothstep(0.3,0.7,crease1));",
+        "  col=mix(col,cool,coolZone*0.65*smoothstep(0.2,0.65,crease2));",
+        "  col=mix(col,hot,hotZone*0.5*smoothstep(0.35,0.8,crease3));",
+        "  float edgeGlow=pow(1.0-abs(ridge1),6.0)*0.4+pow(1.0-abs(ridge2),5.0)*0.25;",
+        "  col+=edgeGlow*mix(warm,cool,uv.x)*0.8;",
+        "  col*=1.0-pow(abs(ridge1),4.0)*0.15;",
+        "  float vig=1.0-smoothstep(0.5,1.5,length((uv-0.5)*vec2(1.3,1.0)));",
+        "  col*=0.65+vig*0.5;",
+        "  float luma=dot(col,vec3(0.299,0.587,0.114));col=mix(vec3(luma),col,1.5);",
+        "  col=clamp(col,0.0,1.0);col=pow(col,vec3(0.9));",
+        "  gl_FragColor=vec4(col,1.0);",
+        "}",
+      ].join("\n");
+
+      /* ── Three.js Setup ─────────────────────────────────────────────── */
+      var threeCanvas = document.getElementById("three-canvas");
+      var renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: false });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+
+      var scene = new THREE.Scene();
+      var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      var uniforms = { uTime: { value: 0 } };
+      var shaderMat = new THREE.ShaderMaterial({
+        vertexShader: vs,
+        fragmentShader: fs,
+        uniforms: uniforms,
+      });
+      var quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), shaderMat);
+      scene.add(quad);
+
+      /* ── Glass Canvas ───────────────────────────────────────────────── */
+      var glassCanvas = document.getElementById("glass-canvas");
+      var ctx = glassCanvas.getContext("2d");
+      var lg = new LiquidGlass.LiquidGlassCanvas(glassCanvas);
+      var lgReady = false;
+
+      function renderGlass(time) {
+        if (!lgReady) return;
+        uniforms.uTime.value = time;
+        renderer.render(scene, camera);
+        ctx.clearRect(0, 0, W, H);
+        ctx.drawImage(threeCanvas, 0, 0, W, H);
+        lg.renderGlassElements();
+      }
+
+      function requestGlassRender(time) {
+        if (glassCanvas.requestPaint) {
+          glassCanvas.onpaint = function () {
+            renderGlass(time);
+          };
+          glassCanvas.requestPaint();
+          return;
+        }
+        renderGlass(time);
+      }
+
+      lg.waitForInit().then(function (ok) {
+        if (!ok) return;
+        lgReady = true;
+        requestGlassRender(0);
+      });
+
+      /* ── GSAP Timeline ──────────────────────────────────────────────── */
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      /* Glass + text element pairs */
+      var s1g = document.getElementById("glass-stat1");
+      var s2g = document.getElementById("glass-stat2");
+      var s3g = document.getElementById("glass-stat3");
+      var scg = document.getElementById("glass-showcase");
+      var p1g = document.getElementById("glass-pill1");
+      var p2g = document.getElementById("glass-pill2");
+      var p3g = document.getElementById("glass-pill3");
+      var s1t = document.getElementById("text-stat1");
+      var s2t = document.getElementById("text-stat2");
+      var s3t = document.getElementById("text-stat3");
+      var sct = document.getElementById("text-showcase");
+      var p1t = document.getElementById("text-pill1");
+      var p2t = document.getElementById("text-pill2");
+      var p3t = document.getElementById("text-pill3");
+
+      var tempValue = document.getElementById("temp-value");
+      var batteryValue = document.getElementById("battery-value");
+      var stepsValue = document.getElementById("steps-value");
+      var stepsRing = document.getElementById("steps-ring");
+      var showcaseStatus = document.getElementById("showcase-status");
+      var tempCounter = { value: 21 };
+      var batteryCounter = { value: 87 };
+      var stepsCounter = { value: 8.2 };
+
+      // Glass panels (rasterized by the html-in-canvas API) animate top — the API
+      // reads sub-pixel getComputedStyle().top, so layout-prop motion does not
+      // stutter and the lint rule exempts them. Plain-DOM text overlays DO stutter on
+      // layout props, so they animate the transform equivalent (y). y is relative to
+      // each text element's CSS resting top (stats 300, showcase 380, pills 720), so the
+      // initial seed to visual 1160 is y = 1160 - restingTop.
+      var glassPanels = [s1g, s2g, s3g, scg, p1g, p2g, p3g];
+      var statText = [s1t, s2t, s3t];
+      var showcaseText = sct;
+      var pillText = [p1t, p2t, p3t];
+      gsap.set(glassPanels, { opacity: 1, top: 1160 });
+      gsap.set(statText, { opacity: 1, y: 860 }); // 1160 - 300
+      gsap.set(showcaseText, { opacity: 1, y: 780 }); // 1160 - 380
+      gsap.set(pillText, { opacity: 1, y: 440 }); // 1160 - 720
+
+      tl.to(s1g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.12);
+      tl.to(s1t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.12); // 300 - 300
+      tl.to(s2g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.24);
+      tl.to(s2t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.24); // 300 - 300
+      tl.to(s3g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.36);
+      tl.to(s3t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.36); // 300 - 300
+      tl.to(scg, { top: 380, duration: 0.5, ease: "power3.out" }, 0.5);
+      tl.to(sct, { y: 0, duration: 0.5, ease: "power3.out" }, 0.5); // 380 - 380
+      tl.to(p1g, { top: 720, duration: 0.32, ease: "power3.out" }, 0.9);
+      tl.to(p1t, { y: 0, duration: 0.32, ease: "power3.out" }, 0.9); // 720 - 720
+      tl.to(p2g, { top: 720, duration: 0.32, ease: "power3.out" }, 1.0);
+      tl.to(p2t, { y: 0, duration: 0.32, ease: "power3.out" }, 1.0); // 720 - 720
+      tl.to(p3g, { top: 720, duration: 0.32, ease: "power3.out" }, 1.1);
+      tl.to(p3t, { y: 0, duration: 0.32, ease: "power3.out" }, 1.1); // 720 - 720
+
+      tl.to("#temp-meter", { width: "76%", duration: 1.7, ease: "power2.out" }, 0.9);
+      tl.to(
+        tempCounter,
+        {
+          value: 25,
+          duration: 2.2,
+          ease: "power2.out",
+          onUpdate: function () {
+            tempValue.textContent = Math.round(tempCounter.value);
+          },
+        },
+        0.9,
+      );
+      tl.to("#battery-fill", { width: "91%", duration: 2.4, ease: "power2.out" }, 1.05);
+      tl.to(
+        batteryCounter,
+        {
+          value: 91,
+          duration: 2.4,
+          ease: "power2.out",
+          onUpdate: function () {
+            batteryValue.textContent = Math.round(batteryCounter.value);
+          },
+        },
+        1.05,
+      );
+      tl.to(
+        stepsCounter,
+        {
+          value: 9.1,
+          duration: 2.6,
+          ease: "power2.out",
+          onUpdate: function () {
+            var degrees = Math.round(stepsCounter.value * 31.4);
+            stepsValue.textContent = stepsCounter.value.toFixed(1) + "K";
+            stepsRing.style.background =
+              "conic-gradient(#a78bfa 0deg, #06e3fa " +
+              degrees +
+              "deg, rgba(255, 255, 255, 0.18) " +
+              degrees +
+              "deg)";
+          },
+        },
+        1.2,
+      );
+      tl.to("#showcase-progress", { width: "92%", duration: 4.1, ease: "none" }, 1.2);
+      tl.to(
+        "#showcase-dot",
+        { scale: 1.5, duration: 0.25, ease: "power2.out", yoyo: true, repeat: 7 },
+        1.4,
+      );
+      tl.call(
+        function () {
+          showcaseStatus.textContent = "Preview ready";
+        },
+        null,
+        5.2,
+      );
+      tl.to(scg, { top: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 }, 5.2);
+      tl.to(sct, { y: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 }, 5.2);
+      tl.to(
+        ".pill-dot",
+        { scale: 1.55, duration: 0.2, ease: "power2.out", stagger: 0.12, yoyo: true, repeat: 3 },
+        2.2,
+      );
+
+      tl.to(
+        [s1g, s2g, s3g],
+        { top: "-=12", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.7,
+      );
+      tl.to(
+        [s1t, s2t, s3t],
+        { y: "-=12", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.7,
+      );
+      tl.to(
+        [s1g, s2g, s3g, scg, p1g, p2g, p3g],
+        { top: "+=760", duration: 0.42, ease: "power2.in" },
+        6.74,
+      );
+      tl.to(
+        [s1t, s2t, s3t, sct, p1t, p2t, p3t],
+        { y: "+=760", duration: 0.42, ease: "power2.in" },
+        6.74,
+      );
+
+      /* Duration driver */
+      tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);
+
+      tl.eventCallback("onUpdate", function () {
+        requestGlassRender(tl.time());
+      });
+
+      window.__timelines["liquid-glass-widgets"] = tl;
+    </script>
+  </body>
+</html>

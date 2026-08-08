@@ -1,0 +1,209 @@
+---
+title: "Image Expand to Fullscreen"
+description: "An image tile expands into a full-frame scene transition."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/image-expand-to-fullscreen.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Image Expand to Fullscreen preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add image-expand-to-fullscreen" />
+
+That writes one file: `compositions/components/image-expand-to-fullscreen.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `accent` | `blue` | `blue`, `violet`, `green` | Colour family of the incoming plate. Green rides --brand and --accent. |
+| `format` | `wide` | `wide`, `square`, `portrait` | Aspect of the tile the transition plays inside. |
+| `corner` | `soft` | `soft`, `sharp`, `round` | Corner radius of the tile. |
+| `chroma` | `standard` | `off`, `subtle`, `standard` | Strength of the red and cyan fringe that stutters over the wipe. Off removes it. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="image-expand-to-fullscreen"
+  data-composition-src="compositions/components/image-expand-to-fullscreen.html"
+  data-variable-values='{"accent":"blue","format":"wide","corner":"soft","chroma":"standard"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`image-expand-to-fullscreen.html`}>
+
+```html
+<!--
+  Image Expand to Fullscreen - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on anything
+  missing or unrecognised, and writes the result as a custom property the CSS above
+  consumes. The timeline recipe below is untouched by them.
+
+    - accent (blue | violet | green, default blue): colour family of the incoming plate.
+      green rides --brand and --accent.
+    - format (wide | square | portrait, default wide): aspect of the tile the transition
+      plays inside, 760x428, 560x560 or 428x760.
+    - corner (soft | sharp | round, default soft): corner radius of the tile, 30px, 0 or 60px.
+    - chroma (off | subtle | standard, default standard): strength of the red and cyan fringe
+      that stutters over the wipe. off removes it entirely.
+
+  On every default the result is identical to the original: a 760x428 tile with 30px
+  corners, a blue to violet destination plate and a full strength chroma stutter.
+-->
+
+<div
+  class="hf-remocn-image-expand-to-fullscreen"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the incoming plate. Green rides --brand and --accent.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "green", "label": "Green" }] },
+    { "id": "format", "type": "enum", "role": "layout", "label": "Format", "description": "Aspect of the tile the transition plays inside.", "default": "wide", "options": [{ "value": "wide", "label": "Wide" }, { "value": "square", "label": "Square" }, { "value": "portrait", "label": "Portrait" }] },
+    { "id": "corner", "type": "enum", "role": "style", "label": "Corner", "description": "Corner radius of the tile.", "default": "soft", "options": [{ "value": "soft", "label": "Soft" }, { "value": "sharp", "label": "Sharp" }, { "value": "round", "label": "Round" }] },
+    { "id": "chroma", "type": "enum", "role": "motion", "label": "Chroma split", "description": "Strength of the red and cyan fringe that stutters over the wipe. Off removes it.", "default": "standard", "options": [{ "value": "off", "label": "Off" }, { "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }] }
+  ]'
+>
+  <div class="scene from">Before</div>
+  <div class="scene to">Image Expand to Fullscreen</div>
+  <div class="fx"></div>
+  <div class="rgb"></div>
+</div>
+
+<style>
+  .hf-remocn-image-expand-to-fullscreen {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-image-expand-to-fullscreen {
+    position: relative;
+    width: var(--hf-plate-w, 760px);
+    height: var(--hf-plate-h, 428px);
+    overflow: hidden;
+    border-radius: var(--hf-plate-radius, 30px);
+    background: #111827;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-image-expand-to-fullscreen .scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 58px;
+    letter-spacing: -0.05em;
+    color: #fff;
+  }
+  .hf-remocn-image-expand-to-fullscreen .from {
+    background: linear-gradient(135deg, #111827, #374151);
+    transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
+      scale(var(--hf-from-scale, 1));
+    filter: blur(var(--hf-from-blur, 0px));
+  }
+  .hf-remocn-image-expand-to-fullscreen .to {
+    background: linear-gradient(135deg, var(--hf-accent), var(--hf-plate-2, #7c3aed));
+    transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
+    clip-path: inset(
+      var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
+        var(--hf-clip-left, 0%)
+    );
+  }
+  .hf-remocn-image-expand-to-fullscreen .fx {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    mix-blend-mode: screen;
+    transform: translateX(var(--hf-fx-x, -110%));
+  }
+  .hf-remocn-image-expand-to-fullscreen .rgb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: calc(var(--hf-rgb-opacity, 0) * var(--hf-rgb-strength, 1));
+    background: linear-gradient(
+      90deg,
+      rgba(239, 68, 68, 0.35),
+      transparent,
+      rgba(34, 211, 238, 0.35)
+    );
+    transform: translateX(var(--hf-rgb-x, 0px));
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var accents = {
+      blue: { a: "#2563eb", b: "#7c3aed" },
+      violet: { a: "#7c3aed", b: "#db2777" },
+      green: { a: "var(--brand, #34d399)", b: "var(--accent, #38bdf8)" },
+    };
+    var formats = {
+      wide: { w: "760px", h: "428px" },
+      square: { w: "560px", h: "560px" },
+      portrait: { w: "428px", h: "760px" },
+    };
+    var corners = { soft: "30px", sharp: "0px", round: "60px" };
+    var chromas = { off: 0, subtle: 0.4, standard: 1 };
+
+    var accent = accents[pick(accents, vars.accent, "blue")];
+    var format = formats[pick(formats, vars.format, "wide")];
+    var corner = corners[pick(corners, vars.corner, "soft")];
+    var chroma = chromas[pick(chromas, vars.chroma, "standard")];
+
+    var roots = document.querySelectorAll(".hf-remocn-image-expand-to-fullscreen");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-accent", accent.a);
+      roots[i].style.setProperty("--hf-plate-2", accent.b);
+      roots[i].style.setProperty("--hf-plate-w", format.w);
+      roots[i].style.setProperty("--hf-plate-h", format.h);
+      roots[i].style.setProperty("--hf-plate-radius", corner);
+      roots[i].style.setProperty("--hf-rgb-strength", String(chroma));
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-image-expand-to-fullscreen .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-image-expand-to-fullscreen .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-image-expand-to-fullscreen .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-image-expand-to-fullscreen .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/image-expand-to-fullscreen.html` and paste its contents into your composition. See the comment header in the file for timeline integration guidance.
+
+{/* hf:generated-footer */}
+
+Tagged `transition-primitive` `remocn-port`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

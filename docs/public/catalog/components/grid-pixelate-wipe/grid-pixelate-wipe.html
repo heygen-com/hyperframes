@@ -1,0 +1,80 @@
+<!--
+  Grid Pixelate Wipe — transition effect.
+
+  Usage: place this overlay in your composition. To transition between
+  scenes, animate .grid-cell scale from 0→1 (cover) then 1→0 (reveal)
+  using GSAP stagger with a "from" pattern.
+
+  Customize:
+  - COLS / ROWS: grid density (default 16×9), edit in the script below
+  - --grid-color: cell fill color (default black)
+  - Stagger "from": "center" for radial, "edges" for inward, "random" for scatter
+-->
+
+<div
+  id="grid-pixelate-overlay"
+  style="
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 999;
+    display: grid;
+  "
+></div>
+
+<style>
+  #grid-pixelate-overlay {
+    --grid-color: black;
+  }
+
+  #grid-pixelate-overlay .grid-cell {
+    background: var(--grid-color);
+    transform: scale(0);
+    transform-origin: center center;
+  }
+</style>
+
+<script>
+  (function () {
+    const COLS = 16;
+    const ROWS = 9;
+    const overlay = document.getElementById("grid-pixelate-overlay");
+    if (!overlay) return;
+
+    overlay.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+    overlay.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+
+    for (let i = 0; i < COLS * ROWS; i++) {
+      const cell = document.createElement("div");
+      cell.className = "grid-cell";
+      overlay.appendChild(cell);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration example:
+
+  // Cover screen with grid (transition out of scene A)
+  tl.to("#grid-pixelate-overlay .grid-cell", {
+    scale: 1,
+    duration: 0.6,
+    stagger: { amount: 0.6, from: "center" },
+    ease: "power2.inOut",
+  }, 3.0);
+
+  // Swap scene content at midpoint
+  tl.set("#scene-a", { opacity: 0 }, 3.6);
+  tl.set("#scene-b", { opacity: 1 }, 3.6);
+
+  // Reveal scene B by removing grid
+  tl.to("#grid-pixelate-overlay .grid-cell", {
+    scale: 0,
+    duration: 0.6,
+    stagger: { amount: 0.6, from: "edges" },
+    ease: "power2.inOut",
+  }, 3.6);
+-->

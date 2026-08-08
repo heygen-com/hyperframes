@@ -1,0 +1,82 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "frosted-glass-wipe",
+  "type": "hyperframes:component",
+  "title": "Frosted Glass Wipe",
+  "description": "A scene transition through a moving frosted glass pane.",
+  "tags": ["transition-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "frosted-glass-wipe.html",
+      "target": "compositions/components/frosted-glass-wipe.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "style",
+      "label": "Direction",
+      "description": "Which way the glass pane travels: right wipes the incoming scene in from the left edge, left mirrors the whole move.",
+      "default": "right",
+      "options": [
+        {
+          "value": "right",
+          "label": "Right"
+        },
+        {
+          "value": "left",
+          "label": "Left"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the incoming scene behind the glass.",
+      "default": "blue",
+      "options": [
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        }
+      ]
+    },
+    {
+      "id": "glare",
+      "type": "enum",
+      "role": "style",
+      "label": "Glare",
+      "description": "Strength of the white glare that sweeps across the pane, from a faint sheen to a hard specular flash.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "soft",
+          "label": "Soft"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "intense",
+          "label": "Intense"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/frosted-glass-wipe.png"
+  }
+}

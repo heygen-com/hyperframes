@@ -1,0 +1,229 @@
+<!doctype html>
+<!--
+  headline-slam: HyperFrames video primitive
+
+  One headline scales down from 1.6 to rest with expo.out weight. Its landing
+  drives a deterministic three-frame stage shake, followed by a quiet drift
+  and a fast upward exit.
+
+  Variables:
+    text: headline copy
+    accent_word_index: zero-based word index to color, out of range colors none
+    accent: green, blue, or violet accent color
+
+  Envelope, fixed IN and OUT with elastic HOLD:
+    IN_BASE  = 0.72s, headline slam and three-frame impact shake
+    HOLD     = max(0, D - IN - OUT), one subtle drift cycle
+    OUT_BASE = 0.46s, headline whips upward out of frame
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, and has no data-width or
+  data-height. One paused timeline registers under the literal headline-slam
+  key.
+-->
+<html
+  lang="en"
+  data-composition-id="headline-slam"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Headline", "description": "Text displayed as the headline.", "default": "Ship it today" },
+    { "id": "accent_word_index", "type": "number", "role": "content", "label": "Accent word index", "description": "Zero-based word index to color. Out of range leaves the headline unaccented.", "default": 1, "step": 1 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the selected word.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Headline Slam</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="headline-slam" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .hs-clip,
+          .hs-stage {
+            position: absolute;
+            inset: 0;
+            width: 100cqw;
+            height: 100cqh;
+          }
+
+          .hs-clip {
+            overflow: hidden;
+          }
+
+          .hs-stage {
+            display: grid;
+            place-items: center;
+            will-change: transform;
+          }
+
+          .hs-headline {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2cqw;
+            width: 90cqw;
+            min-height: 22cqh;
+            color: var(--fg, #f8fafc);
+            font-size: var(--hs-font-size, 10.5cqw);
+            font-weight: 900;
+            line-height: 0.88;
+            letter-spacing: -0.5cqw;
+            text-align: center;
+            text-shadow: 0 1.2cqh 4.5cqh color-mix(in srgb, #000 52%, transparent);
+            white-space: nowrap;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .hs-word {
+            display: inline-block;
+          }
+
+          .hs-word-accent {
+            color: var(--hs-accent, #71f5a7);
+          }
+        </style>
+
+        <div
+          id="headline-slam-clip"
+          class="hs-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="hs-stage">
+            <div class="hs-headline" role="heading" aria-level="1"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".hs-stage");
+            var headline = root.querySelector(".hs-headline");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "Ship it today" : String(vars.text);
+            var indexValue = Number(vars.accent_word_index);
+            var accentWordIndex = Number.isFinite(indexValue) ? Math.trunc(indexValue) : 1;
+            var accentColors = {
+              green: "#71f5a7",
+              blue: "#61a8ff",
+              violet: "#b895ff",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var words = text.trim() === "" ? [] : text.trim().split(/\s+/);
+
+            root.style.setProperty("--hs-accent", accentColors[accent]);
+            headline.setAttribute("aria-label", text);
+
+            words.forEach(function (word, index) {
+              var span = document.createElement("span");
+              span.className = index === accentWordIndex ? "hs-word hs-word-accent" : "hs-word";
+              span.textContent = word;
+              span.setAttribute("aria-hidden", "true");
+              headline.appendChild(span);
+            });
+
+            // Deterministic fit from character count: DOM measurement is zero at
+            // mount time (the template is not laid out yet), so it never fires.
+            // 0.62 approximates the average glyph/em width of the bold face; the
+            // 56cqw rest-state cap keeps the 1.6x overshoot peak inside 90cqw.
+            var approxWidthCqw = text.length * 10.5 * 0.62;
+            if (approxWidthCqw > 56) {
+              var fitted = Math.max(3.5, 56 / (text.length * 0.62));
+              root.style.setProperty("--hs-font-size", fitted.toFixed(2) + "cqw");
+            }
+
+            var IN_BASE = 0.72;
+            var OUT_BASE = 0.46;
+            var LAND_AT_BASE = 0.58;
+            var SHAKE_FRAME_BASE = 1 / 30;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var baseTotal = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < baseTotal ? duration / baseTotal : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var LAND_AT = LAND_AT_BASE * envelopeScale;
+            var SHAKE_FRAME = SHAKE_FRAME_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              headline,
+              { scale: 1.6, opacity: 0, y: 0 },
+              { scale: 1, opacity: 1, y: 0, duration: LAND_AT, ease: "expo.out" },
+              0,
+            );
+
+            tl.to(
+              stage,
+              { x: "0.55cqw", y: "-0.3cqh", duration: SHAKE_FRAME, ease: "power2.out" },
+              LAND_AT,
+            );
+            tl.to(stage, {
+              x: "-0.38cqw",
+              y: "0.2cqh",
+              duration: SHAKE_FRAME,
+              ease: "power2.out",
+            });
+            tl.to(stage, { x: 0, y: 0, duration: SHAKE_FRAME, ease: "power2.out" });
+
+            if (HOLD > 0) {
+              tl.fromTo(
+                headline,
+                { y: 0 },
+                {
+                  y: "-0.55cqh",
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                  immediateRender: false,
+                },
+                HOLD_START,
+              );
+            }
+
+            tl.to(headline, { y: "-120cqh", duration: OUT, ease: "power4.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["headline-slam"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,200 @@
+---
+title: "Card Resize"
+description: "A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe src="/public/catalog/preview/components/card-resize.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Card Resize preview" />
+
+## Install
+
+<InstallCommand command="npx hyperframes add card-resize" />
+
+That writes one file: `compositions/components/card-resize.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `surface` | `paper` | `paper`, `ink` | Card colour scheme: paper is the original white card, ink is a dark card for dark frames. |
+| `accent` | `ocean` | `ocean`, `forest`, `ember` | Gradient family painted into the media thumbnail. |
+| `elevation` | `raised` | `flat`, `raised`, `floating` | How far the card lifts off the frame, from a contact shadow to a deep drop. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="card-resize"
+  data-composition-src="compositions/components/card-resize.html"
+  data-variable-values='{"surface":"paper","accent":"ocean","elevation":"raised"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`card-resize.html`}>
+
+```html
+<!--
+  Card Resize - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe is untouched by them: it keeps
+  driving the same width, height and fade, and these decide how the card that
+  expands is dressed.
+
+    - surface (paper | ink, default paper): the card colour scheme. paper is
+      the original white card with near-black type, ink is a dark card with
+      light type for dark frames.
+    - accent (ocean | forest | ember, default ocean): the gradient family of
+      the media thumbnail. ocean is the original blue to violet sweep.
+    - elevation (flat | raised | floating, default raised): how far the card
+      lifts off the frame, from a tight contact shadow to a deep drop.
+
+  On every default the result is identical to the original: a white card with
+  a blue to violet thumbnail under a soft wide drop shadow.
+-->
+
+<div
+  class="hf-transition-card-resize"
+  data-composition-variables='[
+    { "id": "surface", "type": "enum", "role": "style", "label": "Surface", "description": "Card colour scheme: paper is the original white card, ink is a dark card for dark frames.", "default": "paper", "options": [{ "value": "paper", "label": "Paper" }, { "value": "ink", "label": "Ink" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Gradient family painted into the media thumbnail.", "default": "ocean", "options": [{ "value": "ocean", "label": "Ocean" }, { "value": "forest", "label": "Forest" }, { "value": "ember", "label": "Ember" }] },
+    { "id": "elevation", "type": "enum", "role": "style", "label": "Elevation", "description": "How far the card lifts off the frame, from a contact shadow to a deep drop.", "default": "raised", "options": [{ "value": "flat", "label": "Flat" }, { "value": "raised", "label": "Raised" }, { "value": "floating", "label": "Floating" }] }
+  ]'
+>
+  <div class="hf-transition-card-media"></div>
+  <div class="hf-transition-card-copy">
+    <span>Project status</span>
+    <strong>Ready to render</strong>
+    <p>All scenes validated and queued for export.</p>
+  </div>
+</div>
+
+<style>
+  .hf-transition-card-resize {
+    --hf-card-w: 330px;
+    --hf-card-h: 132px;
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 18px;
+    width: var(--hf-card-w);
+    height: var(--hf-card-h);
+    padding: 18px;
+    overflow: hidden;
+    border: 1px solid var(--hf-card-border, #e4e4e7);
+    border-radius: 26px;
+    background: var(--hf-card-bg, #ffffff);
+    color: var(--hf-card-ink, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: var(--hf-card-shadow, 0 26px 80px rgba(0, 0, 0, 0.12));
+    will-change: width, height, transform;
+  }
+  .hf-transition-card-media {
+    width: 92px;
+    height: 92px;
+    border-radius: 20px;
+    background: var(--hf-card-media, linear-gradient(135deg, #0ea5e9, #a855f7));
+  }
+  .hf-transition-card-copy {
+    display: grid;
+    align-content: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .hf-transition-card-copy span {
+    color: var(--hf-card-muted, #71717a);
+    font-size: 13px;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+  .hf-transition-card-copy strong {
+    white-space: nowrap;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+  }
+  .hf-transition-card-copy p {
+    margin: 0;
+    color: var(--hf-card-muted, #71717a);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var surfaces = {
+      paper: { bg: "#ffffff", ink: "#18181b", muted: "#71717a", border: "#e4e4e7" },
+      ink: { bg: "#16161a", ink: "#fafafa", muted: "#a1a1aa", border: "#2f2f37" },
+    };
+    var medias = {
+      ocean: "linear-gradient(135deg, #0ea5e9, #a855f7)",
+      forest: "linear-gradient(135deg, #34d399, #0ea5e9)",
+      ember: "linear-gradient(135deg, #fb923c, #f43f5e)",
+    };
+    var shadows = {
+      flat: "0 2px 10px rgba(0, 0, 0, 0.1)",
+      raised: "0 26px 80px rgba(0, 0, 0, 0.12)",
+      floating: "0 46px 120px rgba(0, 0, 0, 0.3)",
+    };
+
+    var surface = surfaces[pick(surfaces, vars.surface, "paper")];
+    var media = medias[pick(medias, vars.accent, "ocean")];
+    var shadow = shadows[pick(shadows, vars.elevation, "raised")];
+
+    var roots = document.querySelectorAll(".hf-transition-card-resize");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-card-bg", surface.bg);
+      roots[i].style.setProperty("--hf-card-ink", surface.ink);
+      roots[i].style.setProperty("--hf-card-muted", surface.muted);
+      roots[i].style.setProperty("--hf-card-border", surface.border);
+      roots[i].style.setProperty("--hf-card-media", media);
+      roots[i].style.setProperty("--hf-card-shadow", shadow);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-card-resize', { '--hf-card-w': '330px', '--hf-card-h': '132px', opacity: 0, y: 24 }, { '--hf-card-w': '560px', '--hf-card-h': '210px', opacity: 1, y: 0, duration: 0.68, ease: 'power3.inOut' }, 0.35);
+  tl.fromTo('.hf-transition-card-copy p', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 0.82);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/card-resize.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `transition-primitive` `transitions-dev-port` `card` `layout`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

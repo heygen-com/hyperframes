@@ -1,0 +1,112 @@
+<!--
+  Spring Scale In - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe stays untouched by them: it keeps
+  driving one scale and one offset, and these decide how far off final size the
+  spring starts and how much ground it covers on the way in.
+
+    - words (text, default "Spring scale in"): the words on screen. The text is
+      split on whitespace and each word becomes its own span, so the stagger
+      picks up as many steps as there are words. Blank or non-text input falls
+      back to the default three.
+    - pop (subtle | standard | bold, default standard): scales how far below
+      final size the words start before the spring settles them. subtle covers
+      about a third of the run, bold a little over double, in the same time.
+    - distance (close | standard | far, default standard): scales the vertical
+      offset the words rise through. close covers half the run, far nearly
+      double, in the same time.
+    - tone (ink | paper | accent, default ink): word colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+
+  On every default the result is identical to the original: three near-black
+  words springing up 22px from 0.92 through a 5px blur.
+-->
+
+<div
+  class="hf-remocn-spring-scale-in"
+  data-composition-variables='[
+    { "id": "words", "type": "string", "role": "content", "label": "Words", "description": "Words on screen, split on whitespace so each one gets its own stagger step.", "default": "Spring scale in" },
+    { "id": "pop", "type": "enum", "role": "motion", "label": "Pop", "description": "Scales how far below final size the words start before the spring settles them.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the vertical offset the words rise through, so they cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+><span>Spring</span><span>scale</span><span>in</span></div>
+
+<style>
+  .hf-remocn-spring-scale-in {
+    color: var(--hf-word-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-spring-scale-in {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-spring-scale-in span {
+    display: inline-block;
+    transform: translate(
+        var(--hf-word-x, 0px),
+        calc(var(--hf-word-y, 0px) * var(--hf-word-reach, 1))
+      )
+      scale(calc(1 + (var(--hf-word-scale, 1) - 1) * var(--hf-word-pop, 1)));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var pops = { subtle: 0.35, standard: 1, bold: 2.2 };
+    var reaches = { close: 0.5, standard: 1, far: 1.85 };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    var pop = pops[pick(pops, vars.pop, "standard")];
+    var reach = reaches[pick(reaches, vars.distance, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+    var words = (typeof vars.words === "string" ? vars.words : "").split(/\s+/).filter(Boolean);
+    if (words.length === 0) words = ["Spring", "scale", "in"];
+
+    var roots = document.querySelectorAll(".hf-remocn-spring-scale-in");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-word-pop", String(pop));
+      root.style.setProperty("--hf-word-reach", String(reach));
+      root.style.setProperty("--hf-word-color", tone);
+      root.textContent = "";
+      for (var j = 0; j < words.length; j += 1) {
+        var span = document.createElement("span");
+        span.textContent = words[j];
+        root.appendChild(span);
+      }
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-spring-scale-in span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
+-->

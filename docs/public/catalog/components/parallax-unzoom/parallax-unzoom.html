@@ -1,0 +1,103 @@
+<!--
+  Parallax Unzoom — focus card scales down from full frame while siblings
+  parallax IN to form a grid. The reverse of parallax-zoom.
+
+  Pairs naturally with parallax-zoom: zoom INTO a card in scene 1, then
+  unzoom OUT of it in scene 2 to reveal a fresh grid underneath.
+
+  Usage:
+  1. Wrap your card grid with class="parallax-unzoom-grid".
+  2. Mark each card with class="parallax-unzoom-card".
+  3. Add data-pu-row="0|1|2|..." and data-pu-col="0|1|2|..." per card.
+  4. Mark the card that starts at full size with data-pu-focus="true".
+  5. Drive --pu-progress 0 → 1 on the .parallax-unzoom-grid from your
+     composition's paused GSAP timeline (see example at bottom).
+
+  Tunable CSS variables on .parallax-unzoom-grid:
+  - --pu-focus-scale  (default 6)      starting scale of the focus card
+  - --pu-sibling-push (default 900px)  outward distance siblings start at
+  - --pu-sibling-fade (default 1)      sibling opacity falloff (0–1)
+-->
+
+<style>
+  .parallax-unzoom-grid {
+    --pu-progress: 0;
+    --pu-focus-scale: 6;
+    --pu-sibling-push: 900px;
+    --pu-sibling-fade: 1;
+    position: relative;
+  }
+
+  .parallax-unzoom-card {
+    transform-origin: center center;
+    will-change: transform, opacity;
+    transform: translate3d(
+        calc(var(--pu-dx, 0px) * (1 - var(--pu-progress))),
+        calc(var(--pu-dy, 0px) * (1 - var(--pu-progress))),
+        0
+      )
+      scale(calc(0.7 + 0.3 * var(--pu-progress)));
+    opacity: calc(var(--pu-progress) * var(--pu-sibling-fade));
+  }
+
+  .parallax-unzoom-card[data-pu-focus="true"] {
+    z-index: 10;
+    transform: translate3d(0, 0, 0)
+      scale(calc(var(--pu-focus-scale) - (var(--pu-focus-scale) - 1) * var(--pu-progress)));
+    opacity: 1;
+  }
+</style>
+
+<script>
+  (function () {
+    const grids = document.querySelectorAll(".parallax-unzoom-grid");
+
+    grids.forEach((grid) => {
+      const cards = Array.from(grid.querySelectorAll(".parallax-unzoom-card"));
+      if (cards.length === 0) return;
+
+      let focal = cards.find((c) => c.dataset.puFocus === "true");
+      if (!focal) {
+        focal = cards[Math.floor(cards.length / 2)];
+        focal.dataset.puFocus = "true";
+      }
+
+      const focusRow = Number(focal.dataset.puRow ?? 0);
+      const focusCol = Number(focal.dataset.puCol ?? 0);
+      const push = parseFloat(getComputedStyle(grid).getPropertyValue("--pu-sibling-push")) || 900;
+
+      cards.forEach((card) => {
+        if (card === focal) return;
+        const row = Number(card.dataset.puRow ?? 0);
+        const col = Number(card.dataset.puCol ?? 0);
+        const dCol = col - focusCol;
+        const dRow = row - focusRow;
+        const mag = Math.hypot(dCol, dRow) || 1;
+        const nx = (dCol / mag) * push * mag;
+        const ny = (dRow / mag) * push * mag;
+        card.style.setProperty("--pu-dx", `${nx}px`);
+        card.style.setProperty("--pu-dy", `${ny}px`);
+      });
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration example (paste into your composition's GSAP timeline):
+
+  tl.fromTo(
+    ".parallax-unzoom-grid",
+    { "--pu-progress": 0 },
+    {
+      "--pu-progress": 1,
+      duration: 2.4,
+      ease: "power2.inOut",
+    },
+    startTime, // start time in seconds
+  );
+
+  Chaining with parallax-zoom example:
+  // Scene 1 (0-3s): zoom IN to the focal card via parallax-zoom
+  // Scene 2 (3-6s): unzoom OUT of a NEW grid via parallax-unzoom,
+  //                 with the focal card pre-positioned to match scene 1
+-->

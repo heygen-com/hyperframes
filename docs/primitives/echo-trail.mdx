@@ -1,0 +1,43 @@
+---
+title: "Echo Trail"
+description: "A slotted subject travels along an authored path with lagged ghost copies that collapse into it and disappear at rest."
+---
+
+import { PrimitivePlayer } from "/snippets/PrimitivePlayer.jsx";
+
+<span className="hf-primitive-eyebrow">Motion trails</span>
+
+<PrimitivePlayer name="echo-trail" width={1920} height={1080} />
+
+## Variables
+
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `echoes` | `number` | `4` | Ghost copy count, clamped 2 to 6. |
+| `delta` | `number` | `0.09` | Lag between successive ghosts in seconds, clamped 0.03 to 0.3. |
+| `path` | `enum` | `sweep` | Authored traversal preset. |
+| `accent` | `enum` | `green` | Subject accent color: green rides --brand, blue rides --accent, violet rides --accent-2. |
+| `exit` | `enum` | `none` | Optional departure. Default none: the settled element holds until the frame cuts. |
+
+## When to use it
+
+One moving subject needs an onion-skin trail that shows its recent positions before a clean landing.
+
+## When to avoid it
+
+Avoid it when more than six ghosts or a lag outside 0.03 to 0.3 seconds is required, because echoes are limited to 2 through 6 and delta is clamped to that range.
+
+## Pairs with
+
+- [particle-text-dissolve](/primitives/particle-text-dissolve)
+- [orbit-ring-camera](/primitives/orbit-ring-camera)
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add echo-trail
+```
+
+</CodeGroup>
