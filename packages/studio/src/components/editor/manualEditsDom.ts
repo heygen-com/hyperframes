@@ -36,6 +36,7 @@ import { roundRotationAngle } from "./manualEditsParsing";
 import { applyStudioMotionFromDom } from "./studioMotion";
 import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
+import { logResize } from "../../utils/resizeDebug";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
@@ -454,6 +455,11 @@ export function applyStudioBoxSize(
   element: HTMLElement,
   size: { width: number; height: number },
 ): void {
+  logResize("apply-box-size", {
+    to: `${Math.round(size.width)} x ${Math.round(size.height)}`,
+    from: `${element.style.width || "-"} x ${element.style.height || "-"}`,
+    stack: new Error("apply-box-size").stack?.split("\n").slice(1, 6).join(" < "),
+  });
   promoteInlineForTransform(element);
   applyStudioBoxSizeDimensions(element, size);
 }
