@@ -26,6 +26,9 @@
     // Bundled as a standalone IIFE by the position-edits render artifact
     // generator; referenced by file path rather than imported by TypeScript.
     "packages/core/stubs/position-edits-render-entry.ts",
+    // Same arrangement for the audio FX graph builders, bundled by
+    // build-audio-fx-runtime.ts for the offline render page.
+    "packages/core/stubs/audio-fx-runtime-entry.ts",
     // In-page audit scripts read as raw strings and injected via
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.

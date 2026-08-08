@@ -957,3 +957,18 @@ describe("parseAudioElements — hidden tracks", () => {
     ]);
   });
 });
+
+describe("parseAudioElements data-fx-chain", () => {
+  it("captures the serialised chain when present", () => {
+    const chain = `{"version":1,"nodes":[{"type":"peaking"}]}`;
+    const html = `<audio id="music" src="bgm.mp3" data-start="0" data-end="10" data-fx-chain='${chain}'></audio>`;
+    const [el] = parseAudioElements(html);
+    expect(el!.fxChain).toBe(chain);
+  });
+
+  it("leaves fxChain undefined when the attribute is absent", () => {
+    const html = `<audio id="music" src="bgm.mp3" data-start="0" data-end="10"></audio>`;
+    const [el] = parseAudioElements(html);
+    expect(el!.fxChain).toBeUndefined();
+  });
+});

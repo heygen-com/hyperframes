@@ -60,16 +60,35 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
   let audioFailures: AudioProcessingFailure[] | undefined;
 
   if (audios.length > 0) {
-    const audioResult = await processCompositionAudio(
-      audios,
-      projectDir,
-      join(workDir, "audio-work"),
-      audioOutputPath,
-      duration,
-      abortSignal,
-      undefined,
-      compiledDir,
-    );
+    // processCompositionAudio reports per-track failures in its result, but an FX
+    // failure it cannot degrade past — a browser that will not launch, a chain
+    // that will not build — rejects instead. Caught here so it lands in
+    // `audioError` with the rest, rather than escaping as an unclassified
+    // pipeline exception and losing the stage/owner/retryable classification
+    // this stage exists to attach.
+    let audioResult: Awaited<ReturnType<typeof processCompositionAudio>>;
+    try {
+      audioResult = await processCompositionAudio(
+        audios,
+        projectDir,
+        join(workDir, "audio-work"),
+        audioOutputPath,
+        duration,
+        abortSignal,
+        undefined,
+        compiledDir,
+      );
+    } catch (err) {
+      // An abort is the caller's own signal and must keep its own shape.
+      assertNotAborted();
+      return {
+        audioOutputPath,
+        hasAudio: false,
+        audioProcessMs: Date.now() - stage3Start,
+        audioError: err instanceof Error ? err.message : String(err),
+        audioFailures: undefined,
+      };
+    }
     assertNotAborted();
 
     hasAudio = audioResult.success;
