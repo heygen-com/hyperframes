@@ -1,0 +1,59 @@
+---
+title: "Halftone Field"
+description: "A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type."
+---
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/halftone-field.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/halftone-field.png" autoPlay muted loop playsInline />
+
+## Install
+
+```bash Terminal
+npx hyperframes add halftone-field
+```
+
+That writes one file: `compositions/halftone-field.html`.
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="halftone-field"
+  data-composition-src="compositions/halftone-field.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `--frequency` — Field frequency (1 = broad swells, 10 = fine mottle). Defaults to `2`.
+- `--speed` — Flow speed (0 freezes the field). Defaults to `5`.
+- `--cellsize` — Cell size (dot pitch, 1 = 6px, 100 = 60px). Defaults to `54`.
+- `--gamma` — Gamma: midtone crush, the whole look. Low values flatten it to an even grey dot field. Defaults to `12`.
+- `--palettebias` — Palette bias: floor under every dot's size and palette position. 0 lets the darks go fully black. Defaults to `2`.
+- `--palette1` — Palette stop 1 (lows). Defaults to `#00AAFF`.
+- `--palette2` — Palette stop 2. Defaults to `#C2FF67`.
+- `--palette3` — Palette stop 3. Defaults to `#6600FF`.
+- `--palette4` — Palette stop 4 (crests). Defaults to `#000000`.
+- `--background` — Background. Defaults to `#000000`.
+- `--quantize` — Quantise to 30fps for a stepped LED-wall look. Defaults to `false`. Options: `false`, `true`.
+
+{/* hf:generated-footer */}
+
+Tagged `webgl` `shader` `background` `texture` `halftone`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

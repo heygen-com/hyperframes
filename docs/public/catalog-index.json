@@ -974,6 +974,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
   },
   {
+    "name": "halftone-field",
+    "type": "block",
+    "title": "Halftone Field",
+    "description": "A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "texture",
+      "halftone"
+    ],
+    "href": "/catalog/blocks/halftone-field",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/halftone-field.png"
+  },
+  {
     "name": "hw-arrow",
     "type": "component",
     "title": "Hand-Drawn Arrow",

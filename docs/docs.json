@@ -456,6 +456,7 @@
               "catalog/blocks/camcorder-hud",
               "catalog/blocks/flowchart",
               "catalog/blocks/flowchart-vertical",
+              "catalog/blocks/halftone-field",
               "catalog/blocks/hw-frame",
               "catalog/blocks/hw-path-text",
               "catalog/blocks/hw-pipeline",
