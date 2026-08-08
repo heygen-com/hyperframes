@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import type { RuntimeTimelineLike } from "./types";
+import { WebAudioTransport } from "./webAudioTransport";
 
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
@@ -2436,6 +2437,55 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(video.muted).toBe(true);
     expect(audio.muted).toBe(false);
+  });
+
+  it("keeps an unowned native audio fallback audible while WebAudio owns another track", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const owned = document.createElement("audio");
+    owned.id = "webaudio-owned";
+    owned.setAttribute("data-start", "0");
+    owned.setAttribute("data-duration", "10");
+    owned.setAttribute("src", "music.mp3");
+    root.appendChild(owned);
+
+    const nativeFallback = document.createElement("audio");
+    nativeFallback.id = "native-fallback";
+    nativeFallback.setAttribute("data-start", "0");
+    nativeFallback.setAttribute("data-duration", "10");
+    nativeFallback.setAttribute("src", "voiceover.mp3");
+    root.appendChild(nativeFallback);
+
+    vi.spyOn(WebAudioTransport.prototype, "isActive").mockReturnValue(true);
+    vi.spyOn(WebAudioTransport.prototype, "ownsElement").mockImplementation(
+      (element) => element === owned,
+    );
+
+    window.__timelines = { root: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(0);
+
+    expect(owned.muted).toBe(true);
+    expect(nativeFallback.muted).toBe(false);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          source: "hf-parent",
+          type: "control",
+          action: "set-media-output-muted",
+          muted: true,
+        },
+      }),
+    );
+
+    expect(owned.muted).toBe(true);
+    expect(nativeFallback.muted).toBe(true);
   });
 
   it("native media sync opt-out leaves user-started media playing while timeline is paused", () => {
