@@ -561,26 +561,29 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
-    const gsapSkip = gsapAnimatesProperty(el, "x", "y");
+    // Unlike size below, the offset channels COMPOSE — applying both doubles the move.
+    if (gsapAnimatesProperty(el, "x", "y")) continue;
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
-    if (gsapSkip) continue;
-    if (x || y) {
-      applyStudioPathOffset(
-        el,
-        {
-          x: Number.parseFloat(x) || 0,
-          y: Number.parseFloat(y) || 0,
-        },
-        { updateBase: false },
-      );
-    }
+    if (!x && !y) continue;
+    const offset = { x: Number.parseFloat(x) || 0, y: Number.parseFloat(y) || 0 };
+    applyStudioPathOffset(el, offset, { updateBase: false });
   }
 }
 
+/**
+ * Put the studio's committed size back after a seek, GSAP-sized elements included.
+ *
+ * Size does not compose the way the offset above does: both channels write width
+ * and height, so the later write wins and both hold the same number. Standing
+ * aside meant nothing held the size while a soft reload reverted the old timeline
+ * — GSAP hands back each tween's recorded starting width — so until the new one
+ * rendered, the element sat at its stylesheet size. That is the jump after a
+ * resize, and the next gesture then started from a box disagreeing with these
+ * vars and snapped on its first move. Only an element mid-edit carries them.
+ */
 function reapplyBoxSizes(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_BOX_SIZE_ATTR)) {
-    if (gsapAnimatesProperty(el, "width", "height")) continue;
     const w = Number.parseFloat(el.style.getPropertyValue(STUDIO_WIDTH_PROP));
     const h = Number.parseFloat(el.style.getPropertyValue(STUDIO_HEIGHT_PROP));
     if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
