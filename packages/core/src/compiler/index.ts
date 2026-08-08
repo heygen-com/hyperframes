@@ -50,6 +50,7 @@ export {
 export {
   RUNTIME_BOOTSTRAP_ATTR,
   injectScriptsAtHeadStart,
+  injectTagsAtHeadStart,
   injectScriptsIntoHtml,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
