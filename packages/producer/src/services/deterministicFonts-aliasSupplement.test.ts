@@ -132,6 +132,53 @@ describe("aliased font-family supplementation", () => {
     expect(result).not.toContain(b64(SERVED_FACES["Noto Sans"]!.bytes));
   });
 
+  it("collapses a variable font's shared source into one weight-range rule", async () => {
+    const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+    // Google serves Inter as a variable font: one woff2 for every static weight.
+    const sharedUrl = "https://fonts.gstatic.com/s/inter/v1/inter-variable.woff2";
+    const css = [100, 200, 300, 500]
+      .map(
+        (weight) => `@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: ${weight};
+  src: url(${sharedUrl}) format('woff2');
+}`,
+      )
+      .join("\n");
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      if (url.startsWith("https://fonts.googleapis.com/"))
+        return new Response(css, { status: 200 });
+      if (url === sharedUrl) return new Response("INTER_VARIABLE_BYTES", { status: 200 });
+      return new Response("", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const result = await injectDeterministicFontFaces(htmlRequesting("Noto Sans"), {
+      allowSystemFontCapture: false,
+      fetchImpl,
+    });
+
+    // One rule spanning the run, not four rules carrying the same blob.
+    const variableUri = `data:font/woff2;base64,${b64("INTER_VARIABLE_BYTES")}`;
+    // 100-300 collapse into one rule; 500 stays separate because the bundle
+    // serves 400 and a 100-500 range would shadow that embedded face.
+    const occurrences = result.split(variableUri).length - 1;
+    expect(occurrences).toBe(2);
+    expect(result).toContain("font-weight: 100 300;");
+    expect(result).toContain("font-weight: 500;");
+  });
+
+  it("has a canonical display name for every alias target", async () => {
+    const { FONT_ALIAS_MAP, resolveAliasDisplayName } =
+      await import("@hyperframes/core/fonts/aliases");
+    // The supplementary fetch is skipped outright when this lookup fails, so
+    // every alias must resolve or its family silently loses Google's weights.
+    for (const alias of Object.keys(FONT_ALIAS_MAP)) {
+      expect(resolveAliasDisplayName(alias)).toBeString();
+    }
+  });
+
   it("still supplements a self-referencing alias from its own family", async () => {
     const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
     const queriedFamilies: string[] = [];

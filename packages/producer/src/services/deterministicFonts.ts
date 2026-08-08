@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
 
-import { CANONICAL_FONT_DISPLAY_NAMES, FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
+import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "@hyperframes/core/fonts/aliases";
 import {
   locateSystemFontVariants,
   SYSTEM_FONT_SIZE_LIMIT,
@@ -457,6 +457,41 @@ function buildFontFaceRule(
   ].join("\n");
 }
 
+/**
+ * Google serves several canonical families as a variable font: every static
+ * weight resolves to the same woff2. Faces sharing a source can be emitted as
+ * one weight-range rule instead of embedding that blob once per weight.
+ */
+function sharesSource(face: GoogleFontFace, next: GoogleFontFace | undefined): boolean {
+  return (
+    next !== undefined &&
+    next.dataUri === face.dataUri &&
+    next.style === face.style &&
+    next.unicodeRange === face.unicodeRange
+  );
+}
+
+/**
+ * A weight range must not span a weight the embedded bundle already serves, or
+ * the later rule would win for that weight and shadow the bundled face.
+ */
+function spansCoveredWeight(
+  from: GoogleFontFace,
+  to: GoogleFontFace,
+  coveredWeights: ReadonlySet<string>,
+): boolean {
+  const low = Number(from.weight);
+  const high = Number(to.weight);
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return true;
+  for (const covered of coveredWeights) {
+    const [weight, style] = covered.split(":");
+    if (style !== from.style) continue;
+    const value = Number(weight);
+    if (Number.isFinite(value) && value > low && value < high) return true;
+  }
+  return false;
+}
+
 async function buildFontFaceCss(
   requestedFamilies: Map<string, string>,
   options: InternalFontFetchOptions,
@@ -493,22 +528,53 @@ async function buildFontFaceCss(
       // so supplementing from it would mix two typefaces under one
       // font-family. The faces are still emitted under
       // `originalCaseFamily` so the authored CSS keeps matching.
-      const canonicalFamily = CANONICAL_FONT_DISPLAY_NAMES[canonicalKey] ?? originalCaseFamily;
-      const googleFaces = await fetchGoogleFont(canonicalFamily, options, fontText);
-      for (const face of googleFaces) {
-        // A weight covered by the embedded bundle is already full-coverage —
-        // skip it. For weights the bundle lacks, add EVERY subset face (a
-        // weight has one face per unicode-range subset), not just the first.
-        if (coveredWeights.has(`${face.weight}:${face.style}`)) continue;
+      const canonicalFamily = resolveAliasDisplayName(normalizedFamily);
+      const googleFaces = canonicalFamily
+        ? await fetchGoogleFont(canonicalFamily, options, fontText)
+        : [];
+
+      // A weight covered by the embedded bundle is already full-coverage —
+      // skip it. For weights the bundle lacks, keep EVERY subset face (a
+      // weight has one face per unicode-range subset), not just the first.
+      const supplementary = googleFaces.filter(
+        (face) => !coveredWeights.has(`${face.weight}:${face.style}`),
+      );
+      for (let index = 0; index < supplementary.length; index += 1) {
+        const face = supplementary[index];
+        if (!face) continue;
+        // Collapse a consecutive run sharing one source into a single
+        // weight-range rule, so a variable font is embedded once rather than
+        // once per weight.
+        let end = index;
+        let next = supplementary[end + 1];
+        while (
+          sharesSource(face, next) &&
+          next &&
+          !spansCoveredWeight(face, next, coveredWeights)
+        ) {
+          end += 1;
+          next = supplementary[end + 1];
+        }
+        const lastFace = supplementary[end];
+        // A weight range is written low-to-high; Google's ordering is not
+        // guaranteed, so sort the pair rather than trusting it.
+        const weight =
+          end > index && lastFace
+            ? [face.weight, lastFace.weight]
+                .map(Number)
+                .sort((a, b) => a - b)
+                .join(" ")
+            : face.weight;
         rules.push(
           buildFontFaceRule(
             originalCaseFamily,
             face.dataUri,
-            face.weight,
+            weight,
             face.style,
             face.unicodeRange,
           ),
         );
+        index = end;
       }
       continue;
     }
