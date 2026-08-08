@@ -52,6 +52,7 @@ import {
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { resolveSnapAdjustment, resolveEquidistanceGuides, SNAP_THRESHOLD_PX } from "./snapEngine";
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
+import { logDrag, logDragMove, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
@@ -162,7 +163,18 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           rect: { ...item.rect, left: item.rect.left + dx, top: item.rect.top + dy },
         })),
       );
-      for (const member of groupG.members) applyManualOffsetDragDraft(member, dx, dy);
+      const offsets: Record<string, string> = {};
+      for (const member of groupG.members) {
+        const next = applyManualOffsetDragDraft(member, dx, dy);
+        offsets[member.key] = `${Math.round(next.x)},${Math.round(next.y)}`;
+      }
+      logDragMove({
+        pointer: `${Math.round(e.clientX - groupG.startX)},${Math.round(e.clientY - groupG.startY)}`,
+        // Any gap between these two is snapping pulling the group off the pointer.
+        applied: `${Math.round(dx)},${Math.round(dy)}`,
+        offsets,
+        at: readDragPositions(groupG.members),
+      });
       return;
     }
 
@@ -336,6 +348,17 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         selection: member.selection,
         next: applyManualOffsetDragCommit(member, dx, dy),
       }));
+      logDrag("drop", {
+        pointer: `${Math.round(rawDx)},${Math.round(rawDy)}`,
+        applied: `${Math.round(dx)},${Math.round(dy)}`,
+        committed: Object.fromEntries(
+          updates.map((update, index) => [
+            groupG.members[index]?.key ?? String(index),
+            `${Math.round(update.next.x)},${Math.round(update.next.y)}`,
+          ]),
+        ),
+        at: readDragPositions(groupG.members),
+      });
       void Promise.resolve(opts.onGroupPathOffsetCommitRef.current(updates))
         .catch(() => {
           for (const member of groupG.members) {
@@ -346,7 +369,15 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
               restoreStudioPathOffset(member.element, member.initialPathOffset);
           }
         })
-        .finally(() => endManualOffsetDragMembers(groupG.members));
+        .finally(() => {
+          logDrag("committed", { at: readDragPositions(groupG.members) });
+          endManualOffsetDragMembers(groupG.members);
+          // The gesture teardown resumes the paused timelines and re-seeks the
+          // player, which re-renders from whatever the preview currently holds.
+          // If the reloaded source has not landed yet that is the OLD position,
+          // so this is where a snap-back would show.
+          logDragSettle("settle", groupG.members);
+        });
       return;
     }
 

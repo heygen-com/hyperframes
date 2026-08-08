@@ -51,3 +51,18 @@ export async function studioExpectedFileVersion(
 export function createStudioWriteToken(): string {
   return globalThis.crypto.randomUUID();
 }
+
+/**
+ * Headers that claim the write a mutation request is about to make as our own.
+ *
+ * The token is marked BEFORE the request goes out on purpose: the server writes
+ * the file and the watcher broadcasts it while the request is still in flight, so
+ * a token marked from the response can arrive after the echo it was meant to
+ * match. An unmatched echo reads as an external change and costs a full preview
+ * reload, which the user sees as a flash right after their own edit.
+ */
+export function studioWriteHeaders(): Record<string, string> {
+  const token = createStudioWriteToken();
+  markStudioWriteToken(token);
+  return { "X-Hyperframes-Write-Token": token };
+}

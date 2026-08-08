@@ -49,6 +49,7 @@ interface HarnessProps {
   iframe: HTMLIFrameElement | null;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId?: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelectionSet?: (ids: Set<string>) => void;
 }
 
 function renderHarness(props: HarnessProps) {
@@ -67,6 +68,8 @@ function renderHarness(props: HarnessProps) {
       previewIframeRef: { current: props.iframe },
       timelineElements: props.timelineElements,
       setSelectedTimelineElementId: props.setSelectedTimelineElementId ?? vi.fn(),
+      setTimelineSelectionSet:
+        props.setTimelineSelectionSet ?? usePlayerStore.getState().setSelectedElementIds,
       setRightCollapsed: vi.fn(),
       setRightPanelTab: props.setRightPanelTab,
       previewIframe: props.iframe,

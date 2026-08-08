@@ -38,6 +38,7 @@ export interface UseDomEditSessionParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -80,6 +81,7 @@ export function useDomEditSession({
   previewIframeRef,
   timelineElements,
   setSelectedTimelineElementId,
+  setTimelineSelectionSet,
   setRightCollapsed,
   setRightPanelTab,
   showToast,
@@ -127,6 +129,7 @@ export function useDomEditSession({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
+    refreshDomEditGroupSelectionsFromPreview,
     applyMarqueeSelection,
   } = useDomSelection({
     projectId,
@@ -137,6 +140,7 @@ export function useDomEditSession({
     previewIframeRef,
     timelineElements,
     setSelectedTimelineElementId,
+    setTimelineSelectionSet,
     setRightCollapsed,
     setRightPanelTab,
     previewIframe,
@@ -225,6 +229,7 @@ export function useDomEditSession({
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
@@ -382,6 +387,8 @@ export function useDomEditSession({
     activeCompPath,
     domEditSelection,
     domEditSelectionRef,
+    domEditGroupSelectionsRef,
+    refreshDomEditGroupSelectionsFromPreview,
     previewIframeRef,
     previewIframe,
     captionEditMode,
@@ -493,6 +500,7 @@ export function useDomEditSession({
     handleDomRotationCommit: handleGsapAwareRotationCommit,
     handleDomManualEditsReset,
     handleDomTextCommit,
+    handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,

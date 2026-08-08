@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
+import { logSelect } from "../utils/selectDebug";
 
 interface UseTimelineSelectionPreviewSyncParams {
   selectedElementId: string | null;
@@ -93,6 +94,13 @@ export function useTimelineSelectionPreviewSync({
 
     if (selectedIds.length === 0) {
       missingSelectionKeyRef.current = "";
+      // The timeline holds nothing, so the canvas is about to hold nothing either.
+      // This is the path that silently drops a selection the user can still see.
+      logSelect("timeline-empty", {
+        had: currentIds.length,
+        previousKey: previousSelectedKey.length > 0,
+        clearing: previousSelectedKey.length > 0 && currentIds.length > 0,
+      });
       if (previousSelectedKey.length > 0 && currentIds.length > 0) {
         applyDomSelection(null, { revealPanel: false });
       }
@@ -127,6 +135,11 @@ export function useTimelineSelectionPreviewSync({
         return;
       }
       missingSelectionKeyRef.current = "";
+      logSelect("timeline-sync", {
+        wanted: selectedIds.length,
+        had: currentIds.length,
+        resolved: selections.length,
+      });
       if (selections.length === 0) {
         applyDomSelection(null, { revealPanel: false });
       } else if (selections.length === 1) {

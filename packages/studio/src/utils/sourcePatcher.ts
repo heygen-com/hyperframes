@@ -87,7 +87,11 @@ function splitInlineStyleDeclarations(style: string): string[] {
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "text-content" | "html-attribute";
+  // `rich-text` is the only member that carries markup. It is deliberately
+  // separate from `text-content`, whose contract is "this value is text": the
+  // design panel and every other caller rely on that, and widening it would
+  // have turned all of them into markup sinks at once.
+  type: "inline-style" | "attribute" | "text-content" | "html-attribute" | "rich-text";
   property: string;
   value: string | null;
   childSelector?: string;
