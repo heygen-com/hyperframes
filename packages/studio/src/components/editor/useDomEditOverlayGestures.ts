@@ -282,9 +282,14 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.rafPausedRef.current = false;
       const rawDx = e.clientX - groupG.startX;
       const rawDy = e.clientY - groupG.startY;
+      // The click that trails every pointerup has to be eaten either way. The
+      // gesture ref is already cleared above, so by the time it arrives the box
+      // no longer looks busy, and handleBoxClick hands it to the canvas as an
+      // ordinary click — which lands between the members, resolves to nothing,
+      // and deselects the group the drag just moved.
+      opts.suppressNextBoxClickRef.current = true;
       if (Math.hypot(rawDx, rawDy) < BLOCKED_MOVE_THRESHOLD_PX) {
         restoreGroupPathOffsets(groupG);
-        opts.suppressNextBoxClickRef.current = true;
         return;
       }
       const dx = groupG.lastSnappedDx ?? rawDx;
