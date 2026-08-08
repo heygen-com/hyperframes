@@ -38,6 +38,16 @@ ffprobe -v error -show_format out.mp4
 
 `check` runs lint first, then uses one browser session and one seek pass to audit runtime errors, failed requests, layout, `*.motion.json` assertions, and WCAG contrast. Persistent findings gate the exit code; transient entrance or exit findings are informational. Use `--strict` to gate warnings. `validate`, `inspect`, and `layout` remain aliases for compatibility but must not appear in new instructions or scripts.
 
+## Ground the gate in a reference when one exists
+
+`lint` and `check` are self-referential: they audit the composition against its own rules and never see the thing it is supposed to look like. A scene built upside down, at the wrong scale, or missing its hero element passes both. Whenever the brief comes with a reference artifact (a video being rebuilt or recut, an approved cut, a design still, the previous accepted render), add the one gate that does look outward:
+
+```bash
+npx hyperframes compare . --against reference.mp4 --at 0,4,10,21 --json
+```
+
+It returns per-time SSIM, ink bounding-box deltas, a reference-over-replica contact sheet, and a red/cyan deviation overlay; `--fail-under <ssim>` makes it exit non-zero. Iterate against the numbers instead of eyeballing composites, and re-measure after every correction: the numbers are what tell you a fix helped. Full contract in `references/compare-and-batch.md`.
+
 ## Two different preview surfaces
 
 Do not confuse these states:
@@ -113,18 +123,18 @@ Keep clean-run feedback concise. For any bug or friction, capture a **reproducti
 
 The following references and owning skills are mandatory command contracts, not optional background reading. Before running a command in the table, read its matching row.
 
-| Need                                                                                   | Reference                             |
-| -------------------------------------------------------------------------------------- | ------------------------------------- |
-| `init`, `capture`, `skills`                                                            | `references/init-and-scaffold.md`     |
-| `lint`, `check`, motion sidecars, `snapshot`                                           | `references/lint-validate-inspect.md` |
-| `compare`, `grade-compare`, variable-driven `render --batch`                           | `references/compare-and-batch.md`     |
-| `beats` for an existing project's Studio beat grid                                     | `references/beats.md`                 |
-| `preview`, `play`, `render`, `publish`, Studio context, feedback                       | `references/preview-render.md`        |
-| `doctor`, browser management                                                           | `references/doctor-browser.md`        |
-| `auth`, HeyGen-hosted cloud rendering, and template variables                          | `references/cloud.md`                 |
-| AWS Lambda deployment and rendering                                                    | `references/lambda.md`                |
-| Google Cloud Run deployment and rendering                                              | `references/cloudrun.md`              |
-| `info`, `upgrade`, `compositions`, `docs`, `benchmark`, telemetry, media preprocessing | `references/upgrade-info-misc.md`     |
+| Need                                                                                          | Reference                             |
+| --------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `init`, `capture`, `skills`                                                                   | `references/init-and-scaffold.md`     |
+| `lint`, `check`, motion sidecars, `snapshot`                                                  | `references/lint-validate-inspect.md` |
+| `compare`, `compare --against <reference>`, `grade-compare`, variable-driven `render --batch` | `references/compare-and-batch.md`     |
+| `beats` for an existing project's Studio beat grid                                            | `references/beats.md`                 |
+| `preview`, `play`, `render`, `publish`, Studio context, feedback                              | `references/preview-render.md`        |
+| `doctor`, browser management                                                                  | `references/doctor-browser.md`        |
+| `auth`, HeyGen-hosted cloud rendering, and template variables                                 | `references/cloud.md`                 |
+| AWS Lambda deployment and rendering                                                           | `references/lambda.md`                |
+| Google Cloud Run deployment and rendering                                                     | `references/cloudrun.md`              |
+| `info`, `upgrade`, `compositions`, `docs`, `benchmark`, telemetry, media preprocessing        | `references/upgrade-info-misc.md`     |
 
 For composition variables, also read `/hyperframes-core` → `references/variables-and-media.md`. For `hyperframes add` and `hyperframes catalog`, use `/hyperframes-registry`. Before `hyperframes present`, read `/slideshow`; before `hyperframes keyframes`, read `/hyperframes-keyframes`. For TTS, transcription, captions, or background removal choices, use `/media-use`.
 

@@ -729,6 +729,37 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--timeout` | Render-ready timeout per variant (default 5000 ms) |
 | `--json`    | Machine-readable results                           |
 
+With `--against`, `compare` measures one composition against an external
+reference video or still instead of against sibling variants. `lint` and
+`check` only ever audit a composition against its own rules, so this is the
+gate that catches a scene which passes everything and still looks nothing like
+the thing it reproduces.
+
+```bash
+npx hyperframes compare . --against reference.mp4 --at 0,4,10,21 --fail-under 0.95
+```
+
+| Flag           | Description                                                                    |
+| -------------- | ------------------------------------------------------------------------------ |
+| `--against`    | Reference video or image to measure against (requires FFmpeg)                  |
+| `--at`         | Up to 8 comma-separated sample times, sampled in both reference and replica    |
+| `--fail-under` | Exit non-zero when the worst sampled SSIM falls below this threshold           |
+| `--out`        | Contact sheet path; overlays are written next to it as `<out>-overlay-NN.png`  |
+
+Each run writes a reference-over-replica contact sheet, a red/cyan deviation
+overlay per sampled time (agreement grey, reference-only ink red, replica-only
+ink cyan), and per-time numbers: `ssim`, `meanAbsDiff`, `meanSignedDiff`, and
+ink bounding-box deltas `dw` / `dh` / `dcx` / `dcy` / `scale`. When
+`meanSignedDiff` is close to `meanAbsDiff` the replica is uniformly lighter or
+darker, which is a level shift from encoding or colour conversion rather than a
+defect in the composition.
+
+There is no default threshold, because the floor depends on the content. A
+composition compared against its own render scores 0.998 to 0.999 for flat
+graphics and type, but around 0.93 (0.89 at draft quality) once photographic
+video is on screen, where encode loss and browser-versus-FFmpeg colour
+conversion dominate. Measure that floor first, then gate just below it.
+
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
 one reference frame.
 

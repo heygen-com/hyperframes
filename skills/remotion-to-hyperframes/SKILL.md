@@ -96,6 +96,14 @@ cd ../hf-src && npx hyperframes render --skill=remotion-to-hyperframes --output 
 
 Threshold: ~0.02 below `p05` of the source's complexity tier (see `eval.md`'s validated thresholds table). If the diff fails, run [`scripts/frame_strip.sh`](scripts/frame_strip.sh) to see _which_ frames diverged, then re-read the relevant timing/sequencing/media reference.
 
+While iterating, skip the HF render and measure the live composition against the baseline directly: same SSIM number, plus ink-box deltas and a red/cyan overlay per sampled time:
+
+```bash
+npx hyperframes compare ./hf-src --against ./remotion-src/out/baseline.mp4 --at 0,1,2,4 --json
+```
+
+Use it to steer corrections between full renders; the harness above stays the gate, because it scores every frame rather than a sample.
+
 **Critical**: both renders must use matching pixel format. Set `Config.setVideoImageFormat("png")` + `Config.setColorSpace("bt709")` in the Remotion source's `remotion.config.ts` — otherwise the diff measures encoder differences (~0.05 SSIM hit), not translation fidelity.
 
 ### Step 5: Document gaps

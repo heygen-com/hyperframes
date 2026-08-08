@@ -18,7 +18,7 @@
       "files": 4
     },
     "hyperframes": {
-      "hash": "3a3ea01fe52e1600",
+      "hash": "84ed304a6537276e",
       "files": 17
     },
     "hyperframes-animation": {
@@ -26,7 +26,7 @@
       "files": 121
     },
     "hyperframes-cli": {
-      "hash": "3eab4c5fc1ae8e26",
+      "hash": "89bacf4be7b179cb",
       "files": 11
     },
     "hyperframes-core": {
@@ -66,7 +66,7 @@
       "files": 28
     },
     "remotion-to-hyperframes": {
-      "hash": "3ecc684432b298dd",
+      "hash": "e34b40b26ee25ac1",
       "files": 70
     },
     "slideshow": {
