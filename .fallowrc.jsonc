@@ -146,6 +146,17 @@
       "file": "packages/studio/src/utils/studioHelpers.ts",
       "exports": ["resolveDroppedAssetDimensions"],
     },
+    // Audio FX worklets sit near the bottom of the audio stack: the worklet
+    // source and its test reset are consumed by the runtime and engine PRs
+    // upstack, so a per-PR audit against the merge base sees them as unused.
+    {
+      "file": "packages/core/src/audio/audioFxWorklets.ts",
+      "exports": ["AUDIO_FX_WORKLET_SOURCE", "__resetAudioFxWorkletsForTests"],
+    },
+    {
+      "file": "packages/core/src/audio/audioFxGraph.ts",
+      "exports": ["ensureAudioFxWorklets"],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
