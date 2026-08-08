@@ -249,19 +249,24 @@ export function applyPreviewSync(
   options: CommitMutationOptions,
   reloadPreview: () => void,
 ): void {
-  if (options.instantPatch) {
-    const patched = patchRuntimeTweenInPlace(
-      iframe,
-      options.instantPatch.selector,
-      options.instantPatch.change,
-      undefined,
-      options.deferPreviewSync === true,
+  const patches = options.instantPatches ?? (options.instantPatch ? [options.instantPatch] : []);
+  if (patches.length > 0) {
+    const deferSeek = options.deferPreviewSync === true;
+    const missed = patches.find(
+      (patch, index) =>
+        !patchRuntimeTweenInPlace(
+          iframe,
+          patch.selector,
+          patch.change,
+          undefined,
+          deferSeek || index < patches.length - 1,
+        ),
     );
-    // Patched in place — element is already correct on screen; no reload needed.
-    if (patched) return;
+    // Patched in place — elements are already correct on screen; no reload needed.
+    if (!missed) return;
     // The instant path couldn't patch in place — record the fallback so we can
     // track how often the fast path misses before the soft/full reload below.
-    trackStudioEvent("gsap_instant_patch_fallback", { selector: options.instantPatch.selector });
+    trackStudioEvent("gsap_instant_patch_fallback", { selector: missed.selector });
     // Fall through to the soft/full reload path below.
   }
   // Written, but the caller has more writes to make and will render after the last.
@@ -360,7 +365,12 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     );
     if (!result) return;
     options.onResult?.(result);
-    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, options);
+    // Each call brings its own fast-path patch; the batch wrote them all, so the
+    // preview sync applies them all rather than just the last call's.
+    const instantPatches = calls
+      .map(({ options: callOptions }) => callOptions.instantPatch)
+      .filter((patch) => patch !== undefined);
+    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, instantPatches.length > 0 ? { ...options, instantPatches } : options);
   }, [showToast, finalizeSuccessfulMutation]);
 
   // Every GSAP-script commit is a read-modify-write of one file. Overlapping

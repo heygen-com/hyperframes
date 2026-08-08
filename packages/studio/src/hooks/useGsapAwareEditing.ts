@@ -24,7 +24,11 @@ import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
-import type { CommitMutation } from "./gsapScriptCommitTypes";
+import type {
+  CommitMutation,
+  CommitMutationCall,
+  CommitMutationOptions,
+} from "./gsapScriptCommitTypes";
 import { setElementGsapPosition } from "../utils/elementGsap";
 import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
@@ -163,37 +167,63 @@ export function useGsapAwareEditing({
       // positions are already on screen, so holding the render until the last
       // member has been written costs nothing and never shows a half-moved group.
       let renderOnCommit = false;
-      const coalescedCommit: typeof gsapCommitMutation = (selection, mutation, options) =>
-        gsapCommitMutation(selection, mutation, {
-          ...options,
-          coalesceKey,
-          coalesceMs: Number.POSITIVE_INFINITY,
-          deferPreviewSync: !renderOnCommit,
+      const withGroupOptions = (options: CommitMutationOptions): CommitMutationOptions => ({
+        ...options,
+        coalesceKey,
+        coalesceMs: Number.POSITIVE_INFINITY,
+        deferPreviewSync: !renderOnCommit,
+      });
+      // Every member writes the same file. Queue their mutations and send them as
+      // ONE request instead of one round trip per member: the server reads, parses
+      // and writes the composition once, and the preview patches once.
+      const queued: CommitMutationCall[] = [];
+      const flushQueued = async () => {
+        if (queued.length === 0) return;
+        const calls = queued.splice(0, queued.length);
+        if (!gsapCommitMutation.batch) {
+          for (const call of calls) {
+            await gsapCommitMutation(call.selection, call.mutation, call.options);
+          }
+          return;
+        }
+        await gsapCommitMutation.batch(calls, {
+          ...(calls.at(-1)?.options ?? { label: "Move animated layer (group)" }),
+          label: "Move animated layer (group)",
         });
+      };
+      const coalescedCommit: typeof gsapCommitMutation = (selection, mutation, options) => {
+        queued.push({ selection, mutation, options: withGroupOptions(options) });
+        return Promise.resolve();
+      };
       const preflightAnimations = new Map<DomEditSelection, GsapAnimation[]>();
       // Editability is user-atomic: prove every member can be written before
       // the first source mutation. Network failures after this point retain the
       // existing multi-request semantics, but a blocked member can never leave
       // earlier siblings partially moved.
-      for (const { selection } of updates) {
-        try {
-          const animations = await makeFetchFallback(selection, { failOnFetchError: true })();
-          preflightAnimations.set(selection, animations);
-          const outcome = await tryGsapDragIntercept(
-            selection,
-            { x: 0, y: 0 },
-            animations,
-            previewIframeRef.current,
-            coalescedCommit,
-            undefined,
-            { preflightOnly: true },
-          );
-          assertGsapEditPersisted(outcome);
-        } catch (error) {
-          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
-          throw error;
-        }
-      }
+      // Every member reads the same file, and a preflight writes nothing — so run
+      // them together. The parse layer shares one in-flight request per file, which
+      // turns N sequential round trips into one.
+      await Promise.all(
+        updates.map(async ({ selection }) => {
+          try {
+            const animations = await makeFetchFallback(selection, { failOnFetchError: true })();
+            preflightAnimations.set(selection, animations);
+            const outcome = await tryGsapDragIntercept(
+              selection,
+              { x: 0, y: 0 },
+              animations,
+              previewIframeRef.current,
+              coalescedCommit,
+              undefined,
+              { preflightOnly: true },
+            );
+            assertGsapEditPersisted(outcome);
+          } catch (error) {
+            trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
+            throw error;
+          }
+        }),
+      );
       for (const [index, { selection, next }] of updates.entries()) {
         renderOnCommit = index === updates.length - 1;
         try {
@@ -203,7 +233,13 @@ export function useGsapAwareEditing({
             preflightAnimations.get(selection) ?? [],
             previewIframeRef.current,
             coalescedCommit,
-            makeFetchFallback(selection),
+            // The intercept re-reads the file to resolve a stale or shared tween.
+            // Anything already queued has to be on disk before that read, or it
+            // resolves against a file missing writes it is about to build on.
+            async () => {
+              await flushQueued();
+              return makeFetchFallback(selection)();
+            },
             { preflightPassed: true },
           );
           assertGsapEditPersisted(outcome);
@@ -211,6 +247,15 @@ export function useGsapAwareEditing({
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
           throw error;
         }
+      }
+      try {
+        await flushQueued();
+      } catch (error) {
+        const selection = updates.at(-1)?.selection;
+        if (selection) {
+          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
+        }
+        throw error;
       }
     },
     [gsapCommitMutation, previewIframeRef, makeFetchFallback, trackGsapInteractionFailure],

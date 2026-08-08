@@ -73,15 +73,75 @@ describe("applyPreviewSync", () => {
 
     syncDragPreview(result(), reloadPreview);
 
-    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
-      kind: "set",
-      props: { x: 10 },
-    },
+    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(
+      FAKE_IFRAME,
+      "#a",
+      {
+        kind: "set",
+        props: { x: 10 },
+      },
       undefined,
       false,
     );
     expect(applySoftReload).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("instantPatches: patches every element the batch wrote, rendering once at the end", () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result(),
+      {
+        label: "Move animated layer (group)",
+        softReload: true,
+        instantPatches: [
+          { selector: "#a", change: { kind: "set" as const, props: { x: 1 } } },
+          { selector: "#b", change: { kind: "set" as const, props: { x: 2 } } },
+          { selector: "#c", change: { kind: "set" as const, props: { x: 3 } } },
+        ],
+      },
+      reloadPreview,
+    );
+
+    // Only the last patch re-renders — the earlier two defer their seek, so the
+    // group repaints once instead of once per member.
+    expect(patchRuntimeTweenInPlace.mock.calls.map((call) => [call[1], call[4]])).toEqual([
+      ["#a", true],
+      ["#b", true],
+      ["#c", false],
+    ]);
+    expect(applySoftReload).not.toHaveBeenCalled();
+    expect(reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("instantPatches: one patch that misses falls the whole batch back to the reload", () => {
+    patchRuntimeTweenInPlace.mockImplementation((_iframe, selector) => selector !== "#b");
+    applySoftReload.mockReturnValue("applied");
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      {
+        label: "Move animated layer (group)",
+        softReload: true,
+        instantPatches: [
+          { selector: "#a", change: { kind: "set" as const, props: { x: 1 } } },
+          { selector: "#b", change: { kind: "set" as const, props: { x: 2 } } },
+        ],
+      },
+      reloadPreview,
+    );
+
+    // A half-patched preview is worse than a reloaded one: "#a" landed, "#b" did
+    // not, so the reload repaints both from the written source.
+    expect(applySoftReload).toHaveBeenCalled();
+    expect(trackStudioEvent).toHaveBeenCalledWith("gsap_instant_patch_fallback", {
+      selector: "#b",
+    });
   });
 
   it("instantPatch + patch fails: falls back to the soft reload, passing onAsyncFailure", () => {
@@ -341,10 +401,13 @@ describe("runCommit — instantPatch wiring", () => {
 
     // The file already matched (changed:false) but the runtime patch deferred
     // from the paired first commit must still land.
-    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
-      kind: "set",
-      props: { x: 485, y: 311 },
-    },
+    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(
+      FAKE_IFRAME,
+      "#a",
+      {
+        kind: "set",
+        props: { x: 485, y: 311 },
+      },
       undefined,
       false,
     );
