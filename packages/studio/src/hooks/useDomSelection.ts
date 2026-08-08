@@ -24,6 +24,7 @@ import {
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import { useStudioTestHooks } from "./useStudioTestHooks";
+import { logSelect } from "../utils/selectDebug";
 
 // ── Types ──
 
@@ -186,6 +187,13 @@ export function useDomSelection({
               : (nextGroup[0] ?? null)
           : selection;
 
+      logSelect("apply", {
+        additive: isAdditiveSelection,
+        target: selection.selector ?? selection.id ?? null,
+        wasInGroup,
+        prevGroup: previousGroup.length,
+        nextGroup: nextGroup.length,
+      });
       domEditSelectionRef.current = nextSelection;
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);

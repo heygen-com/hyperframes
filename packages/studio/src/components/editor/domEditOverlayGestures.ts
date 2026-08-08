@@ -120,6 +120,25 @@ export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | nu
  * when the element's real transformed corners can't be measured — the primary path
  * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
  */
+/**
+ * Whether the hover cache may stand in for a hit-test at this point.
+ *
+ * The cache is filled asynchronously as the pointer moves, so it can describe an
+ * element the pointer has already left. That is harmless for drawing a hover
+ * outline and wrong for a shift-click, which would add the stale element to the
+ * selection instead of the one under the pointer. True only when the cached
+ * element IS the element at the point, or contains it — the resolver is allowed
+ * to hand back a clip ancestor of the raw target, and that still describes the
+ * same click.
+ */
+export function hoverCacheDescribesPoint(
+  cachedElement: Element | null | undefined,
+  elementAtPoint: Element | null | undefined,
+): boolean {
+  if (!cachedElement || !elementAtPoint) return false;
+  return cachedElement === elementAtPoint || cachedElement.contains(elementAtPoint);
+}
+
 export function resolveResizeCenterAnchorOffset(input: {
   originWidth: number;
   originHeight: number;

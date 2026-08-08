@@ -14,7 +14,10 @@ import {
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
 import type { DomEditSelection } from "./domEditing";
-import { resolveResizeCenterAnchorOffset } from "./domEditOverlayGestures";
+import {
+  hoverCacheDescribesPoint,
+  resolveResizeCenterAnchorOffset,
+} from "./domEditOverlayGestures";
 
 // React 19 warns unless the test environment opts into act().
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -625,6 +628,50 @@ describe("resolveDomEditRotationGesture", () => {
     expect(nextRotation.angle).toBe(1.4);
     expect(hasDomEditRotationChanged(0, nextRotation.angle)).toBe(true);
     expect(hasDomEditRotationChanged(0, 0)).toBe(false);
+  });
+});
+
+/**
+ * Shift-click reads the hover cache instead of hit-testing, and the cache is
+ * filled asynchronously as the pointer moves. Pass over one element on the way to
+ * another and the cache still names the one you left, so the shift-click added
+ * THAT element and the click looked like it selected something at random. The
+ * guard is what makes the cache usable only when it is about the point clicked.
+ */
+describe("hoverCacheDescribesPoint", () => {
+  const doc = new Window().document;
+
+  it("rejects a cache left behind by an element the pointer passed over", () => {
+    const passedOver = doc.createElement("div");
+    const clicked = doc.createElement("div");
+    doc.body.append(passedOver, clicked);
+
+    expect(hoverCacheDescribesPoint(passedOver, clicked)).toBe(false);
+  });
+
+  it("accepts the cache when it names the element at the point", () => {
+    const clicked = doc.createElement("div");
+    doc.body.append(clicked);
+
+    expect(hoverCacheDescribesPoint(clicked, clicked)).toBe(true);
+  });
+
+  // The resolver is allowed to hand back a clip ancestor of the raw target, which
+  // still describes the same click — rejecting it would drop the fast path on
+  // every element that has children.
+  it("accepts an ancestor of the element at the point", () => {
+    const clip = doc.createElement("div");
+    const child = doc.createElement("span");
+    clip.append(child);
+    doc.body.append(clip);
+
+    expect(hoverCacheDescribesPoint(clip, child)).toBe(true);
+  });
+
+  it("rejects a missing cache or an empty point", () => {
+    const el = doc.createElement("div");
+    expect(hoverCacheDescribesPoint(null, el)).toBe(false);
+    expect(hoverCacheDescribesPoint(el, null)).toBe(false);
   });
 });
 

@@ -13,6 +13,7 @@ import {
   type GestureState,
   type GroupGestureState,
   focusDomEditOverlayElement,
+  hoverCacheDescribesPoint,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
@@ -43,6 +44,7 @@ export {
   hasDomEditRotationChanged,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
+import { logSelect } from "../../utils/selectDebug";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 
 interface DomEditOverlayProps {
@@ -318,6 +320,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement) return;
     if (suppressNextOverlayMouseDownRef.current) {
+      logSelect("mousedown-suppressed", { shift: event.shiftKey });
       suppressNextOverlayMouseDownRef.current = false;
       suppressNextBoxMouseDownRef.current = false;
       suppressNextBoxClickRef.current = false;
@@ -326,6 +329,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
     const target = event.target as HTMLElement | null;
+    logSelect("mousedown", {
+      shift: event.shiftKey,
+      onBox: Boolean(target?.closest('[data-dom-edit-selection-box="true"]')),
+    });
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
     // Allow clicks anywhere on the overlay — GSAP-translated elements can
     // extend beyond the composition rect into the gray zone, and users need
@@ -341,9 +348,31 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
     if (event.shiftKey) {
-      // Use the already-updated hover selection rather than re-resolving async
+      // The hover selection is an ASYNC cache, so it can still describe whatever the
+      // pointer passed over on its way here. Reading it without checking is safe for
+      // a hover outline and wrong for a shift-click: the click silently adds THAT
+      // element instead of the one under the pointer, which reads as multi-select
+      // picking things at random. Confirm the cache is about this point with a
+      // synchronous hit-test; when it isn't, fall through untouched — no
+      // preventDefault, no suppression — so the mousedown path below resolves the
+      // point properly instead of this one guessing.
       const candidate = hoverSelectionRef.current;
-      if (!candidate) return;
+      const shiftIframe = iframeRef.current;
+      const pointTarget = shiftIframe
+        ? getPreviewTargetFromPointer(
+            shiftIframe,
+            event.clientX,
+            event.clientY,
+            activeCompositionPathRef.current,
+          )
+        : null;
+      const cacheIsAboutThisPoint = hoverCacheDescribesPoint(candidate?.element, pointTarget);
+      logSelect("shift-pointerdown", {
+        candidate: candidate?.selector ?? candidate?.id ?? null,
+        pointTarget: pointTarget?.id ?? pointTarget?.tagName ?? null,
+        cacheIsAboutThisPoint,
+      });
+      if (!candidate || !cacheIsAboutThisPoint) return;
       event.preventDefault();
       event.stopPropagation();
       suppressNextOverlayMouseDownRef.current = true;
