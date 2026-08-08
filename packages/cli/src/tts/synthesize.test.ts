@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupportedLang } from "./manager.js";
 
@@ -119,5 +121,16 @@ describe("synthesize — espeak-ng language code translation", () => {
     });
 
     expect(getCapturedArgv()?.[LANG_ARGV_INDEX]).toBe("es");
+  });
+});
+
+describe("synthesize — Kokoro voice token overflow", () => {
+  it("adaptively splits only the 510-entry voice overflow and concatenates the audio", () => {
+    const source = readFileSync(fileURLToPath(new URL("./synthesize.ts", import.meta.url)), "utf8");
+
+    expect(source).toContain("def is_voice_token_overflow(error):");
+    expect(source).toContain("def synthesize_text(value):");
+    expect(source).toContain("samples.extend(right_samples)");
+    expect(source).toContain('const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v3.py")');
   });
 });
