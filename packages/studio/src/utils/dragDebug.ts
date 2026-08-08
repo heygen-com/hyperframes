@@ -1,0 +1,52 @@
+// Canvas drag diagnostics — grep [hf-drag]. Off by default; opt in per session
+// with `localStorage.setItem("hf-drag-debug", "1")` (then reload).
+//
+// A drag that "jumps" is a position that changed without the pointer asking. The
+// pointer delta, what snapping did to it, what each member was told to move, and
+// where each member actually ended up are logged at every stage, so the frame the
+// position diverges from the pointer is visible rather than inferred.
+import { makeStudioDebugLogger } from "./studioDebug";
+
+export const logDrag = makeStudioDebugLogger("drag");
+
+let moveN = 0;
+
+/** Per-pointermove logging, throttled: the first move then every 8th. */
+export function logDragMove(data: Record<string, unknown>): void {
+  moveN += 1;
+  if (moveN % 8 === 1) logDrag("move", { n: moveN, ...data });
+}
+
+export function resetDragMoveLog(): void {
+  moveN = 0;
+}
+
+/** Where these elements are rendered right now, in preview-document pixels. */
+export function readDragPositions(
+  elements: Array<{ key: string; element: HTMLElement }>,
+): Record<string, string> {
+  const positions: Record<string, string> = {};
+  for (const { key, element } of elements) {
+    const rect = element.getBoundingClientRect();
+    positions[key] = `${Math.round(rect.left)},${Math.round(rect.top)}`;
+  }
+  return positions;
+}
+
+/**
+ * Sample the group now and again after the commit has had time to land. The drop
+ * is the one moment a jump can hide: the source write, the preview reload and the
+ * timeline resume all happen within a few frames of each other, and any of them
+ * can put the elements back where they started before the new position arrives.
+ */
+export function logDragSettle(
+  stage: string,
+  elements: Array<{ key: string; element: HTMLElement }>,
+): void {
+  logDrag(stage, { at: readDragPositions(elements) });
+  const win = elements[0]?.element.ownerDocument.defaultView;
+  if (!win) return;
+  win.setTimeout(() => logDrag(`${stage}+120ms`, { at: readDragPositions(elements) }), 120);
+  win.setTimeout(() => logDrag(`${stage}+400ms`, { at: readDragPositions(elements) }), 400);
+  win.setTimeout(() => logDrag(`${stage}+900ms`, { at: readDragPositions(elements) }), 900);
+}

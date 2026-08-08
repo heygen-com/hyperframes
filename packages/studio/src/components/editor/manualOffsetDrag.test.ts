@@ -197,6 +197,56 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
   });
 });
 
+/**
+ * A group drag is rigid: every member is handed the SAME pointer delta and must
+ * travel the same distance on screen, or the group visibly comes apart mid-drag.
+ * Members do not share a mapping though — each measures its own, because each can
+ * sit under different ancestor transforms. A member whose movement cannot be
+ * measured falls back to a guess, and this pins what that guess costs the group.
+ */
+describe("group drag stays rigid", () => {
+  function member(key: string, response: number, measurable: boolean) {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+    element.getBoundingClientRect = () => {
+      const ox = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const oy = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      const move = measurable ? response : 0;
+      return new window.DOMRect(100 + move * ox, 200 + move * oy, 40, 20);
+    };
+    const result = createManualOffsetDragMember({
+      key,
+      selection: { element } as never,
+      element,
+      rect: { left: 100, top: 200, width: 40, height: 20, editScaleX: 1, editScaleY: 1 },
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return { member: result.member, response };
+  }
+
+  /** Screen distance this member travels for a pointer delta of `d`. */
+  function screenTravel(entry: ReturnType<typeof member>, d: number): number {
+    const offset = resolveManualOffsetForPointerDelta({
+      initialOffset: entry.member.initialOffset,
+      screenToOffset: entry.member.screenToOffset,
+      dx: d,
+      dy: 0,
+    });
+    return offset.x * entry.response;
+  }
+
+  it("moves every measurable member the same distance for one pointer delta", () => {
+    // Two members under different ancestor scales: one 1:1, one inside a half-scale
+    // parent. Different offsets, identical screen travel — that is what rigid means.
+    const a = member("a", 1, true);
+    const b = member("b", 0.5, true);
+
+    expect(screenTravel(a, 60)).toBeCloseTo(60, 6);
+    expect(screenTravel(b, 60)).toBeCloseTo(60, 6);
+  });
+});
+
 describe("createManualOffsetDragMember uses raw CSS var offset", () => {
   it("ignores GSAP transform — initialOffset comes from CSS vars only", () => {
     const window = new Window();

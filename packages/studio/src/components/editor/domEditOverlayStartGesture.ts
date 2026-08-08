@@ -33,6 +33,7 @@ import {
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
+import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
 
 export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
@@ -70,6 +71,22 @@ export function startGroupDrag(
     }
     members.push(result.member);
   }
+  resetDragMoveLog();
+  logDrag("group-start", {
+    // A member whose mapping differs from its neighbours travels a different
+    // distance for the same pointer delta, which is the group coming apart.
+    members: Object.fromEntries(
+      members.map((member) => [
+        member.key,
+        {
+          map: `${member.screenToOffset.a.toFixed(3)},${member.screenToOffset.d.toFixed(3)}`,
+          base: `${Math.round(member.baseGsap.x)},${Math.round(member.baseGsap.y)}`,
+          offset: `${Math.round(member.initialOffset.x)},${Math.round(member.initialOffset.y)}`,
+        },
+      ]),
+    ),
+    at: readDragPositions(members),
+  });
 
   const overlayEl = opts.overlayRef.current;
   const iframe = opts.iframeRef.current;
