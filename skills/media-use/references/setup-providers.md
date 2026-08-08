@@ -27,7 +27,8 @@ see the ladder and override.
 
 | Type      | Provider / path                                                                                                                                                               |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| bgm/sfx   | heygen catalog free-usage path                                                                                                                                                |
+| bgm       | heygen catalog free-usage path; optional self-hosted `acestep.remote` generation configured in `~/.media/providers.json`                                                      |
+| sfx       | heygen catalog free-usage path                                                                                                                                                |
 | image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                                                                                                 |
 | voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                                                                                       |
 | icon      | heygen asset search free-usage path                                                                                                                                           |

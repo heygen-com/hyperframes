@@ -21,6 +21,7 @@
 // (e.g. "make an image with codex").
 
 import { bgmProvider } from "./bgm-provider.mjs";
+import { generateWithAceStep } from "./acestep-provider.mjs";
 import { sfxProvider } from "./sfx-provider.mjs";
 import { bundledSfxProvider } from "./bundled-sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
@@ -49,7 +50,10 @@ const P = (name, caps) => ({ name, network: true, paid: true, ...caps }); // rem
 
 // heygen-CLI first. All remote providers are skipped by --local-only.
 const REGISTRY = {
-  bgm: [N("heygen.audio.sounds", { search: bgmProvider.search })],
+  bgm: [
+    N("heygen.audio.sounds", { search: bgmProvider.search }),
+    N("acestep.remote", { generate: generateWithAceStep }),
+  ],
   sfx: [
     N("heygen.audio.sounds", { search: sfxProvider.search }),
     A("bundled.sfx", { search: bundledSfxProvider.search }),

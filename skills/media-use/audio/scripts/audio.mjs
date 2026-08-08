@@ -10,7 +10,7 @@
 // (credential present, NOT the CLI). This mirrors the table in ../SKILL.md:
 //
 //   TTS : HeyGen REST → ElevenLabs → Kokoro (CLI)
-//   BGM : HeyGen retrieve  → (no credential) Lyria/MusicGen generate
+//   BGM : HeyGen retrieve  → configured ACE-Step → Lyria/MusicGen generate
 //   SFX : HeyGen retrieve  → (no credential) bundled 19-file library
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
@@ -52,6 +52,7 @@ import {
   withWordIds,
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
+import { configuredBgmProvider } from "../../scripts/lib/acestep-provider.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 
@@ -83,6 +84,7 @@ const requestPath = resolve(flag("request", join(hyperframesDir, "audio_request.
 const outPath = resolve(flag("out", join(hyperframesDir, "audio_meta.json")));
 const sfxLibDir = resolve(flag("sfx-lib", join(HERE, "..", "assets", "sfx")));
 const lyriaRecipe = resolve(flag("lyria-recipe", join(HERE, "lyria-recipe.py")));
+const acestepRecipe = resolve(flag("acestep-recipe", join(HERE, "acestep-recipe.mjs")));
 const onlyArg = flag("only", "tts,bgm,sfx");
 const only = new Set(
   onlyArg
@@ -196,7 +198,11 @@ if (only.has("bgm")) {
   // a pending job it can't await). Only the UNSET/auto default picks generate
   // when HeyGen is absent.
   const explicitMode = bgmModeOverride || request.bgm?.mode || null;
-  let mode = noBgm ? "none" : explicitMode || (heygenOK ? "retrieve" : "generate");
+  const requestedBgmProvider = request.bgm?.provider || configuredBgmProvider();
+  let mode = noBgm
+    ? "none"
+    : explicitMode ||
+      (requestedBgmProvider === "acestep" ? "generate" : heygenOK ? "retrieve" : "generate");
   if (mode === "retrieve" && !heygenOK) {
     anomalies.push(
       "bgm: retrieve requires a HeyGen credential — skipped (no generate fallback for an explicit retrieve)",
@@ -232,6 +238,8 @@ if (only.has("bgm")) {
       durationS: totalDuration || 30,
       hyperframesDir,
       lyriaRecipe: existsSync(lyriaRecipe) ? lyriaRecipe : null,
+      acestepRecipe: existsSync(acestepRecipe) ? acestepRecipe : null,
+      provider: requestedBgmProvider,
       seedSeconds,
       hasVoice,
     });
