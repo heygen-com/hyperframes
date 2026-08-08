@@ -405,28 +405,27 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const overlayEl = overlayRef.current;
       if (overlayEl) {
         const oRect = overlayEl.getBoundingClientRect();
+        // Anywhere empty on the overlay starts one, not just inside the frame.
+        // An element dragged past the edge sits OUT there in the grey, and a
+        // rubber band that refuses to start there cannot reach it — which left
+        // the timeline as the only way to select something you can plainly see.
+        // The hit test collects in overlay space and never clipped to the frame,
+        // so those elements were always selectable once the band could begin.
+        event.preventDefault();
+        event.stopPropagation();
+        suppressNextOverlayMouseDownRef.current = true;
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         const cx = event.clientX - oRect.left;
         const cy = event.clientY - oRect.top;
-        const inComp =
-          cx >= compRect.left &&
-          cx <= compRect.left + compRect.width &&
-          cy >= compRect.top &&
-          cy <= compRect.top + compRect.height;
-        if (inComp) {
-          event.preventDefault();
-          event.stopPropagation();
-          suppressNextOverlayMouseDownRef.current = true;
-          (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-          marquee.marqueeRef.current = {
-            startX: cx,
-            startY: cy,
-            currentX: cx,
-            currentY: cy,
-            pointerId: event.pointerId,
-            pastThreshold: false,
-          };
-          return;
-        }
+        marquee.marqueeRef.current = {
+          startX: cx,
+          startY: cy,
+          currentX: cx,
+          currentY: cy,
+          pointerId: event.pointerId,
+          pastThreshold: false,
+        };
+        return;
       }
     }
   };
