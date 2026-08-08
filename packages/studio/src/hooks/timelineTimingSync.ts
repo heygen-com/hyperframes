@@ -7,6 +7,7 @@ import { applySoftReload, applySoftReloadFinalization } from "../utils/gsapSoftR
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 import { patchDocumentRootDuration } from "./timelineEditingGsap";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 class GsapPreviewConvergenceError extends Error {}
 class GsapOwnershipProtocolError extends GsapPreviewConvergenceError {}
@@ -58,6 +59,9 @@ async function rollbackOwnedMutation(
     `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-rollback/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
+      // Deliberately unclaimed. A rollback runs because a mutation did not
+      // converge, so the preview is on bytes nobody can vouch for; let the
+      // restored file reload it rather than suppressing that as our own write.
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expected, restore }),
     },
@@ -156,7 +160,7 @@ async function postGsapMutation(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(filePath)}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
         body: JSON.stringify(mutation),
       },
     );

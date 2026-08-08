@@ -36,6 +36,7 @@ import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 async function mutateGsapScript(
   projectId: string,
@@ -46,7 +47,7 @@ async function mutateGsapScript(
     `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(sourceFile)}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
       body: JSON.stringify(mutation),
     },
   );
@@ -65,7 +66,7 @@ async function mutateGsapScriptBatch(
     `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations-batch/${encodeURIComponent(sourceFile)}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
       body: JSON.stringify({ mutations }),
     },
   );
