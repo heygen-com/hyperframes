@@ -922,6 +922,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
   },
   {
+    "name": "gallery-tunnel",
+    "type": "block",
+    "title": "Gallery Tunnel",
+    "description": "An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog.",
+    "tags": [
+      "webgl",
+      "3d",
+      "background",
+      "showcase",
+      "depth",
+      "loop"
+    ],
+    "href": "/catalog/blocks/gallery-tunnel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gallery-tunnel.png"
+  },
+  {
     "name": "glitch",
     "type": "block",
     "title": "Glitch",

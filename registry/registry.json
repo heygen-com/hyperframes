@@ -40,6 +40,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "gallery-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "us-map",
       "type": "hyperframes:block"
     },
