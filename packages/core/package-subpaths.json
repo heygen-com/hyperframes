@@ -92,6 +92,12 @@
       "types": "./dist/colorGrading.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./visual-paint": {
+      "source": "./src/visualPaint.ts",
+      "runtime": "./dist/visualPaint.js",
+      "types": "./dist/visualPaint.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-luts": {
       "source": "./src/colorLuts.ts",
       "runtime": "./dist/colorLuts.js",

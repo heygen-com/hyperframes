@@ -52,6 +52,7 @@ import type {
   DraftProps,
   PaintQueryOptions,
 } from "./types.js";
+import { isTransparentColor } from "@hyperframes/core/visual-paint";
 import type { EditOp, Composition } from "../types.js";
 import { applyPatchesToDocument, applyOverrideSet } from "../engine/apply-patches.js";
 
@@ -513,27 +514,6 @@ export const INTRINSIC_PAINT_TAGS: ReadonlySet<string> = new Set([
   "canvas",
   "svg",
 ]);
-
-/**
- * Does this computed colour put down no ink?
- *
- * The `transparent` keyword computes to `rgba(0, 0, 0, 0)`, but ANY colour can carry a zero
- * alpha — `rgba(255, 255, 255, 0)` is exactly as invisible and is what you get from fading a
- * white background out. Matching known spellings misses those, so the alpha is read instead.
- */
-function isTransparentColor(value: string): boolean {
-  if (!value || value === "transparent") return true;
-  // rgb/hsl and their -a forms all carry alpha as the fourth component. Computed
-  // background-color is serialized to rgb() by every engine we target, but matching both
-  // costs one alternation and removes the dependency on that.
-  const inner = /^(?:rgba?|hsla?)\(([^)]*)\)$/.exec(value)?.[1];
-  if (inner === undefined) return false;
-  // Handles both the legacy comma form and the `rgb(r g b / a)` slash form.
-  const parts = inner.split(/[\s,/]+/).filter(Boolean);
-  // An rgb() with no alpha component is fully opaque.
-  const alpha = parts[3];
-  return alpha !== undefined && Number.parseFloat(alpha) === 0;
-}
 
 const BORDER_SIDES = ["top", "right", "bottom", "left"] as const;
 

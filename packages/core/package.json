@@ -106,6 +106,12 @@
       "import": "./src/colorGrading.ts",
       "types": "./src/colorGrading.ts"
     },
+    "./visual-paint": {
+      "bun": "./src/visualPaint.ts",
+      "node": "./dist/visualPaint.js",
+      "import": "./src/visualPaint.ts",
+      "types": "./src/visualPaint.ts"
+    },
     "./color-luts": {
       "bun": "./src/colorLuts.ts",
       "node": "./dist/colorLuts.js",
@@ -361,6 +367,10 @@
       "./color-grading": {
         "import": "./dist/colorGrading.js",
         "types": "./dist/colorGrading.d.ts"
+      },
+      "./visual-paint": {
+        "import": "./dist/visualPaint.js",
+        "types": "./dist/visualPaint.d.ts"
       },
       "./color-luts": {
         "import": "./dist/colorLuts.js",
