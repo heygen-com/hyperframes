@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { describe, it, expect, vi } from "vitest";
-import { bundleToSingleHtml } from "./htmlBundler";
+import { bundleToSingleHtml, type BundleDiagnostic } from "./htmlBundler";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -1383,6 +1383,94 @@ describe("bundleToSingleHtml", () => {
         .map((call) => String(call[0] ?? ""))
         .filter((line) => line.includes("[StaticGuard]"));
       expect(staticGuardWarnings).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Compile diagnostics: the sink that lets `hyperframes check` report what used
+// to vanish into console.warn.
+// ---------------------------------------------------------------------------
+
+/** One project that trips all three diagnostic sites at once:
+ *  - no `window.__timelines` registration -> StaticGuard contract breach
+ *  - `data-composition-src` at a file that does not exist -> skipped sub-comp
+ *  - `data-color-grading` LUT at a file that does not exist -> un-inlinable LUT
+ */
+function makeAllDiagnosticsProject(): string {
+  return makeTempProject({
+    "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <div data-composition-src="scenes/gone.html"></div>
+    <video id="clip" src="clip.mp4" data-color-grading='{"lut":{"src":"assets/luts/gone.cube"}}'></video>
+  </div>
+</body></html>`,
+  });
+}
+
+describe("bundleToSingleHtml compile diagnostics", () => {
+  it("routes every compile-time diagnostic to the sink instead of console.warn", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const dir = makeAllDiagnosticsProject();
+      const diagnostics: BundleDiagnostic[] = [];
+
+      await bundleToSingleHtml(dir, { onDiagnostic: (d) => diagnostics.push(d) });
+
+      expect(diagnostics.map((d) => d.code).sort()).toEqual([
+        "color_grading_lut_not_inlined",
+        "static_guard_contract",
+        "sub_composition_skipped",
+      ]);
+      expect(diagnostics.every((d) => d.severity === "warning")).toBe(true);
+      // A sink takes ownership: nothing leaks to the console behind its back.
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("carries the message and the source each diagnostic already knows", async () => {
+    const dir = makeAllDiagnosticsProject();
+    const diagnostics: BundleDiagnostic[] = [];
+
+    await bundleToSingleHtml(dir, { onDiagnostic: (d) => diagnostics.push(d) });
+
+    const byCode = new Map(diagnostics.map((d) => [d.code, d]));
+    expect(byCode.get("sub_composition_skipped")?.source).toBe("scenes/gone.html");
+    expect(byCode.get("sub_composition_skipped")?.message).toContain(
+      'Skipping sub-composition "scenes/gone.html"',
+    );
+    expect(byCode.get("color_grading_lut_not_inlined")?.source).toBe("assets/luts/gone.cube");
+    expect(byCode.get("color_grading_lut_not_inlined")?.message).toContain(
+      'Could not inline color grading LUT "assets/luts/gone.cube"',
+    );
+    expect(byCode.get("static_guard_contract")?.source).toBe("index.html");
+    expect(byCode.get("static_guard_contract")?.message).toContain("[StaticGuard]");
+  });
+
+  it("still console.warns, with byte-identical output, when no sink is supplied", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const dir = makeAllDiagnosticsProject();
+      const diagnostics: BundleDiagnostic[] = [];
+
+      const withSink = await bundleToSingleHtml(dir, {
+        onDiagnostic: (d) => diagnostics.push(d),
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      const withoutSink = await bundleToSingleHtml(dir);
+
+      // The sink changes reporting, never the bundle.
+      expect(withoutSink).toBe(withSink);
+      // Every diagnostic reaches console.warn with exactly its message, one
+      // argument, same as before the sink existed.
+      expect(warnSpy.mock.calls.map((call) => call[0])).toEqual(diagnostics.map((d) => d.message));
+      expect(warnSpy.mock.calls.every((call) => call.length === 1)).toBe(true);
     } finally {
       warnSpy.mockRestore();
     }

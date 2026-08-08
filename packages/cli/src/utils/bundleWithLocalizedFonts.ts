@@ -1,3 +1,4 @@
+import type { BundleDiagnosticSink } from "@hyperframes/core/compiler";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { c } from "../ui/colors.js";
 
@@ -20,9 +21,12 @@ export async function bundleWithLocalizedFonts(
   // Injectable for tests. Production callers omit it and get the producer
   // font-localization pass (see localizeWithProducer).
   localizeFonts: (html: string) => Promise<string> = localizeWithProducer,
+  // Optional compile-diagnostic sink, threaded straight through to the bundler.
+  // Omit it and the bundler keeps console.warn-ing exactly as before.
+  onDiagnostic?: BundleDiagnosticSink,
 ): Promise<string> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await bundleToSingleHtml(projectDir, onDiagnostic ? { onDiagnostic } : undefined);
   return localizeFonts(html);
 }
 
