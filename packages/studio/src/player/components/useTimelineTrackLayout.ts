@@ -1,6 +1,8 @@
 import { useMemo, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { animationLaneGroups } from "./TimelinePropertyLanes";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { elementAutomationLanes } from "./automationLaneData";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
@@ -85,7 +87,15 @@ function useTimelineRowHeights(
       );
       if (!active) return [];
       const clipId = active.key ?? active.id;
-      return [{ clipId, laneCount: laneCounts.get(clipId) ?? 0 }];
+      return [
+        {
+          clipId,
+          laneCount: laneCounts.get(clipId) ?? 0,
+          automationLaneCount: isAudioTimelineElement(active)
+            ? elementAutomationLanes(active).length
+            : 0,
+        },
+      ];
     });
     const rowHeights = trackHeights(heightTracks, expandedClipIds);
     return {

@@ -1,4 +1,4 @@
-import { useMemo, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { useMemo, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import {
   classifyPropertyGroup,
   type GsapAnimation,
@@ -35,6 +35,12 @@ export interface TimelinePropertyLanesProps {
   onContextMenuKeyframe?: (e: ReactMouseEvent, target: TimelineKeyframeTarget) => void;
   onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => Promise<boolean>;
   suppressClickRef?: RefObject<boolean>;
+  /**
+   * Rendered after the keyframe lanes, inside this wrapper. An audio clip's
+   * automation lane lives here so it shares the same disclosure — and so the
+   * header caret's `aria-controls` covers it too.
+   */
+  footer?: ReactNode;
 }
 
 /**
@@ -196,6 +202,7 @@ export function TimelinePropertyLanes({
   onContextMenuKeyframe,
   onMoveKeyframe,
   suppressClickRef,
+  footer,
 }: TimelinePropertyLanesProps) {
   // Memoized: TimelineDiamondLane is React.memo'd, and rebuilding the lanes (and
   // a fresh keyframesData literal per lane) on every render would re-render every
@@ -263,6 +270,7 @@ export function TimelinePropertyLanes({
           />
         </div>
       ))}
+      {footer}
     </div>
   );
 }
