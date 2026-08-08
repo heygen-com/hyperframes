@@ -70,8 +70,7 @@ describe("attachElementFxChain", () => {
   it("connects source straight to destination when there is no chain", () => {
     const src = new Node();
     const dst = new Node();
-    const handle = attachElementFxChain(ctx(), el(), src as never, dst as never);
-    expect(handle).toBeNull();
+    attachElementFxChain(ctx(), el(), src as never, dst as never);
     expect(src.connections).toContain(dst);
   });
 
@@ -102,7 +101,7 @@ describe("attachElementFxChain", () => {
       src as never,
       dst as never,
     );
-    expect(handle).toBeNull();
+    expect(handle).not.toBeNull();
     expect(src.connections).toContain(dst);
   });
 
@@ -115,8 +114,88 @@ describe("attachElementFxChain", () => {
       src as never,
       dst as never,
     );
-    expect(handle).toBeNull();
+    expect(handle).not.toBeNull();
     expect(src.connections).toContain(dst);
+  });
+
+  /**
+   * A structural edit — an effect added, removed or bypassed — used to be
+   * ignored here, so it only took effect when the persisting write reloaded the
+   * composition. That reload restarted every playing track, which is what was
+   * heard as the audio chopping. The graph is now swapped in place instead, with
+   * the source node left alone.
+   */
+  describe("editing the chain while it plays", () => {
+    const audioEl = (chain?: unknown): HTMLElement => {
+      const node = document.createElement("audio");
+      if (chain) node.setAttribute("data-fx-chain", JSON.stringify(chain));
+      document.body.append(node);
+      return node;
+    };
+    /** Let the MutationObserver's microtask run. */
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+
+    it("routes through an effect added to a track that had none", async () => {
+      const src = new Node();
+      const dst = new Node();
+      const node = audioEl();
+      attachElementFxChain(ctx(), node, src as never, dst as never);
+      expect(src.connections).toContain(dst);
+
+      node.setAttribute("data-fx-chain", JSON.stringify(CHAIN));
+      await settle();
+      // Now feeding the chain, not the gain directly.
+      expect(src.connections.at(-1)).not.toBe(dst);
+    });
+
+    it("returns to dry when the last effect is removed", async () => {
+      const src = new Node();
+      const dst = new Node();
+      const node = audioEl(CHAIN);
+      attachElementFxChain(ctx(), node, src as never, dst as never);
+      const firstTarget = src.connections[0] as Node;
+      expect(firstTarget).not.toBe(dst);
+
+      node.removeAttribute("data-fx-chain");
+      await settle();
+      expect(src.connections.at(-1)).toBe(dst);
+      // The graph that was in the path is torn down, not left running.
+      expect(firstTarget.disconnected).toBe(true);
+    });
+
+    it("swaps the graph without replacing the source node", async () => {
+      const src = new Node();
+      const dst = new Node();
+      const node = audioEl(CHAIN);
+      attachElementFxChain(ctx(), node, src as never, dst as never);
+      const before = src.connections[0] as Node;
+
+      node.setAttribute(
+        "data-fx-chain",
+        JSON.stringify({
+          version: 1,
+          nodes: [
+            { type: "peaking", params: { frequency: 1000, gain: -6, q: 1 } },
+            { type: "lowpass", params: { frequency: 800, q: 0.7, poles: "2" } },
+          ],
+        }),
+      );
+      await settle();
+      const after = src.connections.at(-1) as Node;
+      // A different graph, reached from the same source: the audio never restarts.
+      expect(after).not.toBe(before);
+      expect(before.disconnected).toBe(true);
+    });
+
+    it("keeps playing dry when an edit leaves the chain unreadable", async () => {
+      const src = new Node();
+      const dst = new Node();
+      const node = audioEl(CHAIN);
+      attachElementFxChain(ctx(), node, src as never, dst as never);
+      node.setAttribute("data-fx-chain", "{not json");
+      await settle();
+      expect(src.connections.at(-1)).toBe(dst);
+    });
   });
 
   it("tears the chain down on dispose", () => {

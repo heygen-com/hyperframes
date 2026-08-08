@@ -1,5 +1,6 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
+import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { normalizePlaybackRate } from "./playbackRate.js";
 
 export function readElementPlaybackRate(el: Element): number {
@@ -270,7 +271,13 @@ export function syncRuntimeMedia(params: {
       const currentElementVolume = clampVolume(el.volume);
 
       let authorVolume: number;
-      if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
+      // An explicit volume lane owns the fader. It is checked before the probed
+      // keyframes because the two would otherwise fight, and it is the one the
+      // author drew — `lint` warns when a track carries both.
+      const laneGain = elementVolumeLaneGain(el, relTime);
+      if (laneGain !== null) {
+        authorVolume = clampVolume(laneGain);
+      } else if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
         // Keyframes probed from the GSAP timeline — same source as the renderer.
         // Use the interpolated envelope value directly; no need to track GSAP changes.
         authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, relTime));
