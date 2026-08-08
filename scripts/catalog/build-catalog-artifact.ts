@@ -16,6 +16,7 @@ import {
   buildArtifact,
   manifestBytes,
   movesMissingFromRegistry,
+  parseShelf,
   verifyArtifact,
   type Embedder,
 } from "./catalog-artifact.js";
@@ -112,17 +113,17 @@ async function main(): Promise<void> {
   // the burden of discovering it on the consumer at request time.
   verifyArtifact(built);
 
-  // A move the registry cannot serve ranks well and then cannot be installed,
-  // which looks like a bad search rather than a bad build. Reported, not
-  // fatal: the shelf legitimately leads the registry while moves land.
-  const known = registryNames(arg("registry-index") ?? DEFAULT_REGISTRY_INDEX);
-  if (known === undefined) {
-    console.warn("warning   registry index unreadable; coverage not checked");
+  // What is left to report is the gap, not a defect in the artifact: buildArtifact
+  // already dropped these, so the published catalog never contains a move the
+  // registry cannot serve. Reported, not fatal, because the shelf legitimately
+  // leads the registry while moves land.
+  if (installableNames === undefined) {
+    console.warn("warning   registry index unreadable; published every shelf move unchecked");
   } else {
-    const missing = movesMissingFromRegistry(Object.keys(built.catalog), known);
-    if (missing.length > 0) {
+    const dropped = movesMissingFromRegistry([...parseShelf(shelfText).keys()], installableNames);
+    if (dropped.length > 0) {
       console.warn(
-        `warning   ${missing.length} shelf moves have no registry item: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ", ..." : ""}`,
+        `warning   ${dropped.length} shelf moves dropped, no registry item: ${dropped.slice(0, 5).join(", ")}${dropped.length > 5 ? ", ..." : ""}`,
       );
     }
   }

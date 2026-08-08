@@ -50,11 +50,17 @@ export async function fetchLocalVectors(
   const base = registryBaseUrl.replace(/\/+$/, "");
   try {
     mkdirSync(directory, { recursive: true });
+    // Downloaded in full before anything is written. The two files have to
+    // agree on how many rows there are, so a fetch that fails halfway through
+    // must leave the previous pair intact rather than pairing a new name list
+    // with an old matrix, which loads as an error instead of as stale data.
+    const fetched: Array<[string, Buffer]> = [];
     for (const file of ["local-vectors.json", "local-vectors.bin"] as const) {
       const response = await fetch(`${base}/catalog-artifact/${file}`);
       if (!response.ok) return false;
-      writeFileSync(join(directory, file), Buffer.from(await response.arrayBuffer()));
+      fetched.push([file, Buffer.from(await response.arrayBuffer())]);
     }
+    for (const [file, bytes] of fetched) writeFileSync(join(directory, file), bytes);
     return hasLocalVectors(directory);
   } catch {
     return false;
@@ -90,11 +96,40 @@ function loadLocalVectors(directory = localVectorDirectory()): LocalVectorSet {
   return { names: meta.names, dimensions: meta.dimensions, vectors };
 }
 
-/** Names ranked best first. Returns null when local semantic search is not available. */
+/**
+ * The names the on-device index holds, without loading the vector matrix.
+ *
+ * Callers compare this against the live registry to see what meaning search
+ * cannot reach. Reads the metadata file only, so it costs a small JSON parse
+ * rather than the whole matrix, and answers empty rather than throwing: an
+ * absent or unreadable artifact covers nothing, which is a coverage answer
+ * rather than a reason to fail the search that asked.
+ */
+export function localVectorNames(directory = localVectorDirectory()): string[] {
+  if (!hasLocalVectors(directory)) return [];
+  try {
+    const meta = JSON.parse(readFileSync(join(directory, "local-vectors.json"), "utf-8")) as {
+      names?: string[];
+    };
+    return meta.names ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Names ranked best first, each with the similarity that placed it there.
+ * Returns null when local semantic search is not available.
+ *
+ * The score rides along because this ranker has no relevance threshold: every
+ * query returns the whole set in some order, so a caller holding names alone
+ * cannot tell a real match from the least-bad row of a query that matched
+ * nothing at all.
+ */
 export async function localSemanticRanking(
   query: string,
   directory = localVectorDirectory(),
-): Promise<string[] | null> {
+): Promise<Array<{ name: string; score: number }> | null> {
   if (!isLocalModelReady() || !hasLocalVectors(directory)) return null;
 
   const set = loadLocalVectors(directory);
@@ -112,5 +147,5 @@ export async function localSemanticRanking(
 
   // Ties break on descending name, matching every other ranking in this system.
   scored.sort((a, b) => b.score - a.score || b.name.localeCompare(a.name));
-  return scored.map((entry) => entry.name);
+  return scored;
 }

@@ -31,6 +31,7 @@ import {
   fetchLocalVectors,
   hasLocalVectors,
   localSemanticRanking,
+  localVectorNames,
 } from "../registry/localSemantic.js";
 
 /**
@@ -47,6 +48,7 @@ import {
 async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
   registry: string;
+  registryNames: ReadonlySet<string>;
 }): Promise<string[]> {
   const warnings: string[] = [];
   const warn = (message: string): void => {
@@ -81,7 +83,20 @@ async function prepareOnDeviceTier(opts: {
 
   recordLocalModelConsent(true);
   const model = await ensureLocalModel();
-  const vectors = hasLocalVectors() || (await fetchLocalVectors(opts.registry));
+  // The vectors are fetched once and nothing ever invalidates them, so an index
+  // that no longer covers the registry is the same situation as one that is not
+  // there at all: meaning search cannot reach part of the catalog. Both take the
+  // path this flag already takes. Deciding it costs a local read of the
+  // artifact's own name list; the only fetch is the one --on-device already
+  // performs when the vectors are absent.
+  if (!hasLocalVectors() || countUnindexed(opts.registryNames, localVectorNames()) > 0) {
+    await fetchLocalVectors(opts.registry);
+  }
+  // Deliberately not the fetch's own answer. A refresh that fails still leaves
+  // the previous vectors on disk, and those still rank: reporting the tier
+  // unavailable there would be false, and the search that follows says what is
+  // actually wrong with them.
+  const vectors = hasLocalVectors();
   if (!model || !vectors) {
     warn(
       `on-device search unavailable: ${!model ? "model" : "catalog vectors"} could not be fetched`,
@@ -127,7 +142,8 @@ export default defineCommand({
       // Consent for the model download is otherwise only reachable through a
       // prompt that fires on a TTY, which leaves every agent and CI run unable
       // to opt in at all.
-      description: "Use on-device meaning search, downloading the model if needed",
+      description:
+        "Use on-device meaning search, downloading the model and refreshing a stale index if needed",
     },
   },
   // one flag-parsing entry point feeding three output paths (json, interactive, table); splitting those is its own change
@@ -177,6 +193,7 @@ export default defineCommand({
         ? await prepareOnDeviceTier({
             assumedYes: args.yes === true || !process.stdout.isTTY || json,
             registry: config.registry,
+            registryNames,
           })
         : [];
     const searched = query ? await applySearch(tagged, query, registryNames) : null;
@@ -194,6 +211,8 @@ export default defineCommand({
               tier: tierToken(searched),
               tier_detail: tierDetail(searched),
               dropped: searched?.missing ?? 0,
+              unindexed: searched?.unindexed ?? 0,
+              ...(searched?.topScore != null ? { top_score: searched.topScore } : {}),
               shown: 0,
               total: tagged.length,
               ...(warnings.length ? { warnings } : {}),
@@ -240,6 +259,8 @@ export default defineCommand({
             tier: tierToken(searched),
             tier_detail: tierDetail(searched),
             dropped: searched?.missing ?? 0,
+            unindexed: searched?.unindexed ?? 0,
+            ...(searched?.topScore != null ? { top_score: searched.topScore } : {}),
             shown: output.length,
             total: tagged.length,
             ...(warnings.length ? { warnings } : {}),
@@ -261,6 +282,22 @@ export default defineCommand({
           ? ` · ${searched.missing} ranked ${searched.missing === 1 ? "move" : "moves"} not in this registry`
           : "";
       console.log(c.dim(`  ${matching.length} of ${tagged.length} moves · ${how}${unshowable}`));
+      if (searched.unindexed > 0) {
+        // The costly direction, so it gets a line of its own rather than a
+        // suffix: these moves cannot come back from meaning search at any rank,
+        // for any query, and a reader has to learn what to run about it.
+        // Silent when the index covers the registry.
+        const remedy =
+          args["on-device"] === true
+            ? "The published index is behind this registry."
+            : "Re-run with --on-device to refresh it.";
+        console.log(
+          c.warn(
+            `  ${searched.unindexed} of ${registryNames.size} moves are missing from the ` +
+              `on-device index, so meaning search cannot return them. ${remedy}`,
+          ),
+        );
+      }
       if (searched.localMode === "words") {
         // Suppressed when on-device was asked for and refused: telling someone
         // to pass a flag one line after explaining that flag cannot work here
@@ -358,20 +395,81 @@ export function pickByName<T extends { name: string }>(
   return { ranked, missing: names.filter((name) => !registryNames.has(name)).length };
 }
 
+/**
+ * Registry moves the on-device index holds no vector for.
+ *
+ * The counterpart to `pickByName`'s `missing`, and the direction that costs
+ * something. `missing` is over-coverage: names the artifact ranks that this
+ * registry cannot install, which only wastes a rank. This is under-coverage:
+ * moves the registry has that were never embedded, so meaning search cannot
+ * return them at any rank, for any query, and until now nothing in the output
+ * said so. The vectors are fetched once and never invalidated, so every move
+ * published since that fetch lands here.
+ *
+ * Measured against the unfiltered registry, matching `missing`: a --type or
+ * --tag filter removing a move is the user narrowing their own search, not an
+ * index that cannot see it.
+ */
+export function countUnindexed(
+  registryNames: ReadonlySet<string>,
+  indexedNames: Iterable<string>,
+): number {
+  const indexed = new Set(indexedNames);
+  let count = 0;
+  for (const name of registryNames) {
+    if (!indexed.has(name)) count += 1;
+  }
+  return count;
+}
+
+interface SearchOutcome<T> {
+  items: T[];
+  localMode: LocalMode;
+  /** Over-coverage: ranked names this registry has no item for. */
+  missing: number;
+  /**
+   * Under-coverage: registry moves the tier that answered could not see.
+   *
+   * Always zero for word matching, which ranks the live registry listing and
+   * so cannot be stale. Non-zero only on the on-device tier, whose vectors are
+   * a separately published artifact that drifts from the registry.
+   */
+  unindexed: number;
+  /**
+   * Similarity of the best result actually shown, when the answering tier
+   * produces one. Null for word matching, whose score is a different and
+   * non-comparable scale. Deliberately not a threshold: it is the signal a
+   * caller needs to judge a ranker that ships without one.
+   */
+  topScore: number | null;
+}
+
 async function applySearch<T extends { name: string; title: string; description: string }>(
   items: T[],
   query: string,
   registryNames: ReadonlySet<string>,
-): Promise<{ items: T[]; localMode: LocalMode; missing: number }> {
+): Promise<SearchOutcome<T>> {
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
   if (localModelStatus().status === "ready") {
     try {
       const ranking = await localSemanticRanking(query);
       if (ranking) {
-        const { ranked, missing } = pickByName(items, ranking, registryNames);
-        if (ranked.length > 0) {
-          return { items: ranked.slice(0, 25), localMode: "local-model", missing };
+        const { ranked, missing } = pickByName(
+          items,
+          ranking.map((entry) => entry.name),
+          registryNames,
+        );
+        const best = ranked[0];
+        if (best) {
+          const scoreByName = new Map(ranking.map((entry) => [entry.name, entry.score]));
+          return {
+            items: ranked.slice(0, 25),
+            localMode: "local-model",
+            missing,
+            unindexed: countUnindexed(registryNames, localVectorNames()),
+            topScore: scoreByName.get(best.name) ?? null,
+          };
         }
       }
     } catch (error) {
@@ -393,7 +491,7 @@ async function applySearch<T extends { name: string; title: string; description:
     (item) => `${item.name} ${item.title} ${item.description}`,
   );
   // Word matching ranks the items in hand, so nothing can go missing.
-  return { items: words, localMode: "words", missing: 0 };
+  return { items: words, localMode: "words", missing: 0, unindexed: 0, topScore: null };
 }
 
 /**

@@ -85,15 +85,17 @@ See [wiring-components.md](./references/wiring-components.md) for full details.
 
 ## Discovery
 
-Use the CLI as the primary discovery surface. **Search by intent before browsing:** the registry holds hundreds of items, so listing them and matching on names or tags is the slow path, and it fails whenever the author's wording differs from yours.
+Use the CLI as the primary discovery surface. **Search by intent before browsing:** the registry holds more items than you can scan by eye, so listing them and matching on names or tags is the slow path, and it fails whenever the author's wording differs from yours.
 
 ```bash
 # Rank the whole catalog against what the beat should do
-npx hyperframes catalog --query "reveal a headline one line at a time" --smart
-npx hyperframes add line-by-line-slide
+npx hyperframes catalog --query "reveal a headline one line at a time"
+npx hyperframes add caption-clip-wipe
 ```
 
-`--smart` ranks by meaning and is free for signed-in HeyGen users; it sends the query text and nothing else. Without it the command falls back to word matching, which only finds items whose description happens to reuse your words. With `--json` the envelope names which tier answered, so check that rather than assuming a ranking happened. Only installable items are ranked. See `/hyperframes-cli` for the offline tier and the consent gates.
+Search is local and sends nothing. By default it ranks on vocabulary shared with the item's name, title and description, so it only finds items that reuse your words; `--on-device` ranks by meaning instead, after a one-time model download. With `--json` the envelope names which tier answered, so check that rather than assuming a ranking happened.
+
+Installability is applied after ranking, not before it: a name the vectors carry but this registry cannot serve is dropped from the results and counted in `dropped`, so a non-zero `dropped` means the two are different generations. See `/hyperframes-cli` for the offline tier, the consent gates, and how to refresh a stale index.
 
 To browse or filter instead of search:
 
