@@ -88,6 +88,41 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     expect(element.style.getPropertyValue("translate")).toBe("");
   });
 
+  /**
+   * The element that has never been offset is the common case, and it used to skip
+   * the measurement and assume the canvas zoom was the whole story. Any transform
+   * above the element makes that assumption wrong: the mirrored parent here sends a
+   * rightward drag left, so the overlay followed the pointer while the element went
+   * the other way, and only on drop did the overlay jump to where the element really
+   * was. The fixture mirrors x and scales both axes by 1.2, as a `rotationY: 180`
+   * card at `scale: 1.2` does.
+   */
+  it("measures a mirrored parent even when the element carries no offset yet", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    element.getBoundingClientRect = () => {
+      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      return new window.DOMRect(100 - 1.2 * offsetX, 200 + 1.2 * offsetY, 40, 20);
+    };
+
+    const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
+    if (!measured.ok) throw new Error(measured.reason);
+
+    // Dragging one screen px right must move the element one screen px right, which
+    // on a mirrored parent means writing a NEGATIVE offset.
+    const offset = resolveManualOffsetForPointerDelta({
+      initialOffset: { x: 0, y: 0 },
+      screenToOffset: measured.matrix,
+      dx: 60,
+      dy: 60,
+    });
+    expect(offset.x).toBeCloseTo(-50, 6);
+    expect(offset.y).toBeCloseTo(50, 6);
+  });
+
   it("measures movement in parent viewport pixels when the element is inside a scaled iframe", () => {
     const window = new Window();
     const iframe = window.document.createElement("iframe");
@@ -133,7 +168,12 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     expect(nextOffset).toEqual({ x: 100, y: 50 });
   });
 
-  it("returns identity matrix for non-path-offset elements with zero initial offset", () => {
+  // Carrying no path offset used to be taken as permission to assume the response
+  // instead of measuring it. It is not a signal about the transforms above the
+  // element, so it no longer changes the answer: an element that does not move is
+  // unmeasurable either way, and the caller falls back rather than being handed a
+  // matrix that was never checked.
+  it("does not treat a missing path offset as a measurable response", () => {
     const window = new Window();
     const element = window.document.createElement("div");
     window.document.body.append(element);
@@ -141,10 +181,7 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
 
     const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
 
-    expect(measured.ok).toBe(true);
-    if (measured.ok) {
-      expectMatrixClose(measured.matrix, { a: 1, b: 0, c: 0, d: 1 });
-    }
+    expect(measured.ok).toBe(false);
   });
 
   it("rejects path-offset elements whose movement response cannot be measured", () => {
