@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import {
+  buildVariablesByCompScript,
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
@@ -884,5 +885,62 @@ window.__timelines['intro'] = tl;
     // The scoped script should resolve '#intro .title' against the
     // data-hf-authored-id="intro" element, finding the .title child.
     expect(gsapTargets).toEqual([["HELLO"]]);
+  });
+});
+
+/**
+ * The emitted statement is placed inside a `<script>` element, and `<script>` is a
+ * RAW TEXT element: HTML serialization does not escape its content and the tokenizer
+ * closes it at the first `</script`. `JSON.stringify` escapes `"` and `\` but not `/`,
+ * so an unescaped variable value could close the element and have the remainder parsed
+ * as markup — turning composition data into executable script.
+ */
+describe("buildVariablesByCompScript — <script> breakout", () => {
+  /** Serialize into a document the way the compilers do, then re-parse it. */
+  function scriptsAfterRoundTrip(body: string): string[] {
+    const { document } = parseHTML("<!doctype html><html><head></head><body></body></html>");
+    const el = document.createElement("script");
+    el.textContent = body;
+    document.body.appendChild(el);
+    const { document: reparsed } = parseHTML(document.toString());
+    return [...reparsed.querySelectorAll("script")].map((s) => s.textContent ?? "");
+  }
+
+  it("does not let a variable VALUE close the script element", () => {
+    const body = buildVariablesByCompScript({
+      "comp-a": { greeting: "</script><script>window.__pwned=1//" },
+    });
+    expect(body).not.toBeNull();
+    expect(body).not.toContain("</script");
+    expect(scriptsAfterRoundTrip(body ?? "")).toHaveLength(1);
+  });
+
+  it("does not let a variable KEY close the script element", () => {
+    const body = buildVariablesByCompScript({
+      "comp-a": { "</script><script>window.__pwned=1//": "x" },
+    });
+    expect(body).not.toContain("</script");
+    expect(scriptsAfterRoundTrip(body ?? "")).toHaveLength(1);
+  });
+
+  it("does not let a COMP ID close the script element", () => {
+    const body = buildVariablesByCompScript({
+      "</script><script>window.__pwned=1//": { a: "x" },
+    });
+    expect(body).not.toContain("</script");
+    expect(scriptsAfterRoundTrip(body ?? "")).toHaveLength(1);
+  });
+
+  it("keeps the value byte-identical once executed — the escape is transparent", () => {
+    // Run the statement the way the browser does rather than string-slicing it.
+    const variables = { "comp-a": { greeting: "a </script> b <em>c</em>" } };
+    const body = buildVariablesByCompScript(variables) ?? "";
+    const fakeWindow: Record<string, unknown> = {};
+    new Function("window", body)(fakeWindow);
+    expect(fakeWindow.__hfVariablesByComp).toEqual(variables);
+  });
+
+  it("returns null when there are no per-instance values", () => {
+    expect(buildVariablesByCompScript({})).toBeNull();
   });
 });
