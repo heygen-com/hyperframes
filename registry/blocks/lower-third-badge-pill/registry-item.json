@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-badge-pill",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Badge Pill",
+  "description": "Rounded pill with an avatar slot that springs in. Compact enough to survive a 9:16 crop.",
+  "tags": ["lower-third", "podcast", "interview", "vertical-safe"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-badge-pill.html",
+      "target": "compositions/lower-third-badge-pill.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

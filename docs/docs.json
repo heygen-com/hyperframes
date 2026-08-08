@@ -320,7 +320,17 @@
           {
             "group": "Lower Thirds",
             "pages": [
+              "catalog/blocks/lower-third-badge-pill",
               "catalog/blocks/lower-third-bild",
+              "catalog/blocks/lower-third-bracket-frame",
+              "catalog/blocks/lower-third-glass-panel",
+              "catalog/blocks/lower-third-hairline-rule",
+              "catalog/blocks/lower-third-slab-wipe",
+              "catalog/blocks/lower-third-split-flap",
+              "catalog/blocks/lower-third-stacked-caps",
+              "catalog/blocks/lower-third-tape-strike",
+              "catalog/blocks/lower-third-ticker-crawl",
+              "catalog/blocks/lower-third-underline-grow",
               "catalog/blocks/lt-accent-underline",
               "catalog/blocks/lt-bold-block",
               "catalog/blocks/lt-clean-bar",

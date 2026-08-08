@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-glass-panel",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Glass Panel",
+  "description": "Frosted backdrop-filter panel that scales and sharpens into place. Tech podcasts and remote interviews.",
+  "tags": ["lower-third", "podcast", "interview", "glass"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-glass-panel.html",
+      "target": "compositions/lower-third-glass-panel.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
