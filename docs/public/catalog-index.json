@@ -812,6 +812,36 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-typing.png"
   },
   {
+    "name": "cosmic-orb",
+    "type": "block",
+    "title": "Cosmic Orb",
+    "description": "An iridescent soap-bubble planet: a slowly spinning sphere of nebula bands, dust lanes and twinkling stars wrapped in a refracting glass limb with chromatic aberration at the edge.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "showcase",
+      "3d"
+    ],
+    "href": "/catalog/blocks/cosmic-orb",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.png"
+  },
+  {
+    "name": "cosmic-orb",
+    "type": "block",
+    "title": "Cosmic Orb",
+    "description": "An iridescent soap-bubble planet: a slowly spinning sphere of nebula bands, dust lanes and twinkling stars wrapped in a refracting glass limb with chromatic aberration at the edge.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "showcase",
+      "3d"
+    ],
+    "href": "/catalog/blocks/cosmic-orb",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.png"
+  },
+  {
     "name": "cross-warp-morph",
     "type": "block",
     "title": "Cross Warp Morph",
@@ -922,6 +952,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
   },
   {
+    "name": "gallery-tunnel",
+    "type": "block",
+    "title": "Gallery Tunnel",
+    "description": "An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog.",
+    "tags": [
+      "webgl",
+      "3d",
+      "background",
+      "showcase",
+      "depth",
+      "loop"
+    ],
+    "href": "/catalog/blocks/gallery-tunnel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gallery-tunnel.png"
+  },
+  {
     "name": "glitch",
     "type": "block",
     "title": "Glitch",
@@ -972,6 +1018,21 @@
     ],
     "href": "/catalog/components/grid-pixelate-wipe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
+  },
+  {
+    "name": "halftone-field",
+    "type": "block",
+    "title": "Halftone Field",
+    "description": "A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "texture",
+      "halftone"
+    ],
+    "href": "/catalog/blocks/halftone-field",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/halftone-field.png"
   },
   {
     "name": "hw-arrow",
@@ -2163,6 +2224,21 @@
     ],
     "href": "/catalog/blocks/vpn-youtube-spot",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
+  },
+  {
+    "name": "weight-wave",
+    "type": "block",
+    "title": "Weight Wave",
+    "description": "A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms.",
+    "tags": [
+      "typography",
+      "kinetic-type",
+      "title",
+      "variable-font",
+      "text"
+    ],
+    "href": "/catalog/blocks/weight-wave",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/weight-wave.png"
   },
   {
     "name": "whip-pan",

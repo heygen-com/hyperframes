@@ -1,0 +1,58 @@
+---
+title: "Gallery Tunnel"
+description: "An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog."
+---
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gallery-tunnel.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gallery-tunnel.png" autoPlay muted loop playsInline />
+
+## Install
+
+```bash Terminal
+npx hyperframes add gallery-tunnel
+```
+
+That writes one file: `compositions/gallery-tunnel.html`.
+
+## Add it to your video
+
+It runs for 12 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="gallery-tunnel"
+  data-composition-src="compositions/gallery-tunnel.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `--images` — Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png). Defaults to ``.
+- `--imagemix` — Image share of filled slots (0 = all colour, 1 = all images). Defaults to `0.5`.
+- `--speed` — Flight speed (segments per second). Defaults to `3`.
+- `--palette` — Slab palette: comma-separated hex colours. Defaults to `#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200`.
+- `--grid` — Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment). Defaults to `2`.
+- `--fill` — Slot fill rate. Defaults to `0.5`.
+- `--fog` — Fog distance in segments: depth at which the corridor reaches pure backdrop. Defaults to `14.25`.
+- `--edgecolor` — Edge line colour. Defaults to `#B0B0B0`.
+- `--edgeopacity` — Edge line opacity. Defaults to `0.5`.
+- `--backdrop` — Backdrop and fog colour. Defaults to `#000000`.
+
+{/* hf:generated-footer */}
+
+Tagged `webgl` `3d` `background` `showcase` `depth` `loop`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,57 @@
+---
+title: "Cosmic Orb"
+description: "An iridescent soap-bubble planet: a slowly spinning sphere of nebula bands, dust lanes and twinkling stars wrapped in a refracting glass limb with chromatic aberration at the edge."
+---
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.png" autoPlay muted loop playsInline />
+
+## Install
+
+```bash Terminal
+npx hyperframes add cosmic-orb
+```
+
+That writes one file: `compositions/cosmic-orb.html`.
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="cosmic-orb"
+  data-composition-src="compositions/cosmic-orb.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `hue` — Nebula hue. Defaults to `268`.
+- `accent` — Accent hue. Defaults to `196`.
+- `spin` — Spin rate (turns per second). Defaults to `0.035`.
+- `stars` — Star density. Defaults to `1`.
+- `glow` — Glow intensity. Defaults to `1`.
+- `size` — Orb size (fraction of frame height). Defaults to `0.86`.
+- `pulse` — Beat pulse (0-1, flat value when no envelope is set). Defaults to `0`.
+- `pulseEnvelope` — Beat pulse envelope: comma-separated 0-1 samples spread evenly across the clip. Defaults to ``.
+- `backdrop` — Backdrop. Defaults to `#04040a`.
+
+{/* hf:generated-footer */}
+
+Tagged `webgl` `shader` `background` `showcase` `3d`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
