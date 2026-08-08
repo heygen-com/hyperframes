@@ -706,6 +706,10 @@
     {
       "name": "beat-freeze-cut",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "weight-wave",
+      "type": "hyperframes:block"
     }
   ]
 }

@@ -2165,6 +2165,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
+    "name": "weight-wave",
+    "type": "block",
+    "title": "Weight Wave",
+    "description": "A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms.",
+    "tags": [
+      "typography",
+      "kinetic-type",
+      "title",
+      "variable-font",
+      "text"
+    ],
+    "href": "/catalog/blocks/weight-wave",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/weight-wave.png"
+  },
+  {
     "name": "whip-pan",
     "type": "block",
     "title": "Whip Pan",

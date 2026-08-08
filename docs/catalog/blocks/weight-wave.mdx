@@ -1,0 +1,43 @@
+---
+title: "Weight Wave"
+description: "A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms."
+---
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/weight-wave.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/weight-wave.png" autoPlay muted loop playsInline />
+
+## Install
+
+```bash Terminal
+npx hyperframes add weight-wave
+```
+
+That writes `compositions/weight-wave.html`, plus 2 supporting files under `compositions/assets/fonts/`.
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="weight-wave"
+  data-composition-src="compositions/weight-wave.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `typography` `kinetic-type` `title` `variable-font` `text`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
