@@ -94,6 +94,13 @@ export function useTimelineSelectionPreviewSync({
 
     if (selectedIds.length === 0) {
       missingSelectionKeyRef.current = "";
+      // The timeline holds nothing, so the canvas is about to hold nothing either.
+      // This is the path that silently drops a selection the user can still see.
+      logSelect("timeline-empty", {
+        had: currentIds.length,
+        previousKey: previousSelectedKey.length > 0,
+        clearing: previousSelectedKey.length > 0 && currentIds.length > 0,
+      });
       if (previousSelectedKey.length > 0 && currentIds.length > 0) {
         applyDomSelection(null, { revealPanel: false });
       }

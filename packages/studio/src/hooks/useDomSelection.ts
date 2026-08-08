@@ -180,12 +180,19 @@ export function useDomSelection({
       // older contract on purpose: anchoring with preserveSet holds a live set the
       // element already belongs to (a late async primary must not collapse a group)
       // and collapses otherwise, which is what a fresh click means.
-      if (group.length > 1) {
-        setTimelineSelectionSet(
-          new Set(group.map(timelineIdFor).filter((id): id is string => Boolean(id))),
-        );
-      }
-      setSelectedTimelineElementId(timelineIdFor(primary), { preserveSet: true });
+      const members = group.map(timelineIdFor).filter((id): id is string => Boolean(id));
+      const anchor = timelineIdFor(primary);
+      // A member with no timeline row of its own resolves to null and is dropped
+      // here, so a group can announce fewer ids than it has — or none, which reads
+      // back as an empty selection and takes the canvas selection with it.
+      logSelect("announce", {
+        group: group.length,
+        published: members.length,
+        anchor,
+        anchorPublished: anchor != null && members.includes(anchor),
+      });
+      if (group.length > 1) setTimelineSelectionSet(new Set(members));
+      setSelectedTimelineElementId(anchor, { preserveSet: true });
     },
     [setSelectedTimelineElementId, setTimelineSelectionSet, timelineElements],
   );
@@ -536,6 +543,7 @@ export function useDomSelection({
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
+      logSelect("marquee", { hits: selections.length, additive });
       if (selections.length === 0) {
         if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
