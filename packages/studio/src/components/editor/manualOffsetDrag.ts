@@ -524,6 +524,7 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
   }
 }
 
+/** Teardown after a COMMITTED drag. */
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     endStudioManualEditGesture(member.element, member.gestureToken);
@@ -552,6 +553,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
   }
 }
 
+/** Release the timelines this gesture paused, re-rendering at the playhead. */
 export function resumeGsapTimelines(element: HTMLElement): void {
   const ids = element.getAttribute("data-hf-drag-paused-timelines");
   element.removeAttribute("data-hf-drag-paused-timelines");

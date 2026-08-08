@@ -76,7 +76,10 @@ describe("applyPreviewSync", () => {
     expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
       kind: "set",
       props: { x: 10 },
-    });
+    },
+      undefined,
+      false,
+    );
     expect(applySoftReload).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
   });
@@ -341,7 +344,10 @@ describe("runCommit — instantPatch wiring", () => {
     expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
       kind: "set",
       props: { x: 485, y: 311 },
-    });
+    },
+      undefined,
+      false,
+    );
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 

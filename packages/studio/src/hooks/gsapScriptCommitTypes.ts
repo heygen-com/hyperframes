@@ -22,6 +22,16 @@ export interface CommitMutationOptions {
   coalesceMs?: number;
   softReload?: boolean;
   skipReload?: boolean;
+  /**
+   * Write the source but leave the preview alone; the caller renders once when it
+   * is done. For a multi-write action like a group drag, rendering after each
+   * write shows a source where the members not yet written still hold their old
+   * values, so they snap back until their own write lands. This also defers the
+   * in-place runtime patch's seek, which re-renders the whole timeline and repaints
+   * the queued members the same way. Unlike `skipReload` this changes nothing about
+   * error handling — a failed write still throws.
+   */
+  deferPreviewSync?: boolean;
   beforeReload?: () => void;
   /**
    * Serialize this commit against others sharing the same key. Used to chain

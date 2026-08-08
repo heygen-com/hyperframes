@@ -155,11 +155,20 @@ export function useGsapAwareEditing({
       // it survives the N sequential server round-trips) onto each commit —
       // otherwise each member records its own entry and it takes N presses to undo.
       const coalesceKey = `group-drag:${++groupDragCommitCounter}`;
+      // Members are written one at a time, and a write that re-renders the preview
+      // re-runs the whole script — which still holds the OLD position of every
+      // member not yet written. Those members snap back to where they started and
+      // stay there until their own write lands, which is the single element seen
+      // jumping mid-commit while the rest of the group sat still. The drafted
+      // positions are already on screen, so holding the render until the last
+      // member has been written costs nothing and never shows a half-moved group.
+      let renderOnCommit = false;
       const coalescedCommit: typeof gsapCommitMutation = (selection, mutation, options) =>
         gsapCommitMutation(selection, mutation, {
           ...options,
           coalesceKey,
           coalesceMs: Number.POSITIVE_INFINITY,
+          deferPreviewSync: !renderOnCommit,
         });
       const preflightAnimations = new Map<DomEditSelection, GsapAnimation[]>();
       // Editability is user-atomic: prove every member can be written before
@@ -185,7 +194,8 @@ export function useGsapAwareEditing({
           throw error;
         }
       }
-      for (const { selection, next } of updates) {
+      for (const [index, { selection, next }] of updates.entries()) {
+        renderOnCommit = index === updates.length - 1;
         try {
           const outcome = await tryGsapDragIntercept(
             selection,

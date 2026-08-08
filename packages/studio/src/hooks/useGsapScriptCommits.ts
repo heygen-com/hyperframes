@@ -254,6 +254,8 @@ export function applyPreviewSync(
       iframe,
       options.instantPatch.selector,
       options.instantPatch.change,
+      undefined,
+      options.deferPreviewSync === true,
     );
     // Patched in place — element is already correct on screen; no reload needed.
     if (patched) return;
@@ -262,6 +264,8 @@ export function applyPreviewSync(
     trackStudioEvent("gsap_instant_patch_fallback", { selector: options.instantPatch.selector });
     // Fall through to the soft/full reload path below.
   }
+  // Written, but the caller has more writes to make and will render after the last.
+  if (options.deferPreviewSync) return;
   if (options.softReload && result.scriptText) {
     // A soft-reloadable edit escalates to a full iframe remount ONLY on the
     // PERMANENT "cannot-soft-reload" result (the preview is genuinely stale/
