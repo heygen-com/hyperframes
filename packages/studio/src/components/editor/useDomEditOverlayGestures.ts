@@ -49,7 +49,12 @@ import {
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
-import { resolveSnapAdjustment, resolveEquidistanceGuides, SNAP_THRESHOLD_PX } from "./snapEngine";
+import {
+  resolveSnapAdjustment,
+  resolveEquidistanceGuides,
+  snapEngagedForTravel,
+  SNAP_THRESHOLD_PX,
+} from "./snapEngine";
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
@@ -170,6 +175,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           movingRect,
           proposedDx: dx,
           proposedDy: dy,
+          // Same reason as the group path: a snap on a drag that has not travelled
+          // yet moves the element while the pointer is still.
+          disabledForTravel: !snapEngagedForTravel(dx, dy),
           targets: allTargets,
           gridEdges: sc.gridEdges ?? undefined,
           threshold: SNAP_THRESHOLD_PX,

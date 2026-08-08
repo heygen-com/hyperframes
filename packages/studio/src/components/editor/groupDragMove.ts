@@ -1,5 +1,10 @@
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
-import { resolveEquidistanceGuides, resolveSnapAdjustment, SNAP_THRESHOLD_PX } from "./snapEngine";
+import {
+  resolveEquidistanceGuides,
+  resolveSnapAdjustment,
+  snapEngagedForTravel,
+  SNAP_THRESHOLD_PX,
+} from "./snapEngine";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
 import type { GroupGestureState, UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
 import type { GroupOverlayItem } from "./domEditOverlayGeometry";
@@ -31,6 +36,7 @@ export function createGroupDragMover(
   ) => {
     const sc = groupG.snapContext;
     if (!sc?.snapEnabled || sc.targets.length === 0) return proposed;
+    if (!snapEngagedForTravel(proposed.dx, proposed.dy)) return proposed;
     const groupBounds = resolveDomEditGroupOverlayRect(groupG.originItems.map((i) => i.rect));
     if (!groupBounds) return proposed;
     const allTargets = sc.compositionTarget ? [...sc.targets, sc.compositionTarget] : sc.targets;
