@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "./domSelectionTestHarness";
 import { useDomSelection } from "./useDomSelection";
+import type { TimelineElement } from "../player";
 
 installReactActEnvironment();
 
@@ -14,11 +15,24 @@ interface HarnessProps {
   refreshKey: number;
 }
 
-function renderHarness(initialProps: HarnessProps): {
+interface TimelineSpies {
+  setSelectedTimelineElementId: ReturnType<typeof vi.fn>;
+  setTimelineSelectionSet: ReturnType<typeof vi.fn>;
+}
+
+function renderHarness(
+  initialProps: HarnessProps,
+  options: { timelineElements?: TimelineElement[] } = {},
+): {
   current: () => ReturnType<typeof useDomSelection>;
   rerender: (props: HarnessProps) => void;
   cleanup: () => void;
+  timeline: TimelineSpies;
 } {
+  const timeline: TimelineSpies = {
+    setSelectedTimelineElementId: vi.fn(),
+    setTimelineSelectionSet: vi.fn(),
+  };
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -32,8 +46,9 @@ function renderHarness(initialProps: HarnessProps): {
       compIdToSrc: new Map(),
       captionEditMode: false,
       previewIframeRef: { current: null },
-      timelineElements: [],
-      setSelectedTimelineElementId: vi.fn(),
+      timelineElements: options.timelineElements ?? [],
+      setSelectedTimelineElementId: timeline.setSelectedTimelineElementId,
+      setTimelineSelectionSet: timeline.setTimelineSelectionSet,
       setRightCollapsed: vi.fn(),
       setRightPanelTab: vi.fn(),
       previewIframe: null,
@@ -61,6 +76,7 @@ function renderHarness(initialProps: HarnessProps): {
       act(() => root.unmount());
       host.remove();
     },
+    timeline,
   };
 }
 
@@ -76,6 +92,58 @@ function setupSelectedHarness() {
   act(() => harness.current().applyDomSelection(selection));
   return { selection, harness };
 }
+
+function timelineElement(domId: string): TimelineElement {
+  return {
+    id: domId,
+    key: domId,
+    domId,
+    tag: "div",
+    start: 0,
+    duration: 1,
+    track: 0,
+    sourceFile: "index.html",
+  } as TimelineElement;
+}
+
+/**
+ * A marquee builds the group correctly and then used to lose it: it announced only
+ * the primary to the timeline, the timeline is the source of truth for what is
+ * selected, and the sync back to the canvas replaced the group with that one
+ * element a moment after the drop. The whole set has to be announced, with the
+ * primary as its anchor rather than as a new single selection.
+ */
+describe("useDomSelection marquee", () => {
+  it("announces every marquee'd element to the timeline, anchored on the primary", () => {
+    const first = document.createElement("div");
+    first.id = "card";
+    const second = document.createElement("div");
+    second.id = "chip";
+    document.body.append(first, second);
+    const harness = renderHarness(
+      { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
+      { timelineElements: [timelineElement("card"), timelineElement("chip")] },
+    );
+
+    act(() =>
+      harness
+        .current()
+        .applyMarqueeSelection(
+          [makeSelection("Card", first), makeSelection("Chip", second)],
+          false,
+        ),
+    );
+
+    expect(harness.current().domEditGroupSelections).toHaveLength(2);
+    expect(harness.timeline.setTimelineSelectionSet).toHaveBeenCalledWith(
+      new Set(["card", "chip"]),
+    );
+    expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenCalledWith("card", {
+      preserveSet: true,
+    });
+    harness.cleanup();
+  });
+});
 
 describe("useDomSelection", () => {
   it("clears a committed selection when the active composition path changes", () => {

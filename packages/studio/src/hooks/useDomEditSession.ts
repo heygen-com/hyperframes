@@ -38,6 +38,7 @@ export interface UseDomEditSessionParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -80,6 +81,7 @@ export function useDomEditSession({
   previewIframeRef,
   timelineElements,
   setSelectedTimelineElementId,
+  setTimelineSelectionSet,
   setRightCollapsed,
   setRightPanelTab,
   showToast,
@@ -137,6 +139,7 @@ export function useDomEditSession({
     previewIframeRef,
     timelineElements,
     setSelectedTimelineElementId,
+    setTimelineSelectionSet,
     setRightCollapsed,
     setRightPanelTab,
     previewIframe,

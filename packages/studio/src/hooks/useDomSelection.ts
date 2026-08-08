@@ -49,6 +49,8 @@ export interface UseDomSelectionParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  /** Publishes a whole multi-selection to the timeline; the anchor is set separately. */
+  setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
@@ -111,6 +113,7 @@ export function useDomSelection({
   previewIframeRef,
   timelineElements,
   setSelectedTimelineElementId,
+  setTimelineSelectionSet,
   setRightCollapsed,
   setRightPanelTab,
   previewIframe,
@@ -535,16 +538,26 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId =
-        findMatchingTimelineElementId(nextSelection, timelineElements) ??
+      // Publish the WHOLE set, not just the primary. The timeline is the source of
+      // truth for what is selected, and the sync back to the canvas replaces the
+      // canvas selection with whatever the timeline holds. Announcing one member
+      // therefore un-selects every other one the marquee just caught, a moment
+      // after the drop — the group is built correctly and then collapses to one.
+      // The anchor goes second, and preserves the set it is now a member of.
+      const timelineIdFor = (selection: DomEditSelection) =>
+        findMatchingTimelineElementId(selection, timelineElements) ??
         findTimelineIdByAncestor(
-          nextSelection.element,
+          selection.element,
           timelineElements,
-          nextSelection.sourceFile || "index.html",
+          selection.sourceFile || "index.html",
         );
-      setSelectedTimelineElementId(nextTimelineId);
+      const nextTimelineId = timelineIdFor(nextSelection);
+      setTimelineSelectionSet(
+        new Set(nextGroup.map(timelineIdFor).filter((id): id is string => Boolean(id))),
+      );
+      setSelectedTimelineElementId(nextTimelineId, { preserveSet: true });
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
+    [applyDomSelection, timelineElements, setSelectedTimelineElementId, setTimelineSelectionSet],
   );
 
   return {
