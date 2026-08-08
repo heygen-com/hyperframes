@@ -336,6 +336,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "cosmic-orb",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "light-leak",
       "type": "hyperframes:block"
     },

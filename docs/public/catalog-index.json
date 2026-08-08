@@ -812,6 +812,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-typing.png"
   },
   {
+    "name": "cosmic-orb",
+    "type": "block",
+    "title": "Cosmic Orb",
+    "description": "An iridescent soap-bubble planet: a slowly spinning sphere of nebula bands, dust lanes and twinkling stars wrapped in a refracting glass limb with chromatic aberration at the edge.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "showcase",
+      "3d"
+    ],
+    "href": "/catalog/blocks/cosmic-orb",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.png"
+  },
+  {
     "name": "cross-warp-morph",
     "type": "block",
     "title": "Cross Warp Morph",
