@@ -14,6 +14,8 @@ export interface AudioElement {
   volumeKeyframes?: AudioVolumeKeyframe[];
   /** Serialised FX chain JSON from `data-fx-chain`, when set. */
   fxChain?: string;
+  /** Serialised automation JSON from `data-automation`, when set. */
+  automation?: string;
   type: "audio" | "video";
 }
 

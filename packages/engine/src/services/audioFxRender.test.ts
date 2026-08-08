@@ -30,6 +30,15 @@ function tone(path: string, seconds = 0.3, freq = 440): void {
   writeWav(path, s, SR);
 }
 
+/** RMS of one slice, for comparing how loud a moment is against another. */
+const sliceRms = (s: Float32Array, from: number, to: number): number => {
+  const a = Math.max(0, Math.floor(from * SR));
+  const b = Math.min(s.length, Math.floor(to * SR));
+  let sum = 0;
+  for (let i = a; i < b; i++) sum += (s[i] ?? 0) * (s[i] ?? 0);
+  return Math.sqrt(sum / Math.max(1, b - a));
+};
+
 const rms = (s: Float32Array): number =>
   Math.sqrt(s.reduce((a, x) => a + x * x, 0) / Math.max(1, s.length));
 const db = (x: number): number => 20 * Math.log10(x + 1e-30);
@@ -193,6 +202,45 @@ describe("browser render", () => {
       { trackId: "t" },
     );
     expect(db(rms(readWav(outPath).samples))).toBeLessThan(db(rms(readWav(input).samples)) - 3);
+  }, 180_000);
+
+  it("sweeps a filter across the clip when a lane automates it", async () => {
+    // A 2 kHz tone under a lowpass whose cutoff rises from below it to well
+    // above: the start should be attenuated and the end should not. This is
+    // the whole point of the render path — the envelope has to be *scheduled*
+    // offline, not merely parsed.
+    const input = join(dir, "sweep-in.wav");
+    tone(input, 1.5, 2000);
+    const outPath = join(dir, "sweep-out.wav");
+    await applyAudioFxChain(
+      input,
+      {
+        version: 1,
+        nodes: [{ type: "lowpass", id: "n1", enabled: true, params: { frequency: 300, q: 0.707 } }],
+      },
+      outPath,
+      {
+        trackId: "t",
+        automation: {
+          version: 1,
+          lanes: [
+            {
+              target: "fx.n1.frequency",
+              points: [
+                { t: 0, v: 300 },
+                { t: 1.5, v: 16000 },
+              ],
+            },
+          ],
+        },
+      },
+    );
+    const after = readWav(outPath).samples;
+    const head = db(sliceRms(after, 0.05, 0.25));
+    const tail = db(sliceRms(after, 1.2, 1.45));
+    // Opening the filter past the tone has to leave it far louder than when
+    // the cutoff sat an octave and a half below it.
+    expect(tail).toBeGreaterThan(head + 15);
   }, 180_000);
 
   it("renders a multi-effect chain including reverb", async () => {

@@ -30,7 +30,16 @@ import type {
 } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
+import {
+  HF_AUDIO_AUTOMATION_ATTR,
+  parseAutomation,
+  resolveAutomation,
+  sampleAutomationLane,
+  VOLUME_TARGET,
+  type HfAutomationLane,
+} from "@hyperframes/core/audio-automation";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
+import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -316,6 +325,56 @@ function ffmpegFailure(
   };
 }
 
+/** Extra samples per second inside a segment the baker cannot draw straight. */
+const CURVED_SEGMENT_SAMPLES_PER_SEC = 30;
+
+/**
+ * A volume lane as keyframes for the PCM baker.
+ *
+ * The baker interpolates linearly between keyframes, so a straight segment
+ * needs only its two ends — a simple fade stays two keyframes. A bent one is
+ * sampled, or the bake would quietly straighten it.
+ *
+ * Times come out in composition seconds, which is what the baker subtracts the
+ * track start from. Returns null when the track has no volume lane.
+ */
+export function volumeLaneKeyframes(
+  automation: { lanes: HfAutomationLane[] },
+  trackStart: number,
+  duration: number,
+): AudioVolumeKeyframe[] | null {
+  const lane = automation.lanes.find((l) => l.target === VOLUME_TARGET);
+  if (!lane || lane.points.length === 0) return null;
+
+  const out: AudioVolumeKeyframe[] = [];
+  const push = (t: number, v: number): void => {
+    out.push({ time: trackStart + t, volume: v });
+  };
+
+  // The envelope holds its first value before the first point, rather than
+  // falling back to `data-volume`.
+  const first = lane.points[0]!;
+  if (first.t > 0) push(0, first.v);
+
+  for (let i = 0; i < lane.points.length; i += 1) {
+    const a = lane.points[i]!;
+    push(a.t, a.v);
+    const b = lane.points[i + 1];
+    if (!b || !a.curve) continue;
+    const steps = Math.max(2, Math.ceil((b.t - a.t) * CURVED_SEGMENT_SAMPLES_PER_SEC));
+    for (let k = 1; k < steps; k += 1) {
+      const t = a.t + ((b.t - a.t) * k) / steps;
+      push(t, sampleAutomationLane(lane, t));
+    }
+  }
+
+  // Hold the last value to the clip's end, so the baker does not ramp away
+  // from it toward whatever it would otherwise assume.
+  const last = lane.points[lane.points.length - 1]!;
+  if (duration > last.t) push(duration, last.v);
+  return out;
+}
+
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
@@ -348,12 +407,14 @@ export function parseAudioElements(html: string): AudioElement[] {
   };
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
+
   // and `type`; everything else (timing, layer, volume) is read identically.
   const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
+    const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     return {
       id,
       src: el.getAttribute("src") as string,
@@ -363,6 +424,7 @@ export function parseAudioElements(html: string): AudioElement[] {
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
       ...(fxChain ? { fxChain } : {}),
+      ...(automation ? { automation } : {}),
       type,
     };
   };
@@ -860,6 +922,13 @@ export async function processCompositionAudio(
         // envelope belongs on their output. A missing or broken chain is fatal
         // for the whole mix rather than a per-track warning — quietly rendering
         // the dry signal ships a mix that sounds plausible and is wrong.
+        const automation = element.automation
+          ? resolveAutomation(
+              parseAutomation(element.automation),
+              element.fxChain ? parseAudioFxChain(element.fxChain) : undefined,
+            )
+          : null;
+
         if (element.fxChain) {
           // The chain is serialised into the attribute, the same way colour
           // grading carries its config, so there is no side-car file to find,
@@ -869,7 +938,11 @@ export async function processCompositionAudio(
             audioSrcPath,
             chain,
             join(workDir, `${element.id}-fx.wav`),
-            { trackId: element.id, signal: effectiveSignal },
+            {
+              trackId: element.id,
+              signal: effectiveSignal,
+              ...(automation ? { automation } : {}),
+            },
           );
         }
 
@@ -877,11 +950,19 @@ export async function processCompositionAudio(
         // (sample-accurate, no keyframe ceiling). If the WAV isn't the expected
         // 16-bit PCM, fall back to the ffmpeg expression path by leaving the
         // keyframes on the track for buildVolumeExpression to handle.
+        //
+        // A volume lane supersedes keyframes probed from the timeline: the two
+        // would fight, and the lane is the explicit one. `lint` warns when a
+        // track carries both.
+        const laneKeyframes = automation
+          ? volumeLaneKeyframes(automation, element.start, element.end - element.start)
+          : null;
+        const envelopeKeyframes = laneKeyframes ?? element.volumeKeyframes;
         let bakedEnvelope = false;
-        if (element.volumeKeyframes && element.volumeKeyframes.length > 0) {
+        if (envelopeKeyframes && envelopeKeyframes.length > 0) {
           bakedEnvelope = applyVolumeEnvelopeToWav(
             audioSrcPath,
-            element.volumeKeyframes,
+            envelopeKeyframes,
             element.start,
             element.volume ?? 1.0,
           );
@@ -895,7 +976,7 @@ export async function processCompositionAudio(
           duration: element.end - element.start,
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
-          volumeKeyframes: bakedEnvelope ? undefined : element.volumeKeyframes,
+          volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
         });
       } catch (err: unknown) {
         // An FX failure is fatal for the whole mix. Every other failure mode
