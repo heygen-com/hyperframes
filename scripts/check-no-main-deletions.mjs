@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+/**
+ * Fail if this branch would delete files that exist on the base.
+ *
+ * Written after a scare that turned out to be a measurement error, which is
+ * the reason it uses the three-dot form. Comparing tip to tip (two dots) on a
+ * branch that is a month behind reports every file main added since the merge
+ * base as a deletion: 1,284 of them, including an entire skills tree. None of
+ * that is real. A merge keeps main's side, and a pull request shows the
+ * three-dot diff, which reported zero.
+ *
+ * So this exists to catch deletions a branch genuinely proposes, and to make
+ * the distinction hard to get wrong again. If it ever disagrees with a manual
+ * git diff, check which form the manual one used before believing it.
+ *
+ * Renames are reported separately. In a name-only diff a rename is
+ * indistinguishable from a deletion, so treating them alike would either mask
+ * real loss or block every legitimate move.
+ *
+ *   node scripts/check-no-main-deletions.mjs [--base origin/main]
+ */
+
+import { execFileSync } from "node:child_process";
+
+const BASE_FLAG = "--base";
+
+export function parseBase(argv, fallback = "origin/main") {
+  const index = argv.indexOf(BASE_FLAG);
+  if (index === -1) return fallback;
+  const value = argv[index + 1];
+  if (!value || value.startsWith("-")) {
+    throw new Error(`${BASE_FLAG} needs a ref, for example ${BASE_FLAG} origin/main`);
+  }
+  return value;
+}
+
+/**
+ * Split a `--name-status` diff into deletions and renames.
+ *
+ * Git reports a rename as `R<score>\told\tnew`. Reading only the first column
+ * would file that under "deleted", which is the false alarm this guards
+ * against being noisy enough to ignore.
+ */
+// one branch per git status code
+// fallow-ignore-next-line complexity
+export function classify(nameStatus) {
+  const deleted = [];
+  const renamed = [];
+  for (const line of nameStatus.split("\n")) {
+    if (!line.trim()) continue;
+    const [status, ...paths] = line.split("\t");
+    if (status.startsWith("R")) renamed.push({ from: paths[0], to: paths[1] });
+    else if (status === "D") deleted.push(paths[0]);
+  }
+  return { deleted, renamed };
+}
+
+// a script entry point
+// fallow-ignore-next-line complexity
+function main() {
+  const base = parseBase(process.argv.slice(2));
+  let diff;
+  try {
+    diff = execFileSync("git", ["diff", "--name-status", "-M", `${base}...HEAD`], {
+      encoding: "utf8",
+    });
+  } catch (error) {
+    // An unreachable base is not a pass. Reporting "no deletions" because the
+    // ref was misspelled is the exact failure this exists to prevent.
+    console.error(`cannot diff against ${base}: ${error.message.trim()}`);
+    process.exit(2);
+  }
+
+  const { deleted, renamed } = classify(diff);
+  if (renamed.length > 0) {
+    console.log(`${renamed.length} renamed (allowed):`);
+    for (const { from, to } of renamed.slice(0, 10)) console.log(`  ${from} -> ${to}`);
+    if (renamed.length > 10) console.log(`  … and ${renamed.length - 10} more`);
+  }
+
+  if (deleted.length === 0) {
+    console.log(`No files from ${base} are deleted by this branch.`);
+    return;
+  }
+
+  console.error(`This branch deletes ${deleted.length} files that exist on ${base}:`);
+  for (const path of deleted.slice(0, 25)) console.error(`  ${path}`);
+  if (deleted.length > 25) console.error(`  … and ${deleted.length - 25} more`);
+  console.error("\nIf a deletion is intended, remove this check for that path deliberately.");
+  process.exit(1);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) main();
