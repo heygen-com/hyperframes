@@ -679,6 +679,52 @@ describe("initSandboxRuntimeModular", () => {
     expect(injectedLink?.isConnected).toBe(false);
   });
 
+  describe("pagehide teardown", () => {
+    async function initMinimalRuntime(): Promise<void> {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(3) };
+      initSandboxRuntimeModular();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+
+    function firePageHide(persisted: boolean): void {
+      const event = new Event("pagehide");
+      Object.defineProperty(event, "persisted", { value: persisted });
+      window.dispatchEvent(event);
+    }
+
+    it("tears down on a real page hide", async () => {
+      await initMinimalRuntime();
+      expect(window.__hfRuntimeTeardown).toBeTypeOf("function");
+
+      firePageHide(false);
+
+      expect(window.__hfRuntimeTeardown).toBeNull();
+    });
+
+    it("survives a bfcache page hide so a pageshow restore stays playable", async () => {
+      await initMinimalRuntime();
+
+      // persisted === true means the document is frozen into the back-forward
+      // cache, not destroyed — `pageshow` restores it WITHOUT re-running init,
+      // so a teardown here would leave the player permanently inert.
+      firePageHide(true);
+
+      expect(window.__hfRuntimeTeardown).toBeTypeOf("function");
+
+      // ...and the listener is still armed, so the eventual real hide still
+      // reclaims the AudioContext and decoded buffers.
+      firePageHide(false);
+      expect(window.__hfRuntimeTeardown).toBeNull();
+    });
+  });
+
   it("keeps compiled external composition hosts visible through their authored duration", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -2708,6 +2754,130 @@ describe("initSandboxRuntimeModular", () => {
         player?.seek(1);
         player?.renderSeek(2);
       }).not.toThrow();
+    });
+  });
+
+  describe("audio buffer pre-decode at mount", () => {
+    it("warm-decodes every timed audio source before any play()", async () => {
+      const decodeAudioData = vi.fn(async () => ({}) as AudioBuffer);
+      class MockAudioContext {
+        currentTime = 0;
+        state = "running";
+        destination = {};
+        decodeAudioData = decodeAudioData;
+        createGain() {
+          return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+        }
+        resume = vi.fn();
+        close = vi.fn();
+      }
+      vi.stubGlobal("AudioContext", MockAudioContext);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        const root = document.createElement("div");
+        root.setAttribute("data-composition-id", "main");
+        root.setAttribute("data-root", "true");
+        root.setAttribute("data-start", "0");
+        root.setAttribute("data-duration", "10");
+        root.setAttribute("data-width", "1920");
+        root.setAttribute("data-height", "1080");
+        const audioA = document.createElement("audio");
+        audioA.setAttribute("data-start", "0");
+        audioA.setAttribute("data-duration", "5");
+        audioA.setAttribute("src", "https://media.example/a.mp3");
+        const audioB = document.createElement("audio");
+        audioB.setAttribute("data-start", "5");
+        audioB.setAttribute("data-duration", "5");
+        audioB.setAttribute("src", "https://media.example/b.mp3");
+        root.append(audioA, audioB);
+        document.body.appendChild(root);
+        window.__timelines = { main: createMockTimeline(10) };
+
+        initSandboxRuntimeModular();
+
+        // No play() has happened — the decode must be driven by mount alone.
+        await vi.waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(2);
+          expect(decodeAudioData).toHaveBeenCalledTimes(2);
+        });
+        const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+        expect(urls.some((u) => u.endsWith("a.mp3"))).toBe(true);
+        expect(urls.some((u) => u.endsWith("b.mp3"))).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("only warms clips near the playhead, and honors the embedder opt-out", async () => {
+      const decodeAudioData = vi.fn(async () => ({}) as AudioBuffer);
+      class MockAudioContext {
+        currentTime = 0;
+        state = "running";
+        destination = {};
+        decodeAudioData = decodeAudioData;
+        createGain() {
+          return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+        }
+        resume = vi.fn();
+        close = vi.fn();
+      }
+      vi.stubGlobal("AudioContext", MockAudioContext);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        const root = document.createElement("div");
+        root.setAttribute("data-composition-id", "main");
+        root.setAttribute("data-root", "true");
+        root.setAttribute("data-start", "0");
+        root.setAttribute("data-duration", "600");
+        root.setAttribute("data-width", "1920");
+        root.setAttribute("data-height", "1080");
+        const near = document.createElement("audio");
+        near.setAttribute("data-start", "0");
+        near.setAttribute("data-duration", "5");
+        near.setAttribute("src", "https://media.example/near.mp3");
+        const far = document.createElement("audio");
+        far.setAttribute("data-start", "300");
+        far.setAttribute("data-duration", "5");
+        far.setAttribute("src", "https://media.example/far.mp3");
+        root.append(near, far);
+        document.body.appendChild(root);
+        window.__timelines = { main: createMockTimeline(600) };
+
+        initSandboxRuntimeModular();
+
+        // Warming a whole long composition costs a full-file fetch + ~23MB of
+        // PCM per stereo minute PER SOURCE — only playhead-proximate clips may
+        // pre-decode; the rest stay lazy until the playhead approaches.
+        await vi.waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+        expect(String(fetchMock.mock.calls[0]?.[0])).toContain("near.mp3");
+
+        window.__hfRuntimeTeardown?.();
+        fetchMock.mockClear();
+        (
+          window as Window & { __HF_AUDIO_PREDECODE_DISABLED?: boolean }
+        ).__HF_AUDIO_PREDECODE_DISABLED = true;
+        initSandboxRuntimeModular();
+        // A document that exists but is never played (e.g. a double-buffered
+        // preview's standby iframe) must not warm anything.
+        await new Promise((r) => setTimeout(r, 20));
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        delete (window as Window & { __HF_AUDIO_PREDECODE_DISABLED?: boolean })
+          .__HF_AUDIO_PREDECODE_DISABLED;
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

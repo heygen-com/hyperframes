@@ -17,7 +17,13 @@ function createMockAudioContext(currentTime = 100) {
     _fireEnded: () => endedListeners.forEach((cb) => cb()),
   };
   const gainNode = {
-    gain: { value: 1 },
+    gain: {
+      value: 1,
+      setValueAtTime: vi.fn(),
+      linearRampToValueAtTime: vi.fn(),
+      cancelScheduledValues: vi.fn(),
+      setTargetAtTime: vi.fn(),
+    },
     connect: vi.fn(),
     disconnect: vi.fn(),
   };
@@ -463,6 +469,181 @@ describe("WebAudioTransport", () => {
       expect(second).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1); // short-circuited, no re-fetch
       vi.unstubAllGlobals();
+    });
+
+    it("coalesces concurrent decodes of the same src onto ONE fetch", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      let release: (() => void) | null = null;
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const fetchMock = vi.fn(async () => {
+        await gate;
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      // The periodic warm pass / play / rate changes can all request the same
+      // src while a long fetch+decode is still in flight — without coalescing,
+      // each launched ANOTHER whole-file fetch (the OOM amplifier).
+      const first = transport.decodeAudioElement(el("long.mp4"));
+      const second = transport.decodeAudioElement(el("long.mp4"));
+      release!();
+      const [a, b] = await Promise.all([first, second]);
+      expect(a).not.toBeNull();
+      expect(b).toBe(a);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+
+    it("skips oversized sources via content-length and never re-fetches them", async () => {
+      const decode = vi.fn(async () => ({}) as AudioBuffer);
+      const transport = transportWithDecode(decode);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        headers: { get: () => String(200 * 1024 * 1024) },
+        body: { cancel: async () => undefined },
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(await transport.decodeAudioElement(el("huge-camera.mp4"))).toBeNull();
+      expect(decode).not.toHaveBeenCalled();
+      // Permanent per-session skip — the element keeps its streamed fallback.
+      expect(await transport.decodeAudioElement(el("huge-camera.mp4"))).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+
+    it("caps an unbounded streamed body instead of buffering it all", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      // Chunks report huge byteLengths without allocating them — the cap logic
+      // only inspects sizes until it aborts.
+      const chunk = { byteLength: 60 * 1024 * 1024 } as Uint8Array;
+      let reads = 0;
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        headers: { get: () => null },
+        body: {
+          getReader: () => ({
+            read: async () => (reads++ < 3 ? { done: false, value: chunk } : { done: true }),
+            cancel: async () => undefined,
+          }),
+        },
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(await transport.decodeAudioElement(el("no-length.mp4"))).toBeNull();
+      expect(reads).toBeLessThanOrEqual(2); // aborted once past the cap
+      vi.unstubAllGlobals();
+    });
+
+    it("first fetch per src uses the HTTP cache; only a RETRY bypasses it with no-store", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 404 }) // transient — not blacklisted
+        .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await transport.decodeAudioElement(el("tts.wav"));
+      // Media URLs are stable (edited assets ship under new URLs), so the first
+      // request must be allowed to hit the HTTP cache.
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "tts.wav", undefined);
+
+      await transport.decodeAudioElement(el("tts.wav"));
+      // A retry after a failure must actually re-request — not replay a cached
+      // 404 from the attempt we chose not to blacklist.
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "tts.wav", { cache: "no-store" });
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe("edge gain ramps (cut-boundary pop suppression)", () => {
+    async function rampsFor(args: {
+      compositionStart: number;
+      compositionTime: number;
+      volume: number;
+      clipDuration?: number;
+    }) {
+      const { transport, mock, gen } = setupTransport(100);
+      await transport.schedulePlayback(
+        mockEl,
+        mockBuffer,
+        args.compositionStart,
+        0,
+        args.compositionTime,
+        args.volume,
+        gen,
+        1,
+        args.clipDuration,
+      );
+      return mock.gainNode.gain;
+    }
+
+    function expectRamps(
+      g: Awaited<ReturnType<typeof rampsFor>>,
+      volume: number,
+      startAt: number,
+      endAt: number,
+    ) {
+      expect(g.setValueAtTime).toHaveBeenNthCalledWith(1, 0, startAt);
+      expect(g.linearRampToValueAtTime).toHaveBeenNthCalledWith(1, volume, startAt + 0.008);
+      expect(g.setValueAtTime).toHaveBeenNthCalledWith(2, volume, endAt - 0.008);
+      expect(g.linearRampToValueAtTime).toHaveBeenNthCalledWith(2, 0, endAt);
+    }
+
+    it("ramps gain in at the source's effective start and out before a bounded end", async () => {
+      // elapsed = 8-5 = 3 into a 10s clip → starts now (100), ends at 107.
+      const g = await rampsFor({
+        compositionStart: 5,
+        compositionTime: 8,
+        volume: 0.7,
+        clipDuration: 10,
+      });
+      expectRamps(g, 0.7, 100, 107);
+    });
+
+    it("a future-scheduled bounded clip ramps at its delayed start/end", async () => {
+      // compositionStart 10 at compositionTime 8 → starts at ctx time 102, ends 112.
+      const g = await rampsFor({
+        compositionStart: 10,
+        compositionTime: 8,
+        volume: 1,
+        clipDuration: 10,
+      });
+      expectRamps(g, 1, 102, 112);
+    });
+
+    it("unbounded sources get only the ramp-in", async () => {
+      const g = await rampsFor({ compositionStart: 0, compositionTime: 0, volume: 1 });
+      expect(g.setValueAtTime).toHaveBeenCalledTimes(1);
+      expect(g.linearRampToValueAtTime).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("stopAll fade-out (pause/seek pop suppression)", () => {
+    it("fades gain and defers the stop instead of hard-cutting mid-waveform", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = { muted: false } as HTMLMediaElement;
+
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
+      expect(el.muted).toBe(true);
+
+      transport.stopAll();
+
+      const g = mock.gainNode.gain;
+      expect(g.cancelScheduledValues).toHaveBeenCalledWith(100);
+      expect(g.setTargetAtTime).toHaveBeenCalledWith(0, 100, expect.any(Number));
+      expect(mock.sourceNode.stop).toHaveBeenCalledWith(expect.closeTo(100.02, 5));
+      // State restores immediately; node teardown happens on `ended`.
+      expect(el.muted).toBe(false);
+      expect(transport.isActive()).toBe(false);
+      expect(mock.gainNode.disconnect).not.toHaveBeenCalled();
+
+      mock.sourceNode._fireEnded();
+      expect(mock.sourceNode.disconnect).toHaveBeenCalled();
+      expect(mock.gainNode.disconnect).toHaveBeenCalled();
     });
   });
 });
