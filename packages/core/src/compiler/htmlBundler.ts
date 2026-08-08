@@ -1128,6 +1128,27 @@ export async function bundleToSingleHtml(
   return document.toString();
 }
 
+/**
+ * CSS-escape `<` in a variable value.
+ *
+ * These rules are emitted into a `<style>` element, and `<style>` is a RAW TEXT
+ * element: HTML serialization does not escape its content, and the tokenizer
+ * ends it at the first `</style` regardless of CSS string context. A variable
+ * value carrying `</style><script>…` would therefore close the element and be
+ * parsed as markup once the document is serialized (the producer's
+ * `document.toString()`), turning a value into executable script.
+ *
+ * `\3c ` is the CSS escape for `<`. It is valid in every value position —
+ * including inside an unquoted `url()`, whose grammar allows escape sequences —
+ * and resolves back to `<`, so rendering is unchanged. The trailing space is
+ * consumed as part of the escape.
+ *
+ * Variable IDs need no equivalent: `cssVariableName` slugifies them.
+ */
+function cssSafeVariableValue(value: string | number): string {
+  return String(value).replace(/</g, "\\3c ");
+}
+
 /** One stylesheet rule defining primitive composition variables under `selector`. */
 function compositionVariablesCssBlock(
   variables: Record<string, unknown>,
@@ -1136,7 +1157,7 @@ function compositionVariablesCssBlock(
   const lines: string[] = [];
   for (const [id, value] of Object.entries(variables)) {
     if ((typeof value === "string" && value !== "") || typeof value === "number") {
-      lines.push(`  ${cssVariableName(id)}: ${String(value)};`);
+      lines.push(`  ${cssVariableName(id)}: ${cssSafeVariableValue(value)};`);
     }
   }
   if (lines.length === 0) return null;

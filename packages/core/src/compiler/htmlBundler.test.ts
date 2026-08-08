@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { describe, it, expect, vi } from "vitest";
-import { bundleToSingleHtml } from "./htmlBundler";
+import { bundleToSingleHtml, emitRootCompositionVariableStyles } from "./htmlBundler";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -1386,5 +1386,43 @@ describe("bundleToSingleHtml", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+/**
+ * Composition variable values are emitted as CSS declarations inside a `<style>`
+ * element. `<style>` is a RAW TEXT element: HTML serialization does not escape its
+ * content and the tokenizer closes it at the first `</style`. An unescaped value could
+ * therefore close the element and have the remainder parsed as markup.
+ */
+describe("emitRootCompositionVariableStyles — <style> breakout", () => {
+  const BREAKOUT = "</style><script>window.__pwned=1</script><style>";
+
+  /** Emit into a document, serialize it the way the compilers do, then re-parse. */
+  function scriptsAfterRoundTrip(variablesByComp: Record<string, Record<string, unknown>>) {
+    const { document } = parseHTML("<!doctype html><html><head></head><body>x</body></html>");
+    emitRootCompositionVariableStyles(document, variablesByComp);
+    const { document: reparsed } = parseHTML(document.toString());
+    return {
+      scripts: [...reparsed.querySelectorAll("script")].map((s) => s.textContent ?? ""),
+      css: [...reparsed.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n"),
+    };
+  }
+
+  it("does not let a variable VALUE close the style element", () => {
+    const { scripts } = scriptsAfterRoundTrip({ "comp-a": { brand: BREAKOUT } });
+    expect(scripts).toEqual([]);
+  });
+
+  it("keeps the escaped value in the stylesheet as a CSS escape", () => {
+    const { css, scripts } = scriptsAfterRoundTrip({ "comp-a": { brand: "a<b" } });
+    expect(scripts).toEqual([]);
+    expect(css).toContain("a\\3c b");
+    expect(css).not.toContain("a<b");
+  });
+
+  it("leaves values without '<' untouched", () => {
+    const { css } = scriptsAfterRoundTrip({ "comp-a": { brand: "#ff0066" } });
+    expect(css).toContain("#ff0066");
   });
 });
