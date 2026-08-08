@@ -149,6 +149,47 @@ export function useDomSelection({
 
   // ── Callbacks ──
 
+  /**
+   * Mirror a canvas selection onto the timeline: the whole set first, then the
+   * primary as its anchor.
+   *
+   * The timeline is the source of truth for what is selected and it syncs back —
+   * whatever it holds replaces the canvas selection a moment later. Announcing only
+   * the primary therefore drops every other member. Worse, anchoring with
+   * `preserveSet` on an id the set does not yet contain empties the set outright,
+   * and an empty set syncs back as "nothing is selected" — which is how adding a
+   * second element, or moving a group, could wipe the selection instead of keeping
+   * it. Publishing the members first is what makes the anchor a member, so
+   * preserving the set is meaningful rather than destructive.
+   */
+  const announceTimelineSelection = useCallback(
+    (group: DomEditSelection[], primary: DomEditSelection | null) => {
+      if (!primary) {
+        setTimelineSelectionSet(new Set());
+        setSelectedTimelineElementId(null);
+        return;
+      }
+      const timelineIdFor = (selection: DomEditSelection) =>
+        findMatchingTimelineElementId(selection, timelineElements) ??
+        findTimelineIdByAncestor(
+          selection.element,
+          timelineElements,
+          selection.sourceFile || "index.html",
+        );
+      // Only a real multi-selection publishes members. A single selection keeps the
+      // older contract on purpose: anchoring with preserveSet holds a live set the
+      // element already belongs to (a late async primary must not collapse a group)
+      // and collapses otherwise, which is what a fresh click means.
+      if (group.length > 1) {
+        setTimelineSelectionSet(
+          new Set(group.map(timelineIdFor).filter((id): id is string => Boolean(id))),
+        );
+      }
+      setSelectedTimelineElementId(timelineIdFor(primary), { preserveSet: true });
+    },
+    [setSelectedTimelineElementId, setTimelineSelectionSet, timelineElements],
+  );
+
   const applyDomSelection = useCallback(
     // fallow-ignore-next-line complexity
     (
@@ -160,11 +201,12 @@ export function useDomSelection({
       },
     ) => {
       if (!selection) {
+        logSelect("clear", { hadGroup: domEditGroupSelectionsRef.current.length });
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
+        announceTimelineSelection([], null);
         return;
       }
 
@@ -219,21 +261,13 @@ export function useDomSelection({
             setRightPanelTab("design");
           }
         }
-        const nextSelectedTimelineId =
-          findMatchingTimelineElementId(nextSelection, timelineElements) ??
-          findTimelineIdByAncestor(
-            nextSelection.element,
-            timelineElements,
-            nextSelection.sourceFile || "index.html",
-          );
-        // Late marquee notify: a primary already in the live set must not collapse it.
-        setSelectedTimelineElementId(nextSelectedTimelineId, { preserveSet: true });
+        announceTimelineSelection(nextGroup, nextSelection);
         return;
       }
 
-      setSelectedTimelineElementId(null);
+      announceTimelineSelection([], null);
     },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
+    [announceTimelineSelection, setRightCollapsed, setRightPanelTab],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -447,21 +481,9 @@ export function useDomSelection({
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
 
-      if (nextSelection) {
-        setSelectedTimelineElementId(
-          findMatchingTimelineElementId(nextSelection, timelineElements),
-        );
-      } else {
-        setSelectedTimelineElementId(null);
-      }
+      announceTimelineSelection(nextGroup, nextSelection);
     },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      setSelectedTimelineElementId,
-      timelineElements,
-      previewIframeRef,
-    ],
+    [activeCompPath, announceTimelineSelection, buildDomSelectionFromTarget, previewIframeRef],
   );
 
   // ── Effects ──
@@ -538,26 +560,9 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      // Publish the WHOLE set, not just the primary. The timeline is the source of
-      // truth for what is selected, and the sync back to the canvas replaces the
-      // canvas selection with whatever the timeline holds. Announcing one member
-      // therefore un-selects every other one the marquee just caught, a moment
-      // after the drop — the group is built correctly and then collapses to one.
-      // The anchor goes second, and preserves the set it is now a member of.
-      const timelineIdFor = (selection: DomEditSelection) =>
-        findMatchingTimelineElementId(selection, timelineElements) ??
-        findTimelineIdByAncestor(
-          selection.element,
-          timelineElements,
-          selection.sourceFile || "index.html",
-        );
-      const nextTimelineId = timelineIdFor(nextSelection);
-      setTimelineSelectionSet(
-        new Set(nextGroup.map(timelineIdFor).filter((id): id is string => Boolean(id))),
-      );
-      setSelectedTimelineElementId(nextTimelineId, { preserveSet: true });
+      announceTimelineSelection(nextGroup, nextSelection);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId, setTimelineSelectionSet],
+    [applyDomSelection, announceTimelineSelection],
   );
 
   return {

@@ -145,6 +145,40 @@ describe("useDomSelection marquee", () => {
   });
 });
 
+/**
+ * Adding a second element announced only that element, with preserveSet — and
+ * preserving a set that does not contain the id empties it. An empty timeline
+ * selection syncs back as "nothing is selected", so growing a group could wipe
+ * it instead, and so could re-resolving one after a move.
+ */
+describe("useDomSelection additive", () => {
+  it("announces both members when a second element joins the selection", () => {
+    const first = document.createElement("div");
+    first.id = "card";
+    const second = document.createElement("div");
+    second.id = "chip";
+    document.body.append(first, second);
+    const harness = renderHarness(
+      { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
+      { timelineElements: [timelineElement("card"), timelineElement("chip")] },
+    );
+
+    act(() => harness.current().applyDomSelection(makeSelection("Card", first)));
+    act(() =>
+      harness.current().applyDomSelection(makeSelection("Chip", second), { additive: true }),
+    );
+
+    expect(harness.current().domEditGroupSelections).toHaveLength(2);
+    expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(
+      new Set(["card", "chip"]),
+    );
+    expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith("chip", {
+      preserveSet: true,
+    });
+    harness.cleanup();
+  });
+});
+
 describe("useDomSelection", () => {
   it("clears a committed selection when the active composition path changes", () => {
     const { selection, harness } = setupSelectedHarness();

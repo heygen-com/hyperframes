@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
+import { logSelect } from "../utils/selectDebug";
 
 interface UseTimelineSelectionPreviewSyncParams {
   selectedElementId: string | null;
@@ -127,6 +128,11 @@ export function useTimelineSelectionPreviewSync({
         return;
       }
       missingSelectionKeyRef.current = "";
+      logSelect("timeline-sync", {
+        wanted: selectedIds.length,
+        had: currentIds.length,
+        resolved: selections.length,
+      });
       if (selections.length === 0) {
         applyDomSelection(null, { revealPanel: false });
       } else if (selections.length === 1) {
