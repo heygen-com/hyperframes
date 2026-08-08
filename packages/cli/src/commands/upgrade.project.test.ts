@@ -78,6 +78,19 @@ describe("upgradeProjectPins", () => {
     expect(pkg.scripts.render).toBe("npx --yes hyperframes@0.7.55 render");
   });
 
+  it("rewrites project-root shell wrapper pins alongside package scripts", async () => {
+    const d = project({ render: "npx --yes hyperframes@0.7.48 render" });
+    const fullCpu = join(d, "hyperframes-full-cpu.sh");
+    const publish = join(d, "publish-wrapper.sh");
+    writeFileSync(fullCpu, "npx --yes hyperframes@0.7.48 render --workers 2\n");
+    writeFileSync(publish, "./publish.sh 0.7.48 hyperframes@0.7.48\n");
+
+    await upgradeProjectPins(d, { json: false, check: false });
+
+    expect(readFileSync(fullCpu, "utf8")).toContain("hyperframes@0.7.55");
+    expect(readFileSync(publish, "utf8")).toContain("hyperframes@0.7.55");
+  });
+
   it("--check reports without writing", async () => {
     const d = project({ render: "npx --yes hyperframes@0.7.48 render" });
     const before = readFileSync(join(d, "package.json"), "utf-8");
