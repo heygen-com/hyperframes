@@ -32,11 +32,13 @@ const noop = () => {};
 
 function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
   const onChainChange = vi.fn();
+  const onChainPreview = vi.fn();
   const onCarveChange = vi.fn();
   const { host } = renderInto(
     <FxSection
       chain={overrides.chain ?? { version: 1, nodes: [] }}
       onChainChange={overrides.onChainChange ?? onChainChange}
+      onChainPreview={overrides.onChainPreview ?? onChainPreview}
       carve={overrides.carve ?? null}
       onCarveChange={overrides.onCarveChange ?? onCarveChange}
       sourceOptions={overrides.sourceOptions ?? [{ id: "vo", label: "Voiceover" }]}
@@ -45,7 +47,7 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       disabled={overrides.disabled}
     />,
   );
-  return { host, onChainChange, onCarveChange };
+  return { host, onChainChange, onChainPreview, onCarveChange };
 }
 
 const click = (el: Element | null | undefined) => {
@@ -151,9 +153,43 @@ describe("FxSection chain", () => {
     expect(next.nodes.map((n) => n.type)).toEqual(["reverb"]);
   });
 
+  it("previews while dragging and only persists on release", () => {
+    // Persisting on every input event refreshes the preview, which reloads the
+    // composition and restarts audio — that is what made playback stutter.
+    const { host, onChainChange, onChainPreview } = mount({ chain: chainOf("peaking") });
+    const slider = host.querySelector<HTMLInputElement>(".hf-fx-slider")!;
+    act(() => slider.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    for (const v of ["5000", "10000", "15000"]) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      act(() => {
+        setter?.call(slider, v);
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(onChainPreview.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(onChainChange).not.toHaveBeenCalled();
+
+    act(() => slider.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    expect(onChainChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits an enum immediately, since a select has no drag", () => {
+    const { host, onChainChange } = mount({ chain: chainOf("saturate") });
+    const select = host.querySelector<HTMLSelectElement>(".hf-fx-select")!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    act(() => {
+      setter?.call(select, "atan");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onChainChange).toHaveBeenCalledTimes(1);
+  });
+
   it("clamps a typed value into the renderable range", () => {
     const { host, onChainChange } = mount({ chain: chainOf("peaking") });
-    typeInto(host.querySelector<HTMLInputElement>(".hf-fx-number")!, "999999");
+    const input = host.querySelector<HTMLInputElement>(".hf-fx-number")!;
+    typeInto(input, "999999");
+    // React delegates onBlur through focusout, which is the event that bubbles.
+    act(() => input.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
     const next = onChainChange.mock.calls.at(-1)![0] as HfAudioFxChain;
     expect(next.nodes[0]!.params!.frequency).toBe(20000);
   });
