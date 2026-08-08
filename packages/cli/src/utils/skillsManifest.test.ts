@@ -495,8 +495,27 @@ describe("checkSkills removed-upstream detection", () => {
     writeFileSync(manifestPath, JSON.stringify(manifest));
     return { home, opts: { source: manifestPath, cwd: project, home } };
   }
-  function writeGlobalLock(home: string, skills: Record<string, { source: string }>): void {
-    writeFileSync(join(home, ".agents/.skill-lock.json"), JSON.stringify({ version: 3, skills }));
+  // Upstream writes a `skillPath` on every lock entry it creates (verified
+  // against a real ~/.agents/.skill-lock.json written by skills@1.5.22), and
+  // removed-detection now reads it to tell manifest-covered skills apart from
+  // ones installed out of the repo's other skill roots — see
+  // manifestCoversSkill / GH #3111. Default to the covered root so each existing
+  // fixture keeps meaning "a normally published skill"; pass skillPath
+  // explicitly to model anything else.
+  function writeGlobalLock(
+    home: string,
+    skills: Record<string, { source: string; skillPath?: string }>,
+  ): void {
+    const withPaths = Object.fromEntries(
+      Object.entries(skills).map(([name, entry]) => [
+        name,
+        { skillPath: `skills/${name}/SKILL.md`, ...entry },
+      ]),
+    );
+    writeFileSync(
+      join(home, ".agents/.skill-lock.json"),
+      JSON.stringify({ version: 3, skills: withPaths }),
+    );
   }
 
   it("flags a lock-attributed skill the manifest dropped, ignoring other sources", async () => {
@@ -512,6 +531,70 @@ describe("checkSkills removed-upstream detection", () => {
     expect(byName.gamma).toBe("removed");
     expect(byName.delta).toBeUndefined();
     expect(res.summary.removed).toBe(1);
+  });
+
+  // GH #3111 — the data-loss regression. `skills add --skill '*'` installs every
+  // skill in the repo, including the repo-native ones under `.claude/skills/`
+  // and `.agents/skills/`, and attributes them all to our source. The published
+  // manifest is generated from `<repoRoot>/skills` ONLY (gen-skills-manifest.ts),
+  // so it never lists them — and reading that silence as "no longer published"
+  // deleted them from every agent directory on the machine, immediately after
+  // the same command installed them.
+  //
+  // Reproduced end-to-end pre-fix against the real CLI: `skills add` installed
+  // 25 skills, then `skills update` printed "Removing 6 skill(s) no longer
+  // published: captions-overlay, changelog-video, cut-the-curve, motion-doctrine,
+  // oversized-cursor, seam-craft" and deleted all six. Their lock entries carried
+  // `.agents/skills/<name>/SKILL.md`; the survivors carried `skills/<name>/…`.
+  it("never prunes a skill installed outside the manifest's coverage root", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, {
+      alpha: { source: "test" }, // published, in the manifest → untouched
+      gamma: {
+        source: "test", // ours, absent from the manifest…
+        skillPath: ".agents/skills/gamma/SKILL.md", // …but the manifest never covered it
+      },
+    });
+
+    const res = await checkSkills(opts);
+
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).not.toBe("removed");
+    expect(res.summary.removed).toBe(0);
+  });
+
+  // The other half of the contract: the coverage filter must not blunt the
+  // retired-skill convergence #2176 added. A skill installed FROM `skills/` and
+  // since dropped from the manifest is still a real removal.
+  it("still prunes a manifest-covered skill that was genuinely dropped upstream", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, {
+      alpha: { source: "test" },
+      gamma: { source: "test", skillPath: "skills/gamma/SKILL.md" },
+    });
+
+    const res = await checkSkills(opts);
+
+    expect(Object.fromEntries(res.skills.map((s) => [s.name, s.status])).gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
+  });
+
+  // Fail safe on unknown provenance: an entry written by an older upstream that
+  // recorded no skillPath cannot be shown to be manifest-covered, and this is a
+  // DELETE path — so it is left alone rather than guessed at.
+  it("leaves an entry with no skillPath alone rather than guessing", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeFileSync(
+      join(home, ".agents/.skill-lock.json"),
+      JSON.stringify({
+        version: 3,
+        skills: { alpha: { source: "test" }, gamma: { source: "test" } }, // no skillPath at all
+      }),
+    );
+
+    const res = await checkSkills(opts);
+
+    expect(res.summary.removed).toBe(0);
   });
 
   it("a removed skill alone makes an update available (no outdated/missing)", async () => {
@@ -591,7 +674,10 @@ describe("checkSkills removed-upstream detection", () => {
       join(project, "skills-lock.json"),
       JSON.stringify({
         version: 1,
-        skills: { alpha: { source: "test" }, gamma: { source: "test" } },
+        skills: {
+          alpha: { source: "test", skillPath: "skills/alpha/SKILL.md" },
+          gamma: { source: "test", skillPath: "skills/gamma/SKILL.md" },
+        },
       }),
     );
 
@@ -618,7 +704,10 @@ describe("checkSkills removed-upstream detection", () => {
       join(project, "skills-lock.json"),
       JSON.stringify({
         version: 1,
-        skills: { alpha: { source: "test" }, gamma: { source: "test" } },
+        skills: {
+          alpha: { source: "test", skillPath: "skills/alpha/SKILL.md" },
+          gamma: { source: "test", skillPath: "skills/gamma/SKILL.md" },
+        },
       }),
     );
     const home = join(root, "home2");
