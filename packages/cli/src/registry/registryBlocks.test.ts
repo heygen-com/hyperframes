@@ -6,6 +6,10 @@ import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 
 const blocksDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../registry/blocks");
+const componentsDir = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../registry/components",
+);
 
 interface RegistryManifest {
   files: Array<{ path: string; type: string }>;
@@ -63,5 +67,28 @@ describe("registry blocks", () => {
     expect(hud?.getAttribute("data-composition-id")).toBe("camcorder-hud");
     expect(hud?.hasAttribute("data-composition-src")).toBe(false);
     expect(bundled).toContain('var __hfTimelineCompId = "camcorder-hud";');
+  });
+});
+
+describe("caption component manifests", () => {
+  it("ships caption overlays without placeholder media elements", () => {
+    const mediaElements: string[] = [];
+
+    for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith("caption-")) continue;
+
+      const itemDir = join(componentsDir, entry.name);
+      const manifest = JSON.parse(
+        readFileSync(join(itemDir, "registry-item.json"), "utf8"),
+      ) as RegistryManifest;
+      for (const file of manifest.files) {
+        if (!file.path.endsWith(".html")) continue;
+        let html = readFileSync(join(itemDir, file.path), "utf8");
+        while (html.includes("<!--")) html = html.replace(/<!--[\s\S]*?-->/g, "");
+        if (/<(?:video|audio)\b/i.test(html)) mediaElements.push(`${entry.name}: ${file.path}`);
+      }
+    }
+
+    expect(mediaElements).toEqual([]);
   });
 });
