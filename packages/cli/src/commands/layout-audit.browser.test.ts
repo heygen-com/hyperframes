@@ -106,6 +106,79 @@ describe("layout-audit.browser", () => {
     expect(revealed).not.toBe(fading);
   });
 
+  // Variable-font axis animation (registry block `weight-wave`): a crest of
+  // weight travels along a headline by rewriting each character's
+  // font-variation-settings, and NOTHING else changes — no geometry, no
+  // opacity, no canvas. A duplexed face makes it total: Recursive holds one
+  // advance width at every weight by design, so not even the line width
+  // shifts and all six sweep samples hashed identically until the axis string
+  // joined the fingerprint. `check` then failed a working composition with
+  // sweep_static, and the documented remedies (spread the reveal, keep an
+  // element animating) cannot help — the motion is real, the fingerprint was
+  // just blind to it.
+  it("changes the sweep fingerprint when only font-variation-settings moves", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="line"><span id="char">P</span></div>
+      </div>
+    `;
+
+    let axes = '"wght" 400, "slnt" 0';
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        line: rect({ left: 40, top: 40, width: 560, height: 48 }),
+        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
+      },
+      {
+        char: {
+          get fontVariationSettings() {
+            return axes;
+          },
+        } as Partial<CSSStyleDeclaration>,
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+
+    const rest = collect();
+    axes = '"wght" 1000, "slnt" -12'; // the crest arrives over this character
+    const crest = collect();
+
+    expect(crest).not.toBe(rest);
+  });
+
+  // The other direction, and it guards the more dangerous failure: a
+  // fingerprint that varies on its own would make sweep_static unfireable and
+  // every green layout verdict meaningless. Identical scene, axes included,
+  // must hash identically.
+  it("keeps the sweep fingerprint identical when nothing moves, font axes included", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="line"><span id="char">P</span></div>
+      </div>
+    `;
+
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        line: rect({ left: 40, top: 40, width: 560, height: 48 }),
+        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
+      },
+      {
+        char: { fontVariationSettings: '"wght" 400, "slnt" 0' } as Partial<CSSStyleDeclaration>,
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+
+    expect(collect()).toBe(collect());
+  });
+
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
