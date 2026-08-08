@@ -295,7 +295,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
-          container.removeChild(player);
+          // `remove()` rather than `container.removeChild(player)`: by the time
+          // this cleanup runs the element may already be detached — React can
+          // re-render the container, a crossfade refresh can swap it, or a
+          // translation/extension can reparent it. `removeChild` then throws
+          // NotFoundError, which the error boundary turns into a full-screen
+          // "Something went wrong". `remove()` is a no-op when already detached.
+          player.remove();
           if (retryPreviewRef.current === retryPreview) retryPreviewRef.current = null;
           // Clear the forwarded ref only if it still points to THIS iframe.
           // During crossfade refreshes the retiring Player unmounts after the
