@@ -32,6 +32,8 @@ export {
   assignBundledRuntimeCompositionIds,
   type BundledHostCompositionIdentity,
   bundleToSingleHtml,
+  type BundleDiagnostic,
+  type BundleDiagnosticSink,
   type BundleOptions,
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,

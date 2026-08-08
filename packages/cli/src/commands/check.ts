@@ -405,6 +405,7 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
 
 function printHumanReport(report: CheckReport): void {
   printSection("Lint", report.lint);
+  printCompileSection(report);
   printSection("Runtime", report.runtime);
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);
@@ -413,6 +414,24 @@ function printHumanReport(report: CheckReport): void {
   console.log();
   const label = report.ok ? c.success("Check passed") : c.error("Check failed");
   console.log(`${report.ok ? c.success("◇") : c.error("◇")}  ${label}`);
+}
+
+/** Compile-time bundler diagnostics. `reached: false` means the pipeline
+ * short-circuited before bundling (any lint error does this), so "0 findings"
+ * would be a lie — say "not reached" instead. */
+function printCompileSection(report: CheckReport): void {
+  console.log();
+  console.log(c.bold("Compile"));
+  if (!report.compile.reached) {
+    console.log(`  ${c.dim("◇")} not reached (fix lint errors first)`);
+    return;
+  }
+  if (report.compile.findings.length === 0) {
+    console.log(`  ${c.success("◇")} 0 errors, 0 warnings`);
+    return;
+  }
+  for (const finding of report.compile.findings) printFinding(finding);
+  printCounts(report.compile);
 }
 
 function printSection(title: string, section: CheckSection): void {
