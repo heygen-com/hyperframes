@@ -21,6 +21,7 @@ import {
 } from "../components/editor/useLayerRevealOverride";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Route delete through SDK when session resolves the hf-id. */
@@ -115,7 +116,7 @@ export function useElementLifecycleOps({
           `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
             body: JSON.stringify({ target: patchTarget }),
           },
         );

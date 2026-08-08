@@ -4,6 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
+import { logReload } from "../../utils/reloadDebug";
 
 export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
@@ -445,6 +446,7 @@ export function useTimelinePlayer() {
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    logReload("refreshPlayer", { stack: new Error("refreshPlayer").stack });
     saveSeekPosition();
     // Hide the iframe across the full reload so the user never sees the reloading
     // document's RAW DOM (every clip stacked and visible) in the window between the

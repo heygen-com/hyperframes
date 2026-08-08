@@ -425,6 +425,38 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
   });
 
+  // Without the receipt the client cannot recognise its own edit in the watcher
+  // broadcast, so it treats it as someone else's write and does a full preview
+  // reload — a visible blank on the stage right after the user typed.
+  it("leaves a write receipt so the patch's own file-change echo is identifiable", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(projectDir + "/index.html", '<div id="title">Before</div>');
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Hyperframes-Write-Token": "studio-patch-1",
+        },
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "text-content", property: "textContent", value: "After" }],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(consumeFileWriteReceipt(join(projectDir, "index.html"))).toEqual({
+      path: "index.html",
+      version: fileContentVersion(readFileSync(join(projectDir, "index.html"), "utf-8")),
+      writeToken: "studio-patch-1",
+    });
+  });
+
   it("applies an ordered element patch batch with one file write", async () => {
     const projectDir = createProjectDir();
     const original =

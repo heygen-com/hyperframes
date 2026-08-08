@@ -4,6 +4,7 @@ import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 import type { ExternalConflictSnapshot } from "../utils/externalConflictStorage";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
 import { consumeStudioWriteToken } from "../utils/studioFileVersion";
+import { logReload } from "../utils/reloadDebug";
 
 type ExternalChangeDrainResult =
   | { status: "clean" }
@@ -194,6 +195,7 @@ export function useExternalFileChangeCoordinator({
 
   const reloadAcceptedGeneration = useCallback(
     (path: string) => {
+      logReload("reload", { path, by: "external-change coordinator" });
       reloadPreview();
       reloadSdkSession(path);
     },
@@ -221,11 +223,22 @@ export function useExternalFileChangeCoordinator({
       pendingTimelinePaths.delete(path);
 
       const content = readFileChangeContent(payload);
-      if (consumeStudioWriteToken(readFileChangeWriteToken(payload))) return;
-      if (content != null && isSelfWriteEcho(path, content)) return;
+      const token = readFileChangeWriteToken(payload);
+      logReload("file-change", { path, token: token ?? null, hasContent: content != null });
+      if (consumeStudioWriteToken(token)) {
+        logReload("suppressed", { path, why: "own write token" });
+        return;
+      }
+      if (content != null && isSelfWriteEcho(path, content)) {
+        logReload("suppressed", { path, why: "own content echo" });
+        return;
+      }
 
       const identity = eventIdentity(path, payload);
-      if (!allowDuplicate && identity != null && identity === lastEventIdentityRef.current) return;
+      if (!allowDuplicate && identity != null && identity === lastEventIdentityRef.current) {
+        logReload("suppressed", { path, why: "duplicate event" });
+        return;
+      }
       lastEventIdentityRef.current = identity;
       const generation = ++generationRef.current;
       const result = await drainPendingChanges();
