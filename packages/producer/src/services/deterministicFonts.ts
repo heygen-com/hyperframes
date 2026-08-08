@@ -470,6 +470,23 @@ export function fontFormatHint(src: string): "collection" | "woff2" {
   return src.startsWith("data:font/collection;") ? "collection" : "woff2";
 }
 
+/**
+ * `scripts/generate-font-data.ts` embeds the `-latin-` subset file of every
+ * bundled family, so a bundled face covers Google's `latin` subset and nothing
+ * else. Declaring that range stops the face from claiming coverage it does not
+ * have, and lets the supplementary Google faces serve the codepoints it omits.
+ */
+const BUNDLED_SUBSET_UNICODE_RANGE =
+  "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, " +
+  "U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD";
+
+/** True when a fetched face covers the same subset the embedded bundle ships. */
+function isBundledSubsetRange(unicodeRange: string | undefined): boolean {
+  if (!unicodeRange) return false;
+  const normalize = (range: string) => range.toLowerCase().replace(/\s+/g, "");
+  return normalize(unicodeRange) === normalize(BUNDLED_SUBSET_UNICODE_RANGE);
+}
+
 function buildFontFaceRule(
   familyName: string,
   src: string,
@@ -514,7 +531,15 @@ async function buildFontFaceCss(
       for (const face of canonical.faces) {
         const style = face.style || "normal";
         const src = fontDataUri(canonical.packageName, face.weight, style);
-        rules.push(buildFontFaceRule(originalCaseFamily, src, face.weight, style));
+        rules.push(
+          buildFontFaceRule(
+            originalCaseFamily,
+            src,
+            face.weight,
+            style,
+            BUNDLED_SUBSET_UNICODE_RANGE,
+          ),
+        );
         coveredWeights.add(`${face.weight}:${style}`);
       }
 
@@ -524,10 +549,18 @@ async function buildFontFaceCss(
       // if the bundle only ships 400/700/900.
       const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
       for (const face of googleFaces) {
-        // A weight covered by the embedded bundle is already full-coverage —
-        // skip it. For weights the bundle lacks, add EVERY subset face (a
-        // weight has one face per unicode-range subset), not just the first.
-        if (coveredWeights.has(`${face.weight}:${face.style}`)) continue;
+        // The embedded bundle only covers the latin subset, so a "covered"
+        // weight is covered for that subset alone — skip just the face that
+        // duplicates it and keep every other subset, otherwise the family
+        // cannot render the scripts the bundle omits. For weights the bundle
+        // lacks, add EVERY subset face (a weight has one face per
+        // unicode-range subset), not just the first.
+        if (
+          coveredWeights.has(`${face.weight}:${face.style}`) &&
+          isBundledSubsetRange(face.unicodeRange)
+        ) {
+          continue;
+        }
         rules.push(
           buildFontFaceRule(
             originalCaseFamily,
