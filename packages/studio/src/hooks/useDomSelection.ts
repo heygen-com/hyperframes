@@ -427,6 +427,13 @@ export function useDomSelection({
     [applyDomSelection, buildDomSelectionForTimelineElement],
   );
 
+  // Forward handle to the group refresher defined below: the single-selection
+  // refresher falls back to it when the primary is gone, and a ref keeps that from
+  // forcing either callback to be declared in the other's dependency list.
+  const refreshDomEditGroupSelectionsFromPreviewRef = useRef<
+    (selections: DomEditSelection[]) => Promise<void>
+  >(async () => {});
+
   const refreshDomEditSelectionFromPreview = useCallback(
     // fallow-ignore-next-line complexity
     async (selection: DomEditSelection) => {
@@ -441,6 +448,17 @@ export function useDomSelection({
 
       const element = findElementForSelection(doc, selection, activeCompPath);
       if (!element) {
+        // Losing the primary is not losing the selection. When a group is live,
+        // re-resolve it and keep whoever still exists rather than wiping the lot.
+        const group = domEditGroupSelectionsRef.current;
+        logSelect("refresh-lost", {
+          target: selection.selector ?? selection.id ?? null,
+          group: group.length,
+        });
+        if (group.length > 1) {
+          await refreshDomEditGroupSelectionsFromPreviewRef.current(group);
+          return;
+        }
         applyDomSelection(null, { revealPanel: false });
         return;
       }
@@ -492,6 +510,8 @@ export function useDomSelection({
     },
     [activeCompPath, announceTimelineSelection, buildDomSelectionFromTarget, previewIframeRef],
   );
+
+  refreshDomEditGroupSelectionsFromPreviewRef.current = refreshDomEditGroupSelectionsFromPreview;
 
   // ── Effects ──
 
