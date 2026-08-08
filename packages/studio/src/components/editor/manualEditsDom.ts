@@ -221,6 +221,7 @@ function isIdentityAfterTranslateStrip(m: DOMMatrix): boolean {
   return m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1;
 }
 
+// fallow-ignore-next-line complexity
 function stripGsapTranslateFromTransform(element: HTMLElement): void {
   if (element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   const transform = element.style.getPropertyValue("transform");
@@ -256,6 +257,7 @@ function stripGsapTranslateFromTransform(element: HTMLElement): void {
 // and push the offset straight into GSAP's x/y via gsap.set; the var() offset is
 // still persisted (buildPathOffsetPatches), and GSAP re-reads it at init on
 // reload. Returns true when handled as GSAP (caller must skip the CSS path).
+// fallow-ignore-next-line complexity
 function applyStudioPathOffsetViaGsap(
   element: HTMLElement,
   offset: { x: number; y: number },

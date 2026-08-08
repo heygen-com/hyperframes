@@ -7,6 +7,13 @@ export interface StudioUrlSelectionState {
   id?: string;
   selector?: string;
   selectorIndex?: number;
+  /**
+   * The other members of a multi-selection, by element id, primary excluded.
+   * A link to a bug in a group edit is only reproducible if it carries the group;
+   * without this, opening the URL lands on one element and the report reads as
+   * "works for me".
+   */
+  groupIds?: string[];
 }
 
 export interface StudioUrlState {
@@ -63,19 +70,28 @@ function parseTab(value: string | null): RightPanelTab | null {
   return VALID_TABS.includes(value as RightPanelTab) ? (value as RightPanelTab) : null;
 }
 
+/** The other members of a multi-selection, dropping blanks a hand-edited URL leaves. */
+function parseGroupIds(value: string | null): string[] | undefined {
+  const ids = (value ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return ids.length > 0 ? ids : undefined;
+}
+
 function normalizeSelection(params: URLSearchParams): StudioUrlSelectionState | null {
   const sourceFile = params.get("selFile") || undefined;
   const id = params.get("selId") || undefined;
   const selector = params.get("selSelector") || undefined;
-  const selectorIndex = parseNumber(params.get("selIndex"));
-
   if (!sourceFile && !id && !selector) return null;
 
+  const selectorIndex = parseNumber(params.get("selIndex"));
   return {
     sourceFile,
     id,
     selector,
     selectorIndex: selectorIndex != null ? Math.max(0, Math.floor(selectorIndex)) : undefined,
+    groupIds: parseGroupIds(params.get("selGroup")),
   };
 }
 
@@ -129,6 +145,9 @@ export function buildStudioHash(projectId: string, state: StudioUrlState): strin
     if (state.selection.selector) params.set("selSelector", state.selection.selector);
     if (typeof state.selection.selectorIndex === "number") {
       params.set("selIndex", String(Math.max(0, Math.floor(state.selection.selectorIndex))));
+    }
+    if (state.selection.groupIds?.length) {
+      params.set("selGroup", state.selection.groupIds.join(","));
     }
   }
 

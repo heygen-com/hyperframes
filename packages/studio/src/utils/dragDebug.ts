@@ -34,6 +34,37 @@ export function readDragPositions(
 }
 
 /**
+ * Members whose screen movement disagrees with the rest of the group this frame.
+ *
+ * A group moves as one object, so every member travels the same distance; one
+ * that does not is the whole bug, and averaged-looking samples hide it. Compares
+ * each member's movement against the group's median and names the outliers, so a
+ * single element drifting shows up as itself rather than as "the group jumped".
+ */
+export function findNonRigidMembers(
+  before: Record<string, string>,
+  after: Record<string, string>,
+): string[] {
+  const moves = new Map<string, string>();
+  for (const key of Object.keys(after)) {
+    const from = before[key]?.split(",").map(Number);
+    const to = after[key]?.split(",").map(Number);
+    if (!from || !to || from.length !== 2 || to.length !== 2) continue;
+    moves.set(key, `${Math.round(to[0]! - from[0]!)},${Math.round(to[1]! - from[1]!)}`);
+  }
+  const counts = new Map<string, number>();
+  for (const move of moves.values()) counts.set(move, (counts.get(move) ?? 0) + 1);
+  let common = "";
+  let best = 0;
+  for (const [move, count] of counts) {
+    if (count > best) [common, best] = [move, count];
+  }
+  return [...moves]
+    .filter(([, move]) => move !== common)
+    .map(([key, move]) => `${key.split("|")[2] ?? key} moved ${move}, group moved ${common}`);
+}
+
+/**
  * Sample the group now and again after the commit has had time to land. The drop
  * is the one moment a jump can hide: the source write, the preview reload and the
  * timeline resume all happen within a few frames of each other, and any of them

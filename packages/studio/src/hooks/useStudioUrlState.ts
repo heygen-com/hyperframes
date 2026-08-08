@@ -22,6 +22,8 @@ interface UseStudioUrlStateParams {
   rightCollapsed: boolean;
   activeCompPathHydrated: boolean;
   domEditSelection: DomEditSelection | null;
+  domEditGroupSelections: DomEditSelection[];
+  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
@@ -38,14 +40,25 @@ interface UseStudioUrlStateParams {
   initialState: StudioUrlState;
 }
 
-function toPersistedSelection(selection: DomEditSelection | null): StudioUrlSelectionState | null {
+function toPersistedSelection(
+  selection: DomEditSelection | null,
+  // Optional: a caller that only ever has one selection has nothing to add, and
+  // the URL must still carry that one rather than throwing on the way out.
+  group: DomEditSelection[] = [],
+): StudioUrlSelectionState | null {
   if (!selection) return null;
   if (!selection.id && !selection.selector) return null;
+  // The primary is already carried by selId; the rest ride along so the link
+  // reopens the same multi-selection instead of a single element.
+  const groupIds = group
+    .filter((member) => member.id && member.id !== selection.id)
+    .map((member) => member.id as string);
   return {
     sourceFile: selection.sourceFile || undefined,
     id: selection.id || undefined,
     selector: selection.selector || undefined,
     selectorIndex: selection.selectorIndex ?? undefined,
+    groupIds: groupIds.length > 0 ? groupIds : undefined,
   };
 }
 
@@ -67,6 +80,8 @@ export function useStudioUrlState({
   rightCollapsed,
   activeCompPathHydrated,
   domEditSelection,
+  domEditGroupSelections,
+  applyMarqueeSelection,
   buildDomSelectionFromTarget,
   applyDomSelection,
   setRightPanelTab,
@@ -91,10 +106,10 @@ export function useStudioUrlState({
       rightCollapsed,
       timelineVisible: null,
       selection: hydratedSelectionRef.current
-        ? toPersistedSelection(domEditSelection)
+        ? toPersistedSelection(domEditSelection, domEditGroupSelections)
         : pendingSelectionRef.current,
     }),
-    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab],
+    [activeCompPath, domEditGroupSelections, domEditSelection, rightCollapsed, rightPanelTab],
   );
 
   // Resolve a URL selection to a live element and apply it. Shared by the initial
@@ -128,12 +143,32 @@ export function useStudioUrlState({
         applyDomSelection(null, { revealPanel: false });
         return true;
       }
-      void buildDomSelectionFromTarget(element, { preferClipAncestor: false }).then((resolved) => {
-        applyDomSelection(resolved, { revealPanel: false });
-      });
+      const groupIds = selection.groupIds ?? [];
+      void (async () => {
+        const primary = await buildDomSelectionFromTarget(element, { preferClipAncestor: false });
+        if (!primary) return applyDomSelection(null, { revealPanel: false });
+        if (groupIds.length === 0) return applyDomSelection(primary, { revealPanel: false });
+        // Restore the whole multi-selection, primary first so it stays the anchor.
+        // Members whose element is gone are dropped rather than failing the rest.
+        const members = [primary];
+        for (const memberId of groupIds) {
+          const memberEl = doc.getElementById(memberId);
+          const resolved = memberEl
+            ? await buildDomSelectionFromTarget(memberEl, { preferClipAncestor: false })
+            : null;
+          if (resolved) members.push(resolved);
+        }
+        applyMarqueeSelection(members, false);
+      })();
       return true;
     },
-    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
+    [
+      activeCompPath,
+      applyDomSelection,
+      applyMarqueeSelection,
+      buildDomSelectionFromTarget,
+      previewIframeRef,
+    ],
   );
 
   useEffect(() => {

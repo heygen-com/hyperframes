@@ -77,6 +77,8 @@ function renderStudioUrlStateHarness(
     rightCollapsed: true,
     activeCompPathHydrated: true,
     domEditSelection: null,
+    domEditGroupSelections: [],
+    applyMarqueeSelection: () => {},
     buildDomSelectionFromTarget: () => Promise.resolve(null),
     applyDomSelection: () => {},
     initialState: {
@@ -132,7 +134,36 @@ describe("studio url state", () => {
       id: "hero",
       selector: undefined,
       selectorIndex: undefined,
+      groupIds: undefined,
     });
+  });
+
+  /**
+   * A link to a bug hit while several elements were selected has to carry the
+   * whole selection. Without the group the URL reopens one element, the report
+   * cannot be reproduced from it, and it reads as "works for me".
+   */
+  it("round-trips a multi-selection through the hash", () => {
+    const hash = buildStudioHash("demo", {
+      activeCompPath: null,
+      currentTime: null,
+      rightPanelTab: null,
+      rightCollapsed: null,
+      timelineVisible: null,
+      selection: {
+        sourceFile: "index.html",
+        id: "chip",
+        groupIds: ["card", "dot-b"],
+      },
+    });
+
+    expect(hash).toContain("selGroup=card%2Cdot-b");
+    expect(parseStudioUrlStateFromHash(hash).selection?.groupIds).toEqual(["card", "dot-b"]);
+  });
+
+  it("reads a single selection as having no group", () => {
+    const hash = parseStudioUrlStateFromHash("#project/demo?v=1&selFile=index.html&selId=hero");
+    expect(hash.selection?.groupIds).toBeUndefined();
   });
 
   it("builds a project hash with persisted studio state", () => {

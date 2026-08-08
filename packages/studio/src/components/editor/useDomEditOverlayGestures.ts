@@ -30,7 +30,6 @@ import {
   type GroupOverlayItem,
   type OverlayRect,
   orientedOverlayRect,
-  resolveDomEditGroupOverlayRect,
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
@@ -52,7 +51,8 @@ import {
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { resolveSnapAdjustment, resolveEquidistanceGuides, SNAP_THRESHOLD_PX } from "./snapEngine";
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
-import { logDrag, logDragMove, logDragSettle, readDragPositions } from "../../utils/dragDebug";
+import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
+import { createGroupDragMover } from "./groupDragMove";
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
@@ -92,6 +92,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     },
   ) => _startGesture(kind, e, opts, options);
 
+  const moveGroupDrag = createGroupDragMover(opts, setDraftGroupOverlayItems);
+
   // fallow-ignore-next-line complexity
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = opts.gestureRef.current;
@@ -115,66 +117,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (groupG) {
-      let dx = e.clientX - groupG.startX;
-      let dy = e.clientY - groupG.startY;
-
-      const sc = groupG.snapContext;
-      if (sc?.snapEnabled && sc.targets.length > 0) {
-        const groupBounds = resolveDomEditGroupOverlayRect(
-          groupG.originItems.map((item) => item.rect),
-        );
-        if (groupBounds) {
-          const allTargets = sc.compositionTarget
-            ? [...sc.targets, sc.compositionTarget]
-            : sc.targets;
-          const snap = resolveSnapAdjustment({
-            movingRect: groupBounds,
-            proposedDx: dx,
-            proposedDy: dy,
-            targets: allTargets,
-            gridEdges: sc.gridEdges ?? undefined,
-            threshold: SNAP_THRESHOLD_PX,
-            disabled: e.altKey,
-          });
-          dx = snap.dx;
-          dy = snap.dy;
-          const movedRect = {
-            left: groupBounds.left + dx,
-            top: groupBounds.top + dy,
-            width: groupBounds.width,
-            height: groupBounds.height,
-          };
-          const spacingGuides = e.altKey
-            ? []
-            : resolveEquidistanceGuides({
-                movingRect: movedRect,
-                targets: allTargets,
-                threshold: SNAP_THRESHOLD_PX,
-              });
-          opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides };
-        }
-      }
-      groupG.lastSnappedDx = dx;
-      groupG.lastSnappedDy = dy;
-
-      setDraftGroupOverlayItems(
-        groupG.originItems.map((item) => ({
-          ...item,
-          rect: { ...item.rect, left: item.rect.left + dx, top: item.rect.top + dy },
-        })),
-      );
-      const offsets: Record<string, string> = {};
-      for (const member of groupG.members) {
-        const next = applyManualOffsetDragDraft(member, dx, dy);
-        offsets[member.key] = `${Math.round(next.x)},${Math.round(next.y)}`;
-      }
-      logDragMove({
-        pointer: `${Math.round(e.clientX - groupG.startX)},${Math.round(e.clientY - groupG.startY)}`,
-        // Any gap between these two is snapping pulling the group off the pointer.
-        applied: `${Math.round(dx)},${Math.round(dy)}`,
-        offsets,
-        at: readDragPositions(groupG.members),
-      });
+      moveGroupDrag(groupG, e);
       return;
     }
 

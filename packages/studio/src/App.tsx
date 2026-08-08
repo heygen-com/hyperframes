@@ -418,6 +418,8 @@ export function StudioApp() {
     rightCollapsed: panelLayout.rightCollapsed,
     activeCompPathHydrated,
     domEditSelection: domEditSession.domEditSelection,
+    domEditGroupSelections: domEditSession.domEditGroupSelections,
+    applyMarqueeSelection: domEditSession.applyMarqueeSelection,
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
     applyDomSelection: domEditSession.applyDomSelection,
     setRightPanelTab: panelLayout.setRightPanelTab,
