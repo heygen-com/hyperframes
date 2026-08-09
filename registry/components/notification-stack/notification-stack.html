@@ -175,8 +175,7 @@
                 : {};
 
             function toList(value, fallback) {
-              var raw =
-                value == null || String(value).trim() === "" ? fallback : String(value);
+              var raw = value == null || String(value).trim() === "" ? fallback : String(value);
               return raw.split(",").map(function (token) {
                 return token.trim();
               });

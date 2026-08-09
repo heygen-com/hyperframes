@@ -8,15 +8,15 @@ A full app surface establishes with one settle, then the camera zooms and pans t
 
 ## Variables
 
-| Variable   | Type   | Default | Notes                                                                       |
-| ---------- | ------ | ------- | ---------------------------------------------------------------------------- |
-| `anchor_x` | number | `64`    | Focus anchor, percent from the left edge of the surface (0 to 100).          |
-| `anchor_y` | number | `36`    | Focus anchor, percent from the top edge of the surface (0 to 100).           |
-| `zoom`     | number | `1.6`   | Camera scale at the focused state (1 to 3). At `1` the camera cannot pan.    |
-| `zoom_at`  | number | `1.4`   | Seconds from mount start when the camera departs. Clamped inside the hold so the move never fights the entrance or the exit. |
-| `halo`     | enum   | `show`  | `show` blooms a soft accent glow at the anchor as the camera arrives; `hide` removes it. |
+| Variable   | Type   | Default | Notes                                                                                                                            |
+| ---------- | ------ | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `anchor_x` | number | `64`    | Focus anchor, percent from the left edge of the surface (0 to 100).                                                              |
+| `anchor_y` | number | `36`    | Focus anchor, percent from the top edge of the surface (0 to 100).                                                               |
+| `zoom`     | number | `1.6`   | Camera scale at the focused state (1 to 3). At `1` the camera cannot pan.                                                        |
+| `zoom_at`  | number | `1.4`   | Seconds from mount start when the camera departs. Clamped inside the hold so the move never fights the entrance or the exit.     |
+| `halo`     | enum   | `show`  | `show` blooms a soft accent glow at the anchor as the camera arrives; `hide` removes it.                                         |
 | `accent`   | enum   | `green` | `green` rides `--brand`, `blue` rides `--accent`, `violet` rides `--accent-2`. Colors the halo and the skeleton accent elements. |
-| `exit`     | enum   | `none`  | `none` holds the final frame (frame roots own transitions), `fade`, or `up`. |
+| `exit`     | enum   | `none`  | `none` holds the final frame (frame roots own transitions), `fade`, or `up`.                                                     |
 
 ## The surface slot
 

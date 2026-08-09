@@ -125,7 +125,8 @@
             place-items: center;
             width: 52cqmin;
             height: 52cqmin;
-            border: 0.18cqmin solid color-mix(in srgb, var(--pir-accent) 52%, var(--border, #475569));
+            border: 0.18cqmin solid
+              color-mix(in srgb, var(--pir-accent) 52%, var(--border, #475569));
             border-radius: var(--radius, 3cqmin);
             background: color-mix(in srgb, var(--surface, #14171c) 90%, var(--pir-accent));
             box-shadow: 0 3cqh 9cqh color-mix(in srgb, var(--bg, #000000) 40%, transparent);
@@ -314,8 +315,7 @@
                 var u = clamp01((p - row.birth) / (row.arrive - row.birth));
                 if (u <= 0) continue;
                 var settled = clamp01((p - row.arrive) / row.fade);
-                var alpha =
-                  clamp01(u / 0.14) * (1 - settled) * endClamp * thin * row.dim * 0.92;
+                var alpha = clamp01(u / 0.14) * (1 - settled) * endClamp * thin * row.dim * 0.92;
                 if (alpha <= 0.002) continue;
                 var e = 1 - Math.pow(1 - u, 3);
                 var x = row.tx * canvas.width + row.ox * row.offset * (1 - e);
@@ -332,8 +332,7 @@
             // Image reveal geometry follows the particle sweep.
             var clipFrom =
               direction === "center" ? "circle(0% at 50% 50%)" : "inset(0% 100% 0% 0%)";
-            var clipTo =
-              direction === "center" ? "circle(75% at 50% 50%)" : "inset(0% 0% 0% 0%)";
+            var clipTo = direction === "center" ? "circle(75% at 50% 50%)" : "inset(0% 0% 0% 0%)";
 
             gsap.set(stage, { opacity: 1, y: "0cqh" });
             gsap.set(imageLayer, { opacity: 0, clipPath: clipFrom });

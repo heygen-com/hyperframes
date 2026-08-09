@@ -126,8 +126,7 @@
             border: 0.18cqmin solid var(--border, #475569);
             border-radius: var(--radius, 2.4cqmin);
             background: var(--surface, #14171c);
-            box-shadow: 0 1.6cqmin 5cqmin
-              color-mix(in srgb, var(--bg, #000000) 30%, transparent);
+            box-shadow: 0 1.6cqmin 5cqmin color-mix(in srgb, var(--bg, #000000) 30%, transparent);
           }
 
           .et-card-dot {
@@ -180,13 +179,9 @@
                 : {};
 
             var echoesRaw = parseFloat(vars.echoes);
-            var echoes = isFinite(echoesRaw)
-              ? Math.min(6, Math.max(2, Math.round(echoesRaw)))
-              : 4;
+            var echoes = isFinite(echoesRaw) ? Math.min(6, Math.max(2, Math.round(echoesRaw))) : 4;
             var deltaRaw = parseFloat(vars.delta);
-            var deltaVar = isFinite(deltaRaw)
-              ? Math.min(0.3, Math.max(0.03, deltaRaw))
-              : 0.09;
+            var deltaVar = isFinite(deltaRaw) ? Math.min(0.3, Math.max(0.03, deltaRaw)) : 0.09;
             var pathName = vars.path === "rise" || vars.path === "arc" ? vars.path : "sweep";
             // Each enum choice routes to a DIFFERENT contract token so the
             // variable stays meaningful under a theme.

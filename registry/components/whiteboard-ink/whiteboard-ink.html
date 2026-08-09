@@ -346,7 +346,8 @@
             Object.keys(sketchGroups).forEach(function (name) {
               // SVG <g> has no `hidden` IDL property (assignment is a dead
               // expando); toggle the attribute so the [hidden] CSS applies.
-              if (hasCustomStrokes || name !== sketch) sketchGroups[name].setAttribute("hidden", "");
+              if (hasCustomStrokes || name !== sketch)
+                sketchGroups[name].setAttribute("hidden", "");
               else sketchGroups[name].removeAttribute("hidden");
             });
             if (hasCustomStrokes) strokesSlot.removeAttribute("hidden");
@@ -362,19 +363,17 @@
             );
 
             var groupTransform = activeGroup.transform.baseVal.consolidate();
-            var strokes = Array.from(activeGroup.querySelectorAll("path")).map(
-              function (path) {
-                var length = path.getTotalLength();
-                path.style.strokeDasharray = length + " " + length;
-                path.style.strokeDashoffset = String(length);
-                return {
-                  path: path,
-                  length: length,
-                  progress: 0,
-                  matrix: groupTransform ? groupTransform.matrix : null,
-                };
-              },
-            );
+            var strokes = Array.from(activeGroup.querySelectorAll("path")).map(function (path) {
+              var length = path.getTotalLength();
+              path.style.strokeDasharray = length + " " + length;
+              path.style.strokeDashoffset = String(length);
+              return {
+                path: path,
+                length: length,
+                progress: 0,
+                matrix: groupTransform ? groupTransform.matrix : null,
+              };
+            });
             var totalLength = strokes.reduce(function (sum, stroke) {
               return sum + stroke.length;
             }, 0);

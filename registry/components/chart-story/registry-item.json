@@ -4,7 +4,17 @@
   "type": "hyperframes:component",
   "title": "Chart Story",
   "description": "One chart builds from data in reading order and lands the exact supplied values: staggered bars, a left-to-right line with area fill, a sweeping donut, or filling progress bars, with an accented value callout on the emphasized datum.",
-  "tags": ["motion-primitive", "proof", "stats", "chart", "bars", "line", "donut", "progress", "deterministic"],
+  "tags": [
+    "motion-primitive",
+    "proof",
+    "stats",
+    "chart",
+    "bars",
+    "line",
+    "donut",
+    "progress",
+    "deterministic"
+  ],
   "jobs": ["prove"],
   "family": "proof-stats",
   "profile": "chart",

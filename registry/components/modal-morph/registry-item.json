@@ -4,7 +4,15 @@
   "type": "hyperframes:component",
   "title": "Modal Morph",
   "description": "A small card expands into a full panel, shared-element style: both layouts measured once at mount, the container morphs by transform only (never width/height tweens) while keyed children counter-scale and re-flow onto their own measured targets as pure functions of time.",
-  "tags": ["motion-primitive", "structure", "flip", "shared-element", "modal", "deterministic", "experiment"],
+  "tags": [
+    "motion-primitive",
+    "structure",
+    "flip",
+    "shared-element",
+    "modal",
+    "deterministic",
+    "experiment"
+  ],
   "jobs": ["demonstrate"],
   "family": "structure",
   "profile": "shared-element",

@@ -15,12 +15,12 @@ cadence, and ink law as the presets.
 
 ## Variables
 
-| id        | type   | default         | notes                                                                     |
-| --------- | ------ | --------------- | ------------------------------------------------------------------------- |
-| `sketch`  | enum   | `bulb`          | preset sketch (`bulb`, `flow`, `rocket`); ignored when the strokes slot holds paths |
-| `caption` | string | `Draw the idea` | short line revealed after the drawing completes; empty string shows none  |
-| `pen`     | enum   | `show`          | `hide` removes the traveling nib actor                                    |
-| `accent`  | enum   | `green`         | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
+| id        | type   | default         | notes                                                                                 |
+| --------- | ------ | --------------- | ------------------------------------------------------------------------------------- |
+| `sketch`  | enum   | `bulb`          | preset sketch (`bulb`, `flow`, `rocket`); ignored when the strokes slot holds paths   |
+| `caption` | string | `Draw the idea` | short line revealed after the drawing completes; empty string shows none              |
+| `pen`     | enum   | `show`          | `hide` removes the traveling nib actor                                                |
+| `accent`  | enum   | `green`         | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`             |
 | `exit`    | enum   | `none`          | `none` holds the final frame; `fade` releases opacity; `up` adds a small upward drift |
 
 Envelope: IN = 3.55s (3.25s sequential draw, then pen lift and caption),

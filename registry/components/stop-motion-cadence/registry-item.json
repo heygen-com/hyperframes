@@ -4,7 +4,15 @@
   "type": "hyperframes:component",
   "title": "Stop Motion Cadence",
   "description": "The stepped-time law as a demo primitive: one driver quantizes timeline time to floor(t * fps) / fps and feeds ALL motion; four token paper-cut shapes throw-and-land with squash on hits, 2-frame boil jitter seeded per step, and sparkle accents living exactly 2 to 3 frames.",
-  "tags": ["motion-primitive", "time-law", "stop-motion", "stepped", "boil", "deterministic", "experiment"],
+  "tags": [
+    "motion-primitive",
+    "time-law",
+    "stop-motion",
+    "stepped",
+    "boil",
+    "deterministic",
+    "experiment"
+  ],
   "jobs": ["demonstrate"],
   "family": "demonstrate",
   "profile": "stepped-time",

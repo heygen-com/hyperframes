@@ -40,13 +40,13 @@ contract tokens.
 
 ## Variables
 
-| id         | type   | default      | notes                                                             |
-| ---------- | ------ | ------------ | ----------------------------------------------------------------- |
-| charset    | string | " .:-=+*#%@" | Density ramp, dark to light. A leading space keeps dark cells empty. |
-| grid       | enum   | med          | Final cell pitch: coarse (22 rows), med (36), fine (54).          |
-| resolve_at | number | 1.4          | Seconds from mount start when the coarse-to-fine resolve begins. Clamped so the 1.2s resolve and any exit stay inside the clip. |
-| accent     | enum   | green        | Glyph ink: green maps to --brand, blue to --accent, violet to --accent-2. |
-| exit       | enum   | none         | none holds the fine render (frame roots own transitions); fade or up add a 0.45s departure. |
+| id         | type   | default       | notes                                                                                                                           |
+| ---------- | ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| charset    | string | " .:-=+\*#%@" | Density ramp, dark to light. A leading space keeps dark cells empty.                                                            |
+| grid       | enum   | med           | Final cell pitch: coarse (22 rows), med (36), fine (54).                                                                        |
+| resolve_at | number | 1.4           | Seconds from mount start when the coarse-to-fine resolve begins. Clamped so the 1.2s resolve and any exit stay inside the clip. |
+| accent     | enum   | green         | Glyph ink: green maps to --brand, blue to --accent, violet to --accent-2.                                                       |
+| exit       | enum   | none          | none holds the fine render (frame roots own transitions); fade or up add a 0.45s departure.                                     |
 
 ## Choreography
 

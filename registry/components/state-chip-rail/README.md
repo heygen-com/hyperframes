@@ -14,14 +14,14 @@ the (optional) exit.
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `states` | string | `Queued,Reading,Drafting,Done` | Comma list of chip labels in machine order. 2 to 8 states; extras are dropped. State 0 is active from mount. |
-| `times` | string | `""` | Comma-separated activation times in seconds relative to mount start, one per ADVANCE (state 1, state 2, ...). Blank or invalid entries use the default even rhythm; values are clamped into the mount window and forced monotonic. |
-| `badge_state` | number 0-7 | `1` | Index of the state the badges pop beside. Clamped to the states range. |
-| `badges` | string | `""` | Comma list of badge labels rendered after the `badge_state` chip; they pop in (staggered scale + fade) when that state activates. Empty disables. Up to 4. |
-| `accent` | enum `green` \| `blue` \| `violet` | `green` | Active-chip accent: green rides `--brand`, blue `--accent`, violet `--accent-2`. |
-| `exit` | enum `none` \| `fade` \| `up` | `none` | Frame roots own transitions; the default hold ends the film. |
+| id            | type                               | default                        | notes                                                                                                                                                                                                                              |
+| ------------- | ---------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `states`      | string                             | `Queued,Reading,Drafting,Done` | Comma list of chip labels in machine order. 2 to 8 states; extras are dropped. State 0 is active from mount.                                                                                                                       |
+| `times`       | string                             | `""`                           | Comma-separated activation times in seconds relative to mount start, one per ADVANCE (state 1, state 2, ...). Blank or invalid entries use the default even rhythm; values are clamped into the mount window and forced monotonic. |
+| `badge_state` | number 0-7                         | `1`                            | Index of the state the badges pop beside. Clamped to the states range.                                                                                                                                                             |
+| `badges`      | string                             | `""`                           | Comma list of badge labels rendered after the `badge_state` chip; they pop in (staggered scale + fade) when that state activates. Empty disables. Up to 4.                                                                         |
+| `accent`      | enum `green` \| `blue` \| `violet` | `green`                        | Active-chip accent: green rides `--brand`, blue `--accent`, violet `--accent-2`.                                                                                                                                                   |
+| `exit`        | enum `none` \| `fade` \| `up`      | `none`                         | Frame roots own transitions; the default hold ends the film.                                                                                                                                                                       |
 
 ## Usage
 

@@ -4,7 +4,14 @@
   "type": "hyperframes:component",
   "title": "Particle Text Dissolve",
   "description": "Text assembles from a seeded particle cloud (or dissolves into it): per-particle targets sampled once from the rendered text bitmap at mount, table-driven particles, zero per-particle tweens, one onUpdate painter.",
-  "tags": ["motion-primitive", "text-effects", "particles", "canvas", "deterministic", "experiment"],
+  "tags": [
+    "motion-primitive",
+    "text-effects",
+    "particles",
+    "canvas",
+    "deterministic",
+    "experiment"
+  ],
   "jobs": ["emphasize"],
   "family": "text-effects",
   "profile": "materialize",

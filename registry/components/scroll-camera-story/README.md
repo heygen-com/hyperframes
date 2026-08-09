@@ -6,13 +6,13 @@ A compressed forced-scroll cinematic pass. A tall authored scene (four depth lay
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `sections` | number | `3` | Skeleton section count, 2 to 4. A sections slot overrides it with its own child count. |
-| `travel` | number | `220` | Total camera travel in cqh. The world is `100 + travel` cqh tall; sections spread evenly along the travel. |
-| `cues` | string | `""` | Comma-separated seconds: arrival times for the sections AFTER the first (the first is on screen at mount). A list with one extra leading value drops it as the mount section's. Empty keeps the authored default rhythm. |
-| `accent` | enum | `green` | green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds the final section until the cut; `fade`; `up`. |
+| id         | type   | default | notes                                                                                                                                                                                                                    |
+| ---------- | ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sections` | number | `3`     | Skeleton section count, 2 to 4. A sections slot overrides it with its own child count.                                                                                                                                   |
+| `travel`   | number | `220`   | Total camera travel in cqh. The world is `100 + travel` cqh tall; sections spread evenly along the travel.                                                                                                               |
+| `cues`     | string | `""`    | Comma-separated seconds: arrival times for the sections AFTER the first (the first is on screen at mount). A list with one extra leading value drops it as the mount section's. Empty keeps the authored default rhythm. |
+| `accent`   | enum   | `green` | green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                                                                                                 |
+| `exit`     | enum   | `none`  | `none` holds the final section until the cut; `fade`; `up`.                                                                                                                                                              |
 
 ## Sections slot
 

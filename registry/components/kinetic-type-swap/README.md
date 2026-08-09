@@ -6,14 +6,14 @@ A held sentence keeps its prefix and suffix fixed while one masked word slot rol
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `prefix` | string | `Ship` | Fixed text before the rolling slot. |
-| `options` | string | `faster,smarter,together` | Comma-separated words, shown in order; the last one is the sentence's final state. |
-| `suffix` | string | `` (empty) | Fixed text after the rolling slot. |
-| `cues` | string | `` (empty) | Comma-separated seconds (from mount start) for each swap, e.g. `0.8,1.6`. Sorted ascending; swaps beyond the list extrapolate at the list's own gap. Empty keeps the authored even spread. |
-| `accent` | enum | `green` | Slot color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` is the opacity release (the pre-Wave-J default ending); `up` adds a small rise to the fade. |
+| id        | type   | default                   | notes                                                                                                                                                                                      |
+| --------- | ------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prefix`  | string | `Ship`                    | Fixed text before the rolling slot.                                                                                                                                                        |
+| `options` | string | `faster,smarter,together` | Comma-separated words, shown in order; the last one is the sentence's final state.                                                                                                         |
+| `suffix`  | string | `` (empty)                | Fixed text after the rolling slot.                                                                                                                                                         |
+| `cues`    | string | `` (empty)                | Comma-separated seconds (from mount start) for each swap, e.g. `0.8,1.6`. Sorted ascending; swaps beyond the list extrapolate at the list's own gap. Empty keeps the authored even spread. |
+| `accent`  | enum   | `green`                   | Slot color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                                                       |
+| `exit`    | enum   | `none`                    | `none` holds until the cut; `fade` is the opacity release (the pre-Wave-J default ending); `up` adds a small rise to the fade.                                                             |
 
 ## Mount
 

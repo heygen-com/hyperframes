@@ -4,7 +4,15 @@
   "type": "hyperframes:component",
   "title": "Ink Bleed Reveal",
   "description": "Liquid ink blooms through paper under a gooey blur-plus-threshold filter, merges, then contracts as a crisp slotted mark resolves beneath it, with static seeded paper grain riding the result.",
-  "tags": ["motion-primitive", "texture", "reveal", "gooey", "svg-filter", "deterministic", "experiment"],
+  "tags": [
+    "motion-primitive",
+    "texture",
+    "reveal",
+    "gooey",
+    "svg-filter",
+    "deterministic",
+    "experiment"
+  ],
   "jobs": ["reveal"],
   "family": "texture",
   "profile": "materialize",

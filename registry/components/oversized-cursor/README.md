@@ -6,13 +6,13 @@ An actor primitive: a deliberately oversized macOS-style pointer enters from off
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `cursor_variant` | enum | `light` | `light` (white body) or `dark` (near-black body); pick per scene contrast. |
-| `target_x` | number (%) | `55` | Tip landing point, percent of the host box (15 to 85). |
-| `target_y` | number (%) | `55` | Tip landing point, percent of the host box (15 to 85). |
-| `click_label` | string | `Generate` | Label on the clicked target pill. |
-| `exit` | enum | `none` | `none` leaves the ignited target on screen until the cut; `fade`/`up` also depart the whole stage (target included) during the OUT window. |
+| id               | type       | default    | notes                                                                                                                                      |
+| ---------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cursor_variant` | enum       | `light`    | `light` (white body) or `dark` (near-black body); pick per scene contrast.                                                                 |
+| `target_x`       | number (%) | `55`       | Tip landing point, percent of the host box (15 to 85).                                                                                     |
+| `target_y`       | number (%) | `55`       | Tip landing point, percent of the host box (15 to 85).                                                                                     |
+| `click_label`    | string     | `Generate` | Label on the clicked target pill.                                                                                                          |
+| `exit`           | enum       | `none`     | `none` leaves the ignited target on screen until the cut; `fade`/`up` also depart the whole stage (target included) during the OUT window. |
 
 ## Mount
 

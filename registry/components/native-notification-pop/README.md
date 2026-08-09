@@ -44,7 +44,7 @@ defaults. `exit` moves only the banner; the scene slot holds regardless
 The primitive ships one named slot inside its `<template>`:
 
 ```html
-<div class="nnp-slot" data-slot="scene"> ... </div>
+<div class="nnp-slot" data-slot="scene">...</div>
 ```
 
 The slot's default children are a token backdrop (soft color fields plus a

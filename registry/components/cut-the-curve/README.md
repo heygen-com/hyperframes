@@ -6,13 +6,13 @@ Transition profile: no elastic HOLD; retime by changing the mount duration only 
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `subject` | enum | `cursor` | `cursor`, `card`, or `scene`: the visual payload on both sides of the cut. |
-| `direction` | enum | `left` | `left`, `right`, `up`, `down`: the shared travel vector. |
-| `cutFraction` | number | `0.33` | Normalized point of the hard cut. The incoming distance derives from it so seam velocity stays matched. |
-| `blurPx` | number | `12` | Blur shared by both subjects at the seam. |
-| `exit` | enum | `none` | `none` rests until the cut; `fade`/`up` depart the incoming subject over a reserved tail (min(0.35s, 25% of D)) after it lands. |
+| id            | type   | default  | notes                                                                                                                           |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `subject`     | enum   | `cursor` | `cursor`, `card`, or `scene`: the visual payload on both sides of the cut.                                                      |
+| `direction`   | enum   | `left`   | `left`, `right`, `up`, `down`: the shared travel vector.                                                                        |
+| `cutFraction` | number | `0.33`   | Normalized point of the hard cut. The incoming distance derives from it so seam velocity stays matched.                         |
+| `blurPx`      | number | `12`     | Blur shared by both subjects at the seam.                                                                                       |
+| `exit`        | enum   | `none`   | `none` rests until the cut; `fade`/`up` depart the incoming subject over a reserved tail (min(0.35s, 25% of D)) after it lands. |
 
 ## Mount
 

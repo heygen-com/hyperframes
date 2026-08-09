@@ -8,16 +8,16 @@ Every visible frame is read from one lookup table of text-at-time rows, built sy
 
 ## Variables
 
-| Variable       | Type   | Default                           | Notes                                                                                        |
-| -------------- | ------ | --------------------------------- | -------------------------------------------------------------------------------------------- |
-| `text`         | string | `Generate a product launch video` | The prompt that gets typed. The resting text always equals `text`.                            |
-| `prompt_glyph` | string | `>`                               | Leading glyph. Empty string hides it.                                                         |
-| `cadence`      | enum   | `human`                           | `uniform` = one character per fixed step; `human` = seeded 1-3 character chunks, varied gaps. |
-| `caret`        | enum   | `blink`                           | `blink` = integer sine cycles during typing, then solid; `solid` never blinks.                |
-| `correction`   | string | `""`                              | The mistyped word: typed in place of the final word, backspaced, then the true word retypes.  |
+| Variable       | Type   | Default                           | Notes                                                                                                 |
+| -------------- | ------ | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `text`         | string | `Generate a product launch video` | The prompt that gets typed. The resting text always equals `text`.                                    |
+| `prompt_glyph` | string | `>`                               | Leading glyph. Empty string hides it.                                                                 |
+| `cadence`      | enum   | `human`                           | `uniform` = one character per fixed step; `human` = seeded 1-3 character chunks, varied gaps.         |
+| `caret`        | enum   | `blink`                           | `blink` = integer sine cycles during typing, then solid; `solid` never blinks.                        |
+| `correction`   | string | `""`                              | The mistyped word: typed in place of the final word, backspaced, then the true word retypes.          |
 | `cues`         | string | `""`                              | Comma-separated seconds from mount start; cue N anchors the start of word N. Empty = authored rhythm. |
-| `accent`       | enum   | `green`                           | `green` -> `--brand`, `blue` -> `--accent`, `violet` -> `--accent-2` (glyph + caret).         |
-| `exit`         | enum   | `none`                            | `none` holds the end frame (frame roots own transitions), `fade`, or `up`.                    |
+| `accent`       | enum   | `green`                           | `green` -> `--brand`, `blue` -> `--accent`, `violet` -> `--accent-2` (glyph + caret).                 |
+| `exit`         | enum   | `none`                            | `none` holds the end frame (frame roots own transitions), `fade`, or `up`.                            |
 
 ## Envelope
 

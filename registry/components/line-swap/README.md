@@ -6,14 +6,14 @@ A masked full-line beat replacement. `line_a` rises into an overflow-hidden mask
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `line_a` | string | `Everyone promised you AI.` | Holds center, exits up on the beat. |
-| `line_b` | string | `Almost nobody promised you control.` | Enters bottom-up on the beat, then holds. Font size auto-fits to the longer line. |
-| `swap_at` | number | `1.5` | Beat second from mount start. Clamped so line A fully arrives first and the swap plus underline complete before any exit. |
-| `underline_word` | string | `control` | First case-insensitive substring match in `line_b` gets the underline. Empty or unmatched disables it. |
-| `accent` | enum | `green` | Underline color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` fades while rising. |
+| id               | type   | default                               | notes                                                                                                                     |
+| ---------------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `line_a`         | string | `Everyone promised you AI.`           | Holds center, exits up on the beat.                                                                                       |
+| `line_b`         | string | `Almost nobody promised you control.` | Enters bottom-up on the beat, then holds. Font size auto-fits to the longer line.                                         |
+| `swap_at`        | number | `1.5`                                 | Beat second from mount start. Clamped so line A fully arrives first and the swap plus underline complete before any exit. |
+| `underline_word` | string | `control`                             | First case-insensitive substring match in `line_b` gets the underline. Empty or unmatched disables it.                    |
+| `accent`         | enum   | `green`                               | Underline color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                 |
+| `exit`           | enum   | `none`                                | `none` holds until the cut; `fade` departs opacity-only; `up` fades while rising.                                         |
 
 ## Mount
 

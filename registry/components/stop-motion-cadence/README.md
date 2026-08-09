@@ -6,12 +6,12 @@ The stepped-time law as a demo primitive (Wave M10 experiment). ONE driver quant
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `fps` | enum | `10` | Stepped-time cadence: `8`, `10`, or `12` frames per second. |
-| `boil` | enum | `on` | 2-frame edge jitter hashed from `floor(step / 2)`. `off` gives a dead-still settle. |
+| id       | type | default | notes                                                                                                                                                  |
+| -------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `fps`    | enum | `10`    | Stepped-time cadence: `8`, `10`, or `12` frames per second.                                                                                            |
+| `boil`   | enum | `on`    | 2-frame edge jitter hashed from `floor(step / 2)`. `off` gives a dead-still settle.                                                                    |
 | `accent` | enum | `green` | Lead shape color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`; the other shapes take the remaining two tokens in rotation. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| `exit`   | enum | `none`  | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                                                               |
 
 ## Mount
 

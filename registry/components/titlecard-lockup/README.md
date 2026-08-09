@@ -24,14 +24,14 @@ npx hyperframes add titlecard-lockup
 
 ## Variables
 
-| Variable   | Type   | Default                     | Notes                                                            |
-| ---------- | ------ | --------------------------- | ---------------------------------------------------------------- |
-| `wordmark` | string | `HYPERFRAMES`               | Display wordmark, auto-fitted to one line by character count.    |
-| `label`    | string | `WRITE HTML. RENDER VIDEO.` | Mono caption under the rule. Empty string hides it.              |
+| Variable   | Type   | Default                     | Notes                                                                                              |
+| ---------- | ------ | --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `wordmark` | string | `HYPERFRAMES`               | Display wordmark, auto-fitted to one line by character count.                                      |
+| `label`    | string | `WRITE HTML. RENDER VIDEO.` | Mono caption under the rule. Empty string hides it.                                                |
 | `kicker`   | string | `INTRODUCING`               | Small mono label above the wordmark. Empty string hides it (the schedule keeps its beat of quiet). |
-| `rule`     | enum   | `show`                      | `show` or `hide` for the hairline rule and its draw.             |
-| `accent`   | enum   | `green`                     | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`. Carried by the rule. |
-| `exit`     | enum   | `none`                      | `none`, `fade`, or `up`. Frame roots own transitions; holds end films. |
+| `rule`     | enum   | `show`                      | `show` or `hide` for the hairline rule and its draw.                                               |
+| `accent`   | enum   | `green`                     | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`. Carried by the rule.    |
+| `exit`     | enum   | `none`                      | `none`, `fade`, or `up`. Frame roots own transitions; holds end films.                             |
 
 ## Envelope
 

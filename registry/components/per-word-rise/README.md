@@ -6,13 +6,13 @@ Words or characters rise into place in a controlled blur-to-sharp cascade, settl
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `text` | string | `WORDS IN MOTION` | The displayed line. Font size auto-fits to character count. |
-| `split` | enum | `word` | `word` or `char`: the unit that rises. |
-| `cues` | string | `` (empty) | Comma-separated seconds (from mount start) for each unit's landing, e.g. `0.4,0.8,1.6`. Units beyond the list extrapolate at the list's own gap. Empty keeps the authored cascade. |
-| `accent` | enum | `green` | Text color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` is the staggered upward fade (the pre-Wave-J default ending). |
+| id       | type   | default           | notes                                                                                                                                                                              |
+| -------- | ------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`   | string | `WORDS IN MOTION` | The displayed line. Font size auto-fits to character count.                                                                                                                        |
+| `split`  | enum   | `word`            | `word` or `char`: the unit that rises.                                                                                                                                             |
+| `cues`   | string | `` (empty)        | Comma-separated seconds (from mount start) for each unit's landing, e.g. `0.4,0.8,1.6`. Units beyond the list extrapolate at the list's own gap. Empty keeps the authored cascade. |
+| `accent` | enum   | `green`           | Text color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                                               |
+| `exit`   | enum   | `none`            | `none` holds until the cut; `fade` departs opacity-only; `up` is the staggered upward fade (the pre-Wave-J default ending).                                                        |
 
 ## Mount
 

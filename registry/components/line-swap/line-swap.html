@@ -217,11 +217,7 @@
 
             // Deterministic character-count fit against the longer line; both
             // lines are nowrap, so the fit keeps them inside the stage.
-            var characters = Math.max(
-              1,
-              Array.from(lineA).length,
-              Array.from(lineB).length,
-            );
+            var characters = Math.max(1, Array.from(lineA).length, Array.from(lineB).length);
             var fitted = Math.max(3.4, Math.min(9, 168 / characters));
             root.style.setProperty("--ls-font-size", "min(" + fitted.toFixed(3) + "cqw, 16cqh)");
 
@@ -299,11 +295,7 @@
             if (exit === "fade") {
               tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
             } else if (exit === "up") {
-              tl.to(
-                stage,
-                { opacity: 0, y: "-7cqh", duration: OUT, ease: "power2.in" },
-                OUT_START,
-              );
+              tl.to(stage, { opacity: 0, y: "-7cqh", duration: OUT, ease: "power2.in" }, OUT_START);
             }
 
             tl.seek(0);

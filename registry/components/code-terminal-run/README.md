@@ -18,13 +18,13 @@ once the run completes. Then the panel holds still.
 
 ## Variables
 
-| id             | type   | default | notes                                                                     |
-| -------------- | ------ | ------- | ------------------------------------------------------------------------- |
-| `prompt_glyph` | string | `$`     | leading glyph on the command and trailing prompt; empty string hides it    |
-| `cadence`      | enum   | `human` | `uniform` fixed steps or `human` seeded 1-3 char chunks (fixed LCG seed)   |
-| `cues`         | string | ``      | comma seconds from mount start; cue N sets when output line N prints       |
+| id             | type   | default | notes                                                                                    |
+| -------------- | ------ | ------- | ---------------------------------------------------------------------------------------- |
+| `prompt_glyph` | string | `$`     | leading glyph on the command and trailing prompt; empty string hides it                  |
+| `cadence`      | enum   | `human` | `uniform` fixed steps or `human` seeded 1-3 char chunks (fixed LCG seed)                 |
+| `cues`         | string | ``      | comma seconds from mount start; cue N sets when output line N prints                     |
 | `accent`       | enum   | `green` | glyph + caret: `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
-| `exit`         | enum   | `none`  | `none` holds the final frame; `fade` and `up` release the stage            |
+| `exit`         | enum   | `none`  | `none` holds the final frame; `fade` and `up` release the stage                          |
 
 Envelope: panel settles over 0.5s, typing runs from 0.4s at its natural
 cadence, an execute beat follows, output lines print (defaults: a 0.3s leading
@@ -85,7 +85,10 @@ children:
 
 ```html
 <div class="ctr-slot" data-slot="content">
-  <div data-terminal="command">deploy <span class="ct-path">./site</span> <span class="ct-flag">--region</span> <span class="ct-str">"eu-west"</span></div>
+  <div data-terminal="command">
+    deploy <span class="ct-path">./site</span> <span class="ct-flag">--region</span>
+    <span class="ct-str">"eu-west"</span>
+  </div>
   <div data-terminal="output"><span class="ct-muted">-</span> uploading 14 files</div>
   <div data-terminal="output"><span class="ct-ok">ok</span> live in 900 ms</div>
 </div>

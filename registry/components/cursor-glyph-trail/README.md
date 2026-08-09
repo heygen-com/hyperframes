@@ -6,14 +6,14 @@ An actor (default: a cursor dot) travels an authored path and deposits small dit
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `glyphs` | string | `░▒▓+·×` | Stamp charset; one glyph per stamp is chosen by a fixed-seed LCG. |
-| `density` | enum | `med` | Arc-length spacing between stamps: `low` (4.6), `med` (2.9), `high` (1.8) percent units. |
-| `path` | enum | `sweep` | `sweep` is an S-curve lower-left to upper-right; `arc` rises over the top; `zigzag` cuts three straight legs. |
-| `fade` | number | `0.8` | Per-stamp decay window in seconds, clamped 0.3 to 1.5; per stamp varied 0.75x to 1.25x. |
-| `accent` | enum | `green` | Trail and actor color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id        | type   | default  | notes                                                                                                         |
+| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `glyphs`  | string | `░▒▓+·×` | Stamp charset; one glyph per stamp is chosen by a fixed-seed LCG.                                             |
+| `density` | enum   | `med`    | Arc-length spacing between stamps: `low` (4.6), `med` (2.9), `high` (1.8) percent units.                      |
+| `path`    | enum   | `sweep`  | `sweep` is an S-curve lower-left to upper-right; `arc` rises over the top; `zigzag` cuts three straight legs. |
+| `fade`    | number | `0.8`    | Per-stamp decay window in seconds, clamped 0.3 to 1.5; per stamp varied 0.75x to 1.25x.                       |
+| `accent`  | enum   | `green`  | Trail and actor color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.               |
+| `exit`    | enum   | `none`   | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                      |
 
 ## Actor slot
 

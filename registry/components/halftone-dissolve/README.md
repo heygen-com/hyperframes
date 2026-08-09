@@ -38,13 +38,13 @@ HTML is centered. A missing slot falls back to a token monogram tile
 
 ## Variables
 
-| id          | type   | default | notes                                                                |
-| ----------- | ------ | ------- | -------------------------------------------------------------------- |
-| dot_size    | enum   | medium  | small, medium, or large grid pitch (host width / 44, 30, 20).         |
-| direction   | enum   | ltr     | ltr sweeps left to right, center grows from the middle, noise is a pure seeded scatter. |
+| id          | type   | default | notes                                                                                                              |
+| ----------- | ------ | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| dot_size    | enum   | medium  | small, medium, or large grid pitch (host width / 44, 30, 20).                                                      |
+| direction   | enum   | ltr     | ltr sweeps left to right, center grows from the middle, noise is a pure seeded scatter.                            |
 | dissolve_at | number | 1.1     | Seconds from mount start when the dissolve begins. Clamped so the 1.3s dissolve and any exit stay inside the clip. |
-| accent      | enum   | green   | green maps to --brand, blue to --accent, violet to --accent-2. Colors the ink dots. |
-| exit        | enum   | none    | none holds scene B (frame roots own transitions); fade or up add a 0.45s departure. |
+| accent      | enum   | green   | green maps to --brand, blue to --accent, violet to --accent-2. Colors the ink dots.                                |
+| exit        | enum   | none    | none holds scene B (frame roots own transitions); fade or up add a 0.45s departure.                                |
 
 ## Choreography
 

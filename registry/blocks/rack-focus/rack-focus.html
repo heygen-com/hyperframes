@@ -466,8 +466,7 @@
 
         function hexToRgb(hex) {
           var h = String(hex).trim().replace("#", "");
-          if (h.length === 3)
-            h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+          if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
           var v = parseInt(h, 16);
           if (!isFinite(v)) return [0.02, 0.024, 0.039];
           return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];

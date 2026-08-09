@@ -4,7 +4,15 @@
   "type": "hyperframes:component",
   "title": "Segmentation Flood",
   "description": "Machine-vision read of a slotted subject: translucent accent segmentation masks flood on in quantized scanline steps, each region gets a thin bracket and mono label chip, a deterministic 2-frame HUD flicker rides the pass, then the labeled read settles clean.",
-  "tags": ["motion-primitive", "product-demo", "ai", "hud", "canvas", "deterministic", "experiment"],
+  "tags": [
+    "motion-primitive",
+    "product-demo",
+    "ai",
+    "hud",
+    "canvas",
+    "deterministic",
+    "experiment"
+  ],
   "jobs": ["demonstrate"],
   "family": "product-demo",
   "profile": "machine-read",

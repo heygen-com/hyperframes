@@ -220,9 +220,7 @@
             }
 
             var labelText =
-              vars.label == null
-                ? "Get started"
-                : String(vars.label).trim().replace(/\s+/g, " ");
+              vars.label == null ? "Get started" : String(vars.label).trim().replace(/\s+/g, " ");
             var targetX = num(vars.target_x, 50, 8, 92);
             var targetY = num(vars.target_y, 50, 8, 92);
             var cursorTone = vars.cursor === "dark" ? "dark" : "light";

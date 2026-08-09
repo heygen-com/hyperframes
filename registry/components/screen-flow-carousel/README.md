@@ -6,13 +6,13 @@ Two to five app screens ride a horizontal rail. One screen is primary at center 
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `screens` | number | `3` | 2 to 5 screens on the rail. |
-| `captions` | string | `""` | Comma-separated caption per screen. Blank entries use the authored defaults (Overview, Details, Insights, Activity, Settings). |
-| `cues` | string | `""` | Comma-separated advance times in seconds from mount start (`screens - 1` advances). Blank entries use the authored even rhythm; values are clamped inside the hold and kept far enough apart that throws never overlap. |
-| `accent` | enum | `green` | Active ring, caption dot, and skeleton accents: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds the final screen until the cut; `fade` departs opacity-only; `up` fades while rising. |
+| id         | type   | default | notes                                                                                                                                                                                                                   |
+| ---------- | ------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `screens`  | number | `3`     | 2 to 5 screens on the rail.                                                                                                                                                                                             |
+| `captions` | string | `""`    | Comma-separated caption per screen. Blank entries use the authored defaults (Overview, Details, Insights, Activity, Settings).                                                                                          |
+| `cues`     | string | `""`    | Comma-separated advance times in seconds from mount start (`screens - 1` advances). Blank entries use the authored even rhythm; values are clamped inside the hold and kept far enough apart that throws never overlap. |
+| `accent`   | enum   | `green` | Active ring, caption dot, and skeleton accents: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                                                |
+| `exit`     | enum   | `none`  | `none` holds the final screen until the cut; `fade` departs opacity-only; `up` fades while rising.                                                                                                                      |
 
 ## Screen slots
 

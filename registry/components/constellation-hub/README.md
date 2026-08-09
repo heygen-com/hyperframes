@@ -6,13 +6,13 @@ Feature nodes orbit one fixed hub. Each connector draws from the hub to its node
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `hub_label` | string | `Product` | Text inside the fixed central hub. |
-| `nodes` | string | `Capture,Compose,Render,Share` | Comma-separated feature labels, introduced first to last. |
-| `cues` | string | `` (empty) | Comma-separated seconds (from mount start) for each node's reveal, e.g. `0.5,1.2,1.9,2.6`. Nodes beyond the list extrapolate at the list's own gap. Empty keeps the authored even spread. |
-| `accent` | enum | `green` | Hub, connector, and active-node color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` is the scale-down fade (the pre-Wave-J default ending); `up` departs with a rise and fade. |
+| id          | type   | default                        | notes                                                                                                                                                                                     |
+| ----------- | ------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hub_label` | string | `Product`                      | Text inside the fixed central hub.                                                                                                                                                        |
+| `nodes`     | string | `Capture,Compose,Render,Share` | Comma-separated feature labels, introduced first to last.                                                                                                                                 |
+| `cues`      | string | `` (empty)                     | Comma-separated seconds (from mount start) for each node's reveal, e.g. `0.5,1.2,1.9,2.6`. Nodes beyond the list extrapolate at the list's own gap. Empty keeps the authored even spread. |
+| `accent`    | enum   | `green`                        | Hub, connector, and active-node color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                           |
+| `exit`      | enum   | `none`                         | `none` holds until the cut; `fade` is the scale-down fade (the pre-Wave-J default ending); `up` departs with a rise and fade.                                                             |
 
 ## Mount
 

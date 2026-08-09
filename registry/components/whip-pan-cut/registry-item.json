@@ -4,7 +4,15 @@
   "type": "hyperframes:component",
   "title": "Whip Pan Cut",
   "description": "A full-frame whip pan: scene A whips off laterally with capped directional motion blur while scene B enters in the same direction at matched velocity, on a speed-ramp profile with a decelerating catch. Both scenes ride one strip, so seam velocity is exact by construction. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.",
-  "tags": ["transition", "whip-pan", "motion-blur", "velocity-match", "speed-ramp", "bridge", "slots"],
+  "tags": [
+    "transition",
+    "whip-pan",
+    "motion-blur",
+    "velocity-match",
+    "speed-ramp",
+    "bridge",
+    "slots"
+  ],
   "jobs": ["bridge"],
   "family": "transitions",
   "profile": "transition",

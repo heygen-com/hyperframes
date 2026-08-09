@@ -42,7 +42,7 @@ light reaches its resting key, 3.05s at defaults.
 The primitive ships one named full-bleed slot inside its `<template>`:
 
 ```html
-<div class="lsp-scene" data-slot="scene"> ... </div>
+<div class="lsp-scene" data-slot="scene">...</div>
 ```
 
 The default children are a token hero card and three feature cards, so an

@@ -6,13 +6,13 @@ The shared-element grow (Wave M9 experiment): a small card expands into a full p
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `from_scale` | number | `1` | Multiplies the authored card footprint before the one-time measurement, clamped 0.5 to 1.5. |
-| `expand_at` | number | `1.2` | Seconds after mount when the grow begins. |
-| `register` | enum | `calm` | `calm` is a smooth inOut cubic; `snappy` is faster with a settle that never overshoots the target rect beyond 1.02. |
-| `accent` | enum | `green` | green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id           | type   | default | notes                                                                                                               |
+| ------------ | ------ | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `from_scale` | number | `1`     | Multiplies the authored card footprint before the one-time measurement, clamped 0.5 to 1.5.                         |
+| `expand_at`  | number | `1.2`   | Seconds after mount when the grow begins.                                                                           |
+| `register`   | enum   | `calm`  | `calm` is a smooth inOut cubic; `snappy` is faster with a settle that never overshoots the target rect beyond 1.02. |
+| `accent`     | enum   | `green` | green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                            |
+| `exit`       | enum   | `none`  | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                            |
 
 ## Card content slot
 

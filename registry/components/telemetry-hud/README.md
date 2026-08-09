@@ -15,13 +15,13 @@ and the HUD breathes zero: once the last tick lands, the hold is dead still.
 
 ## Variables
 
-| id          | type   | default                                      | notes                                                                     |
-| ----------- | ------ | -------------------------------------------- | ------------------------------------------------------------------------- |
-| `readouts`  | string | `fps:59.94,latency:11.8 ms,gpu:38%,heap:1.2 GB` | comma-separated `label:value` pairs, up to 8; first colon splits        |
-| `emphasize` | number | `0`                                          | index of the accent-colored readout; `-1` disables                        |
-| `cues`      | string | `""`                                         | comma-separated seconds; cue N starts readout N's tick; empty = authored  |
-| `accent`    | enum   | `green`                                      | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
-| `exit`      | enum   | `none`                                       | `none` holds the final frame; `fade` and `up` release the stage           |
+| id          | type   | default                                         | notes                                                                     |
+| ----------- | ------ | ----------------------------------------------- | ------------------------------------------------------------------------- |
+| `readouts`  | string | `fps:59.94,latency:11.8 ms,gpu:38%,heap:1.2 GB` | comma-separated `label:value` pairs, up to 8; first colon splits          |
+| `emphasize` | number | `0`                                             | index of the accent-colored readout; `-1` disables                        |
+| `cues`      | string | `""`                                            | comma-separated seconds; cue N starts readout N's tick; empty = authored  |
+| `accent`    | enum   | `green`                                         | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
+| `exit`      | enum   | `none`                                          | `none` holds the final frame; `fade` and `up` release the stage           |
 
 Envelope: IN = stage fade 0.45s, bracket draws from 0.12s, readout ticks land
 per cue (default rhythm 1.0s + 0.28s per readout, each tick 0.5s; cues clamp
@@ -39,7 +39,7 @@ two per corner.
 The primitive ships one named slot inside its `<template>`:
 
 ```html
-<div class="th-slot" data-slot="subject"> ... </div>
+<div class="th-slot" data-slot="subject">...</div>
 ```
 
 The slot's default children are a token skeleton card, so an untouched mount

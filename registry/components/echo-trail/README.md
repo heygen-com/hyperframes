@@ -1,18 +1,18 @@
 # echo-trail
 
-The generalized onion skin: a moving element renders with N ghosted copies of itself, each ghost showing the element where it was at t minus i * delta, opacity stepped down per ghost. One traversal along an authored path; as the element decelerates into rest the echoes collapse into it and vanish, leaving a clean settled hold.
+The generalized onion skin: a moving element renders with N ghosted copies of itself, each ghost showing the element where it was at t minus i \* delta, opacity stepped down per ghost. One traversal along an authored path; as the element decelerates into rest the echoes collapse into it and vanish, leaving a clean settled hold.
 
 3.5s authored, elastic HOLD, exit `none` by default.
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `echoes` | number | `4` | Ghost copy count, clamped 2 to 6. |
-| `delta` | number | `0.09` | Lag between successive ghosts in seconds, clamped 0.03 to 0.3. |
-| `path` | enum | `sweep` | `sweep` is a shallow S left to right; `rise` climbs bottom-center to upper-center; `arc` rises over the top left to right. |
-| `accent` | enum | `green` | Subject accent color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id       | type   | default | notes                                                                                                                      |
+| -------- | ------ | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `echoes` | number | `4`     | Ghost copy count, clamped 2 to 6.                                                                                          |
+| `delta`  | number | `0.09`  | Lag between successive ghosts in seconds, clamped 0.03 to 0.3.                                                             |
+| `path`   | enum   | `sweep` | `sweep` is a shallow S left to right; `rise` climbs bottom-center to upper-center; `arc` rises over the top left to right. |
+| `accent` | enum   | `green` | Subject accent color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                             |
+| `exit`   | enum   | `none`  | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                                   |
 
 ## Subject slot
 

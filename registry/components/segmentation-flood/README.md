@@ -40,12 +40,12 @@ surface field with muted shapes seated where the default regions land.
 
 ## Variables
 
-| id       | type   | default                | notes                                                                     |
-| -------- | ------ | ---------------------- | ------------------------------------------------------------------------- |
-| regions  | string | Figure, Signal, Ground | Comma label list; 2 to 4 used. One mask + bracket + chip per label.        |
-| flood_at | number | 0.8                    | Seconds when the pass starts. Clamped so the pass and any exit fit inside the clip. |
-| flicker  | enum   | on                     | on or off: the 2-frame HUD luminance toggle riding the pass.               |
-| accent   | enum   | green                  | green maps to --brand, blue to --accent, violet to --accent-2.             |
+| id       | type   | default                | notes                                                                                        |
+| -------- | ------ | ---------------------- | -------------------------------------------------------------------------------------------- |
+| regions  | string | Figure, Signal, Ground | Comma label list; 2 to 4 used. One mask + bracket + chip per label.                          |
+| flood_at | number | 0.8                    | Seconds when the pass starts. Clamped so the pass and any exit fit inside the clip.          |
+| flicker  | enum   | on                     | on or off: the 2-frame HUD luminance toggle riding the pass.                                 |
+| accent   | enum   | green                  | green maps to --brand, blue to --accent, violet to --accent-2.                               |
 | exit     | enum   | none                   | none holds the labeled read (frame roots own transitions); fade or up add a 0.45s departure. |
 
 ## Choreography

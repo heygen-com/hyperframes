@@ -6,13 +6,13 @@ Text assembles FROM a seeded particle cloud, or dissolves TO it: per-particle ta
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `text` | string | `Dissolve` | The line that assembles or dissolves. Sized to fit at mount (up to 86% of the stage width). |
-| `direction` | enum | `in` | `in` assembles the line from the cloud and holds it crisp; `out` erases the line left to right into the cloud and holds empty. |
-| `density` | enum | `med` | Particle count cap: `low` (900), `med` (1700), `high` (2800). |
-| `accent` | enum | `green` | Text and particle color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id          | type   | default    | notes                                                                                                                          |
+| ----------- | ------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `text`      | string | `Dissolve` | The line that assembles or dissolves. Sized to fit at mount (up to 86% of the stage width).                                    |
+| `direction` | enum   | `in`       | `in` assembles the line from the cloud and holds it crisp; `out` erases the line left to right into the cloud and holds empty. |
+| `density`   | enum   | `med`      | Particle count cap: `low` (900), `med` (1700), `high` (2800).                                                                  |
+| `accent`    | enum   | `green`    | Text and particle color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                              |
+| `exit`      | enum   | `none`     | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                                       |
 
 ## Mount
 

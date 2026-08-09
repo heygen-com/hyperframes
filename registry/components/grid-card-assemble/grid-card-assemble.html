@@ -319,7 +319,9 @@
             var autoColumns = count <= 3 ? count : Math.ceil(Math.sqrt(count));
             var requested = Math.round(Number(vars.columns)) || 0;
             var columns =
-              layout === "list" ? 1 : Math.max(1, Math.min(4, requested > 0 ? requested : autoColumns));
+              layout === "list"
+                ? 1
+                : Math.max(1, Math.min(4, requested > 0 ? requested : autoColumns));
             var rows = Math.ceil(count / columns);
             stage.style.gridTemplateColumns = "repeat(" + columns + ", minmax(0, 1fr))";
 
@@ -342,7 +344,10 @@
             var iconSize = isList ? rowH * 0.5 : Math.min(rowH * 0.3, 9.5);
             root.style.setProperty("--gca-pad", pad.toFixed(3) + "cqh");
             root.style.setProperty("--gca-icon", iconSize.toFixed(3) + "cqh");
-            root.style.setProperty("--gca-body-gap", (rowH * (isList ? 0.03 : 0.035)).toFixed(3) + "cqh");
+            root.style.setProperty(
+              "--gca-body-gap",
+              (rowH * (isList ? 0.03 : 0.035)).toFixed(3) + "cqh",
+            );
 
             // Deterministic text fitting: wide-tracked mono label at ~0.75em
             // per glyph, sans body at ~0.52em; each also bounded by row
@@ -392,8 +397,7 @@
               latestStart,
               Math.max(0.6 * duration - TILE, BASE_START + GAP * (count - 1)),
             );
-            var gap =
-              count > 1 ? Math.max(0, targetLastStart - firstStart) / (count - 1) : 0;
+            var gap = count > 1 ? Math.max(0, targetLastStart - firstStart) / (count - 1) : 0;
 
             var cueList = String(vars.cues == null ? "" : vars.cues).split(",");
             var starts = cards.map(function (card, index) {

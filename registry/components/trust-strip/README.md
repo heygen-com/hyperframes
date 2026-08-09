@@ -10,13 +10,13 @@ reading order and reveal order are preserved.
 
 ## Variables
 
-| Variable | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `marks` | string | `Northwind, Acme Corp, Globex, Initech, Umbra` | Comma list of wordmark texts. 3 to 7 recommended. |
-| `tone` | `muted` \| `ink` | `muted` | Mark color: `var(--muted)` or `var(--fg)`. |
-| `cues` | string | `""` | Comma seconds from mount start, one per mark. Missing tail entries extend from the last cue by 0.15s. Empty = authored rhythm (first mark at 0.2s). |
-| `accent` | `green` \| `blue` \| `violet` | `green` | Faint 10% tint mixed into the mark color (green `--brand`, blue `--accent`, violet `--accent-2`). The strip still reads monochrome. |
-| `exit` | `none` \| `fade` \| `up` | `none` | `none` holds to the last frame (frame roots own transitions). `fade` dissolves the strip over 0.45s; `up` adds a small rise. |
+| Variable | Type                          | Default                                        | Notes                                                                                                                                               |
+| -------- | ----------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `marks`  | string                        | `Northwind, Acme Corp, Globex, Initech, Umbra` | Comma list of wordmark texts. 3 to 7 recommended.                                                                                                   |
+| `tone`   | `muted` \| `ink`              | `muted`                                        | Mark color: `var(--muted)` or `var(--fg)`.                                                                                                          |
+| `cues`   | string                        | `""`                                           | Comma seconds from mount start, one per mark. Missing tail entries extend from the last cue by 0.15s. Empty = authored rhythm (first mark at 0.2s). |
+| `accent` | `green` \| `blue` \| `violet` | `green`                                        | Faint 10% tint mixed into the mark color (green `--brand`, blue `--accent`, violet `--accent-2`). The strip still reads monochrome.                 |
+| `exit`   | `none` \| `fade` \| `up`      | `none`                                         | `none` holds to the last frame (frame roots own transitions). `fade` dissolves the strip over 0.45s; `up` adds a small rise.                        |
 
 ## Envelope
 

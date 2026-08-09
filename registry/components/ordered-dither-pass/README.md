@@ -42,13 +42,13 @@ synchronously from contract tokens.
 
 ## Variables
 
-| id        | type   | default | notes                                                              |
-| --------- | ------ | ------- | ------------------------------------------------------------------ |
-| matrix    | enum   | 4       | Bayer matrix size: 2 coarsest crosshatch, 4 classic, 8 smoothest grain. |
-| direction | enum   | in      | in resolves noise to clean; out dissolves clean to noise and holds it. |
-| levels    | number | 2       | Quantization levels per color channel during the dithered phase (2-6). |
+| id        | type   | default | notes                                                                                                |
+| --------- | ------ | ------- | ---------------------------------------------------------------------------------------------------- |
+| matrix    | enum   | 4       | Bayer matrix size: 2 coarsest crosshatch, 4 classic, 8 smoothest grain.                              |
+| direction | enum   | in      | in resolves noise to clean; out dissolves clean to noise and holds it.                               |
+| levels    | number | 2       | Quantization levels per color channel during the dithered phase (2-6).                               |
 | accent    | enum   | green   | Light tone of the 2-tone noise phase: green maps to --brand, blue to --accent, violet to --accent-2. |
-| exit      | enum   | none    | none holds the final state (frame roots own transitions); fade or up add a 0.45s departure. |
+| exit      | enum   | none    | none holds the final state (frame roots own transitions); fade or up add a 0.45s departure.          |
 
 ## Choreography
 
