@@ -586,6 +586,22 @@ describe("readInlineStyleSpread", () => {
     ]);
   });
 
+  it("ignores whitespace, which shows no colour at all", () => {
+    // Colour the whole element, then recolour one word: the whitespace around it
+    // keeps the first colour. It paints no glyph, so counting it puts a band of a
+    // colour nothing on screen is painted in at the edge of the swatch.
+    const host = mount(
+      '<span style="color: lime"> </span>' +
+        '<span style="color: red">Hello</span>' +
+        '<span style="color: lime"> world</span>',
+    );
+
+    expect(readInlineStyleSpread(rangeOver(host, 0, 12), "color")).toEqual([
+      { value: "red", chars: 5 },
+      { value: "lime", chars: 5 },
+    ]);
+  });
+
   it("is empty when the characters carry no colour of their own", () => {
     const host = mount("Hello world");
 
