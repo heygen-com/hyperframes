@@ -542,3 +542,34 @@ describe("T7 — data-hf-id targeting (spec for R1)", () => {
     expect(html).toContain('data-hf-id="hf-a1b2"');
   });
 });
+
+/**
+ * A rich-text operation adds elements, so it has to give them their stable ids
+ * here, in the bytes it writes and returns.
+ *
+ * Otherwise the next preview request mints them and writes the file a second
+ * time, after Studio has recorded the edit. The recorded "after" stops matching
+ * disk, the content check refuses, and undo reports the file as changed outside
+ * Studio — for every colour applied to a run of characters.
+ */
+describe("patchElementInHtml stamps the ids a rich-text patch introduces", () => {
+  it("gives each new span its id in the same write", () => {
+    const source = '<div data-hf-id="hf-a" id="t">plain</div>';
+    const { html, matched } = patchElementInHtml(source, { id: "t" }, [
+      { type: "rich-text", property: "", value: 'a<span style="color: red">b</span>c' },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(html).toContain("color: red");
+    expect((html.match(/data-hf-id=/g) ?? []).length).toBe(2);
+  });
+
+  it("leaves an id a rich-text patch carried in alone", () => {
+    const source = '<div data-hf-id="hf-a" id="t">plain</div>';
+    const { html } = patchElementInHtml(source, { id: "t" }, [
+      { type: "rich-text", property: "", value: '<span data-hf-id="hf-keep">b</span>' },
+    ]);
+
+    expect(html).toContain('data-hf-id="hf-keep"');
+  });
+});
