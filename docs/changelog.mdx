@@ -9,6 +9,28 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.103"
+  description="Released - 2026-08-09"
+  tags={["Release", "Core", "Core,cli"]}
+>
+Long renders use the faster parallel capture path again. A gate added in 0.7.101 had switched it off for most installs, making renders slower.
+
+## Features
+
+- **Core,cli:** Ship the DE parallel router fleet-wide — remove the canary gate ([19defeabf](https://github.com/heygen-com/hyperframes/commit/19defeabfe8fa47747d1d8bc087a84d69a09cb59)).
+
+## Fixes
+
+- **Core:** Retry bpm-detective import after transient failure ([b4bd67040](https://github.com/heygen-com/hyperframes/commit/b4bd670402b82f25c1f5e0343336e21455284f80), [#2736](https://github.com/heygen-com/hyperframes/pull/2736)).
+
+## Docs & Examples
+
+- Fix preview port in DOCS_GUIDELINES example ([9ec9e3a71](https://github.com/heygen-com/hyperframes/commit/9ec9e3a711531b3d45c30a1e2c3006df97dbe5cb), [#2903](https://github.com/heygen-com/hyperframes/pull/2903)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.102...v0.7.103).
+</Update>
+
+<Update
   label="HyperFrames v0.7.102"
   description="Released - 2026-08-08"
   tags={["Release", "CLI", "Core"]}
