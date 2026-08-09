@@ -59,9 +59,8 @@ async function rollbackOwnedMutation(
     `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-rollback/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
-      // Deliberately unclaimed. A rollback runs because a mutation did not
-      // converge, so the preview is on bytes nobody can vouch for; let the
-      // restored file reload it rather than suppressing that as our own write.
+      // Deliberately unclaimed: a rollback runs because a mutation did not
+      // converge, so let the restored file reload the preview.
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expected, restore }),
     },
