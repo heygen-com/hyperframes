@@ -43,13 +43,33 @@ function localVectorDirectory(): string {
  * Returns false rather than throwing. A download that fails costs the offline
  * tier, never the command, and the caller says so.
  */
+/**
+ * Do a freshly fetched metadata/matrix pair describe the same index?
+ *
+ * `names.length * dimensions` floats, at four bytes each, is the whole
+ * contract. A pair that fails it is a truncated download or a different
+ * model, never something worth caching.
+ */
+function vectorPairAgrees(fetched: Array<[string, Buffer]>): boolean {
+  const meta = fetched.find(([file]) => file === "local-vectors.json")?.[1];
+  const bin = fetched.find(([file]) => file === "local-vectors.bin")?.[1];
+  if (!meta || !bin) return false;
+  try {
+    const parsed = JSON.parse(meta.toString("utf-8")) as { names?: string[]; dimensions?: number };
+    if (parsed.dimensions !== LOCAL_MODEL_DIMENSIONS) return false;
+    return bin.byteLength === (parsed.names?.length ?? -1) * LOCAL_MODEL_DIMENSIONS * 4;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchLocalVectors(
   registryBaseUrl: string,
   directory = localVectorDirectory(),
 ): Promise<boolean> {
   const base = registryBaseUrl.replace(/\/+$/, "");
   try {
-    mkdirSync(directory, { recursive: true });
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
     // Downloaded in full before anything is written. The two files have to
     // agree on how many rows there are, so a fetch that fails halfway through
     // must leave the previous pair intact rather than pairing a new name list
@@ -60,7 +80,16 @@ export async function fetchLocalVectors(
       if (!response.ok) return false;
       fetched.push([file, Buffer.from(await response.arrayBuffer())]);
     }
-    for (const [file, bytes] of fetched) writeFileSync(join(directory, file), bytes);
+    // Check the pair agrees BEFORE either file lands. Writing first and
+    // discovering the mismatch at load time leaves a cache that fails every
+    // subsequent search until someone deletes it by hand, and it is the only
+    // point where a truncated or wrong-model response can still be refused.
+    if (!vectorPairAgrees(fetched)) return false;
+    // 0o600: the cache is this user's, and the directory may be world-writable
+    // when the caller overrides it.
+    for (const [file, bytes] of fetched) {
+      writeFileSync(join(directory, file), bytes, { mode: 0o600 });
+    }
     return hasLocalVectors(directory);
   } catch {
     return false;

@@ -32,6 +32,41 @@ function arg(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
+/**
+ * Embed in batches, in `names` order.
+ *
+ * Batch size is part of the artifact's identity, not a tuning knob: padding
+ * within a batch changes the quantized result, so re-embedding the same text
+ * at a different batch size does not reproduce the shipped rows.
+ */
+async function embedInBatches(
+  names: string[],
+  catalog: Record<string, string>,
+  embedder: Awaited<ReturnType<typeof loadLocalEmbedder>>,
+): Promise<number[][]> {
+  const vectors: number[][] = [];
+  for (let start = 0; start < names.length; start += BATCH) {
+    const slice = names.slice(start, start + BATCH);
+    // Passages carry no query instruction; only queries do.
+    vectors.push(...(await embedder.embed(slice.map((name) => catalog[name] as string))));
+    process.stdout.write(`\r  embedded ${Math.min(start + BATCH, names.length)}/${names.length}`);
+  }
+  process.stdout.write("\n");
+  return vectors;
+}
+
+/** Row-major Float32 payload. Row N belongs to `names[N]`, with no header. */
+function packVectors(names: string[], vectors: number[][]): Float32Array {
+  const flat = new Float32Array(names.length * LOCAL_MODEL_DIMENSIONS);
+  vectors.forEach((vector, row) => {
+    if (vector.length !== LOCAL_MODEL_DIMENSIONS) {
+      throw new Error(`vector for ${names[row]} has ${vector.length} dimensions`);
+    }
+    flat.set(vector, row * LOCAL_MODEL_DIMENSIONS);
+  });
+  return flat;
+}
+
 async function main(): Promise<void> {
   const dir = arg("artifact") ?? "registry/catalog-artifact";
   const registryDir = arg("registry") ?? "registry";
@@ -53,22 +88,8 @@ async function main(): Promise<void> {
   if (names.length === 0) throw new Error(`no registry items found under ${registryDir}`);
   const embedder = await loadLocalEmbedder();
 
-  const vectors: number[][] = [];
-  for (let start = 0; start < names.length; start += BATCH) {
-    const slice = names.slice(start, start + BATCH);
-    // Passages carry no query instruction; only queries do.
-    vectors.push(...(await embedder.embed(slice.map((name) => catalog[name] as string))));
-    process.stdout.write(`\r  embedded ${Math.min(start + BATCH, names.length)}/${names.length}`);
-  }
-  process.stdout.write("\n");
-
-  const flat = new Float32Array(names.length * LOCAL_MODEL_DIMENSIONS);
-  vectors.forEach((vector, row) => {
-    if (vector.length !== LOCAL_MODEL_DIMENSIONS) {
-      throw new Error(`vector for ${names[row]} has ${vector.length} dimensions`);
-    }
-    flat.set(vector, row * LOCAL_MODEL_DIMENSIONS);
-  });
+  const vectors = await embedInBatches(names, catalog, embedder);
+  const flat = packVectors(names, vectors);
 
   writeFileSync(join(dir, "local-vectors.bin"), Buffer.from(flat.buffer));
   writeFileSync(
