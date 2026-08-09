@@ -7,6 +7,42 @@
   },
   "items": [
     {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vscode-theme-visualizer",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "app-showcase",
       "type": "hyperframes:block"
     },
@@ -587,23 +623,11 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "accordion",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "ai-generation-canvas",
       "type": "hyperframes:component"
     },
     {
       "name": "ai-prompt-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "alert",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "alert-dialog",
       "type": "hyperframes:component"
     },
     {
@@ -623,15 +647,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "aspect-ratio",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "aurora-drift",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "avatar",
       "type": "hyperframes:component"
     },
     {
@@ -640,14 +656,6 @@
     },
     {
       "name": "avatar-group-hover",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "backdrop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "badge",
       "type": "hyperframes:component"
     },
     {
@@ -683,23 +691,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "breadcrumb",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "browser-device-stage",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "button",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "button-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "calendar",
       "type": "hyperframes:component"
     },
     {
@@ -783,19 +775,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "card",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "card-resize",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caret",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "carousel",
       "type": "hyperframes:component"
     },
     {
@@ -803,15 +783,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "chart",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "chart-story",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "checkbox",
       "type": "hyperframes:component"
     },
     {
@@ -824,22 +796,6 @@
     },
     {
       "name": "code-terminal-run",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "collapsible",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "combobox",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "command-menu",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "command-menu-item",
       "type": "hyperframes:component"
     },
     {
@@ -859,10 +815,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "context-menu",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "count-up",
       "type": "hyperframes:component"
     },
@@ -872,10 +824,6 @@
     },
     {
       "name": "cta-lockup",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "cursor",
       "type": "hyperframes:component"
     },
     {
@@ -895,27 +843,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "dialog",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "directional-wipe",
       "type": "hyperframes:component"
     },
     {
-      "name": "drawer",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "drift-hold",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dropdown-menu",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dropdown-menu-item",
       "type": "hyperframes:component"
     },
     {
@@ -927,19 +859,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "empty",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "facet-morph",
       "type": "hyperframes:component"
     },
     {
       "name": "fade-through",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "field",
       "type": "hyperframes:component"
     },
     {
@@ -991,10 +915,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "hover-card",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "hw-arrow",
       "type": "hyperframes:component"
     },
@@ -1031,31 +951,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "input",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "input-feedback",
       "type": "hyperframes:component"
     },
     {
-      "name": "input-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "input-otp",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "iris-reveal",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "item",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "kbd",
       "type": "hyperframes:component"
     },
     {
@@ -1064,10 +964,6 @@
     },
     {
       "name": "kinetic-type-swap",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "label",
       "type": "hyperframes:component"
     },
     {
@@ -1115,10 +1011,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "menubar",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "mesh-gradient-bg",
       "type": "hyperframes:component"
     },
@@ -1160,14 +1052,6 @@
     },
     {
       "name": "native-notification-pop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "native-select",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "navigation-menu",
       "type": "hyperframes:component"
     },
     {
@@ -1215,10 +1099,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "pagination",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "pan-stations",
       "type": "hyperframes:component"
     },
@@ -1263,19 +1143,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "popover",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "press-ripple",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "progress",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "progress-steps",
       "type": "hyperframes:component"
     },
     {
@@ -1292,22 +1160,6 @@
     },
     {
       "name": "radial-surround",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "radio",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "registry",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "remocn-ui",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "resizable",
       "type": "hyperframes:component"
     },
     {
@@ -1331,10 +1183,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "scroll-area",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "scroll-camera-story",
       "type": "hyperframes:component"
     },
@@ -1344,14 +1192,6 @@
     },
     {
       "name": "segmentation-flood",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "select",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "select-item",
       "type": "hyperframes:component"
     },
     {
@@ -1371,15 +1211,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "sheet",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "shimmer-sweep",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "sidebar",
       "type": "hyperframes:component"
     },
     {
@@ -1391,19 +1223,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "skeleton",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "skeleton-block",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "skeleton-reveal",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "slider",
       "type": "hyperframes:component"
     },
     {
@@ -1420,10 +1240,6 @@
     },
     {
       "name": "soft-blur-in",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "spinner",
       "type": "hyperframes:component"
     },
     {
@@ -1460,10 +1276,6 @@
     },
     {
       "name": "state-chip-rail",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "stepper",
       "type": "hyperframes:component"
     },
     {
@@ -1507,18 +1319,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "switch",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "table",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tabs",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "tabs-slide-indicator",
       "type": "hyperframes:component"
     },
@@ -1551,10 +1351,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "textarea",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "texture-mask-text",
       "type": "hyperframes:component"
     },
@@ -1579,23 +1375,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "toast",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "toggle",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "toggle-flip",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "toggle-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tooltip",
       "type": "hyperframes:component"
     },
     {
@@ -1693,42 +1473,6 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
-    },
-    {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vscode-theme-visualizer",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
     }
   ]
 }

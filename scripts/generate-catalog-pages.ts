@@ -418,6 +418,7 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
   const lines: string[] = ['<div className="hf-texture-preview-panel">'];
 
   for (const item of sampleItems) {
+    if (!item) continue;
     const maskPath = textureMaskUrlFor(manifest, item);
     lines.push(
       `  <div className="hf-texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
@@ -508,7 +509,7 @@ function demoBackground(html: string): string {
   const declared = (selector: RegExp): string | undefined => {
     for (const rule of html.matchAll(selector)) {
       const found = /background(?:-color)?\s*:\s*([^;}]+)/i.exec(rule[1] ?? "");
-      if (found) return found[1].trim();
+      if (found?.[1]) return found[1].trim();
     }
     return undefined;
   };

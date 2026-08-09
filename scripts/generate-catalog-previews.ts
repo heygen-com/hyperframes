@@ -286,8 +286,8 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
   const wrapperHtml = readFileSync(wrapperPath, "utf-8");
   const wMatch = wrapperHtml.match(/data-width="(\d+)"/);
   const hMatch = wrapperHtml.match(/data-height="(\d+)"/);
-  if (wMatch) width = parseInt(wMatch[1], 10);
-  if (hMatch) height = parseInt(hMatch[1], 10);
+  if (wMatch?.[1]) width = parseInt(wMatch[1], 10);
+  if (hMatch?.[1]) height = parseInt(hMatch[1], 10);
 
   const framesDir = join(projectDir, "_thumb_frames");
   mkdirSync(framesDir, { recursive: true });

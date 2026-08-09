@@ -2,7 +2,7 @@
 /**
  * Generate Template Preview Images + Videos
  *
- * Uses the producer package to render PNG thumbnails and short MP4 preview
+ * Uses @hyperframes/producer to render PNG thumbnails and short MP4 preview
  * videos of each built-in template.
  *
  * Output: docs/images/templates/<id>.png + <id>.mp4
@@ -28,13 +28,12 @@ import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-// Import from source — scripts are typechecked before workspace packages are built.
 import {
   captureFrame,
   closeCaptureSession,
   createRenderJob,
   executeRenderJob,
-} from "../packages/producer/src/index.js";
+} from "@hyperframes/producer";
 import { openOpaqueCapture } from "./preview-capture.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));

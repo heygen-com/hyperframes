@@ -60,6 +60,20 @@ const geometry = (() => {
   return new Function(body)() as Record<string, (...args: never[]) => never>;
 })();
 
+/** `shapePathData` answers null for a tag it does not draw; every call here passes one it does. */
+function drawn(d: string | null): string {
+  assert.ok(d, "shapePathData returned null for a shape it should draw");
+  return d;
+}
+
+/** Positional read that says which index went missing instead of yielding NaN. */
+function at<T>(values: readonly T[], index: number): T {
+  const value = values[index];
+  if (value === undefined)
+    throw new Error(`index ${index} missing from a ${values.length}-item list`);
+  return value;
+}
+
 const {
   arcToCubics,
   fitMatrix,
@@ -69,7 +83,7 @@ const {
   printPathData,
   shapePathData,
   transformPathData,
-} = geometry as {
+} = geometry as unknown as {
   arcToCubics: (...args: number[]) => { code: string; args: number[] }[];
   fitMatrix: (
     source: { x: number; y: number; width: number; height: number },
@@ -108,7 +122,7 @@ const closeAll = (actual: number[], expected: number[], tolerance = 1e-6): void 
     expected.length,
     `expected ${actual.length} numbers to be ${expected.length}`,
   );
-  actual.forEach((value, index) => close(value, expected[index], tolerance));
+  actual.forEach((value, index) => close(value, at(expected, index), tolerance));
 };
 
 /**
@@ -138,26 +152,29 @@ const boundsOf = (d: string): { x: number; y: number; width: number; height: num
 
   for (const { code, args } of segments) {
     if (code === "M" || code === "L") {
-      see(args[0], args[1]);
-      x = args[0];
-      y = args[1];
+      see(at(args, 0), at(args, 1));
+      x = at(args, 0);
+      y = at(args, 1);
     } else if (code === "Q") {
       // A quadratic is the cubic with both controls two thirds of the way out.
-      const c1x = x + (2 / 3) * (args[0] - x);
-      const c1y = y + (2 / 3) * (args[1] - y);
-      const c2x = args[2] + (2 / 3) * (args[0] - args[2]);
-      const c2y = args[3] + (2 / 3) * (args[1] - args[3]);
+      const c1x = x + (2 / 3) * (at(args, 0) - x);
+      const c1y = y + (2 / 3) * (at(args, 1) - y);
+      const c2x = at(args, 2) + (2 / 3) * (at(args, 0) - at(args, 2));
+      const c2y = at(args, 3) + (2 / 3) * (at(args, 1) - at(args, 3));
       for (let t = 0; t <= 1.0001; t += 0.002) {
-        see(cubicAt(t, x, c1x, c2x, args[2]), cubicAt(t, y, c1y, c2y, args[3]));
+        see(cubicAt(t, x, c1x, c2x, at(args, 2)), cubicAt(t, y, c1y, c2y, at(args, 3)));
       }
-      x = args[2];
-      y = args[3];
+      x = at(args, 2);
+      y = at(args, 3);
     } else if (code === "C") {
       for (let t = 0; t <= 1.0001; t += 0.002) {
-        see(cubicAt(t, x, args[0], args[2], args[4]), cubicAt(t, y, args[1], args[3], args[5]));
+        see(
+          cubicAt(t, x, at(args, 0), at(args, 2), at(args, 4)),
+          cubicAt(t, y, at(args, 1), at(args, 3), at(args, 5)),
+        );
       }
-      x = args[4];
-      y = args[5];
+      x = at(args, 4);
+      y = at(args, 5);
     }
   }
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
@@ -215,11 +232,11 @@ test("a smooth curve reflects the previous control point", () => {
     ["M", "C", "C"],
   );
   // Reflection of (20, 10) through the current point (30, 0).
-  closeAll(smooth[2].args, [40, -10, 50, -10, 60, 0]);
+  closeAll(at(smooth, 2).args, [40, -10, 50, -10, 60, 0]);
 
   // With no cubic in front of it, the reflection is the current point itself.
   const orphan = normalisePathData(parsePathData("M 5 5 S 20 20 30 5"));
-  closeAll(orphan[1].args, [5, 5, 20, 20, 30, 5]);
+  closeAll(at(orphan, 1).args, [5, 5, 20, 20, 30, 5]);
 });
 
 test("a smooth quadratic reflects the previous quadratic control point", () => {
@@ -228,7 +245,7 @@ test("a smooth quadratic reflects the previous quadratic control point", () => {
     smooth.map((segment) => segment.code),
     ["M", "Q", "Q"],
   );
-  closeAll(smooth[2].args, [30, -20, 40, 0]);
+  closeAll(at(smooth, 2).args, [30, -20, 40, 0]);
 });
 
 test("an arc becomes cubics that stay on the ellipse", () => {
@@ -239,7 +256,7 @@ test("an arc becomes cubics that stay on the ellipse", () => {
     ["M", "C", "C"],
   );
   // The endpoint is the authored one exactly, so a closed shape still closes.
-  closeAll(segments[2].args.slice(4), [100, 0]);
+  closeAll(at(segments, 2).args.slice(4), [100, 0]);
 
   const bounds = boundsOf("M 0 0 A 50 50 0 0 1 100 0");
   close(bounds.x, 0, 0.01);
@@ -254,7 +271,7 @@ test("an arc becomes cubics that stay on the ellipse", () => {
   // Radii too small to reach the far endpoint are grown until they just do,
   // which keeps the curve passing through both ends instead of falling short.
   const stretched = arcToCubics(0, 0, 1, 1, 0, 0, 1, 100, 0);
-  closeAll(stretched[stretched.length - 1].args.slice(4), [100, 0]);
+  closeAll(at(stretched, stretched.length - 1).args.slice(4), [100, 0]);
 });
 
 test("scale to fit preserves aspect ratio and centres", () => {
@@ -351,45 +368,65 @@ test("a matrix moves every point of every command", () => {
   // A rotation and a mirror, which is where a command carrying anything other
   // than x/y pairs would go wrong.
   const moved = transformPathData(segments, { a: 0, b: 1, c: -1, d: 0, e: 100, f: 200 });
-  closeAll(moved[0].args, [98, 201]);
-  closeAll(moved[1].args, [96, 203]);
-  closeAll(moved[2].args, [94, 205, 92, 207, 90, 209]);
-  closeAll(moved[3].args, [88, 211, 86, 213]);
-  assert.deepEqual(moved[4], { code: "Z", args: [] });
+  closeAll(at(moved, 0).args, [98, 201]);
+  closeAll(at(moved, 1).args, [96, 203]);
+  closeAll(at(moved, 2).args, [94, 205, 92, 207, 90, 209]);
+  closeAll(at(moved, 3).args, [88, 211, 86, 213]);
+  assert.deepEqual(at(moved, 4), { code: "Z", args: [] });
 });
 
 test("rect, circle, ellipse, line, polyline and polygon become path data", () => {
   assert.equal(
-    shapePathData("rect", { x: "10", y: "20", width: "30", height: "40" }),
+    drawn(shapePathData("rect", { x: "10", y: "20", width: "30", height: "40" })),
     "M 10 20 H 40 V 60 H 10 Z",
   );
 
   // A rounded rect: eight corners' worth of geometry, and the corners survive
   // the reduction as cubics.
-  const rounded = shapePathData("rect", { width: "100", height: "60", rx: "10" });
+  const rounded = drawn(shapePathData("rect", { width: "100", height: "60", rx: "10" }));
   assert.equal(codes(rounded), "MLCLCLCLCZ");
   const roundedBounds = boundsOf(rounded);
   closeAll(
-    [roundedBounds.x, roundedBounds.y, roundedBounds.width, roundedBounds.height],
+    [
+      roundedBounds.x ?? NaN,
+      roundedBounds.y ?? NaN,
+      roundedBounds.width ?? NaN,
+      roundedBounds.height ?? NaN,
+    ],
     [0, 0, 100, 60],
     0.01,
   );
 
   // One radius declared defines both, which is what a file exported with only
   // `rx` relies on, and a radius past half the side is clamped to it.
-  const clamped = boundsOf(shapePathData("rect", { width: "40", height: "40", ry: "500" }));
-  closeAll([clamped.width, clamped.height], [40, 40], 0.01);
+  const clamped = boundsOf(drawn(shapePathData("rect", { width: "40", height: "40", ry: "500" })));
+  closeAll([clamped.width ?? NaN, clamped.height ?? NaN], [40, 40], 0.01);
 
-  const circle = boundsOf(shapePathData("circle", { cx: "50", cy: "50", r: "25" }));
-  closeAll([circle.x, circle.y, circle.width, circle.height], [25, 25, 50, 50], 0.05);
+  const circle = boundsOf(drawn(shapePathData("circle", { cx: "50", cy: "50", r: "25" })));
+  closeAll(
+    [circle.x ?? NaN, circle.y ?? NaN, circle.width ?? NaN, circle.height ?? NaN],
+    [25, 25, 50, 50],
+    0.05,
+  );
 
-  const ellipse = boundsOf(shapePathData("ellipse", { cx: "0", cy: "0", rx: "40", ry: "10" }));
-  closeAll([ellipse.width, ellipse.height], [80, 20], 0.05);
+  const ellipse = boundsOf(
+    drawn(shapePathData("ellipse", { cx: "0", cy: "0", rx: "40", ry: "10" })),
+  );
+  closeAll([ellipse.width ?? NaN, ellipse.height ?? NaN], [80, 20], 0.05);
 
-  assert.equal(shapePathData("line", { x1: "0", y1: "0", x2: "10", y2: "5" }), "M 0 0 L 10 5");
-  assert.equal(shapePathData("polyline", { points: "0,0 10,10 20,0" }), "M 0 0 L 10 10 L 20 0");
-  assert.equal(shapePathData("polygon", { points: "0 0 10 10 20 0" }), "M 0 0 L 10 10 L 20 0 Z");
-  assert.equal(shapePathData("path", { d: "M 0 0 L 1 1" }), "M 0 0 L 1 1");
+  assert.equal(
+    drawn(shapePathData("line", { x1: "0", y1: "0", x2: "10", y2: "5" })),
+    "M 0 0 L 10 5",
+  );
+  assert.equal(
+    drawn(shapePathData("polyline", { points: "0,0 10,10 20,0" })),
+    "M 0 0 L 10 10 L 20 0",
+  );
+  assert.equal(
+    drawn(shapePathData("polygon", { points: "0 0 10 10 20 0" })),
+    "M 0 0 L 10 10 L 20 0 Z",
+  );
+  assert.equal(drawn(shapePathData("path", { d: "M 0 0 L 1 1" })), "M 0 0 L 1 1");
 });
 
 test("a shape with nothing to draw is refused rather than imported as nothing", () => {
@@ -422,7 +459,7 @@ test("the grammar's compact spellings are read the way a browser reads them", ()
   // Arc flags written as bare adjacent digits, which is legal and common in
   // minified output: rx=1 ry=1 rotation=0 largeArc=0 sweep=1 x=1 y=1.
   const arc = normalisePathData(parsePathData("M 0 0 a1 1 0 011 1"));
-  closeAll(arc[arc.length - 1].args.slice(4), [1, 1]);
+  closeAll(at(arc, arc.length - 1).args.slice(4), [1, 1]);
 });
 
 test("printing keeps two decimals and drops a negative zero", () => {

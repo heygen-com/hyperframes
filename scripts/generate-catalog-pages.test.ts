@@ -98,7 +98,10 @@ function runWrapper(search: string, message?: Record<string, string>): string {
   });
   if (message) {
     assert.ok(onMessage, "wrapper never registered a message listener");
-    onMessage({ origin: "https://docs.test", data: { hfVariables: message } });
+    (onMessage as (event: unknown) => void)({
+      origin: "https://docs.test",
+      data: { hfVariables: message },
+    });
   }
   return src;
 }

@@ -15,7 +15,8 @@ describe("registry primitive payloads", () => {
     const broken: string[] = [];
     for (const file of files) {
       const html = readFileSync(resolve(repoRoot, file), "utf-8");
-      for (const [, , payload] of html.matchAll(PAYLOAD)) {
+      for (const match of html.matchAll(PAYLOAD)) {
+        const payload = match[2] ?? "";
         try {
           // Same normalization the compositions apply: this is inert text in
           // HTML, so the formatter may reflow it, and whitespace is not
