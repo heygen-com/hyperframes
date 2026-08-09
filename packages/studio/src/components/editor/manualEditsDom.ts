@@ -567,14 +567,11 @@ function reapplyPathOffsets(doc: Document): void {
 
 /**
  * Put the studio's committed size back after a seek, GSAP-sized elements included.
- *
  * Size does not compose the way the offset above does: both channels write width
- * and height, so the later write wins and both hold the same number. Standing
- * aside meant nothing held the size while a soft reload reverted the old timeline
- * — GSAP hands back each tween's recorded starting width — so until the new one
- * rendered, the element sat at its stylesheet size. That is the jump after a
- * resize, and the next gesture then started from a box disagreeing with these
- * vars and snapped on its first move. Only an element mid-edit carries them.
+ * and height, so the later write wins on the same number. Standing aside meant
+ * nothing held the size while a soft reload reverted the old timeline (GSAP hands
+ * back each tween's recorded starting width), so the element sat at its stylesheet
+ * size until the new one rendered — the jump after a resize.
  */
 function reapplyBoxSizes(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_BOX_SIZE_ATTR)) {
