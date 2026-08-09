@@ -40,7 +40,6 @@ import type {
   StudioRotationSnapshot,
   StudioPathOffsetSnapshot,
 } from "./manualEditsTypes";
-import { logResize } from "../../utils/resizeDebug";
 
 /* ── Capture ──────────────────────────────────────────────────────── */
 export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapshot {
@@ -115,14 +114,6 @@ function restoreStyleProperty(element: HTMLElement, property: string, value: str
 }
 
 export function restoreStudioBoxSize(element: HTMLElement, previous: StudioBoxSizeSnapshot): void {
-  // Putting the pre-gesture size back is correct on a cancel and wrong after a
-  // successful commit, and the two are indistinguishable from in here — so say
-  // who asked, with the size being restored and the one being replaced.
-  logResize("restore-box-size", {
-    to: `${previous.width || "-"} x ${previous.height || "-"}`,
-    from: `${element.style.width || "-"} x ${element.style.height || "-"}`,
-    stack: new Error("restore-box-size").stack?.split("\n").slice(1, 6).join(" < "),
-  });
   restoreStyleProperty(element, "width", previous.width);
   restoreStyleProperty(element, "height", previous.height);
   restoreStyleProperty(element, "min-width", previous.minWidth);
