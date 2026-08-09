@@ -30,6 +30,7 @@ import {
   createProjectSignature,
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
+  fileContentVersion,
   getMimeType,
   type PreviewApiAdapter,
   thumbnailDeviceScaleFactor,
@@ -752,7 +753,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
       const listener = (path: string) => {
-        const receipt = consumeFileWriteReceipt(resolve(projectDir, path));
+        const absPath = resolve(projectDir, path);
+        let version: string | null = null;
+        try {
+          version = fileContentVersion(readFileSync(absPath, "utf-8"));
+        } catch {
+          // A deletion has no current bytes to match against an API write receipt.
+        }
+        const receipt = version ? consumeFileWriteReceipt(absPath, version) : null;
         stream
           .writeSSE({ event: "file-change", data: JSON.stringify(receipt ?? { path }) })
           .catch(() => {});

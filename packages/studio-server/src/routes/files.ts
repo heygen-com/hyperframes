@@ -400,16 +400,45 @@ export function commitElementPatchBatches(
   return { durable: true, files };
 }
 
+function commitElementPatchBatchesWithReceipts(
+  c: RouteContext,
+  projectDir: string,
+  batches: ElementPatchBatchRequest[],
+): ReturnType<typeof commitElementPatchBatches> {
+  const result = commitElementPatchBatches(projectDir, batches);
+  if ("error" in result || !result.durable) return result;
+
+  for (const file of result.files) {
+    if (!file.changed) continue;
+    const absPath = resolveWithinProject(projectDir, file.sourceFile);
+    if (!absPath) throw new Error(`Committed element patch escaped project: ${file.sourceFile}`);
+    recordMutationReceipt(c, file.sourceFile, absPath, file.after);
+  }
+  return result;
+}
+
 /**
- * Write a mutation result, and leave behind the receipt that claims it.
+ * Record the receipt that claims a mutation result.
  *
  * The file watcher broadcasts every write, including the ones Studio itself just
  * asked for. The receipt is what lets the client tell its own echo from an agent
  * or an editor writing the file behind its back: without one, the client treats
  * its own edit as an external change and does a full preview reload, which blanks
  * the stage for a few hundred milliseconds right after the user typed. Every
- * mutation route writes through here so no route can forget.
+ * mutation route records through here so no route can forget.
  */
+function recordMutationReceipt(
+  c: RouteContext,
+  filePath: string,
+  absPath: string,
+  html: string,
+): { version: string; writeToken: string } {
+  const version = fileContentVersion(html);
+  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken });
+  return { version, writeToken };
+}
+
 function writeFileWithReceipt(
   c: RouteContext,
   filePath: string,
@@ -418,10 +447,7 @@ function writeFileWithReceipt(
 ): { version: string; writeToken: string } {
   writeFileSync(absPath, html, "utf-8");
   // The synchronous write cannot yield before its receipt is recorded; keep this block await-free.
-  const version = fileContentVersion(html);
-  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken });
-  return { version, writeToken };
+  return recordMutationReceipt(c, filePath, absPath, html);
 }
 
 function writeMutationResult(
@@ -2755,7 +2781,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const unsafeFields = findUnsafeElementPatchBatchValues(body.batches);
     if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
 
-    const result = commitElementPatchBatches(project.dir, body.batches);
+    const result = commitElementPatchBatchesWithReceipts(c, project.dir, body.batches);
     if ("error" in result) {
       return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
     }
@@ -2783,7 +2809,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return rejectUnsafeMutationValues(c, unsafeFields);
     }
 
-    const result = commitElementPatchBatches(ctx.project.dir, [batch]);
+    const result = commitElementPatchBatchesWithReceipts(c, ctx.project.dir, [batch]);
     if ("error" in result) {
       return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
     }
