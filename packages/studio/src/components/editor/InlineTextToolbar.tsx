@@ -101,7 +101,15 @@ export function InlineTextToolbar({
         <span
           aria-hidden="true"
           className="h-3.5 w-3.5 rounded-full border border-white/25"
-          style={{ background: swatchBackground(placement.colours, styles.color) }}
+          // `background` maps a gradient to the PADDING box and then repeats it
+          // to fill the border box, so the 1px border shows the strip either
+          // side of the tile: the end colour on the left, the start colour on
+          // the right. A red-to-green swatch grew a green edge and a red one.
+          // Set after the shorthand, which resets it.
+          style={{
+            background: swatchBackground(placement.colours, styles.color),
+            backgroundOrigin: "border-box",
+          }}
         />
         {/* `inset-0` is not enough on its own: a colour input carries a
             user-agent minimum width, which wins over the right edge and lets
