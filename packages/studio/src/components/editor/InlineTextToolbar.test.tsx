@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { InlineTextToolbar } from "./InlineTextToolbar";
+import { InlineTextToolbar, swatchBackground } from "./InlineTextToolbar";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -190,5 +190,51 @@ describe("InlineTextToolbar", () => {
     const scale = 400 / window.innerWidth;
     expect(toolbar.style.left).toBe(`${100 + (20 + 50) * scale}px`);
     expect(toolbar.style.top).toBe(`${50 + 40 * scale - 10}px`);
+  });
+  it("shows the selection's colours in the swatch when they differ", () => {
+    const { element, session, iframe } = scene(
+      '<span style="color: red">Hello</span><span style="color: lime">world</span>',
+    );
+    const { host } = render(session, iframe);
+
+    selectAll(element);
+
+    const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
+    expect(swatch.style.background).toBe(
+      "linear-gradient(90deg, red 0.00% 50.00%, lime 50.00% 100.00%)",
+    );
+  });
+
+  it("shows a plain swatch when the whole selection is one colour", () => {
+    const { element, session, iframe } = scene('<span style="color: red">Hello world</span>');
+    const { host } = render(session, iframe);
+
+    selectAll(element);
+
+    const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
+    expect(swatch.style.background).toBe("red");
+  });
+});
+
+describe("swatchBackground", () => {
+  it("shows every colour in the selection, sized by how much text carries it", () => {
+    expect(
+      swatchBackground(
+        [
+          { value: "red", chars: 5 },
+          { value: "lime", chars: 15 },
+        ],
+        undefined,
+      ),
+    ).toBe("linear-gradient(90deg, red 0.00% 25.00%, lime 25.00% 100.00%)");
+  });
+
+  it("stays a plain swatch when the selection is one colour", () => {
+    expect(swatchBackground([{ value: "red", chars: 5 }], "red")).toBe("red");
+  });
+
+  it("falls back to the agreed colour when the characters carry none", () => {
+    expect(swatchBackground([], "rgb(1, 2, 3)")).toBe("rgb(1, 2, 3)");
+    expect(swatchBackground([], undefined)).toBe("#ffffff");
   });
 });
