@@ -446,7 +446,7 @@ export function useTimelinePlayer() {
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    logReload("refreshPlayer", { stack: new Error("refreshPlayer").stack });
+    logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
     saveSeekPosition();
     // Hide the iframe across the full reload so the user never sees the reloading
     // document's RAW DOM (every clip stacked and visible) in the window between the

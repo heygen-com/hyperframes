@@ -48,7 +48,7 @@ export async function studioExpectedFileVersion(
   return versions.get(path);
 }
 
-export function createStudioWriteToken(): string {
+function createStudioWriteToken(): string {
   return globalThis.crypto.randomUUID();
 }
 

@@ -410,6 +410,20 @@ export function commitElementPatchBatches(
  * the stage for a few hundred milliseconds right after the user typed. Every
  * mutation route writes through here so no route can forget.
  */
+function writeFileWithReceipt(
+  c: RouteContext,
+  filePath: string,
+  absPath: string,
+  html: string,
+): { version: string; writeToken: string } {
+  writeFileSync(absPath, html, "utf-8");
+  // The synchronous write cannot yield before its receipt is recorded; keep this block await-free.
+  const version = fileContentVersion(html);
+  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken });
+  return { version, writeToken };
+}
+
 function writeMutationResult(
   c: RouteContext,
   projectDir: string,
@@ -419,13 +433,7 @@ function writeMutationResult(
 ): { backupPath: string | null; version: string } {
   const backup = snapshotBeforeWrite(projectDir, absPath);
   if (backup.error) console.warn(`Failed to create backup for ${filePath}: ${backup.error}`);
-  writeFileSync(absPath, html, "utf-8");
-  const version = fileContentVersion(html);
-  recordFileWriteReceipt(absPath, {
-    path: filePath,
-    version,
-    writeToken: createWriteToken(c.req.header("X-Hyperframes-Write-Token")),
-  });
+  const { version } = writeFileWithReceipt(c, filePath, absPath, html);
   return { backupPath: backupPathForResponse(projectDir, backup.backupPath), version };
 }
 
@@ -2419,10 +2427,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
-    writeFileSync(ctx.absPath, insertion.html, "utf-8");
-    const version = fileContentVersion(insertion.html);
-    const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-    recordFileWriteReceipt(ctx.absPath, { path: ctx.filePath, version, writeToken });
+    const { version, writeToken } = writeFileWithReceipt(
+      c,
+      ctx.filePath,
+      ctx.absPath,
+      insertion.html,
+    );
     c.header("ETag", version);
     return c.json({
       ok: true,

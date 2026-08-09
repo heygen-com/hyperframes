@@ -119,7 +119,10 @@ describe("registerFileRoutes", () => {
     const insert = (expectedVersion: string) =>
       app.request("http://localhost/projects/demo/file-mutations/insert-composition/index.html", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Hyperframes-Write-Token": "studio-insert-1",
+        },
         body: JSON.stringify({ sourcePath: "child.html", start: 4, track: 0, expectedVersion }),
       });
 
@@ -131,6 +134,11 @@ describe("registerFileRoutes", () => {
     expect(result.after).toContain('data-duration="7"');
     expect(result.after).toContain(`id="${result.hostId}"`);
     expect(result.version).toBe(fileContentVersion(result.after));
+    expect(consumeFileWriteReceipt(join(projectDir, "index.html"))).toEqual({
+      path: "index.html",
+      version: result.version,
+      writeToken: "studio-insert-1",
+    });
 
     const committed = result.after;
     const stale = await insert(fileContentVersion(before));

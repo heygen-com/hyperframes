@@ -18,9 +18,13 @@ function isEnabled(): boolean {
   return enabled;
 }
 
-export function logReload(stage: string, data: Record<string, unknown> = {}): void {
+export function logReload(
+  stage: string,
+  data: Record<string, unknown> | (() => Record<string, unknown>) = {},
+): void {
   if (!isEnabled()) return;
+  const details = typeof data === "function" ? data() : data;
   console.log(
-    `[hf-reload] ${JSON.stringify({ stage, t: Math.round(performance.now()), ...data })}`,
+    `[hf-reload] ${JSON.stringify({ stage, t: Math.round(performance.now()), ...details })}`,
   );
 }
