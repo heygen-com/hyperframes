@@ -131,10 +131,9 @@ export function InlineTextToolbar({
 }
 
 /**
- * The selection's colours, in the proportion they are used: one band per run of
- * characters that share a colour. Hard stops, not a blend — the swatch is
- * reporting the colours that are there, and a fade would draw colours that are
- * not. A selection with one colour is a plain swatch, as before.
+ * The selection's colours blended left to right, each sitting at the middle of
+ * the share of characters that carry it. A selection with one colour is a plain
+ * swatch, as before.
  */
 export function swatchBackground(
   colours: Array<{ value: string; chars: number }>,
@@ -145,10 +144,9 @@ export function swatchBackground(
   const total = colours.reduce((sum, colour) => sum + colour.chars, 0);
   let offset = 0;
   const stops = colours.map((colour) => {
-    const from = (offset / total) * 100;
+    const middle = ((offset + colour.chars / 2) / total) * 100;
     offset += colour.chars;
-    const to = (offset / total) * 100;
-    return `${colour.value} ${from.toFixed(2)}% ${to.toFixed(2)}%`;
+    return `${colour.value} ${middle.toFixed(2)}%`;
   });
   return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
