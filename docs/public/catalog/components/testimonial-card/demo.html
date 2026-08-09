@@ -16,8 +16,8 @@
         --muted: #a8b3c7;
         --surface: #151c2c;
         --border: #34405a;
-        --brand: #8b5cf6;
-        --accent: #22d3ee;
+        --brand: #e4e4e7;
+        --accent: #e4e4e7;
         --font-display: Inter, system-ui, sans-serif;
         --font-body: Inter, system-ui, sans-serif;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -97,5 +97,21 @@
       window.__timelines = window.__timelines || {};
       window.__timelines["testimonial-card-demo"] = gsap.timeline({ paused: true });
     </script>
-  </body>
+  <script>
+  (function () {
+    var raw = new URLSearchParams(location.search).get('hfv');
+    if (raw === null) return;
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return; }
+    if (!v || typeof v !== 'object') return;
+    window.__hfVariables = v;
+    var hosts = document.querySelectorAll('[data-composition-src]');
+    for (var i = 0; i < hosts.length; i++) {
+      var src = (hosts[i].getAttribute('data-composition-src') || '').split('?')[0];
+      if (src.slice(src.lastIndexOf('/') + 1) !== "testimonial-card.html") continue;
+      hosts[i].setAttribute('data-variable-values', JSON.stringify(v));
+    }
+  })();
+</script>
+</body>
 </html>

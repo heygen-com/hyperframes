@@ -4,43 +4,16 @@ description: "A success check primitive with ring pop, path draw, and subtle rot
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/success-check.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Success Check preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/success-check.html"
+  compositionId="success-check"
+  compositionSrc="compositions/components/success-check.html"
+  variables={[{"id":"tint","type":"enum","role":"style","label":"Tint","description":"Colour pair, a pale halo behind a saturated mark. green and amber are literal state colours; blue and violet ride the composition theme tokens.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"},{"value":"amber","label":"Amber"}]},{"id":"size","type":"enum","role":"layout","label":"Size","description":"Diameter of the halo and of the mark inside it.","default":"standard","options":[{"value":"small","label":"Small"},{"value":"standard","label":"Standard"},{"value":"large","label":"Large"}]},{"id":"ring","type":"enum","role":"style","label":"Ring","description":"Opacity of the circle the tick sits in.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]},{"id":"spin","type":"enum","role":"motion","label":"Spin","description":"Multiplies the rotation the timeline drives, so the mark swings less or more into place.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add success-check" />
-
-That writes one file: `compositions/components/success-check.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `tint` | `green` | `green`, `blue`, `violet`, `amber` | Colour pair, a pale halo behind a saturated mark. |
-| `size` | `standard` | `small`, `standard`, `large` | Diameter of the halo and of the mark inside it. |
-| `ring` | `standard` | `subtle`, `standard`, `bold` | Opacity of the circle the tick sits in. |
-| `spin` | `standard` | `subtle`, `standard`, `bold` | Multiplies the rotation the timeline drives, so the mark swings less or more into place. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="success-check"
-  data-composition-src="compositions/components/success-check.html"
-  data-variable-values='{"tint":"green","size":"standard","ring":"standard","spin":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`success-check.html`}>
-
-```html
+```html success-check.html
 <!--
   Success Check - transitions.dev-inspired primitive for HyperFrames.
 
@@ -55,8 +28,11 @@ defaults, so this behaves exactly like the preview above until you change one:
   big it is, what colour it wears and how far the pop swings.
 
     - tint (green | blue | violet | amber, default green): the colour pair, a
-      pale halo behind a saturated mark. Both halves are literal colours, so
-      the pair stays legible whatever the surrounding theme tokens hold.
+      pale halo behind a saturated mark. green and amber are literal state
+      colours and stay legible whatever the surrounding theme tokens hold; blue
+      and violet name no state, so their mark rides the composition's own accent
+      and accent-2 tokens over a neutral halo and falls back to ink when the
+      composition declares none.
     - size (small | standard | large, default standard): diameter of the halo
       and of the mark inside it, 60px, 82px or 110px. The stroke is in viewBox
       units, so it thickens with the mark instead of staying pinned.
@@ -76,7 +52,7 @@ defaults, so this behaves exactly like the preview above until you change one:
   class="hf-transition-success-check"
   aria-label="Success"
   data-composition-variables='[
-    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Colour pair, a pale halo behind a saturated mark.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Colour pair, a pale halo behind a saturated mark. green and amber are literal state colours; blue and violet ride the composition theme tokens.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
     { "id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Diameter of the halo and of the mark inside it.", "default": "standard", "options": [{ "value": "small", "label": "Small" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
     { "id": "ring", "type": "enum", "role": "style", "label": "Ring", "description": "Opacity of the circle the tick sits in.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
     { "id": "spin", "type": "enum", "role": "motion", "label": "Spin", "description": "Multiplies the rotation the timeline drives, so the mark swings less or more into place.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] }
@@ -129,10 +105,15 @@ defaults, so this behaves exactly like the preview above until you change one:
         : {};
 
     // Unrecognised overrides return to their declared defaults.
+    // The mark is the whole composition and its colour is its meaning, so this
+    // is the one place an accent belongs. green and amber are the literal
+    // success and caution conventions; blue and violet named no state, so they
+    // ride the composition's own tokens over a neutral halo and fall back to
+    // ink when the composition declares none.
     var tints = {
       green: { halo: "#dcfce7", ink: "#16a34a" },
-      blue: { halo: "#dbeafe", ink: "#2563eb" },
-      violet: { halo: "#ede9fe", ink: "#7c3aed" },
+      blue: { halo: "#f4f4f5", ink: "var(--accent, #18181b)" },
+      violet: { halo: "#f4f4f5", ink: "var(--accent-2, #18181b)" },
       amber: { halo: "#fef3c7", ink: "#d97706" },
     };
     var sizes = {
@@ -170,7 +151,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add success-check" />
+
+That writes one file: `compositions/components/success-check.html`.
 
 ## Usage
 
@@ -178,7 +165,7 @@ Open `compositions/components/success-check.html` and paste its contents into yo
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `success` `check`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `success` `check`.
 
 ## Related topics
 

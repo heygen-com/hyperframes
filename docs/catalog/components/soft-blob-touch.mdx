@@ -4,52 +4,16 @@ description: "A granular soft blob idles with slow internal drift; a scripted to
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/soft-blob-touch.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Soft Blob Touch preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/soft-blob-touch.html"
+  compositionId="soft-blob-touch"
+  compositionSrc="compositions/components/soft-blob-touch.html"
+  variables={[{"id":"touch_x","type":"number","role":"layout","label":"Touch X","description":"Touch point, percent of host width.","default":66,"min":8,"max":92,"step":1,"unit":"%"},{"id":"touch_y","type":"number","role":"layout","label":"Touch Y","description":"Touch point, percent of host height.","default":38,"min":8,"max":92,"step":1,"unit":"%"},{"id":"touch_at","type":"number","role":"timing","label":"Touch at","description":"Seconds from mount start when the dot makes contact.","default":1.6,"min":0.9,"max":10,"step":0.1,"unit":"s"},{"id":"grain","type":"enum","role":"style","label":"Grain","description":"Speck register for the granular body.","default":"fine","options":[{"value":"fine","label":"Fine"},{"value":"coarse","label":"Coarse"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Body tint: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the settled blob holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add soft-blob-touch" />
-
-That writes one file: `compositions/components/soft-blob-touch.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/soft-blob-touch.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `touch_x` | `66` | 8% to 92%, step 1% | Touch point, percent of host width. |
-| `touch_y` | `38` | 8% to 92%, step 1% | Touch point, percent of host height. |
-| `touch_at` | `1.6` | 0.9s to 10s, step 0.1s | Seconds from mount start when the dot makes contact. |
-| `grain` | `fine` | `fine`, `coarse` | Speck register for the granular body. |
-| `accent` | `green` | `green`, `blue`, `violet` | Body tint: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the settled blob holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="soft-blob-touch"
-  data-composition-src="compositions/components/soft-blob-touch.html"
-  data-variable-values='{"touch_x":66,"touch_y":38,"touch_at":1.6,"grain":"fine","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`soft-blob-touch.html`}>
-
-```html
+```html soft-blob-touch.html
 <!doctype html>
 <!--
   soft-blob-touch: HyperFrames video primitive (product demo / material)
@@ -574,7 +538,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add soft-blob-touch" />
+
+That writes one file: `compositions/components/soft-blob-touch.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/soft-blob-touch.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

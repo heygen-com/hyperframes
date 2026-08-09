@@ -121,12 +121,7 @@
           .cs-after {
             z-index: 2;
             clip-path: inset(0 calc((100 - var(--cs-split)) * 1%) 0 0);
-            background: linear-gradient(
-              135deg,
-              var(--brand, #8b5cf6) 0%,
-              color-mix(in srgb, var(--brand, #8b5cf6) 46%, var(--surface, #172033)) 54%,
-              var(--accent, #22d3ee) 100%
-            );
+            background: color-mix(in srgb, var(--fg, #f8fafc) 18%, var(--surface, #172033));
           }
 
           .cs-window {
@@ -143,9 +138,9 @@
           }
 
           .cs-after .cs-window {
-            border-color: color-mix(in srgb, var(--accent, #22d3ee) 52%, var(--fg, #f8fafc));
-            background: color-mix(in srgb, var(--surface, #172033) 86%, var(--brand, #8b5cf6));
-            box-shadow: 0 2.2cqh 7cqw color-mix(in srgb, var(--accent, #22d3ee) 34%, transparent);
+            border-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 8%, var(--surface, #172033));
+            box-shadow: 0 2.2cqh 7cqw rgba(0, 0, 0, 0.18);
           }
 
           .cs-toolbar {
@@ -166,7 +161,7 @@
           }
 
           .cs-after .cs-dot {
-            background: var(--accent, #22d3ee);
+            background: var(--accent, #f8fafc);
             opacity: 1;
           }
 
@@ -203,8 +198,8 @@
           }
 
           .cs-after .cs-line {
-            background: var(--brand, #8b5cf6);
-            opacity: 0.9;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
+            opacity: 1;
           }
 
           .cs-visual {
@@ -220,14 +215,9 @@
           }
 
           .cs-after .cs-visual {
-            border-color: var(--accent, #22d3ee);
-            background: radial-gradient(
-              circle at 34% 30%,
-              var(--fg, #f8fafc) 0%,
-              var(--accent, #22d3ee) 24%,
-              var(--brand, #8b5cf6) 72%
-            );
-            box-shadow: 0 0 5cqw color-mix(in srgb, var(--accent, #22d3ee) 58%, transparent);
+            border-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
+            box-shadow: 0 0 5cqw rgba(0, 0, 0, 0.18);
             opacity: 1;
           }
 
@@ -256,8 +246,8 @@
 
           .cs-after .cs-label {
             left: var(--space-3, 4cqw);
-            border-color: color-mix(in srgb, var(--accent, #22d3ee) 62%, var(--fg, #f8fafc));
-            background: color-mix(in srgb, var(--surface, #172033) 82%, var(--brand, #8b5cf6));
+            border-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 8%, var(--surface, #172033));
           }
 
           .cs-divider {
@@ -270,8 +260,8 @@
             transform: translateX(-50%);
             background: var(--fg, #f8fafc);
             box-shadow:
-              0 0 1.4cqw var(--accent, #22d3ee),
-              0 0 3cqw color-mix(in srgb, var(--brand, #8b5cf6) 70%, transparent);
+              0 0 1.4cqw color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent),
+              0 0 3cqw rgba(0, 0, 0, 0.45);
             pointer-events: none;
           }
 
@@ -283,10 +273,10 @@
             width: min(5cqw, 7cqh);
             aspect-ratio: 1;
             transform: translate(-50%, -50%);
-            border: 0.3cqw solid var(--brand, #8b5cf6);
+            border: 0.3cqw solid var(--bg, #07111f);
             border-radius: 50%;
             background: var(--fg, #f8fafc);
-            box-shadow: 0 0 2.2cqw color-mix(in srgb, var(--accent, #22d3ee) 66%, transparent);
+            box-shadow: 0 0 2.2cqw color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
           }
 
           /* INVARIANT: vertical changes only the axis mapping. The after clip

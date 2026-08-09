@@ -4,50 +4,16 @@ description: "A seeded deterministic particle field converges and settles while 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/particle-image-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Particle Image Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/particle-image-reveal.html"
+  compositionId="particle-image-reveal"
+  compositionSrc="compositions/components/particle-image-reveal.html"
+  variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Particle count for the converging field.","default":"med","options":[{"value":"low","label":"Low"},{"value":"med","label":"Medium"},{"value":"high","label":"High"}]},{"id":"direction","type":"enum","role":"timing","label":"Direction","description":"ltr sweeps the reveal left to right; center opens an iris from the middle outward.","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"center","label":"Center out"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Particle and monogram color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the revealed image holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add particle-image-reveal" />
-
-That writes one file: `compositions/components/particle-image-reveal.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/particle-image-reveal.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `density` | `med` | `low`, `med`, `high` | Particle count for the converging field. |
-| `direction` | `ltr` | `ltr`, `center` | ltr sweeps the reveal left to right; center opens an iris from the middle outward. |
-| `accent` | `green` | `green`, `blue`, `violet` | Particle and monogram color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the revealed image holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="particle-image-reveal"
-  data-composition-src="compositions/components/particle-image-reveal.html"
-  data-variable-values='{"density":"med","direction":"ltr","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`particle-image-reveal.html`}>
-
-```html
+```html particle-image-reveal.html
 <!doctype html>
 <!--
   particle-image-reveal: HyperFrames video primitive (intros & reveals)
@@ -443,7 +409,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add particle-image-reveal" />
+
+That writes one file: `compositions/components/particle-image-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/particle-image-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

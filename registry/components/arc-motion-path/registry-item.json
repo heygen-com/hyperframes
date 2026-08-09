@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Arc Motion Path",
   "description": "A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation.",
-  "tags": ["motionpath", "gsap-plugin", "hyperframes-native"],
+  "tags": ["video-primitive", "motionpath", "gsap-plugin", "hyperframes-native"],
   "files": [
     {
       "path": "arc-motion-path.html",

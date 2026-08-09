@@ -15,7 +15,9 @@
       the pills that fan out under the button, up to six. The stagger picks up
       the new count.
     - tone (ink | green | blue | violet, default ink): colour of the round
-      button behind the white bars.
+      button behind the white bars. ink is a literal near-black; the other three
+      ride the composition's own brand, accent and accent-2 tokens and fall back
+      to that same ink when the composition declares none.
     - size (52 to 112 px, default 68): diameter of the round button. The bar
       width is a fixed fraction of it, so the whole glyph scales together.
 
@@ -96,11 +98,13 @@
         : {};
 
     // Anything missing or invalid returns to its declared default.
+    // The button is the one accent-carrying element here, so the three
+    // chromatic options ride the composition's own tokens and fall back to ink.
     var tones = {
       ink: "#18181b",
-      green: "#16a34a",
-      blue: "#2563eb",
-      violet: "#7c3aed",
+      green: "var(--brand, #18181b)",
+      blue: "var(--accent, #18181b)",
+      violet: "var(--accent-2, #18181b)",
     };
 
     function pick(table, value, fallback) {
@@ -121,7 +125,8 @@
       labels = ["Text", "Image", "Audio"];
     }
 
-    var size = typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
+    var size =
+      typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
     size = isFinite(size) && size > 0 ? Math.min(112, Math.max(52, size)) : 68;
 
     var tone = tones[pick(tones, vars.tone, "ink")];

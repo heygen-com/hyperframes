@@ -4,43 +4,16 @@ description: "Words gently fade into place with a short vertical drift for calm 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/per-word-crossfade.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Per-Word Crossfade preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/per-word-crossfade.html"
+  compositionId="per-word-crossfade"
+  compositionSrc="compositions/components/per-word-crossfade.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"The line to animate. It is split on whitespace and every word gets its own span, so the stagger picks up the new words.","default":"Create once reuse everywhere"},{"id":"drift","type":"enum","role":"motion","label":"Drift","description":"Scales the vertical offset, so the words cover a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"blur","type":"enum","role":"style","label":"Blur","description":"Scales the blur radius the timeline drives, from a light haze to a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add per-word-crossfade" />
-
-That writes one file: `compositions/components/per-word-crossfade.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Create once reuse everywhere` | string | The line to animate. It is split on whitespace and every word gets its own span, so the stagger picks up the new words. |
-| `drift` | `standard` | `close`, `standard`, `far` | Scales the vertical offset, so the words cover a shorter or longer run in the same time. |
-| `blur` | `standard` | `soft`, `standard`, `heavy` | Scales the blur radius the timeline drives, from a light haze to a full smear. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="per-word-crossfade"
-  data-composition-src="compositions/components/per-word-crossfade.html"
-  data-variable-values='{"text":"Create once reuse everywhere","drift":"standard","blur":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`per-word-crossfade.html`}>
-
-```html
+```html per-word-crossfade.html
 <!--
   Per-Word Crossfade - remocn typography primitive for HyperFrames.
 
@@ -158,7 +131,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add per-word-crossfade" />
+
+That writes one file: `compositions/components/per-word-crossfade.html`.
 
 ## Usage
 

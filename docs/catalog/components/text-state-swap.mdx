@@ -4,43 +4,16 @@ description: "A text state swap primitive with outgoing blur and incoming lift"
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/text-state-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Text State Swap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/text-state-swap.html"
+  compositionId="text-state-swap"
+  compositionSrc="compositions/components/text-state-swap.html"
+  variables={[{"id":"from-text","type":"string","role":"content","label":"From text","description":"The outgoing label, on screen before the swap.","default":"Saving draft"},{"id":"to-text","type":"string","role":"content","label":"To text","description":"The incoming label, on screen after the swap. It rests hidden until the timeline reveals it.","default":"Saved"},{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Label colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add text-state-swap" />
-
-That writes one file: `compositions/components/text-state-swap.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `from-text` | `Saving draft` | string | The outgoing label, on screen before the swap. |
-| `to-text` | `Saved` | string | The incoming label, on screen after the swap. It rests hidden until the timeline reveals it. |
-| `distance` | `standard` | `close`, `standard`, `far` | Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Label colour: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="text-state-swap"
-  data-composition-src="compositions/components/text-state-swap.html"
-  data-variable-values='{"from-text":"Saving draft","to-text":"Saved","distance":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`text-state-swap.html`}>
-
-```html
+```html text-state-swap.html
 <!--
   Text State Swap - transitions.dev-inspired primitive for HyperFrames.
 
@@ -156,7 +129,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add text-state-swap" />
+
+That writes one file: `compositions/components/text-state-swap.html`.
 
 ## Usage
 
@@ -164,7 +143,7 @@ Open `compositions/components/text-state-swap.html` and paste its contents into 
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `text` `swap`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `text` `swap`.
 
 ## Related topics
 

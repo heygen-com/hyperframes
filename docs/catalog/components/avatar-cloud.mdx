@@ -4,49 +4,16 @@ description: "Lettermark avatars populate a loose elliptical cloud while fine SV
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/avatar-cloud.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Avatar Cloud preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/avatar-cloud.html"
+  compositionId="avatar-cloud"
+  compositionSrc="compositions/components/avatar-cloud.html"
+  variables={[{"id":"avatarCount","type":"number","role":"layout","label":"Avatar count","description":"Number of lettermark avatars in the network cloud.","default":10,"min":6,"max":16,"step":1},{"id":"showLinks","type":"enum","role":"content","label":"Show links","description":"Show or hide the connecting network lines.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},{"id":"label","type":"string","role":"content","label":"Proof label","description":"Community proof copy shown in the center hub.","default":"50k builders"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add avatar-cloud" />
-
-That writes one file: `compositions/components/avatar-cloud.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/avatar-cloud.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `avatarCount` | `10` | 6 to 16, step 1 | Number of lettermark avatars in the network cloud. |
-| `showLinks` | `yes` | `yes`, `no` | Show or hide the connecting network lines. |
-| `label` | `50k builders` | string | Community proof copy shown in the center hub. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="avatar-cloud"
-  data-composition-src="compositions/components/avatar-cloud.html"
-  data-variable-values='{"avatarCount":10,"showLinks":"yes","label":"50k builders"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`avatar-cloud.html`}>
-
-```html
+```html avatar-cloud.html
 <!doctype html>
 <!--
   avatar-cloud: HyperFrames video primitive (effects / holdable / prove)
@@ -148,7 +115,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             background:
               radial-gradient(
                 ellipse at 50% 47.5%,
-                color-mix(in srgb, var(--brand, #6366f1) 16%, transparent),
+                color-mix(in srgb, var(--fg, #f8fafc) 8%, transparent),
                 transparent 48%
               ),
               var(--bg, #0b0c10);
@@ -170,13 +137,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 
           .ac-link {
             fill: none;
-            stroke: color-mix(in srgb, var(--accent, #38bdf8) 56%, transparent);
+            stroke: color-mix(in srgb, var(--fg, #f8fafc) 22%, transparent);
             stroke-width: 1.8;
             vector-effect: non-scaling-stroke;
           }
 
           .ac-link-secondary {
-            stroke: color-mix(in srgb, var(--brand, #6366f1) 38%, transparent);
+            stroke: color-mix(in srgb, var(--fg, #f8fafc) 14%, transparent);
             stroke-width: 1.2;
           }
 
@@ -195,8 +162,8 @@ defaults, so this behaves exactly like the preview above until you change one:
             width: min(calc(var(--ac-size) * 1cqw), calc(var(--ac-size) * 1.65cqh));
             aspect-ratio: 1;
             border: 0.16cqw solid color-mix(in srgb, var(--fg, #f8fafc) 32%, transparent);
-            border-radius: var(--radius, 999cqw);
-            background: var(--ac-color, var(--brand, #6366f1));
+            border-radius: 999cqw;
+            background: var(--ac-color, color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent));
             color: var(--bg, #0b0c10);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(calc(var(--ac-size) * 0.35cqw), calc(var(--ac-size) * 0.58cqh));
@@ -205,33 +172,30 @@ defaults, so this behaves exactly like the preview above until you change one:
             line-height: 1;
             box-shadow:
               0 1.2cqh 2.8cqh color-mix(in srgb, var(--bg, #0b0c10) 48%, transparent),
-              0 0 2.2cqw color-mix(in srgb, var(--ac-color, var(--brand, #6366f1)) 32%, transparent),
               inset 0 0.12cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 26%, transparent);
             will-change: transform, opacity;
           }
 
+          /* Tones are depth steps of the ink, not hues: near faces sit at L1,
+             mid at L2, far at L3. Value alone separates the cloud. */
           .ac-avatar[data-tone="0"] {
-            --ac-color: var(--brand, #6366f1);
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
           }
 
           .ac-avatar[data-tone="1"] {
-            --ac-color: var(--accent, #38bdf8);
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
           }
 
           .ac-avatar[data-tone="2"] {
-            --ac-color: color-mix(
-              in oklch longer hue,
-              var(--brand, #6366f1) 72%,
-              var(--accent, #38bdf8)
-            );
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
           }
 
           .ac-avatar[data-tone="3"] {
-            --ac-color: color-mix(in srgb, var(--brand, #6366f1) 54%, var(--fg, #f8fafc));
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 30%, transparent);
           }
 
           .ac-avatar[data-tone="4"] {
-            --ac-color: color-mix(in oklch, var(--accent, #38bdf8) 62%, var(--brand, #6366f1));
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
           }
 
           .ac-hub {
@@ -250,17 +214,16 @@ defaults, so this behaves exactly like the preview above until you change one:
             overflow: hidden;
             border: 0.16cqw solid color-mix(in srgb, var(--border, #334155) 82%, transparent);
             border-radius: var(--radius, 2.4cqw);
-            background: color-mix(in srgb, var(--surface, #1e293b) 92%, var(--brand, #6366f1));
+            background: var(--surface, #1e293b);
             box-shadow:
               0 2cqh 5cqh color-mix(in srgb, var(--bg, #0b0c10) 56%, transparent),
-              0 0 4cqw color-mix(in srgb, var(--brand, #6366f1) 20%, transparent),
               inset 0 0.14cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 18%, transparent);
             transform: translate(-50%, -50%);
             transform-origin: center;
           }
 
           .ac-kicker {
-            color: var(--accent, #38bdf8);
+            color: var(--muted, #8b93a3);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(1.6cqw, 2.8cqh);
             font-weight: 720;
@@ -523,7 +486,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add avatar-cloud" />
+
+That writes one file: `compositions/components/avatar-cloud.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/avatar-cloud.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

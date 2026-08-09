@@ -4,43 +4,16 @@ description: "A transitions.dev-inspired text stagger primitive with enter, shim
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/text-stagger.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Text Stagger preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/text-stagger.html"
+  compositionId="text-stagger"
+  compositionSrc="compositions/components/text-stagger.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Headline copy. Every whitespace-separated word becomes one staggered span.","default":"Build motion systems fast"},{"id":"size","type":"number","role":"layout","label":"Size","description":"Type size of every word in pixels, clamped to 24-160. Line height stays proportional.","default":74,"min":24,"max":160,"step":1,"unit":"px"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Base word colour: ink for light frames, paper for dark ones.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour of the shimmer the second timeline step sweeps across the words.","default":"blue","options":[{"value":"blue","label":"Blue"},{"value":"green","label":"Green"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add text-stagger" />
-
-That writes one file: `compositions/components/text-stagger.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Build motion systems fast` | string | Headline copy. Every whitespace-separated word becomes one staggered span. |
-| `size` | `74` | 24px to 160px, step 1px | Type size of every word in pixels, clamped to 24-160. Line height stays proportional. |
-| `tone` | `ink` | `ink`, `paper` | Base word colour: ink for light frames, paper for dark ones. |
-| `accent` | `blue` | `blue`, `green`, `violet` | Colour of the shimmer the second timeline step sweeps across the words. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="text-stagger"
-  data-composition-src="compositions/components/text-stagger.html"
-  data-variable-values='{"text":"Build motion systems fast","size":74,"tone":"ink","accent":"blue"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`text-stagger.html`}>
-
-```html
+```html text-stagger.html
 <!--
   Text Stagger - transitions.dev-inspired primitive for HyperFrames.
 
@@ -175,7 +148,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add text-stagger" />
+
+That writes one file: `compositions/components/text-stagger.html`.
 
 ## Usage
 
@@ -183,7 +162,7 @@ Open `compositions/components/text-stagger.html` and paste its contents into you
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `text` `stagger`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `text` `stagger`.
 
 ## Related topics
 

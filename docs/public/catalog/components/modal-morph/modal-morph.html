@@ -151,7 +151,7 @@
             height: 3.4cqmin;
             flex: none;
             border-radius: 50%;
-            background: var(--mm-accent);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
           }
 
           .mm-title {
@@ -298,9 +298,9 @@
             var expandVar = isFinite(expandRaw) ? Math.max(0.2, expandRaw) : 1.2;
             var register = vars.register === "snappy" ? "snappy" : "calm";
             var accentColors = {
-              green: "var(--brand, #71f5a7)",
-              blue: "var(--accent, #61a8ff)",
-              violet: "var(--accent-2, #c5a3ff)",
+              green: "var(--brand, #52525b)",
+              blue: "var(--accent, #52525b)",
+              violet: "var(--accent-2, #52525b)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent

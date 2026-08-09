@@ -268,9 +268,9 @@
             var detailText = vars.detail_text == null ? "+312%" : String(vars.detail_text);
             var headlineText = vars.headline == null ? "Growth compounds" : String(vars.headline);
             var accentColors = {
-              green: "#22c55e",
-              blue: "#3b82f6",
-              violet: "#8b5cf6",
+              green: "var(--brand, #a1a1aa)",
+              blue: "var(--accent, #a1a1aa)",
+              violet: "var(--accent-2, #a1a1aa)",
             };
             var accentColor = accentColors[vars.accent] || accentColors.green;
 

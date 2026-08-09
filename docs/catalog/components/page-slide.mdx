@@ -4,43 +4,16 @@ description: "A transitions.dev-inspired page slide primitive with outgoing and 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/page-slide.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Page Slide preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/page-slide.html"
+  compositionId="page-slide"
+  compositionSrc="compositions/components/page-slide.html"
+  variables={[{"id":"label_a","type":"string","role":"content","label":"Outgoing label","description":"Label printed on the page that slides out.","default":"Dashboard"},{"id":"label_b","type":"string","role":"content","label":"Incoming label","description":"Label printed on the page that slides in.","default":"Analytics"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Gradient family painted on the incoming page. The outgoing page stays slate.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"corner","type":"enum","role":"style","label":"Corner","description":"Corner radius of the frame the pages slide inside.","default":"round","options":[{"value":"square","label":"Square"},{"value":"soft","label":"Soft"},{"value":"round","label":"Round"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add page-slide" />
-
-That writes one file: `compositions/components/page-slide.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label_a` | `Dashboard` | string | Label printed on the page that slides out. |
-| `label_b` | `Analytics` | string | Label printed on the page that slides in. |
-| `accent` | `green` | `green`, `blue`, `violet` | Gradient family painted on the incoming page. The outgoing page stays slate. |
-| `corner` | `round` | `square`, `soft`, `round` | Corner radius of the frame the pages slide inside. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="page-slide"
-  data-composition-src="compositions/components/page-slide.html"
-  data-variable-values='{"label_a":"Dashboard","label_b":"Analytics","accent":"green","corner":"round"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`page-slide.html`}>
-
-```html
+```html page-slide.html
 <!--
   Page Slide - transitions.dev-inspired primitive for HyperFrames.
 
@@ -167,7 +140,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add page-slide" />
+
+That writes one file: `compositions/components/page-slide.html`.
 
 ## Usage
 
@@ -175,7 +154,7 @@ Open `compositions/components/page-slide.html` and paste its contents into your 
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `page` `slide`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `page` `slide`.
 
 ## Related topics
 

@@ -4,49 +4,16 @@ description: "A static headline receives one clean specular gradient sweep throu
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/text-shimmer.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Text Shimmer preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/text-shimmer.html"
+  compositionId="text-shimmer"
+  compositionSrc="compositions/components/text-shimmer.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text receiving the single shimmer pass.","default":"Effortless"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Hue of the specular shimmer band.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"sweep_at","type":"number","role":"timing","label":"Sweep start","description":"Requested start time for the shimmer sweep.","default":1.2,"min":0.2,"max":2,"step":0.1,"unit":"s"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add text-shimmer" />
-
-That writes one file: `compositions/components/text-shimmer.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/text-shimmer.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Effortless` | string | Text receiving the single shimmer pass. |
-| `accent` | `green` | `green`, `blue`, `violet` | Hue of the specular shimmer band. |
-| `sweep_at` | `1.2` | 0.2s to 2s, step 0.1s | Requested start time for the shimmer sweep. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="text-shimmer"
-  data-composition-src="compositions/components/text-shimmer.html"
-  data-variable-values='{"text":"Effortless","accent":"green","sweep_at":1.2}'
-></div>
-```
-
-## Source
-
-<Accordion title={`text-shimmer.html`}>
-
-```html
+```html text-shimmer.html
 <!doctype html>
 <!--
   text-shimmer: HyperFrames video primitive (text effects / drift / emphasize)
@@ -227,7 +194,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add text-shimmer" />
+
+That writes one file: `compositions/components/text-shimmer.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/text-shimmer.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

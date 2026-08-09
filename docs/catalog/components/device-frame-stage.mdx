@@ -4,49 +4,16 @@ description: "A phone or tablet mockup staged as a physical scene prop with a sc
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/device-frame-stage.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Device Frame Stage preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/device-frame-stage.html"
+  compositionId="device-frame-stage"
+  compositionSrc="compositions/components/device-frame-stage.html"
+  variables={[{"id":"device","type":"enum","role":"layout","label":"Device kind","default":"phone","options":[{"value":"phone","label":"Phone"},{"value":"tablet","label":"Tablet"}]},{"id":"cutout","type":"enum","role":"layout","label":"Camera cutout","default":"none","options":[{"value":"none","label":"None"},{"value":"island","label":"Island"},{"value":"notch","label":"Notch"}]},{"id":"body","type":"enum","role":"style","label":"Body material","default":"graphite","options":[{"value":"graphite","label":"Graphite"},{"value":"silver","label":"Silver"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add device-frame-stage" />
-
-That writes one file: `compositions/components/device-frame-stage.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/device-frame-stage.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `device` | `phone` | `phone`, `tablet` |  |
-| `cutout` | `none` | `none`, `island`, `notch` |  |
-| `body` | `graphite` | `graphite`, `silver` |  |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="device-frame-stage"
-  data-composition-src="compositions/components/device-frame-stage.html"
-  data-variable-values='{"device":"phone","cutout":"none","body":"graphite"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`device-frame-stage.html`}>
-
-```html
+```html device-frame-stage.html
 <!doctype html>
 <html
   lang="en"
@@ -515,7 +482,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add device-frame-stage" />
+
+That writes one file: `compositions/components/device-frame-stage.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/device-frame-stage.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

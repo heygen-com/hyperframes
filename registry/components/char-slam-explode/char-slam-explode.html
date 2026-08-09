@@ -135,9 +135,9 @@
 
             var text = vars.text == null ? "Impact" : String(vars.text);
             var accentColors = {
-              green: "#71f5a7",
-              blue: "#61a8ff",
-              violet: "#b895ff",
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #b895ff)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent

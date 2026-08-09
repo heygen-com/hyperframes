@@ -4,40 +4,16 @@ description: "Flowing texture mask over large uppercase text — ships with 6 te
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/caption-texture.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Texture preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/caption-texture.html"
+  compositionId="caption-texture"
+  compositionSrc="compositions/components/caption-texture.html"
+  variables={[{"id":"texture","type":"string","default":"lava"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add caption-texture" />
-
-That writes `compositions/components/caption-texture.html`, plus 6 supporting files under `compositions/components/`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `texture` | `lava` | string |  |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="caption-texture"
-  data-composition-src="compositions/components/caption-texture.html"
-  data-variable-values='{"texture":"lava"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`caption-texture.html`}>
-
-```html
+```html caption-texture.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -258,7 +234,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add caption-texture" />
+
+That writes `compositions/components/caption-texture.html`, plus 6 supporting files under `compositions/components/`.
 
 ## Usage
 

@@ -27,7 +27,7 @@
       gives a dead-still settle.
     - accent ("green" | "blue" | "violet", default "green"): the lead
       shape's color; green rides --brand, blue rides --accent, violet
-      rides --accent-2 (the other shapes take the remaining two tokens).
+      rides --accent-2 (the other shapes step down in value, not hue).
     - exit ("none" | "fade" | "up", default "none").
 
   Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
@@ -218,21 +218,20 @@
                 : 10;
             var boil = vars.boil !== "off";
             var accentColors = {
-              green: "var(--brand, #71f5a7)",
-              blue: "var(--accent, #61a8ff)",
-              violet: "var(--accent-2, #c5a3ff)",
+              green: "var(--brand, #52525b)",
+              blue: "var(--accent, #52525b)",
+              violet: "var(--accent-2, #52525b)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
             var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
-            // The lead shape rides the chosen accent token; the other two
-            // paper colors take the remaining tokens in rotation.
-            var order = { green: ["green", "blue", "violet"], blue: ["blue", "violet", "green"], violet: ["violet", "green", "blue"] }[accent];
-            root.style.setProperty("--smc-c1", accentColors[order[0]]);
-            root.style.setProperty("--smc-c2", accentColors[order[1]]);
-            root.style.setProperty("--smc-c3", accentColors[order[2]]);
+            // The lead shape is the one accented element; the other two paper
+            // cutouts separate by value step, not by a second and third hue.
+            root.style.setProperty("--smc-c1", accentColors[accent]);
+            root.style.setProperty("--smc-c2", "color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent)");
+            root.style.setProperty("--smc-c3", "color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent)");
 
             // One-time stage measurement; all positions in px from here.
             var W = Math.max(1, stage.clientWidth);

@@ -4,52 +4,16 @@ description: "Two full-bleed content slots compare before and after states as a 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/before-after-wipe.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Before After Wipe preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/before-after-wipe.html"
+  compositionId="before-after-wipe"
+  compositionSrc="compositions/components/before-after-wipe.html"
+  variables={[{"id":"label_a","type":"string","role":"content","label":"Before label","description":"Chip shown on the base before panel. Blank hides the chip.","default":"Before"},{"id":"label_b","type":"string","role":"content","label":"After label","description":"Chip shown on the revealed after panel. Blank hides the chip.","default":"After"},{"id":"rest_split","type":"number","role":"layout","label":"Resting split","description":"Divider resting position after the wipe lands.","default":50,"min":0,"max":100,"step":1,"unit":"%"},{"id":"wipe_at","type":"number","role":"timing","label":"Wipe start","description":"Seconds after mount start when the wipe begins.","default":0.25,"min":0,"max":8,"step":0.05,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Divider handle and after chip color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the final comparison frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add before-after-wipe" />
-
-That writes one file: `compositions/components/before-after-wipe.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/before-after-wipe.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label_a` | `Before` | string | Chip shown on the base before panel. Blank hides the chip. |
-| `label_b` | `After` | string | Chip shown on the revealed after panel. Blank hides the chip. |
-| `rest_split` | `50` | 0% to 100%, step 1% | Divider resting position after the wipe lands. |
-| `wipe_at` | `0.25` | 0s to 8s, step 0.05s | Seconds after mount start when the wipe begins. |
-| `accent` | `green` | `green`, `blue`, `violet` | Divider handle and after chip color. |
-| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final comparison frame. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="before-after-wipe"
-  data-composition-src="compositions/components/before-after-wipe.html"
-  data-variable-values='{"label_a":"Before","label_b":"After","rest_split":50,"wipe_at":0.25,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`before-after-wipe.html`}>
-
-```html
+```html before-after-wipe.html
 <!doctype html>
 <!--
   before-after-wipe: HyperFrames video primitive (ui-props / holdable / compare)
@@ -522,7 +486,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add before-after-wipe" />
+
+That writes one file: `compositions/components/before-after-wipe.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/before-after-wipe.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -124,9 +124,9 @@
                 : {};
 
             var accentColors = {
-              green: "#5df28b",
-              blue: "#4da3ff",
-              violet: "#a978ff",
+              green: "var(--brand, #5df28b)",
+              blue: "var(--accent, #4da3ff)",
+              violet: "var(--accent-2, #a978ff)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent

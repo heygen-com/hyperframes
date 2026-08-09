@@ -4,50 +4,16 @@ description: "The stepped-time law as a demo primitive: one driver quantizes tim
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/stop-motion-cadence.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Stop Motion Cadence preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/stop-motion-cadence.html"
+  compositionId="stop-motion-cadence"
+  compositionSrc="compositions/components/stop-motion-cadence.html"
+  variables={[{"id":"fps","type":"enum","role":"timing","label":"Cadence","description":"Stepped-time cadence in frames per second.","default":"10","options":[{"value":"8","label":"8 fps"},{"value":"10","label":"10 fps"},{"value":"12","label":"12 fps"}]},{"id":"boil","type":"enum","role":"style","label":"Boil","description":"2-frame edge jitter, seeded per step. Off holds dead still.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Lead shape color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the settled collage holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add stop-motion-cadence" />
-
-That writes one file: `compositions/components/stop-motion-cadence.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/stop-motion-cadence.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `fps` | `10` | `8`, `10`, `12` | Stepped-time cadence in frames per second. |
-| `boil` | `on` | `on`, `off` | 2-frame edge jitter, seeded per step. Off holds dead still. |
-| `accent` | `green` | `green`, `blue`, `violet` | Lead shape color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the settled collage holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="stop-motion-cadence"
-  data-composition-src="compositions/components/stop-motion-cadence.html"
-  data-variable-values='{"fps":"10","boil":"on","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`stop-motion-cadence.html`}>
-
-```html
+```html stop-motion-cadence.html
 <!doctype html>
 <!--
   stop-motion-cadence: HyperFrames video primitive (time law, Wave M10 experiment)
@@ -77,7 +43,7 @@ defaults, so this behaves exactly like the preview above until you change one:
       gives a dead-still settle.
     - accent ("green" | "blue" | "violet", default "green"): the lead
       shape's color; green rides --brand, blue rides --accent, violet
-      rides --accent-2 (the other shapes take the remaining two tokens).
+      rides --accent-2 (the other shapes step down in value, not hue).
     - exit ("none" | "fade" | "up", default "none").
 
   Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
@@ -268,21 +234,20 @@ defaults, so this behaves exactly like the preview above until you change one:
                 : 10;
             var boil = vars.boil !== "off";
             var accentColors = {
-              green: "var(--brand, #71f5a7)",
-              blue: "var(--accent, #61a8ff)",
-              violet: "var(--accent-2, #c5a3ff)",
+              green: "var(--brand, #52525b)",
+              blue: "var(--accent, #52525b)",
+              violet: "var(--accent-2, #52525b)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
             var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
-            // The lead shape rides the chosen accent token; the other two
-            // paper colors take the remaining tokens in rotation.
-            var order = { green: ["green", "blue", "violet"], blue: ["blue", "violet", "green"], violet: ["violet", "green", "blue"] }[accent];
-            root.style.setProperty("--smc-c1", accentColors[order[0]]);
-            root.style.setProperty("--smc-c2", accentColors[order[1]]);
-            root.style.setProperty("--smc-c3", accentColors[order[2]]);
+            // The lead shape is the one accented element; the other two paper
+            // cutouts separate by value step, not by a second and third hue.
+            root.style.setProperty("--smc-c1", accentColors[accent]);
+            root.style.setProperty("--smc-c2", "color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent)");
+            root.style.setProperty("--smc-c3", "color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent)");
 
             // One-time stage measurement; all positions in px from here.
             var W = Math.max(1, stage.clientWidth);
@@ -455,7 +420,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add stop-motion-cadence" />
+
+That writes one file: `compositions/components/stop-motion-cadence.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/stop-motion-cadence.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

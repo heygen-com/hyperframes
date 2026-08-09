@@ -34,6 +34,9 @@
     },
     {
       "files": ["docs/snippets/**/*.jsx", "docs/snippets/**/*.tsx"],
+      "globals": {
+        "CodeBlock": "readonly"
+      },
       "rules": {
         "react-hooks/rules-of-hooks": "error",
         "react-hooks/exhaustive-deps": "warn"

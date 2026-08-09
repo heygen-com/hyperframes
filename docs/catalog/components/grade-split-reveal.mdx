@@ -4,50 +4,16 @@ description: "The same picture twice, one flat and one finished, with a hard edg
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/grade-split-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Grade Split Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/grade-split-reveal.html"
+  compositionId="grade-split-reveal"
+  compositionSrc="compositions/components/grade-split-reveal.html"
+  variables={[{"id":"look","type":"enum","role":"style","label":"Look","description":"Grade carried by the upper copy, and the label printed over it. All three are real grading blocks handed to the shader, not CSS filters.","default":"warm-cinematic","options":[{"value":"warm-cinematic","label":"Warm Cinematic"},{"value":"cool-teal","label":"Cool Teal"},{"value":"bleach-bypass","label":"Bleach Bypass"}]},{"id":"split","type":"number","role":"motion","label":"Split point","description":"How far across the plate the edge stops to hold the comparison, before it commits and takes the rest.","default":62,"min":25,"max":85,"step":1,"unit":"%"},{"id":"edge","type":"enum","role":"style","label":"Edge","description":"The divider line riding the wipe. Hidden drops it entirely so the grade arrives with no seam.","default":"hairline","options":[{"value":"hairline","label":"Hairline"},{"value":"bold","label":"Bold"},{"value":"hidden","label":"Hidden"}]},{"id":"labels","type":"enum","role":"style","label":"Labels","description":"Show or hide the two captions naming each half of the plate.","default":"on","options":[{"value":"on","label":"Show"},{"value":"off","label":"Hide"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add grade-split-reveal" />
-
-That writes one file: `compositions/components/grade-split-reveal.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/grade-split-reveal.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `look` | `warm-cinematic` | `warm-cinematic`, `cool-teal`, `bleach-bypass` | Grade carried by the upper copy, and the label printed over it. All three are real grading blocks handed to the shader, not CSS filters. |
-| `split` | `62` | 25% to 85%, step 1% | How far across the plate the edge stops to hold the comparison, before it commits and takes the rest. |
-| `edge` | `hairline` | `hairline`, `bold`, `hidden` | The divider line riding the wipe. Hidden drops it entirely so the grade arrives with no seam. |
-| `labels` | `on` | `on`, `off` | Show or hide the two captions naming each half of the plate. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="grade-split-reveal"
-  data-composition-src="compositions/components/grade-split-reveal.html"
-  data-variable-values='{"look":"warm-cinematic","split":62,"edge":"hairline","labels":"on"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`grade-split-reveal.html`}>
-
-```html
+```html grade-split-reveal.html
 <!doctype html>
 <!--
   grade-split-reveal: the grade arrives as a moving edge.
@@ -496,7 +462,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add grade-split-reveal" />
+
+That writes one file: `compositions/components/grade-split-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/grade-split-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

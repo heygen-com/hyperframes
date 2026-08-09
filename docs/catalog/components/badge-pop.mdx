@@ -4,42 +4,16 @@ description: "A transitions.dev-inspired notification badge pop with elastic sca
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/badge-pop.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Badge Pop preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/badge-pop.html"
+  compositionId="badge-pop"
+  compositionSrc="compositions/components/badge-pop.html"
+  variables={[{"id":"count","type":"string","role":"style","label":"Count","description":"Text shown inside the notification badge, up to four characters.","default":"3","maxLength":4},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the badge.","default":"red","options":[{"value":"red","label":"Red"},{"value":"blue","label":"Blue"},{"value":"green","label":"Green"},{"value":"violet","label":"Violet"}]},{"id":"surface","type":"enum","role":"style","label":"Surface","description":"Chrome of the button and the badge ring: light for bright frames, dark for dark ones.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add badge-pop" />
-
-That writes one file: `compositions/components/badge-pop.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `count` | `3` | string | Text shown inside the notification badge, up to four characters. |
-| `accent` | `red` | `red`, `blue`, `green`, `violet` | Colour family of the badge. |
-| `surface` | `light` | `light`, `dark` | Chrome of the button and the badge ring: light for bright frames, dark for dark ones. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="badge-pop"
-  data-composition-src="compositions/components/badge-pop.html"
-  data-variable-values='{"count":"3","accent":"red","surface":"light"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`badge-pop.html`}>
-
-```html
+```html badge-pop.html
 <!--
   Badge Pop - transitions.dev-inspired primitive for HyperFrames.
 
@@ -56,7 +30,10 @@ defaults, so this behaves exactly like the preview above until you change one:
     - count (any text up to four characters, default "3"): what the badge
       reads. Use it to say 1, 12, 99+ or NEW.
     - accent (red | blue | green | violet, default red): the badge colour
-      family. All four clear 3:1 against the white count.
+      family. red is the literal notification convention; the other three ride
+      the composition's own accent, brand and accent-2 tokens and fall back to
+      ink when the composition declares none. All four clear 3:1 against the
+      white count.
     - surface (light | dark, default light): the chrome of the button and the
       ring around the badge. light suits bright frames, dark suits dark ones.
 
@@ -145,7 +122,15 @@ defaults, so this behaves exactly like the preview above until you change one:
       return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
     }
 
-    var accents = { red: "#ef4444", blue: "#2563eb", green: "#16a34a", violet: "#7c3aed" };
+    // The badge is the one accent-carrying element here. red is the literal
+    // notification convention and stays; the decorative options ride the
+    // composition's own tokens and fall back to ink.
+    var accents = {
+      red: "#ef4444",
+      blue: "var(--accent, #18181b)",
+      green: "var(--brand, #18181b)",
+      violet: "var(--accent-2, #18181b)",
+    };
     var surfaces = {
       light: { surface: "#ffffff", border: "#e4e4e7", ink: "#18181b" },
       dark: { surface: "#101014", border: "#2a2a32", ink: "#fafafa" },
@@ -179,7 +164,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add badge-pop" />
+
+That writes one file: `compositions/components/badge-pop.html`.
 
 ## Usage
 
@@ -187,7 +178,7 @@ Open `compositions/components/badge-pop.html` and paste its contents into your c
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `badge` `microinteraction`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `badge` `microinteraction`.
 
 ## Related topics
 

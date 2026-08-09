@@ -4,43 +4,16 @@ description: "A transitions.dev-inspired tilt card primitive with depth layers a
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/tilt-card.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Tilt Card preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/tilt-card.html"
+  compositionId="tilt-card"
+  compositionSrc="compositions/components/tilt-card.html"
+  variables={[{"id":"eyebrow","type":"string","role":"content","label":"Eyebrow","description":"Small uppercase kicker above the headline.","default":"Primitive"},{"id":"headline","type":"string","role":"content","label":"Headline","description":"Large card headline.","default":"Agent-ready motion"},{"id":"glow","type":"enum","role":"motion","label":"Glow","description":"How far the corner glow reaches past the card edges, which sets both its spread at rest and how far the timeline drift carries it.","default":"standard","options":[{"value":"tight","label":"Tight"},{"value":"standard","label":"Standard"},{"value":"wide","label":"Wide"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the card gradient, corner glow, eyebrow and drop shadow.","default":"indigo","options":[{"value":"indigo","label":"Indigo"},{"value":"emerald","label":"Emerald"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add tilt-card" />
-
-That writes one file: `compositions/components/tilt-card.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `eyebrow` | `Primitive` | string | Small uppercase kicker above the headline. |
-| `headline` | `Agent-ready motion` | string | Large card headline. |
-| `glow` | `standard` | `tight`, `standard`, `wide` | How far the corner glow reaches past the card edges, which sets both its spread at rest and how far the timeline drift carries it. |
-| `accent` | `indigo` | `indigo`, `emerald`, `violet` | Colour family of the card gradient, corner glow, eyebrow and drop shadow. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="tilt-card"
-  data-composition-src="compositions/components/tilt-card.html"
-  data-variable-values='{"eyebrow":"Primitive","headline":"Agent-ready motion","glow":"standard","accent":"indigo"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`tilt-card.html`}>
-
-```html
+```html tilt-card.html
 <!--
   Tilt Card - transitions.dev-inspired primitive for HyperFrames.
 
@@ -199,7 +172,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add tilt-card" />
+
+That writes one file: `compositions/components/tilt-card.html`.
 
 ## Usage
 
@@ -207,7 +186,7 @@ Open `compositions/components/tilt-card.html` and paste its contents into your c
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `card` `tilt`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `card` `tilt`.
 
 ## Related topics
 

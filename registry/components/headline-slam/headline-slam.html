@@ -10,6 +10,7 @@
     text: headline copy
     accent_word_index: zero-based word index to color, out of range colors none
     accent: green, blue, or violet accent color
+    shadow: drop shadow under the headline, on by default
 
   Envelope, fixed IN and OUT with elastic HOLD:
     IN_BASE  = 0.72s, headline slam and three-frame impact shake
@@ -30,7 +31,8 @@
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Headline", "description": "Text displayed as the headline.", "default": "Ship it today" },
     { "id": "accent_word_index", "type": "number", "role": "content", "label": "Accent word index", "description": "Zero-based word index to color. Out of range leaves the headline unaccented.", "default": 1, "step": 1 },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the selected word.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the selected word.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "shadow", "type": "boolean", "role": "style", "label": "Shadow", "description": "Drop shadow cast under the headline. On by default; set false for a flat matte look.", "default": true }
   ]'
 >
   <head>
@@ -89,10 +91,14 @@
             line-height: 0.88;
             letter-spacing: -0.5cqw;
             text-align: center;
-            text-shadow: 0 1.2cqh 4.5cqh color-mix(in srgb, #000 52%, transparent);
             white-space: nowrap;
             transform-origin: 50% 50%;
             will-change: transform, opacity;
+          }
+
+          /* Shadow is on by default; the shadow variable opts out of it. */
+          .hs-headline.hs-shadow {
+            text-shadow: 0 1.2cqh 4.5cqh color-mix(in srgb, #000 52%, transparent);
           }
 
           .hs-word {
@@ -133,16 +139,18 @@
             var indexValue = Number(vars.accent_word_index);
             var accentWordIndex = Number.isFinite(indexValue) ? Math.trunc(indexValue) : 1;
             var accentColors = {
-              green: "#71f5a7",
-              blue: "#61a8ff",
-              violet: "#b895ff",
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #b895ff)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            var shadow = !(vars.shadow === false || vars.shadow === "false");
             var words = text.trim() === "" ? [] : text.trim().split(/\s+/);
 
             root.style.setProperty("--hs-accent", accentColors[accent]);
+            headline.classList.toggle("hs-shadow", shadow);
             headline.setAttribute("aria-label", text);
 
             words.forEach(function (word, index) {

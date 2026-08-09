@@ -121,5 +121,21 @@
         window.__timelines["rolling-number-demo"] = tl;
       </script>
     </div>
-  </body>
+  <script>
+  (function () {
+    var raw = new URLSearchParams(location.search).get('hfv');
+    if (raw === null) return;
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return; }
+    if (!v || typeof v !== 'object') return;
+    window.__hfVariables = v;
+    var hosts = document.querySelectorAll('[data-composition-src]');
+    for (var i = 0; i < hosts.length; i++) {
+      var src = (hosts[i].getAttribute('data-composition-src') || '').split('?')[0];
+      if (src.slice(src.lastIndexOf('/') + 1) !== "rolling-number.html") continue;
+      hosts[i].setAttribute('data-variable-values', JSON.stringify(v));
+    }
+  })();
+</script>
+</body>
 </html>

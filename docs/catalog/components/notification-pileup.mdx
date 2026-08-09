@@ -4,49 +4,16 @@ description: "Mobile notification cards arrive faster and faster, each new alert
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/notification-pileup.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Notification Pileup preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/notification-pileup.html"
+  compositionId="notification-pileup"
+  compositionSrc="compositions/components/notification-pileup.html"
+  variables={[{"id":"count","type":"number","role":"content","label":"Notification count","description":"Number of notification cards in the final pile.","default":7,"min":4,"max":10,"step":1},{"id":"speed","type":"number","role":"timing","label":"Arrival speed","description":"Pacing multiplier for the accelerating notification arrivals.","default":1,"min":0.5,"max":2,"step":0.1},{"id":"showBadges","type":"enum","role":"content","label":"Unread badges","description":"Show or hide unread count badges on the notification cards.","default":"yes","options":[{"value":"yes","label":"Show badges"},{"value":"no","label":"Hide badges"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add notification-pileup" />
-
-That writes one file: `compositions/components/notification-pileup.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/notification-pileup.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `count` | `7` | 4 to 10, step 1 | Number of notification cards in the final pile. |
-| `speed` | `1` | 0.5 to 2, step 0.1 | Pacing multiplier for the accelerating notification arrivals. |
-| `showBadges` | `yes` | `yes`, `no` | Show or hide unread count badges on the notification cards. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="notification-pileup"
-  data-composition-src="compositions/components/notification-pileup.html"
-  data-variable-values='{"count":7,"speed":1,"showBadges":"yes"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`notification-pileup.html`}>
-
-```html
+```html notification-pileup.html
 <!doctype html>
 <!--
   notification-pileup, HyperFrames video primitive (ui-props / loop / agitate)
@@ -512,7 +479,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add notification-pileup" />
+
+That writes one file: `compositions/components/notification-pileup.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/notification-pileup.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

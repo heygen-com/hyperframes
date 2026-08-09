@@ -4,42 +4,16 @@ description: "Letters descend from above in a pronounced staircase with zero blu
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/top-down-letters.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Top-Down Letters preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/top-down-letters.html"
+  compositionId="top-down-letters"
+  compositionSrc="compositions/components/top-down-letters.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Word that cascades in. Every character becomes one letter span, in source order.","default":"CASCADE"},{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"Multiplies the drop the timeline drives, so the letters cover a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Letter colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add top-down-letters" />
-
-That writes one file: `compositions/components/top-down-letters.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `CASCADE` | string | Word that cascades in. Every character becomes one letter span, in source order. |
-| `distance` | `standard` | `close`, `standard`, `far` | Multiplies the drop the timeline drives, so the letters cover a shorter or longer run in the same time. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Letter colour: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="top-down-letters"
-  data-composition-src="compositions/components/top-down-letters.html"
-  data-variable-values='{"text":"CASCADE","distance":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`top-down-letters.html`}>
-
-```html
+```html top-down-letters.html
 <!--
   Top-Down Letters - remocn typography primitive for HyperFrames.
 
@@ -154,7 +128,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add top-down-letters" />
+
+That writes one file: `compositions/components/top-down-letters.html`.
 
 ## Usage
 
@@ -162,7 +142,7 @@ Open `compositions/components/top-down-letters.html` and paste its contents into
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `remocn-port` `typography`.
+Tagged `video-primitive` `motion-primitive` `remocn-port` `typography`.
 
 ## Related topics
 

@@ -4,51 +4,16 @@ description: "A small card expands into a full panel, shared-element style: both
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/modal-morph.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Modal Morph preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/modal-morph.html"
+  compositionId="modal-morph"
+  compositionSrc="compositions/components/modal-morph.html"
+  variables={[{"id":"from_scale","type":"number","role":"style","label":"From scale","description":"Multiplies the authored card footprint, clamped 0.5 to 1.5.","default":1},{"id":"expand_at","type":"number","role":"timing","label":"Expand at","description":"Seconds after mount when the card grows into the panel.","default":1.2},{"id":"register","type":"enum","role":"timing","label":"Register","description":"Morph feel. Snappy is faster with a settle capped at 1.02 of the target rect.","default":"calm","options":[{"value":"calm","label":"Calm"},{"value":"snappy","label":"Snappy"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the settled panel holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add modal-morph" />
-
-That writes one file: `compositions/components/modal-morph.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/modal-morph.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `from_scale` | `1` | number | Multiplies the authored card footprint, clamped 0.5 to 1.5. |
-| `expand_at` | `1.2` | number | Seconds after mount when the card grows into the panel. |
-| `register` | `calm` | `calm`, `snappy` | Morph feel. Snappy is faster with a settle capped at 1.02 of the target rect. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the settled panel holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="modal-morph"
-  data-composition-src="compositions/components/modal-morph.html"
-  data-variable-values='{"from_scale":1,"expand_at":1.2,"register":"calm","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`modal-morph.html`}>
-
-```html
+```html modal-morph.html
 <!doctype html>
 <!--
   modal-morph: HyperFrames video primitive (structure, Wave M9 experiment)
@@ -202,7 +167,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             height: 3.4cqmin;
             flex: none;
             border-radius: 50%;
-            background: var(--mm-accent);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
           }
 
           .mm-title {
@@ -349,9 +314,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             var expandVar = isFinite(expandRaw) ? Math.max(0.2, expandRaw) : 1.2;
             var register = vars.register === "snappy" ? "snappy" : "calm";
             var accentColors = {
-              green: "var(--brand, #71f5a7)",
-              blue: "var(--accent, #61a8ff)",
-              violet: "var(--accent-2, #c5a3ff)",
+              green: "var(--brand, #52525b)",
+              blue: "var(--accent, #52525b)",
+              violet: "var(--accent-2, #52525b)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
@@ -577,7 +542,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add modal-morph" />
+
+That writes one file: `compositions/components/modal-morph.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/modal-morph.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

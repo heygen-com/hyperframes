@@ -187,11 +187,14 @@
             var accentName =
               vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var accentColors = {
-              green: "#22c55e",
-              blue: "#38bdf8",
-              violet: "#a78bfa",
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             root.style.setProperty("--sr-accent", accentColors[accentName]);
+            // GSAP interpolates colors numerically, so tween values need the
+            // substituted color rather than the var() form.
+            var accentColor = getComputedStyle(root).getPropertyValue("--sr-accent").trim();
 
             for (var index = 0; index < cardCount; index += 1) {
               var card = document.createElement("article");
@@ -245,7 +248,7 @@
             gsap.set(currentCard, {
               scale: 1.02,
               opacity: 1,
-              borderColor: accentColors[accentName],
+              borderColor: accentColor,
             });
             gsap.set(contact, { x: "0cqw", y: "0cqh", scale: 0.86, opacity: 0 });
 
@@ -318,7 +321,7 @@
               {
                 scale: 1.02,
                 opacity: 1,
-                borderColor: accentColors[accentName],
+                borderColor: accentColor,
                 boxShadow: "0 3cqh 9cqh rgba(2, 6, 23, 0.42)",
                 duration: 0.64 * gestureScale,
                 ease: "back.out(1.7)",

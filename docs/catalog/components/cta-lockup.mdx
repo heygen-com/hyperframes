@@ -4,50 +4,16 @@ description: "A canonical closing lockup that reveals an action line, pops in an
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/cta-lockup.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="CTA Lockup preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/cta-lockup.html"
+  compositionId="cta-lockup"
+  compositionSrc="compositions/components/cta-lockup.html"
+  variables={[{"id":"action_line","type":"string","role":"content","label":"Action line","description":"Primary action statement shown above the CTA.","default":"Start building today"},{"id":"button_label","type":"string","role":"content","label":"Button label","description":"Text displayed inside the CTA capsule.","default":"Get HyperFrames"},{"id":"microcopy","type":"string","role":"content","label":"Microcopy","description":"Supporting detail shown below the CTA capsule.","default":"Free while in beta"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Fill color used by the CTA capsule.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add cta-lockup" />
-
-That writes one file: `compositions/components/cta-lockup.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/cta-lockup.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `action_line` | `Start building today` | string | Primary action statement shown above the CTA. |
-| `button_label` | `Get HyperFrames` | string | Text displayed inside the CTA capsule. |
-| `microcopy` | `Free while in beta` | string | Supporting detail shown below the CTA capsule. |
-| `accent` | `green` | `green`, `blue`, `violet` | Fill color used by the CTA capsule. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="cta-lockup"
-  data-composition-src="compositions/components/cta-lockup.html"
-  data-variable-values='{"action_line":"Start building today","button_label":"Get HyperFrames","microcopy":"Free while in beta","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`cta-lockup.html`}>
-
-```html
+```html cta-lockup.html
 <!doctype html>
 <!--
   cta-lockup: HyperFrames video primitive (ui-props / holdable / ask)
@@ -215,9 +181,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             var microcopyText =
               vars.microcopy == null ? "Free while in beta" : String(vars.microcopy);
             var accentColors = {
-              green: "#22c55e",
-              blue: "#38bdf8",
-              violet: "#a78bfa",
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             var accentName = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
@@ -308,7 +274,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add cta-lockup" />
+
+That writes one file: `compositions/components/cta-lockup.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/cta-lockup.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,50 +4,16 @@ description: "A loop-friendly column of varied skeleton post cards scrolls upwar
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/scroll-feed.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Scroll Feed preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/scroll-feed.html"
+  compositionId="scroll-feed"
+  compositionSrc="compositions/components/scroll-feed.html"
+  variables={[{"id":"speed","type":"enum","role":"timing","label":"Scroll speed","description":"Pace of the upward feed movement.","default":"doom","options":[{"value":"doom","label":"Doom"},{"value":"frantic","label":"Frantic"}]},{"id":"card_count","type":"number","role":"content","label":"Card count","description":"Number of skeleton posts in one repeated feed cycle.","default":6,"min":4,"max":10,"step":1},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty synthesizes evenly spaced flicks, one per card.","default":""},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the feed scrolls until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add scroll-feed" />
-
-That writes one file: `compositions/components/scroll-feed.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/scroll-feed.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `speed` | `doom` | `doom`, `frantic` | Pace of the upward feed movement. |
-| `card_count` | `6` | 4 to 10, step 1 | Number of skeleton posts in one repeated feed cycle. |
-| `cues` | `` | string | Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty synthesizes evenly spaced flicks, one per card. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the feed scrolls until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="scroll-feed"
-  data-composition-src="compositions/components/scroll-feed.html"
-  data-variable-values='{"speed":"doom","card_count":6,"cues":"","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`scroll-feed.html`}>
-
-```html
+```html scroll-feed.html
 <!doctype html>
 <!--
   scroll-feed: HyperFrames video primitive (effects / agitation / loop)
@@ -447,7 +413,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add scroll-feed" />
+
+That writes one file: `compositions/components/scroll-feed.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/scroll-feed.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

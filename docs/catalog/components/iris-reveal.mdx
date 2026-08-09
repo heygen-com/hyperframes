@@ -4,52 +4,16 @@ description: "A circle clip-path opens from an authored origin revealing state B
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/iris-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Iris Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/iris-reveal.html"
+  compositionId="iris-reveal"
+  compositionSrc="compositions/components/iris-reveal.html"
+  variables={[{"id":"iris_x","type":"number","role":"layout","label":"Iris origin X","description":"Horizontal iris origin as a percent of the frame width.","default":50,"min":0,"max":100,"step":1,"unit":"%"},{"id":"iris_y","type":"number","role":"layout","label":"Iris origin Y","description":"Vertical iris origin as a percent of the frame height.","default":50,"min":0,"max":100,"step":1,"unit":"%"},{"id":"open_at","type":"number","role":"timing","label":"Open start","description":"Seconds after mount start when the iris begins opening.","default":0.35,"min":0,"max":8,"step":0.05,"unit":"s"},{"id":"register","type":"enum","role":"style","label":"Register","description":"Color dims and desaturates the before state so the after state lands in full color. Plain leaves both untouched.","default":"color","options":[{"value":"color","label":"Color"},{"value":"plain","label":"Plain"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Iris rim ring and default after art tint.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the final revealed frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add iris-reveal" />
-
-That writes one file: `compositions/components/iris-reveal.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/iris-reveal.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `iris_x` | `50` | 0% to 100%, step 1% | Horizontal iris origin as a percent of the frame width. |
-| `iris_y` | `50` | 0% to 100%, step 1% | Vertical iris origin as a percent of the frame height. |
-| `open_at` | `0.35` | 0s to 8s, step 0.05s | Seconds after mount start when the iris begins opening. |
-| `register` | `color` | `color`, `plain` | Color dims and desaturates the before state so the after state lands in full color. Plain leaves both untouched. |
-| `accent` | `green` | `green`, `blue`, `violet` | Iris rim ring and default after art tint. |
-| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final revealed frame. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="iris-reveal"
-  data-composition-src="compositions/components/iris-reveal.html"
-  data-variable-values='{"iris_x":50,"iris_y":50,"open_at":0.35,"register":"color","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`iris-reveal.html`}>
-
-```html
+```html iris-reveal.html
 <!doctype html>
 <!--
   iris-reveal: HyperFrames video primitive (transitions / bridge)
@@ -530,7 +494,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add iris-reveal" />
+
+That writes one file: `compositions/components/iris-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/iris-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Icon Swap",
   "description": "A scale-and-blur icon swap primitive for toolbar and action state changes",
-  "tags": ["transition-primitive", "transitions-dev-port", "icon", "swap"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "icon", "swap"],
   "files": [
     {
       "path": "icon-swap.html",
@@ -21,9 +21,18 @@
       "description": "Button fill and glyph colour. Accent rides --brand.",
       "default": "dark",
       "options": [
-        { "value": "dark", "label": "Dark" },
-        { "value": "light", "label": "Light" },
-        { "value": "accent", "label": "Accent" }
+        {
+          "value": "dark",
+          "label": "Dark"
+        },
+        {
+          "value": "light",
+          "label": "Light"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
       ]
     },
     {
@@ -34,9 +43,18 @@
       "description": "Button box and glyph size, from a toolbar chip to a hero action.",
       "default": "standard",
       "options": [
-        { "value": "small", "label": "Small" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "large", "label": "Large" }
+        {
+          "value": "small",
+          "label": "Small"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "large",
+          "label": "Large"
+        }
       ]
     },
     {
@@ -47,9 +65,18 @@
       "description": "Corner treatment of the button box.",
       "default": "rounded",
       "options": [
-        { "value": "rounded", "label": "Rounded" },
-        { "value": "circle", "label": "Circle" },
-        { "value": "square", "label": "Square" }
+        {
+          "value": "rounded",
+          "label": "Rounded"
+        },
+        {
+          "value": "circle",
+          "label": "Circle"
+        },
+        {
+          "value": "square",
+          "label": "Square"
+        }
       ]
     },
     {
@@ -60,9 +87,18 @@
       "description": "Scales the blur radius the timeline drives through the swap, from a light haze to a full smear.",
       "default": "standard",
       "options": [
-        { "value": "soft", "label": "Soft" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "heavy", "label": "Heavy" }
+        {
+          "value": "soft",
+          "label": "Soft"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "heavy",
+          "label": "Heavy"
+        }
       ]
     }
   ],

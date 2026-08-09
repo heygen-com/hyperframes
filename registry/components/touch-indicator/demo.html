@@ -33,8 +33,8 @@
         --muted: #8b8f9a;
         --surface: #16181d;
         --border: #262931;
-        --brand: #6366f1;
-        --accent: #ff5470;
+        --brand: #e4e4e7;
+        --accent: #e4e4e7;
         --font-display: Inter, system-ui, sans-serif;
         --font-body: Inter, system-ui, sans-serif;
         --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -83,11 +83,16 @@
         height: 380px;
         margin: 0 var(--space-2, 16px);
         border-radius: var(--radius, 20px);
-        background: linear-gradient(
-          145deg,
-          color-mix(in srgb, var(--brand, #6366f1) 85%, transparent),
-          color-mix(in srgb, var(--accent, #ff5470) 70%, transparent)
-        );
+        /* Placeholder media: an L3 plate with a hairline, finely hatched so it
+           reads as a surface with content on it rather than an empty box. */
+        border: 1px solid color-mix(in srgb, var(--fg, #f5f6f8) 14%, transparent);
+        background:
+          repeating-linear-gradient(
+            0deg,
+            color-mix(in srgb, var(--fg, #f5f6f8) 5%, transparent) 0 1px,
+            transparent 1px 3px
+          ),
+          color-mix(in srgb, var(--fg, #f5f6f8) 18%, transparent);
       }
 
       .phone__row {

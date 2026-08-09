@@ -4,48 +4,16 @@ description: "A headline splits vertically around an incoming panel, which grows
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/type-match-cut.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Type Match Cut preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/type-match-cut.html"
+  compositionId="type-match-cut"
+  compositionSrc="compositions/components/type-match-cut.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text split around the incoming panel.","default":"Meet the new editor"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent color used by the incoming editor scene.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add type-match-cut" />
-
-That writes one file: `compositions/components/type-match-cut.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/type-match-cut.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Meet the new editor` | string | Text split around the incoming panel. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent color used by the incoming editor scene. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="type-match-cut"
-  data-composition-src="compositions/components/type-match-cut.html"
-  data-variable-values='{"text":"Meet the new editor","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`type-match-cut.html`}>
-
-```html
+```html type-match-cut.html
 <!doctype html>
 <!--
   type-match-cut: HyperFrames video primitive
@@ -455,7 +423,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add type-match-cut" />
+
+That writes one file: `compositions/components/type-match-cut.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/type-match-cut.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

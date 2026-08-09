@@ -128,7 +128,9 @@
             inset: 0 auto 0 0;
             width: var(--tc-rating-fill);
             overflow: hidden;
-            color: color-mix(in srgb, var(--brand) 40%, var(--bg));
+            /* The earned portion of the rating is the data. Flat ink over the
+               muted track says it by value, with no second hue. */
+            color: var(--fg);
             white-space: nowrap;
           }
 
@@ -160,7 +162,9 @@
             aspect-ratio: 1;
             border: 0.16cqh solid color-mix(in srgb, var(--fg) 20%, transparent);
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--brand), var(--accent));
+            /* Placeholder person: a single (front) avatar circle at L1, with
+               the initials knocked out in the ground colour. */
+            background: color-mix(in srgb, var(--fg) 72%, var(--surface));
             color: var(--bg);
             font-family: var(--font-display);
             font-size: min(2.65cqw, 2.65cqh);

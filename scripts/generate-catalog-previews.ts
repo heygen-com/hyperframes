@@ -27,22 +27,23 @@ import {
   cpSync,
   rmSync,
   writeFileSync,
-  statSync,
 } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
+  createFileServer,
+  createCaptureSession,
+  initializeSession,
   captureFrame,
+  getCompositionDuration,
   closeCaptureSession,
   createRenderJob,
   executeRenderJob,
 } from "../packages/producer/src/index.js";
 import { compileForRender } from "../packages/producer/src/services/htmlCompiler.js";
 import { resolveContainedCopies } from "./registry-target-paths.mjs";
-import { openOpaqueCapture } from "./preview-capture.js";
+import { createCatalogPreviewTempDir } from "./catalog-preview-temp.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -149,9 +150,24 @@ function mirrorRegistryTargets(projectDir: string): void {
   }
 }
 
+/**
+ * Registry primitive payloads are inert text, but HTML formatters may wrap prose
+ * inside JSON strings. Normalize only control-whitespace runs in the temporary
+ * preview copy; the immutable registry source and installed caller payload stay
+ * byte-for-byte untouched.
+ */
+function normalizePrimitiveDataForPreview(content: string): string {
+  return content.replace(
+    /(<div[^>]*data-hf-primitive-data[^>]*>)([\s\S]*?)(<\/div>)/g,
+    (_match, open: string, payload: string, close: string) => {
+      const normalized = payload.replace(/\s*[\r\n]+\s*/g, " ");
+      return `${open}${normalized}${close}`;
+    },
+  );
+}
+
 async function prepareProjectDir(item: CatalogItem): Promise<string> {
-  const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = createCatalogPreviewTempDir(item.name);
   cpSync(item.sourceDir, tmpDir, { recursive: true });
   mirrorRegistryTargets(tmpDir);
 
@@ -160,7 +176,10 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
   // If the entry file is a standalone HTML (has its own timeline registration),
   // just rename it to index.html. Otherwise create a wrapper.
   if (!existsSync(join(tmpDir, "index.html")) && existsSync(join(tmpDir, item.entryFile))) {
-    const entryContent = readFileSync(join(tmpDir, item.entryFile), "utf-8");
+    const entryPath = join(tmpDir, item.entryFile);
+    const rawEntryContent = readFileSync(entryPath, "utf-8");
+    const entryContent = normalizePrimitiveDataForPreview(rawEntryContent);
+    if (entryContent !== rawEntryContent) writeFileSync(entryPath, entryContent, "utf-8");
     // A registration inside <template> does NOT make the file standalone: the
     // template's markup and scripts stay inert until a host composition mounts
     // it via data-composition-src. Rendering such a block as index.html paints
@@ -274,41 +293,75 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
   return tmpDir;
 }
 
-/** Pull a `data-<attr>` pixel value out of the wrapper markup, or fall back. */
-function wrapperDimension(html: string, attr: "width" | "height", fallback: number): number {
-  const match = html.match(new RegExp(`data-${attr}="(\\d+)"`))?.[1];
-  return match ? parseInt(match, 10) : fallback;
-}
-
 async function generateThumbnail(item: CatalogItem, projectDir: string): Promise<void> {
   const outDir = outputDir(item.kind);
   mkdirSync(outDir, { recursive: true });
 
   // Read dimensions from the wrapper index.html (which may differ from native
   // dimensions for portrait overlays that are scaled to fit landscape).
-  const wrapperHtml = readFileSync(join(projectDir, "index.html"), "utf-8");
-  const width = wrapperDimension(wrapperHtml, "width", 1920);
-  const height = wrapperDimension(wrapperHtml, "height", 1080);
+  let width = 1920;
+  let height = 1080;
+  const wrapperPath = join(projectDir, "index.html");
+  const wrapperHtml = readFileSync(wrapperPath, "utf-8");
+  const wMatch = wrapperHtml.match(/data-width="(\d+)"/);
+  const hMatch = wrapperHtml.match(/data-height="(\d+)"/);
+  if (wMatch) width = parseInt(wMatch[1], 10);
+  if (hMatch) height = parseInt(hMatch[1], 10);
 
   const framesDir = join(projectDir, "_thumb_frames");
-  const { fileServer, session, duration } = await openOpaqueCapture({ projectDir, width, height });
+  mkdirSync(framesDir, { recursive: true });
+
+  const { fileServer, session } = await openThumbnailSession(projectDir, framesDir, width, height);
   try {
+    let duration: number;
+    try {
+      duration = await getCompositionDuration(session);
+    } catch {
+      duration = 5;
+    }
+
     // Capture after the treatment appears, capped for long compositions.
     const captureTime = Math.min(3.0, duration * 0.6);
     const result = await captureFrame(session, 0, captureTime);
-    execFileSync(
-      "ffmpeg",
-      ["-v", "error", "-y", "-i", result.path, join(outDir, `${item.name}.png`)],
-      {
-        stdio: "inherit",
-      },
-    );
+    cpSync(result.path, join(outDir, `${item.name}.png`));
     console.log(`  ✓ ${item.name}.png (${result.captureTimeMs}ms)`);
-
-    await closeCaptureSession(session);
   } finally {
+    await closeCaptureSession(session).catch(() => undefined);
     fileServer.close();
     rmSync(framesDir, { recursive: true, force: true });
+  }
+}
+
+async function openThumbnailSession(
+  projectDir: string,
+  framesDir: string,
+  width: number,
+  height: number,
+) {
+  const fileServer = await createFileServer({
+    projectDir,
+    port: 0,
+    fps: { num: 30, den: 1 },
+  });
+  try {
+    // `format: "png"` is the engine's TRANSPARENT capture mode: it forces
+    // `background-image: none !important` on every `[data-composition-id]`, so
+    // any block whose scene paints its own backdrop (the VS Code snippets sit
+    // on a desktop wallpaper) loses it and the poster comes out empty. These
+    // posters are opaque page images, never a compositing layer — capture
+    // opaque and transcode to the .png the catalog pages reference.
+    const session = await createCaptureSession(fileServer.url, framesDir, {
+      width,
+      height,
+      fps: { num: 30, den: 1 },
+      format: "jpeg",
+      quality: 95,
+    });
+    await initializeSession(session);
+    return { fileServer, session };
+  } catch (error) {
+    fileServer.close();
+    throw error;
   }
 }
 
@@ -317,62 +370,13 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
   mkdirSync(outDir, { recursive: true });
 
   const outMp4 = join(outDir, `${item.name}.mp4`);
-  const masterMp4 = join(outDir, `${item.name}.master.mp4`);
   const job = createRenderJob({
     fps: { num: 24, den: 1 },
     quality: "draft",
     format: "mp4",
   });
-  await executeRenderJob(job, projectDir, masterMp4);
-  encodeForWeb(masterMp4, outMp4);
-  rmSync(masterMp4, { force: true });
-  console.log(`  ✓ ${item.name}.mp4 (${(statSync(outMp4).size / 1048576).toFixed(1)} MB)`);
-}
-
-/**
- * The render output is a master, not a deliverable. Publishing it directly put
- * 25 Mbps files on the docs CDN — one 20-second preview was 60 MB, which a
- * reader on a phone pays for the moment they press play. This pass is the
- * difference between a master and something you serve.
- */
-function encodeForWeb(input: string, output: string): void {
-  execFileSync(
-    "ffmpeg",
-    [
-      "-v",
-      "error",
-      "-y",
-      "-i",
-      input,
-      // 1280 wide is twice the 590px docs column: sharp on retina, no pixels
-      // nobody sees.
-      "-vf",
-      "scale='min(1280,iw)':-2",
-      "-c:v",
-      "libx264",
-      "-profile:v",
-      "high",
-      "-crf",
-      "28",
-      "-preset",
-      "slow",
-      "-pix_fmt",
-      "yuv420p",
-      // faststart puts the index first so playback can begin before the whole
-      // file has arrived.
-      "-movflags",
-      "+faststart",
-      // ffmpeg ignores these when the input carries no audio stream.
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-ac",
-      "2",
-      output,
-    ],
-    { stdio: "inherit" },
-  );
+  await executeRenderJob(job, projectDir, outMp4);
+  console.log(`  ✓ ${item.name}.mp4`);
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Avatar Group Hover",
   "description": "A distance-falloff avatar group lift with bouncy hover return",
-  "tags": ["transition-primitive", "transitions-dev-port", "avatar", "hover"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "avatar", "hover"],
   "files": [
     {
       "path": "avatar-group-hover.html",

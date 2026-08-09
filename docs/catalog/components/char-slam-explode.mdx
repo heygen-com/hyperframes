@@ -4,49 +4,16 @@ description: "Headline glyphs hold in a deterministic scatter, then reassemble w
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/char-slam-explode.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Char Slam Explode preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/char-slam-explode.html"
+  compositionId="char-slam-explode"
+  compositionSrc="compositions/components/char-slam-explode.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text split into glyphs for the scatter and slam.","default":"Impact"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Headline and glow color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"spread","type":"enum","role":"motion","label":"Spread","description":"Distance and rotation of the scattered glyphs.","default":"tight","options":[{"value":"tight","label":"Tight"},{"value":"wild","label":"Wild"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add char-slam-explode" />
-
-That writes one file: `compositions/components/char-slam-explode.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/char-slam-explode.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Impact` | string | Text split into glyphs for the scatter and slam. |
-| `accent` | `green` | `green`, `blue`, `violet` | Headline and glow color. |
-| `spread` | `tight` | `tight`, `wild` | Distance and rotation of the scattered glyphs. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="char-slam-explode"
-  data-composition-src="compositions/components/char-slam-explode.html"
-  data-variable-values='{"text":"Impact","accent":"green","spread":"tight"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`char-slam-explode.html`}>
-
-```html
+```html char-slam-explode.html
 <!doctype html>
 <!--
   char-slam-explode: HyperFrames video primitive
@@ -184,9 +151,9 @@ defaults, so this behaves exactly like the preview above until you change one:
 
             var text = vars.text == null ? "Impact" : String(vars.text);
             var accentColors = {
-              green: "#71f5a7",
-              blue: "#61a8ff",
-              violet: "#b895ff",
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #b895ff)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
@@ -387,7 +354,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add char-slam-explode" />
+
+That writes one file: `compositions/components/char-slam-explode.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/char-slam-explode.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

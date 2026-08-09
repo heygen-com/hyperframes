@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Page Slide",
   "description": "A transitions.dev-inspired page slide primitive with outgoing and incoming panels",
-  "tags": ["transition-primitive", "transitions-dev-port", "page", "slide"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "page", "slide"],
   "files": [
     {
       "path": "page-slide.html",

@@ -4,52 +4,16 @@ description: "Labeled hairline chips assemble around a centered subject on an el
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/radial-surround.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Radial Surround preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/radial-surround.html"
+  compositionId="radial-surround"
+  compositionSrc="compositions/components/radial-surround.html"
+  variables={[{"id":"center_label","type":"string","role":"content","label":"Center label","description":"Label on the default center token card.","default":"Your team"},{"id":"chips","type":"string","role":"content","label":"Chips","description":"Comma-separated chip labels that surround the center (up to 12).","default":"Docs,Tickets,Dashboards,Inbox,Chat,Sheets"},{"id":"close_in","type":"boolean","role":"timing","label":"Close in","description":"Converge the ring inward with a subtle edge dim after assembly. The center never moves.","default":true},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated per-chip entrance times in seconds. Blank entries use the default cascade.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the center card tint.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"How the surrounded stage leaves the frame. Default none: the crowded hold ends the film.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add radial-surround" />
-
-That writes one file: `compositions/components/radial-surround.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/radial-surround.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `center_label` | `Your team` | string | Label on the default center token card. |
-| `chips` | `Docs,Tickets,Dashboards,Inbox,Chat,Sheets` | string | Comma-separated chip labels that surround the center (up to 12). |
-| `close_in` | `true` | boolean | Converge the ring inward with a subtle edge dim after assembly. The center never moves. |
-| `cues` | `` | string | Comma-separated per-chip entrance times in seconds. Blank entries use the default cascade. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the center card tint. |
-| `exit` | `none` | `none`, `fade`, `up` | How the surrounded stage leaves the frame. Default none: the crowded hold ends the film. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="radial-surround"
-  data-composition-src="compositions/components/radial-surround.html"
-  data-variable-values='{"center_label":"Your team","chips":"Docs,Tickets,Dashboards,Inbox,Chat,Sheets","close_in":true,"cues":"","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`radial-surround.html`}>
-
-```html
+```html radial-surround.html
 <!doctype html>
 <!--
   radial-surround: HyperFrames video primitive (problem setup)
@@ -487,7 +451,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add radial-surround" />
+
+That writes one file: `compositions/components/radial-surround.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/radial-surround.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

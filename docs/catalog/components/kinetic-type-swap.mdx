@@ -4,52 +4,16 @@ description: "A held sentence keeps its fixed text in place while one widest-wor
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/kinetic-type-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Kinetic Type Swap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/kinetic-type-swap.html"
+  compositionId="kinetic-type-swap"
+  compositionSrc="compositions/components/kinetic-type-swap.html"
+  variables={[{"id":"prefix","type":"string","role":"content","label":"Prefix","description":"Fixed sentence text before the rolling word slot.","default":"Ship"},{"id":"options","type":"string","role":"content","label":"Options","description":"Comma-separated words shown in the rolling slot.","default":"faster,smarter,together"},{"id":"suffix","type":"string","role":"content","label":"Suffix","description":"Fixed sentence text after the rolling word slot.","default":""},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated seconds (from mount start) for each word swap. Empty keeps the authored even spread.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the rolling word slot.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the sentence holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add kinetic-type-swap" />
-
-That writes one file: `compositions/components/kinetic-type-swap.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/kinetic-type-swap.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `prefix` | `Ship` | string | Fixed sentence text before the rolling word slot. |
-| `options` | `faster,smarter,together` | string | Comma-separated words shown in the rolling slot. |
-| `suffix` | `` | string | Fixed sentence text after the rolling word slot. |
-| `cues` | `` | string | Comma-separated seconds (from mount start) for each word swap. Empty keeps the authored even spread. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used by the rolling word slot. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the sentence holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="kinetic-type-swap"
-  data-composition-src="compositions/components/kinetic-type-swap.html"
-  data-variable-values='{"prefix":"Ship","options":"faster,smarter,together","suffix":"","cues":"","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`kinetic-type-swap.html`}>
-
-```html
+```html kinetic-type-swap.html
 <!doctype html>
 <!--
   kinetic-type-swap: HyperFrames video primitive (text effects / swap)
@@ -432,7 +396,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add kinetic-type-swap" />
+
+That writes one file: `compositions/components/kinetic-type-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/kinetic-type-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,53 +4,16 @@ description: "One system-faithful notification banner (iOS or macOS) drops in ov
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/native-notification-pop.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Native Notification Pop preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/native-notification-pop.html"
+  compositionId="native-notification-pop"
+  compositionSrc="compositions/components/native-notification-pop.html"
+  variables={[{"id":"title","type":"string","role":"content","label":"Title","description":"The notification title line.","default":"Render complete"},{"id":"body","type":"string","role":"content","label":"Body","description":"One body line. Long lines truncate with an ellipsis.","default":"launch-cut.mp4 is ready to preview"},{"id":"app_label","type":"string","role":"content","label":"App label","description":"Small-caps app name row beside the app dot.","default":"HyperFrames"},{"id":"os","type":"enum","role":"style","label":"OS","description":"Banner geometry and placement: wide centered iOS or compact top-right macOS.","default":"ios","options":[{"value":"ios","label":"iOS"},{"value":"macos","label":"macOS"}]},{"id":"at","type":"number","role":"timing","label":"Drop start","description":"Seconds after mount start when the banner drops in.","default":0.3,"min":0,"max":8,"step":0.05,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"App dot color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"None holds the banner; up tucks it back off the top; fade fades it in place.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add native-notification-pop" />
-
-That writes one file: `compositions/components/native-notification-pop.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/native-notification-pop.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `title` | `Render complete` | string | The notification title line. |
-| `body` | `launch-cut.mp4 is ready to preview` | string | One body line. Long lines truncate with an ellipsis. |
-| `app_label` | `HyperFrames` | string | Small-caps app name row beside the app dot. |
-| `os` | `ios` | `ios`, `macos` | Banner geometry and placement: wide centered iOS or compact top-right macOS. |
-| `at` | `0.3` | 0s to 8s, step 0.05s | Seconds after mount start when the banner drops in. |
-| `accent` | `green` | `green`, `blue`, `violet` | App dot color. |
-| `exit` | `none` | `none`, `fade`, `up` | None holds the banner; up tucks it back off the top; fade fades it in place. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="native-notification-pop"
-  data-composition-src="compositions/components/native-notification-pop.html"
-  data-variable-values='{"title":"Render complete","body":"launch-cut.mp4 is ready to preview","app_label":"HyperFrames","os":"ios","at":0.3,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`native-notification-pop.html`}>
-
-```html
+```html native-notification-pop.html
 <!doctype html>
 <!--
   native-notification-pop: HyperFrames video primitive (product-demo / overlay)
@@ -514,7 +477,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add native-notification-pop" />
+
+That writes one file: `compositions/components/native-notification-pop.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/native-notification-pop.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

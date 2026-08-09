@@ -4,48 +4,16 @@ description: "A centered headline gains focus through one slow, continuous camer
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/push-in.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Push In preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/push-in.html"
+  compositionId="push-in"
+  compositionSrc="compositions/components/push-in.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text centered in the camera frame.","default":"Focus"},{"id":"intensity","type":"enum","role":"motion","label":"Push intensity","description":"Final camera scale reached by the push.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add push-in" />
-
-That writes one file: `compositions/components/push-in.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/push-in.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Focus` | string | Text centered in the camera frame. |
-| `intensity` | `standard` | `subtle`, `standard`, `bold` | Final camera scale reached by the push. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="push-in"
-  data-composition-src="compositions/components/push-in.html"
-  data-variable-values='{"text":"Focus","intensity":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`push-in.html`}>
-
-```html
+```html push-in.html
 <!doctype html>
 <!--
   push-in: HyperFrames video primitive (camera / holdable / emphasize)
@@ -226,7 +194,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add push-in" />
+
+That writes one file: `compositions/components/push-in.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/push-in.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Menu Morph",
   "description": "A transitions.dev-inspired hamburger and plus-menu morph primitive for compact action menus",
-  "tags": ["transition-primitive", "transitions-dev-port", "menu", "morph"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "menu", "morph"],
   "files": [
     {
       "path": "menu-morph.html",

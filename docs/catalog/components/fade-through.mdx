@@ -4,42 +4,16 @@ description: "A calm transition primitive that fades one layer out, passes throu
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/fade-through.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Fade Through preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/fade-through.html"
+  compositionId="fade-through"
+  compositionSrc="compositions/components/fade-through.html"
+  variables={[{"id":"wash","type":"enum","role":"style","label":"Wash","description":"Colour of the mid-transition frame. Paper resolves through --hf-fade-through-wash, accent rides --accent.","default":"paper","options":[{"value":"paper","label":"Paper"},{"value":"white","label":"White"},{"value":"ink","label":"Ink"},{"value":"accent","label":"Accent"}]},{"id":"strength","type":"number","role":"style","label":"Strength","description":"How far the wash covers at its peak. 1 is a full flash, 0.3 a light veil.","default":1,"min":0.1,"max":1,"step":0.05},{"id":"shape","type":"enum","role":"style","label":"Shape","description":"Flat fills the frame evenly, bloom concentrates the wash in the centre.","default":"flat","options":[{"value":"flat","label":"Flat"},{"value":"bloom","label":"Bloom"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add fade-through" />
-
-That writes one file: `compositions/components/fade-through.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `wash` | `paper` | `paper`, `white`, `ink`, `accent` | Colour of the mid-transition frame. Paper resolves through --hf-fade-through-wash, accent rides --accent. |
-| `strength` | `1` | 0.1 to 1, step 0.05 | How far the wash covers at its peak. 1 is a full flash, 0.3 a light veil. |
-| `shape` | `flat` | `flat`, `bloom` | Flat fills the frame evenly, bloom concentrates the wash in the centre. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="fade-through"
-  data-composition-src="compositions/components/fade-through.html"
-  data-variable-values='{"wash":"paper","strength":1,"shape":"flat"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`fade-through.html`}>
-
-```html
+```html fade-through.html
 <!--
   Fade Through - scene transition primitive.
 
@@ -138,7 +112,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add fade-through" />
+
+That writes one file: `compositions/components/fade-through.html`.
 
 ## Usage
 

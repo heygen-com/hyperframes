@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Text Stagger",
   "description": "A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words",
-  "tags": ["transition-primitive", "transitions-dev-port", "text", "stagger"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "text", "stagger"],
   "files": [
     {
       "path": "text-stagger.html",
@@ -41,8 +41,14 @@
       "description": "Base word colour: ink for light frames, paper for dark ones.",
       "default": "ink",
       "options": [
-        { "value": "ink", "label": "Ink" },
-        { "value": "paper", "label": "Paper" }
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        }
       ]
     },
     {
@@ -53,9 +59,18 @@
       "description": "Colour of the shimmer the second timeline step sweeps across the words.",
       "default": "blue",
       "options": [
-        { "value": "blue", "label": "Blue" },
-        { "value": "green", "label": "Green" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     }
   ],

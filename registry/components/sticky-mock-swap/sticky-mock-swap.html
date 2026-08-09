@@ -319,9 +319,9 @@
                 ? vars.accent
                 : "violet";
             var accentColors = {
-              green: "#34d399",
-              blue: "#38bdf8",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             root.style.setProperty("--sms-accent", accentColors[accent]);
 

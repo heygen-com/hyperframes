@@ -34,6 +34,14 @@ export interface RegistryItemPreview {
   poster?: string;
 }
 
+interface HeyGenVerseExportProvenance {
+  kind: "heygenverse-export";
+  artifactId: string;
+  versionId: string;
+  canonicalUri: string;
+  sourceDigest: string;
+}
+
 /** Fields common to every registry item, regardless of type. */
 interface RegistryItemBase {
   /** JSON Schema URL — `https://hyperframes.heygen.com/schema/registry-item.json`. */
@@ -66,6 +74,8 @@ interface RegistryItemBase {
   preview?: RegistryItemPreview;
   /** Related skill slug (e.g. `hyperframes-captions`) — shown in docs. */
   relatedSkill?: string;
+  /** Read-only identity of a versioned HeyGenVerse export projected into this registry. */
+  provenance?: HeyGenVerseExportProvenance;
 }
 
 /** Full-project example — scaffolded by `hyperframes init --example <name>`. */

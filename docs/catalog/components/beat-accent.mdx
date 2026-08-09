@@ -4,49 +4,16 @@ description: "A single music-hit sting: impact flash, micro scale-pulse on the s
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/beat-accent.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Beat Accent preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/beat-accent.html"
+  compositionId="beat-accent"
+  compositionSrc="compositions/components/beat-accent.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Accent text","description":"Word or short label emphasized by the beat hit.","default":"BOOM"},{"id":"flashColor","type":"enum","role":"style","label":"Flash color","description":"Token-backed accent tone used by the radial flash.","default":"accent","options":[{"value":"accent","label":"Accent"},{"value":"soft","label":"Soft accent"},{"value":"bright","label":"Bright accent"}]},{"id":"intensity","type":"number","role":"timing","label":"Intensity","description":"Strength of the scale pulse, flash, and shake.","default":1,"min":0.5,"max":2,"step":0.1}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add beat-accent" />
-
-That writes one file: `compositions/components/beat-accent.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/beat-accent.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `BOOM` | string | Word or short label emphasized by the beat hit. |
-| `flashColor` | `accent` | `accent`, `soft`, `bright` | Token-backed accent tone used by the radial flash. |
-| `intensity` | `1` | 0.5 to 2, step 0.1 | Strength of the scale pulse, flash, and shake. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="beat-accent"
-  data-composition-src="compositions/components/beat-accent.html"
-  data-variable-values='{"text":"BOOM","flashColor":"accent","intensity":1}'
-></div>
-```
-
-## Source
-
-<Accordion title={`beat-accent.html`}>
-
-```html
+```html beat-accent.html
 <!doctype html>
 <!--
   beat-accent: HyperFrames video primitive (effects / burst / emphasize)
@@ -373,7 +340,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add beat-accent" />
+
+That writes one file: `compositions/components/beat-accent.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/beat-accent.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

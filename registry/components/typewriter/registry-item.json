@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Typewriter",
   "description": "Character-by-character text reveal with a deterministic blinking cursor.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["video-primitive", "motion-primitive", "remocn-port", "typography"],
   "files": [
     {
       "path": "typewriter.html",
@@ -29,9 +29,18 @@
       "description": "Colour of the text and the caret: ink for light frames, paper for dark ones, accent rides --brand.",
       "default": "ink",
       "options": [
-        { "value": "ink", "label": "Ink" },
-        { "value": "paper", "label": "Paper" },
-        { "value": "accent", "label": "Accent" }
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
       ]
     },
     {
@@ -42,9 +51,18 @@
       "description": "Caret shape: a thin rule, a terminal-style block, or no caret at all.",
       "default": "line",
       "options": [
-        { "value": "line", "label": "Line" },
-        { "value": "block", "label": "Block" },
-        { "value": "none", "label": "None" }
+        {
+          "value": "line",
+          "label": "Line"
+        },
+        {
+          "value": "block",
+          "label": "Block"
+        },
+        {
+          "value": "none",
+          "label": "None"
+        }
       ]
     }
   ],

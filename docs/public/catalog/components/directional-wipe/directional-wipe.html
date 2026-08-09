@@ -9,20 +9,21 @@
   custom property the CSS consumes. The timeline recipe at the bottom is
   untouched by them.
 
-    - palette (slate | teal | ember, default slate): recolours both slabs as a
-      pair, the outgoing panel and the card behind it plus the incoming panel
-      the wipe reveals. slate is the original grey to indigo pairing, teal a
-      cool ink to cyan, ember a warm charcoal to orange.
+    - palette (slate | teal | ember, default slate): ink of the ring that marks
+      the incoming panel. Both panels are monochrome placeholder material; the
+      ring is the one accent-coloured element. slate rides --accent, teal rides
+      --brand, ember rides --accent-2, and each falls back to a neutral hairline
+      so an unthemed composition renders in black and white.
     - corner (square | rounded | soft, default rounded): corner radius of the
       card. square is 0, rounded the original 30px, soft 56px.
 
-  On every default the result is identical to the original.
+  On every default the motion is unchanged.
 -->
 
 <div
   class="hf-remocn-directional-wipe"
   data-composition-variables='[
-    { "id": "palette", "type": "enum", "role": "style", "label": "Palette", "description": "Colour family for both slabs, the outgoing panel and the incoming reveal.", "default": "slate", "options": [{ "value": "slate", "label": "Slate" }, { "value": "teal", "label": "Teal" }, { "value": "ember", "label": "Ember" }] },
+    { "id": "palette", "type": "enum", "role": "style", "label": "Palette", "description": "Theme token for the ring marking the incoming panel. Slate rides --accent, teal --brand, ember --accent-2; each falls back to a neutral hairline.", "default": "slate", "options": [{ "value": "slate", "label": "Slate" }, { "value": "teal", "label": "Teal" }, { "value": "ember", "label": "Ember" }] },
     { "id": "corner", "type": "enum", "role": "style", "label": "Corner", "description": "Corner radius of the transition card.", "default": "rounded", "options": [{ "value": "square", "label": "Square" }, { "value": "rounded", "label": "Rounded" }, { "value": "soft", "label": "Soft" }] }
   ]'
 >
@@ -34,7 +35,11 @@
 
 <style>
   .hf-remocn-directional-wipe {
-    --hf-accent: #2563eb;
+    --hf-accent: var(--accent, rgba(255, 255, 255, 0.28));
+    --hf-l1: rgba(255, 255, 255, 0.72);
+    --hf-l3: rgba(255, 255, 255, 0.18);
+    --hf-l4: rgba(255, 255, 255, 0.08);
+    --hf-hair: rgba(255, 255, 255, 0.14);
     --hf-ink: #111827;
     --hf-muted: #6b7280;
     --hf-surface: #ffffff;
@@ -47,7 +52,7 @@
     height: 428px;
     overflow: hidden;
     border-radius: var(--hf-corner, 30px);
-    background: var(--hf-from-a, #111827);
+    background: #111827;
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
   }
   .hf-remocn-directional-wipe .scene {
@@ -61,13 +66,18 @@
     color: #fff;
   }
   .hf-remocn-directional-wipe .from {
-    background: linear-gradient(135deg, var(--hf-from-a, #111827), var(--hf-from-b, #374151));
+    background:
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 4px),
+      var(--hf-l4);
     transform: translate(var(--hf-from-x, 0px), var(--hf-from-y, 0px))
       scale(var(--hf-from-scale, 1));
     filter: blur(var(--hf-from-blur, 0px));
   }
   .hf-remocn-directional-wipe .to {
-    background: linear-gradient(135deg, var(--hf-to-a, #2563eb), var(--hf-to-b, #7c3aed));
+    background:
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 4px),
+      var(--hf-l3);
+    box-shadow: inset 0 0 0 2px var(--hf-accent);
     transform: translate(var(--hf-to-x, 0px), var(--hf-to-y, 0px)) scale(var(--hf-to-scale, 1));
     clip-path: inset(
       var(--hf-clip-top, 0%) var(--hf-clip-right, 100%) var(--hf-clip-bottom, 0%)
@@ -106,10 +116,12 @@
         : {};
 
     // Unrecognised overrides fall back to their declared defaults.
+    // Theme tokens only. The neutral fallback keeps an unthemed mount monochrome.
+    var HAIRLINE = "rgba(255, 255, 255, 0.28)";
     var palettes = {
-      slate: { fromA: "#111827", fromB: "#374151", toA: "#2563eb", toB: "#7c3aed" },
-      teal: { fromA: "#0f172a", fromB: "#134e4a", toA: "#0d9488", toB: "#22d3ee" },
-      ember: { fromA: "#1c1917", fromB: "#44403c", toA: "#ea580c", toB: "#db2777" },
+      slate: "var(--accent, " + HAIRLINE + ")",
+      teal: "var(--brand, " + HAIRLINE + ")",
+      ember: "var(--accent-2, " + HAIRLINE + ")",
     };
     var corners = { square: "0px", rounded: "30px", soft: "56px" };
 
@@ -122,10 +134,7 @@
 
     var roots = document.querySelectorAll(".hf-remocn-directional-wipe");
     for (var i = 0; i < roots.length; i += 1) {
-      roots[i].style.setProperty("--hf-from-a", palette.fromA);
-      roots[i].style.setProperty("--hf-from-b", palette.fromB);
-      roots[i].style.setProperty("--hf-to-a", palette.toA);
-      roots[i].style.setProperty("--hf-to-b", palette.toB);
+      roots[i].style.setProperty("--hf-accent", palette);
       roots[i].style.setProperty("--hf-corner", corner);
     }
   })();

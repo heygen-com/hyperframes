@@ -4,52 +4,16 @@ description: "The calm breather titlecard: an optional mono kicker fades up, the
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/titlecard-lockup.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Titlecard Lockup preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/titlecard-lockup.html"
+  compositionId="titlecard-lockup"
+  compositionSrc="compositions/components/titlecard-lockup.html"
+  variables={[{"id":"wordmark","type":"string","role":"content","label":"Wordmark","description":"Display wordmark that settles dead-center.","default":"HYPERFRAMES"},{"id":"label","type":"string","role":"content","label":"Label","description":"Mono caption under the rule. Empty hides it.","default":"WRITE HTML. RENDER VIDEO."},{"id":"kicker","type":"string","role":"content","label":"Kicker","description":"Small mono label above the wordmark. Empty hides it.","default":"INTRODUCING"},{"id":"rule","type":"enum","role":"style","label":"Rule","description":"Hairline rule drawn left to right under the wordmark.","default":"show","options":[{"value":"show","label":"Show"},{"value":"hide","label":"Hide"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract color carried by the hairline rule.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"style","label":"Exit","description":"Optional departure. Frame roots own transitions, so none is the default.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add titlecard-lockup" />
-
-That writes one file: `compositions/components/titlecard-lockup.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/titlecard-lockup.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `wordmark` | `HYPERFRAMES` | string | Display wordmark that settles dead-center. |
-| `label` | `WRITE HTML. RENDER VIDEO.` | string | Mono caption under the rule. Empty hides it. |
-| `kicker` | `INTRODUCING` | string | Small mono label above the wordmark. Empty hides it. |
-| `rule` | `show` | `show`, `hide` | Hairline rule drawn left to right under the wordmark. |
-| `accent` | `green` | `green`, `blue`, `violet` | Contract color carried by the hairline rule. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Frame roots own transitions, so none is the default. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="titlecard-lockup"
-  data-composition-src="compositions/components/titlecard-lockup.html"
-  data-variable-values='{"wordmark":"HYPERFRAMES","label":"WRITE HTML. RENDER VIDEO.","kicker":"INTRODUCING","rule":"show","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`titlecard-lockup.html`}>
-
-```html
+```html titlecard-lockup.html
 <!doctype html>
 <!--
   titlecard-lockup: HyperFrames video primitive (intros and reveals / breather)
@@ -369,7 +333,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add titlecard-lockup" />
+
+That writes one file: `compositions/components/titlecard-lockup.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/titlecard-lockup.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

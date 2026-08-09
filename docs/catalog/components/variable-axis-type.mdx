@@ -4,50 +4,16 @@ description: "A locked one-line headline whose weight or width axis morphs into 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/variable-axis-type.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Variable Axis Type preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/variable-axis-type.html"
+  compositionId="variable-axis-type"
+  compositionSrc="compositions/components/variable-axis-type.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Word or short headline to emphasize.","default":"IMPACT"},{"id":"axis","type":"enum","role":"motion","label":"Axis","description":"Variable-font axis used for the emphasis morph.","default":"wght","options":[{"value":"wght","label":"Weight"},{"value":"wdth","label":"Width"}]},{"id":"fromValue","type":"number","role":"motion","label":"From value","description":"Starting coordinate on the selected font axis.","default":200,"min":25,"max":1000,"step":1},{"id":"toValue","type":"number","role":"motion","label":"To value","description":"Ending coordinate on the selected font axis.","default":900,"min":25,"max":1000,"step":1}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add variable-axis-type" />
-
-That writes one file: `compositions/components/variable-axis-type.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/variable-axis-type.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `IMPACT` | string | Word or short headline to emphasize. |
-| `axis` | `wght` | `wght`, `wdth` | Variable-font axis used for the emphasis morph. |
-| `fromValue` | `200` | 25 to 1000, step 1 | Starting coordinate on the selected font axis. |
-| `toValue` | `900` | 25 to 1000, step 1 | Ending coordinate on the selected font axis. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="variable-axis-type"
-  data-composition-src="compositions/components/variable-axis-type.html"
-  data-variable-values='{"text":"IMPACT","axis":"wght","fromValue":200,"toValue":900}'
-></div>
-```
-
-## Source
-
-<Accordion title={`variable-axis-type.html`}>
-
-```html
+```html variable-axis-type.html
 <!doctype html>
 <!--
   variable-axis-type -- HyperFrames video primitive (typography / burst / emphasize)
@@ -242,7 +208,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add variable-axis-type" />
+
+That writes one file: `compositions/components/variable-axis-type.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/variable-axis-type.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

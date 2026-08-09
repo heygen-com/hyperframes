@@ -4,42 +4,16 @@ description: "A premium focus pull from heavy blur to crisp text, then a soft bl
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/focus-blur-resolve.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Focus Blur Resolve preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/focus-blur-resolve.html"
+  compositionId="focus-blur-resolve"
+  compositionSrc="compositions/components/focus-blur-resolve.html"
+  variables={[{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]},{"id":"size","type":"enum","role":"style","label":"Size","description":"Type size of the words, from a caption-scale line to a full display card.","default":"standard","options":[{"value":"compact","label":"Compact"},{"value":"standard","label":"Standard"},{"value":"display","label":"Display"}]},{"id":"blur","type":"enum","role":"style","label":"Blur","description":"Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add focus-blur-resolve" />
-
-That writes one file: `compositions/components/focus-blur-resolve.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
-| `size` | `standard` | `compact`, `standard`, `display` | Type size of the words, from a caption-scale line to a full display card. |
-| `blur` | `standard` | `soft`, `standard`, `heavy` | Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="focus-blur-resolve"
-  data-composition-src="compositions/components/focus-blur-resolve.html"
-  data-variable-values='{"tone":"ink","size":"standard","blur":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`focus-blur-resolve.html`}>
-
-```html
+```html focus-blur-resolve.html
 <!--
   Focus Blur Resolve - remocn typography primitive for HyperFrames.
 
@@ -133,7 +107,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add focus-blur-resolve" />
+
+That writes one file: `compositions/components/focus-blur-resolve.html`.
 
 ## Usage
 

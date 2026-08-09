@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Success Check",
   "description": "A success check primitive with ring pop, path draw, and subtle rotate blur",
-  "tags": ["transition-primitive", "transitions-dev-port", "success", "check"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "success", "check"],
   "files": [
     {
       "path": "success-check.html",
@@ -18,13 +18,25 @@
       "type": "enum",
       "role": "style",
       "label": "Tint",
-      "description": "Colour pair, a pale halo behind a saturated mark.",
+      "description": "Colour pair, a pale halo behind a saturated mark. green and amber are literal state colours; blue and violet ride the composition theme tokens.",
       "default": "green",
       "options": [
-        { "value": "green", "label": "Green" },
-        { "value": "blue", "label": "Blue" },
-        { "value": "violet", "label": "Violet" },
-        { "value": "amber", "label": "Amber" }
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        },
+        {
+          "value": "amber",
+          "label": "Amber"
+        }
       ]
     },
     {
@@ -35,9 +47,18 @@
       "description": "Diameter of the halo and of the mark inside it.",
       "default": "standard",
       "options": [
-        { "value": "small", "label": "Small" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "large", "label": "Large" }
+        {
+          "value": "small",
+          "label": "Small"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "large",
+          "label": "Large"
+        }
       ]
     },
     {
@@ -48,9 +69,18 @@
       "description": "Opacity of the circle the tick sits in.",
       "default": "standard",
       "options": [
-        { "value": "subtle", "label": "Subtle" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "bold", "label": "Bold" }
+        {
+          "value": "subtle",
+          "label": "Subtle"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "bold",
+          "label": "Bold"
+        }
       ]
     },
     {
@@ -61,9 +91,18 @@
       "description": "Multiplies the rotation the timeline drives, so the mark swings less or more into place.",
       "default": "standard",
       "options": [
-        { "value": "subtle", "label": "Subtle" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "bold", "label": "Bold" }
+        {
+          "value": "subtle",
+          "label": "Subtle"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "bold",
+          "label": "Bold"
+        }
       ]
     }
   ],

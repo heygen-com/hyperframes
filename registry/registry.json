@@ -7,47 +7,15 @@
   },
   "items": [
     {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vscode-theme-visualizer",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
-    },
-    {
       "name": "app-showcase",
       "type": "hyperframes:block"
     },
     {
       "name": "apple-money-count",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "bar-chart-race",
       "type": "hyperframes:block"
     },
     {
@@ -60,6 +28,10 @@
     },
     {
       "name": "camcorder-hud",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "camera-dolly-zoom",
       "type": "hyperframes:block"
     },
     {
@@ -203,6 +175,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "cosmic-orb",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "cross-warp-morph",
       "type": "hyperframes:block"
     },
@@ -235,11 +211,19 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "gallery-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "glitch",
       "type": "hyperframes:block"
     },
     {
       "name": "gravitational-lens",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "halftone-field",
       "type": "hyperframes:block"
     },
     {
@@ -331,6 +315,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "lt-neon-border",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "lt-side-rule",
       "type": "hyperframes:block"
     },
@@ -395,6 +383,14 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "oscilloscope-trace",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "rack-focus",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "reddit-post",
       "type": "hyperframes:block"
     },
@@ -415,6 +411,14 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "spiral-galaxy",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "split-flap-board",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "spotify-card",
       "type": "hyperframes:block"
     },
@@ -424,6 +428,10 @@
     },
     {
       "name": "thermal-distortion",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "thread-message-stack",
       "type": "hyperframes:block"
     },
     {
@@ -503,6 +511,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "vfx-anamorphic-flare",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "vfx-iphone-device",
       "type": "hyperframes:block"
     },
@@ -532,6 +544,10 @@
     },
     {
       "name": "vpn-youtube-spot",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "weight-wave",
       "type": "hyperframes:block"
     },
     {
@@ -595,10 +611,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "animated-line-chart",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "arc-motion-path",
       "type": "hyperframes:component"
     },
@@ -659,10 +671,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "bezier-callout-route",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "blur-in",
       "type": "hyperframes:component"
     },
@@ -683,10 +691,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "browser-flow",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "button",
       "type": "hyperframes:component"
     },
@@ -704,6 +708,10 @@
     },
     {
       "name": "camera-scan-gate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "camera-shake",
       "type": "hyperframes:component"
     },
     {
@@ -803,10 +811,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "chat-to-preview-layout",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "checkbox",
       "type": "hyperframes:component"
     },
@@ -816,14 +820,6 @@
     },
     {
       "name": "chromatic-aberration-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "code-accordion",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "code-diff-wipe",
       "type": "hyperframes:component"
     },
     {
@@ -891,14 +887,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "dashboard-populate",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "data-flow-pipes",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "decline-chart",
       "type": "hyperframes:component"
     },
@@ -907,19 +895,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "device-mockup-zoom",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "dialog",
       "type": "hyperframes:component"
     },
     {
       "name": "directional-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "drag-and-drop-flow",
       "type": "hyperframes:component"
     },
     {
@@ -944,10 +924,6 @@
     },
     {
       "name": "echo-trail",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "ecosystem-constellation",
       "type": "hyperframes:component"
     },
     {
@@ -979,15 +955,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "frosted-glass-wipe",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "gesture-tap",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "glass-code-block",
       "type": "hyperframes:component"
     },
     {
@@ -1023,10 +991,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "hero-device-assemble",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "hover-card",
       "type": "hyperframes:component"
     },
@@ -1056,18 +1020,6 @@
     },
     {
       "name": "icon-swap",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "image-expand-to-fullscreen",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "infinite-bento-pan",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "infinite-marquee",
       "type": "hyperframes:component"
     },
     {
@@ -1111,19 +1063,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "kinetic-center-build",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "kinetic-type-swap",
       "type": "hyperframes:component"
     },
     {
       "name": "label",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "landing-code-showcase",
       "type": "hyperframes:component"
     },
     {
@@ -1136,10 +1080,6 @@
     },
     {
       "name": "line-swap",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "live-code-compilation",
       "type": "hyperframes:component"
     },
     {
@@ -1163,14 +1103,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "mask-reveal-up",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "masked-slide-reveal",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "match-cut",
       "type": "hyperframes:component"
     },
@@ -1188,10 +1120,6 @@
     },
     {
       "name": "mesh-gradient-bg",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "micro-scale-fade",
       "type": "hyperframes:component"
     },
     {
@@ -1267,10 +1195,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "orbital-feature-path",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "ordered-dither-pass",
       "type": "hyperframes:component"
     },
@@ -1323,10 +1247,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "per-character-rise",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "per-word-crossfade",
       "type": "hyperframes:component"
     },
@@ -1348,10 +1268,6 @@
     },
     {
       "name": "press-ripple",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "pricing-tier-focus",
       "type": "hyperframes:component"
     },
     {
@@ -1399,15 +1315,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "rolling-number",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "rubber-band-bumper",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "scale-down-fade",
       "type": "hyperframes:component"
     },
     {
@@ -1455,10 +1363,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "shader-displacement-panel",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "shared-axis-y",
       "type": "hyperframes:component"
     },
@@ -1472,14 +1376,6 @@
     },
     {
       "name": "shimmer-sweep",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "short-slide-down",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "short-slide-right",
       "type": "hyperframes:component"
     },
     {
@@ -1527,10 +1423,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "spatial-push",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "spinner",
       "type": "hyperframes:component"
     },
@@ -1544,10 +1436,6 @@
     },
     {
       "name": "spring-pop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "spring-scale-in",
       "type": "hyperframes:component"
     },
     {
@@ -1643,10 +1531,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "terminal-to-browser-deploy",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "testimonial-card",
       "type": "hyperframes:component"
     },
@@ -1679,10 +1563,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "three-particle-ribbon",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "ticker-takeover",
       "type": "hyperframes:component"
     },
@@ -1712,10 +1592,6 @@
     },
     {
       "name": "toggle-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tool-menu-slide-in",
       "type": "hyperframes:component"
     },
     {
@@ -1799,10 +1675,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "x-followers-overview",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "yt-camera-move",
       "type": "hyperframes:component"
     },
@@ -1821,6 +1693,42 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vscode-theme-visualizer",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
     }
   ]
 }

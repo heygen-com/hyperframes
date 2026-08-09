@@ -30,9 +30,9 @@
         --muted: #5b6472;
         --surface: #ffffff;
         --border: #d3d8e0;
-        --brand: #0f9d58;
-        --accent: #1d4ed8;
-        --accent-2: #7c3aed;
+        --brand: #3f3f46;
+        --accent: #3f3f46;
+        --accent-2: #3f3f46;
         --font-display: "Inter", system-ui, sans-serif;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
@@ -81,5 +81,21 @@
       window.__timelines = window.__timelines || {};
       window.__timelines["stitched-text-draw-demo"] = gsap.timeline({ paused: true });
     </script>
-  </body>
+  <script>
+  (function () {
+    var raw = new URLSearchParams(location.search).get('hfv');
+    if (raw === null) return;
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return; }
+    if (!v || typeof v !== 'object') return;
+    window.__hfVariables = v;
+    var hosts = document.querySelectorAll('[data-composition-src]');
+    for (var i = 0; i < hosts.length; i++) {
+      var src = (hosts[i].getAttribute('data-composition-src') || '').split('?')[0];
+      if (src.slice(src.lastIndexOf('/') + 1) !== "stitched-text-draw.html") continue;
+      hosts[i].setAttribute('data-variable-values', JSON.stringify(v));
+    }
+  })();
+</script>
+</body>
 </html>

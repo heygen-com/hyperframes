@@ -4,43 +4,16 @@ description: "Random scramble resolves left-to-right into the target text."
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/matrix-decode.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Matrix Decode preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/matrix-decode.html"
+  compositionId="matrix-decode"
+  compositionSrc="compositions/components/matrix-decode.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Target text","description":"Word the scramble resolves into. One scrambling cell per character, up to 32.","default":"HYPERFRAMES"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the cells and their glow.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"size","type":"number","role":"style","label":"Size","description":"Type size of the cells in pixels. Cell width follows it.","default":64,"min":24,"max":160,"step":4,"unit":"px"},{"id":"glow","type":"enum","role":"style","label":"Glow","description":"Strength of the halo behind the cells, from none to a heavy bloom.","default":"standard","options":[{"value":"none","label":"None"},{"value":"standard","label":"Standard"},{"value":"strong","label":"Strong"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add matrix-decode" />
-
-That writes one file: `compositions/components/matrix-decode.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `HYPERFRAMES` | string | Word the scramble resolves into. One scrambling cell per character, up to 32. |
-| `accent` | `green` | `green`, `blue`, `violet` | Colour family of the cells and their glow. |
-| `size` | `64` | 24px to 160px, step 4px | Type size of the cells in pixels. Cell width follows it. |
-| `glow` | `standard` | `none`, `standard`, `strong` | Strength of the halo behind the cells, from none to a heavy bloom. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="matrix-decode"
-  data-composition-src="compositions/components/matrix-decode.html"
-  data-variable-values='{"text":"HYPERFRAMES","accent":"green","size":64,"glow":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`matrix-decode.html`}>
-
-```html
+```html matrix-decode.html
 <!--
   Matrix Decode - remocn typography primitive for HyperFrames.
 
@@ -170,7 +143,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add matrix-decode" />
+
+That writes one file: `compositions/components/matrix-decode.html`.
 
 ## Usage
 

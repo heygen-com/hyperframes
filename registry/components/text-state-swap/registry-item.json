@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Text State Swap",
   "description": "A text state swap primitive with outgoing blur and incoming lift",
-  "tags": ["transition-primitive", "transitions-dev-port", "text", "swap"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "text", "swap"],
   "files": [
     {
       "path": "text-state-swap.html",
@@ -37,9 +37,18 @@
       "description": "Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.",
       "default": "standard",
       "options": [
-        { "value": "close", "label": "Close" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "far", "label": "Far" }
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
       ]
     },
     {
@@ -50,9 +59,18 @@
       "description": "Label colour: ink for light frames, paper for dark ones, accent rides --brand.",
       "default": "ink",
       "options": [
-        { "value": "ink", "label": "Ink" },
-        { "value": "paper", "label": "Paper" },
-        { "value": "accent", "label": "Accent" }
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
       ]
     }
   ],

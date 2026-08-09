@@ -4,48 +4,16 @@ description: "A mobile list pulls through nonlinear rubber-band resistance, arms
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/pull-to-refresh.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Pull to Refresh preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/pull-to-refresh.html"
+  compositionId="pull-to-refresh"
+  compositionSrc="compositions/components/pull-to-refresh.html"
+  variables={[{"id":"pullDistance","type":"number","role":"layout","label":"Pull distance","description":"Raw pull distance before nonlinear rubber-band resistance.","default":120,"min":60,"max":220,"step":5},{"id":"spinnerStyle","type":"enum","role":"content","label":"Spinner style","description":"Refresh indicator geometry and loading motion.","default":"ring","options":[{"value":"arrow","label":"Arrow"},{"value":"dots","label":"Dots"},{"value":"ring","label":"Ring"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add pull-to-refresh" />
-
-That writes one file: `compositions/components/pull-to-refresh.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/pull-to-refresh.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `pullDistance` | `120` | 60 to 220, step 5 | Raw pull distance before nonlinear rubber-band resistance. |
-| `spinnerStyle` | `ring` | `arrow`, `dots`, `ring` | Refresh indicator geometry and loading motion. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="pull-to-refresh"
-  data-composition-src="compositions/components/pull-to-refresh.html"
-  data-variable-values='{"pullDistance":120,"spinnerStyle":"ring"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`pull-to-refresh.html`}>
-
-```html
+```html pull-to-refresh.html
 <!doctype html>
 <!--
   pull-to-refresh: HyperFrames video primitive (pointers / interaction / demonstrate)
@@ -727,7 +695,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add pull-to-refresh" />
+
+That writes one file: `compositions/components/pull-to-refresh.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pull-to-refresh.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,42 +4,16 @@ description: "A lightweight cursor pointer and click pulse for product walkthrou
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/simulated-cursor.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Simulated Cursor preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/simulated-cursor.html"
+  compositionId="simulated-cursor"
+  compositionSrc="compositions/components/simulated-cursor.html"
+  variables={[{"id":"size","type":"number","role":"layout","label":"Size","description":"Height and width of the pointer in pixels. The click ring scales with it. Values outside the range clamp to the nearest end and anything that is not a number falls back to 44.","default":44,"min":20,"max":120,"step":2,"unit":"px"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Pointer fill and click ring colour: light reads on dark screens, dark reads on light ones, accent rides --hf-ui-accent.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"},{"value":"accent","label":"Accent"}]},{"id":"pulse","type":"enum","role":"style","label":"Click ring","description":"Weight of the ring the click animation expands: subtle is a thin small ring, bold a thick wide one, none removes the ring entirely.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"},{"value":"none","label":"None"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add simulated-cursor" />
-
-That writes one file: `compositions/components/simulated-cursor.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `size` | `44` | 20px to 120px, step 2px | Height and width of the pointer in pixels. The click ring scales with it. Values outside the range clamp to the nearest end and anything that is not a number falls back to 44. |
-| `tone` | `light` | `light`, `dark`, `accent` | Pointer fill and click ring colour: light reads on dark screens, dark reads on light ones, accent rides --hf-ui-accent. |
-| `pulse` | `standard` | `subtle`, `standard`, `bold`, `none` | Weight of the ring the click animation expands: subtle is a thin small ring, bold a thick wide one, none removes the ring entirely. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="simulated-cursor"
-  data-composition-src="compositions/components/simulated-cursor.html"
-  data-variable-values='{"size":44,"tone":"light","pulse":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`simulated-cursor.html`}>
-
-```html
+```html simulated-cursor.html
 <!--
   Simulated Cursor - pointer and click pulse primitive.
 
@@ -183,7 +157,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add simulated-cursor" />
+
+That writes one file: `compositions/components/simulated-cursor.html`.
 
 ## Usage
 
@@ -191,7 +171,7 @@ Open `compositions/components/simulated-cursor.html` and paste its contents into
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `cursor` `ui` `walkthrough`.
+Tagged `video-primitive` `motion-primitive` `cursor` `ui` `walkthrough`.
 
 ## Related topics
 

@@ -4,7 +4,13 @@
   "type": "hyperframes:component",
   "title": "Badge Pop",
   "description": "A transitions.dev-inspired notification badge pop with elastic scale and count reveal",
-  "tags": ["transition-primitive", "transitions-dev-port", "badge", "microinteraction"],
+  "tags": [
+    "video-primitive",
+    "transition-primitive",
+    "transitions-dev-port",
+    "badge",
+    "microinteraction"
+  ],
   "files": [
     {
       "path": "badge-pop.html",
@@ -30,10 +36,22 @@
       "description": "Colour family of the badge.",
       "default": "red",
       "options": [
-        { "value": "red", "label": "Red" },
-        { "value": "blue", "label": "Blue" },
-        { "value": "green", "label": "Green" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "red",
+          "label": "Red"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     },
     {
@@ -44,8 +62,14 @@
       "description": "Chrome of the button and the badge ring: light for bright frames, dark for dark ones.",
       "default": "light",
       "options": [
-        { "value": "light", "label": "Light" },
-        { "value": "dark", "label": "Dark" }
+        {
+          "value": "light",
+          "label": "Light"
+        },
+        {
+          "value": "dark",
+          "label": "Dark"
+        }
       ]
     }
   ],

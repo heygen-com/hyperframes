@@ -4,51 +4,16 @@ description: "A slotted scene renders as live ASCII: a canvas samples the source
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/ascii-render-pass.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="ASCII Render Pass preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/ascii-render-pass.html"
+  compositionId="ascii-render-pass"
+  compositionSrc="compositions/components/ascii-render-pass.html"
+  variables={[{"id":"charset","type":"string","role":"style","label":"Charset","description":"Density ramp, dark to light. A leading space keeps dark cells empty.","default":" .:-=+*#%@"},{"id":"grid","type":"enum","role":"style","label":"Grid","description":"Final cell pitch the resolve lands on.","default":"med","options":[{"value":"coarse","label":"Coarse"},{"value":"med","label":"Medium"},{"value":"fine","label":"Fine"}]},{"id":"resolve_at","type":"number","role":"timing","label":"Resolve at","description":"Seconds from mount start when the coarse-to-fine resolve begins.","default":1.4,"min":0.6,"max":10,"step":0.1,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the fine render holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add ascii-render-pass" />
-
-That writes one file: `compositions/components/ascii-render-pass.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/ascii-render-pass.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `charset` | ` .:-=+*#%@` | string | Density ramp, dark to light. A leading space keeps dark cells empty. |
-| `grid` | `med` | `coarse`, `med`, `fine` | Final cell pitch the resolve lands on. |
-| `resolve_at` | `1.4` | 0.6s to 10s, step 0.1s | Seconds from mount start when the coarse-to-fine resolve begins. |
-| `accent` | `green` | `green`, `blue`, `violet` | Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the fine render holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="ascii-render-pass"
-  data-composition-src="compositions/components/ascii-render-pass.html"
-  data-variable-values='{"charset":" .:-=+*#%@","grid":"med","resolve_at":1.4,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`ascii-render-pass.html`}>
-
-```html
+```html ascii-render-pass.html
 <!doctype html>
 <!--
   ascii-render-pass: HyperFrames video primitive (Wave M experiment, texture)
@@ -514,7 +479,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add ascii-render-pass" />
+
+That writes one file: `compositions/components/ascii-render-pass.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ascii-render-pass.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

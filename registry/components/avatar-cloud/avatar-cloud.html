@@ -99,7 +99,7 @@
             background:
               radial-gradient(
                 ellipse at 50% 47.5%,
-                color-mix(in srgb, var(--brand, #6366f1) 16%, transparent),
+                color-mix(in srgb, var(--fg, #f8fafc) 8%, transparent),
                 transparent 48%
               ),
               var(--bg, #0b0c10);
@@ -121,13 +121,13 @@
 
           .ac-link {
             fill: none;
-            stroke: color-mix(in srgb, var(--accent, #38bdf8) 56%, transparent);
+            stroke: color-mix(in srgb, var(--fg, #f8fafc) 22%, transparent);
             stroke-width: 1.8;
             vector-effect: non-scaling-stroke;
           }
 
           .ac-link-secondary {
-            stroke: color-mix(in srgb, var(--brand, #6366f1) 38%, transparent);
+            stroke: color-mix(in srgb, var(--fg, #f8fafc) 14%, transparent);
             stroke-width: 1.2;
           }
 
@@ -146,8 +146,8 @@
             width: min(calc(var(--ac-size) * 1cqw), calc(var(--ac-size) * 1.65cqh));
             aspect-ratio: 1;
             border: 0.16cqw solid color-mix(in srgb, var(--fg, #f8fafc) 32%, transparent);
-            border-radius: var(--radius, 999cqw);
-            background: var(--ac-color, var(--brand, #6366f1));
+            border-radius: 999cqw;
+            background: var(--ac-color, color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent));
             color: var(--bg, #0b0c10);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(calc(var(--ac-size) * 0.35cqw), calc(var(--ac-size) * 0.58cqh));
@@ -156,33 +156,30 @@
             line-height: 1;
             box-shadow:
               0 1.2cqh 2.8cqh color-mix(in srgb, var(--bg, #0b0c10) 48%, transparent),
-              0 0 2.2cqw color-mix(in srgb, var(--ac-color, var(--brand, #6366f1)) 32%, transparent),
               inset 0 0.12cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 26%, transparent);
             will-change: transform, opacity;
           }
 
+          /* Tones are depth steps of the ink, not hues: near faces sit at L1,
+             mid at L2, far at L3. Value alone separates the cloud. */
           .ac-avatar[data-tone="0"] {
-            --ac-color: var(--brand, #6366f1);
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
           }
 
           .ac-avatar[data-tone="1"] {
-            --ac-color: var(--accent, #38bdf8);
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
           }
 
           .ac-avatar[data-tone="2"] {
-            --ac-color: color-mix(
-              in oklch longer hue,
-              var(--brand, #6366f1) 72%,
-              var(--accent, #38bdf8)
-            );
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
           }
 
           .ac-avatar[data-tone="3"] {
-            --ac-color: color-mix(in srgb, var(--brand, #6366f1) 54%, var(--fg, #f8fafc));
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 30%, transparent);
           }
 
           .ac-avatar[data-tone="4"] {
-            --ac-color: color-mix(in oklch, var(--accent, #38bdf8) 62%, var(--brand, #6366f1));
+            --ac-color: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
           }
 
           .ac-hub {
@@ -201,17 +198,16 @@
             overflow: hidden;
             border: 0.16cqw solid color-mix(in srgb, var(--border, #334155) 82%, transparent);
             border-radius: var(--radius, 2.4cqw);
-            background: color-mix(in srgb, var(--surface, #1e293b) 92%, var(--brand, #6366f1));
+            background: var(--surface, #1e293b);
             box-shadow:
               0 2cqh 5cqh color-mix(in srgb, var(--bg, #0b0c10) 56%, transparent),
-              0 0 4cqw color-mix(in srgb, var(--brand, #6366f1) 20%, transparent),
               inset 0 0.14cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 18%, transparent);
             transform: translate(-50%, -50%);
             transform-origin: center;
           }
 
           .ac-kicker {
-            color: var(--accent, #38bdf8);
+            color: var(--muted, #8b93a3);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(1.6cqw, 2.8cqh);
             font-weight: 720;

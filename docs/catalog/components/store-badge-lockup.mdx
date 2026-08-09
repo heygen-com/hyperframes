@@ -4,49 +4,16 @@ description: "Settles a short headline above equal-size App Store and Google Pla
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/store-badge-lockup.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Store Badge Lockup preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/store-badge-lockup.html"
+  compositionId="store-badge-lockup"
+  compositionSrc="compositions/components/store-badge-lockup.html"
+  variables={[{"id":"headline","type":"string","role":"content","label":"Headline","description":"Short action line shown above the store badges.","default":"Get the app"},{"id":"showApple","type":"enum","role":"content","label":"Show App Store","description":"Show or hide the App Store badge.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},{"id":"showGoogle","type":"enum","role":"content","label":"Show Google Play","description":"Show or hide the Google Play badge.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add store-badge-lockup" />
-
-That writes `compositions/components/store-badge-lockup.html`, plus 1 supporting file under `compositions/components/vendor/`.
-
-## Paste it into your composition
-
-Open `compositions/components/store-badge-lockup.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `headline` | `Get the app` | string | Short action line shown above the store badges. |
-| `showApple` | `yes` | `yes`, `no` | Show or hide the App Store badge. |
-| `showGoogle` | `yes` | `yes`, `no` | Show or hide the Google Play badge. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="store-badge-lockup"
-  data-composition-src="compositions/components/store-badge-lockup.html"
-  data-variable-values='{"headline":"Get the app","showApple":"yes","showGoogle":"yes"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`store-badge-lockup.html`}>
-
-```html
+```html store-badge-lockup.html
 <!doctype html>
 <!--
   store-badge-lockup: HyperFrames video primitive (ui-props / holdable / ask)
@@ -354,7 +321,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add store-badge-lockup" />
+
+That writes `compositions/components/store-badge-lockup.html`, plus 1 supporting file under `compositions/components/vendor/`.
+
+## Paste it into your composition
+
+Open `compositions/components/store-badge-lockup.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

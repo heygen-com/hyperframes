@@ -130,9 +130,9 @@
             var text = vars.text == null ? "Later" : String(vars.text);
             var accent = vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var accentColors = {
-              green: "#34d399",
-              blue: "#60a5fa",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #60a5fa)",
+              violet: "var(--accent-2, #a78bfa)",
             };
 
             label.textContent = text;

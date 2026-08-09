@@ -1,0 +1,353 @@
+---
+title: "Weight Wave"
+description: "A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/weight-wave.html"
+  compositionId="weight-wave"
+  compositionSrc="compositions/weight-wave.html"
+  variables={[{"id":"text","type":"string","label":"Headline","default":"PRESSURE MOVES THROUGH TYPE","maxLength":64},{"id":"color","type":"color","label":"Text color","default":"#f5f5f7"},{"id":"background","type":"color","label":"Background","default":"#0b0b0d"},{"id":"weightFrom","type":"number","label":"Weight (rest)","default":400,"min":300,"max":1000,"step":10},{"id":"weightTo","type":"number","label":"Weight (crest)","default":1000,"min":300,"max":1000,"step":10},{"id":"crestWidth","type":"number","label":"Crest width","default":4,"min":1,"max":24,"step":0.5,"unit":"chars"},{"id":"sweepSpeed","type":"number","label":"Sweep speed","default":0.5,"min":0.05,"max":3,"step":0.05,"unit":"passes/s"},{"id":"slant","type":"number","label":"Slant at crest","default":-12,"min":-15,"max":0,"step":0.5,"unit":"deg"},{"id":"direction","type":"enum","label":"Direction","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"rtl","label":"Right to left"}]}]}
+>
+
+```html weight-wave.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Weight Wave</title>
+    <style>
+      /*
+        Real variable font, bundled locally — a CDN fetch would be a render-time
+        network dependency, and a STATIC font would silently render every
+        character at one weight (the whole effect vanishes while nothing errors).
+        Subset of Recursive (SIL OFL 1.1) with every axis pinned except the two
+        this block drives. Ranges below are the font's REAL fvar records, read
+        out of the binary: wght 300..1000 (not 100..900) and slnt -15..0. The
+        pinned three are MONO 0 (proportional sans, not the monospace face),
+        CASL 0 (linear/neutral, not casual) and CRSV 0 (roman letterforms —
+        Recursive's 0.5 default swaps in cursive singlestorey forms as soon as
+        slnt goes negative, which would pop mid-wave instead of interpolating).
+      */
+      @font-face {
+        font-family: "Recursive Wave";
+        font-style: normal;
+        font-weight: 300 1000;
+        font-display: block;
+        src: url("assets/fonts/Recursive-wght-slnt-latin.woff2") format("woff2");
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #ww-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      /* Full-bleed fill lives on a CHILD: the producer can drop a background
+         painted on the composition root itself (frame renders black). */
+      #ww-bg {
+        position: absolute;
+        inset: 0;
+        background: var(--background, #0b0b0d);
+      }
+
+      #ww-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #ww-line {
+        display: block;
+        width: 1760px;
+        text-align: center;
+        white-space: pre;
+        font-family: "Recursive Wave", sans-serif;
+        font-size: 132px;
+        line-height: 1.15;
+        letter-spacing: 0.005em;
+        color: var(--color, #f5f5f7);
+        /* Default instance: the resting end of the wave. If the variable font
+           fails to load, every glyph stays here and the probe below shouts. */
+        font-variation-settings:
+          "wght" 400,
+          "slnt" 0;
+      }
+
+      /* Per-character axis stamping target: no transform, no opacity — the
+         letterforms themselves change. */
+      .ww-ch {
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="ww-root"
+      data-composition-id="weight-wave"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+      data-composition-variables='[
+        {"id":"text","type":"string","label":"Headline","default":"PRESSURE MOVES THROUGH TYPE","maxLength":64},
+        {"id":"color","type":"color","label":"Text color","default":"#f5f5f7"},
+        {"id":"background","type":"color","label":"Background","default":"#0b0b0d"},
+        {"id":"weightFrom","type":"number","label":"Weight (rest)","default":400,"min":300,"max":1000,"step":10},
+        {"id":"weightTo","type":"number","label":"Weight (crest)","default":1000,"min":300,"max":1000,"step":10},
+        {"id":"crestWidth","type":"number","label":"Crest width","default":4,"min":1,"max":24,"step":0.5,"unit":"chars"},
+        {"id":"sweepSpeed","type":"number","label":"Sweep speed","default":0.5,"min":0.05,"max":3,"step":0.05,"unit":"passes/s"},
+        {"id":"slant","type":"number","label":"Slant at crest","default":-12,"min":-15,"max":0,"step":0.5,"unit":"deg"},
+        {"id":"direction","type":"enum","label":"Direction","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"rtl","label":"Right to left"}]}
+      ]'
+    >
+      <div id="ww-bg"></div>
+
+      <div id="ww-stage" class="clip" data-start="0" data-duration="6" data-track-index="0">
+        <div id="ww-line"></div>
+      </div>
+
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+
+          var FONT_FAMILY = '"Recursive Wave", sans-serif';
+          /* The bundled font's real fvar bounds — declared once here, and
+             mirrored in the variable min/max above. A slider must not offer a
+             weight the font cannot render. */
+          var WGHT_MIN = 300;
+          var WGHT_MAX = 1000;
+          var SLNT_MIN = -15;
+          var LINE_MAX_WIDTH = 1760;
+          var BASE_FONT_SIZE = 132;
+          var MIN_FONT_SIZE = 40;
+
+          var root = document.getElementById("ww-root");
+          var line = document.getElementById("ww-line");
+          var duration = Number(root.getAttribute("data-duration")) || 6;
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          function num(value, fallback, min, max) {
+            var n = Number(value);
+            if (!Number.isFinite(n)) n = fallback;
+            return Math.min(max, Math.max(min, n));
+          }
+
+          var TEXT =
+            typeof vars.text === "string" && vars.text.length
+              ? vars.text
+              : "PRESSURE MOVES THROUGH TYPE";
+          var W_FROM = num(vars.weightFrom, 400, WGHT_MIN, WGHT_MAX);
+          var W_TO = num(vars.weightTo, 1000, WGHT_MIN, WGHT_MAX);
+          var CREST = num(vars.crestWidth, 4, 1, 24);
+          var SPEED = num(vars.sweepSpeed, 0.5, 0.05, 3);
+          var SLANT = num(vars.slant, -12, SLNT_MIN, 0);
+          var RTL = vars.direction === "rtl";
+
+          /* ── Build one span per character ─────────────────────────────────
+             Spaces get a span too, so the crest travels at a constant rate in
+             index space and the visual gap between words is honoured. */
+          var chars = Array.prototype.slice.call(TEXT);
+          var spans = chars.map(function (ch) {
+            var el = document.createElement("span");
+            el.className = "ww-ch";
+            el.textContent = ch;
+            line.appendChild(el);
+            return el;
+          });
+          var N = spans.length;
+
+          /* Fit at the HEAVIEST instance so the line never overflows mid-sweep;
+             the crest widens glyphs as it passes. */
+          var fitCanvas = document.createElement("canvas").getContext("2d");
+          var heaviest = Math.max(W_FROM, W_TO);
+          var fontSize = BASE_FONT_SIZE;
+          while (fontSize > MIN_FONT_SIZE) {
+            fitCanvas.font = heaviest + " " + fontSize + "px " + FONT_FAMILY;
+            if (fitCanvas.measureText(TEXT).width <= LINE_MAX_WIDTH) break;
+            fontSize -= 2;
+          }
+          line.style.fontSize = fontSize + "px";
+
+          /* ── The wave ─────────────────────────────────────────────────────
+             Closed form, no accumulators: every frame's state is a pure
+             function of the timeline position p, so a direct seek to frame N
+             and playing through to frame N produce identical pixels.
+
+               crest(p) = -CREST + wrap(p * duration * SPEED) * (N - 1 + 2*CREST)
+               f_i      = clamp(0, 1, 1 - |i - crest| / CREST)
+               wght_i   = round(lerp(W_FROM, W_TO, f_i))
+               slnt_i   = lerp(0, SLANT, f_i)
+
+             Per-character stagger is not a separate mechanism — it falls out of
+             the crest's distance to each index. */
+          var state = { p: 0 };
+          var travel = N - 1 + 2 * CREST;
+
+          function paint() {
+            var pass = state.p * duration * SPEED;
+            var phase = pass - Math.floor(pass); // wraps cleanly: f_i == 0 at both ends
+            var crest = -CREST + phase * travel;
+            if (RTL) crest = N - 1 - crest;
+            for (var i = 0; i < N; i++) {
+              var f = 1 - Math.abs(i - crest) / CREST;
+              if (f < 0) f = 0;
+              else if (f > 1) f = 1;
+              var wght = Math.round(W_FROM + (W_TO - W_FROM) * f);
+              var slnt = SLANT * f;
+              spans[i].style.fontVariationSettings =
+                '"wght" ' + wght + ', "slnt" ' + slnt.toFixed(2);
+            }
+          }
+
+          var tl = gsap.timeline({ paused: true });
+          tl.to(state, { p: 1, duration: duration, ease: "none", onUpdate: paint }, 0);
+          paint();
+          window.__timelines["weight-wave"] = tl;
+
+          /* ── The trap, made loud ──────────────────────────────────────────
+             A static font (or a failed load) renders every character at one
+             weight: the effect is invisible and nothing throws.
+
+             Measuring advance width does NOT detect that here. Recursive is
+             DUPLEXED — "HAMBURGEFONSTIV" measures exactly 925px at wght 300 and
+             at wght 1000, and identically at slnt 0 and -15. (Nice for layout:
+             the headline never reflows as the crest passes. Fatal for a
+             width-delta probe, which reads every weight as identical and cries
+             wolf on a perfectly healthy font.)
+
+             So rasterize and count ink, which cannot be duplexed away, AND ask
+             the font-loading API whether the family is actually there. Both are
+             needed: ink alone gives a false PASS when the family is missing,
+             because the fallback varies its ink with weight too. */
+          function probeAxes() {
+            var family = "Recursive Wave";
+            var loaded = !!(document.fonts && document.fonts.check('100px "' + family + '"'));
+            var c = document.createElement("canvas");
+            c.width = 1000;
+            c.height = 160;
+            var ctx = c.getContext("2d", { willReadFrequently: true });
+            function ink(weight) {
+              ctx.clearRect(0, 0, c.width, c.height);
+              ctx.font = weight + ' 100px "' + family + '"';
+              ctx.fillStyle = "#fff";
+              ctx.fillText("HAMBURGEFONSTIV", 10, 120);
+              var data = ctx.getImageData(0, 0, c.width, c.height).data;
+              var n = 0;
+              for (var i = 3; i < data.length; i += 4) if (data[i] > 8) n++;
+              return n;
+            }
+            var light = ink(WGHT_MIN);
+            var black = ink(WGHT_MAX);
+            // Only wght is probed: it is the axis whose absence is measurable
+            // from JS, and both axes ship in the same file — if wght is live,
+            // the variable font loaded. slnt is verified visually.
+            return {
+              fontLoaded: loaded,
+              wghtLive: black > light * 1.2,
+              inkAtMinWeight: light,
+              inkAtMaxWeight: black,
+            };
+          }
+
+          function publishProbe() {
+            var status = probeAxes();
+            status.ok = status.fontLoaded && status.wghtLive;
+            window.__WW_FONT_STATUS = status;
+            root.setAttribute("data-ww-font", status.ok ? "ok" : "missing-axes");
+            if (!status.ok) {
+              console.error(
+                "weight-wave: the variable font is not usable (loaded=" +
+                  status.fontLoaded +
+                  ", ink at wght " +
+                  WGHT_MIN +
+                  "=" +
+                  status.inkAtMinWeight +
+                  " vs " +
+                  WGHT_MAX +
+                  "=" +
+                  status.inkAtMaxWeight +
+                  "). assets/fonts/Recursive-wght-slnt-latin.woff2 did not load, or was " +
+                  "replaced with a static font — every character will render at one weight.",
+              );
+            }
+          }
+
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(publishProbe);
+          } else {
+            publishProbe();
+          }
+        })();
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add weight-wave" />
+
+That writes `compositions/weight-wave.html`, plus 2 supporting files under `compositions/assets/fonts/`.
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="weight-wave"
+  data-composition-src="compositions/weight-wave.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `typography` `kinetic-type` `title` `variable-font` `text`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

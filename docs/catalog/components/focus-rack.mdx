@@ -4,49 +4,16 @@ description: "Focus shifts once between two cards at different apparent depths t
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/focus-rack.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Focus Rack preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/focus-rack.html"
+  compositionId="focus-rack"
+  compositionSrc="compositions/components/focus-rack.html"
+  variables={[{"id":"label_a","type":"string","role":"content","label":"Card A label","description":"Label on the card that begins in focus.","default":"Draft"},{"id":"label_b","type":"string","role":"content","label":"Card B label","description":"Label on the card that receives focus.","default":"Published"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color shared by both cards.","default":"blue","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add focus-rack" />
-
-That writes one file: `compositions/components/focus-rack.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/focus-rack.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label_a` | `Draft` | string | Label on the card that begins in focus. |
-| `label_b` | `Published` | string | Label on the card that receives focus. |
-| `accent` | `blue` | `green`, `blue`, `violet` | Highlight color shared by both cards. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="focus-rack"
-  data-composition-src="compositions/components/focus-rack.html"
-  data-variable-values='{"label_a":"Draft","label_b":"Published","accent":"blue"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`focus-rack.html`}>
-
-```html
+```html focus-rack.html
 <!doctype html>
 <!--
   focus-rack: HyperFrames video primitive (camera / holdable / emphasize)
@@ -379,7 +346,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add focus-rack" />
+
+That writes one file: `compositions/components/focus-rack.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/focus-rack.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

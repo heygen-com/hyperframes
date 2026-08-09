@@ -15,16 +15,18 @@
   </header>
   <div class="stat">30.6K</div>
   <div class="avatars">
-    <span style="--c: #38bdf8"></span><span style="--c: #f472b6"></span
-    ><span style="--c: #34d399"></span><span style="--c: #f59e0b"></span
-    ><span style="--c: #a78bfa"></span><span style="--c: #fb7185"></span>
+    <span style="--c: var(--hf-l1)"></span><span style="--c: var(--hf-l2)"></span
+    ><span style="--c: var(--hf-l2)"></span><span style="--c: var(--hf-l2)"></span
+    ><span style="--c: var(--hf-l2)"></span><span style="--c: var(--hf-l2)"></span>
   </div>
 </div>
 
 <style>
   .hf-remocn-x-follow-card {
-    --hf-accent: #2563eb;
+    --hf-accent: var(--accent, #f8fafc);
     --hf-ink: #111827;
+    --hf-l1: rgba(255, 255, 255, 0.72);
+    --hf-l2: rgba(255, 255, 255, 0.45);
     --hf-muted: #6b7280;
     --hf-surface: #ffffff;
     color: var(--hf-ink);
@@ -47,7 +49,7 @@
     width: 70px;
     height: 70px;
     border-radius: 22px;
-    background: linear-gradient(135deg, #38bdf8, #8b5cf6);
+    background: var(--hf-l1);
   }
   .hf-remocn-x-follow-card h3 {
     margin: 0;

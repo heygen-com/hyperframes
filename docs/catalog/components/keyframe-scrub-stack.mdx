@@ -36,7 +36,12 @@ That writes one file: `compositions/components/keyframe-scrub-stack.html`.
 
 <style>
   .hf-advanced-keyframe-scrub-stack {
-    color: #111827;
+    --hf-accent: var(--accent, rgba(17, 24, 39, 0.72));
+    --hf-l1: rgba(17, 24, 39, 0.72);
+    --hf-l3: rgba(17, 24, 39, 0.18);
+    --hf-l4: rgba(17, 24, 39, 0.08);
+    --hf-hair: rgba(17, 24, 39, 0.14);
+    color: var(--hf-l1);
     font-family: Inter, system-ui, sans-serif;
   }
   .hf-advanced-keyframe-scrub-stack {
@@ -58,7 +63,7 @@ That writes one file: `compositions/components/keyframe-scrub-stack.html`.
     width: 46px;
     height: 46px;
     border-radius: 14px;
-    background: linear-gradient(135deg, #60a5fa, #7c3aed);
+    background: var(--hf-l1);
     transform: translateY(var(--hf-cell-y, 0px)) scale(var(--hf-cell-scale, 1));
     opacity: var(--hf-cell-opacity, 1);
   }
@@ -69,7 +74,7 @@ That writes one file: `compositions/components/keyframe-scrub-stack.html`.
   }
   .hf-advanced-keyframe-scrub-stack path {
     fill: none;
-    stroke: #2563eb;
+    stroke: var(--hf-accent);
     stroke-width: 14;
     stroke-linecap: round;
     stroke-dasharray: 900;
@@ -84,8 +89,8 @@ That writes one file: `compositions/components/keyframe-scrub-stack.html`.
     position: absolute;
     inset: 0;
     border-radius: 26px;
-    background: linear-gradient(135deg, #f8fafc, #dbeafe);
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: linear-gradient(var(--hf-l4), var(--hf-l4)), #ffffff;
+    border: 1px solid var(--hf-hair);
     box-shadow: 0 20px 54px rgba(15, 23, 42, 0.14);
     transform: translateY(var(--hf-card-y, 0px)) scale(var(--hf-card-scale, 1));
     opacity: var(--hf-card-opacity, 1);

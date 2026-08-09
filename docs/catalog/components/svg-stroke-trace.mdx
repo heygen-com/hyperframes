@@ -4,50 +4,16 @@ description: "An authored SVG path draws from its measured length, holds with su
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/svg-stroke-trace.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="SVG Stroke Trace preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/svg-stroke-trace.html"
+  compositionId="svg-stroke-trace"
+  compositionSrc="compositions/components/svg-stroke-trace.html"
+  variables={[{"id":"path","type":"string","role":"content","label":"Path","description":"SVG path data for the authored mark.","default":"M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194"},{"id":"stroke_width","type":"number","role":"style","label":"Stroke width","description":"Width of the traced stroke in SVG viewBox units.","default":12,"min":2,"max":32,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the trace and optional fill.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the finished mark holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add svg-stroke-trace" />
-
-That writes one file: `compositions/components/svg-stroke-trace.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/svg-stroke-trace.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `path` | `M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194` | string | SVG path data for the authored mark. |
-| `stroke_width` | `12` | 2 to 32, step 1 | Width of the traced stroke in SVG viewBox units. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used by the trace and optional fill. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the finished mark holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="svg-stroke-trace"
-  data-composition-src="compositions/components/svg-stroke-trace.html"
-  data-variable-values='{"path":"M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194","stroke_width":12,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`svg-stroke-trace.html`}>
-
-```html
+```html svg-stroke-trace.html
 <!doctype html>
 <!--
   svg-stroke-trace: HyperFrames video primitive (intros and reveals)
@@ -279,7 +245,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add svg-stroke-trace" />
+
+That writes one file: `compositions/components/svg-stroke-trace.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/svg-stroke-trace.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

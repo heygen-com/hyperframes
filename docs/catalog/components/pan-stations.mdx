@@ -4,49 +4,16 @@ description: "A lateral camera move across a continuous row of labeled feature s
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/pan-stations.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Pan Stations preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/pan-stations.html"
+  compositionId="pan-stations"
+  compositionSrc="compositions/components/pan-stations.html"
+  variables={[{"id":"stationCount","type":"number","role":"layout","label":"Station count","description":"Number of feature stations in the row.","default":4,"min":3,"max":6,"step":1},{"id":"labels","type":"string","role":"content","label":"Station labels","description":"Comma-separated labels shown on the station cards.","default":"Capture,Edit,Render,Share"},{"id":"dwell","type":"number","role":"timing","label":"Dwell","description":"Seconds the camera holds at each station before panning.","default":0.6,"min":0.2,"max":2,"step":0.1,"unit":"s"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add pan-stations" />
-
-That writes one file: `compositions/components/pan-stations.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/pan-stations.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `stationCount` | `4` | 3 to 6, step 1 | Number of feature stations in the row. |
-| `labels` | `Capture,Edit,Render,Share` | string | Comma-separated labels shown on the station cards. |
-| `dwell` | `0.6` | 0.2s to 2s, step 0.1s | Seconds the camera holds at each station before panning. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="pan-stations"
-  data-composition-src="compositions/components/pan-stations.html"
-  data-variable-values='{"stationCount":4,"labels":"Capture,Edit,Render,Share","dwell":0.6}'
-></div>
-```
-
-## Source
-
-<Accordion title={`pan-stations.html`}>
-
-```html
+```html pan-stations.html
 <!doctype html>
 <!--
   pan-stations -- HyperFrames video primitive (camera / holdable / exhibit)
@@ -413,7 +380,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add pan-stations" />
+
+That writes one file: `compositions/components/pan-stations.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pan-stations.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

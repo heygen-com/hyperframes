@@ -4,51 +4,16 @@ description: "Scene A dissolves into scene B through a growing halftone dot fiel
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/halftone-dissolve.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Halftone Dissolve preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/halftone-dissolve.html"
+  compositionId="halftone-dissolve"
+  compositionSrc="compositions/components/halftone-dissolve.html"
+  variables={[{"id":"dot_size","type":"enum","role":"style","label":"Dot size","description":"Grid pitch for the halftone field.","default":"medium","options":[{"value":"small","label":"Small"},{"value":"medium","label":"Medium"},{"value":"large","label":"Large"}]},{"id":"direction","type":"enum","role":"timing","label":"Direction","description":"Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters.","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"center","label":"Center out"},{"value":"noise","label":"Noise"}]},{"id":"dissolve_at","type":"number","role":"timing","label":"Dissolve at","description":"Seconds from mount start when the dissolve begins.","default":1.1,"min":0.2,"max":10,"step":0.1,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: scene B holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add halftone-dissolve" />
-
-That writes one file: `compositions/components/halftone-dissolve.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/halftone-dissolve.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `dot_size` | `medium` | `small`, `medium`, `large` | Grid pitch for the halftone field. |
-| `direction` | `ltr` | `ltr`, `center`, `noise` | Threshold ordering: ltr sweeps left to right, center grows from the middle, noise scatters. |
-| `dissolve_at` | `1.1` | 0.2s to 10s, step 0.1s | Seconds from mount start when the dissolve begins. |
-| `accent` | `green` | `green`, `blue`, `violet` | Ink dot color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: scene B holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="halftone-dissolve"
-  data-composition-src="compositions/components/halftone-dissolve.html"
-  data-variable-values='{"dot_size":"medium","direction":"ltr","dissolve_at":1.1,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`halftone-dissolve.html`}>
-
-```html
+```html halftone-dissolve.html
 <!doctype html>
 <!--
   halftone-dissolve: HyperFrames video primitive (transitions / texture)
@@ -464,7 +429,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add halftone-dissolve" />
+
+That writes one file: `compositions/components/halftone-dissolve.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/halftone-dissolve.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

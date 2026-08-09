@@ -38,7 +38,7 @@ That writes one file: `compositions/components/spotlight-card.html`.
 
 <style>
   .hf-remocn-spotlight-card {
-    --hf-accent: #2563eb;
+    --hf-accent: var(--accent, #18181b);
     --hf-ink: #111827;
     --hf-muted: #6b7280;
     --hf-surface: #ffffff;
@@ -62,15 +62,15 @@ That writes one file: `compositions/components/spotlight-card.html`.
     background:
       radial-gradient(
         circle at var(--hf-x1, 20%) var(--hf-y1, 30%),
-        #60a5fa 0 18%,
+        rgba(255, 255, 255, 0.45) 0 18%,
         transparent 32%
       ),
       radial-gradient(
         circle at var(--hf-x2, 76%) var(--hf-y2, 52%),
-        #f472b6 0 16%,
+        rgba(255, 255, 255, 0.18) 0 16%,
         transparent 34%
       ),
-      radial-gradient(circle at var(--hf-x3, 46%) var(--hf-y3, 78%), #34d399 0 18%, transparent 34%);
+      radial-gradient(circle at var(--hf-x3, 46%) var(--hf-y3, 78%), rgba(255, 255, 255, 0.08) 0 18%, transparent 34%);
   }
   .hf-remocn-spotlight-card .card {
     position: absolute;

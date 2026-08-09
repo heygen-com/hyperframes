@@ -4,51 +4,16 @@ description: "Bayer-matrix ordered dithering quantizes a slotted scene (rasteriz
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/ordered-dither-pass.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Ordered Dither Pass preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/ordered-dither-pass.html"
+  compositionId="ordered-dither-pass"
+  compositionSrc="compositions/components/ordered-dither-pass.html"
+  variables={[{"id":"matrix","type":"enum","role":"style","label":"Matrix","description":"Bayer matrix size: 2 is the coarsest crosshatch, 8 the smoothest ordered grain.","default":"4","options":[{"value":"2","label":"2 x 2"},{"value":"4","label":"4 x 4"},{"value":"8","label":"8 x 8"}]},{"id":"direction","type":"enum","role":"timing","label":"Direction","description":"in resolves noise to clean; out dissolves clean to noise and holds it.","default":"in","options":[{"value":"in","label":"Noise to clean"},{"value":"out","label":"Clean to noise"}]},{"id":"levels","type":"number","role":"style","label":"Levels","description":"Quantization levels per color channel during the dithered phase.","default":2,"min":2,"max":6,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Light tone of the 2-tone noise phase: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the final state holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add ordered-dither-pass" />
-
-That writes one file: `compositions/components/ordered-dither-pass.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/ordered-dither-pass.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `matrix` | `4` | `2`, `4`, `8` | Bayer matrix size: 2 is the coarsest crosshatch, 8 the smoothest ordered grain. |
-| `direction` | `in` | `in`, `out` | in resolves noise to clean; out dissolves clean to noise and holds it. |
-| `levels` | `2` | 2 to 6, step 1 | Quantization levels per color channel during the dithered phase. |
-| `accent` | `green` | `green`, `blue`, `violet` | Light tone of the 2-tone noise phase: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the final state holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="ordered-dither-pass"
-  data-composition-src="compositions/components/ordered-dither-pass.html"
-  data-variable-values='{"matrix":"4","direction":"in","levels":2,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`ordered-dither-pass.html`}>
-
-```html
+```html ordered-dither-pass.html
 <!doctype html>
 <!--
   ordered-dither-pass: HyperFrames video primitive (Wave M experiment,
@@ -536,7 +501,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add ordered-dither-pass" />
+
+That writes one file: `compositions/components/ordered-dither-pass.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ordered-dither-pass.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Tilt Card",
   "description": "A transitions.dev-inspired tilt card primitive with depth layers and hover-style parallax",
-  "tags": ["transition-primitive", "transitions-dev-port", "card", "tilt"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "card", "tilt"],
   "files": [
     {
       "path": "tilt-card.html",
@@ -37,9 +37,18 @@
       "description": "How far the corner glow reaches past the card edges, which sets both its spread at rest and how far the timeline drift carries it.",
       "default": "standard",
       "options": [
-        { "value": "tight", "label": "Tight" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "wide", "label": "Wide" }
+        {
+          "value": "tight",
+          "label": "Tight"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
       ]
     },
     {
@@ -50,9 +59,18 @@
       "description": "Colour family of the card gradient, corner glow, eyebrow and drop shadow.",
       "default": "indigo",
       "options": [
-        { "value": "indigo", "label": "Indigo" },
-        { "value": "emerald", "label": "Emerald" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "indigo",
+          "label": "Indigo"
+        },
+        {
+          "value": "emerald",
+          "label": "Emerald"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
     }
   ],

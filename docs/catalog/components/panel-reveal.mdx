@@ -4,43 +4,16 @@ description: "A panel reveal primitive with height expansion and content fade"
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/panel-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Panel Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/panel-reveal.html"
+  compositionId="panel-reveal"
+  compositionSrc="compositions/components/panel-reveal.html"
+  variables={[{"id":"title","type":"string","role":"content","label":"Title","description":"The header line that sits above the folded body.","default":"Motion tokens"},{"id":"width","type":"enum","role":"layout","label":"Width","description":"How wide the panel sits, 280, 360 or 480 px.","default":"standard","options":[{"value":"narrow","label":"Narrow"},{"value":"standard","label":"Standard"},{"value":"wide","label":"Wide"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Surface family: paper is the white card for light frames, ink inverts it for dark frames.","default":"paper","options":[{"value":"paper","label":"Paper"},{"value":"ink","label":"Ink"}]},{"id":"reveal","type":"enum","role":"motion","label":"Reveal","description":"Whether the body fades in with the height. fade is the shipped motion, solid opens the height only.","default":"fade","options":[{"value":"fade","label":"Fade"},{"value":"solid","label":"Solid"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add panel-reveal" />
-
-That writes one file: `compositions/components/panel-reveal.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `title` | `Motion tokens` | string | The header line that sits above the folded body. |
-| `width` | `standard` | `narrow`, `standard`, `wide` | How wide the panel sits, 280, 360 or 480 px. |
-| `tone` | `paper` | `paper`, `ink` | Surface family: paper is the white card for light frames, ink inverts it for dark frames. |
-| `reveal` | `fade` | `fade`, `solid` | Whether the body fades in with the height. fade is the shipped motion, solid opens the height only. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="panel-reveal"
-  data-composition-src="compositions/components/panel-reveal.html"
-  data-variable-values='{"title":"Motion tokens","width":"standard","tone":"paper","reveal":"fade"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`panel-reveal.html`}>
-
-```html
+```html panel-reveal.html
 <!--
   Panel Reveal - transitions.dev-inspired primitive for HyperFrames.
 
@@ -176,7 +149,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add panel-reveal" />
+
+That writes one file: `compositions/components/panel-reveal.html`.
 
 ## Usage
 

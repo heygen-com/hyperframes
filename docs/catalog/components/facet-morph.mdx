@@ -4,50 +4,16 @@ description: "A faceted low-poly mass of 36 triangles continuously reshapes betw
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/facet-morph.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Facet Morph preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/facet-morph.html"
+  compositionId="facet-morph"
+  compositionSrc="compositions/components/facet-morph.html"
+  variables={[{"id":"forms","type":"string","role":"content","label":"Forms","description":"Comma-separated silhouette sequence from blob, mark, badge.","default":"blob,mark,badge"},{"id":"hold_last","type":"boolean","role":"timing","label":"Hold last","description":"True settles dead still on the final silhouette; false keeps the mass slowly breathing through the hold.","default":true},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Tint of the lit facets.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the settled mass.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add facet-morph" />
-
-That writes one file: `compositions/components/facet-morph.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/facet-morph.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `forms` | `blob,mark,badge` | string | Comma-separated silhouette sequence from blob, mark, badge. |
-| `hold_last` | `true` | boolean | True settles dead still on the final silhouette; false keeps the mass slowly breathing through the hold. |
-| `accent` | `green` | `green`, `blue`, `violet` | Tint of the lit facets. |
-| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the settled mass. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="facet-morph"
-  data-composition-src="compositions/components/facet-morph.html"
-  data-variable-values='{"forms":"blob,mark,badge","hold_last":true,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`facet-morph.html`}>
-
-```html
+```html facet-morph.html
 <!doctype html>
 <!--
   facet-morph: HyperFrames video primitive (intros and reveals / morph)
@@ -596,7 +562,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add facet-morph" />
+
+That writes one file: `compositions/components/facet-morph.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/facet-morph.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

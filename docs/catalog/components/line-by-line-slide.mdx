@@ -4,43 +4,16 @@ description: "Each line enters from the left with staggered slide and exits to t
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/line-by-line-slide.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Line-by-Line Slide preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/line-by-line-slide.html"
+  compositionId="line-by-line-slide"
+  compositionSrc="compositions/components/line-by-line-slide.html"
+  variables={[{"id":"size","type":"enum","role":"layout","label":"Size","description":"Type size of the whole stack.","default":"standard","options":[{"value":"compact","label":"Compact"},{"value":"standard","label":"Standard"},{"value":"display","label":"Display"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Line colour: ink for light frames, paper for dark ones, accent rides the brand token.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]},{"id":"density","type":"enum","role":"layout","label":"Density","description":"The gap between lines, from a tight block to an airy stack.","default":"standard","options":[{"value":"fine","label":"Fine"},{"value":"standard","label":"Standard"},{"value":"coarse","label":"Coarse"}]},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which side the lines slide in from as the timeline drives the offset.","default":"left","options":[{"value":"left","label":"Left"},{"value":"right","label":"Right"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add line-by-line-slide" />
-
-That writes one file: `compositions/components/line-by-line-slide.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `size` | `standard` | `compact`, `standard`, `display` | Type size of the whole stack. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Line colour: ink for light frames, paper for dark ones, accent rides the brand token. |
-| `density` | `standard` | `fine`, `standard`, `coarse` | The gap between lines, from a tight block to an airy stack. |
-| `direction` | `left` | `left`, `right` | Which side the lines slide in from as the timeline drives the offset. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="line-by-line-slide"
-  data-composition-src="compositions/components/line-by-line-slide.html"
-  data-variable-values='{"size":"standard","tone":"ink","density":"standard","direction":"left"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`line-by-line-slide.html`}>
-
-```html
+```html line-by-line-slide.html
 <!--
   Line-by-Line Slide - remocn typography primitive for HyperFrames.
 
@@ -148,7 +121,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add line-by-line-slide" />
+
+That writes one file: `compositions/components/line-by-line-slide.html`.
 
 ## Usage
 

@@ -4,49 +4,16 @@ description: "A contact circle taps a mobile pill button, releases it into a new
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/gesture-tap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Gesture Tap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/gesture-tap.html"
+  compositionId="gesture-tap"
+  compositionSrc="compositions/components/gesture-tap.html"
+  variables={[{"id":"tap_label","type":"string","role":"content","label":"Tap label","description":"Button label shown before the tap response.","default":"Follow"},{"id":"response_label","type":"string","role":"content","label":"Response label","description":"Button label shown when the tap releases.","default":"Following"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used for the completed button state and response pulse.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add gesture-tap" />
-
-That writes one file: `compositions/components/gesture-tap.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/gesture-tap.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `tap_label` | `Follow` | string | Button label shown before the tap response. |
-| `response_label` | `Following` | string | Button label shown when the tap releases. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used for the completed button state and response pulse. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="gesture-tap"
-  data-composition-src="compositions/components/gesture-tap.html"
-  data-variable-values='{"tap_label":"Follow","response_label":"Following","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`gesture-tap.html`}>
-
-```html
+```html gesture-tap.html
 <!doctype html>
 <!--
   gesture-tap: HyperFrames video primitive (ui-props / interaction / demonstrate)
@@ -317,15 +284,18 @@ defaults, so this behaves exactly like the preview above until you change one:
             var accentName =
               vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var accentColors = {
-              green: "#34d399",
-              blue: "#60a5fa",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #60a5fa)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             var accentColor = accentColors[accentName];
 
             label.textContent = tapLabel;
             button.setAttribute("aria-label", tapLabel);
             root.style.setProperty("--gt-accent", accentColor);
+            // GSAP interpolates colors numerically, so tween values need the
+            // substituted color rather than the var() form.
+            accentColor = getComputedStyle(root).getPropertyValue("--gt-accent").trim();
 
             var IN_BASE = 1.35;
             var OUT_BASE = 0.55;
@@ -450,7 +420,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add gesture-tap" />
+
+That writes one file: `compositions/components/gesture-tap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/gesture-tap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

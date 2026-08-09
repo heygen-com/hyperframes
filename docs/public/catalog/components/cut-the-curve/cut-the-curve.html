@@ -110,7 +110,7 @@
                 circle at var(--ctc-glow-x, 24%) var(--ctc-glow-y, 28%),
                 color-mix(
                   in srgb,
-                  var(--accent, #38bdf8) var(--ctc-glow-strength, 18%),
+                  var(--fg, #f8fafc) var(--ctc-glow-strength, 18%),
                   var(--transparent, transparent)
                 ),
                 var(--transparent, transparent) var(--ctc-glow-radius, 42%)
@@ -127,13 +127,13 @@
 
           .ctc-subject.is-outgoing {
             opacity: 1;
-            --ctc-primary: var(--brand, #8b5cf6);
-            --ctc-secondary: var(--accent, #38bdf8);
+            --ctc-primary: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
+            --ctc-secondary: color-mix(in srgb, var(--fg, #f8fafc) 18%, transparent);
           }
 
           .ctc-subject.is-incoming {
-            --ctc-primary: var(--accent, #38bdf8);
-            --ctc-secondary: var(--brand, #8b5cf6);
+            --ctc-primary: color-mix(in srgb, var(--fg, #f8fafc) 72%, transparent);
+            --ctc-secondary: color-mix(in srgb, var(--fg, #f8fafc) 45%, transparent);
           }
 
           .ctc-art {
@@ -167,7 +167,7 @@
           }
 
           .ctc-cursor-shape {
-            fill: var(--ctc-primary, var(--brand, #8b5cf6));
+            fill: var(--ctc-primary, var(--fg, #f8fafc));
             stroke: var(--fg, #f8fafc);
             stroke-width: var(--ctc-cursor-stroke, 1.8);
             stroke-linejoin: round;
@@ -182,7 +182,7 @@
             border: var(--ctc-pulse-border, 0.25cqw) solid
               color-mix(
                 in srgb,
-                var(--ctc-secondary, var(--accent, #38bdf8)) var(--ctc-pulse-strength, 58%),
+                var(--ctc-secondary, var(--fg, #f8fafc)) var(--ctc-pulse-strength, 58%),
                 var(--transparent, transparent)
               );
             border-radius: var(--ctc-round, 50%);
@@ -209,7 +209,7 @@
             width: var(--ctc-chip-width, 9cqw);
             height: var(--ctc-chip-height, 2.2cqh);
             border-radius: var(--ctc-pill-radius, 99cqw);
-            background: var(--ctc-primary, var(--brand, #8b5cf6));
+            background: var(--ctc-primary, var(--fg, #f8fafc));
             margin-bottom: var(--ctc-card-gap, var(--space-3, 3.2cqh));
           }
 
@@ -262,7 +262,7 @@
             width: var(--ctc-dot-size, 1.4cqw);
             aspect-ratio: var(--ctc-pulse-ratio, 1);
             border-radius: var(--ctc-round, 50%);
-            background: var(--ctc-primary, var(--brand, #8b5cf6));
+            background: var(--ctc-primary, var(--fg, #f8fafc));
           }
 
           .ctc-scene-body {
@@ -278,7 +278,7 @@
             border-radius: var(--ctc-panel-radius, var(--radius, 1.2cqw));
             background: color-mix(
               in srgb,
-              var(--ctc-primary, var(--brand, #8b5cf6)) var(--ctc-panel-strength, 24%),
+              var(--ctc-primary, var(--fg, #f8fafc)) var(--ctc-panel-strength, 24%),
               var(--surface, #1e293b)
             );
           }
@@ -302,7 +302,7 @@
 
           .ctc-scene-line:nth-child(3) {
             width: var(--ctc-scene-line-three, 78%);
-            background: var(--ctc-secondary, var(--accent, #38bdf8));
+            background: var(--ctc-secondary, var(--fg, #f8fafc));
           }
         </style>
 

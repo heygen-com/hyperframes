@@ -4,52 +4,16 @@ description: "N capability cards (thin-line icon that draws on, mono label, opti
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/grid-card-assemble.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Grid Card Assemble preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/grid-card-assemble.html"
+  compositionId="grid-card-assemble"
+  compositionSrc="compositions/components/grid-card-assemble.html"
+  variables={[{"id":"items","type":"string","role":"content","label":"Items","description":"Comma-separated cards (3 to 12). \"Label: body\" adds a one-line muted body under the label.","default":"Capture,Compose,Render,Publish"},{"id":"layout","type":"enum","role":"layout","label":"Layout","description":"Grid wraps by columns; list stacks vertically.","default":"grid","options":[{"value":"grid","label":"Grid"},{"value":"list","label":"List"}]},{"id":"columns","type":"number","role":"layout","label":"Columns","description":"Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)).","default":0,"min":0,"max":4,"step":1},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated per-item entrance times in seconds. Blank entries use the default cascade.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the card icons.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"How the assembled layout leaves the frame. Default none: the hold ends the film.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add grid-card-assemble" />
-
-That writes one file: `compositions/components/grid-card-assemble.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/grid-card-assemble.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `items` | `Capture,Compose,Render,Publish` | string | Comma-separated cards (3 to 12). "Label: body" adds a one-line muted body under the label. |
-| `layout` | `grid` | `grid`, `list` | Grid wraps by columns; list stacks vertically. |
-| `columns` | `0` | 0 to 4, step 1 | Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)). |
-| `cues` | `` | string | Comma-separated per-item entrance times in seconds. Blank entries use the default cascade. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the card icons. |
-| `exit` | `none` | `none`, `fade`, `up` | How the assembled layout leaves the frame. Default none: the hold ends the film. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="grid-card-assemble"
-  data-composition-src="compositions/components/grid-card-assemble.html"
-  data-variable-values='{"items":"Capture,Compose,Render,Publish","layout":"grid","columns":0,"cues":"","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`grid-card-assemble.html`}>
-
-```html
+```html grid-card-assemble.html
 <!doctype html>
 <!--
   grid-card-assemble: HyperFrames video primitive (layout / feature tour)
@@ -516,7 +480,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add grid-card-assemble" />
+
+That writes one file: `compositions/components/grid-card-assemble.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/grid-card-assemble.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

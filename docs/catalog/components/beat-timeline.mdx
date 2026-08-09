@@ -4,49 +4,16 @@ description: "A paused master-timeline orchestration spine that pins titled beat
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/beat-timeline.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Beat Timeline preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/beat-timeline.html"
+  compositionId="beat-timeline"
+  compositionSrc="compositions/components/beat-timeline.html"
+  variables={[{"id":"beatCount","type":"number","role":"content","label":"Beat count","description":"Number of beat rows in the sequence.","default":4,"min":2,"max":6,"step":1},{"id":"interval","type":"number","role":"layout","label":"Interval","description":"Base time between consecutive beat markers.","default":0.6,"min":0.2,"max":2,"step":0.05,"unit":"s"},{"id":"labels","type":"string","role":"content","label":"Labels","description":"Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N.","default":"One,Two,Three,Four"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add beat-timeline" />
-
-That writes one file: `compositions/components/beat-timeline.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/beat-timeline.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `beatCount` | `4` | 2 to 6, step 1 | Number of beat rows in the sequence. |
-| `interval` | `0.6` | 0.2s to 2s, step 0.05s | Base time between consecutive beat markers. |
-| `labels` | `One,Two,Three,Four` | string | Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="beat-timeline"
-  data-composition-src="compositions/components/beat-timeline.html"
-  data-variable-values='{"beatCount":4,"interval":0.6,"labels":"One,Two,Three,Four"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`beat-timeline.html`}>
-
-```html
+```html beat-timeline.html
 <!doctype html>
 <!--
   beat-timeline -- HyperFrames video primitive (transitions / sequencing / bridge)
@@ -337,7 +304,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add beat-timeline" />
+
+That writes one file: `compositions/components/beat-timeline.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/beat-timeline.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

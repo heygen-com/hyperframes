@@ -4,43 +4,16 @@ description: "A 3D tilted marquee with depth feel as items roll toward the horiz
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/perspective-marquee.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Perspective Marquee preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/perspective-marquee.html"
+  compositionId="perspective-marquee"
+  compositionSrc="compositions/components/perspective-marquee.html"
+  variables={[{"id":"tilt","type":"enum","role":"style","label":"Tilt","description":"How far the marquee plane leans back toward the horizon.","default":"standard","options":[{"value":"flat","label":"Flat"},{"value":"standard","label":"Standard"},{"value":"steep","label":"Steep"}]},{"id":"travel","type":"enum","role":"motion","label":"Travel","description":"Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time.","default":"standard","options":[{"value":"short","label":"Short"},{"value":"standard","label":"Standard"},{"value":"long","label":"Long"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Pill colour: ink for light frames, paper for dark ones, accent rides the brand token.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]},{"id":"words","type":"string","role":"content","label":"Words","description":"Comma separated pill labels. The list is laid down twice so the strip still reads as a continuous loop.","default":"COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add perspective-marquee" />
-
-That writes one file: `compositions/components/perspective-marquee.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `tilt` | `standard` | `flat`, `standard`, `steep` | How far the marquee plane leans back toward the horizon. |
-| `travel` | `standard` | `short`, `standard`, `long` | Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Pill colour: ink for light frames, paper for dark ones, accent rides the brand token. |
-| `words` | `COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS` | string | Comma separated pill labels. The list is laid down twice so the strip still reads as a continuous loop. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="perspective-marquee"
-  data-composition-src="compositions/components/perspective-marquee.html"
-  data-variable-values='{"tilt":"standard","travel":"standard","tone":"ink","words":"COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`perspective-marquee.html`}>
-
-```html
+```html perspective-marquee.html
 <!--
   Perspective Marquee - remocn typography primitive for HyperFrames.
 
@@ -179,7 +152,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add perspective-marquee" />
+
+That writes one file: `compositions/components/perspective-marquee.html`.
 
 ## Usage
 

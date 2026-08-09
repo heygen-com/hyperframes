@@ -4,48 +4,16 @@ description: "A canonical phone rises into view before the camera pushes through
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/parallax-device-dive.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Parallax Device Dive preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/parallax-device-dive.html"
+  compositionId="parallax-device-dive"
+  compositionSrc="compositions/components/parallax-device-dive.html"
+  variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used throughout the app UI.","default":"blue","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"app_title","type":"string","role":"content","label":"App title","description":"Title displayed in the app header.","default":"Dashboard"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add parallax-device-dive" />
-
-That writes one file: `compositions/components/parallax-device-dive.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/parallax-device-dive.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `accent` | `blue` | `green`, `blue`, `violet` | Highlight color used throughout the app UI. |
-| `app_title` | `Dashboard` | string | Title displayed in the app header. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="parallax-device-dive"
-  data-composition-src="compositions/components/parallax-device-dive.html"
-  data-variable-values='{"accent":"blue","app_title":"Dashboard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`parallax-device-dive.html`}>
-
-```html
+```html parallax-device-dive.html
 <!doctype html>
 <!--
   parallax-device-dive: HyperFrames video primitive (camera / device / transition)
@@ -422,9 +390,9 @@ defaults, so this behaves exactly like the preview above until you change one:
 
             var accent = vars.accent;
             var accentColors = {
-              green: "#22c55e",
-              blue: "#3b82f6",
-              violet: "#8b5cf6",
+              green: "var(--brand, #a1a1aa)",
+              blue: "var(--accent, #a1a1aa)",
+              violet: "var(--accent-2, #a1a1aa)",
             };
             var accentColor = accentColors[accent] || accentColors.blue;
             var appTitle = vars.app_title == null ? "Dashboard" : String(vars.app_title);
@@ -499,7 +467,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add parallax-device-dive" />
+
+That writes one file: `compositions/components/parallax-device-dive.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/parallax-device-dive.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,43 +4,16 @@ description: "Draw a strike line across old text, then reveal the replacement."
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/strikethrough-replace.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Strikethrough Replace preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/strikethrough-replace.html"
+  compositionId="strikethrough-replace"
+  compositionSrc="compositions/components/strikethrough-replace.html"
+  variables={[{"id":"origin","type":"enum","role":"motion","label":"Origin","description":"Edge the strike grows out of as the timeline runs its scale from 0 to 1.","default":"left","options":[{"value":"left","label":"Left"},{"value":"center","label":"Center"},{"value":"right","label":"Right"}]},{"id":"thickness","type":"enum","role":"style","label":"Thickness","description":"Height of the strike line, from a hairline rule to a heavy bar.","default":"standard","options":[{"value":"thin","label":"Thin"},{"value":"standard","label":"Standard"},{"value":"thick","label":"Thick"}]},{"id":"tint","type":"enum","role":"style","label":"Tint","description":"Strike colour. Blue and violet ride --accent and --accent-2.","default":"red","options":[{"value":"red","label":"Red"},{"value":"amber","label":"Amber"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Colour of both words: ink for light frames, paper for dark ones.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add strikethrough-replace" />
-
-That writes one file: `compositions/components/strikethrough-replace.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `origin` | `left` | `left`, `center`, `right` | Edge the strike grows out of as the timeline runs its scale from 0 to 1. |
-| `thickness` | `standard` | `thin`, `standard`, `thick` | Height of the strike line, from a hairline rule to a heavy bar. |
-| `tint` | `red` | `red`, `amber`, `blue`, `violet` | Strike colour. Blue and violet ride --accent and --accent-2. |
-| `tone` | `ink` | `ink`, `paper` | Colour of both words: ink for light frames, paper for dark ones. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="strikethrough-replace"
-  data-composition-src="compositions/components/strikethrough-replace.html"
-  data-variable-values='{"origin":"left","thickness":"standard","tint":"red","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`strikethrough-replace.html`}>
-
-```html
+```html strikethrough-replace.html
 <!--
   Strikethrough Replace - remocn typography primitive for HyperFrames.
 
@@ -154,7 +127,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add strikethrough-replace" />
+
+That writes one file: `compositions/components/strikethrough-replace.html`.
 
 ## Usage
 

@@ -4,42 +4,16 @@ description: "Scale-based shared-axis transition for focus shifts and context de
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/shared-axis-z.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Shared Axis Z preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/shared-axis-z.html"
+  compositionId="shared-axis-z"
+  compositionSrc="compositions/components/shared-axis-z.html"
+  variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which way the words travel along the z axis: in swells up from small, out settles down from large.","default":"in","options":[{"value":"in","label":"In"},{"value":"out","label":"Out"}]},{"id":"depth","type":"enum","role":"motion","label":"Depth","description":"Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time.","default":"standard","options":[{"value":"shallow","label":"Shallow"},{"value":"standard","label":"Standard"},{"value":"deep","label":"Deep"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add shared-axis-z" />
-
-That writes one file: `compositions/components/shared-axis-z.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `direction` | `in` | `in`, `out` | Which way the words travel along the z axis: in swells up from small, out settles down from large. |
-| `depth` | `standard` | `shallow`, `standard`, `deep` | Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="shared-axis-z"
-  data-composition-src="compositions/components/shared-axis-z.html"
-  data-variable-values='{"direction":"in","depth":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`shared-axis-z.html`}>
-
-```html
+```html shared-axis-z.html
 <!--
   Shared Axis Z - remocn typography primitive for HyperFrames.
 
@@ -137,7 +111,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add shared-axis-z" />
+
+That writes one file: `compositions/components/shared-axis-z.html`.
 
 ## Usage
 

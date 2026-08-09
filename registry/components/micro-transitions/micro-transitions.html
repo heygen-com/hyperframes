@@ -17,7 +17,10 @@
       bell. Blank or non-text input falls back to the default.
     - tooltip (any short text, default Copied): wording inside the small dark
       tooltip.
-    - tone (red | amber | violet, default red): colour of that badge chip.
+    - tone (red | amber | violet, default red): colour of that badge chip, the
+      one accent-carrying element in the pack. red and amber are literal alert
+      conventions; violet rides the composition's own accent-2 token and falls
+      back to ink when the composition declares none.
     - travel (close | standard | far, default standard): scales how far every
       panel starts from its resting place, so the whole pack drifts half as far
       or nearly twice as far into position over the same progress run. At full
@@ -200,7 +203,7 @@
     width: 48px;
     height: 48px;
     fill: none;
-    stroke: #16a34a;
+    stroke: currentColor;
     stroke-width: 5;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -230,7 +233,10 @@
       return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
     }
 
-    var tones = { red: "#ef4444", amber: "#f59e0b", violet: "#8b5cf6" };
+    // The badge is the pack's one accent-carrying element. red and amber are
+    // literal alert conventions; violet rides the composition's own token and
+    // falls back to ink.
+    var tones = { red: "#ef4444", amber: "#f59e0b", violet: "var(--accent-2, #18181b)" };
     var travels = { close: 0.5, standard: 1, far: 1.9 };
 
     var tone = tones[pick(tones, vars.tone, "red")];

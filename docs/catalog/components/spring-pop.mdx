@@ -4,49 +4,16 @@ description: "A badge pops in from a visible near-rest scale, overshoots full si
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/spring-pop.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Spring Pop preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/spring-pop.html"
+  compositionId="spring-pop"
+  compositionSrc="compositions/components/spring-pop.html"
+  variables={[{"id":"overshoot","type":"number","role":"timing","label":"Overshoot","description":"Strength passed to the back.out entrance curve.","default":1.7,"min":1.1,"max":2,"step":0.1},{"id":"fromScale","type":"number","role":"timing","label":"Starting scale","description":"Scale at the start of the entrance.","default":0.9,"min":0.8,"max":0.97,"step":0.01},{"id":"text","type":"string","role":"content","label":"Label","description":"Text displayed inside the badge.","default":"New"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add spring-pop" />
-
-That writes one file: `compositions/components/spring-pop.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/spring-pop.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `overshoot` | `1.7` | 1.1 to 2, step 0.1 | Strength passed to the back.out entrance curve. |
-| `fromScale` | `0.9` | 0.8 to 0.97, step 0.01 | Scale at the start of the entrance. |
-| `text` | `New` | string | Text displayed inside the badge. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="spring-pop"
-  data-composition-src="compositions/components/spring-pop.html"
-  data-variable-values='{"overshoot":1.7,"fromScale":0.9,"text":"New"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`spring-pop.html`}>
-
-```html
+```html spring-pop.html
 <!doctype html>
 <!--
   spring-pop: HyperFrames video primitive (effects / burst / reveal)
@@ -244,7 +211,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add spring-pop" />
+
+That writes one file: `compositions/components/spring-pop.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/spring-pop.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

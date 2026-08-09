@@ -52,7 +52,7 @@
         width: 46px;
         height: 46px;
         border-radius: 14px;
-        background: linear-gradient(135deg, var(--accent, #60a5fa), var(--accent-2, #7c3aed));
+        background: color-mix(in srgb, var(--fg, #111827) 45%, transparent);
         transform: translateY(var(--hf-cell-y, 0px)) scale(var(--hf-cell-scale, 1));
         opacity: var(--hf-cell-opacity, 1);
       }
@@ -63,7 +63,7 @@
       }
       .hf-advanced-svg-line-draw-loader path {
         fill: none;
-        stroke: var(--accent, #2563eb);
+        stroke: var(--accent, #18181b);
         stroke-width: 12;
         stroke-linecap: round;
         stroke-dasharray: 900;
@@ -78,7 +78,7 @@
         position: absolute;
         inset: 0;
         border-radius: 26px;
-        background: linear-gradient(135deg, var(--surface, #f8fafc), var(--surface, #dbeafe));
+        background: linear-gradient(135deg, var(--surface, #fafafa), var(--surface, #e4e4e7));
         border: 1px solid var(--border, rgba(15, 23, 42, 0.08));
         box-shadow: 0 20px 54px rgba(15, 23, 42, 0.14);
         transform: translateY(var(--hf-card-y, 0px)) scale(var(--hf-card-scale, 1));

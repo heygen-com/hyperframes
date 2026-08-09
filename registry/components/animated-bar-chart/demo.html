@@ -32,8 +32,13 @@
         transform-origin: center center;
       }
       .hf-remocn-animated-bar-chart {
-        --hf-accent: #2563eb;
+        --hf-accent: var(--accent, #111827);
         --hf-ink: #111827;
+        --hf-l1: rgba(17, 24, 39, 0.72);
+        --hf-l2: rgba(17, 24, 39, 0.45);
+        --hf-l3: rgba(17, 24, 39, 0.18);
+        --hf-l4: rgba(17, 24, 39, 0.08);
+        --hf-hair: rgba(17, 24, 39, 0.14);
         --hf-muted: #6b7280;
         --hf-surface: #ffffff;
         color: var(--hf-ink);
@@ -70,7 +75,7 @@
       .hf-remocn-animated-bar-chart strong {
         font-size: 54px;
         letter-spacing: -0.06em;
-        color: #2563eb;
+        color: var(--hf-accent);
         font-weight: 700;
       }
       .hf-remocn-animated-bar-chart .bars {
@@ -83,7 +88,7 @@
       .hf-remocn-animated-bar-chart .bar {
         height: calc(var(--h) * var(--hf-grow, 1));
         border-radius: 14px 14px 5px 5px;
-        background: linear-gradient(180deg, #60a5fa, #2563eb);
+        background: var(--hf-l1);
       }
       .hf-remocn-animated-bar-chart .chart-footer {
         display: grid;
@@ -95,6 +100,7 @@
         overflow: visible;
       }
       .hf-remocn-animated-bar-chart path {
+        color: var(--hf-l2);
         stroke-dasharray: 900;
         stroke-dashoffset: var(--hf-dash, 0);
       }
@@ -136,17 +142,18 @@
           <div class="chart-footer">
             <svg viewBox="0 0 700 210">
               <!-- baseline -->
-              <line x1="20" y1="185" x2="680" y2="185" stroke="#e4e4e7" stroke-width="1.5"/>
+              <line x1="20" y1="185" x2="680" y2="185" stroke="#e4e4e7" stroke-width="1.5" />
               <path
                 d="M20 172 C120 90, 190 118, 260 74 S430 112, 508 42 S620 82, 680 30"
                 fill="none"
-                stroke="#2563eb"
+                stroke="currentColor"
                 stroke-width="10"
                 stroke-linecap="round"
               />
             </svg>
             <div class="bar-labels">
-              <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span>
+              <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span
+              ><span>Jun</span><span>Jul</span>
             </div>
           </div>
         </div>

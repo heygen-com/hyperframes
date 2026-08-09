@@ -39,18 +39,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png"
   },
   {
-    "name": "animated-line-chart",
-    "type": "component",
-    "title": "Animated Line Chart",
-    "description": "A line chart draws across the card with endpoint emphasis.",
-    "tags": [
-      "data",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/animated-line-chart",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-line-chart.png"
-  },
-  {
     "name": "app-showcase",
     "type": "block",
     "title": "App Showcase",
@@ -84,6 +72,7 @@
     "title": "Arc Motion Path",
     "description": "A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation.",
     "tags": [
+      "video-primitive",
       "motionpath",
       "gsap-plugin",
       "hyperframes-native"
@@ -160,6 +149,7 @@
     "title": "Avatar Group Hover",
     "description": "A distance-falloff avatar group lift with bouncy hover return",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "avatar",
@@ -174,6 +164,7 @@
     "title": "Badge Pop",
     "description": "A transitions.dev-inspired notification badge pop with elastic scale and count reveal",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "badge",
@@ -181,6 +172,20 @@
     ],
     "href": "/catalog/components/badge-pop",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge-pop.png"
+  },
+  {
+    "name": "bar-chart-race",
+    "type": "block",
+    "title": "Bar Chart Race",
+    "description": "Ranked bars grow and overtake each other as a time series advances, with the axis rescaling as values climb and the accent handing over to whoever leads",
+    "tags": [
+      "data",
+      "chart",
+      "statistics",
+      "ranking"
+    ],
+    "href": "/catalog/blocks/bar-chart-race",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/bar-chart-race.png"
   },
   {
     "name": "beat-accent",
@@ -261,19 +266,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/before-after-wipe.png"
   },
   {
-    "name": "bezier-callout-route",
-    "type": "component",
-    "title": "Bezier Callout Route",
-    "description": "A route-map primitive with multiple callouts traveling along cubic Bezier paths.",
-    "tags": [
-      "motionpath",
-      "gsap-plugin",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/bezier-callout-route",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/bezier-callout-route.png"
-  },
-  {
     "name": "blue-sweater-intro-video",
     "type": "block",
     "title": "Blue Sweater Intro Video",
@@ -286,6 +278,20 @@
     ],
     "href": "/catalog/blocks/blue-sweater-intro-video",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
+  },
+  {
+    "name": "blur-in",
+    "type": "component",
+    "title": "Blur In",
+    "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
+    "tags": [
+      "video-primitive",
+      "remocn-port",
+      "blur-in",
+      "text-effect"
+    ],
+    "href": "/catalog/components/blur-in",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-in.png"
   },
   {
     "name": "blur-out-up",
@@ -332,18 +338,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/browser-device-stage.png"
   },
   {
-    "name": "browser-flow",
-    "type": "component",
-    "title": "Browser Flow",
-    "description": "A browser frame walks through a three-step product flow.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/browser-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/browser-flow.png"
-  },
-  {
     "name": "camcorder-hud",
     "type": "block",
     "title": "Camcorder HUD",
@@ -359,6 +353,20 @@
     ],
     "href": "/catalog/blocks/camcorder-hud",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/camcorder-hud.png"
+  },
+  {
+    "name": "camera-dolly-zoom",
+    "type": "block",
+    "title": "Dolly Zoom (Vertigo Shot)",
+    "description": "Camera tracks toward or away from the subject while the field of view changes the opposite way, so the subject holds its frame size while the background collapses behind it or rushes in. Focal length is solved from dolly distance every frame against d * tan(FOV/2) = const, not keyframed beside it. Requires depth: the subject sits on the z = 0 plane and the content behind it must be layered or genuinely 3D (translateZ at two or more distinct depths) -- a flat element gains nothing from this move.",
+    "tags": [
+      "camera",
+      "depth",
+      "3d",
+      "cinematic"
+    ],
+    "href": "/catalog/blocks/camera-dolly-zoom",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/camera-dolly-zoom.png"
   },
   {
     "name": "camera-rig-depth-stack",
@@ -389,6 +397,21 @@
     ],
     "href": "/catalog/components/camera-scan-gate",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-scan-gate.png"
+  },
+  {
+    "name": "camera-shake",
+    "type": "component",
+    "title": "Camera Shake",
+    "description": "Procedural handheld, telephoto and rig camera shake for any wrapper: nine measured profiles with per-lens projection, closed-form and seek-safe",
+    "tags": [
+      "camera",
+      "shake",
+      "handheld",
+      "effect",
+      "cinematic"
+    ],
+    "href": "/catalog/components/camera-shake",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-shake.png"
   },
   {
     "name": "caption-blend-difference",
@@ -648,6 +671,7 @@
     "title": "Card Resize",
     "description": "A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "card",
@@ -692,19 +716,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chart-story.png"
   },
   {
-    "name": "chat-to-preview-layout",
-    "type": "component",
-    "title": "Chat to Preview Layout",
-    "description": "Split-pane chat and preview layout for agent-generated UI.",
-    "tags": [
-      "showcase",
-      "remocn-port",
-      "ai"
-    ],
-    "href": "/catalog/components/chat-to-preview-layout",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chat-to-preview-layout.png"
-  },
-  {
     "name": "checkout-flow",
     "type": "component",
     "title": "Checkout Flow",
@@ -724,6 +735,7 @@
     "title": "Chromatic Aberration Wipe",
     "description": "A fast slide wipe with RGB channel split on peak frames.",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "remocn-port"
     ],
@@ -770,18 +782,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-3d-extrude.png"
   },
   {
-    "name": "code-accordion",
-    "type": "component",
-    "title": "Code Accordion",
-    "description": "Stacked code sections expand one at a time with line highlights.",
-    "tags": [
-      "code-animation",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/code-accordion",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/code-accordion.png"
-  },
-  {
     "name": "code-diff",
     "type": "block",
     "title": "Code Diff",
@@ -794,18 +794,6 @@
     ],
     "href": "/catalog/blocks/code-diff",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-diff.png"
-  },
-  {
-    "name": "code-diff-wipe",
-    "type": "component",
-    "title": "Code Diff Wipe",
-    "description": "A scene transition that wipes through added and removed code lines.",
-    "tags": [
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/code-diff-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/code-diff-wipe.png"
   },
   {
     "name": "code-highlight",
@@ -1345,6 +1333,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/constellation-hub.png"
   },
   {
+    "name": "cosmic-orb",
+    "type": "block",
+    "title": "Cosmic Orb",
+    "description": "An iridescent soap-bubble planet: a slowly spinning sphere of nebula bands, dust lanes and twinkling stars wrapped in a refracting glass limb with chromatic aberration at the edge.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "showcase",
+      "3d"
+    ],
+    "href": "/catalog/blocks/cosmic-orb",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.png"
+  },
+  {
     "name": "count-up",
     "type": "component",
     "title": "Count Up",
@@ -1437,18 +1440,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cut-the-curve.png"
   },
   {
-    "name": "dashboard-populate",
-    "type": "component",
-    "title": "Dashboard Populate",
-    "description": "Skeleton dashboard cards resolve into populated charts and metrics.",
-    "tags": [
-      "data",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/dashboard-populate",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dashboard-populate.png"
-  },
-  {
     "name": "data-chart",
     "type": "block",
     "title": "Data Chart",
@@ -1460,18 +1451,6 @@
     ],
     "href": "/catalog/blocks/data-chart",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png"
-  },
-  {
-    "name": "data-flow-pipes",
-    "type": "component",
-    "title": "Data Flow Pipes",
-    "description": "Animated pipe routes move packets between data nodes.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/data-flow-pipes",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/data-flow-pipes.png"
   },
   {
     "name": "decline-chart",
@@ -1506,18 +1485,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/device-frame-stage.png"
   },
   {
-    "name": "device-mockup-zoom",
-    "type": "component",
-    "title": "Device Mockup Zoom",
-    "description": "A device frame scales forward while UI panels parallax behind it.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/device-mockup-zoom",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/device-mockup-zoom.png"
-  },
-  {
     "name": "directional-wipe",
     "type": "component",
     "title": "Directional Wipe",
@@ -1542,18 +1509,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/domain-warp-dissolve.png"
   },
   {
-    "name": "drag-and-drop-flow",
-    "type": "component",
-    "title": "Drag and Drop Flow",
-    "description": "Cards drag from backlog to timeline with snap feedback.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/drag-and-drop-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drag-and-drop-flow.png"
-  },
-  {
     "name": "drift-hold",
     "type": "component",
     "title": "Drift Hold",
@@ -1575,6 +1530,7 @@
     "title": "Dynamic Grid",
     "description": "A responsive animated grid background driven by CSS variables for SaaS, code, and data scenes",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "background",
       "grid",
@@ -1598,18 +1554,6 @@
     ],
     "href": "/catalog/components/echo-trail",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/echo-trail.png"
-  },
-  {
-    "name": "ecosystem-constellation",
-    "type": "component",
-    "title": "Ecosystem Constellation",
-    "description": "Orbiting product nodes connect into a constellation graph.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/ecosystem-constellation",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ecosystem-constellation.png"
   },
   {
     "name": "editorial-flash-overlay",
@@ -1761,16 +1705,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
   },
   {
-    "name": "frosted-glass-wipe",
-    "type": "component",
-    "title": "Frosted Glass Wipe",
-    "description": "A scene transition through a moving frosted glass pane.",
+    "name": "gallery-tunnel",
+    "type": "block",
+    "title": "Gallery Tunnel",
+    "description": "An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog.",
     "tags": [
-      "transition-primitive",
-      "remocn-port"
+      "webgl",
+      "3d",
+      "background",
+      "showcase",
+      "depth",
+      "loop"
     ],
-    "href": "/catalog/components/frosted-glass-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/frosted-glass-wipe.png"
+    "href": "/catalog/blocks/gallery-tunnel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gallery-tunnel.png"
   },
   {
     "name": "gesture-tap",
@@ -1786,18 +1734,6 @@
     ],
     "href": "/catalog/components/gesture-tap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gesture-tap.png"
-  },
-  {
-    "name": "glass-code-block",
-    "type": "component",
-    "title": "Glass Code Block",
-    "description": "A translucent code block with scanned line highlights.",
-    "tags": [
-      "code-animation",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/glass-code-block",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/glass-code-block.png"
   },
   {
     "name": "glitch",
@@ -1933,6 +1869,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/halftone-dissolve.png"
   },
   {
+    "name": "halftone-field",
+    "type": "block",
+    "title": "Halftone Field",
+    "description": "A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type.",
+    "tags": [
+      "webgl",
+      "shader",
+      "background",
+      "texture",
+      "halftone"
+    ],
+    "href": "/catalog/blocks/halftone-field",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/halftone-field.png"
+  },
+  {
     "name": "headline-slam",
     "type": "component",
     "title": "Headline Slam",
@@ -1947,18 +1898,6 @@
     ],
     "href": "/catalog/components/headline-slam",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/headline-slam.png"
-  },
-  {
-    "name": "hero-device-assemble",
-    "type": "component",
-    "title": "Hero Device Assemble",
-    "description": "A landing-page device hero assembles from layers.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/hero-device-assemble",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hero-device-assemble.png"
   },
   {
     "name": "hw-arrow",
@@ -2130,6 +2069,7 @@
     "title": "Icon Swap",
     "description": "A scale-and-blur icon swap primitive for toolbar and action state changes",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "icon",
@@ -2137,42 +2077,6 @@
     ],
     "href": "/catalog/components/icon-swap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/icon-swap.png"
-  },
-  {
-    "name": "image-expand-to-fullscreen",
-    "type": "component",
-    "title": "Image Expand to Fullscreen",
-    "description": "An image tile expands into a full-frame scene transition.",
-    "tags": [
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/image-expand-to-fullscreen",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/image-expand-to-fullscreen.png"
-  },
-  {
-    "name": "infinite-bento-pan",
-    "type": "component",
-    "title": "Infinite Bento Pan",
-    "description": "A bento board pans forever with feature cards at different depths.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/infinite-bento-pan",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/infinite-bento-pan.png"
-  },
-  {
-    "name": "infinite-marquee",
-    "type": "component",
-    "title": "Infinite Marquee",
-    "description": "A looping marquee primitive for logos, tags, and feature pills.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/infinite-marquee",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/infinite-marquee.png"
   },
   {
     "name": "ink-bleed-reveal",
@@ -2280,19 +2184,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/keyframe-scrub-stack.png"
   },
   {
-    "name": "kinetic-center-build",
-    "type": "component",
-    "title": "Kinetic Center Build",
-    "description": "A centered phrase builder where words push into place until the line locks.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/kinetic-center-build",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-center-build.png"
-  },
-  {
     "name": "kinetic-type-swap",
     "type": "component",
     "title": "Kinetic Type Swap",
@@ -2306,18 +2197,6 @@
     ],
     "href": "/catalog/components/kinetic-type-swap",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-type-swap.png"
-  },
-  {
-    "name": "landing-code-showcase",
-    "type": "component",
-    "title": "Landing Code Showcase",
-    "description": "A product hero where code output becomes a live preview card.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/landing-code-showcase",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/landing-code-showcase.png"
   },
   {
     "name": "light-leak",
@@ -2426,18 +2305,6 @@
     ],
     "href": "/catalog/blocks/liquid-glass-widgets",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png"
-  },
-  {
-    "name": "live-code-compilation",
-    "type": "component",
-    "title": "Live Code Compilation",
-    "description": "A code editor compiles into a preview panel with status ticks.",
-    "tags": [
-      "code-animation",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/live-code-compilation",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/live-code-compilation.png"
   },
   {
     "name": "locked-nucleus-orbit",
@@ -2634,6 +2501,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-mask-reveal.png"
   },
   {
+    "name": "lt-neon-border",
+    "type": "block",
+    "title": "Neon Border",
+    "description": "Two arcs of light travel the edge of a rounded panel and snap corner to corner, trailing a soft three-layer bloom. A lower third for a name and role.",
+    "tags": [
+      "lower-third",
+      "glow",
+      "loop",
+      "video-primitive"
+    ],
+    "href": "/catalog/blocks/lt-neon-border",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-neon-border.png"
+  },
+  {
     "name": "lt-side-rule",
     "type": "block",
     "title": "Lower Third — Side Rule",
@@ -2722,32 +2603,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/marker-highlight.png"
   },
   {
-    "name": "mask-reveal-up",
-    "type": "component",
-    "title": "Mask Reveal Up",
-    "description": "Lines reveal upward through a tight mask with compact stagger.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/mask-reveal-up",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mask-reveal-up.png"
-  },
-  {
-    "name": "masked-slide-reveal",
-    "type": "component",
-    "title": "Masked Slide Reveal",
-    "description": "Words slide up out of an invisible horizontal mask one after another.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/masked-slide-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/masked-slide-reveal.png"
-  },
-  {
     "name": "match-cut",
     "type": "component",
     "title": "Match Cut",
@@ -2781,6 +2636,7 @@
     "title": "Menu Morph",
     "description": "A transitions.dev-inspired hamburger and plus-menu morph primitive for compact action menus",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "menu",
@@ -2800,18 +2656,6 @@
     ],
     "href": "/catalog/components/mesh-gradient-bg",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mesh-gradient-bg.png"
-  },
-  {
-    "name": "micro-scale-fade",
-    "type": "component",
-    "title": "Micro Scale Fade",
-    "description": "A tiny scale-and-opacity transition for UI state changes.",
-    "tags": [
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/micro-scale-fade",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/micro-scale-fade.png"
   },
   {
     "name": "micro-transitions",
@@ -3132,6 +2976,7 @@
     "title": "Number Pop In",
     "description": "A transitions.dev-inspired digit pop-in with blur, lift, and staggered value reveal",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "number",
@@ -3146,6 +2991,7 @@
     "title": "Number Wheel",
     "description": "A rolling digit counter primitive for metrics, prices, counts, and scoreboards",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "number",
       "counter",
@@ -3199,19 +3045,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/onboarding-stepper-flow.png"
   },
   {
-    "name": "orbital-feature-path",
-    "type": "component",
-    "title": "Orbital Feature Path",
-    "description": "Feature chips orbit a product core on timed SVG motion paths.",
-    "tags": [
-      "motionpath",
-      "gsap-plugin",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/orbital-feature-path",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/orbital-feature-path.png"
-  },
-  {
     "name": "ordered-dither-pass",
     "type": "component",
     "title": "Ordered Dither Pass",
@@ -3242,6 +3075,20 @@
     ],
     "href": "/catalog/blocks/organic-light-leak-overlay",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/organic-light-leak-overlay.png"
+  },
+  {
+    "name": "oscilloscope-trace",
+    "type": "block",
+    "title": "Oscilloscope Trace",
+    "description": "CRT oscilloscope beam sweeping a waveform across a 10x8 graticule, with closed-form phosphor persistence: the tail decays as exp(-age/tau) and brightens where the beam slows",
+    "tags": [
+      "instrument",
+      "data",
+      "showcase",
+      "retro"
+    ],
+    "href": "/catalog/blocks/oscilloscope-trace",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/oscilloscope-trace.png"
   },
   {
     "name": "outline-draw",
@@ -3295,6 +3142,7 @@
     "title": "Page Slide",
     "description": "A transitions.dev-inspired page slide primitive with outgoing and incoming panels",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "page",
@@ -3414,19 +3262,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/particle-text-dissolve.png"
   },
   {
-    "name": "per-character-rise",
-    "type": "component",
-    "title": "Per Character Rise",
-    "description": "Letters slide up from below with crisp, deliberate kinetic timing.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/per-character-rise",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/per-character-rise.png"
-  },
-  {
     "name": "per-word-crossfade",
     "type": "component",
     "title": "Per-Word Crossfade",
@@ -3500,18 +3335,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/press-ripple.png"
   },
   {
-    "name": "pricing-tier-focus",
-    "type": "component",
-    "title": "Pricing Tier Focus",
-    "description": "Pricing cards shift focus from free to pro with spotlight emphasis.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/pricing-tier-focus",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pricing-tier-focus.png"
-  },
-  {
     "name": "pull-back-reveal",
     "type": "component",
     "title": "Pull Back Reveal",
@@ -3558,6 +3381,22 @@
     ],
     "href": "/catalog/components/push-in",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/push-in.png"
+  },
+  {
+    "name": "rack-focus",
+    "type": "block",
+    "title": "Rack Focus",
+    "description": "A focus pull with real aperture bokeh: the focal plane travels from a near subject to a far one, so one resolves as the other blows into hard-edged polygon discs that clip to a cat's eye toward the corners. A focus pull only reads against content at two clearly separated depths, so this block carries its own depth-layered night exterior and puts both subject depths on variables.",
+    "tags": [
+      "webgl",
+      "shader",
+      "camera",
+      "depth",
+      "cinematic",
+      "showcase"
+    ],
+    "href": "/catalog/blocks/rack-focus",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/rack-focus.png"
   },
   {
     "name": "radial-surround",
@@ -3626,19 +3465,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ripple-waves.png"
   },
   {
-    "name": "rolling-number",
-    "type": "component",
-    "title": "Rolling Number",
-    "description": "Odometer-style number places roll at their own speed and settle exactly.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/rolling-number",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rolling-number.png"
-  },
-  {
     "name": "rubber-band-bumper",
     "type": "component",
     "title": "Rubber Band Bumper",
@@ -3652,19 +3478,6 @@
     ],
     "href": "/catalog/components/rubber-band-bumper",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rubber-band-bumper.png"
-  },
-  {
-    "name": "scale-down-fade",
-    "type": "component",
-    "title": "Scale Down Fade",
-    "description": "A restrained premium settle-in followed by scale-down fade readiness.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/scale-down-fade",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scale-down-fade.png"
   },
   {
     "name": "scan-band",
@@ -3776,6 +3589,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/segmentation-flood.png"
   },
   {
+    "name": "separator",
+    "type": "component",
+    "title": "Separator",
+    "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
+    "tags": [
+      "video-primitive",
+      "remocn-port",
+      "separator",
+      "layout"
+    ],
+    "href": "/catalog/components/separator",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/separator.png"
+  },
+  {
     "name": "settings-toggle-flow",
     "type": "component",
     "title": "Settings Toggle Flow",
@@ -3788,18 +3615,6 @@
     ],
     "href": "/catalog/components/settings-toggle-flow",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/settings-toggle-flow.png"
-  },
-  {
-    "name": "shader-displacement-panel",
-    "type": "component",
-    "title": "Shader Displacement Panel",
-    "description": "A CSS/WebGL-inspired displacement panel for premium scene reveals without a custom shader dependency.",
-    "tags": [
-      "advanced-motion",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/shader-displacement-panel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shader-displacement-panel.png"
   },
   {
     "name": "shared-axis-y",
@@ -3842,32 +3657,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
   },
   {
-    "name": "short-slide-down",
-    "type": "component",
-    "title": "Short Slide Down",
-    "description": "New words drop from above and push the stack downward into a locked composition.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/short-slide-down",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/short-slide-down.png"
-  },
-  {
-    "name": "short-slide-right",
-    "type": "component",
-    "title": "Short Slide Right",
-    "description": "The phrase glides in from the left while words reveal in sequence.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/short-slide-right",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/short-slide-right.png"
-  },
-  {
     "name": "signup-flow",
     "type": "component",
     "title": "Signup Flow",
@@ -3887,6 +3676,7 @@
     "title": "Simulated Cursor",
     "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "cursor",
       "ui",
@@ -3901,6 +3691,7 @@
     "title": "Skeleton Reveal",
     "description": "A skeleton loader transition that pulses, then cross-fades into content",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "skeleton",
@@ -3931,6 +3722,7 @@
     "title": "Slot Machine Roll",
     "description": "A vertical reel scrolls characters from one value to another.",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "remocn-port",
       "typography"
@@ -3985,16 +3777,36 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.png"
   },
   {
-    "name": "spatial-push",
-    "type": "component",
-    "title": "Spatial Push",
-    "description": "A physical depth transition that presses the old scene backward.",
+    "name": "spiral-galaxy",
+    "type": "block",
+    "title": "Spiral Galaxy",
+    "description": "A spiral galaxy seen from outside, turning with real differential rotation: inner stars orbit faster than outer ones, so the arms wind up over the shot instead of spinning rigidly. 20,000 additive GPU sprites, seeded once and solved directly from time, so any frame can be rendered on its own.",
     "tags": [
-      "transition-primitive",
-      "remocn-port"
+      "hero",
+      "space",
+      "particles",
+      "webgl",
+      "background"
     ],
-    "href": "/catalog/components/spatial-push",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spatial-push.png"
+    "href": "/catalog/blocks/spiral-galaxy",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spiral-galaxy.png"
+  },
+  {
+    "name": "split-flap-board",
+    "type": "block",
+    "title": "Split-Flap Board",
+    "description": "Solari-style departure board: every cell walks its drum forward through the intervening characters of a fixed alphabet until it lands on its target, so the text resolves as a mechanical cascade instead of a fade.",
+    "tags": [
+      "text",
+      "kinetic",
+      "mechanical",
+      "split-flap",
+      "solari",
+      "departure-board",
+      "reveal"
+    ],
+    "href": "/catalog/blocks/split-flap-board",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/split-flap-board.png"
   },
   {
     "name": "split-tilt-cards",
@@ -4055,19 +3867,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spring-pop.png"
   },
   {
-    "name": "spring-scale-in",
-    "type": "component",
-    "title": "Spring Scale In",
-    "description": "Words pop in with soft overshoot scale like a physical spring settling.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/spring-scale-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spring-scale-in.png"
-  },
-  {
     "name": "spring-stack-shuffle",
     "type": "component",
     "title": "Spring Stack Shuffle",
@@ -4116,6 +3915,7 @@
     "title": "Staggered Fade Up",
     "description": "Words fade in and slide up one after another with configurable delay.",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "remocn-port",
       "typography"
@@ -4239,6 +4039,7 @@
     "title": "Success Check",
     "description": "A success check primitive with ring pop, path draw, and subtle rotate blur",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "success",
@@ -4253,6 +4054,7 @@
     "title": "SVG Line Draw Loader",
     "description": "An Anime.js-style path drawing loader implemented as a seekable GSAP stroke timeline.",
     "tags": [
+      "video-primitive",
       "advanced-motion",
       "anime-inspired",
       "hyperframes-native"
@@ -4362,18 +4164,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/terminal-simulator.png"
   },
   {
-    "name": "terminal-to-browser-deploy",
-    "type": "component",
-    "title": "Terminal to Browser Deploy",
-    "description": "Terminal deploy logs hand off into a live browser preview.",
-    "tags": [
-      "showcase",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/terminal-to-browser-deploy",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/terminal-to-browser-deploy.png"
-  },
-  {
     "name": "testimonial-card",
     "type": "component",
     "title": "Testimonial Card",
@@ -4426,6 +4216,7 @@
     "title": "Text Stagger",
     "description": "A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "text",
@@ -4440,6 +4231,7 @@
     "title": "Text State Swap",
     "description": "A text state swap primitive with outgoing blur and incoming lift",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "text",
@@ -4476,30 +4268,31 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thermal-distortion.png"
   },
   {
+    "name": "thread-message-stack",
+    "type": "block",
+    "title": "Thread Message Stack",
+    "description": "A source-owned editable conversation stack with arbitrary incoming and outgoing messages",
+    "tags": [
+      "social",
+      "conversation",
+      "messages"
+    ],
+    "href": "/catalog/blocks/thread-message-stack",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thread-message-stack.png"
+  },
+  {
     "name": "three-orbiting-cards",
     "type": "component",
     "title": "Three Orbiting Cards",
     "description": "A Three.js-powered orbit scene driven by a paused GSAP timeline for deterministic renders.",
     "tags": [
+      "video-primitive",
       "three-js",
       "webgl",
       "hyperframes-native"
     ],
     "href": "/catalog/components/three-orbiting-cards",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/three-orbiting-cards.png"
-  },
-  {
-    "name": "three-particle-ribbon",
-    "type": "component",
-    "title": "Three Particle Ribbon",
-    "description": "A lightweight Three.js point ribbon with timeline-controlled camera and shader-like color drift.",
-    "tags": [
-      "three-js",
-      "webgl",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/three-particle-ribbon",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/three-particle-ribbon.png"
   },
   {
     "name": "ticker-takeover",
@@ -4536,6 +4329,7 @@
     "title": "Tilt Card",
     "description": "A transitions.dev-inspired tilt card primitive with depth layers and hover-style parallax",
     "tags": [
+      "video-primitive",
       "transition-primitive",
       "transitions-dev-port",
       "card",
@@ -4592,23 +4386,12 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle-flip.png"
   },
   {
-    "name": "tool-menu-slide-in",
-    "type": "component",
-    "title": "Tool Menu Slide In",
-    "description": "A tool menu enters with short-axis slide and icon stagger.",
-    "tags": [
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/tool-menu-slide-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tool-menu-slide-in.png"
-  },
-  {
     "name": "top-down-letters",
     "type": "component",
     "title": "Top-Down Letters",
     "description": "Letters descend from above in a pronounced staircase with zero blur.",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "remocn-port",
       "typography"
@@ -4868,6 +4651,7 @@
     "title": "Typewriter",
     "description": "Character-by-character text reveal with a deterministic blinking cursor.",
     "tags": [
+      "video-primitive",
       "motion-primitive",
       "remocn-port",
       "typography"
@@ -5035,6 +4819,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/velocity-throw-snap.png"
   },
   {
+    "name": "vfx-anamorphic-flare",
+    "type": "block",
+    "title": "Anamorphic Streak Flare",
+    "description": "A drifting field of bright points, each one throwing the long horizontal blue-violet streak a real anamorphic cinema lens produces. Built from the measured filter constants: a 0.3 high-pass, 80 horizontal taps at quarter resolution, a samples/3 gain and a 0x7a8aff tint.",
+    "tags": [
+      "vfx",
+      "background",
+      "showcase",
+      "optical",
+      "canvas"
+    ],
+    "href": "/catalog/blocks/vfx-anamorphic-flare",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-anamorphic-flare.png"
+  },
+  {
     "name": "vfx-iphone-device",
     "type": "block",
     "title": "iPhone & MacBook 3D Showcase",
@@ -5172,6 +4971,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
+    "name": "weight-wave",
+    "type": "block",
+    "title": "Weight Wave",
+    "description": "A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms.",
+    "tags": [
+      "typography",
+      "kinetic-type",
+      "title",
+      "variable-font",
+      "text"
+    ],
+    "href": "/catalog/blocks/weight-wave",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/weight-wave.png"
+  },
+  {
     "name": "whip-pan",
     "type": "block",
     "title": "Whip Pan",
@@ -5258,18 +5072,6 @@
     ],
     "href": "/catalog/components/x-follow-card",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-follow-card.png"
-  },
-  {
-    "name": "x-followers-overview",
-    "type": "component",
-    "title": "X Followers Overview",
-    "description": "A social analytics card with count-up and audience pills.",
-    "tags": [
-      "social-overlay",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/x-followers-overview",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-followers-overview.png"
   },
   {
     "name": "x-post",

@@ -4,49 +4,16 @@ description: "A camera and QR recognition moment with a viewfinder sweep, bracke
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/camera-scan-gate.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Camera Scan Gate preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/camera-scan-gate.html"
+  compositionId="camera-scan-gate"
+  compositionSrc="compositions/components/camera-scan-gate.html"
+  variables={[{"id":"scanColor","type":"string","role":"style","label":"Scan color","description":"Any CSS color value used by the scan line and recognition glow.","default":"var(--brand)"},{"id":"targetLabel","type":"string","role":"content","label":"Target label","description":"Confirmation label revealed at recognition lock. Blank hides the line.","default":"Verified"},{"id":"sweepSpeed","type":"number","role":"timing","label":"Sweep speed","description":"Speed multiplier for the scan sweep phase only.","default":1,"min":0.8,"max":1.6,"step":0.1,"unit":"x"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add camera-scan-gate" />
-
-That writes one file: `compositions/components/camera-scan-gate.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/camera-scan-gate.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `scanColor` | `var(--brand)` | string | Any CSS color value used by the scan line and recognition glow. |
-| `targetLabel` | `Verified` | string | Confirmation label revealed at recognition lock. Blank hides the line. |
-| `sweepSpeed` | `1` | 0.8x to 1.6x, step 0.1x | Speed multiplier for the scan sweep phase only. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="camera-scan-gate"
-  data-composition-src="compositions/components/camera-scan-gate.html"
-  data-variable-values='{"scanColor":"var(--brand)","targetLabel":"Verified","sweepSpeed":1}'
-></div>
-```
-
-## Source
-
-<Accordion title={`camera-scan-gate.html`}>
-
-```html
+```html camera-scan-gate.html
 <!doctype html>
 <!--
   camera-scan-gate -- HyperFrames video primitive (ui-props / interaction / demonstrate)
@@ -571,7 +538,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add camera-scan-gate" />
+
+That writes one file: `compositions/components/camera-scan-gate.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/camera-scan-gate.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

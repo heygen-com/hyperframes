@@ -4,51 +4,16 @@ description: "A deliberately oversized macOS-style pointer that enters off-scree
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/oversized-cursor.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Oversized Cursor preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/oversized-cursor.html"
+  compositionId="oversized-cursor"
+  compositionSrc="compositions/components/oversized-cursor.html"
+  variables={[{"id":"cursor_variant","type":"enum","role":"style","label":"Cursor fill","default":"light","options":[{"value":"light","label":"Light (white body)"},{"value":"dark","label":"Dark (near-black body)"}]},{"id":"target_x","type":"number","role":"layout","label":"Target X","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Target Y","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"click_label","type":"string","role":"content","label":"Click label","default":"Generate"},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional whole-stage departure. Default none: the ignited target stays until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add oversized-cursor" />
-
-That writes one file: `compositions/components/oversized-cursor.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/oversized-cursor.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `cursor_variant` | `light` | `light`, `dark` |  |
-| `target_x` | `55` | 15% to 85%, step 1% |  |
-| `target_y` | `55` | 15% to 85%, step 1% |  |
-| `click_label` | `Generate` | string |  |
-| `exit` | `none` | `none`, `fade`, `up` | Optional whole-stage departure. Default none: the ignited target stays until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="oversized-cursor"
-  data-composition-src="compositions/components/oversized-cursor.html"
-  data-variable-values='{"cursor_variant":"light","target_x":55,"target_y":55,"click_label":"Generate","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`oversized-cursor.html`}>
-
-```html
+```html oversized-cursor.html
 <!doctype html>
 <!--
   Oversized Cursor (actor primitive), mountable sub-composition
@@ -158,7 +123,7 @@ defaults, so this behaves exactly like the preview above until you change one:
           background: color-mix(
             in srgb,
             var(--surface, #f8fafc) calc((1 - var(--oc-ignite, 0)) * 100%),
-            var(--brand, #2563eb) calc(var(--oc-ignite, 0) * 100%)
+            var(--brand, #52525b) calc(var(--oc-ignite, 0) * 100%)
           );
           box-shadow: 0 1.2cqw 3.2cqw rgba(2, 6, 23, 0.24);
           --oc-ignite: 0;
@@ -241,7 +206,7 @@ defaults, so this behaves exactly like the preview above until you change one:
           min-width: 12px;
           min-height: 12px;
           border-radius: 999px;
-          border: 0.24cqw solid var(--accent, #22c55e);
+          border: 0.24cqw solid color-mix(in srgb, var(--fg, #ffffff) 45%, transparent);
           transform: translate(-50%, -50%);
           opacity: 0;
         }
@@ -477,7 +442,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add oversized-cursor" />
+
+That writes one file: `compositions/components/oversized-cursor.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/oversized-cursor.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

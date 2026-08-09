@@ -4,49 +4,16 @@ description: "A metric line draws downward as its value counts down and the ambi
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/decline-chart.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Decline Chart preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/decline-chart.html"
+  compositionId="decline-chart"
+  compositionSrc="compositions/components/decline-chart.html"
+  variables={[{"id":"label","type":"string","role":"content","label":"Metric label","description":"Label shown above the declining value.","default":"Retention"},{"id":"start_value","type":"number","role":"content","label":"Start value","description":"Metric value at the start of the decline.","default":82,"min":0,"max":100,"step":1},{"id":"end_value","type":"number","role":"content","label":"End value","description":"Metric value at the bottom of the decline.","default":34,"min":0,"max":100,"step":1}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add decline-chart" />
-
-That writes one file: `compositions/components/decline-chart.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/decline-chart.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label` | `Retention` | string | Label shown above the declining value. |
-| `start_value` | `82` | 0 to 100, step 1 | Metric value at the start of the decline. |
-| `end_value` | `34` | 0 to 100, step 1 | Metric value at the bottom of the decline. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="decline-chart"
-  data-composition-src="compositions/components/decline-chart.html"
-  data-variable-values='{"label":"Retention","start_value":82,"end_value":34}'
-></div>
-```
-
-## Source
-
-<Accordion title={`decline-chart.html`}>
-
-```html
+```html decline-chart.html
 <!doctype html>
 <!--
   decline-chart: HyperFrames video primitive
@@ -325,7 +292,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add decline-chart" />
+
+That writes one file: `compositions/components/decline-chart.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/decline-chart.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

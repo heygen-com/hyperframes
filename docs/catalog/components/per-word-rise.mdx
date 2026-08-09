@@ -4,51 +4,16 @@ description: "Words or characters rise into place in a controlled blur-to-sharp 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/per-word-rise.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Per Word Rise preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/per-word-rise.html"
+  compositionId="per-word-rise"
+  compositionSrc="compositions/components/per-word-rise.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Text whose words or characters rise into place.","default":"WORDS IN MOTION"},{"id":"split","type":"enum","role":"content","label":"Split","description":"Animate the text as words or individual characters.","default":"word","options":[{"value":"word","label":"Word"},{"value":"char","label":"Character"}]},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated seconds (from mount start) for each unit landing. Empty keeps the authored cascade rhythm.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract accent token used for the text color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the line holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add per-word-rise" />
-
-That writes one file: `compositions/components/per-word-rise.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/per-word-rise.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `WORDS IN MOTION` | string | Text whose words or characters rise into place. |
-| `split` | `word` | `word`, `char` | Animate the text as words or individual characters. |
-| `cues` | `` | string | Comma-separated seconds (from mount start) for each unit landing. Empty keeps the authored cascade rhythm. |
-| `accent` | `green` | `green`, `blue`, `violet` | Contract accent token used for the text color. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the line holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="per-word-rise"
-  data-composition-src="compositions/components/per-word-rise.html"
-  data-variable-values='{"text":"WORDS IN MOTION","split":"word","cues":"","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`per-word-rise.html`}>
-
-```html
+```html per-word-rise.html
 <!doctype html>
 <!--
   per-word-rise: HyperFrames video primitive (text effects / reveal)
@@ -368,7 +333,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add per-word-rise" />
+
+That writes one file: `compositions/components/per-word-rise.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/per-word-rise.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,51 +4,16 @@ description: "A whiteboard sketch draws one measured stroke at a time while a pe
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/whiteboard-ink.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Whiteboard Ink preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/whiteboard-ink.html"
+  compositionId="whiteboard-ink"
+  compositionSrc="compositions/components/whiteboard-ink.html"
+  variables={[{"id":"sketch","type":"enum","role":"content","label":"Sketch","description":"Authored preset sketch to draw. Ignored when the strokes slot holds custom paths.","default":"bulb","options":[{"value":"bulb","label":"Bulb"},{"value":"flow","label":"Flow"},{"value":"rocket","label":"Rocket"}]},{"id":"caption","type":"string","role":"content","label":"Caption","description":"Short line shown after the sketch completes.","default":"Draw the idea"},{"id":"pen","type":"enum","role":"style","label":"Pen","description":"Show or hide the pen nib actor.","default":"show","options":[{"value":"show","label":"Show"},{"value":"hide","label":"Hide"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by strokes marked data-ink=accent (one highlight stroke in each preset).","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"style","label":"Exit","description":"How the completed lockup leaves. none holds the final frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add whiteboard-ink" />
-
-That writes one file: `compositions/components/whiteboard-ink.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/whiteboard-ink.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `sketch` | `bulb` | `bulb`, `flow`, `rocket` | Authored preset sketch to draw. Ignored when the strokes slot holds custom paths. |
-| `caption` | `Draw the idea` | string | Short line shown after the sketch completes. |
-| `pen` | `show` | `show`, `hide` | Show or hide the pen nib actor. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used by strokes marked data-ink=accent (one highlight stroke in each preset). |
-| `exit` | `none` | `none`, `fade`, `up` | How the completed lockup leaves. none holds the final frame. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="whiteboard-ink"
-  data-composition-src="compositions/components/whiteboard-ink.html"
-  data-variable-values='{"sketch":"bulb","caption":"Draw the idea","pen":"show","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`whiteboard-ink.html`}>
-
-```html
+```html whiteboard-ink.html
 <!doctype html>
 <!--
   whiteboard-ink: HyperFrames video primitive (intros and reveals / ink draw)
@@ -592,7 +557,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add whiteboard-ink" />
+
+That writes one file: `compositions/components/whiteboard-ink.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/whiteboard-ink.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

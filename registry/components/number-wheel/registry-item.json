@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Number Wheel",
   "description": "A rolling digit counter primitive for metrics, prices, counts, and scoreboards",
-  "tags": ["motion-primitive", "number", "counter", "data"],
+  "tags": ["video-primitive", "motion-primitive", "number", "counter", "data"],
   "files": [
     {
       "path": "number-wheel.html",

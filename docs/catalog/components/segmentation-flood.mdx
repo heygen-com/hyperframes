@@ -4,51 +4,16 @@ description: "Machine-vision read of a slotted subject: translucent accent segme
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/segmentation-flood.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Segmentation Flood preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/segmentation-flood.html"
+  compositionId="segmentation-flood"
+  compositionSrc="compositions/components/segmentation-flood.html"
+  variables={[{"id":"regions","type":"string","role":"content","label":"Regions","description":"Comma-separated region labels; 2 to 4 are used, one translucent mask + bracket + mono chip each.","default":"Figure, Signal, Ground"},{"id":"flood_at","type":"number","role":"timing","label":"Flood at","description":"Seconds from mount start when the segmentation pass begins. Clamped so the pass and any exit stay inside the clip.","default":0.8},{"id":"flicker","type":"enum","role":"style","label":"Flicker","description":"Deterministic 2-frame HUD luminance toggle riding the flood pass.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Mask, bracket, and chip color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the labeled read holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add segmentation-flood" />
-
-That writes one file: `compositions/components/segmentation-flood.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/segmentation-flood.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `regions` | `Figure, Signal, Ground` | string | Comma-separated region labels; 2 to 4 are used, one translucent mask + bracket + mono chip each. |
-| `flood_at` | `0.8` | number | Seconds from mount start when the segmentation pass begins. Clamped so the pass and any exit stay inside the clip. |
-| `flicker` | `on` | `on`, `off` | Deterministic 2-frame HUD luminance toggle riding the flood pass. |
-| `accent` | `green` | `green`, `blue`, `violet` | Mask, bracket, and chip color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the labeled read holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="segmentation-flood"
-  data-composition-src="compositions/components/segmentation-flood.html"
-  data-variable-values='{"regions":"Figure, Signal, Ground","flood_at":0.8,"flicker":"on","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`segmentation-flood.html`}>
-
-```html
+```html segmentation-flood.html
 <!doctype html>
 <!--
   segmentation-flood: HyperFrames video primitive (product demo / AI)
@@ -564,7 +529,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add segmentation-flood" />
+
+That writes one file: `compositions/components/segmentation-flood.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/segmentation-flood.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

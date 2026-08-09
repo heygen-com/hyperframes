@@ -4,43 +4,16 @@ description: "A transitions.dev-inspired digit pop-in with blur, lift, and stagg
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/number-pop-in.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Number Pop In preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/number-pop-in.html"
+  compositionId="number-pop-in"
+  compositionSrc="compositions/components/number-pop-in.html"
+  variables={[{"id":"value","type":"string","role":"content","label":"Value","description":"The number itself. Every character becomes its own span, so the stagger still lands character by character.","default":"5.7"},{"id":"unit","type":"string","role":"content","label":"Unit","description":"Small suffix printed after the number. Pass an empty string to drop it.","default":"k"},{"id":"lift","type":"enum","role":"motion","label":"Lift","description":"Scales the offset the timeline drives, so the characters cover a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Number colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add number-pop-in" />
-
-That writes one file: `compositions/components/number-pop-in.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `value` | `5.7` | string | The number itself. Every character becomes its own span, so the stagger still lands character by character. |
-| `unit` | `k` | string | Small suffix printed after the number. Pass an empty string to drop it. |
-| `lift` | `standard` | `close`, `standard`, `far` | Scales the offset the timeline drives, so the characters cover a shorter or longer run in the same time. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Number colour: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="number-pop-in"
-  data-composition-src="compositions/components/number-pop-in.html"
-  data-variable-values='{"value":"5.7","unit":"k","lift":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`number-pop-in.html`}>
-
-```html
+```html number-pop-in.html
 <!--
   Number Pop In - transitions.dev-inspired primitive for HyperFrames.
 
@@ -163,7 +136,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add number-pop-in" />
+
+That writes one file: `compositions/components/number-pop-in.html`.
 
 ## Usage
 
@@ -171,7 +150,7 @@ Open `compositions/components/number-pop-in.html` and paste its contents into yo
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `number` `pop`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `number` `pop`.
 
 ## Related topics
 

@@ -32,7 +32,7 @@
         transform: scale(1.65);
       }
       .hf-remocn-terminal-simulator {
-        --hf-accent: #2563eb;
+        --hf-accent: var(--accent, #18181b);
         --hf-ink: #111827;
         --hf-muted: #6b7280;
         --hf-surface: #ffffff;
@@ -44,7 +44,7 @@
         border-radius: 24px;
         overflow: hidden;
         background: #0f172a;
-        color: #dbeafe;
+        color: #e4e4e7;
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
@@ -88,7 +88,7 @@
         display: block;
         height: 18px;
         border-radius: 999px;
-        background: linear-gradient(90deg, #38bdf8, #a78bfa);
+        background: rgba(228, 228, 231, 0.18);
         transform: scaleX(var(--hf-line, 1));
         transform-origin: left center;
         opacity: var(--hf-line-opacity, 1);

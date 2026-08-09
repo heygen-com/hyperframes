@@ -4,43 +4,16 @@ description: "A pill indicator transition that slides between active tabs"
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/tabs-slide-indicator.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Tabs Slide Indicator preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/tabs-slide-indicator.html"
+  compositionId="tabs-slide-indicator"
+  compositionSrc="compositions/components/tabs-slide-indicator.html"
+  variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Fill of the sliding pill. ink is literal; the rest ride the composition theme tokens.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"width","type":"enum","role":"layout","label":"Tab width","description":"Width of one tab. The slide the timeline drives is scaled to match, so the pill still lands on the next tab.","default":"standard","options":[{"value":"compact","label":"Compact"},{"value":"standard","label":"Standard"},{"value":"wide","label":"Wide"}]},{"id":"shape","type":"enum","role":"style","label":"Shape","description":"Corner radius of the track and the pill.","default":"pill","options":[{"value":"pill","label":"Pill"},{"value":"rounded","label":"Rounded"},{"value":"square","label":"Square"}]},{"id":"labels","type":"string","role":"content","label":"Labels","description":"The tab names, separated by commas. Two or more names rebuild the row.","default":"Plan,Debug,Ask"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add tabs-slide-indicator" />
-
-That writes one file: `compositions/components/tabs-slide-indicator.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `accent` | `ink` | `ink`, `green`, `blue`, `violet` | Fill of the sliding pill, with a drop shadow tinted to match. |
-| `width` | `standard` | `compact`, `standard`, `wide` | Width of one tab. The slide the timeline drives is scaled to match, so the pill still lands on the next tab. |
-| `shape` | `pill` | `pill`, `rounded`, `square` | Corner radius of the track and the pill. |
-| `labels` | `Plan,Debug,Ask` | string | The tab names, separated by commas. Two or more names rebuild the row. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="tabs-slide-indicator"
-  data-composition-src="compositions/components/tabs-slide-indicator.html"
-  data-variable-values='{"accent":"ink","width":"standard","shape":"pill","labels":"Plan,Debug,Ask"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`tabs-slide-indicator.html`}>
-
-```html
+```html tabs-slide-indicator.html
 <!--
   Tabs Slide Indicator - transitions.dev-inspired primitive for HyperFrames.
 
@@ -55,8 +28,10 @@ defaults, so this behaves exactly like the preview above until you change one:
   wide that tab is, what the pill looks like and what the tabs say.
 
     - accent (ink | green | blue | violet, default ink): fill of the sliding
-      pill, with a drop shadow tinted to match. The labels sitting on it stay
-      white, so all four keep the active tab readable.
+      pill. ink is a literal near-black; the other three ride the composition's
+      own brand, accent and accent-2 tokens and fall back to that same ink when
+      the composition declares none. The labels sitting on it stay white, so all
+      four keep the active tab readable.
     - width (compact | standard | wide, default standard): width of one tab,
       72px, 86px or 104px. The slide the timeline drives is scaled by the same
       ratio, so the pill still lands exactly on the next tab rather than
@@ -74,7 +49,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   class="hf-transition-tabs-slide-indicator"
   data-composition-variables='[
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Fill of the sliding pill, with a drop shadow tinted to match.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Fill of the sliding pill. ink is literal; the rest ride the composition theme tokens.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
     { "id": "width", "type": "enum", "role": "layout", "label": "Tab width", "description": "Width of one tab. The slide the timeline drives is scaled to match, so the pill still lands on the next tab.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
     { "id": "shape", "type": "enum", "role": "style", "label": "Shape", "description": "Corner radius of the track and the pill.", "default": "pill", "options": [{ "value": "pill", "label": "Pill" }, { "value": "rounded", "label": "Rounded" }, { "value": "square", "label": "Square" }] },
     { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "The tab names, separated by commas. Two or more names rebuild the row.", "default": "Plan,Debug,Ask" }
@@ -104,7 +79,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     border-radius: var(--hf-tab-radius, 999px);
     background: var(--hf-tab-fill, #18181b);
     transform: translateX(calc(var(--hf-tab-x) * var(--hf-tab-step, 1)));
-    box-shadow: 0 12px 26px var(--hf-tab-shadow, rgba(24, 24, 27, 0.18));
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
   }
   .hf-transition-tabs-slide-indicator button {
     position: relative;
@@ -130,11 +105,13 @@ defaults, so this behaves exactly like the preview above until you change one:
         : {};
 
     // Unrecognised overrides return to their declared defaults.
+    // The pill is the one accent-carrying element here, so the three chromatic
+    // options ride the composition's own tokens and fall back to ink.
     var accents = {
-      ink: { fill: "#18181b", shadow: "rgba(24, 24, 27, 0.18)" },
-      green: { fill: "#16a34a", shadow: "rgba(22, 163, 74, 0.24)" },
-      blue: { fill: "#2563eb", shadow: "rgba(37, 99, 235, 0.24)" },
-      violet: { fill: "#7c3aed", shadow: "rgba(124, 58, 237, 0.24)" },
+      ink: "#18181b",
+      green: "var(--brand, #18181b)",
+      blue: "var(--accent, #18181b)",
+      violet: "var(--accent-2, #18181b)",
     };
     var widths = { compact: 72, standard: 86, wide: 104 };
     var shapes = { pill: "999px", rounded: "12px", square: "4px" };
@@ -158,8 +135,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
     var roots = document.querySelectorAll(".hf-transition-tabs-slide-indicator");
     for (var i = 0; i < roots.length; i += 1) {
-      roots[i].style.setProperty("--hf-tab-fill", accent.fill);
-      roots[i].style.setProperty("--hf-tab-shadow", accent.shadow);
+      roots[i].style.setProperty("--hf-tab-fill", accent);
       roots[i].style.setProperty("--hf-tab-width", width + "px");
       // The timeline slides the pill by one standard tab, so scale that slide
       // to whatever a tab is actually worth here.
@@ -188,7 +164,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add tabs-slide-indicator" />
+
+That writes one file: `compositions/components/tabs-slide-indicator.html`.
 
 ## Usage
 

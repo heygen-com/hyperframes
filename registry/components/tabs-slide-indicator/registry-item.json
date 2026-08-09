@@ -18,7 +18,7 @@
       "type": "enum",
       "role": "style",
       "label": "Accent",
-      "description": "Fill of the sliding pill, with a drop shadow tinted to match.",
+      "description": "Fill of the sliding pill. ink is literal; the rest ride the composition theme tokens.",
       "default": "ink",
       "options": [
         { "value": "ink", "label": "Ink" },

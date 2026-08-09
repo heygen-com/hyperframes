@@ -226,6 +226,15 @@
             box-shadow: 0 0.7cqh 1.4cqh color-mix(in srgb, var(--mds-accent) 30%, transparent);
           }
 
+          /* Placeholder ramp: every stand-in surface inside a device screen is
+             an alpha step of the ink. Accent stays on the app mark alone. */
+          .mds-screen {
+            --mds-l1: rgba(15, 23, 42, 0.72);
+            --mds-l2: rgba(15, 23, 42, 0.45);
+            --mds-l3: rgba(15, 23, 42, 0.18);
+            --mds-l4: rgba(15, 23, 42, 0.08);
+          }
+
           .mds-line {
             height: 0.7cqh;
             border-radius: 1cqh;
@@ -240,12 +249,8 @@
             height: 12cqh;
             margin-bottom: 1.6cqh;
             border-radius: 1.4cqh;
-            background: linear-gradient(
-              145deg,
-              color-mix(in srgb, var(--mds-accent) 82%, white),
-              var(--mds-accent)
-            );
-            box-shadow: 0 1.3cqh 2.7cqh color-mix(in srgb, var(--mds-accent) 25%, transparent);
+            background: var(--mds-l3, rgba(15, 23, 42, 0.18));
+            box-shadow: inset 0 0 0 0.1cqh rgba(15, 23, 42, 0.14);
           }
 
           .mds-mobile-row {
@@ -265,7 +270,7 @@
             width: 2.6cqh;
             height: 2.6cqh;
             border-radius: 0.8cqh;
-            background: color-mix(in srgb, var(--mds-accent) 20%, white);
+            background: var(--mds-l3, rgba(15, 23, 42, 0.18));
           }
 
           .mds-mobile-row .mds-line:first-child {
@@ -311,7 +316,7 @@
           }
 
           .mds-nav-line-active {
-            background: color-mix(in srgb, var(--mds-accent) 78%, white);
+            background: rgba(255, 255, 255, 0.72);
           }
 
           .mds-tablet-main {
@@ -337,12 +342,8 @@
             height: 12cqh;
             margin-bottom: 1.5cqh;
             border-radius: 1.25cqh;
-            background: linear-gradient(
-              120deg,
-              color-mix(in srgb, var(--mds-accent) 26%, white),
-              white
-            );
-            box-shadow: inset 0 0 0 0.1cqh color-mix(in srgb, var(--mds-accent) 24%, transparent);
+            background: var(--mds-l4, rgba(15, 23, 42, 0.08));
+            box-shadow: inset 0 0 0 0.1cqh rgba(15, 23, 42, 0.14);
           }
 
           .mds-tablet-grid {
@@ -366,7 +367,7 @@
             height: 2.2cqh;
             margin-bottom: 1.4cqh;
             border-radius: 0.65cqh;
-            background: color-mix(in srgb, var(--mds-accent) 24%, white);
+            background: var(--mds-l3, rgba(15, 23, 42, 0.18));
           }
 
           .mds-tablet-card::after {
@@ -447,7 +448,7 @@
           }
 
           .mds-desktop-stat:first-child {
-            background: color-mix(in srgb, var(--mds-accent) 18%, white);
+            background: var(--mds-l3, rgba(15, 23, 42, 0.18));
           }
 
           .mds-desktop-chart {
@@ -470,13 +471,13 @@
             bottom: 18%;
             height: 0.42cqh;
             border-radius: 1cqh;
-            background: var(--mds-accent);
+            background: var(--mds-l2, rgba(15, 23, 42, 0.45));
             box-shadow:
-              3.5cqw -2.3cqh 0 var(--mds-accent),
-              7cqw -1.1cqh 0 var(--mds-accent),
-              10.5cqw -4.6cqh 0 var(--mds-accent),
-              14cqw -3.6cqh 0 var(--mds-accent),
-              17.5cqw -6.7cqh 0 var(--mds-accent);
+              3.5cqw -2.3cqh 0 var(--mds-l2, rgba(15, 23, 42, 0.45)),
+              7cqw -1.1cqh 0 var(--mds-l2, rgba(15, 23, 42, 0.45)),
+              10.5cqw -4.6cqh 0 var(--mds-l2, rgba(15, 23, 42, 0.45)),
+              14cqw -3.6cqh 0 var(--mds-l2, rgba(15, 23, 42, 0.45)),
+              17.5cqw -6.7cqh 0 var(--mds-l2, rgba(15, 23, 42, 0.45));
           }
         </style>
 
@@ -602,9 +603,9 @@
                 : {};
 
             var accentColors = {
-              green: "#22c55e",
-              blue: "#3b82f6",
-              violet: "#8b5cf6",
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #3b82f6)",
+              violet: "var(--accent-2, #8b5cf6)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent

@@ -4,49 +4,16 @@ description: "A heavyweight headline scales down into frame, lands with a determ
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/headline-slam.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Headline Slam preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/headline-slam.html"
+  compositionId="headline-slam"
+  compositionSrc="compositions/components/headline-slam.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text displayed as the headline.","default":"Ship it today"},{"id":"accent_word_index","type":"number","role":"content","label":"Accent word index","description":"Zero-based word index to color. Out of range leaves the headline unaccented.","default":1,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied to the selected word.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"shadow","type":"boolean","role":"style","label":"Shadow","description":"Drop shadow cast under the headline. On by default; set false for a flat matte look.","default":true}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add headline-slam" />
-
-That writes one file: `compositions/components/headline-slam.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/headline-slam.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Ship it today` | string | Text displayed as the headline. |
-| `accent_word_index` | `1` | number | Zero-based word index to color. Out of range leaves the headline unaccented. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color applied to the selected word. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="headline-slam"
-  data-composition-src="compositions/components/headline-slam.html"
-  data-variable-values='{"text":"Ship it today","accent_word_index":1,"accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`headline-slam.html`}>
-
-```html
+```html headline-slam.html
 <!doctype html>
 <!--
   headline-slam: HyperFrames video primitive
@@ -59,6 +26,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     text: headline copy
     accent_word_index: zero-based word index to color, out of range colors none
     accent: green, blue, or violet accent color
+    shadow: drop shadow under the headline, on by default
 
   Envelope, fixed IN and OUT with elastic HOLD:
     IN_BASE  = 0.72s, headline slam and three-frame impact shake
@@ -79,7 +47,8 @@ defaults, so this behaves exactly like the preview above until you change one:
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Headline", "description": "Text displayed as the headline.", "default": "Ship it today" },
     { "id": "accent_word_index", "type": "number", "role": "content", "label": "Accent word index", "description": "Zero-based word index to color. Out of range leaves the headline unaccented.", "default": 1, "step": 1 },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the selected word.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the selected word.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "shadow", "type": "boolean", "role": "style", "label": "Shadow", "description": "Drop shadow cast under the headline. On by default; set false for a flat matte look.", "default": true }
   ]'
 >
   <head>
@@ -138,10 +107,14 @@ defaults, so this behaves exactly like the preview above until you change one:
             line-height: 0.88;
             letter-spacing: -0.5cqw;
             text-align: center;
-            text-shadow: 0 1.2cqh 4.5cqh color-mix(in srgb, #000 52%, transparent);
             white-space: nowrap;
             transform-origin: 50% 50%;
             will-change: transform, opacity;
+          }
+
+          /* Shadow is on by default; the shadow variable opts out of it. */
+          .hs-headline.hs-shadow {
+            text-shadow: 0 1.2cqh 4.5cqh color-mix(in srgb, #000 52%, transparent);
           }
 
           .hs-word {
@@ -182,16 +155,18 @@ defaults, so this behaves exactly like the preview above until you change one:
             var indexValue = Number(vars.accent_word_index);
             var accentWordIndex = Number.isFinite(indexValue) ? Math.trunc(indexValue) : 1;
             var accentColors = {
-              green: "#71f5a7",
-              blue: "#61a8ff",
-              violet: "#b895ff",
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #b895ff)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            var shadow = !(vars.shadow === false || vars.shadow === "false");
             var words = text.trim() === "" ? [] : text.trim().split(/\s+/);
 
             root.style.setProperty("--hs-accent", accentColors[accent]);
+            headline.classList.toggle("hs-shadow", shadow);
             headline.setAttribute("aria-label", text);
 
             words.forEach(function (word, index) {
@@ -278,7 +253,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add headline-slam" />
+
+That writes one file: `compositions/components/headline-slam.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/headline-slam.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,48 +4,16 @@ description: "An icon morphs between authored state silhouettes, shifts to an ac
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/icon-morph-beat.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Icon Morph Beat preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/icon-morph-beat.html"
+  compositionId="icon-morph-beat"
+  compositionSrc="compositions/components/icon-morph-beat.html"
+  variables={[{"id":"pair","type":"enum","role":"content","label":"Icon pair","description":"Before and after icon states used by the morph.","default":"mic-check","options":[{"value":"mic-check","label":"Mic to check"},{"value":"play-check","label":"Play to check"},{"value":"lock-unlock","label":"Lock to unlock"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied as the morph completes.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add icon-morph-beat" />
-
-That writes one file: `compositions/components/icon-morph-beat.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/icon-morph-beat.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `pair` | `mic-check` | `mic-check`, `play-check`, `lock-unlock` | Before and after icon states used by the morph. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color applied as the morph completes. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="icon-morph-beat"
-  data-composition-src="compositions/components/icon-morph-beat.html"
-  data-variable-values='{"pair":"mic-check","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`icon-morph-beat.html`}>
-
-```html
+```html icon-morph-beat.html
 <!doctype html>
 <!--
   icon-morph-beat: HyperFrames video primitive (product-demo / state-change)
@@ -306,7 +274,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add icon-morph-beat" />
+
+That writes one file: `compositions/components/icon-morph-beat.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/icon-morph-beat.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

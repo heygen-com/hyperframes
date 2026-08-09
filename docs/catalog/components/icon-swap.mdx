@@ -4,43 +4,16 @@ description: "A scale-and-blur icon swap primitive for toolbar and action state 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/icon-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Icon Swap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/icon-swap.html"
+  compositionId="icon-swap"
+  compositionSrc="compositions/components/icon-swap.html"
+  variables={[{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Button fill and glyph colour. Accent rides --brand.","default":"dark","options":[{"value":"dark","label":"Dark"},{"value":"light","label":"Light"},{"value":"accent","label":"Accent"}]},{"id":"size","type":"enum","role":"layout","label":"Size","description":"Button box and glyph size, from a toolbar chip to a hero action.","default":"standard","options":[{"value":"small","label":"Small"},{"value":"standard","label":"Standard"},{"value":"large","label":"Large"}]},{"id":"shape","type":"enum","role":"style","label":"Shape","description":"Corner treatment of the button box.","default":"rounded","options":[{"value":"rounded","label":"Rounded"},{"value":"circle","label":"Circle"},{"value":"square","label":"Square"}]},{"id":"blur","type":"enum","role":"motion","label":"Blur","description":"Scales the blur radius the timeline drives through the swap, from a light haze to a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add icon-swap" />
-
-That writes one file: `compositions/components/icon-swap.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `tone` | `dark` | `dark`, `light`, `accent` | Button fill and glyph colour. Accent rides --brand. |
-| `size` | `standard` | `small`, `standard`, `large` | Button box and glyph size, from a toolbar chip to a hero action. |
-| `shape` | `rounded` | `rounded`, `circle`, `square` | Corner treatment of the button box. |
-| `blur` | `standard` | `soft`, `standard`, `heavy` | Scales the blur radius the timeline drives through the swap, from a light haze to a full smear. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="icon-swap"
-  data-composition-src="compositions/components/icon-swap.html"
-  data-variable-values='{"tone":"dark","size":"standard","shape":"rounded","blur":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`icon-swap.html`}>
-
-```html
+```html icon-swap.html
 <!--
   Icon Swap - transitions.dev-inspired primitive for HyperFrames.
 
@@ -155,7 +128,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add icon-swap" />
+
+That writes one file: `compositions/components/icon-swap.html`.
 
 ## Usage
 
@@ -163,7 +142,7 @@ Open `compositions/components/icon-swap.html` and paste its contents into your c
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `icon` `swap`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `icon` `swap`.
 
 ## Related topics
 

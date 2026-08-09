@@ -4,42 +4,16 @@ description: "A responsive animated grid background driven by CSS variables for 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/dynamic-grid.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Dynamic Grid preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/dynamic-grid.html"
+  compositionId="dynamic-grid"
+  compositionSrc="compositions/components/dynamic-grid.html"
+  variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Cell size of the grid: fine reads as graph paper, coarse as a few large panels.","default":"standard","options":[{"value":"fine","label":"Fine"},{"value":"standard","label":"Standard"},{"value":"coarse","label":"Coarse"}]},{"id":"weight","type":"enum","role":"style","label":"Weight","description":"Thickness of the grid lines, from a hairline rule to a bold structural grid.","default":"hairline","options":[{"value":"hairline","label":"Hairline"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Line colour: neutral is the translucent white the original ships with, and the accents ride --brand, --accent and --accent-2.","default":"neutral","options":[{"value":"neutral","label":"Neutral"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add dynamic-grid" />
-
-That writes one file: `compositions/components/dynamic-grid.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `density` | `standard` | `fine`, `standard`, `coarse` | Cell size of the grid: fine reads as graph paper, coarse as a few large panels. |
-| `weight` | `hairline` | `hairline`, `standard`, `bold` | Thickness of the grid lines, from a hairline rule to a bold structural grid. |
-| `tone` | `neutral` | `neutral`, `green`, `blue`, `violet` | Line colour: neutral is the translucent white the original ships with, and the accents ride --brand, --accent and --accent-2. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="dynamic-grid"
-  data-composition-src="compositions/components/dynamic-grid.html"
-  data-variable-values='{"density":"standard","weight":"hairline","tone":"neutral"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`dynamic-grid.html`}>
-
-```html
+```html dynamic-grid.html
 <!--
   Dynamic Grid - animated background primitive.
 
@@ -146,7 +120,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add dynamic-grid" />
+
+That writes one file: `compositions/components/dynamic-grid.html`.
 
 ## Usage
 
@@ -154,7 +134,7 @@ Open `compositions/components/dynamic-grid.html` and paste its contents into you
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `background` `grid` `ui`.
+Tagged `video-primitive` `motion-primitive` `background` `grid` `ui`.
 
 ## Related topics
 

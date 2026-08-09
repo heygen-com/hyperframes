@@ -107,7 +107,7 @@
           background: color-mix(
             in srgb,
             var(--surface, #f8fafc) calc((1 - var(--oc-ignite, 0)) * 100%),
-            var(--brand, #2563eb) calc(var(--oc-ignite, 0) * 100%)
+            var(--brand, #52525b) calc(var(--oc-ignite, 0) * 100%)
           );
           box-shadow: 0 1.2cqw 3.2cqw rgba(2, 6, 23, 0.24);
           --oc-ignite: 0;
@@ -190,7 +190,7 @@
           min-width: 12px;
           min-height: 12px;
           border-radius: 999px;
-          border: 0.24cqw solid var(--accent, #22c55e);
+          border: 0.24cqw solid color-mix(in srgb, var(--fg, #ffffff) 45%, transparent);
           transform: translate(-50%, -50%);
           opacity: 0;
         }

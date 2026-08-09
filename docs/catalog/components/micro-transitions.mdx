@@ -4,43 +4,16 @@ description: "A transitions.dev-inspired pack of badge, dropdown, modal, tabs, t
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/micro-transitions.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Micro Transitions preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/micro-transitions.html"
+  compositionId="micro-transitions"
+  compositionSrc="compositions/components/micro-transitions.html"
+  variables={[{"id":"badge","type":"string","role":"content","label":"Badge","description":"Count inside the notification badge on the bell.","default":"3"},{"id":"tooltip","type":"string","role":"content","label":"Tooltip","description":"Wording inside the small dark tooltip.","default":"Copied"},{"id":"tone","type":"enum","role":"style","label":"Badge tone","description":"Colour of the notification badge chip.","default":"red","options":[{"value":"red","label":"Red"},{"value":"amber","label":"Amber"},{"value":"violet","label":"Violet"}]},{"id":"travel","type":"enum","role":"motion","label":"Travel","description":"Scales how far every panel starts from its resting place before it settles.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add micro-transitions" />
-
-That writes one file: `compositions/components/micro-transitions.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `badge` | `3` | string | Count inside the notification badge on the bell. |
-| `tooltip` | `Copied` | string | Wording inside the small dark tooltip. |
-| `tone` | `red` | `red`, `amber`, `violet` | Colour of the notification badge chip. |
-| `travel` | `standard` | `close`, `standard`, `far` | Scales how far every panel starts from its resting place before it settles. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="micro-transitions"
-  data-composition-src="compositions/components/micro-transitions.html"
-  data-variable-values='{"badge":"3","tooltip":"Copied","tone":"red","travel":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`micro-transitions.html`}>
-
-```html
+```html micro-transitions.html
 <!--
   Micro Transitions - transitions.dev-inspired UI motion pack for HyperFrames.
 
@@ -60,7 +33,10 @@ defaults, so this behaves exactly like the preview above until you change one:
       bell. Blank or non-text input falls back to the default.
     - tooltip (any short text, default Copied): wording inside the small dark
       tooltip.
-    - tone (red | amber | violet, default red): colour of that badge chip.
+    - tone (red | amber | violet, default red): colour of that badge chip, the
+      one accent-carrying element in the pack. red and amber are literal alert
+      conventions; violet rides the composition's own accent-2 token and falls
+      back to ink when the composition declares none.
     - travel (close | standard | far, default standard): scales how far every
       panel starts from its resting place, so the whole pack drifts half as far
       or nearly twice as far into position over the same progress run. At full
@@ -243,7 +219,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     width: 48px;
     height: 48px;
     fill: none;
-    stroke: #16a34a;
+    stroke: currentColor;
     stroke-width: 5;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -273,7 +249,10 @@ defaults, so this behaves exactly like the preview above until you change one:
       return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
     }
 
-    var tones = { red: "#ef4444", amber: "#f59e0b", violet: "#8b5cf6" };
+    // The badge is the pack's one accent-carrying element. red and amber are
+    // literal alert conventions; violet rides the composition's own token and
+    // falls back to ink.
+    var tones = { red: "#ef4444", amber: "#f59e0b", violet: "var(--accent-2, #18181b)" };
     var travels = { close: 0.5, standard: 1, far: 1.9 };
 
     var tone = tones[pick(tones, vars.tone, "red")];
@@ -301,7 +280,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add micro-transitions" />
+
+That writes one file: `compositions/components/micro-transitions.html`.
 
 ## Usage
 

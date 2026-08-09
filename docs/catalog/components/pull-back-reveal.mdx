@@ -4,49 +4,16 @@ description: "A tight stat detail holds, then one decelerating camera pull-back 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/pull-back-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Pull Back Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/pull-back-reveal.html"
+  compositionId="pull-back-reveal"
+  compositionSrc="compositions/components/pull-back-reveal.html"
+  variables={[{"id":"detail_text","type":"string","role":"content","label":"Detail text","description":"Stat shown in the detail chip at the center of the reveal.","default":"+312%"},{"id":"headline","type":"string","role":"content","label":"Headline","description":"Headline revealed around the focused detail.","default":"Growth compounds"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used across the composed scene.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add pull-back-reveal" />
-
-That writes one file: `compositions/components/pull-back-reveal.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/pull-back-reveal.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `detail_text` | `+312%` | string | Stat shown in the detail chip at the center of the reveal. |
-| `headline` | `Growth compounds` | string | Headline revealed around the focused detail. |
-| `accent` | `green` | `green`, `blue`, `violet` | Highlight color used across the composed scene. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="pull-back-reveal"
-  data-composition-src="compositions/components/pull-back-reveal.html"
-  data-variable-values='{"detail_text":"+312%","headline":"Growth compounds","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`pull-back-reveal.html`}>
-
-```html
+```html pull-back-reveal.html
 <!doctype html>
 <!--
   pull-back-reveal: HyperFrames video primitive (camera / reveal / recontextualize)
@@ -317,9 +284,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             var detailText = vars.detail_text == null ? "+312%" : String(vars.detail_text);
             var headlineText = vars.headline == null ? "Growth compounds" : String(vars.headline);
             var accentColors = {
-              green: "#22c55e",
-              blue: "#3b82f6",
-              violet: "#8b5cf6",
+              green: "var(--brand, #a1a1aa)",
+              blue: "var(--accent, #a1a1aa)",
+              violet: "var(--accent-2, #a1a1aa)",
             };
             var accentColor = accentColors[vars.accent] || accentColors.green;
 
@@ -385,7 +352,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add pull-back-reveal" />
+
+That writes one file: `compositions/components/pull-back-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pull-back-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

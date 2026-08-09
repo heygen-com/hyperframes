@@ -23,7 +23,7 @@
     <path
       d="M20 172 C120 90, 190 118, 260 74 S430 112, 508 42 S620 82, 680 30"
       fill="none"
-      stroke="#2563eb"
+      stroke="currentColor"
       stroke-width="10"
       stroke-linecap="round"
     />
@@ -32,8 +32,13 @@
 
 <style>
   .hf-remocn-dashboard-populate {
-    --hf-accent: #2563eb;
+    --hf-accent: var(--accent, #111827);
     --hf-ink: #111827;
+    --hf-l1: rgba(17, 24, 39, 0.72);
+    --hf-l2: rgba(17, 24, 39, 0.45);
+    --hf-l3: rgba(17, 24, 39, 0.18);
+    --hf-l4: rgba(17, 24, 39, 0.08);
+    --hf-hair: rgba(17, 24, 39, 0.14);
     --hf-muted: #6b7280;
     --hf-surface: #ffffff;
     color: var(--hf-ink);
@@ -73,7 +78,7 @@
   .hf-remocn-dashboard-populate .bar {
     height: calc(var(--h) * var(--hf-grow, 1));
     border-radius: 14px 14px 5px 5px;
-    background: linear-gradient(180deg, #60a5fa, #2563eb);
+    background: var(--hf-l1);
   }
   .hf-remocn-dashboard-populate svg {
     width: 100%;
@@ -81,6 +86,7 @@
     overflow: visible;
   }
   .hf-remocn-dashboard-populate path {
+    color: var(--hf-l2);
     stroke-dasharray: 900;
     stroke-dashoffset: var(--hf-dash, 0);
   }

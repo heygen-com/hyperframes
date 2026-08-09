@@ -102,6 +102,9 @@
             box-shadow: 0 2.2cqh 5cqh color-mix(in srgb, var(--bg) 72%, transparent);
             transform-origin: center;
             will-change: transform, filter, opacity;
+            /* Both cards are the same placeholder material. Which one holds
+               attention is said by blur, scale, and opacity, never by hue. */
+            --fs-card-accent: color-mix(in srgb, var(--fg) 72%, var(--surface));
           }
 
           .fs-card::before {
@@ -110,14 +113,6 @@
             inset: 0 0 auto;
             height: 0.75cqh;
             background: var(--fs-card-accent);
-          }
-
-          .fs-card[data-focus-card="a"] {
-            --fs-card-accent: var(--brand);
-          }
-
-          .fs-card[data-focus-card="b"] {
-            --fs-card-accent: var(--accent);
           }
 
           .fs-card-head {
@@ -133,8 +128,8 @@
             width: 5cqw;
             aspect-ratio: 1;
             border-radius: 50%;
-            background: color-mix(in srgb, var(--fs-card-accent) 18%, var(--surface));
-            color: var(--fs-card-accent);
+            background: color-mix(in srgb, var(--fg) 13%, var(--surface));
+            color: var(--fg);
             font-family: var(--font-mono);
             font-size: 2.3cqw;
             font-weight: 700;

@@ -4,53 +4,16 @@ description: "One chart builds from data in reading order and lands the exact su
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/chart-story.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Chart Story preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/chart-story.html"
+  compositionId="chart-story"
+  compositionSrc="compositions/components/chart-story.html"
+  variables={[{"id":"type","type":"enum","role":"content","label":"Chart type","description":"Chart form the data builds into.","default":"bars","options":[{"value":"bars","label":"Bars"},{"value":"line","label":"Line"},{"value":"donut","label":"Donut"},{"value":"progress","label":"Progress"}]},{"id":"data","type":"string","role":"content","label":"Data","description":"Comma-separated numbers; the chart lands exactly on these values.","default":"12, 28, 45, 64"},{"id":"labels","type":"string","role":"content","label":"Labels","description":"Comma-separated labels, one per datum.","default":"Q1, Q2, Q3, Q4"},{"id":"emphasize","type":"number","role":"content","label":"Emphasize","description":"Index of the datum that takes the accent and the value callout. Clamped to the data range.","default":3,"step":1},{"id":"unit","type":"string","role":"content","label":"Unit","description":"Suffix appended to every displayed value.","default":"%"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract color used by the emphasized datum and its callout.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"style","label":"Exit","description":"Optional departure. Proof stats end on the still hold, so the default is none.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add chart-story" />
-
-That writes one file: `compositions/components/chart-story.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/chart-story.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `type` | `bars` | `bars`, `line`, `donut`, `progress` | Chart form the data builds into. |
-| `data` | `12, 28, 45, 64` | string | Comma-separated numbers; the chart lands exactly on these values. |
-| `labels` | `Q1, Q2, Q3, Q4` | string | Comma-separated labels, one per datum. |
-| `emphasize` | `3` | number | Index of the datum that takes the accent and the value callout. Clamped to the data range. |
-| `unit` | `%` | string | Suffix appended to every displayed value. |
-| `accent` | `green` | `green`, `blue`, `violet` | Contract color used by the emphasized datum and its callout. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Proof stats end on the still hold, so the default is none. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="chart-story"
-  data-composition-src="compositions/components/chart-story.html"
-  data-variable-values='{"type":"bars","data":"12, 28, 45, 64","labels":"Q1, Q2, Q3, Q4","emphasize":3,"unit":"%","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`chart-story.html`}>
-
-```html
+```html chart-story.html
 <!doctype html>
 <!--
   chart-story: HyperFrames video primitive (proof and stats / prove)
@@ -706,7 +669,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add chart-story" />
+
+That writes one file: `compositions/components/chart-story.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/chart-story.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

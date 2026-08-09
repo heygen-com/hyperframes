@@ -4,49 +4,16 @@ description: "A wordmark resolves from deterministic color noise into correctly 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/wordmark-tiles.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Wordmark Tiles preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/wordmark-tiles.html"
+  compositionId="wordmark-tiles"
+  compositionSrc="compositions/components/wordmark-tiles.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Wordmark","description":"Text resolved by the tile wave.","default":"LAUNCH","maxLength":12},{"id":"columns","type":"number","role":"layout","label":"Columns","description":"Number of columns in the wordmark tile grid.","default":12,"min":8,"max":14,"step":1},{"id":"waveStagger","type":"number","role":"motion","label":"Wave stagger","description":"Delay between tile reveals in spatial wave order.","default":40,"min":15,"max":50,"step":1,"unit":"ms"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add wordmark-tiles" />
-
-That writes one file: `compositions/components/wordmark-tiles.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/wordmark-tiles.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `LAUNCH` | string | Text resolved by the tile wave. |
-| `columns` | `12` | 8 to 14, step 1 | Number of columns in the wordmark tile grid. |
-| `waveStagger` | `40` | 15ms to 50ms, step 1ms | Delay between tile reveals in spatial wave order. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="wordmark-tiles"
-  data-composition-src="compositions/components/wordmark-tiles.html"
-  data-variable-values='{"text":"LAUNCH","columns":12,"waveStagger":40}'
-></div>
-```
-
-## Source
-
-<Accordion title={`wordmark-tiles.html`}>
-
-```html
+```html wordmark-tiles.html
 <!doctype html>
 <!--
   wordmark-tiles: HyperFrames video primitive (typography / holdable / reveal)
@@ -409,7 +376,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add wordmark-tiles" />
+
+That writes one file: `compositions/components/wordmark-tiles.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/wordmark-tiles.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

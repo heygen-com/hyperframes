@@ -4,42 +4,16 @@ description: "RGB-offset text copies jitter briefly for a controlled glitch wind
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/rgb-glitch-text.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="RGB Glitch Text preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/rgb-glitch-text.html"
+  compositionId="rgb-glitch-text"
+  compositionSrc="compositions/components/rgb-glitch-text.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"The word shown on all three stacked copies.","default":"GLITCH","maxLength":24},{"id":"intensity","type":"enum","role":"motion","label":"Intensity","description":"Scales the red and cyan offsets the timeline drives, so the split reads as a hairline or a hard tear.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"extreme","label":"Extreme"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Colour of the solid copy the two ghosts split away from: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add rgb-glitch-text" />
-
-That writes one file: `compositions/components/rgb-glitch-text.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `GLITCH` | string | The word shown on all three stacked copies. |
-| `intensity` | `standard` | `subtle`, `standard`, `extreme` | Scales the red and cyan offsets the timeline drives, so the split reads as a hairline or a hard tear. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Colour of the solid copy the two ghosts split away from: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="rgb-glitch-text"
-  data-composition-src="compositions/components/rgb-glitch-text.html"
-  data-variable-values='{"text":"GLITCH","intensity":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`rgb-glitch-text.html`}>
-
-```html
+```html rgb-glitch-text.html
 <!--
   RGB Glitch Text - remocn typography primitive for HyperFrames.
 
@@ -152,7 +126,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add rgb-glitch-text" />
+
+That writes one file: `compositions/components/rgb-glitch-text.html`.
 
 ## Usage
 

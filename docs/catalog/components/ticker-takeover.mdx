@@ -4,49 +4,16 @@ description: "A mono ticker rolls through options, locks on a final word with an
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/ticker-takeover.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Ticker Takeover preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/ticker-takeover.html"
+  compositionId="ticker-takeover"
+  compositionSrc="compositions/components/ticker-takeover.html"
+  variables={[{"id":"options","type":"string","role":"content","label":"Options","description":"Comma-separated words shown by the ticker.","default":"faster,smarter,together,everywhere"},{"id":"final_word","type":"string","role":"content","label":"Final word","description":"Word the ticker locks on and promotes.","default":"together"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used for the lock flash and promoted word.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add ticker-takeover" />
-
-That writes one file: `compositions/components/ticker-takeover.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/ticker-takeover.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `options` | `faster,smarter,together,everywhere` | string | Comma-separated words shown by the ticker. |
-| `final_word` | `together` | string | Word the ticker locks on and promotes. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used for the lock flash and promoted word. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="ticker-takeover"
-  data-composition-src="compositions/components/ticker-takeover.html"
-  data-variable-values='{"options":"faster,smarter,together,everywhere","final_word":"together","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`ticker-takeover.html`}>
-
-```html
+```html ticker-takeover.html
 <!doctype html>
 <!--
   ticker-takeover: a compact ticker rolls through four to six words, locks
@@ -265,9 +232,9 @@ defaults, so this behaves exactly like the preview above until you change one:
 
             var finalItem = reel.lastElementChild;
             var accentColors = {
-              green: "#22c55e",
-              blue: "#38bdf8",
-              violet: "#a78bfa",
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             var accentName = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
@@ -370,7 +337,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add ticker-takeover" />
+
+That writes one file: `compositions/components/ticker-takeover.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ticker-takeover.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

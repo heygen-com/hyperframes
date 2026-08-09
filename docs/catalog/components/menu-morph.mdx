@@ -4,42 +4,16 @@ description: "A transitions.dev-inspired hamburger and plus-menu morph primitive
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/menu-morph.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Menu Morph preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/menu-morph.html"
+  compositionId="menu-morph"
+  compositionSrc="compositions/components/menu-morph.html"
+  variables={[{"id":"actions","type":"string","role":"content","label":"Actions","description":"Comma separated labels for the pills that fan out under the button. Up to six.","default":"Text, Image, Audio"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Colour of the round button behind the white bars.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"size","type":"number","role":"layout","label":"Button size","description":"Diameter of the round button in pixels. The bars scale with it.","default":68,"min":52,"max":112,"step":4,"unit":"px"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add menu-morph" />
-
-That writes one file: `compositions/components/menu-morph.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `actions` | `Text, Image, Audio` | string | Comma separated labels for the pills that fan out under the button. Up to six. |
-| `tone` | `ink` | `ink`, `green`, `blue`, `violet` | Colour of the round button behind the white bars. |
-| `size` | `68` | 52px to 112px, step 4px | Diameter of the round button in pixels. The bars scale with it. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="menu-morph"
-  data-composition-src="compositions/components/menu-morph.html"
-  data-variable-values='{"actions":"Text, Image, Audio","tone":"ink","size":68}'
-></div>
-```
-
-## Source
-
-<Accordion title={`menu-morph.html`}>
-
-```html
+```html menu-morph.html
 <!--
   Menu Morph - transitions.dev-inspired primitive for HyperFrames.
 
@@ -57,7 +31,9 @@ defaults, so this behaves exactly like the preview above until you change one:
       the pills that fan out under the button, up to six. The stagger picks up
       the new count.
     - tone (ink | green | blue | violet, default ink): colour of the round
-      button behind the white bars.
+      button behind the white bars. ink is a literal near-black; the other three
+      ride the composition's own brand, accent and accent-2 tokens and fall back
+      to that same ink when the composition declares none.
     - size (52 to 112 px, default 68): diameter of the round button. The bar
       width is a fixed fraction of it, so the whole glyph scales together.
 
@@ -138,11 +114,13 @@ defaults, so this behaves exactly like the preview above until you change one:
         : {};
 
     // Anything missing or invalid returns to its declared default.
+    // The button is the one accent-carrying element here, so the three
+    // chromatic options ride the composition's own tokens and fall back to ink.
     var tones = {
       ink: "#18181b",
-      green: "#16a34a",
-      blue: "#2563eb",
-      violet: "#7c3aed",
+      green: "var(--brand, #18181b)",
+      blue: "var(--accent, #18181b)",
+      violet: "var(--accent-2, #18181b)",
     };
 
     function pick(table, value, fallback) {
@@ -163,7 +141,8 @@ defaults, so this behaves exactly like the preview above until you change one:
       labels = ["Text", "Image", "Audio"];
     }
 
-    var size = typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
+    var size =
+      typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
     size = isFinite(size) && size > 0 ? Math.min(112, Math.max(52, size)) : 68;
 
     var tone = tones[pick(tones, vars.tone, "ink")];
@@ -198,7 +177,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add menu-morph" />
+
+That writes one file: `compositions/components/menu-morph.html`.
 
 ## Usage
 
@@ -206,7 +191,7 @@ Open `compositions/components/menu-morph.html` and paste its contents into your 
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `menu` `morph`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `menu` `morph`.
 
 ## Related topics
 

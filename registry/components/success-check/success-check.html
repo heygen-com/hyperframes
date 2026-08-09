@@ -12,8 +12,11 @@
   big it is, what colour it wears and how far the pop swings.
 
     - tint (green | blue | violet | amber, default green): the colour pair, a
-      pale halo behind a saturated mark. Both halves are literal colours, so
-      the pair stays legible whatever the surrounding theme tokens hold.
+      pale halo behind a saturated mark. green and amber are literal state
+      colours and stay legible whatever the surrounding theme tokens hold; blue
+      and violet name no state, so their mark rides the composition's own accent
+      and accent-2 tokens over a neutral halo and falls back to ink when the
+      composition declares none.
     - size (small | standard | large, default standard): diameter of the halo
       and of the mark inside it, 60px, 82px or 110px. The stroke is in viewBox
       units, so it thickens with the mark instead of staying pinned.
@@ -33,7 +36,7 @@
   class="hf-transition-success-check"
   aria-label="Success"
   data-composition-variables='[
-    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Colour pair, a pale halo behind a saturated mark.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Colour pair, a pale halo behind a saturated mark. green and amber are literal state colours; blue and violet ride the composition theme tokens.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }, { "value": "amber", "label": "Amber" }] },
     { "id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Diameter of the halo and of the mark inside it.", "default": "standard", "options": [{ "value": "small", "label": "Small" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
     { "id": "ring", "type": "enum", "role": "style", "label": "Ring", "description": "Opacity of the circle the tick sits in.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
     { "id": "spin", "type": "enum", "role": "motion", "label": "Spin", "description": "Multiplies the rotation the timeline drives, so the mark swings less or more into place.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] }
@@ -86,10 +89,15 @@
         : {};
 
     // Unrecognised overrides return to their declared defaults.
+    // The mark is the whole composition and its colour is its meaning, so this
+    // is the one place an accent belongs. green and amber are the literal
+    // success and caution conventions; blue and violet named no state, so they
+    // ride the composition's own tokens over a neutral halo and fall back to
+    // ink when the composition declares none.
     var tints = {
       green: { halo: "#dcfce7", ink: "#16a34a" },
-      blue: { halo: "#dbeafe", ink: "#2563eb" },
-      violet: { halo: "#ede9fe", ink: "#7c3aed" },
+      blue: { halo: "#f4f4f5", ink: "var(--accent, #18181b)" },
+      violet: { halo: "#f4f4f5", ink: "var(--accent-2, #18181b)" },
       amber: { halo: "#fef3c7", ink: "#d97706" },
     };
     var sizes = {

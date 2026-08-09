@@ -4,49 +4,16 @@ description: "An oversized UI toggle switch that flips with real physicality: th
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/toggle-flip.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Toggle Flip preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/toggle-flip.html"
+  compositionId="toggle-flip"
+  compositionSrc="compositions/components/toggle-flip.html"
+  variables={[{"id":"direction","type":"enum","role":"content","label":"Flip direction","description":"Target end state the flip lands on.","default":"on","options":[{"value":"on","label":"Off → On"},{"value":"off","label":"On → Off"}]},{"id":"label","type":"string","role":"content","label":"Caption","description":"Optional caption under the toggle. Blank hides the line.","default":"Auto-save"},{"id":"size","type":"number","role":"layout","label":"Size","description":"Toggle width as a percent of the host box width.","default":40,"min":20,"max":70,"step":1,"unit":"%"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add toggle-flip" />
-
-That writes one file: `compositions/components/toggle-flip.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/toggle-flip.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `direction` | `on` | `on`, `off` | Target end state the flip lands on. |
-| `label` | `Auto-save` | string | Optional caption under the toggle. Blank hides the line. |
-| `size` | `40` | 20% to 70%, step 1% | Toggle width as a percent of the host box width. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="toggle-flip"
-  data-composition-src="compositions/components/toggle-flip.html"
-  data-variable-values='{"direction":"on","label":"Auto-save","size":40}'
-></div>
-```
-
-## Source
-
-<Accordion title={`toggle-flip.html`}>
-
-```html
+```html toggle-flip.html
 <!doctype html>
 <!--
   toggle-flip -- HyperFrames video primitive (ui-props / interaction / demonstrate)
@@ -473,7 +440,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add toggle-flip" />
+
+That writes one file: `compositions/components/toggle-flip.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/toggle-flip.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

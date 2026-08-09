@@ -4,49 +4,16 @@ description: "A soft token-colored sweep reveals media only through an editable 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/svg-mask-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="SVG Mask Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/svg-mask-reveal.html"
+  compositionId="svg-mask-reveal"
+  compositionSrc="compositions/components/svg-mask-reveal.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Wordmark","description":"Text used as the SVG mask window.","default":"REVEAL","maxLength":16},{"id":"revealProgress","type":"number","role":"content","label":"Reveal progress","description":"Final revealed width of the wordmark.","default":100,"min":0,"max":100,"step":1,"unit":"%"},{"id":"featherPx","type":"number","role":"style","label":"Edge feather","description":"Softness of the traveling reveal edge.","default":24,"min":0,"max":120,"step":1,"unit":"px"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add svg-mask-reveal" />
-
-That writes one file: `compositions/components/svg-mask-reveal.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/svg-mask-reveal.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `REVEAL` | string | Text used as the SVG mask window. |
-| `revealProgress` | `100` | 0% to 100%, step 1% | Final revealed width of the wordmark. |
-| `featherPx` | `24` | 0px to 120px, step 1px | Softness of the traveling reveal edge. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="svg-mask-reveal"
-  data-composition-src="compositions/components/svg-mask-reveal.html"
-  data-variable-values='{"text":"REVEAL","revealProgress":100,"featherPx":24}'
-></div>
-```
-
-## Source
-
-<Accordion title={`svg-mask-reveal.html`}>
-
-```html
+```html svg-mask-reveal.html
 <!doctype html>
 <!--
   svg-mask-reveal -- HyperFrames video primitive (effects / burst / exhibit)
@@ -365,7 +332,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add svg-mask-reveal" />
+
+That writes one file: `compositions/components/svg-mask-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/svg-mask-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

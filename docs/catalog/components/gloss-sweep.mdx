@@ -4,49 +4,16 @@ description: "A card lands with a restrained slam, catches one diagonal specular
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/gloss-sweep.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Gloss Sweep preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/gloss-sweep.html"
+  compositionId="gloss-sweep"
+  compositionSrc="compositions/components/gloss-sweep.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Label","description":"Text displayed on the card.","default":"Pro"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color treatment for the card.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"sweep_angle","type":"number","role":"style","label":"Sweep angle","description":"Angle of the specular gloss in degrees.","default":25,"min":-60,"max":60,"step":1,"unit":"deg"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add gloss-sweep" />
-
-That writes one file: `compositions/components/gloss-sweep.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/gloss-sweep.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Pro` | string | Text displayed on the card. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color treatment for the card. |
-| `sweep_angle` | `25` | -60deg to 60deg, step 1deg | Angle of the specular gloss in degrees. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="gloss-sweep"
-  data-composition-src="compositions/components/gloss-sweep.html"
-  data-variable-values='{"text":"Pro","accent":"green","sweep_angle":25}'
-></div>
-```
-
-## Source
-
-<Accordion title={`gloss-sweep.html`}>
-
-```html
+```html gloss-sweep.html
 <!doctype html>
 <!--
   gloss-sweep: HyperFrames video primitive (celebrations / payoff)
@@ -262,7 +229,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add gloss-sweep" />
+
+That writes one file: `compositions/components/gloss-sweep.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/gloss-sweep.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

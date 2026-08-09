@@ -4,49 +4,16 @@ description: "An authored S-curve sweeps through a deterministic ASCII grid, fli
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/ascii-trail-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="ASCII Trail Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/ascii-trail-reveal.html"
+  compositionId="ascii-trail-reveal"
+  compositionSrc="compositions/components/ascii-trail-reveal.html"
+  variables={[{"id":"label","type":"string","role":"content","label":"Panel label","description":"Text shown on the revealed panel.","default":"The reveal"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the trail and revealed panel.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"trail_width","type":"enum","role":"layout","label":"Trail width","description":"Width of the cell reveal tail around the authored path.","default":"narrow","options":[{"value":"narrow","label":"Narrow"},{"value":"wide","label":"Wide"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add ascii-trail-reveal" />
-
-That writes one file: `compositions/components/ascii-trail-reveal.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/ascii-trail-reveal.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label` | `The reveal` | string | Text shown on the revealed panel. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used by the trail and revealed panel. |
-| `trail_width` | `narrow` | `narrow`, `wide` | Width of the cell reveal tail around the authored path. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="ascii-trail-reveal"
-  data-composition-src="compositions/components/ascii-trail-reveal.html"
-  data-variable-values='{"label":"The reveal","accent":"green","trail_width":"narrow"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`ascii-trail-reveal.html`}>
-
-```html
+```html ascii-trail-reveal.html
 <!doctype html>
 <!--
   ascii-trail-reveal: HyperFrames video primitive (intros and reveals)
@@ -265,7 +232,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             var labelText = vars.label == null ? "The reveal" : String(vars.label);
             var accent = vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var trailWidth = vars.trail_width === "wide" ? "wide" : "narrow";
-            var accentColors = { green: "#4ade80", blue: "#38bdf8", violet: "#a78bfa" };
+            var accentColors = { green: "var(--brand, #4ade80)", blue: "var(--accent, #38bdf8)", violet: "var(--accent-2, #a78bfa)" };
 
             label.textContent = labelText;
             root.style.setProperty("--atr-accent", accentColors[accent]);
@@ -425,7 +392,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add ascii-trail-reveal" />
+
+That writes one file: `compositions/components/ascii-trail-reveal.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/ascii-trail-reveal.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

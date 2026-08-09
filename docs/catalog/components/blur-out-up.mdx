@@ -4,43 +4,16 @@ description: "Words arrive clean and depart upward with increasing blur for airy
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/blur-out-up.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Blur Out Up preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/blur-out-up.html"
+  compositionId="blur-out-up"
+  compositionSrc="compositions/components/blur-out-up.html"
+  variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Where the offset the timeline drives points.","default":"up","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"},{"value":"left","label":"Left"},{"value":"right","label":"Right"}]},{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"Scales the travel offset, so the words cover a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"blur","type":"enum","role":"style","label":"Blur","description":"Scales the blur radius the timeline drives, from a light haze to a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Word colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add blur-out-up" />
-
-That writes one file: `compositions/components/blur-out-up.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `direction` | `up` | `up`, `down`, `left`, `right` | Where the offset the timeline drives points. |
-| `distance` | `standard` | `close`, `standard`, `far` | Scales the travel offset, so the words cover a shorter or longer run in the same time. |
-| `blur` | `standard` | `soft`, `standard`, `heavy` | Scales the blur radius the timeline drives, from a light haze to a full smear. |
-| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="blur-out-up"
-  data-composition-src="compositions/components/blur-out-up.html"
-  data-variable-values='{"direction":"up","distance":"standard","blur":"standard","tone":"ink"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`blur-out-up.html`}>
-
-```html
+```html blur-out-up.html
 <!--
   Blur Out Up - remocn typography primitive for HyperFrames.
 
@@ -153,7 +126,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add blur-out-up" />
+
+That writes one file: `compositions/components/blur-out-up.html`.
 
 ## Usage
 

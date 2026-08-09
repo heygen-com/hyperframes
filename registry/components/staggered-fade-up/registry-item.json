@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Staggered Fade Up",
   "description": "Words fade in and slide up one after another with configurable delay.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["video-primitive", "motion-primitive", "remocn-port", "typography"],
   "files": [
     {
       "path": "staggered-fade-up.html",
@@ -21,10 +21,22 @@
       "description": "Where the offset the timeline drives points.",
       "default": "up",
       "options": [
-        { "value": "up", "label": "Up" },
-        { "value": "down", "label": "Down" },
-        { "value": "left", "label": "Left" },
-        { "value": "right", "label": "Right" }
+        {
+          "value": "up",
+          "label": "Up"
+        },
+        {
+          "value": "down",
+          "label": "Down"
+        },
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
       ]
     },
     {
@@ -35,9 +47,18 @@
       "description": "Scales the travel offset, so the words cover a shorter or longer run in the same time.",
       "default": "standard",
       "options": [
-        { "value": "close", "label": "Close" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "far", "label": "Far" }
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
       ]
     },
     {
@@ -48,9 +69,18 @@
       "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
       "default": "ink",
       "options": [
-        { "value": "ink", "label": "Ink" },
-        { "value": "paper", "label": "Paper" },
-        { "value": "accent", "label": "Accent" }
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
       ]
     },
     {

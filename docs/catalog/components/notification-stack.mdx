@@ -4,52 +4,16 @@ description: "1 to 5 token notification cards slide-settle into a vertical stack
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/notification-stack.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Notification Stack preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/notification-stack.html"
+  compositionId="notification-stack"
+  compositionSrc="compositions/components/notification-stack.html"
+  variables={[{"id":"titles","type":"string","role":"content","label":"Titles","description":"Comma-separated card titles (1 to 5 cards).","default":"Build queued,Checks passed,Deploy live"},{"id":"bodies","type":"string","role":"content","label":"Bodies","description":"Comma-separated body lines matched to titles by index. Blank entries hide that body line.","default":"Pipeline started for main,All 42 checks green,Now serving version 2.4"},{"id":"expand","type":"number","role":"content","label":"Expand","description":"Index of the focus card in the titles list. -1 focuses the newest card (top of the stack).","default":-1,"min":-1,"max":4,"step":1},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated per-card arrival times in seconds. Blank entries use the default rhythm.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the icon dots.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"How the stack leaves the frame. Default none: the hold ends the film.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add notification-stack" />
-
-That writes one file: `compositions/components/notification-stack.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/notification-stack.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `titles` | `Build queued,Checks passed,Deploy live` | string | Comma-separated card titles (1 to 5 cards). |
-| `bodies` | `Pipeline started for main,All 42 checks green,Now serving version 2.4` | string | Comma-separated body lines matched to titles by index. Blank entries hide that body line. |
-| `expand` | `-1` | -1 to 4, step 1 | Index of the focus card in the titles list. -1 focuses the newest card (top of the stack). |
-| `cues` | `` | string | Comma-separated per-card arrival times in seconds. Blank entries use the default rhythm. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the icon dots. |
-| `exit` | `none` | `none`, `fade`, `up` | How the stack leaves the frame. Default none: the hold ends the film. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="notification-stack"
-  data-composition-src="compositions/components/notification-stack.html"
-  data-variable-values='{"titles":"Build queued,Checks passed,Deploy live","bodies":"Pipeline started for main,All 42 checks green,Now serving version 2.4","expand":-1,"cues":"","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`notification-stack.html`}>
-
-```html
+```html notification-stack.html
 <!doctype html>
 <!--
   notification-stack: HyperFrames video primitive (product demo)
@@ -440,7 +404,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add notification-stack" />
+
+That writes one file: `compositions/components/notification-stack.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/notification-stack.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

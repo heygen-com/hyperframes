@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Card Resize",
   "description": "A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel",
-  "tags": ["transition-primitive", "transitions-dev-port", "card", "layout"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "card", "layout"],
   "files": [
     {
       "path": "card-resize.html",
@@ -21,8 +21,14 @@
       "description": "Card colour scheme: paper is the original white card, ink is a dark card for dark frames.",
       "default": "paper",
       "options": [
-        { "value": "paper", "label": "Paper" },
-        { "value": "ink", "label": "Ink" }
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "ink",
+          "label": "Ink"
+        }
       ]
     },
     {
@@ -30,12 +36,21 @@
       "type": "enum",
       "role": "style",
       "label": "Accent",
-      "description": "Gradient family painted into the media thumbnail.",
+      "description": "Treatment of the media thumbnail: a plain plate, a hatched surface, or an image plate with a horizon-and-disc glyph.",
       "default": "ocean",
       "options": [
-        { "value": "ocean", "label": "Ocean" },
-        { "value": "forest", "label": "Forest" },
-        { "value": "ember", "label": "Ember" }
+        {
+          "value": "ocean",
+          "label": "Ocean"
+        },
+        {
+          "value": "forest",
+          "label": "Forest"
+        },
+        {
+          "value": "ember",
+          "label": "Ember"
+        }
       ]
     },
     {
@@ -46,9 +61,18 @@
       "description": "How far the card lifts off the frame, from a contact shadow to a deep drop.",
       "default": "raised",
       "options": [
-        { "value": "flat", "label": "Flat" },
-        { "value": "raised", "label": "Raised" },
-        { "value": "floating", "label": "Floating" }
+        {
+          "value": "flat",
+          "label": "Flat"
+        },
+        {
+          "value": "raised",
+          "label": "Raised"
+        },
+        {
+          "value": "floating",
+          "label": "Floating"
+        }
       ]
     }
   ],

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "camera-dolly-zoom",
+  "type": "hyperframes:block",
+  "title": "Dolly Zoom (Vertigo Shot)",
+  "description": "Camera tracks toward or away from the subject while the field of view changes the opposite way, so the subject holds its frame size while the background collapses behind it or rushes in. Focal length is solved from dolly distance every frame against d * tan(FOV/2) = const, not keyframed beside it. Requires depth: the subject sits on the z = 0 plane and the content behind it must be layered or genuinely 3D (translateZ at two or more distinct depths) -- a flat element gains nothing from this move.",
+  "tags": ["camera", "depth", "3d", "cinematic"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4,
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "label": "Dolly direction",
+      "default": "out",
+      "options": [
+        { "value": "out", "label": "Dolly out + zoom in (background rushes in)" },
+        { "value": "in", "label": "Dolly in + zoom out (background falls away)" }
+      ]
+    },
+    {
+      "id": "strength",
+      "type": "number",
+      "label": "Move strength (end / start distance ratio)",
+      "default": 2,
+      "min": 1.1,
+      "max": 4,
+      "step": 0.1
+    },
+    {
+      "id": "subjectDistance",
+      "type": "number",
+      "label": "Camera-to-subject distance at the start of the move",
+      "default": 1400,
+      "min": 600,
+      "max": 3000,
+      "step": 50,
+      "unit": "px"
+    },
+    {
+      "id": "easing",
+      "type": "enum",
+      "label": "Dolly easing",
+      "default": "power2.inOut",
+      "options": [
+        { "value": "none", "label": "Linear" },
+        { "value": "sine.inOut", "label": "Sine in-out" },
+        { "value": "power1.inOut", "label": "Power1 in-out" },
+        { "value": "power2.inOut", "label": "Power2 in-out" },
+        { "value": "power3.inOut", "label": "Power3 in-out" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "camera-dolly-zoom.html",
+      "target": "compositions/camera-dolly-zoom.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

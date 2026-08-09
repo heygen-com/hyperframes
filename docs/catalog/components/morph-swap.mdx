@@ -4,50 +4,16 @@ description: "Two slotted siblings stacked at one shared center: A holds, then c
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/morph-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Morph Swap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/morph-swap.html"
+  compositionId="morph-swap"
+  compositionSrc="compositions/components/morph-swap.html"
+  variables={[{"id":"swap_at","type":"number","role":"timing","label":"Swap start","description":"Seconds after mount start when the morph begins.","default":1.4,"min":0.1,"max":8,"step":0.05,"unit":"s"},{"id":"register","type":"enum","role":"style","label":"Register","description":"Morph mechanic: condense shrink-fades A into B at center; reshape morphs the silhouette on scaleX/scaleY.","default":"condense","options":[{"value":"condense","label":"Condense"},{"value":"reshape","label":"Reshape"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Incoming card accent color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the final frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add morph-swap" />
-
-That writes one file: `compositions/components/morph-swap.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/morph-swap.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `swap_at` | `1.4` | 0.1s to 8s, step 0.05s | Seconds after mount start when the morph begins. |
-| `register` | `condense` | `condense`, `reshape` | Morph mechanic: condense shrink-fades A into B at center; reshape morphs the silhouette on scaleX/scaleY. |
-| `accent` | `green` | `green`, `blue`, `violet` | Incoming card accent color. |
-| `exit` | `none` | `none`, `fade`, `up` | Outgoing transition. None holds the final frame. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="morph-swap"
-  data-composition-src="compositions/components/morph-swap.html"
-  data-variable-values='{"swap_at":1.4,"register":"condense","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`morph-swap.html`}>
-
-```html
+```html morph-swap.html
 <!doctype html>
 <!--
   morph-swap: HyperFrames video primitive (transitions / holdable / bridge)
@@ -433,7 +399,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add morph-swap" />
+
+That writes one file: `compositions/components/morph-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/morph-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

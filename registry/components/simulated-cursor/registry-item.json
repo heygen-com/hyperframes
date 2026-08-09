@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Simulated Cursor",
   "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
-  "tags": ["motion-primitive", "cursor", "ui", "walkthrough"],
+  "tags": ["video-primitive", "motion-primitive", "cursor", "ui", "walkthrough"],
   "files": [
     {
       "path": "simulated-cursor.html",

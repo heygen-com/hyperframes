@@ -47,6 +47,14 @@
         { "value": "blue", "label": "Blue" },
         { "value": "violet", "label": "Violet" }
       ]
+    },
+    {
+      "id": "shadow",
+      "type": "boolean",
+      "role": "style",
+      "label": "Shadow",
+      "description": "Drop shadow cast under the headline. On by default; set false for a flat matte look.",
+      "default": true
     }
   ]
 }

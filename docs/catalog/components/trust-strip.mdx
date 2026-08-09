@@ -4,51 +4,16 @@ description: "A monochrome trust row of wide-tracked mono wordmarks that fade in
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/trust-strip.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Trust Strip preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/trust-strip.html"
+  compositionId="trust-strip"
+  compositionSrc="compositions/components/trust-strip.html"
+  variables={[{"id":"marks","type":"string","role":"content","label":"Marks","description":"Comma-separated wordmark texts (3 to 7 recommended).","default":"Northwind, Acme Corp, Globex, Initech, Umbra"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Mark color: quiet muted or full-contrast ink.","default":"muted","options":[{"value":"muted","label":"Muted"},{"value":"ink","label":"Ink"}]},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated reveal starts in seconds from mount start. Empty uses the authored 0.15s stagger.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Faint palette tint mixed into the mark color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"End-of-clip behavior. None holds to the last frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add trust-strip" />
-
-That writes one file: `compositions/components/trust-strip.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/trust-strip.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `marks` | `Northwind, Acme Corp, Globex, Initech, Umbra` | string | Comma-separated wordmark texts (3 to 7 recommended). |
-| `tone` | `muted` | `muted`, `ink` | Mark color: quiet muted or full-contrast ink. |
-| `cues` | `` | string | Comma-separated reveal starts in seconds from mount start. Empty uses the authored 0.15s stagger. |
-| `accent` | `green` | `green`, `blue`, `violet` | Faint palette tint mixed into the mark color. |
-| `exit` | `none` | `none`, `fade`, `up` | End-of-clip behavior. None holds to the last frame. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="trust-strip"
-  data-composition-src="compositions/components/trust-strip.html"
-  data-variable-values='{"marks":"Northwind, Acme Corp, Globex, Initech, Umbra","tone":"muted","cues":"","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`trust-strip.html`}>
-
-```html
+```html trust-strip.html
 <!doctype html>
 <!--
   trust-strip: HyperFrames video primitive (proof & stats / trust)
@@ -277,7 +242,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add trust-strip" />
+
+That writes one file: `compositions/components/trust-strip.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/trust-strip.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

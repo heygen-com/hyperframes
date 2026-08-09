@@ -4,48 +4,16 @@ description: "A glowing dash follows one SVG path through three UI elements, lif
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/tracing-beam.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Tracing Beam preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/tracing-beam.html"
+  compositionId="tracing-beam"
+  compositionSrc="compositions/components/tracing-beam.html"
+  variables={[{"id":"labels","type":"string","role":"content","label":"Labels","description":"Three comma-separated labels shown in path order.","default":"Search,Preview,Export"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Beam and active-element color.","default":"cyan","options":[{"value":"cyan","label":"Cyan"},{"value":"violet","label":"Violet"},{"value":"amber","label":"Amber"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add tracing-beam" />
-
-That writes one file: `compositions/components/tracing-beam.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/tracing-beam.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `labels` | `Search,Preview,Export` | string | Three comma-separated labels shown in path order. |
-| `accent` | `cyan` | `cyan`, `violet`, `amber` | Beam and active-element color. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="tracing-beam"
-  data-composition-src="compositions/components/tracing-beam.html"
-  data-variable-values='{"labels":"Search,Preview,Export","accent":"cyan"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`tracing-beam.html`}>
-
-```html
+```html tracing-beam.html
 <!doctype html>
 <!--
   tracing-beam: HyperFrames video primitive (product-demo / attention)
@@ -447,7 +415,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add tracing-beam" />
+
+That writes one file: `compositions/components/tracing-beam.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/tracing-beam.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

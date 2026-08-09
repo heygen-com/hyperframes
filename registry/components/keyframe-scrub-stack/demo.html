@@ -25,7 +25,13 @@
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-advanced-keyframe-scrub-stack {
-        color: #18181b;
+        --hf-accent: var(--accent, rgba(17, 24, 39, 0.72));
+        --hf-l1: rgba(17, 24, 39, 0.72);
+        --hf-l2: rgba(17, 24, 39, 0.45);
+        --hf-l3: rgba(17, 24, 39, 0.18);
+        --hf-l4: rgba(17, 24, 39, 0.08);
+        --hf-hair: rgba(17, 24, 39, 0.14);
+        color: var(--hf-l1);
         font-family: Inter, system-ui, sans-serif;
         /* ponytail: scale wrapper — GSAP only targets .card, not this element */
         transform: scale(2);
@@ -49,8 +55,8 @@
         position: absolute;
         inset: 0;
         border-radius: 14px;
-        background: linear-gradient(145deg, #f8fafc 0%, #dbeafe 100%);
-        border: 1px solid #e4e4e7;
+        background: linear-gradient(var(--hf-l4), var(--hf-l4)), #ffffff;
+        border: 1px solid var(--hf-hair);
         box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
         transform: translateY(var(--hf-card-y, 0px)) scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
@@ -68,7 +74,7 @@
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: #3b82f6;
+        background: var(--hf-l2);
         flex-shrink: 0;
       }
       .hf-advanced-keyframe-scrub-stack .card-label {
@@ -80,7 +86,7 @@
       .hf-advanced-keyframe-scrub-stack .card-sub {
         font-size: 11px;
         font-weight: 400;
-        color: #71717a;
+        color: var(--hf-l1);
         margin-top: 2px;
       }
       .hf-advanced-keyframe-scrub-stack .card-bars {
@@ -92,14 +98,7 @@
       .hf-advanced-keyframe-scrub-stack .bar {
         width: 8px;
         border-radius: 3px;
-        background: linear-gradient(180deg, #93c5fd, #3b82f6);
-      }
-      /* back cards are slightly desaturated */
-      .hf-advanced-keyframe-scrub-stack .card:nth-child(2) {
-        background: linear-gradient(145deg, #f1f5f9 0%, #e0e7ff 100%);
-      }
-      .hf-advanced-keyframe-scrub-stack .card:nth-child(3) {
-        background: linear-gradient(145deg, #f8fafc 0%, #ede9fe 100%);
+        background: var(--hf-l1);
       }
     </style>
   </head>
@@ -133,33 +132,33 @@
           </div>
           <div class="card" style="--i: 1">
             <div class="card-header">
-              <span class="card-dot" style="background:#7c3aed"></span>
+              <span class="card-dot"></span>
               <div>
                 <div class="card-label">Keyframe 2</div>
                 <div class="card-sub">t = 0.50s · back.out</div>
               </div>
             </div>
             <div class="card-bars">
-              <div class="bar" style="height:18px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
-              <div class="bar" style="height:30px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
-              <div class="bar" style="height:36px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
-              <div class="bar" style="height:22px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
+              <div class="bar" style="height:18px"></div>
+              <div class="bar" style="height:30px"></div>
+              <div class="bar" style="height:36px"></div>
+              <div class="bar" style="height:22px"></div>
             </div>
           </div>
           <div class="card" style="--i: 2">
             <div class="card-header">
-              <span class="card-dot" style="background:#71717a"></span>
+              <span class="card-dot"></span>
               <div>
                 <div class="card-label">Keyframe 1</div>
                 <div class="card-sub">t = 0.00s · linear</div>
               </div>
             </div>
             <div class="card-bars">
-              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
-              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
-              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
-              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
-              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
+              <div class="bar" style="height:12px"></div>
+              <div class="bar" style="height:12px"></div>
+              <div class="bar" style="height:12px"></div>
+              <div class="bar" style="height:12px"></div>
+              <div class="bar" style="height:12px"></div>
             </div>
           </div>
         </div>

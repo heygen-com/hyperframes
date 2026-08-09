@@ -4,42 +4,16 @@ description: "A fast slide wipe with RGB channel split on peak frames."
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/chromatic-aberration-wipe.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Chromatic Aberration Wipe preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/chromatic-aberration-wipe.html"
+  compositionId="chromatic-aberration-wipe"
+  compositionSrc="compositions/components/chromatic-aberration-wipe.html"
+  variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"The direction the reveal travels; both scenes slide the same way and the wipe edge follows.","default":"left","options":[{"value":"left","label":"Left"},{"value":"right","label":"Right"},{"value":"up","label":"Up"},{"value":"down","label":"Down"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the incoming scene's gradient.","default":"blue","options":[{"value":"blue","label":"Blue"},{"value":"green","label":"Green"},{"value":"violet","label":"Violet"}]},{"id":"aberration","type":"number","role":"style","label":"Aberration","description":"Multiplies the red/cyan channel split: 0 removes it, 1 is the stock strength, 2 doubles the offset and saturates the flash.","default":1,"min":0,"max":2,"step":0.1,"unit":"x"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add chromatic-aberration-wipe" />
-
-That writes one file: `compositions/components/chromatic-aberration-wipe.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `direction` | `left` | `left`, `right`, `up`, `down` | The direction the reveal travels; both scenes slide the same way and the wipe edge follows. |
-| `accent` | `blue` | `blue`, `green`, `violet` | Colour family of the incoming scene's gradient. |
-| `aberration` | `1` | 0x to 2x, step 0.1x | Multiplies the red/cyan channel split: 0 removes it, 1 is the stock strength, 2 doubles the offset and saturates the flash. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="chromatic-aberration-wipe"
-  data-composition-src="compositions/components/chromatic-aberration-wipe.html"
-  data-variable-values='{"direction":"left","accent":"blue","aberration":1}'
-></div>
-```
-
-## Source
-
-<Accordion title={`chromatic-aberration-wipe.html`}>
-
-```html
+```html chromatic-aberration-wipe.html
 <!--
   Chromatic Aberration Wipe - remocn component ported to HyperFrames authoring format.
 
@@ -208,7 +182,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add chromatic-aberration-wipe" />
+
+That writes one file: `compositions/components/chromatic-aberration-wipe.html`.
 
 ## Usage
 
@@ -216,7 +196,7 @@ Open `compositions/components/chromatic-aberration-wipe.html` and paste its cont
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `remocn-port`.
+Tagged `video-primitive` `transition-primitive` `remocn-port`.
 
 ## Related topics
 

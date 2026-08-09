@@ -4,49 +4,16 @@ description: "A token-driven star row whose colored layer sweeps to a rating, pr
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/star-rating-fill.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Star Rating Fill preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/star-rating-fill.html"
+  compositionId="star-rating-fill"
+  compositionSrc="compositions/components/star-rating-fill.html"
+  variables={[{"id":"rating","type":"number","role":"content","label":"Rating","description":"Target rating in star units from 0 to 5.","default":4.8,"min":0,"max":5,"step":0.1},{"id":"starCount","type":"number","role":"layout","label":"Star count","description":"Number of stars shown in the row.","default":5,"min":1,"max":10,"step":1},{"id":"showValue","type":"enum","role":"content","label":"Show value","description":"Show or hide the synchronized numeric rating.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add star-rating-fill" />
-
-That writes one file: `compositions/components/star-rating-fill.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/star-rating-fill.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `rating` | `4.8` | 0 to 5, step 0.1 | Target rating in star units from 0 to 5. |
-| `starCount` | `5` | 1 to 10, step 1 | Number of stars shown in the row. |
-| `showValue` | `yes` | `yes`, `no` | Show or hide the synchronized numeric rating. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="star-rating-fill"
-  data-composition-src="compositions/components/star-rating-fill.html"
-  data-variable-values='{"rating":4.8,"starCount":5,"showValue":"yes"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`star-rating-fill.html`}>
-
-```html
+```html star-rating-fill.html
 <!doctype html>
 <!--
   star-rating-fill: HyperFrames video primitive (data / holdable / prove)
@@ -347,7 +314,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add star-rating-fill" />
+
+That writes one file: `compositions/components/star-rating-fill.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/star-rating-fill.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -14,7 +14,10 @@
     - count (any text up to four characters, default "3"): what the badge
       reads. Use it to say 1, 12, 99+ or NEW.
     - accent (red | blue | green | violet, default red): the badge colour
-      family. All four clear 3:1 against the white count.
+      family. red is the literal notification convention; the other three ride
+      the composition's own accent, brand and accent-2 tokens and fall back to
+      ink when the composition declares none. All four clear 3:1 against the
+      white count.
     - surface (light | dark, default light): the chrome of the button and the
       ring around the badge. light suits bright frames, dark suits dark ones.
 
@@ -103,7 +106,15 @@
       return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
     }
 
-    var accents = { red: "#ef4444", blue: "#2563eb", green: "#16a34a", violet: "#7c3aed" };
+    // The badge is the one accent-carrying element here. red is the literal
+    // notification convention and stays; the decorative options ride the
+    // composition's own tokens and fall back to ink.
+    var accents = {
+      red: "#ef4444",
+      blue: "var(--accent, #18181b)",
+      green: "var(--brand, #18181b)",
+      violet: "var(--accent-2, #18181b)",
+    };
     var surfaces = {
       light: { surface: "#ffffff", border: "#e4e4e7", ink: "#18181b" },
       dark: { surface: "#101014", border: "#2a2a32", ink: "#fafafa" },

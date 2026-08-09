@@ -4,49 +4,16 @@ description: "A five-shot rail whips past on a fast decaying curve, then oversho
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/velocity-throw-snap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Velocity Throw Snap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/velocity-throw-snap.html"
+  compositionId="velocity-throw-snap"
+  compositionSrc="compositions/components/velocity-throw-snap.html"
+  variables={[{"id":"hero_index","type":"number","role":"content","label":"Hero index","description":"Zero-based index of the shot centered at the settle.","default":2,"min":0,"max":4,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used by the hero shot.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"card_label_prefix","type":"string","role":"content","label":"Card label prefix","description":"Text placed before each shot number.","default":"Shot"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add velocity-throw-snap" />
-
-That writes one file: `compositions/components/velocity-throw-snap.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/velocity-throw-snap.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `hero_index` | `2` | 0 to 4, step 1 | Zero-based index of the shot centered at the settle. |
-| `accent` | `green` | `green`, `blue`, `violet` | Highlight color used by the hero shot. |
-| `card_label_prefix` | `Shot` | string | Text placed before each shot number. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="velocity-throw-snap"
-  data-composition-src="compositions/components/velocity-throw-snap.html"
-  data-variable-values='{"hero_index":2,"accent":"green","card_label_prefix":"Shot"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`velocity-throw-snap.html`}>
-
-```html
+```html velocity-throw-snap.html
 <!doctype html>
 <!--
   velocity-throw-snap: HyperFrames video primitive (feature-tour / exhibit)
@@ -533,7 +500,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add velocity-throw-snap" />
+
+That writes one file: `compositions/components/velocity-throw-snap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/velocity-throw-snap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,48 +4,16 @@ description: "A dark design-tool app chrome with a live vector pen path, sequent
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/vector-editor-rig.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Vector Editor Rig preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/vector-editor-rig.html"
+  compositionId="vector-editor-rig"
+  compositionSrc="compositions/components/vector-editor-rig.html"
+  variables={[{"id":"tool","type":"enum","role":"content","label":"Active tool","description":"Tool highlighted in the editor toolbar.","default":"pen","options":[{"value":"pen","label":"Pen"},{"value":"shape","label":"Shape"},{"value":"type","label":"Type"}]},{"id":"pathLabel","type":"string","role":"content","label":"Path label","description":"Name shown for the active vector path.","default":"Logo"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add vector-editor-rig" />
-
-That writes one file: `compositions/components/vector-editor-rig.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/vector-editor-rig.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `tool` | `pen` | `pen`, `shape`, `type` | Tool highlighted in the editor toolbar. |
-| `pathLabel` | `Logo` | string | Name shown for the active vector path. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="vector-editor-rig"
-  data-composition-src="compositions/components/vector-editor-rig.html"
-  data-variable-values='{"tool":"pen","pathLabel":"Logo"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`vector-editor-rig.html`}>
-
-```html
+```html vector-editor-rig.html
 <!doctype html>
 <!--
   vector-editor-rig -- HyperFrames video primitive (ui-props / holdable / demonstrate)
@@ -843,7 +811,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add vector-editor-rig" />
+
+That writes one file: `compositions/components/vector-editor-rig.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/vector-editor-rig.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

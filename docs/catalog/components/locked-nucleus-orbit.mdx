@@ -4,49 +4,16 @@ description: "A fixed center nucleus anchors deterministic satellite orbits that
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/locked-nucleus-orbit.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Locked Nucleus Orbit preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/locked-nucleus-orbit.html"
+  compositionId="locked-nucleus-orbit"
+  compositionSrc="compositions/components/locked-nucleus-orbit.html"
+  variables={[{"id":"label","type":"string","role":"content","label":"Nucleus label","description":"Text displayed inside the fixed center nucleus.","default":"core"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the nucleus, rings, and satellite markers.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"satellites","type":"number","role":"layout","label":"Satellites","description":"Number of orbiting copy chips.","default":4,"min":3,"max":6,"step":1}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add locked-nucleus-orbit" />
-
-That writes one file: `compositions/components/locked-nucleus-orbit.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/locked-nucleus-orbit.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label` | `core` | string | Text displayed inside the fixed center nucleus. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color used by the nucleus, rings, and satellite markers. |
-| `satellites` | `4` | 3 to 6, step 1 | Number of orbiting copy chips. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="locked-nucleus-orbit"
-  data-composition-src="compositions/components/locked-nucleus-orbit.html"
-  data-variable-values='{"label":"core","accent":"green","satellites":4}'
-></div>
-```
-
-## Source
-
-<Accordion title={`locked-nucleus-orbit.html`}>
-
-```html
+```html locked-nucleus-orbit.html
 <!doctype html>
 <!--
   locked-nucleus-orbit: HyperFrames video primitive (intros / reveals / orbit)
@@ -277,9 +244,9 @@ defaults, so this behaves exactly like the preview above until you change one:
                 : {};
 
             var accentColors = {
-              green: "#34d399",
-              blue: "#38bdf8",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
@@ -402,7 +369,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add locked-nucleus-orbit" />
+
+That writes one file: `compositions/components/locked-nucleus-orbit.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/locked-nucleus-orbit.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

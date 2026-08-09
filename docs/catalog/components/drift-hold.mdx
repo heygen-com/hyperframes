@@ -4,48 +4,16 @@ description: "A centered content card stays subtly alive through loop-exact rota
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/drift-hold.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Drift Hold preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/drift-hold.html"
+  compositionId="drift-hold"
+  compositionSrc="compositions/components/drift-hold.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Text displayed in the default centered card.","default":"Always alive"},{"id":"intensity","type":"enum","role":"motion","label":"Intensity","description":"Amplitude of the ambient rotation, breathing, and light sweep.","default":"standard","options":[{"value":"whisper","label":"Whisper"},{"value":"standard","label":"Standard"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add drift-hold" />
-
-That writes one file: `compositions/components/drift-hold.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/drift-hold.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Always alive` | string | Text displayed in the default centered card. |
-| `intensity` | `standard` | `whisper`, `standard` | Amplitude of the ambient rotation, breathing, and light sweep. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="drift-hold"
-  data-composition-src="compositions/components/drift-hold.html"
-  data-variable-values='{"text":"Always alive","intensity":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`drift-hold.html`}>
-
-```html
+```html drift-hold.html
 <!doctype html>
 <!--
   drift-hold: HyperFrames video primitive (camera / ambient / hold)
@@ -240,7 +208,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add drift-hold" />
+
+That writes one file: `compositions/components/drift-hold.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/drift-hold.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

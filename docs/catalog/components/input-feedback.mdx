@@ -4,42 +4,16 @@ description: "A transitions.dev-inspired input feedback primitive with shake, cl
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/input-feedback.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Input Feedback preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/input-feedback.html"
+  compositionId="input-feedback"
+  compositionSrc="compositions/components/input-feedback.html"
+  variables={[{"id":"status","type":"enum","role":"style","label":"Status","description":"Whether the field reads as accepted or rejected, colouring the border, chip and hint.","default":"valid","options":[{"value":"valid","label":"Valid"},{"value":"error","label":"Error"}]},{"id":"value","type":"string","role":"content","label":"Value","description":"Text held by the field.","default":"mia@example.com"},{"id":"hint","type":"string","role":"content","label":"Hint","description":"Helper line under the field.","default":"Looks good."}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add input-feedback" />
-
-That writes one file: `compositions/components/input-feedback.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `status` | `valid` | `valid`, `error` | Whether the field reads as accepted or rejected, colouring the border, chip and hint. |
-| `value` | `mia@example.com` | string | Text held by the field. |
-| `hint` | `Looks good.` | string | Helper line under the field. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="input-feedback"
-  data-composition-src="compositions/components/input-feedback.html"
-  data-variable-values='{"status":"valid","value":"mia@example.com","hint":"Looks good."}'
-></div>
-```
-
-## Source
-
-<Accordion title={`input-feedback.html`}>
-
-```html
+```html input-feedback.html
 <!--
   Input Feedback - transitions.dev-inspired primitive for HyperFrames.
 
@@ -197,7 +171,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add input-feedback" />
+
+That writes one file: `compositions/components/input-feedback.html`.
 
 ## Usage
 

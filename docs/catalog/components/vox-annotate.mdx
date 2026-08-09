@@ -4,53 +4,16 @@ description: "The Vox-style annotate gesture: a keyword in a held sentence gets 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/vox-annotate.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Vox Annotate preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/vox-annotate.html"
+  compositionId="vox-annotate"
+  compositionSrc="compositions/components/vox-annotate.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Full line of display text.","default":"Ship the story, not the spec"},{"id":"keyword","type":"string","role":"content","label":"Keyword","description":"First case-insensitive substring match in text receives the marker and annotation. Empty or unmatched draws nothing.","default":"story"},{"id":"note","type":"string","role":"content","label":"Note","description":"Mono callout label at the end of the connector. Empty draws the marker only.","default":"the annotate beat"},{"id":"style","type":"enum","role":"style","label":"Marker style","description":"Shape of the hand-drawn marker stroke.","default":"highlight","options":[{"value":"highlight","label":"Highlight"},{"value":"circle","label":"Circle"},{"value":"underline","label":"Underline"},{"value":"scribble","label":"Scribble"}]},{"id":"draw_at","type":"number","role":"timing","label":"Draw at","description":"Second (from mount start) the annotate gesture starts. Clamped so the gesture completes before any exit.","default":0.9,"min":0,"step":0.1,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Annotation ink color from the contract token map.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the lockup holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add vox-annotate" />
-
-That writes one file: `compositions/components/vox-annotate.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/vox-annotate.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `Ship the story, not the spec` | string | Full line of display text. |
-| `keyword` | `story` | string | First case-insensitive substring match in text receives the marker and annotation. Empty or unmatched draws nothing. |
-| `note` | `the annotate beat` | string | Mono callout label at the end of the connector. Empty draws the marker only. |
-| `style` | `highlight` | `highlight`, `circle`, `underline`, `scribble` | Shape of the hand-drawn marker stroke. |
-| `draw_at` | `0.9` | number | Second (from mount start) the annotate gesture starts. Clamped so the gesture completes before any exit. |
-| `accent` | `green` | `green`, `blue`, `violet` | Annotation ink color from the contract token map. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the lockup holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="vox-annotate"
-  data-composition-src="compositions/components/vox-annotate.html"
-  data-variable-values='{"text":"Ship the story, not the spec","keyword":"story","note":"the annotate beat","style":"highlight","draw_at":0.9,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`vox-annotate.html`}>
-
-```html
+```html vox-annotate.html
 <!doctype html>
 <!--
   vox-annotate: HyperFrames video primitive (text effects / annotation)
@@ -534,7 +497,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add vox-annotate" />
+
+That writes one file: `compositions/components/vox-annotate.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/vox-annotate.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

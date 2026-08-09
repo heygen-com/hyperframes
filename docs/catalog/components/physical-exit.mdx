@@ -4,49 +4,16 @@ description: "A card exits with physical momentum in toss, drop, or slide mode, 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/physical-exit.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Physical Exit preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/physical-exit.html"
+  compositionId="physical-exit"
+  compositionSrc="compositions/components/physical-exit.html"
+  variables={[{"id":"mode","type":"enum","role":"motion","label":"Exit mode","description":"Physical behavior used to carry the card offscreen.","default":"toss","options":[{"value":"toss","label":"Toss"},{"value":"drop","label":"Drop"},{"value":"slide","label":"Slide"}]},{"id":"text","type":"string","role":"content","label":"Card text","description":"Word displayed on the exiting card.","default":"Later"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied to the card edge.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add physical-exit" />
-
-That writes one file: `compositions/components/physical-exit.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/physical-exit.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `mode` | `toss` | `toss`, `drop`, `slide` | Physical behavior used to carry the card offscreen. |
-| `text` | `Later` | string | Word displayed on the exiting card. |
-| `accent` | `green` | `green`, `blue`, `violet` | Color applied to the card edge. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="physical-exit"
-  data-composition-src="compositions/components/physical-exit.html"
-  data-variable-values='{"mode":"toss","text":"Later","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`physical-exit.html`}>
-
-```html
+```html physical-exit.html
 <!doctype html>
 <!--
   physical-exit: HyperFrames video primitive (motion / exit / physical)
@@ -179,9 +146,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             var text = vars.text == null ? "Later" : String(vars.text);
             var accent = vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var accentColors = {
-              green: "#34d399",
-              blue: "#60a5fa",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #60a5fa)",
+              violet: "var(--accent-2, #a78bfa)",
             };
 
             label.textContent = text;
@@ -296,7 +263,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add physical-exit" />
+
+That writes one file: `compositions/components/physical-exit.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/physical-exit.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

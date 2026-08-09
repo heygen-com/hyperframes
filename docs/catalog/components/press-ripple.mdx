@@ -4,53 +4,16 @@ description: "A cursor decel-arrives from off-stage, lands slightly off-center o
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/press-ripple.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Press Ripple preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/press-ripple.html"
+  compositionId="press-ripple"
+  compositionSrc="compositions/components/press-ripple.html"
+  variables={[{"id":"label","type":"string","role":"content","label":"Label","description":"Text inside the default pill target.","default":"Get started"},{"id":"target_x","type":"number","role":"layout","label":"Target X","description":"Zone center, percent of host width.","default":50,"min":8,"max":92,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Target Y","description":"Zone center, percent of host height.","default":50,"min":8,"max":92,"step":1,"unit":"%"},{"id":"press_at","type":"number","role":"timing","label":"Press at","description":"Seconds from mount start when the press begins.","default":1.4,"min":0.9,"max":10,"step":0.1,"unit":"s"},{"id":"cursor","type":"enum","role":"style","label":"Cursor","description":"Pointer tone.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract color for the ripple ink and pressed fill.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"style","label":"Exit","description":"How the frame leaves. None holds the pressed state.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Fade up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add press-ripple" />
-
-That writes one file: `compositions/components/press-ripple.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/press-ripple.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `label` | `Get started` | string | Text inside the default pill target. |
-| `target_x` | `50` | 8% to 92%, step 1% | Zone center, percent of host width. |
-| `target_y` | `50` | 8% to 92%, step 1% | Zone center, percent of host height. |
-| `press_at` | `1.4` | 0.9s to 10s, step 0.1s | Seconds from mount start when the press begins. |
-| `cursor` | `light` | `light`, `dark` | Pointer tone. |
-| `accent` | `green` | `green`, `blue`, `violet` | Contract color for the ripple ink and pressed fill. |
-| `exit` | `none` | `none`, `fade`, `up` | How the frame leaves. None holds the pressed state. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="press-ripple"
-  data-composition-src="compositions/components/press-ripple.html"
-  data-variable-values='{"label":"Get started","target_x":50,"target_y":50,"press_at":1.4,"cursor":"light","accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`press-ripple.html`}>
-
-```html
+```html press-ripple.html
 <!doctype html>
 <!--
   press-ripple: HyperFrames video primitive (product demo / payoff)
@@ -428,7 +391,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add press-ripple" />
+
+That writes one file: `compositions/components/press-ripple.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/press-ripple.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

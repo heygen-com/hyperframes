@@ -4,42 +4,16 @@ description: "A skeleton loader transition that pulses, then cross-fades into co
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/skeleton-reveal.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Skeleton Reveal preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/skeleton-reveal.html"
+  compositionId="skeleton-reveal"
+  compositionSrc="compositions/components/skeleton-reveal.html"
+  variables={[{"id":"name","type":"string","role":"content","label":"Name","description":"Primary line revealed once the skeleton fades out.","default":"Jane Cooper"},{"id":"detail","type":"string","role":"content","label":"Detail","description":"Secondary line under the name, such as an email or a role.","default":"jane@example.com"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Card palette. Light is the paper card, dark is a near-black card with the matching skeleton bars and text.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add skeleton-reveal" />
-
-That writes one file: `compositions/components/skeleton-reveal.html`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `name` | `Jane Cooper` | string | Primary line revealed once the skeleton fades out. |
-| `detail` | `jane@example.com` | string | Secondary line under the name, such as an email or a role. |
-| `tone` | `light` | `light`, `dark` | Card palette. Light is the paper card, dark is a near-black card with the matching skeleton bars and text. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="skeleton-reveal"
-  data-composition-src="compositions/components/skeleton-reveal.html"
-  data-variable-values='{"name":"Jane Cooper","detail":"jane@example.com","tone":"light"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`skeleton-reveal.html`}>
-
-```html
+```html skeleton-reveal.html
 <!--
   Skeleton Reveal - transitions.dev-inspired primitive for HyperFrames.
 
@@ -172,7 +146,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add skeleton-reveal" />
+
+That writes one file: `compositions/components/skeleton-reveal.html`.
 
 ## Usage
 
@@ -180,7 +160,7 @@ Open `compositions/components/skeleton-reveal.html` and paste its contents into 
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `transitions-dev-port` `skeleton` `reveal`.
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `skeleton` `reveal`.
 
 ## Related topics
 

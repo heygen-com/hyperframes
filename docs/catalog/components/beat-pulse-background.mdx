@@ -4,49 +4,16 @@ description: "An accent-derived backdrop pulses its glow intensity and saturatio
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/beat-pulse-background.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Beat Pulse Background preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/beat-pulse-background.html"
+  compositionId="beat-pulse-background"
+  compositionSrc="compositions/components/beat-pulse-background.html"
+  variables={[{"id":"beats","type":"string","role":"timing","label":"Beats","description":"Comma-separated beat times in seconds. Invalid entries are ignored and numeric values are clamped to the composition duration.","default":"0.5,1.0,1.5,2.0,2.5,3.0,3.5"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the pulsing glow.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"intensity","type":"enum","role":"style","label":"Intensity","description":"Strength of the glow and saturation pulse.","default":"subtle","options":[{"value":"subtle","label":"Subtle"},{"value":"club","label":"Club"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add beat-pulse-background" />
-
-That writes one file: `compositions/components/beat-pulse-background.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/beat-pulse-background.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `beats` | `0.5,1.0,1.5,2.0,2.5,3.0,3.5` | string | Comma-separated beat times in seconds. Invalid entries are ignored and numeric values are clamped to the composition duration. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used by the pulsing glow. |
-| `intensity` | `subtle` | `subtle`, `club` | Strength of the glow and saturation pulse. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="beat-pulse-background"
-  data-composition-src="compositions/components/beat-pulse-background.html"
-  data-variable-values='{"beats":"0.5,1.0,1.5,2.0,2.5,3.0,3.5","accent":"green","intensity":"subtle"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`beat-pulse-background.html`}>
-
-```html
+```html beat-pulse-background.html
 <!doctype html>
 <!--
   beat-pulse-background: HyperFrames video primitive (backgrounds / rhythmic)
@@ -257,7 +224,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add beat-pulse-background" />
+
+That writes one file: `compositions/components/beat-pulse-background.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/beat-pulse-background.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

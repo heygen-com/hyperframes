@@ -4,51 +4,16 @@ description: "A word lands while its variable-font weight and width axes flex fr
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/variable-font-flex.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Variable Font Flex preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/variable-font-flex.html"
+  compositionId="variable-font-flex"
+  compositionSrc="compositions/components/variable-font-flex.html"
+  variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"The word whose variable-font axes flex.","default":"FLEX"},{"id":"axis","type":"enum","role":"style","label":"Axis","description":"Which variable-font axes animate: weight, width, or both.","default":"both","options":[{"value":"weight","label":"Weight"},{"value":"width","label":"Width"},{"value":"both","label":"Both"}]},{"id":"stagger","type":"number","role":"timing","label":"Stagger","description":"Seconds between per-character flex starts, clamped 0 to 0.25.","default":0.06},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Word color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the carved word holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add variable-font-flex" />
-
-That writes one file: `compositions/components/variable-font-flex.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/variable-font-flex.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `text` | `FLEX` | string | The word whose variable-font axes flex. |
-| `axis` | `both` | `weight`, `width`, `both` | Which variable-font axes animate: weight, width, or both. |
-| `stagger` | `0.06` | number | Seconds between per-character flex starts, clamped 0 to 0.25. |
-| `accent` | `green` | `green`, `blue`, `violet` | Word color: green rides --brand, blue rides --accent, violet rides --accent-2. |
-| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the carved word holds until the frame cuts. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="variable-font-flex"
-  data-composition-src="compositions/components/variable-font-flex.html"
-  data-variable-values='{"text":"FLEX","axis":"both","stagger":0.06,"accent":"green","exit":"none"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`variable-font-flex.html`}>
-
-```html
+```html variable-font-flex.html
 <!doctype html>
 <!--
   variable-font-flex: HyperFrames video primitive (type / Wave M experiment M5)
@@ -219,9 +184,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             // Each enum choice routes to a DIFFERENT contract token so the
             // variable stays meaningful under a theme.
             var accentColors = {
-              green: "var(--brand, #71f5a7)",
-              blue: "var(--accent, #61a8ff)",
-              violet: "var(--accent-2, #c5a3ff)",
+              green: "var(--brand, #52525b)",
+              blue: "var(--accent, #52525b)",
+              violet: "var(--accent-2, #52525b)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
@@ -359,7 +324,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add variable-font-flex" />
+
+That writes one file: `compositions/components/variable-font-flex.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/variable-font-flex.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

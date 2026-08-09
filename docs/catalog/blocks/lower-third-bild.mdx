@@ -4,41 +4,16 @@ description: "News-style lower third with tight-fit text boxes: white headline b
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/lower-third-bild.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Lower Third — BILD Style preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/lower-third-bild.html"
+  compositionId="lower-third-bild"
+  compositionSrc="compositions/lower-third-bild.html"
+  variables={[{"id":"TXT_MAIN_1_Line","type":"string","default":"BILD EXKLUSIV"},{"id":"TXT_SUB","type":"string","default":"Sonderbericht"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add lower-third-bild" />
-
-That writes `compositions/lower-third-bild.html`, plus 2 supporting files under `compositions/assets/fonts/`.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `TXT_MAIN_1_Line` | `BILD EXKLUSIV` | string |  |
-| `TXT_SUB` | `Sonderbericht` | string |  |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="lower-third-bild"
-  data-composition-src="compositions/lower-third-bild.html"
-  data-variable-values='{"TXT_MAIN_1_Line":"BILD EXKLUSIV","TXT_SUB":"Sonderbericht"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`lower-third-bild.html`}>
-
-```html
+```html lower-third-bild.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -192,7 +167,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add lower-third-bild" />
+
+That writes `compositions/lower-third-bild.html`, plus 2 supporting files under `compositions/assets/fonts/`.
 
 ## Usage
 

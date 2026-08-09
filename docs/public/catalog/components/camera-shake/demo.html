@@ -1,0 +1,828 @@
+<!doctype html>
+<!-- Demo plate for the catalog preview. Identical to camera-shake.html except the
+     body background, which is opaque here so the plate reads on the catalog card.
+     Not installed by `hyperframes add` - registry-item.json lists camera-shake.html only. -->
+<html
+  lang="en"
+  data-composition-variables='[
+    {
+      "id": "shakeProfile",
+      "type": "enum",
+      "label": "Shake profile",
+      "default": "handheld-normal-mild",
+      "options": [
+        { "value": "handheld-normal-mild", "label": "Handheld - normal lens, mild" },
+        { "value": "handheld-normal-strong", "label": "Handheld - normal lens, strong" },
+        { "value": "handheld-normal-extreme", "label": "Handheld - normal lens, extreme" },
+        { "value": "handheld-wideangle-mild", "label": "Handheld - wide angle, mild" },
+        { "value": "handheld-wideangle-strong", "label": "Handheld - wide angle, strong" },
+        { "value": "handheld-tele-mild", "label": "Handheld - telephoto, mild" },
+        { "value": "handheld-tele-strong", "label": "Handheld - telephoto, strong" },
+        { "value": "rig-6d-shake", "label": "Rig - 6D shake (engine buzz)" },
+        { "value": "rig-6d-wobble", "label": "Rig - 6D wobble" }
+      ]
+    },
+    {
+      "id": "shakeIntensity",
+      "type": "number",
+      "label": "Intensity multiplier",
+      "default": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.05
+    },
+    {
+      "id": "shakeFrequency",
+      "type": "number",
+      "label": "Frequency multiplier",
+      "default": 1,
+      "min": 0.1,
+      "max": 4,
+      "step": 0.05
+    },
+    {
+      "id": "shakeRotation",
+      "type": "boolean",
+      "label": "Include rotation (roll + tilt/pan)",
+      "default": true
+    }
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Camera Shake</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070f;
+      }
+
+      /* ---- camera-shake ----------------------------------------------------
+         Procedural handheld / Steadicam / rig shake for ANY wrapper. Two
+         elements: an overflow-hidden FRAME that carries the lens perspective,
+         and a RIG inside it that gets the shake transform. Whatever you put
+         in the rig becomes "the shot".
+
+           <div class="camera-shake-frame">
+             <div class="camera-shake-rig">  ...your content...  </div>
+           </div>
+
+           cameraShake(tl, "#my-rig", { profile: "handheld-tele-mild", duration: 8 });
+
+         Layers inside the rig may carry data-cs-z="-800" to sit at a depth;
+         cameraShake() scales them to compensate so they parallax under the
+         camera instead of sliding as a flat card.
+      ------------------------------------------------------------------- */
+      .camera-shake-frame {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        /* perspective is written by cameraShake() from the profile's lens */
+      }
+      .camera-shake-rig {
+        position: absolute;
+        inset: 0;
+        transform-style: preserve-3d;
+        will-change: transform;
+      }
+      .camera-shake-rig > * {
+        transform-style: preserve-3d;
+      }
+
+      /* ---- self-preview stand-in "world" (not part of the snippet) ------- */
+      .cs-layer {
+        position: absolute;
+        inset: 0;
+      }
+      .cs-sky {
+        background: linear-gradient(#070b18 0%, #16264a 52%, #4a6ea8 78%, #b9852f 100%);
+      }
+      .cs-skyline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 46%;
+        height: 220px;
+        background: repeating-linear-gradient(
+          90deg,
+          #0d1428 0 70px,
+          transparent 70px 96px,
+          #101a33 96px 140px,
+          transparent 140px 178px
+        );
+        opacity: 0.85;
+      }
+      .cs-tower {
+        position: absolute;
+        bottom: 44%;
+        width: 190px;
+        background: linear-gradient(#1d2b4d, #0a1024);
+        border-top: 6px solid #2f4a80;
+      }
+      .cs-tower::after {
+        content: "";
+        position: absolute;
+        inset: 18px 14px;
+        background:
+          repeating-linear-gradient(0deg, #ffd48a33 0 10px, transparent 10px 34px),
+          repeating-linear-gradient(90deg, #ffd48a2b 0 12px, transparent 12px 40px);
+      }
+      .cs-t1 {
+        left: 300px;
+        height: 430px;
+      }
+      .cs-t2 {
+        left: 820px;
+        width: 260px;
+        height: 640px;
+      }
+      .cs-t3 {
+        left: 1340px;
+        height: 380px;
+      }
+      /* Flat ground plane. A rotateX'd floor would poke through the title
+         plane under preserve-3d, so depth here comes from translateZ only. */
+      .cs-floor {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 56%;
+        bottom: 0;
+        background:
+          repeating-linear-gradient(90deg, #4d6ea03d 0 3px, transparent 3px 150px),
+          repeating-linear-gradient(0deg, #4d6ea03d 0 3px, transparent 3px 70px),
+          linear-gradient(#0a1224, #04070f);
+      }
+      .cs-title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 300px;
+        text-align: center;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-weight: 800;
+        font-size: 148px;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        color: #ffffff;
+        text-shadow: 0 12px 44px rgba(0, 0, 0, 0.75);
+      }
+      .cs-title span {
+        display: block;
+      }
+      .cs-post {
+        position: absolute;
+        left: 120px;
+        bottom: 0;
+        width: 46px;
+        height: 620px;
+        background: linear-gradient(#25324f, #060a14);
+        border-radius: 6px;
+      }
+      .cs-post-b {
+        left: auto;
+        right: 150px;
+        height: 720px;
+      }
+
+      /* ---- static frame guide: proves the WORLD moves, not the frame ----- */
+      #cs-guide {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      /* Thirds as four thin bars, not one full-frame gradient layer: a
+         full-inset element over the title reads as an occluder to the
+         layout checker even when its paint is mostly transparent. */
+      #cs-guide .cs-line {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.25);
+      }
+      #cs-guide .cs-v1 {
+        left: 639px;
+        top: 0;
+        width: 3px;
+        height: 1080px;
+      }
+      #cs-guide .cs-v2 {
+        left: 1279px;
+        top: 0;
+        width: 3px;
+        height: 1080px;
+      }
+      #cs-guide .cs-h1 {
+        left: 0;
+        top: 359px;
+        width: 1920px;
+        height: 3px;
+      }
+      #cs-guide .cs-h2 {
+        left: 0;
+        top: 719px;
+        width: 1920px;
+        height: 3px;
+      }
+      #cs-guide .cs-reticle {
+        position: absolute;
+        left: 910px;
+        top: 490px;
+        width: 100px;
+        height: 100px;
+        border: 3px solid #ff4d3d;
+        border-radius: 50%;
+      }
+      #cs-guide .cs-reticle::after {
+        content: "";
+        position: absolute;
+        left: 47px;
+        top: -40px;
+        width: 3px;
+        height: 180px;
+        background: #ff4d3d;
+      }
+      #cs-guide .cs-tick {
+        position: absolute;
+        width: 70px;
+        height: 70px;
+        border: 4px solid #ffffffbb;
+      }
+      #cs-guide .cs-tl {
+        left: 70px;
+        top: 70px;
+        border-right: 0;
+        border-bottom: 0;
+      }
+      #cs-guide .cs-tr {
+        right: 70px;
+        top: 70px;
+        border-left: 0;
+        border-bottom: 0;
+      }
+      #cs-guide .cs-bl {
+        left: 70px;
+        bottom: 70px;
+        border-right: 0;
+        border-top: 0;
+      }
+      #cs-guide .cs-br {
+        right: 70px;
+        bottom: 70px;
+        border-left: 0;
+        border-top: 0;
+      }
+      #cs-readout {
+        position: absolute;
+        left: 70px;
+        bottom: 170px;
+        font-family: Menlo, Consolas, monospace;
+        font-size: 30px;
+        letter-spacing: 0.02em;
+        color: #ffffffe6;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      WIRING (what you copy into a host composition):
+        1. the .camera-shake-frame / .camera-shake-rig CSS above
+        2. the cameraShake() helper in the script below (profile table included)
+        3. wrap the thing you want shot:
+             <div class="camera-shake-frame">
+               <div class="camera-shake-rig" id="shot">  <video .../>  </div>
+             </div>
+        4. drive it from your paused timeline:
+             cameraShake(tl, "#shot", { profile: "handheld-wideangle-strong", duration: 8 });
+      Everything with a `cs-` class below is the self-preview world, not the snippet.
+    -->
+    <div
+      id="cs-root"
+      data-composition-id="camera-shake"
+      data-start="0"
+      data-duration="6"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+      style="position: relative; width: 1920px; height: 1080px; background: #05070f"
+    >
+      <div
+        class="camera-shake-frame clip"
+        id="cs-frame"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      >
+        <!-- The rig is deliberately larger than the frame (overscan) and
+             deliberately leaves it under shake: that IS the effect, so every
+             moving layer is marked as intentional overflow. -->
+        <div class="camera-shake-rig" id="cs-rig" data-layout-allow-overflow>
+          <div class="cs-layer cs-sky" data-cs-z="-900" data-layout-allow-overflow></div>
+          <div class="cs-layer cs-farlayer" data-cs-z="-520" data-layout-allow-overflow>
+            <div class="cs-skyline" data-layout-allow-overflow></div>
+          </div>
+          <div class="cs-layer cs-midlayer" data-cs-z="-240" data-layout-allow-overflow>
+            <div class="cs-tower cs-t1" data-layout-allow-overflow></div>
+            <div class="cs-tower cs-t2" data-layout-allow-overflow></div>
+            <div class="cs-tower cs-t3" data-layout-allow-overflow></div>
+          </div>
+          <div class="cs-layer cs-floorlayer" data-cs-z="-90" data-layout-allow-overflow>
+            <div class="cs-floor" data-layout-allow-overflow></div>
+          </div>
+          <div class="cs-layer cs-titlelayer" data-cs-z="0" data-layout-allow-overflow>
+            <div class="cs-title">
+              <span>CAMERA</span>
+              <span>SHAKE</span>
+            </div>
+          </div>
+          <div class="cs-layer cs-nearlayer" data-cs-z="110" data-layout-allow-overflow>
+            <div class="cs-post" data-layout-allow-overflow></div>
+            <div class="cs-post cs-post-b" data-layout-allow-overflow></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="cs-guide" class="clip" data-start="0" data-duration="6" data-track-index="1">
+        <div class="cs-line cs-v1"></div>
+        <div class="cs-line cs-v2"></div>
+        <div class="cs-line cs-h1"></div>
+        <div class="cs-line cs-h2"></div>
+        <div class="cs-tick cs-tl"></div>
+        <div class="cs-tick cs-tr"></div>
+        <div class="cs-tick cs-bl"></div>
+        <div class="cs-tick cs-br"></div>
+        <div class="cs-reticle"></div>
+        <div id="cs-readout">profile</div>
+      </div>
+    </div>
+
+    <script>
+      /* =====================================================================
+         camera-shake - procedural handheld / Steadicam / rig camera shake.
+
+         PROVENANCE + LICENCE. The nine profiles below are measured PARAMETER
+         VALUES (amplitudes in degrees, frequencies in Hz, three octaves per
+         axis) read off Unity Cinemachine's shipped noise presets. Cinemachine
+         is under the Unity Companion License, which is NOT permissive: no
+         Unity file is vendored, copied or imported here, and none of the code
+         below derives from Unity source. What is reused is the numeric data -
+         facts about how much a camera moves - plus a three-line sampler shape
+         that is standard mathematics (sum of octaves of noise / cosine). The
+         noise function, the screen-space projection, the lens model, the
+         overscan solver and the seek-safe driver are all original.
+
+         DETERMINISM. Every value is a closed-form function of `t`:
+             channel(t) = (valueNoise(freq*t + offset) - 0.5) * amplitude
+             channel(t) = cos((freq*t + offset) * 2PI) * amplitude * 0.5
+         No accumulator, no dt, no clock, no unseeded random. Seeking straight
+         to frame N produces exactly the same state as stepping to frame N.
+         The per-frame work is driven from a PROPERTY SETTER on a tweened
+         driver object - NOT from tl.eventCallback("onUpdate"), which GSAP
+         suppresses on seek() and which would freeze the shake on frame 0.
+         ===================================================================== */
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        var RAD = Math.PI / 180;
+
+        /* ---- the nine profiles ------------------------------------------
+           rot[octave] = [ [ampXdeg, freqHz], [ampY, freq], [ampZ, freq] ]
+           null = the preset has no channel on that axis for that octave.
+           `lens` selects the focal length used for the screen projection.
+
+           The optical truth in this table: wide-angle carries 12 deg on X
+           where telephoto carries 4 deg, because a long lens magnifies
+           angular jitter - amplitude scales inversely with focal length.
+           Keep the 3x ratio; it is the whole reason there are lens variants.
+        ------------------------------------------------------------------ */
+        var CS_PROFILES = {
+          "handheld-normal-mild": {
+            lens: "normal",
+            rot: [
+              [[7, 0.15], [5, 0.1], null],
+              [[4, 0.8], [2, 0.75], null],
+              [[1, 1.2], [0.8, 1.5], null],
+            ],
+          },
+          "handheld-normal-strong": {
+            lens: "normal",
+            rot: [
+              [[10, 0.4], [10, 0.06], null],
+              [[5, 1.44], [3, 0.73], null],
+              [[3, 2.49], [1, 2.0], null],
+            ],
+          },
+          "handheld-normal-extreme": {
+            lens: "normal",
+            rot: [
+              [[15, 0.2], [7, 0.25], null],
+              [[5, 0.9], [3, 1.0], null],
+              [[2, 2.0], null, null],
+            ],
+          },
+          "handheld-wideangle-mild": {
+            lens: "wide",
+            rot: [
+              [[12, 0.15], [5, 0.1], null],
+              [[5, 0.6], [4, 0.45], null],
+              [[1, 1.5], [1, 1.2], null],
+            ],
+          },
+          "handheld-wideangle-strong": {
+            lens: "wide",
+            rot: [
+              [[17.46, 0.5], [5, 0.25], null],
+              [
+                [12.47, 0.94],
+                [4, 0.5],
+                [1, 0.4],
+              ],
+              [[4, 1.2], [2, 1.3], null],
+            ],
+          },
+          "handheld-tele-mild": {
+            lens: "tele",
+            rot: [
+              [[4, 0.2], [2, 0.15], null],
+              [[2, 0.4], [2, 0.5], null],
+              [[1, 0.7], [1, 0.6], null],
+            ],
+          },
+          "handheld-tele-strong": {
+            lens: "tele",
+            rot: [
+              [
+                [6.19, 0.39],
+                [4, 0.15],
+                [1, 0.1],
+              ],
+              [[1.84, 1.75], [0.5, 0.9], null],
+              [[2.3, 2.0], [0.5, 1.4], null],
+            ],
+          },
+          /* 6D Shake also carries POSITION channels (Unity world units, not
+             degrees). Every position channel is a "constant" (cosine) channel
+             except octave-2 Y, which is noise - that asymmetry is in the
+             measured data and is kept. */
+          "rig-6d-shake": {
+            lens: "normal",
+            rot: [
+              [
+                [0.09, 5.83],
+                [0.059, 1.8],
+                [0.017, 2.38],
+              ],
+              [
+                [0.14, 9.17],
+                [0.041, 11.35],
+                [0.009, 10.52],
+              ],
+              [
+                [0.15, 57.17],
+                [0.048, 54.17],
+                [0.016, 63.76],
+              ],
+            ],
+            pos: [
+              [
+                [0.011, 3.2, 1],
+                [0.059, 1.9, 1],
+                [0.021, 3.33, 1],
+              ],
+              [
+                [0.009, 7.7, 1],
+                [0.04, 9.1, 0],
+                [0.009, 9.22, 1],
+              ],
+              [
+                [0.002, 51.51, 1],
+                [0.05, 55.54, 1],
+                [0.017, 58.55, 1],
+              ],
+            ],
+          },
+          "rig-6d-wobble": {
+            lens: "normal",
+            rot: [
+              [
+                [0.987, 5.2],
+                [1.34, 5.39],
+                [2, 2.23],
+              ],
+              [
+                [0.73, 9.17],
+                [0.86, 11.35],
+                [0.51, 8.31],
+              ],
+              [
+                [0.78, 13.52],
+                [0.55, 27.66],
+                [0.28, 18.91],
+              ],
+            ],
+          },
+        };
+
+        /* Lens -> pinhole projection distance, in pixels.
+
+           Two constraints, and they have to be satisfied together:
+           1) SCALE. These amplitudes were authored against a camera with a
+              60 degree VERTICAL field of view, so the "normal" lens must
+              reproduce that framing or every profile comes out roughly twice
+              as violent as intended: D_normal = (H/2) / tan(30deg).
+           2) RATIO. 28 / 50 / 85mm are the standard wide / normal / tele
+              primes; D scales with focal length, so wide:tele is 1:3.04 -
+              the exact reciprocal of the 12deg:4deg amplitude ratio in the
+              profile table. That reciprocal is why all seven handheld presets
+              land within ~15% of the same on-screen displacement while still
+              looking like completely different lenses. */
+        var CS_LENS_MM = { wide: 28, normal: 50, tele: 85 };
+        var CS_REF_VFOV_DEG = 60;
+
+        /* Unity position channels are world units with no pixel equivalent.
+           240 px/unit is AUTHORED (it puts 6D Shake's buzz at a few pixels,
+           which is what an engine-vibration preset should look like). It is
+           the one number here that is not measured. */
+        var CS_UNIT_PX = 240;
+
+        /* Tilting the content plate is a stand-in for rotating the camera, and
+           it degenerates. The plate is a finite rectangle sitting AT the
+           projection distance, so tipping it drives its far corner backwards
+           by (half-diagonal * sin tilt); once that approaches D the corner
+           crosses the eye plane, the projection blows up, and NO amount of
+           overscan covers the frame - increasing the scale only pushes the
+           corner further behind the eye. It bites first on wide lenses, where
+           D is small and the plate is optically enormous.
+
+           So the tilt ceiling is derived, not picked: allow the corner to sink
+           at most a quarter of the way to the eye. 28mm gets ~6.8 deg, 50mm
+           ~12.3 deg, 85mm ~21.2 deg - wide lenses keystone least, which is
+           also what they look like. The FRAMING swing, which is what the
+           measured degrees actually encode, is never clamped: the shot still
+           moves by the full authored amount and only the world's keystone
+           stops growing. */
+        var CS_TILT_DEPTH_BUDGET = 0.25;
+
+        /* ---- deterministic 1-D value noise (original implementation) ------
+           Integer hash -> [0,1), smootherstep interpolation between lattice
+           points. Pure function of (x, seed): no state, no Math.random. */
+        function csHash(i, seed) {
+          var h = Math.imul(i | 0, 374761393) + Math.imul(seed | 0, 668265263);
+          h = (h ^ (h >>> 13)) >>> 0;
+          h = Math.imul(h, 1274126177) >>> 0;
+          return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+        }
+        function csNoise(x, seed) {
+          var i = Math.floor(x);
+          var f = x - i;
+          var u = f * f * f * (f * (f * 6 - 15) + 10);
+          return csHash(i, seed) * (1 - u) + csHash(i + 1, seed) * u;
+        }
+
+        /* One channel of one octave. `constant` picks the cosine form.
+           Each channel gets its own seed AND its own time offset: sharing
+           offsets correlates the axes and the shake collapses into a diagonal
+           line, which is the classic tell of fake handheld. */
+        function csChannel(amp, freq, t, seed, constant) {
+          var u = freq * t + seed * 7.13;
+          if (constant) return Math.cos(u * 2 * Math.PI) * amp * 0.5;
+          return (csNoise(u, seed) - 0.5) * amp;
+        }
+
+        function csSample(profile, t, intensity, freqScale) {
+          var rot = [0, 0, 0];
+          var pos = [0, 0, 0];
+          var o, a, ch;
+          for (o = 0; o < profile.rot.length; o++) {
+            for (a = 0; a < 3; a++) {
+              ch = profile.rot[o][a];
+              if (!ch) continue;
+              rot[a] += csChannel(ch[0] * intensity, ch[1] * freqScale, t, o * 3 + a, 0);
+            }
+          }
+          if (profile.pos) {
+            for (o = 0; o < profile.pos.length; o++) {
+              for (a = 0; a < 3; a++) {
+                ch = profile.pos[o][a];
+                if (!ch) continue;
+                pos[a] += csChannel(ch[0] * intensity, ch[1] * freqScale, t, 32 + o * 3 + a, ch[2]);
+              }
+            }
+          }
+          return { pitch: rot[0], yaw: rot[1], roll: rot[2], px: pos[0], py: pos[1], pz: pos[2] };
+        }
+
+        /* ---- the public helper ------------------------------------------
+           cameraShake(tl, target, opts)
+             profile   one of the nine ids
+             intensity amplitude multiplier (default 1)
+             frequency frequency multiplier (default 1)
+             rotation  false = translation only (gimbal-stabilised look)
+             duration  seconds of shake (default 6)
+             at        timeline position (default 0)
+             fps       sampling rate for the overscan solve (default 30)
+             overscan  force a scale instead of solving for one
+           Returns { distance, overscan, peakX, peakY, peakRoll }.
+        ------------------------------------------------------------------ */
+        window.cameraShake = function (tl, target, opts) {
+          opts = opts || {};
+          var el = typeof target === "string" ? document.querySelector(target) : target;
+          if (!el) return null;
+
+          var profile = CS_PROFILES[opts.profile] || CS_PROFILES["handheld-normal-mild"];
+          var intensity = opts.intensity === undefined ? 1 : Number(opts.intensity);
+          var freqScale = opts.frequency === undefined ? 1 : Number(opts.frequency);
+          var withRotation = opts.rotation !== false;
+          var dur = opts.duration === undefined ? 6 : Number(opts.duration);
+          var at = opts.at === undefined ? 0 : Number(opts.at);
+          var fps = opts.fps === undefined ? 30 : Number(opts.fps);
+
+          var box = el.getBoundingClientRect();
+          var W = box.width || el.offsetWidth || 1920;
+          var H = box.height || el.offsetHeight || 1080;
+          var D = (H / 2 / Math.tan((CS_REF_VFOV_DEG / 2) * RAD)) * (CS_LENS_MM[profile.lens] / 50);
+
+          // The frame (overflow-hidden parent) carries the lens perspective so
+          // that depth layers inside the rig parallax instead of sliding flat.
+          var frame = el.parentElement;
+          if (frame) frame.style.perspective = D + "px";
+
+          // Depth layers: compensate scale so a layer at z still fills frame.
+          var layers = el.querySelectorAll("[data-cs-z]");
+          for (var i = 0; i < layers.length; i++) {
+            var z = Number(layers[i].getAttribute("data-cs-z")) || 0;
+            layers[i].style.transform = "translateZ(" + z + "px) scale(" + (D - z) / D + ")";
+          }
+
+          var maxTiltDeg =
+            Math.asin(Math.min(0.9, (CS_TILT_DEPTH_BUDGET * D) / Math.sqrt((W * W + H * H) / 4))) /
+            RAD;
+          function clampTilt(deg) {
+            return Math.max(-maxTiltDeg, Math.min(maxTiltDeg, deg));
+          }
+
+          function state(t) {
+            var s = csSample(profile, t, intensity, freqScale);
+            // Pinhole projection: a camera rotation of theta about its nodal
+            // point shifts the projected image by D*tan(theta). That shift and
+            // the plate rotation together ARE the rotation-about-the-nodal-
+            // point decomposition - it is not double counting.
+            var x = -D * Math.tan(s.yaw * RAD) + s.px * CS_UNIT_PX;
+            var y = D * Math.tan(s.pitch * RAD) + s.py * CS_UNIT_PX;
+            return {
+              x: x,
+              y: y,
+              roll: withRotation ? clampTilt(s.roll) : 0,
+              pitch: withRotation ? clampTilt(s.pitch) : 0,
+              yaw: withRotation ? clampTilt(s.yaw) : 0,
+              dolly: 1 + (s.pz * CS_UNIT_PX) / D,
+            };
+          }
+
+          // Overscan. The shake is a closed form, so the scale that keeps the
+          // plate covering the frame is computed per frame and the worst kept.
+          // Per frame, not worst-of-each-axis: peak pitch and peak yaw do not
+          // land on the same frame, and combining their maxima would zoom in
+          // for a frame that never exists. Three terms:
+          //   translation - the plate must reach 2*|offset| further
+          //   roll        - a rolled W x H rect covers W x H at
+          //                 (W cos r + H sin r) / W (and the H twin)
+          //   keystone    - under perspective the edge that tips AWAY shrinks
+          //                 toward the projection centre. The lever arm is NOT
+          //                 the plate half-size: CSS projects about the FRAME's
+          //                 perspective-origin, so a plate that is translated
+          //                 AND tipped swings its far corner about a point
+          //                 |offset| further out. Using (H/2 + |y|) instead of
+          //                 H/2 is what makes this hold on the wide-angle
+          //                 profiles; the earlier H/2 form tore a corner off
+          //                 the frame at 28mm. Verified by DOM hit-test probe
+          //                 across all nine profiles at intensity 1, 2 and 3.
+          var maxX = 0,
+            maxY = 0,
+            maxRoll = 0,
+            overscan = 1;
+          for (var f = 0; f <= Math.ceil(dur * fps); f++) {
+            var st = state(f / fps);
+            maxX = Math.max(maxX, Math.abs(st.x));
+            maxY = Math.max(maxY, Math.abs(st.y));
+            maxRoll = Math.max(maxRoll, Math.abs(st.roll));
+            var rr = Math.abs(st.roll) * RAD;
+            var need =
+              (Math.max(
+                (W * Math.cos(rr) + H * Math.sin(rr)) / W,
+                (H * Math.cos(rr) + W * Math.sin(rr)) / H,
+              ) *
+                Math.max(1 + (2 * Math.abs(st.x)) / W, 1 + (2 * Math.abs(st.y)) / H) *
+                (1 +
+                  ((H / 2 + Math.abs(st.y)) / D) * Math.sin(Math.abs(st.pitch) * RAD) +
+                  ((W / 2 + Math.abs(st.x)) / D) * Math.sin(Math.abs(st.yaw) * RAD))) /
+              Math.max(0.5, st.dolly);
+            overscan = Math.max(overscan, need);
+          }
+          overscan = opts.overscan === undefined ? overscan * 1.02 : Number(opts.overscan);
+
+          function apply(t) {
+            var s = state(t);
+            gsap.set(el, {
+              x: s.x,
+              y: s.y,
+              rotation: s.roll,
+              rotationX: s.pitch,
+              rotationY: -s.yaw,
+              scale: overscan * s.dolly,
+            });
+          }
+
+          // Seek-safe driver: GSAP writes `t` on every render, including
+          // seek(), so the setter runs on every frame. An onUpdate callback
+          // would NOT - GSAP suppresses events on seek and the shake would
+          // freeze on frame 0.
+          var driver = {};
+          var value = 0;
+          Object.defineProperty(driver, "t", {
+            get: function () {
+              return value;
+            },
+            set: function (next) {
+              value = next;
+              apply(next);
+            },
+          });
+          apply(0);
+          tl.to(driver, { t: dur, duration: dur, ease: "none" }, at);
+
+          return {
+            distance: D,
+            overscan: overscan,
+            peakX: maxX,
+            peakY: maxY,
+            peakRoll: maxRoll,
+          };
+        };
+
+        /* ---- self-preview (not part of the snippet) ----------------------- */
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+        var PROFILE = vars.shakeProfile || "handheld-normal-mild";
+        var INTENSITY = vars.shakeIntensity === undefined ? 1 : Number(vars.shakeIntensity);
+        var FREQUENCY = vars.shakeFrequency === undefined ? 1 : Number(vars.shakeFrequency);
+        var ROTATION = !(vars.shakeRotation === false || vars.shakeRotation === "false");
+
+        var tl = gsap.timeline({ paused: true });
+        var info = window.cameraShake(tl, "#cs-rig", {
+          profile: PROFILE,
+          intensity: INTENSITY,
+          frequency: FREQUENCY,
+          rotation: ROTATION,
+          duration: 6,
+          fps: 30,
+        });
+        var readout = document.getElementById("cs-readout");
+        if (readout && info) {
+          readout.textContent =
+            PROFILE +
+            "  |  " +
+            CS_LENS_MM[(CS_PROFILES[PROFILE] || CS_PROFILES["handheld-normal-mild"]).lens] +
+            "mm  |  x" +
+            INTENSITY +
+            " amp  x" +
+            FREQUENCY +
+            " freq  |  rot " +
+            (ROTATION ? "on" : "off") +
+            "  |  overscan " +
+            info.overscan.toFixed(3);
+        }
+        window.__timelines["camera-shake"] = tl;
+      })();
+    </script>
+  <script>
+  (function () {
+    var raw = new URLSearchParams(location.search).get('hfv');
+    if (raw === null) return;
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return; }
+    if (!v || typeof v !== 'object') return;
+    window.__hfVariables = v;
+    var hosts = document.querySelectorAll('[data-composition-src]');
+    for (var i = 0; i < hosts.length; i++) {
+      var src = (hosts[i].getAttribute('data-composition-src') || '').split('?')[0];
+      if (src.slice(src.lastIndexOf('/') + 1) !== "camera-shake.html") continue;
+      hosts[i].setAttribute('data-variable-values', JSON.stringify(v));
+    }
+  })();
+</script>
+</body>
+</html>

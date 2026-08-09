@@ -268,15 +268,18 @@
             var accentName =
               vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var accentColors = {
-              green: "#34d399",
-              blue: "#60a5fa",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #60a5fa)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             var accentColor = accentColors[accentName];
 
             label.textContent = tapLabel;
             button.setAttribute("aria-label", tapLabel);
             root.style.setProperty("--gt-accent", accentColor);
+            // GSAP interpolates colors numerically, so tween values need the
+            // substituted color rather than the var() form.
+            accentColor = getComputedStyle(root).getPropertyValue("--gt-accent").trim();
 
             var IN_BASE = 1.35;
             var OUT_BASE = 0.55;

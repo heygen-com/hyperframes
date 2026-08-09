@@ -4,48 +4,16 @@ description: "Three soft accent-derived aurora fields drift in an exact ambient 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/aurora-drift.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Aurora Drift preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/aurora-drift.html"
+  compositionId="aurora-drift"
+  compositionSrc="compositions/components/aurora-drift.html"
+  variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used to derive the aurora hues.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"mood","type":"enum","role":"style","label":"Mood","description":"Base luminance and aurora field strength.","default":"deep","options":[{"value":"deep","label":"Deep"},{"value":"bright","label":"Bright"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add aurora-drift" />
-
-That writes one file: `compositions/components/aurora-drift.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/aurora-drift.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used to derive the aurora hues. |
-| `mood` | `deep` | `deep`, `bright` | Base luminance and aurora field strength. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="aurora-drift"
-  data-composition-src="compositions/components/aurora-drift.html"
-  data-variable-values='{"accent":"green","mood":"deep"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`aurora-drift.html`}>
-
-```html
+```html aurora-drift.html
 <!doctype html>
 <!--
   aurora-drift: HyperFrames video primitive (backgrounds / ambient)
@@ -283,7 +251,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add aurora-drift" />
+
+That writes one file: `compositions/components/aurora-drift.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/aurora-drift.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

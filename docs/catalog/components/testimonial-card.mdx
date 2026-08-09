@@ -4,50 +4,16 @@ description: "Reveals a customer quote at reading pace, then settles its avatar,
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/testimonial-card.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Testimonial Card preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/testimonial-card.html"
+  compositionId="testimonial-card"
+  compositionSrc="compositions/components/testimonial-card.html"
+  variables={[{"id":"quote","type":"string","role":"content","label":"Quote","description":"Customer testimonial copy revealed at reading pace.","default":"This changed how we ship."},{"id":"author","type":"string","role":"content","label":"Author","description":"Name attributed to the testimonial.","default":"Ken Tanaka"},{"id":"handle","type":"string","role":"content","label":"Handle","description":"Role or social handle shown beneath the author name.","default":"@ken"},{"id":"rating","type":"number","role":"content","label":"Rating","description":"Visible customer rating from zero to five stars.","default":5,"min":0,"max":5,"step":0.1}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add testimonial-card" />
-
-That writes one file: `compositions/components/testimonial-card.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/testimonial-card.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `quote` | `This changed how we ship.` | string | Customer testimonial copy revealed at reading pace. |
-| `author` | `Ken Tanaka` | string | Name attributed to the testimonial. |
-| `handle` | `@ken` | string | Role or social handle shown beneath the author name. |
-| `rating` | `5` | 0 to 5, step 0.1 | Visible customer rating from zero to five stars. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="testimonial-card"
-  data-composition-src="compositions/components/testimonial-card.html"
-  data-variable-values='{"quote":"This changed how we ship.","author":"Ken Tanaka","handle":"@ken","rating":5}'
-></div>
-```
-
-## Source
-
-<Accordion title={`testimonial-card.html`}>
-
-```html
+```html testimonial-card.html
 <!doctype html>
 <!--
   testimonial-card: HyperFrames video primitive (ui-props / holdable / prove)
@@ -178,7 +144,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             inset: 0 auto 0 0;
             width: var(--tc-rating-fill);
             overflow: hidden;
-            color: color-mix(in srgb, var(--brand) 40%, var(--bg));
+            /* The earned portion of the rating is the data. Flat ink over the
+               muted track says it by value, with no second hue. */
+            color: var(--fg);
             white-space: nowrap;
           }
 
@@ -210,7 +178,9 @@ defaults, so this behaves exactly like the preview above until you change one:
             aspect-ratio: 1;
             border: 0.16cqh solid color-mix(in srgb, var(--fg) 20%, transparent);
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--brand), var(--accent));
+            /* Placeholder person: a single (front) avatar circle at L1, with
+               the initials knocked out in the ground colour. */
+            background: color-mix(in srgb, var(--fg) 72%, var(--surface));
             color: var(--bg);
             font-family: var(--font-display);
             font-size: min(2.65cqw, 2.65cqh);
@@ -375,7 +345,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add testimonial-card" />
+
+That writes one file: `compositions/components/testimonial-card.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/testimonial-card.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

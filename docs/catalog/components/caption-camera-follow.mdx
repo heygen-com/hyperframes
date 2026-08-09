@@ -4,49 +4,16 @@ description: "One sentence written across a world far larger than the frame. Eac
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/caption-camera-follow.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Camera Follow Captions preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/caption-camera-follow.html"
+  compositionId="caption-camera-follow"
+  compositionSrc="compositions/components/caption-camera-follow.html"
+  variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour of the highlighted words. gold is the original.","default":"gold","options":[{"value":"gold","label":"Gold"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"framing","type":"enum","role":"style","label":"Framing","description":"Air the camera leaves around the written block, so the words land larger or smaller in frame.","default":"standard","options":[{"value":"tight","label":"Tight"},{"value":"standard","label":"Standard"},{"value":"wide","label":"Wide"}]},{"id":"smear","type":"enum","role":"style","label":"Smear","description":"Scales the radial motion blur each camera move carries, from none to a heavy streak.","default":"standard","options":[{"value":"off","label":"Off"},{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add caption-camera-follow" />
-
-That writes one file: `compositions/components/caption-camera-follow.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/caption-camera-follow.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `accent` | `gold` | `gold`, `green`, `blue`, `violet` | Colour of the highlighted words. gold is the original. |
-| `framing` | `standard` | `tight`, `standard`, `wide` | Air the camera leaves around the written block, so the words land larger or smaller in frame. |
-| `smear` | `standard` | `off`, `subtle`, `standard`, `heavy` | Scales the radial motion blur each camera move carries, from none to a heavy streak. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="caption-camera-follow"
-  data-composition-src="compositions/components/caption-camera-follow.html"
-  data-variable-values='{"accent":"gold","framing":"standard","smear":"standard"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`caption-camera-follow.html`}>
-
-```html
+```html caption-camera-follow.html
 <!doctype html>
 <!--
   caption-camera-follow: the words do not move, the camera does.
@@ -480,7 +447,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add caption-camera-follow" />
+
+That writes one file: `compositions/components/caption-camera-follow.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/caption-camera-follow.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

@@ -4,49 +4,16 @@ description: "A trusted-by wall of placeholder lettermark logos that fades and s
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/logo-wall.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Logo Wall preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/logo-wall.html"
+  compositionId="logo-wall"
+  compositionSrc="compositions/components/logo-wall.html"
+  variables={[{"id":"rows","type":"number","role":"layout","label":"Rows","description":"Number of logo rows in the wall.","default":3,"min":2,"max":4,"step":1},{"id":"cols","type":"number","role":"layout","label":"Columns","description":"Number of logo columns in the wall.","default":5,"min":3,"max":6,"step":1},{"id":"stagger","type":"number","role":"motion","label":"Stagger","description":"Delay between consecutive logo cell entrances.","default":45,"min":20,"max":75,"step":1,"unit":"ms"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add logo-wall" />
-
-That writes one file: `compositions/components/logo-wall.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/logo-wall.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `rows` | `3` | 2 to 4, step 1 | Number of logo rows in the wall. |
-| `cols` | `5` | 3 to 6, step 1 | Number of logo columns in the wall. |
-| `stagger` | `45` | 20ms to 75ms, step 1ms | Delay between consecutive logo cell entrances. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="logo-wall"
-  data-composition-src="compositions/components/logo-wall.html"
-  data-variable-values='{"rows":3,"cols":5,"stagger":45}'
-></div>
-```
-
-## Source
-
-<Accordion title={`logo-wall.html`}>
-
-```html
+```html logo-wall.html
 <!doctype html>
 <!--
   logo-wall: HyperFrames video primitive (data / holdable / prove)
@@ -188,7 +155,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             overflow: hidden;
             border: 0.14cqw solid var(--border, #262931);
             border-radius: var(--radius, 2cqw);
-            background: color-mix(in srgb, var(--surface, #16181d) 92%, var(--brand, #6366f1));
+            background: var(--surface, #16181d);
             box-shadow: 0 1.2cqh 3cqh color-mix(in srgb, var(--bg, #0b0c10) 58%, transparent);
           }
 
@@ -198,7 +165,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             width: min(5.5cqw, 9.5cqh);
             aspect-ratio: 1;
             border-radius: calc(var(--radius, 2cqw) * 0.72);
-            background: color-mix(in srgb, var(--brand, #6366f1) 72%, var(--accent, #ff5470));
+            background: color-mix(in srgb, var(--fg, #f5f6f8) 72%, transparent);
             color: var(--bg, #0b0c10);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(2.2cqw, 4cqh);
@@ -348,7 +315,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add logo-wall" />
+
+That writes one file: `compositions/components/logo-wall.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/logo-wall.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

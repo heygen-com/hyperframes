@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Skeleton Reveal",
   "description": "A skeleton loader transition that pulses, then cross-fades into content",
-  "tags": ["transition-primitive", "transitions-dev-port", "skeleton", "reveal"],
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "skeleton", "reveal"],
   "files": [
     {
       "path": "skeleton-reveal.html",

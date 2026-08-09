@@ -4,48 +4,16 @@ description: "A pinned product mock cross-fades through accent-tinted feature st
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/sticky-mock-swap.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Sticky Mock Swap preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/sticky-mock-swap.html"
+  compositionId="sticky-mock-swap"
+  compositionSrc="compositions/components/sticky-mock-swap.html"
+  variables={[{"id":"captions","type":"string","role":"content","label":"Captions","description":"Comma-separated feature captions shown beside the pinned mock.","default":"Instant previews,Zero config,Ship on Friday"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent tint used across the mock states.","default":"violet","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add sticky-mock-swap" />
-
-That writes one file: `compositions/components/sticky-mock-swap.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/sticky-mock-swap.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `captions` | `Instant previews,Zero config,Ship on Friday` | string | Comma-separated feature captions shown beside the pinned mock. |
-| `accent` | `violet` | `green`, `blue`, `violet` | Accent tint used across the mock states. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="sticky-mock-swap"
-  data-composition-src="compositions/components/sticky-mock-swap.html"
-  data-variable-values='{"captions":"Instant previews,Zero config,Ship on Friday","accent":"violet"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`sticky-mock-swap.html`}>
-
-```html
+```html sticky-mock-swap.html
 <!doctype html>
 <!--
   sticky-mock-swap: HyperFrames video primitive (product-demo / demonstrate)
@@ -367,9 +335,9 @@ defaults, so this behaves exactly like the preview above until you change one:
                 ? vars.accent
                 : "violet";
             var accentColors = {
-              green: "#34d399",
-              blue: "#38bdf8",
-              violet: "#a78bfa",
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
             };
             root.style.setProperty("--sms-accent", accentColors[accent]);
 
@@ -513,7 +481,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add sticky-mock-swap" />
+
+That writes one file: `compositions/components/sticky-mock-swap.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/sticky-mock-swap.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

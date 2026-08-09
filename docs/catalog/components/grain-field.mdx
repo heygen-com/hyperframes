@@ -4,48 +4,16 @@ description: "A clearly visible accent-tinted dot field drifts over a subtle lum
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/components/grain-field.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Grain Field preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/components/grain-field.html"
+  compositionId="grain-field"
+  compositionSrc="compositions/components/grain-field.html"
+  variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Dot size and spacing across the grain field.","default":"fine","options":[{"value":"fine","label":"Fine"},{"value":"coarse","label":"Coarse"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used to color the dots and luminance wash.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add grain-field" />
-
-That writes one file: `compositions/components/grain-field.html`.
-
-## Paste it into your composition
-
-Open `compositions/components/grain-field.html` and copy what is inside into your own composition.
-
-A component has no size or duration of its own. It takes both from the composition
-you paste it into.
-
-## Variables
-
-Every one of these has a default, so the piece works untouched. Set the ones you
-want to change on the element:
-
-| Variable | Default | Accepts | What it does |
-| --- | --- | --- | --- |
-| `density` | `fine` | `fine`, `coarse` | Dot size and spacing across the grain field. |
-| `accent` | `green` | `green`, `blue`, `violet` | Accent token family used to color the dots and luminance wash. |
-
-Set them with `data-variable-values` on the element that mounts it. These are the
-defaults, so this behaves exactly like the preview above until you change one:
-
-```html wrap
-<div
-  data-composition-id="grain-field"
-  data-composition-src="compositions/components/grain-field.html"
-  data-variable-values='{"density":"fine","accent":"green"}'
-></div>
-```
-
-## Source
-
-<Accordion title={`grain-field.html`}>
-
-```html
+```html grain-field.html
 <!doctype html>
 <!--
   grain-field: HyperFrames video primitive (backgrounds / ambient)
@@ -218,7 +186,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add grain-field" />
+
+That writes one file: `compositions/components/grain-field.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/grain-field.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
