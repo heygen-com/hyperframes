@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { applyInlineStyle, readInlineStyle } from "./inlineTextStyleRange";
+import { applyInlineStyle, readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRange";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 /**
@@ -27,6 +27,7 @@ interface ToolbarPlacement {
   top: number;
   placeBelow: boolean;
   styles: Record<string, string>;
+  colours: Array<{ value: string; chars: number }>;
 }
 
 export function InlineTextToolbar({
@@ -100,7 +101,7 @@ export function InlineTextToolbar({
         <span
           aria-hidden="true"
           className="h-3.5 w-3.5 rounded-full border border-white/25"
-          style={{ background: styles.color || DEFAULT_COLOR }}
+          style={{ background: swatchBackground(placement.colours, styles.color) }}
         />
         {/* `inset-0` is not enough on its own: a colour input carries a
             user-agent minimum width, which wins over the right edge and lets
@@ -110,7 +111,7 @@ export function InlineTextToolbar({
           type="color"
           aria-label="Text colour"
           className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
-          value={toHexColor(styles.color)}
+          value={toHexColor(styles.color ?? placement.colours[0]?.value)}
           onChange={(event) => apply({ color: event.target.value })}
         />
       </label>
@@ -137,6 +138,29 @@ export function InlineTextToolbar({
       />
     </div>
   );
+}
+
+/**
+ * The selection's colours, in the proportion they are used: one band per run of
+ * characters that share a colour. Hard stops, not a blend — the swatch is
+ * reporting the colours that are there, and a fade would draw colours that are
+ * not. A selection with one colour is a plain swatch, as before.
+ */
+export function swatchBackground(
+  colours: Array<{ value: string; chars: number }>,
+  agreed: string | undefined,
+): string {
+  if (colours.length === 0) return agreed || DEFAULT_COLOR;
+  if (colours.length === 1) return colours[0]!.value;
+  const total = colours.reduce((sum, colour) => sum + colour.chars, 0);
+  let offset = 0;
+  const stops = colours.map((colour) => {
+    const from = (offset / total) * 100;
+    offset += colour.chars;
+    const to = (offset / total) * 100;
+    return `${colour.value} ${from.toFixed(2)}% ${to.toFixed(2)}%`;
+  });
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
 
 function swallow(event: { preventDefault: () => void; stopPropagation: () => void }): void {
@@ -209,6 +233,7 @@ function placeOverSelection(
     top: placeBelow ? box.top + (rect.top + rect.height) * scale + GAP_PX : above,
     placeBelow,
     styles: readInlineStyle(range, READ_PROPERTIES),
+    colours: readInlineStyleSpread(range, "color"),
   };
 }
 

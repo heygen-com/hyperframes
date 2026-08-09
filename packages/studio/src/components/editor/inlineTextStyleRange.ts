@@ -188,25 +188,57 @@ function holdsBothEnds(host: Element, range: Range): boolean {
  * agrees about it, which is what a control can honestly display.
  */
 export function readInlineStyle(range: Range, properties: string[]): Record<string, string> {
-  const host = editingHost(range.startContainer);
-  if (!host || !holdsBothEnds(host, range)) return {};
-  const start = offsetOf(host, range.startContainer, range.startOffset);
-  const end = offsetOf(host, range.endContainer, range.endOffset);
-  if (start === null || end === null) return {};
-
-  const collapsed = start === end;
-  const covered = charRuns(readRuns(host))
-    .slice(collapsed ? Math.max(0, start - 1) : start, collapsed ? Math.max(1, start) : end)
-    .map((entry) => entry.style);
-  if (covered.length === 0) return {};
+  const covered = coveredStyles(range);
+  if (!covered) return {};
 
   const styles: Record<string, string> = {};
   for (const property of properties) {
-    const first = covered[0]?.[property];
+    const first: string | undefined = covered[0]?.[property];
     if (first === undefined) continue;
     if (covered.every((style) => style[property] === first)) styles[property] = first;
   }
   return styles;
+}
+
+/**
+ * What one property looks like across the range, in document order, as runs of
+ * consecutive characters that share a value: `[{ value: "red", chars: 5 },
+ * { value: "lime", chars: 6 }]`.
+ *
+ * `readInlineStyle` above answers "what is this range" and reports nothing when
+ * the range disagrees with itself — right for a toggle, which can only be on or
+ * off. A swatch can show more than one value at once, and showing the default
+ * instead reads as "this text is white" when none of it is.
+ */
+export function readInlineStyleSpread(
+  range: Range,
+  property: string,
+): Array<{ value: string; chars: number }> {
+  const covered = coveredStyles(range);
+  if (!covered) return [];
+  const spread: Array<{ value: string; chars: number }> = [];
+  for (const style of covered) {
+    const value = style[property];
+    if (value === undefined) continue;
+    const last = spread.at(-1);
+    if (last?.value === value) last.chars++;
+    else spread.push({ value, chars: 1 });
+  }
+  return spread;
+}
+
+/** The style of every character the range covers, or null when it covers none. */
+function coveredStyles(range: Range): Array<Record<string, string>> | null {
+  const host = editingHost(range.startContainer);
+  if (!host || !holdsBothEnds(host, range)) return null;
+  const start = offsetOf(host, range.startContainer, range.startOffset);
+  const end = offsetOf(host, range.endContainer, range.endOffset);
+  if (start === null || end === null) return null;
+  const collapsed = start === end;
+  const covered = charRuns(readRuns(host))
+    .slice(collapsed ? Math.max(0, start - 1) : start, collapsed ? Math.max(1, start) : end)
+    .map((entry) => entry.style);
+  return covered.length > 0 ? covered : null;
 }
 
 /**

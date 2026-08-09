@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyInlineStyle, readInlineStyle } from "./inlineTextStyleRange";
+import { applyInlineStyle, readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRange";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -695,5 +695,42 @@ describe("applyInlineStyle when something else is painting the glyphs", () => {
     if (live) applyInlineStyle(live, { "font-weight": "700" });
 
     expect(host.innerHTML).not.toContain("-webkit-text-fill-color");
+  });
+});
+
+describe("readInlineStyleSpread", () => {
+  it("reports every colour in the selection, in order, with its share", () => {
+    const host = mount(
+      '<span style="color: red">Hello</span><span style="color: lime">world</span>',
+    );
+
+    expect(readInlineStyleSpread(rangeOver(host, 0, 10), "color")).toEqual([
+      { value: "red", chars: 5 },
+      { value: "lime", chars: 5 },
+    ]);
+  });
+
+  it("collapses characters that share a colour into one band", () => {
+    const host = mount('<span style="color: red">He</span><span style="color: red">llo</span>');
+
+    expect(readInlineStyleSpread(rangeOver(host, 0, 5), "color")).toEqual([
+      { value: "red", chars: 5 },
+    ]);
+  });
+
+  it("reports only what the selection covers", () => {
+    const host = mount(
+      '<span style="color: red">Hello</span><span style="color: lime">world</span>',
+    );
+
+    expect(readInlineStyleSpread(rangeOver(host, 6, 10), "color")).toEqual([
+      { value: "lime", chars: 4 },
+    ]);
+  });
+
+  it("is empty when the characters carry no colour of their own", () => {
+    const host = mount("Hello world");
+
+    expect(readInlineStyleSpread(rangeOver(host, 0, 5), "color")).toEqual([]);
   });
 });
