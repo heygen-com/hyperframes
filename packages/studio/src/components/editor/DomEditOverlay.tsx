@@ -16,7 +16,7 @@ import {
   resolveShiftClickCandidate,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
-import { OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
+import { ChildRectOutlines, OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
@@ -30,6 +30,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
+import { useInlineTextEditing } from "./useInlineTextEditing";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
@@ -164,6 +165,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   groupSelectionsRef.current = groupSelections;
   const hoverSelectionRef = useRef(hoverSelection);
   hoverSelectionRef.current = hoverSelection;
+
+  // Double-click an element to edit its text where it sits.
+  const inlineText = useInlineTextEditing(selectionRef);
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
   onPathOffsetCommitRef.current = onPathOffsetCommit;
   const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
@@ -370,6 +374,16 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
 
+    // A second press on the same spot opens that element's text. This is the
+    // press path that actually runs: the pointer handler prevents the default
+    // on its way through, so the overlay's own mousedown never fires, and the
+    // browser never pairs the presses into a dblclick either.
+    if (inlineText.startFromPress(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
@@ -449,7 +463,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   return (
     <div
       ref={overlayRef}
-      className="absolute inset-0 z-10 pointer-events-auto outline-none"
+      // Standing aside is the only way the caret below can be reached, and is
+      // what keeps selection, drag and marquee from firing mid-edit.
+      className={`absolute inset-0 z-10 outline-none ${
+        inlineText.editing ? "pointer-events-none" : "pointer-events-auto"
+      }`}
+      data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
       aria-label="Composition canvas"
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
@@ -458,7 +477,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
-        focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+        // Not while editing: taking focus back would send the keystroke nowhere.
+        if (!inlineText.editing) {
+          focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (!inlineText.handleKeyDown(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
       }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
@@ -492,6 +519,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       )}
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
         <DomEditSelectionChrome
+          inlineText={inlineText}
           selection={selection}
           overlayRect={overlayRect}
           allowCanvasMovement={allowCanvasMovement}
@@ -508,21 +536,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           onBoxClick={handleBoxClick}
         />
       )}
-      {childRects.length > 0 &&
-        compRect.width > 0 &&
-        childRects.map((cr, i) => (
-          <div
-            key={i}
-            className="pointer-events-none absolute border border-dashed border-white/20 rounded-sm"
-            style={{
-              left: cr.left,
-              top: cr.top,
-              width: cr.width,
-              height: cr.height,
-              transform: cr.angle ? `rotate(${cr.angle}deg)` : undefined,
-            }}
-          />
-        ))}
+      <ChildRectOutlines rects={compRect.width > 0 ? childRects : []} />
+      {/* Mounted here rather than with the selection chrome: the chrome does
+          not render for every selection, and the toolbar belongs to the
+          editing session, which does. */}
+      {inlineText.toolbar}
       <OffCanvasIndicators
         rects={offCanvasRects}
         elements={offCanvasElementsRef}

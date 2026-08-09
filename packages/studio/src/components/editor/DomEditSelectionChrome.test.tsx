@@ -132,3 +132,88 @@ describe("DomEditSelectionChrome crop composition", () => {
     act(() => root.unmount());
   });
 });
+
+// The bug: the overlay above the preview goes pointer-events-none while text is
+// being edited, but `pointer-events: none` on a parent does not disable a child
+// that sets `auto`. The selection box covers exactly the element being typed
+// into, so it kept swallowing every press: the caret could only ever be placed
+// once, when the edit opened, and dragging across characters did nothing.
+describe("DomEditSelectionChrome while editing text", () => {
+  const CAPABLE = {
+    canCrop: true,
+    canApplyManualOffset: true,
+    canApplyManualSize: true,
+    canApplyManualRotation: true,
+  };
+
+  function renderChrome(editing: boolean) {
+    const element = document.createElement("div");
+    element.id = "copy";
+    document.body.append(element);
+    const selection = {
+      element,
+      id: "copy",
+      selector: "#copy",
+      capabilities: CAPABLE,
+    } as unknown as DomEditSelection;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <DomEditSelectionChrome
+          selection={selection}
+          overlayRect={{ left: 10, top: 20, width: 200, height: 60, editScaleX: 1, editScaleY: 1 }}
+          allowCanvasMovement={true}
+          boxRef={createRef()}
+          boxChromeClass="border border-studio-accent/80"
+          boxClipPath={undefined}
+          selectionKey="copy"
+          groupSelectionCount={0}
+          blockedMoveRef={createRef()}
+          gestures={{ startGesture: vi.fn() } as never}
+          onStyleCommit={vi.fn()}
+          onBoxMouseDown={vi.fn()}
+          onBoxClick={vi.fn()}
+          inlineText={{ editing, startFromPress: vi.fn() }}
+        />,
+      );
+    });
+    return { host, unmount: () => act(() => root.unmount()) };
+  }
+
+  it("stops the selection box taking presses, so they reach the caret below", () => {
+    const { host, unmount } = renderChrome(true);
+    const box = host.querySelector<HTMLElement>('[data-dom-edit-selection-box="true"]')!;
+    expect(box.className).toContain("pointer-events-none");
+    expect(box.className).not.toContain("pointer-events-auto");
+    unmount();
+  });
+
+  it("keeps the box interactive when no text is being edited", () => {
+    const { host, unmount } = renderChrome(false);
+    const box = host.querySelector<HTMLElement>('[data-dom-edit-selection-box="true"]')!;
+    expect(box.className).toContain("pointer-events-auto");
+    unmount();
+  });
+
+  it("still marks the edited element, so it is clear which one has the caret", () => {
+    const { host, unmount } = renderChrome(true);
+    const box = host.querySelector<HTMLElement>('[data-dom-edit-selection-box="true"]')!;
+    expect(box.className).toContain("border-studio-accent/80");
+    unmount();
+  });
+
+  it("takes away every handle that would sit over the text", () => {
+    const { host, unmount } = renderChrome(true);
+    expect(host.querySelectorAll(".pointer-events-auto")).toHaveLength(0);
+    expect(host.querySelector("[data-dom-edit-crop-frame]")).toBeNull();
+    unmount();
+  });
+
+  it("keeps the handles when nothing is being edited", () => {
+    const { host, unmount } = renderChrome(false);
+    expect(host.querySelectorAll(".pointer-events-auto").length).toBeGreaterThan(1);
+    unmount();
+  });
+});

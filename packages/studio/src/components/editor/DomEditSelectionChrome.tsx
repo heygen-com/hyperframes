@@ -126,6 +126,12 @@ interface DomEditSelectionChromeProps {
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;
   onBoxMouseDown: (e: React.MouseEvent) => void;
   onBoxClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+  /** The canvas' text-editing session: what opens one, and whether one is open. */
+  inlineText?: {
+    editing: boolean;
+    /** Every press on the box. Returns true when it opened a text edit. */
+    startFromPress: (event: React.PointerEvent) => boolean;
+  };
 }
 
 // Oriented selection chrome: a rotation wrapper spanning the overlay, rotated by
@@ -149,7 +155,16 @@ export function DomEditSelectionChrome({
   onStyleCommit,
   onBoxMouseDown,
   onBoxClick,
+  inlineText,
 }: DomEditSelectionChromeProps) {
+  // While the text is being edited the chrome is a mark, not a control. The
+  // overlay above the preview already stands aside for the caret, but
+  // `pointer-events: none` on a parent does not disable a child that asks for
+  // them back, and the box is positioned to cover exactly the text being typed
+  // into: left interactive, it swallows every press, so the caret can never be
+  // moved and characters can never be selected by dragging.
+  const editing = inlineText?.editing ?? false;
+
   return (
     <>
       <div
@@ -159,7 +174,7 @@ export function DomEditSelectionChrome({
           transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
         }}
       >
-        {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
+        {allowCanvasMovement && !editing && selection.capabilities.canApplyManualRotation && (
           <DomEditRotateHandle
             overlayRect={overlayRect}
             cropOutlineInsetPx={cropOutlineInsetPx}
@@ -173,7 +188,7 @@ export function DomEditSelectionChrome({
           key={selectionKey}
           ref={boxRef}
           data-dom-edit-selection-box="true"
-          className={`pointer-events-auto absolute rounded-md ${boxChromeClass}`}
+          className={`${editing ? "pointer-events-none" : "pointer-events-auto"} absolute rounded-md ${boxChromeClass}`}
           style={{
             left: overlayRect.left,
             top: overlayRect.top,
@@ -186,6 +201,16 @@ export function DomEditSelectionChrome({
                 : "default",
           }}
           onPointerDown={(e) => {
+            // A second press opens the element's text for editing, and must be
+            // caught here rather than on the canvas: this handler prevents the
+            // default on the first press, which suppresses the compatibility
+            // mousedown the canvas would otherwise see, and the pointer capture
+            // it takes stops the browser pairing the presses into a dblclick.
+            if (inlineText?.startFromPress(e)) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
             if (!allowCanvasMovement || e.shiftKey) return;
             if (selection.capabilities.canApplyManualOffset) {
               gestures.startGesture("drag", e);
@@ -221,6 +246,7 @@ export function DomEditSelectionChrome({
           is positioned relative to the overlay container using the
           overlayRect origin, matching the old child-relative offsets. */}
         {allowCanvasMovement &&
+          !editing &&
           selection.capabilities.canApplyManualSize &&
           RESIZE_HANDLE_DEFS.map((def) =>
             def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
@@ -245,7 +271,7 @@ export function DomEditSelectionChrome({
       </div>
       {/* Crop owns its element-local oriented frame. Keep it outside the chrome's
           rotated plane or a rotated selection applies the angle twice. */}
-      {selection.capabilities.canCrop && groupSelectionCount <= 1 && (
+      {selection.capabilities.canCrop && !editing && groupSelectionCount <= 1 && (
         <DomEditCropHandles
           selection={selection}
           overlayRect={overlayRect}
