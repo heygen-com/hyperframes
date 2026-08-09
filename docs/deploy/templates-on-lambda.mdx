@@ -30,7 +30,7 @@ example exposes a headline and accent color:
       data-height="1080"
       data-duration="5"
       data-no-timeline
-      style="color:var(--accent)"
+      style="color:var(--hf-var-accent)"
     >
       <h1 data-var-text="title">Welcome</h1>
     </div>
@@ -38,7 +38,10 @@ example exposes a headline and accent color:
 </html>
 ```
 
-See [Variables](/concepts/variables) for every type and binding method.
+A scalar variable is exposed as the CSS custom property `--hf-var-<slug>`, which
+is why the stage binds `var(--hf-var-accent)` rather than `var(--accent)`. See
+[Variables](/concepts/variables) for every type and binding method, and for the
+reserved theme-token names a variable never writes.
 
 ## Test locally
 

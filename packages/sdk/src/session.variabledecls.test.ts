@@ -41,6 +41,10 @@ const UNDECLARED_HTML = `<!DOCTYPE html>
 <body>${BARE_HTML}</body>
 </html>`;
 
+function rootStyles(comp: Awaited<ReturnType<typeof openComposition>>) {
+  return comp.getElements().find((e) => e.id === "hf-stage")?.inlineStyles ?? {};
+}
+
 describe("declareVariable", () => {
   it("creates the attribute on a composition with no declarations", async () => {
     const comp = await openComposition(UNDECLARED_HTML);
@@ -234,12 +238,118 @@ describe("patch grammar", () => {
     });
     comp.declareVariable(TITLE_DECL);
     comp.removeVariableDeclaration("title");
-    // Declaration ops also maintain the --{id} CSS compat prop (scalar defaults).
+    // Declaration ops also maintain the CSS compat props (scalar defaults):
+    // the namespaced name plus, for a non-reserved id like `title`, the
+    // deprecated bare alias.
     expect(events).toEqual([
       "add /variableDeclarations/title",
+      "add /elements/hf-stage/inlineStyles/--hf-var-title",
       "add /elements/hf-stage/inlineStyles/--title",
       "remove /variableDeclarations/title",
+      "remove /elements/hf-stage/inlineStyles/--hf-var-title",
       "remove /elements/hf-stage/inlineStyles/--title",
     ]);
+  });
+});
+
+describe("theme-token variable ids", () => {
+  const ACCENT_DECL: CompositionVariable = {
+    id: "accent",
+    type: "string",
+    label: "Accent",
+    default: "blue",
+  };
+
+  /** A composition whose root sits under a host that themes `--accent`. */
+  const THEMED_HTML = `<!DOCTYPE html>
+<html data-composition-variables='${JSON.stringify([ACCENT_DECL, TITLE_DECL])}'>
+<body><div id="host" style="--accent: #7c3aed">${BARE_HTML}</div></body>
+</html>`;
+
+  it("setVariableValue namespaces a reserved id, leaving the theme's --accent free", async () => {
+    const comp = await openComposition(THEMED_HTML);
+    comp.setVariableValue("accent", "red");
+    expect(rootStyles(comp)["--hf-var-accent"]).toBe("red");
+    expect(rootStyles(comp)["--accent"]).toBeUndefined();
+    expect(comp.serialize()).not.toContain("--accent: red");
+  });
+
+  it("still writes the deprecated bare alias for a non-reserved id", async () => {
+    const comp = await openComposition(THEMED_HTML);
+    comp.setVariableValue("title", "Hi");
+    expect(rootStyles(comp)["--hf-var-title"]).toBe("Hi");
+    expect(rootStyles(comp)["--title"]).toBe("Hi");
+  });
+
+  it("declare/remove of a reserved id never touches the bare property", async () => {
+    const comp = await openComposition(UNDECLARED_HTML);
+    comp.declareVariable(ACCENT_DECL);
+    expect(rootStyles(comp)["--hf-var-accent"]).toBe("blue");
+    expect(rootStyles(comp)["--accent"]).toBeUndefined();
+    comp.removeVariableDeclaration("accent");
+    expect(rootStyles(comp)["--hf-var-accent"]).toBeUndefined();
+  });
+
+  it("rehydrating a legacy var.{id} override set does not resurrect --accent", async () => {
+    // Pre-model/CSS-split shape: only the model key, CSS derived on replay.
+    const comp = await openComposition(THEMED_HTML, {
+      overrides: { "var.accent": "red", "var.title": "Hi" },
+    });
+    expect(rootStyles(comp)["--hf-var-accent"]).toBe("red");
+    expect(rootStyles(comp)["--accent"]).toBeUndefined();
+    expect(rootStyles(comp)["--title"]).toBe("Hi");
+  });
+});
+
+/**
+ * The SDK half of the cross-site agreement gate (core's half lives in
+ * packages/core/src/runtime/themeTokens.test.ts). The property name is
+ * derived from the id by core's `variableCssPropertiesForId` in exactly one
+ * place, so a mixed-case id cannot land on `--hf-var-accentColor` here and
+ * `--hf-var-accentcolor` in the runtime/compiler injectors.
+ */
+describe("mixed-case variable ids", () => {
+  const MIXED_DECL: CompositionVariable = {
+    id: "accentColor",
+    type: "string",
+    label: "Accent colour",
+    default: "#00c3ff",
+  };
+  /** Slugs onto the reserved `accent`, so the reserved test must agree too. */
+  const CASED_TOKEN_DECL: CompositionVariable = {
+    id: "Accent",
+    type: "string",
+    label: "Accent",
+    default: "blue",
+  };
+  const MIXED_HTML = `<!DOCTYPE html>
+<html data-composition-variables='${JSON.stringify([MIXED_DECL, CASED_TOKEN_DECL])}'>
+<body>${BARE_HTML}</body>
+</html>`;
+
+  it("setVariableValue writes the slugified property, not the id verbatim", async () => {
+    const comp = await openComposition(MIXED_HTML);
+    comp.setVariableValue("accentColor", "red");
+    expect(rootStyles(comp)["--hf-var-accentcolor"]).toBe("red");
+    expect(rootStyles(comp)["--hf-var-accentColor"]).toBeUndefined();
+    expect(rootStyles(comp)["--accentcolor"]).toBe("red");
+  });
+
+  it("reserves a mixed-case theme-token id, as core's injectors do", async () => {
+    const comp = await openComposition(MIXED_HTML);
+    comp.setVariableValue("Accent", "red");
+    expect(rootStyles(comp)["--hf-var-accent"]).toBe("red");
+    expect(rootStyles(comp)["--Accent"]).toBeUndefined();
+    expect(rootStyles(comp)["--accent"]).toBeUndefined();
+  });
+
+  it("rehydrating a legacy var.{id} override set derives the same slug", async () => {
+    const comp = await openComposition(MIXED_HTML, {
+      overrides: { "var.accentColor": "red", "var.Accent": "green" },
+    });
+    expect(rootStyles(comp)["--hf-var-accentcolor"]).toBe("red");
+    expect(rootStyles(comp)["--hf-var-accentColor"]).toBeUndefined();
+    expect(rootStyles(comp)["--hf-var-accent"]).toBe("green");
+    expect(rootStyles(comp)["--Accent"]).toBeUndefined();
   });
 });

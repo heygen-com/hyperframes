@@ -13,9 +13,13 @@
  *   node is replaced, mirroring the SDK's setOwnText semantics — a text
  *   binding must never delete nested clips or animation targets.
  * - Every scalar variable (and a font value's family name) is applied as a
- *   `--{id}` CSS custom property on its composition root, so CSS bindings
- *   like `color: var(--accent)` respond to render/preview overrides instead
- *   of only the persisted default.
+ *   `--hf-var-{slug}` CSS custom property on its composition root, so CSS
+ *   bindings like `color: var(--hf-var-accent)` respond to render/preview
+ *   overrides instead of only the persisted default. The bare `--{slug}` is
+ *   written too as a deprecated alias, but never for a theme-token name —
+ *   a variable called `accent` must not shadow the host theme's `--accent`.
+ *   The slug is variableCssPropertiesForId's, shared with the declared-default
+ *   injector, the compiler and the SDK, so one id has one property name.
  *
  * Values resolve against the element's owning composition — the same scope
  * chain the color-grading runtime uses: `__hfVariablesByComp[compId]` for
@@ -28,6 +32,7 @@
  */
 
 import { readVariablesForElement } from "./variableScope";
+import { variableCssPropertiesForId } from "./themeTokens";
 import { isScalarVariableValue as isScalar } from "@hyperframes/parsers/composition";
 
 // data-var-src only rebinds media `src` on media elements. A user-controlled
@@ -158,7 +163,12 @@ function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache): void 
     for (const [id, value] of Object.entries(values)) {
       const css = cssValueFor(value);
       if (css !== null && root instanceof HTMLElement) {
-        root.style.setProperty(`--${id}`, sanitizeCssValue(css));
+        const clean = sanitizeCssValue(css);
+        // An empty value REMOVES the property (CSSOM setProperty semantics).
+        // Both names go through the same call so an alias can't go stale.
+        const { namespaced, legacy } = variableCssPropertiesForId(id);
+        root.style.setProperty(namespaced, clean);
+        if (legacy) root.style.setProperty(legacy, clean);
       }
     }
   }

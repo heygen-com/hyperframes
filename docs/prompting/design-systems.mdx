@@ -78,7 +78,9 @@ The constant parts come from that one authoring spec, or from one set of importe
 
 When `frame.md` changes, rerun the workflow steps that generate or assemble the affected compositions. That's how the authored HTML picks up the new brand value.
 
-Some compositions already exist and have to re-skin at render time. Declare the shared brand tokens as composition variables instead. Every scalar variable is applied as a `--{id}` CSS custom property on the composition root, so `var(--id)` in your CSS follows the override.
+Some compositions already exist and have to re-skin at render time. Declare the shared brand tokens as composition variables instead. Every scalar variable is applied to the composition root as the CSS custom property `--hf-var-{slug}`, so `var(--hf-var-{slug})` in your CSS follows the override.
+
+Brand work is where the exact name matters. Fifteen role names belong to the page hosting the composition (`accent`, `bg`, `ink`, `primary`, `surface` and the rest of the reserved list in [Variables](/concepts/variables)), and a variable never writes them. So a variable called `accent` is readable as `var(--hf-var-accent)` only, and a stylesheet still saying `var(--accent)` will not follow the override. Bind the namespaced name, or write `var(--accent, var(--hf-var-accent))` when a host theme should win wherever one is defined.
 
 This is where design systems and templating meet. The brand is shared. The content is parameterized.
 

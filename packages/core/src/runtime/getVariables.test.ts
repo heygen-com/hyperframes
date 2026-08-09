@@ -276,7 +276,7 @@ describe("css variable injection (figma brand-token chain)", () => {
     applyCssVariables(el, { blank: "", real: "#123456" });
     expect(el.style.getPropertyValue("--blank")).toBe("");
     expect(el.style.getPropertyValue("--real")).toBe("#123456");
-    expect(el.getAttribute("data-hf-css-vars")).toBe("--real");
+    expect(el.getAttribute("data-hf-css-vars")).toBe("--hf-var-real --real");
   });
 
   it("clearAppliedCssVariables removes exactly what was applied", async () => {
@@ -294,5 +294,61 @@ describe("css variable injection (figma brand-token chain)", () => {
     const { getVariables } = await import("./getVariables");
     document.body.innerHTML = `<div ${VARIABLES_ATTR}='[{"id":"figma:brand","type":"color","label":"b","default":"#445566"}]'></div>`;
     expect(getVariables()["figma:brand"]).toBe("#445566");
+  });
+});
+
+/** Every custom property currently set inline on `el`, sorted. */
+function customProps(el: HTMLElement): string[] {
+  const names: string[] = [];
+  for (let i = 0; i < el.style.length; i++) {
+    const name = el.style.item(i);
+    if (name.startsWith("--")) names.push(name);
+  }
+  return names.sort();
+}
+
+describe("injected CSS custom property names", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    setOverrides(undefined);
+  });
+
+  it("applyCssVariables writes and records exactly these names", async () => {
+    const { applyCssVariables } = await import("./getVariables");
+    const el = document.createElement("div");
+    applyCssVariables(el, { accent: "blue", accentColor: "#00c3ff", count: 3, blank: "" });
+    expect(customProps(el)).toEqual([
+      "--accentcolor",
+      "--count",
+      "--hf-var-accent",
+      "--hf-var-accentcolor",
+      "--hf-var-count",
+    ]);
+    expect(el.getAttribute("data-hf-css-vars")).toBe(
+      "--hf-var-accent --hf-var-accentcolor --accentcolor --hf-var-count --count",
+    );
+  });
+
+  it("clearAppliedCssVariables clears the whole pair, leaving no stale alias", async () => {
+    const { applyCssVariables, clearAppliedCssVariables } = await import("./getVariables");
+    const el = document.createElement("div");
+    applyCssVariables(el, { accent: "blue", tint: "#111111" });
+    expect(customProps(el)).toEqual(["--hf-var-accent", "--hf-var-tint", "--tint"]);
+    clearAppliedCssVariables(el);
+    expect(customProps(el)).toEqual([]);
+    expect(el.hasAttribute("data-hf-css-vars")).toBe(false);
+  });
+
+  it("a declared `accent` leaves the host's --accent alone", async () => {
+    const { injectCompositionCssVariables } = await import("./getVariables");
+    document.body.innerHTML =
+      `<div id="host" style="--accent: #7c3aed">` +
+      `<div id="root" ${VARIABLES_ATTR}='[{"id":"accent","type":"enum","label":"a","default":"blue"}]'></div>` +
+      `</div>`;
+    injectCompositionCssVariables(document);
+    const root = document.getElementById("root") as HTMLElement;
+    expect(root.style.getPropertyValue("--accent")).toBe("");
+    expect(root.style.getPropertyValue("--hf-var-accent")).toBe("blue");
+    expect(window.getComputedStyle(root).getPropertyValue("--accent")).toBe("#7c3aed");
   });
 });

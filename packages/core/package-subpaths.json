@@ -158,6 +158,12 @@
       "types": "./dist/compiler/htmlDocument.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/theme-tokens": {
+      "source": "./src/runtime/themeTokens.ts",
+      "runtime": "./dist/runtime/themeTokens.js",
+      "types": "./dist/runtime/themeTokens.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/position-edits": {
       "source": "./src/runtime/positionEdits.ts",
       "runtime": "./dist/runtime/positionEdits.js",

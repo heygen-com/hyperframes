@@ -197,7 +197,7 @@ window.__timelines = { t: tl };</script>
     expect(liveTitle.style.getPropertyValue("color")).not.toBe("#f00");
   });
 
-  it("mirrors setVariableValue onto the live root's CSS custom property", async () => {
+  it("mirrors setVariableValue onto the live root's namespaced custom property", async () => {
     const html = `<!DOCTYPE html>
 <html data-composition-variables='[{"id":"accent","default":"#fff"}]'>
 <body>
@@ -216,7 +216,10 @@ window.__timelines = { t: tl };</script>
     const liveRoot = iframe.contentDocument!.querySelector(
       '[data-hf-id="hf-stage"]',
     ) as HTMLElement;
-    expect(liveRoot.style.getPropertyValue("--accent")).toBe("#0f0");
+    // `accent` is a theme token: the edit lands on --hf-var-accent, and the
+    // authored --accent stays whatever the document (or its host) set.
+    expect(liveRoot.style.getPropertyValue("--hf-var-accent")).toBe("#0f0");
+    expect(liveRoot.style.getPropertyValue("--accent")).toBe("#fff");
   });
 
   it("mirrors declareVariable/removeVariable onto the live document's schema attribute", async () => {

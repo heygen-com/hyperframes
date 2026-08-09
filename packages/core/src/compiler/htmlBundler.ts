@@ -1,7 +1,7 @@
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues } from "../runtime/getVariables";
-import { cssVariableName } from "../tokenSlug";
+import { collidingCssName, variableCssPropertiesForId } from "../runtime/themeTokens";
 import { readFileSync, existsSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
@@ -1128,7 +1128,12 @@ export async function bundleToSingleHtml(
   return document.toString();
 }
 
-/** One stylesheet rule defining primitive composition variables under `selector`. */
+/**
+ * One stylesheet rule defining primitive composition variables under
+ * `selector`. Same namespacing the runtime applies (`variableCssPropertiesForId`)
+ * — the namespaced `--hf-var-{slug}` always, plus the deprecated bare alias
+ * unless the id names a theme token, where writing it would shadow the host's.
+ */
 function compositionVariablesCssBlock(
   variables: Record<string, unknown>,
   selector: string,
@@ -1136,7 +1141,10 @@ function compositionVariablesCssBlock(
   const lines: string[] = [];
   for (const [id, value] of Object.entries(variables)) {
     if ((typeof value === "string" && value !== "") || typeof value === "number") {
-      lines.push(`  ${cssVariableName(id)}: ${String(value)};`);
+      const { namespaced, legacy } = variableCssPropertiesForId(id);
+      for (const name of legacy === null ? [namespaced] : [namespaced, legacy]) {
+        lines.push(`  ${name}: ${String(value)};`);
+      }
     }
   }
   if (lines.length === 0) return null;
@@ -1185,7 +1193,7 @@ function authoredDefinesPredicate(document: Document): (id: string) => boolean {
   const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
     .map((s) => s.textContent || "")
     .join("\n");
-  return (id) => new RegExp(`${cssVariableName(id)}\\s*:`).test(authoredCss);
+  return (id) => new RegExp(`${collidingCssName(id)}\\s*:`).test(authoredCss);
 }
 
 /**

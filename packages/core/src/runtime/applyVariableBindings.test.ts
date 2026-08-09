@@ -63,7 +63,7 @@ describe("applyVariableBindings", () => {
     expect(document.querySelector("h1")?.textContent).toBe("Overridden");
   });
 
-  it("applies scalar variables as --{id} custom props on the root", () => {
+  it("applies scalar variables as --hf-var-{id} custom props on the root", () => {
     setDeclared([
       { id: "accent", type: "color", label: "Accent", default: "#00C3FF" },
       { id: "count", type: "number", label: "Count", default: 3 },
@@ -72,7 +72,11 @@ describe("applyVariableBindings", () => {
     document.body.innerHTML = `<div id="root" data-hf-root></div>`;
     applyVariableBindings(document);
     const root = document.getElementById("root");
-    expect(root?.style.getPropertyValue("--accent")).toBe("#ff0000");
+    // `accent` is a theme token, so it gets the namespaced name ONLY — the
+    // bare --accent belongs to the host theme.
+    expect(root?.style.getPropertyValue("--hf-var-accent")).toBe("#ff0000");
+    expect(root?.style.getPropertyValue("--accent")).toBe("");
+    expect(root?.style.getPropertyValue("--hf-var-count")).toBe("3");
     expect(root?.style.getPropertyValue("--count")).toBe("3");
   });
 
@@ -84,8 +88,11 @@ describe("applyVariableBindings", () => {
     document.body.innerHTML = `<div id="root" data-hf-root></div>`;
     applyVariableBindings(document);
     const root = document.getElementById("root");
-    expect(root?.style.getPropertyValue("--brandFont")).toBe("Inter");
-    expect(root?.style.getPropertyValue("--img")).toBe("");
+    // The id is slugified (case-folded) exactly once, in
+    // variableCssPropertiesForId, so every injection site agrees on the name.
+    expect(root?.style.getPropertyValue("--hf-var-brandfont")).toBe("Inter");
+    expect(root?.style.getPropertyValue("--brandfont")).toBe("Inter");
+    expect(root?.style.getPropertyValue("--hf-var-img")).toBe("");
   });
 
   it("preserves element children when binding text on a container", () => {
@@ -169,10 +176,67 @@ describe("applyVariableBindings", () => {
       win.__hfVariables = { accent: "red; background: url(//evil?data=secret)" };
       document.body.innerHTML = `<div id="root" data-hf-root></div>`;
       applyVariableBindings(document);
-      const css = document.getElementById("root")?.style.getPropertyValue("--accent") ?? "";
+      const css = document.getElementById("root")?.style.getPropertyValue("--hf-var-accent") ?? "";
       expect(css).not.toContain(";");
       expect(css).not.toContain("{");
       expect(css).not.toContain("<");
     });
+  });
+});
+
+/** Every custom property currently set inline on `el`, sorted. */
+function customProps(el: HTMLElement): string[] {
+  const names: string[] = [];
+  for (let i = 0; i < el.style.length; i++) {
+    const name = el.style.item(i);
+    if (name.startsWith("--")) names.push(name);
+  }
+  return names.sort();
+}
+
+describe("injected CSS custom properties", () => {
+  /** A composition root under a host that defines the `--accent` theme token. */
+  function representativeRoot(): HTMLElement {
+    setDeclared([
+      { id: "accent", type: "enum", label: "Accent", default: "blue" },
+      { id: "accentColor", type: "color", label: "Accent color", default: "#00c3ff" },
+      { id: "count", type: "number", label: "Count", default: 3 },
+    ]);
+    document.body.innerHTML = `<div id="host" style="--accent: #7c3aed"><div id="root" data-hf-root></div></div>`;
+    applyVariableBindings(document);
+    return document.getElementById("root") as HTMLElement;
+  }
+
+  it("writes exactly this property set for a representative composition", () => {
+    // Names are slugged (case-folded) once, in variableCssPropertiesForId,
+    // so `accentColor` cannot land here as `--hf-var-accentColor` while the
+    // compiler bakes `--hf-var-accentcolor` into the shipped stylesheet.
+    expect(customProps(representativeRoot())).toEqual([
+      "--accentcolor",
+      "--count",
+      "--hf-var-accent",
+      "--hf-var-accentcolor",
+      "--hf-var-count",
+    ]);
+  });
+
+  it("does not shadow the host theme's --accent", () => {
+    const root = representativeRoot();
+    expect(root.style.getPropertyValue("--accent")).toBe("");
+    expect(root.style.getPropertyValue("--hf-var-accent")).toBe("blue");
+    // The cascade, not the property map: var(--accent) still finds the host's
+    // value rather than the enum keyword the composition maps onto it.
+    expect(window.getComputedStyle(root).getPropertyValue("--accent")).toBe("#7c3aed");
+  });
+
+  it("removes both names when a value resolves to the empty string", () => {
+    setDeclared([{ id: "tint", type: "color", label: "Tint", default: "#123456" }]);
+    document.body.innerHTML = `<div id="root" data-hf-root></div>`;
+    applyVariableBindings(document);
+    const root = document.getElementById("root") as HTMLElement;
+    expect(customProps(root)).toEqual(["--hf-var-tint", "--tint"]);
+    win.__hfVariables = { tint: "" };
+    applyVariableBindings(document);
+    expect(customProps(root)).toEqual([]);
   });
 });

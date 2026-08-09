@@ -167,6 +167,12 @@
       "import": "./src/compiler/htmlDocument.ts",
       "types": "./src/compiler/htmlDocument.ts"
     },
+    "./runtime/theme-tokens": {
+      "bun": "./src/runtime/themeTokens.ts",
+      "node": "./dist/runtime/themeTokens.js",
+      "import": "./src/runtime/themeTokens.ts",
+      "types": "./src/runtime/themeTokens.ts"
+    },
     "./runtime/position-edits": {
       "bun": "./src/runtime/positionEdits.ts",
       "node": "./dist/runtime/positionEdits.js",
@@ -402,6 +408,10 @@
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
         "types": "./dist/compiler/htmlDocument.d.ts"
+      },
+      "./runtime/theme-tokens": {
+        "import": "./dist/runtime/themeTokens.js",
+        "types": "./dist/runtime/themeTokens.d.ts"
       },
       "./runtime/position-edits": {
         "import": "./dist/runtime/positionEdits.js",

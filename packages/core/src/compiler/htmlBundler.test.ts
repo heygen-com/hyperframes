@@ -1388,3 +1388,91 @@ describe("bundleToSingleHtml", () => {
     }
   });
 });
+
+/** The `<style data-hf-composition-variables>` block the compiler emits, if any. */
+function emittedVariableSheet(bundled: string): string {
+  const { document } = parseHTML(bundled);
+  return document.querySelector("style[data-hf-composition-variables]")?.textContent ?? "";
+}
+
+describe("compiled composition variable properties", () => {
+  /**
+   * The case the authored-<style> guard cannot see: the host theme arrives as
+   * an inline `style` attribute, so nothing in any <style> block mentions
+   * `--accent`. The composition declares `accent: "blue"` — an enum-ish
+   * selector, not a colour — and CSS-binds `color: var(--accent)`.
+   */
+  const HOST_INLINE_THEME = `<!doctype html>
+<html><body>
+  <div
+    id="stage"
+    style="--accent: #7c3aed"
+    data-composition-id="main"
+    data-width="320"
+    data-height="180"
+    data-start="0"
+    data-duration="5">
+    <div
+      id="card"
+      data-composition-variables='[{"id":"accent","type":"string","label":"Accent","default":"blue"},{"id":"cardTitle","type":"string","label":"Title","default":"Hi"}]'>
+      <h1 id="headline" style="color: var(--accent)">Hi</h1>
+    </div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`;
+
+  it("never writes a theme token's bare name, whatever defines the theme", async () => {
+    const bundled = await bundleToSingleHtml(makeTempProject({ "index.html": HOST_INLINE_THEME }));
+    const sheet = emittedVariableSheet(bundled);
+
+    expect(sheet).toContain("--hf-var-accent: blue");
+    // The whole point: `var(--accent)` must keep resolving to the host's
+    // #7c3aed, so the compiled sheet may not define --accent anywhere.
+    expect(sheet).not.toContain("--accent:");
+    expect(bundled).not.toContain("--accent: blue");
+  });
+
+  it("keeps the deprecated bare alias for a non-reserved id", async () => {
+    const bundled = await bundleToSingleHtml(makeTempProject({ "index.html": HOST_INLINE_THEME }));
+    const sheet = emittedVariableSheet(bundled);
+    expect(sheet).toContain("--hf-var-cardtitle: Hi");
+    expect(sheet).toContain("--cardtitle: Hi");
+  });
+
+  /**
+   * Compiler leg of the cross-site agreement gate: the runtime legs are in
+   * runtime/themeTokens.test.ts and the SDK's in
+   * packages/sdk/src/session.variabledecls.test.ts, against these same ids.
+   * A mixed-case id is what exposes drift — the name is slugged once, in
+   * variableCssPropertiesForId, so an author's var(--hf-var-accentcolor)
+   * binding resolves no matter which site defined the property.
+   */
+  const MIXED_CASE_IDS = `<!doctype html>
+<html><body>
+  <div
+    id="stage"
+    data-composition-id="main"
+    data-width="320"
+    data-height="180"
+    data-start="0"
+    data-duration="5"
+    data-composition-variables='[{"id":"accentColor","type":"color","label":"Accent color","default":"#00c3ff"},{"id":"Accent","type":"string","label":"Accent","default":"blue"}]'>
+    <h1 id="headline" style="color: var(--hf-var-accentcolor)">Hi</h1>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`;
+
+  it("derives one slugified property per id, whatever the id's casing", async () => {
+    const bundled = await bundleToSingleHtml(makeTempProject({ "index.html": MIXED_CASE_IDS }));
+    const sheet = emittedVariableSheet(bundled);
+
+    expect(sheet).toContain("--hf-var-accentcolor: #00c3ff");
+    expect(sheet).toContain("--accentcolor: #00c3ff");
+    expect(sheet).not.toContain("accentColor");
+    // `Accent` slugs onto the reserved `accent`, so it is reserved here too —
+    // the same id cannot be aliasable on one path and reserved on another.
+    expect(sheet).toContain("--hf-var-accent: blue");
+    expect(sheet).not.toContain("--accent:");
+    expect(sheet).not.toContain("--Accent");
+  });
+});

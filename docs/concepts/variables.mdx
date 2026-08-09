@@ -86,15 +86,35 @@ Use direct bindings for the normal cases:
 
 <style>
   .card-title {
-    color: var(--accent);
+    color: var(--hf-var-accent);
   }
 </style>
 ```
 
 - `data-var-text` replaces the element’s own text.
 - `data-var-src` replaces an image, video, audio, or source URL.
-- Scalar variables are available as CSS custom properties such as
-  `var(--accent)`.
+- Scalar variables are available as CSS custom properties named
+  `--hf-var-<slug>`, so the `accent` variable above is read as
+  `var(--hf-var-accent)`.
+
+The slug is the id lowercased, with anything that is not a letter, digit or
+hyphen replaced by a hyphen. So `accentColor` is readable as
+`var(--hf-var-accentcolor)`, and `swap_at` as `var(--hf-var-swap-at)`.
+
+<Note>
+**How a variable is named in CSS.** Every scalar variable is written to
+`--hf-var-<slug>`. It is also written to the bare `--<slug>`, but only when the id
+is not one of the fifteen reserved theme-token names: `accent`, `accent-2`,
+`accent-3`, `accent2`, `bg`, `border`, `brand`, `fg`, `ink`, `muted`,
+`primary`, `secondary`, `surface`, `tertiary`, `text`. Those names belong to
+the page hosting the composition, so a variable never writes them. A variable
+called `accent` cannot shadow the host theme's `--accent`.
+
+The bare `--<slug>` alias is deprecated and will be removed in a future release.
+Bind `var(--hf-var-<slug>)` in new work. When a value should follow the host
+theme if there is one and fall back to the declared variable otherwise, write
+`var(--accent, var(--hf-var-accent))`.
+</Note>
 
 Use `window.__hyperframes.getVariables()` only when the result needs conditions,
 loops, or derived values:

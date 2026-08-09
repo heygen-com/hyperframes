@@ -20,6 +20,7 @@ import {
   setStyleSheet,
 } from "./model.js";
 import { keyToPath, stylePath } from "./patches.js";
+import { variableCssPropertiesForId } from "@hyperframes/core/runtime/theme-tokens";
 import {
   writeVariableDefault,
   clearVariableDefault,
@@ -117,6 +118,32 @@ function applyVariableDefault(declEl: Element | null, id: string, newDefault: un
 // ─── Patch application ───────────────────────────────────────────────────────
 
 /**
+ * The CSS custom-property patches a scalar `var.{id}` override implies.
+ *
+ * Current sessions persist a paired style override, but sets written before
+ * the model/CSS split carry only `var.{id}`, so the CSS is derived here and
+ * `var()` bindings rehydrate. Names come from core so this stays in step with
+ * the SDK writer: a theme-token id gets `--hf-var-{slug}` only.
+ *
+ * Object values (font, image) are never CSS and yield nothing. `typeof null`
+ * is `"object"`, so null is admitted explicitly rather than by omission.
+ */
+function cssPatchesForVariableOverride(rootId: string, key: string, value: unknown): JsonPatchOp[] {
+  if (!key.startsWith("var.")) return [];
+  if (value !== null && typeof value === "object") return [];
+
+  const { namespaced, legacy } = variableCssPropertiesForId(key.slice("var.".length));
+  const names = legacy === null ? [namespaced] : [namespaced, legacy];
+
+  return names.map((cssVar) => {
+    const path = stylePath(rootId, cssVar);
+    return value === null
+      ? ({ op: "remove", path } as JsonPatchOp)
+      : ({ op: "replace", path, value: String(value) } as JsonPatchOp);
+  });
+}
+
+/**
  * Replay a stored override-set onto a freshly-parsed base document (T3 init).
  * A null value means the property was explicitly deleted — emit a remove patch
  * so the base document matches the session state. (Removing a non-existent
@@ -146,17 +173,7 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
     } else {
       patches.push({ op: "replace", path, value });
     }
-    // A scalar `var.{id}` override must also restore the `--{id}` CSS custom
-    // prop on the root. Current sessions persist a paired style override, but
-    // sets written before the model/CSS split only carry `var.{id}`; derive the
-    // CSS here so `var(--{id})` bindings rehydrate. Object (font/image) values
-    // are never CSS, so they are skipped.
-    if (rootId && key.startsWith("var.") && value !== null && typeof value !== "object") {
-      const cssPath = stylePath(rootId, `--${key.slice("var.".length)}`);
-      patches.push({ op: "replace", path: cssPath, value: String(value) });
-    } else if (rootId && key.startsWith("var.") && value === null) {
-      patches.push({ op: "remove", path: stylePath(rootId, `--${key.slice("var.".length)}`) });
-    }
+    if (rootId) patches.push(...cssPatchesForVariableOverride(rootId, key, value));
   }
   applyPatchesToDocument(parsed, patches);
 }

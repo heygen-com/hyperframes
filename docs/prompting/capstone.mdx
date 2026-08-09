@@ -97,7 +97,7 @@ That is the same catch-and-tighten loop [Iterating](/prompting/iterating) teache
 >
 > **Technique, pinned:** continuous world-camera via GSAP transforms (the dolly is the film); parallax layers in every region; `data-chart`, `world-map`, `sdf-iris`, and a caption component adapted from the registry; per-character typing at the open; matched-motion handoffs at every region boundary (the wire IS the match); full footage pipeline (generated clip → HEVC → auto-proxy → background removal → lower-third → word-synced captions); real beat grid from `hyperframes beats`; real Three.js via the frame adapter; seeded two-frame-hold confetti; SFX on hits; VO-paced reveals throughout.
 >
-> **Variables:** expose `ground` (default `#0a0a0a`) and `ink` (default `#3CE6AC`) as composition variables on the single root file, bound via CSS custom properties everywhere (including the duotoned mural), so one `--variables` call re-skins the entire journey. It will be rendered twice: the default brand palette, and a second full render with `{"ground":"#0d1420","ink":"#c8ff3d"}`.
+> **Variables:** expose `ground` (default `#0a0a0a`) and `ink` (default `#3CE6AC`) as composition variables on the single root file, bound everywhere via their namespaced CSS custom properties `var(--hf-var-ground)` and `var(--hf-var-ink)` (including the duotoned mural), so one `--variables` call re-skins the entire journey. It will be rendered twice: the default brand palette, and a second full render with `{"ground":"#0d1420","ink":"#c8ff3d"}`.
 >
 > **Architecture constraint (technical):** single composition file — one `index.html`, one variable scope. The world is one wide scene space traversed by a camera transform; regions may still be timed `class="clip"` sections synchronized to the camera's arrival (so capture stays efficient), but their positions form one continuous world and the wire + ruler + protagonist chip layers persist across 100% of the film. No `data-composition-src` sub-files.
 >
@@ -141,6 +141,13 @@ hyperframes render --variables '{"ground":"#0d1420","ink":"#c8ff3d"}' --strict-v
 
 <video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-timeline-reskin-v2.mp4#t=0.1" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
 *The same composition, navy and acid green — the wire, ruler, chart, map, glass, and even the generated mural all follow the override.*
+
+Both colors are bound as `var(--hf-var-ground)` and `var(--hf-var-ink)`, not as
+`var(--ground)` and `var(--ink)`. Every declared variable is written to
+`--hf-var-<slug>`, and `ink` is one of the reserved theme-token names (see
+[Variables](/concepts/variables)), so it is written to the namespaced property
+only. A `var(--ink)` binding would have re-skinned the ground and quietly
+ignored the ink.
 
 The mural trick from the previous capstone carries over. The artwork is generated in grayscale, then duotoned live by CSS layers driven by the `ground` and `ink` variables. Even the raster re-skins. Keep color in CSS and shapes in the raster whenever a template frame needs to survive a re-skin.
 

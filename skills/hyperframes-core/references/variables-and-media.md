@@ -22,14 +22,15 @@ Declare variables on the `<html>` element with `data-composition-variables`. Eac
 <h1 class="clip" data-start="0" data-duration="5" data-var-text="title">Fallback</h1>
 <style>
   .card {
-    color: var(--accent);
+    color: var(--hf-var-accent);
   }
 </style>
 ```
 
 - `data-var-src="id"` substitutes the element's `src` (URL string or image `{url}`); the authored `src` is the fallback.
 - `data-var-text="id"` substitutes the element's own text; element children (nested clips, animated spans) are preserved.
-- Every scalar variable is applied automatically as a `--{id}` CSS custom property on the composition root, so `var(--id)` CSS responds to overrides — no `setProperty` boilerplate.
+- Every scalar variable is applied automatically as the `--hf-var-{slug}` CSS custom property on the composition root, so `var(--hf-var-{slug})` CSS responds to overrides (no `setProperty` boilerplate).
+- The bare `--{slug}` is written too, but **only when the id is not a reserved theme-token name**: `accent`, `accent-2`, `accent-3`, `accent2`, `bg`, `border`, `brand`, `fg`, `ink`, `muted`, `primary`, `secondary`, `surface`, `tertiary`, `text`. Those belong to the host page's theme, so a variable called `accent` never shadows the theme's `--accent`. The bare alias is deprecated and will be removed in a future release, so bind `var(--hf-var-{slug})`; use `var(--accent, var(--hf-var-accent))` when the host theme should win and the declared value is only the fallback.
 - Bindings resolve identically in preview and render, and per-instance for sub-compositions.
 - Caveat: media with audio should keep a real fallback `src` — render audio extraction reads the authored attribute (lint: `media_variable_src_no_fallback`).
 

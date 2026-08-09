@@ -9,6 +9,54 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="Unreleased"
+  description="Migration note"
+  tags={["Migration", "Core"]}
+>
+## Composition variables no longer take over theme token names
+
+A declared composition variable is now written to the CSS custom property
+`--hf-var-<slug>` instead of the bare `--<slug>`.
+
+**Reserved theme-token ids change immediately, with no deprecation period.**
+Fifteen names belong to the page hosting a composition: `accent`, `accent-2`,
+`accent-3`, `accent2`, `bg`, `border`, `brand`, `fg`, `ink`, `muted`,
+`primary`, `secondary`, `surface`, `tertiary`, `text`. A variable using one of
+those ids is now written only to `--hf-var-<slug>`, never to the bare name. The
+old behaviour was already broken rather than useful: a variable declared
+`accent` overwrote the very `--accent` token the composition was trying to
+read, so a composition mapping the value `blue` onto `var(--accent, #18181b)`
+rendered the CSS keyword `blue`, and no host theme could win it back.
+
+**Every other id keeps the bare alias for one deprecation cycle.** A variable
+called `speed` still writes both `--hf-var-speed` and `--speed`. The bare
+alias is deprecated and will be removed in a future release.
+
+### Are you affected
+
+You are affected if a composition binds `var(--<id>)` for an id it declares in
+`data-composition-variables`. List the custom properties your compositions
+read, then compare that list against your declared ids:
+
+```bash
+grep -rho 'var(--[A-Za-z0-9_-]*' . --include='*.html' | sort -u
+```
+
+Any match on a reserved name in the list above stops resolving to the declared
+value once you upgrade. Any other match still resolves, through the deprecated
+alias.
+
+### What to change
+
+Rewrite the binding to the namespaced name: `var(--accent)` becomes
+`var(--hf-var-accent)`. If the value should follow a host theme when one is
+present and fall back to the declared variable otherwise, write
+`var(--accent, var(--hf-var-accent))` instead. Declarations, `--variables`
+overrides, `data-variable-values`, `data-var-text`, `data-var-src`, and
+`getVariables()` are unchanged; only the CSS custom property name moves.
+</Update>
+
+<Update
   label="HyperFrames v0.7.103"
   description="Released - 2026-08-09"
   tags={["Release", "Core", "Core,cli"]}

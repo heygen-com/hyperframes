@@ -281,8 +281,12 @@ render or a nested host:
 ></div>
 ```
 
-Use `data-var-text`, `data-var-src`, or CSS `var(--variableId)` for direct
+Use `data-var-text`, `data-var-src`, or CSS `var(--hf-var-<slug>)` for direct
 bindings. Use `getVariables()` when the value affects logic.
+
+A scalar variable is written to `--hf-var-<slug>`. The bare `--<slug>` is a
+deprecated alias, and it is not written at all when `<id>` is one of the fifteen
+reserved theme-token names listed in [Variables](/concepts/variables).
 
 ## Animation contract
 

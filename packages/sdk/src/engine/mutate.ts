@@ -54,6 +54,7 @@ import {
 import { upsertCssRule } from "./cssWriter.js";
 import { mintHfId, EXCLUDED_TAGS } from "@hyperframes/core/hf-ids";
 import { EDIT_BASE_X_ATTR, EDIT_BASE_Y_ATTR } from "@hyperframes/core/runtime/position-edits";
+import { variableCssPropertiesForId } from "@hyperframes/core/runtime/theme-tokens";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
@@ -873,9 +874,9 @@ function handleSetVariableValue(
   const oldVarDefault = readVariableDefault(declEl, id);
 
   // Update the JSON model (B1 — drives the runtime) and keep the CSS custom
-  // prop as secondary / compat for compositions that CSS-bind directly to
-  // --{id}. Object values (font / image) are not valid CSS custom property
-  // values (LOCKED §7) — cssCompatChange clears any stale scalar prop instead.
+  // props as secondary / compat for compositions that CSS-bind directly to
+  // the variable. Object values (font / image) are not valid CSS custom
+  // property values (LOCKED §7) — cssCompatChanges clears stale scalar props.
   // Emitting separate model + style patches keeps apply-patches.ts pure per
   // path type, so inverse patches restore the exact pre-call state.
   writeVariableDefault(declEl, id, value);
@@ -883,8 +884,11 @@ function handleSetVariableValue(
   const forward: JsonPatchOp[] = [modelP.forward];
   const inverse: JsonPatchOp[] = [modelP.inverse];
 
-  const css = cssCompatChange(parsed, id, isObjectVariableValue(value) ? null : String(value));
-  if (css) {
+  for (const css of cssCompatChanges(
+    parsed,
+    id,
+    isObjectVariableValue(value) ? null : String(value),
+  )) {
     forward.push(css.forward);
     inverse.push(css.inverse);
   }
@@ -893,29 +897,38 @@ function handleSetVariableValue(
 }
 
 /**
- * Keep the `--{id}` CSS compat custom property on the root in sync with a
- * scalar default (same secondary channel handleSetVariableValue maintains).
- * Pass null to clear. Returns the patch pair, or null when there is no root
- * or nothing to change.
+ * Keep the CSS compat custom properties on the root in sync with a scalar
+ * default (same secondary channel handleSetVariableValue maintains). Pass
+ * null to clear. Returns one patch pair per property, empty when there is no
+ * root or nothing to change.
+ *
+ * Core's `variableCssPropertiesForId` owns which names those are, so the SDK
+ * writer and the runtime/compiler injectors cannot drift: the namespaced
+ * `--hf-var-{slug}` always, plus the deprecated bare `--{slug}` unless the id
+ * names a theme token — writing `--accent` there would shadow the host's.
  */
-function cssCompatChange(
+function cssCompatChanges(
   parsed: ParsedDocument,
   id: string,
   newVal: string | null,
-): { forward: JsonPatchOp; inverse: JsonPatchOp } | null {
+): { forward: JsonPatchOp; inverse: JsonPatchOp }[] {
   const root = findRoot(parsed.document);
   const rootId = root?.getAttribute("data-hf-id");
-  if (!root || !rootId) return null;
-  const cssVar = `--${id}`;
-  const oldCssValue = getElementStyles(root)[cssVar] ?? null;
-  if (newVal !== null) {
-    if (oldCssValue === newVal) return null;
-    setElementStyles(root, { [cssVar]: newVal });
-    return scalarChange(stylePath(rootId, cssVar), oldCssValue, newVal);
+  if (!root || !rootId) return [];
+  const { namespaced, legacy } = variableCssPropertiesForId(id);
+  const changes: { forward: JsonPatchOp; inverse: JsonPatchOp }[] = [];
+  for (const cssVar of legacy === null ? [namespaced] : [namespaced, legacy]) {
+    const oldCssValue = getElementStyles(root)[cssVar] ?? null;
+    if (newVal !== null) {
+      if (oldCssValue === newVal) continue;
+      setElementStyles(root, { [cssVar]: newVal });
+      changes.push(scalarChange(stylePath(rootId, cssVar), oldCssValue, newVal));
+    } else if (oldCssValue !== null) {
+      setElementStyles(root, { [cssVar]: null });
+      changes.push(scalarDelete(stylePath(rootId, cssVar), oldCssValue));
+    }
   }
-  if (oldCssValue === null) return null;
-  setElementStyles(root, { [cssVar]: null });
-  return scalarDelete(stylePath(rootId, cssVar), oldCssValue);
+  return changes;
 }
 
 /**
@@ -1000,8 +1013,7 @@ function handleDeclareVariable(
   // Same CSS compat channel every other variable op maintains — a composition
   // CSS-bound to var(--id) must resolve regardless of which op set the value.
   if (isScalar(declaration.default)) {
-    const css = cssCompatChange(parsed, declaration.id, String(declaration.default));
-    if (css) {
+    for (const css of cssCompatChanges(parsed, declaration.id, String(declaration.default))) {
       result.forward.push(css.forward);
       result.inverse.push(css.inverse);
     }
@@ -1033,8 +1045,11 @@ function handleUpdateVariableDeclaration(
     const valueP = valueChange(variablePath(id), oldDefault ?? null, newDefault);
     result.forward.push(valueP.forward);
     result.inverse.push(valueP.inverse);
-    const css = cssCompatChange(parsed, id, isScalar(newDefault) ? String(newDefault) : null);
-    if (css) {
+    for (const css of cssCompatChanges(
+      parsed,
+      id,
+      isScalar(newDefault) ? String(newDefault) : null,
+    )) {
       result.forward.push(css.forward);
       result.inverse.push(css.inverse);
     }
@@ -1053,8 +1068,7 @@ function handleRemoveVariableDeclaration(parsed: ParsedDocument, id: string): Mu
     forward: [patchRemove(path)],
     inverse: [patchAdd(path, old)],
   };
-  const css = cssCompatChange(parsed, id, null);
-  if (css) {
+  for (const css of cssCompatChanges(parsed, id, null)) {
     result.forward.push(css.forward);
     result.inverse.push(css.inverse);
   }

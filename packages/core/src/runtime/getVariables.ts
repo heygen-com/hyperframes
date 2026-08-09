@@ -20,6 +20,7 @@
  *     const { title = "Untitled", theme = "light" } = getVariables<MyVars>();
  */
 import { cssVariableName, detectSlugCollisions } from "../tokenSlug";
+import { collidingCssName, variableCssPropertiesForId } from "./themeTokens";
 
 export function getVariables<
   T extends Record<string, unknown> = Record<string, unknown>,
@@ -82,18 +83,21 @@ function hasInlineStyle(target: Element): target is Element & ElementCSSInlineSt
 
 /**
  * Define primitive-valued variables as CSS custom properties on `target`,
- * recording the applied names so re-init/unmount can clear them. Empty
- * strings are skipped — CSSOM setProperty("", …) REMOVES the property, and a
- * blank default has no CSS meaning anyway.
+ * recording every applied name (the namespaced one and, for a non-reserved
+ * id, its deprecated bare alias) so re-init/unmount can clear the pair.
+ * Empty strings are skipped — CSSOM setProperty("", …) REMOVES the property,
+ * and a blank default has no CSS meaning anyway.
  */
 export function applyCssVariables(target: Element, variables: Record<string, unknown>): void {
   if (!hasInlineStyle(target)) return;
   const applied: string[] = [];
   for (const [id, value] of Object.entries(variables)) {
     if ((typeof value === "string" && value !== "") || typeof value === "number") {
-      const name = cssVariableName(id);
-      target.style.setProperty(name, String(value));
-      applied.push(name);
+      const { namespaced, legacy } = variableCssPropertiesForId(id);
+      for (const name of legacy === null ? [namespaced] : [namespaced, legacy]) {
+        target.style.setProperty(name, String(value));
+        applied.push(name);
+      }
     }
   }
   if (applied.length > 0) target.setAttribute(APPLIED_VARS_ATTR, applied.join(" "));
@@ -107,7 +111,7 @@ export function filterVariablesIfAbsent(
 ): Record<string, unknown> {
   const filtered: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(variables)) {
-    const name = cssVariableName(id);
+    const name = collidingCssName(id);
     const existing =
       (hasInlineStyle(target) ? target.style.getPropertyValue(name) : "") ||
       (view ? view.getComputedStyle(target).getPropertyValue(name) : "");
@@ -173,7 +177,7 @@ function applyDeclaredForElement(
   const toApply: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(declared)) {
     if (id in overrides) continue; // overrides applied below, always win
-    const name = cssVariableName(id);
+    const name = collidingCssName(id);
     // define-if-absent: respect authored/compiled definitions
     const existing =
       el.style.getPropertyValue(name) ||
