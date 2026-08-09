@@ -1118,90 +1118,51 @@ function generateSource(kind: ItemKind, manifest: RegistryItem): string[] {
   ];
 }
 
-function generateItemMdx(
+/** The one thing above the fold: an explorer, a player, a texture sheet or a recorded video. */
+function previewSection(
   kind: ItemKind,
   manifest: RegistryItem,
-  carried: CarriedContent = { sections: [], hasCustomUsage: false },
-): string {
-  const tags = manifest.tags ?? [];
-  const installCmd = `npx hyperframes add ${manifest.name}`;
-  const source = manifest as RegistryItem & SourceMetadata;
-  const textureGroups = textureGroupsFor(manifest);
+  state: {
+    textureGroups: ReturnType<typeof textureGroupsFor>;
+    variables: ItemVariable[];
+    hasPlayer: boolean;
+    explorer: boolean;
+  },
+): string[] {
+  if (state.textureGroups.length > 0) return generateTexturePreview(manifest, state.textureGroups);
   const primaryTarget = primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
-
-  // Frontmatter only. Mintlify renders `title` as the H1 and `description` as
-  // the standfirst, so repeating both in the body (as this generator used to)
-  // printed each one twice on every page.
-  // The explorer owns the preview, so it can only be emitted for an item whose
-  // preview is a live player. A texture sheet or a recorded video has nothing
-  // to drive, and those items keep the static table.
-  const variables = textureGroups.length > 0 ? [] : itemVariables(manifest);
-  const preview =
-    textureGroups.length === 0 ? writePlayerPreview(kind, manifest, variables) : "none";
-  const hasPlayer = preview !== "none";
-  const explorer = preview === "variables";
-
-  const lines: string[] = [
-    "---",
-    `title: ${yamlString(manifest.title)}`,
-    `description: ${yamlString(manifest.description)}`,
-    "---",
-    "",
-    'import { InstallCommand } from "/snippets/install-command.jsx";',
-    ...(explorer ? ['import { VariablesExplorer } from "/snippets/variables-explorer.jsx";'] : []),
-    "",
-  ];
-
-  // 1. What it looks like, before anything else. Credits, tags and the source
-  //    prompt used to sit above this and pushed the preview below the fold.
-  if (textureGroups.length > 0) {
-    lines.push(...generateTexturePreview(manifest, textureGroups));
-  } else if (explorer) {
-    lines.push(...generateVariablesExplorer(kind, manifest, variables, primaryTarget));
-  } else if (hasPlayer) {
-    lines.push(
+  if (state.explorer) {
+    return generateVariablesExplorer(kind, manifest, state.variables, primaryTarget);
+  }
+  if (state.hasPlayer) {
+    return [
       `<iframe src="${playerPreviewUrl(kind, manifest)}" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="${manifest.title} preview" />`,
       "",
-    );
-  } else {
-    // No demo.html to play, so fall back to the recorded video. Blocks are the
-    // population that lands here: 125 of 132 ship no demo.
-    const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
-    // Same source of truth as the index: a manifest that declares a preview
-    // without a poster has no .png, and asking for one is a 403 the browser
-    // fetches before the video.
-    const posterUrl = catalogPreviewFor(kind, manifest);
-    const poster = posterUrl ? ` poster="${posterUrl}"` : "";
-    lines.push(
-      `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
-      "",
-    );
+    ];
   }
-
-  // 2. How to get it. A CodeGroup around a single block just drew an empty tab bar.
-  lines.push(
-    "## Install",
+  // No demo.html to play, so fall back to the recorded video. Blocks are the
+  // population that lands here: 125 of 132 ship no demo.
+  const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
+  // Same source of truth as the index: a manifest that declares a preview
+  // without a poster has no .png, and asking for one is a 403 the browser
+  // fetches before the video.
+  const posterUrl = catalogPreviewFor(kind, manifest);
+  const poster = posterUrl ? ` poster="${posterUrl}"` : "";
+  return [
+    `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
     "",
-    `<InstallCommand command="${installCmd}" />`,
-    "",
-    installOutcome(manifest, primaryTarget),
-    "",
-  );
+  ];
+}
 
-  // Prerequisite where it bites: you need the flag to preview what you just installed.
-  if (tags.includes("html-in-canvas")) {
-    lines.push(
-      "<Warning>",
-      "  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.",
-      "  Rendering from the CLI switches it on for you. [How it",
-      "  works](/guides/html-in-canvas)",
-      "</Warning>",
-      "",
-    );
-  }
-
-  // 3. How to use it — unless a human already wrote that section, in which case
-  //    their version is carried through below instead of being overwritten.
+/** How to use it. Empty when a human already wrote that section by hand. */
+function usageSection(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  primaryTarget: string,
+  carried: CarriedContent,
+  textureGroups: ReturnType<typeof textureGroupsFor>,
+): string[] {
+  const lines: string[] = [];
   if (carried.hasCustomUsage) {
     // nothing: the carried "## Usage" section covers it
   } else if (kind === "block" && isBlockItem(manifest)) {
@@ -1254,6 +1215,104 @@ function generateItemMdx(
       "",
     );
   }
+  return lines;
+}
+
+/** Tags, author and the source prompt, in the order a reader wants them least. */
+function footerSection(
+  manifest: RegistryItem,
+  tags: readonly string[],
+  source: RegistryItem & SourceMetadata,
+): string[] {
+  const footer: string[] = [];
+
+  if (tags.length > 0) {
+    footer.push(`Tagged ${tags.map((t) => `\`${t}\``).join(" ")}.`, "");
+  }
+
+  if (manifest.author) {
+    const author = source.authorUrl ? `[${manifest.author}](${source.authorUrl})` : manifest.author;
+    footer.push(`Created by ${author}.`, "");
+  }
+
+  if (source.sourcePrompt) {
+    footer.push(
+      '<Accordion title="The prompt this was built from">',
+      "",
+      "```text",
+      source.sourcePrompt,
+      "```",
+      "",
+      "</Accordion>",
+      "",
+    );
+  }
+  return footer;
+}
+
+function generateItemMdx(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  carried: CarriedContent = { sections: [], hasCustomUsage: false },
+): string {
+  const tags = manifest.tags ?? [];
+  const installCmd = `npx hyperframes add ${manifest.name}`;
+  const source = manifest as RegistryItem & SourceMetadata;
+  const textureGroups = textureGroupsFor(manifest);
+  const primaryTarget = primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
+
+  // Frontmatter only. Mintlify renders `title` as the H1 and `description` as
+  // the standfirst, so repeating both in the body (as this generator used to)
+  // printed each one twice on every page.
+  // The explorer owns the preview, so it can only be emitted for an item whose
+  // preview is a live player. A texture sheet or a recorded video has nothing
+  // to drive, and those items keep the static table.
+  const variables = textureGroups.length > 0 ? [] : itemVariables(manifest);
+  const preview =
+    textureGroups.length === 0 ? writePlayerPreview(kind, manifest, variables) : "none";
+  const hasPlayer = preview !== "none";
+  const explorer = preview === "variables";
+
+  const lines: string[] = [
+    "---",
+    `title: ${yamlString(manifest.title)}`,
+    `description: ${yamlString(manifest.description)}`,
+    "---",
+    "",
+    'import { InstallCommand } from "/snippets/install-command.jsx";',
+    ...(explorer ? ['import { VariablesExplorer } from "/snippets/variables-explorer.jsx";'] : []),
+    "",
+  ];
+
+  // 1. What it looks like, before anything else. Credits, tags and the source
+  //    prompt used to sit above this and pushed the preview below the fold.
+  lines.push(...previewSection(kind, manifest, { textureGroups, variables, hasPlayer, explorer }));
+
+  // 2. How to get it. A CodeGroup around a single block just drew an empty tab bar.
+  lines.push(
+    "## Install",
+    "",
+    `<InstallCommand command="${installCmd}" />`,
+    "",
+    installOutcome(manifest, primaryTarget),
+    "",
+  );
+
+  // Prerequisite where it bites: you need the flag to preview what you just installed.
+  if (tags.includes("html-in-canvas")) {
+    lines.push(
+      "<Warning>",
+      "  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.",
+      "  Rendering from the CLI switches it on for you. [How it",
+      "  works](/guides/html-in-canvas)",
+      "</Warning>",
+      "",
+    );
+  }
+
+  // 3. How to use it — unless a human already wrote that section, in which case
+  //    their version is carried through below instead of being overwritten.
+  lines.push(...usageSection(kind, manifest, primaryTarget, carried, textureGroups));
 
   lines.push(...generateParams(manifest));
   if (!explorer) {
@@ -1286,29 +1345,7 @@ function generateItemMdx(
   // 5. Generated tail: provenance (the least of what a reader came for) and
   //    then the required `## Related topics` continuation, so the page ends with
   //    it per docs/AGENTS.md. The marker delimits everything generated below it.
-  const footer: string[] = [];
-
-  if (tags.length > 0) {
-    footer.push(`Tagged ${tags.map((t) => `\`${t}\``).join(" ")}.`, "");
-  }
-
-  if (manifest.author) {
-    const author = source.authorUrl ? `[${manifest.author}](${source.authorUrl})` : manifest.author;
-    footer.push(`Created by ${author}.`, "");
-  }
-
-  if (source.sourcePrompt) {
-    footer.push(
-      '<Accordion title="The prompt this was built from">',
-      "",
-      "```text",
-      source.sourcePrompt,
-      "```",
-      "",
-      "</Accordion>",
-      "",
-    );
-  }
+  const footer = footerSection(manifest, tags, source);
 
   lines.push(FOOTER_MARKER, "", ...footer, ...RELATED_TOPICS);
 
