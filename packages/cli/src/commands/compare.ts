@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { defineCommand } from "citty";
 import { createContactSheet } from "../capture/contactSheet.js";
+import { compareAgainstReference } from "../capture/compareAgainstReference.js";
+import type { BoundsDeviation } from "../utils/referenceDiff.js";
 import {
   openSettledCompositionPage,
   seekCompositionTimeline,
@@ -40,6 +42,17 @@ export interface ParsedCompareArgs {
   timeoutMs: number;
 }
 
+export interface ParsedReferenceCompareArgs {
+  variant: CompareVariantSpec;
+  referencePath: string;
+  displayReferencePath: string;
+  times: number[];
+  outPath: string;
+  failUnder?: number;
+  json: boolean;
+  timeoutMs: number;
+}
+
 export interface CompareVariantCapResult {
   variants: CompareVariantSpec[];
   truncated: boolean;
@@ -63,6 +76,10 @@ export const examples: Example[] = [
   [
     "Compare three variants at a specific timeline time",
     "hyperframes compare ./a ./b ./c --at 2.5 --labels classic,bold,quiet --json",
+  ],
+  [
+    "Measure a rebuild against the video it reproduces",
+    "hyperframes compare . --against reference.mp4 --at 0,4,10,21 --json",
   ],
 ];
 
@@ -148,6 +165,82 @@ export function parseCompareArgs(
     timeoutMs:
       Number.parseInt(readOptionalString(args.timeout) ?? "", 10) ||
       DEFAULT_RENDER_READY_TIMEOUT_MS,
+  };
+}
+
+const MAX_REFERENCE_TIMES = 8;
+
+/**
+ * Raw citty args for the `--against` route. String flags arrive as strings and
+ * boolean flags as booleans, so the parse below narrows values rather than
+ * type-testing them.
+ */
+export interface ReferenceCompareCliArgs {
+  _?: readonly string[];
+  against?: string;
+  out?: string;
+  at?: string;
+  "fail-under"?: string;
+  json?: boolean;
+  timeout?: string;
+}
+
+function trimmed(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  return text ? text : undefined;
+}
+
+function parseReferenceTimes(value: string | undefined): number[] {
+  const raw = trimmed(value);
+  if (!raw) return [0];
+  const times = raw.split(",").map((entry) => {
+    const parsed = Number(entry.trim());
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error("--at must be non-negative seconds (comma-separated with --against)");
+    }
+    return parsed;
+  });
+  if (times.length > MAX_REFERENCE_TIMES) {
+    throw new Error(`--at accepts at most ${MAX_REFERENCE_TIMES} times with --against`);
+  }
+  return times;
+}
+
+function parseFailUnder(value: string | undefined): number | undefined {
+  const raw = trimmed(value);
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error("--fail-under must be an SSIM threshold between 0 and 1");
+  }
+  return parsed;
+}
+
+export function parseReferenceCompareArgs(
+  args: ReferenceCompareCliArgs,
+  cwd = process.cwd(),
+): ParsedReferenceCompareArgs {
+  const paths = (args._ ?? []).map((value) => value.trim()).filter(Boolean);
+  if (paths.length !== 1) {
+    throw new Error("--against compares exactly one composition path against the reference");
+  }
+  const reference = trimmed(args.against);
+  if (!reference) throw new Error("--against needs a reference video or image path");
+  const input = paths[0]!;
+
+  return {
+    variant: {
+      label: defaultLabelForPath(input),
+      inputPath: resolveFromBase(cwd, input),
+      displayPath: displayPathFromInput(cwd, input),
+    },
+    referencePath: resolveFromBase(cwd, reference),
+    displayReferencePath: displayPathFromInput(cwd, reference),
+    times: parseReferenceTimes(args.at),
+    outPath: resolveFromBase(cwd, trimmed(args.out) ?? "compare.png"),
+    failUnder: parseFailUnder(args["fail-under"]),
+    json: args.json === true,
+    timeoutMs: Number.parseInt(trimmed(args.timeout) ?? "", 10) || DEFAULT_RENDER_READY_TIMEOUT_MS,
   };
 }
 
@@ -345,6 +438,94 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
   }
 }
 
+interface ReferenceComparePayload {
+  ok: boolean;
+  sheet: string;
+  reference: string;
+  replica: string;
+  worstSsim: number | null;
+  failUnder?: number;
+  samples: {
+    time: number;
+    ssim: number | null;
+    meanAbsDiff: number;
+    meanSignedDiff: number;
+    deviation: BoundsDeviation;
+    overlay: string;
+  }[];
+}
+
+async function runReferenceCompare(
+  parsed: ParsedReferenceCompareArgs,
+): Promise<ReferenceComparePayload> {
+  const prepared = prepareCompareVariantProjects([parsed.variant]);
+  try {
+    const result = await compareAgainstReference({
+      projectDir: prepared[0]!.projectDir,
+      referencePath: parsed.referencePath,
+      times: parsed.times,
+      outPath: parsed.outPath,
+      timeoutMs: parsed.timeoutMs,
+    });
+
+    trackCompareSheet({
+      command: "compare",
+      cells: parsed.times.length * 2,
+      truncated: false,
+      total: parsed.times.length * 2,
+      renderReadyTimedOut: false,
+    });
+
+    const gated =
+      parsed.failUnder !== undefined &&
+      (result.worstSsim === null || result.worstSsim < parsed.failUnder);
+
+    return {
+      ok: !gated,
+      sheet: result.sheet,
+      reference: parsed.displayReferencePath,
+      replica: parsed.variant.displayPath,
+      worstSsim: result.worstSsim,
+      ...(parsed.failUnder !== undefined ? { failUnder: parsed.failUnder } : {}),
+      samples: result.samples.map((sample) => ({
+        time: sample.time,
+        ssim: sample.ssim,
+        meanAbsDiff: Number(sample.meanAbsDiff.toFixed(4)),
+        meanSignedDiff: Number(sample.meanSignedDiff.toFixed(4)),
+        deviation: sample.deviation,
+        overlay: sample.overlay,
+      })),
+    };
+  } finally {
+    cleanupPreparedCompareVariants(prepared);
+  }
+}
+
+function printReferenceReport(payload: ReferenceComparePayload): void {
+  console.log();
+  console.log(c.bold(`Reference: ${payload.reference}`));
+  for (const sample of payload.samples) {
+    const { dw, dh, dcx, dcy, scale } = sample.deviation;
+    const ssim = sample.ssim === null ? "n/a" : sample.ssim.toFixed(4);
+    const signed = sample.meanSignedDiff * 100;
+    console.log(
+      `  t=${sample.time}s  SSIM ${ssim}  diff ${(sample.meanAbsDiff * 100).toFixed(1)}% (bias ${signed >= 0 ? "+" : ""}${signed.toFixed(1)}%)`,
+    );
+    console.log(
+      c.dim(
+        `    ink dw=${dw}px dh=${dh}px dcx=${dcx.toFixed(1)}px dcy=${dcy.toFixed(1)}px scale=${scale.toFixed(3)}`,
+      ),
+    );
+    console.log(c.dim(`    overlay ${sample.overlay}`));
+  }
+  console.log();
+  console.log(`${c.success("◇")}  Contact sheet saved to ${payload.sheet}`);
+  if (!payload.ok) {
+    const worst = payload.worstSsim === null ? "unmeasured" : payload.worstSsim.toFixed(4);
+    console.error(`${c.error("✗")} Worst SSIM ${worst} is below --fail-under ${payload.failUnder}`);
+  }
+}
+
 function printJson(payload: object): void {
   console.log(JSON.stringify(withMeta(payload), null, 2));
 }
@@ -360,9 +541,19 @@ export default defineCommand({
       description: "Composition project directory or .html file (pass 2+ paths)",
       required: false,
     },
+    against: {
+      type: "string",
+      description:
+        "Reference video or image to measure one composition against (SSIM + ink-box deltas + red/cyan overlay)",
+    },
     at: {
       type: "string",
-      description: "Timeline time in seconds to seek before screenshotting each variant",
+      description:
+        "Timeline time in seconds to seek before screenshotting each variant (comma-separated with --against)",
+    },
+    "fail-under": {
+      type: "string",
+      description: "With --against, exit non-zero when the worst sampled SSIM falls below this",
     },
     labels: {
       type: "string",
@@ -389,6 +580,20 @@ export default defineCommand({
   async run({ args }) {
     const jsonRequested = args.json === true;
     try {
+      if (trimmed(args.against)) {
+        const parsed = parseReferenceCompareArgs(args);
+        if (!parsed.json) {
+          console.log(
+            `${c.accent("◆")}  Measuring ${parsed.variant.label} against ${parsed.displayReferencePath} at ${parsed.times.length} time(s)`,
+          );
+        }
+        const payload = await runReferenceCompare(parsed);
+        if (parsed.json) printJson(payload);
+        else printReferenceReport(payload);
+        if (!payload.ok) failCommand();
+        return;
+      }
+
       const parsed = parseCompareArgs(args);
       if (!parsed.json) {
         console.log(

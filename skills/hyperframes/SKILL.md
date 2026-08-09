@@ -73,6 +73,8 @@ Before finalizing the route, read `references/routes/<workflow>.md` — one smal
 
 For fresh creation the intent layer (`references/intent-interview.md`) runs the full conversation — memory, triage, pitch round, must-haves, run-shape, hand-off — and **ends by writing `BRIEF.md`. The brief is the only routing artifact the workflow reads**; nothing later re-opens this skill or the interview. Answer every later "what did the route require?" from `BRIEF.md`.
 
+Read the routed workflow's `SKILL.md` and nothing from its siblings. The other creation workflows cannot contribute to a route that is already decided, and reading them is pure cost: the single largest avoidable expense in a build, paid again on every turn once it is in context. If a sibling workflow looks relevant mid-build, the route was wrong: say so and re-route, rather than reading both.
+
 ## 4. Install and enter the workflow
 
 Before reading the selected workflow, install or refresh it and the core domain skills:
@@ -93,6 +95,7 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Design specs, concept, palette, typography, narration, beat planning                                                | `/hyperframes-creative`  |
 | Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
 | Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
+| Measuring the build against a reference video, cut, or still the brief supplies                                     | `/hyperframes-cli`       |
 | Registry blocks and components                                                                                      | `/hyperframes-registry`  |
 | Figma assets, tokens, components, or storyboard frames as reconstructed motion                                      | `/figma`                 |
 

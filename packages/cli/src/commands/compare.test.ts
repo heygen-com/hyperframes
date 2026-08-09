@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCompareSuccessPayload,
   capCompareVariants,
   parseCompareArgs,
+  parseReferenceCompareArgs,
   prepareCompareVariantProjects,
 } from "./compare.js";
 
@@ -137,5 +138,45 @@ describe("prepareCompareVariantProjects", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("parseReferenceCompareArgs", () => {
+  it("requires exactly one composition path", () => {
+    expect(() => parseReferenceCompareArgs({ _: ["a", "b"], against: "ref.mp4" }, "/tmp")).toThrow(
+      "--against compares exactly one composition path",
+    );
+  });
+
+  it("defaults to a single sample at t=0", () => {
+    const parsed = parseReferenceCompareArgs({ _: ["."], against: "ref.mp4" }, "/tmp");
+    expect(parsed.times).toEqual([0]);
+    // resolve(), not a literal: Windows turns "/tmp" into "D:\tmp".
+    expect(parsed.referencePath).toBe(resolve("/tmp", "ref.mp4"));
+    expect(parsed.failUnder).toBeUndefined();
+  });
+
+  it("parses a comma-separated sample list and an SSIM gate", () => {
+    const parsed = parseReferenceCompareArgs(
+      { _: ["."], against: "ref.mp4", at: "0,4,10.5", "fail-under": "0.9" },
+      "/tmp",
+    );
+    expect(parsed.times).toEqual([0, 4, 10.5]);
+    expect(parsed.failUnder).toBe(0.9);
+  });
+
+  it("rejects negative times and out-of-range thresholds", () => {
+    expect(() =>
+      parseReferenceCompareArgs({ _: ["."], against: "ref.mp4", at: "0,-1" }, "/tmp"),
+    ).toThrow("--at must be non-negative seconds");
+    expect(() =>
+      parseReferenceCompareArgs({ _: ["."], against: "ref.mp4", "fail-under": "2" }, "/tmp"),
+    ).toThrow("--fail-under must be an SSIM threshold");
+  });
+
+  it("caps the sample count", () => {
+    expect(() =>
+      parseReferenceCompareArgs({ _: ["."], against: "ref.mp4", at: "1,2,3,4,5,6,7,8,9" }, "/tmp"),
+    ).toThrow("at most 8 times");
   });
 });
