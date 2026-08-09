@@ -6,12 +6,12 @@ The action-only close: a display-scale action line lands per word, filling 70 to
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `action_line` | string | `Make it happen` | Two to four word closing action; character-aware fit targets 70 to 85 percent of the frame width, short lines cap on height. |
-| `button_label` | string | `Start now` | Text inside the single CTA capsule; label auto-fits, set in the body face. |
-| `accent` | enum | `green` | Capsule color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` and `up` depart the lockup over the final 0.45s. |
+| id             | type   | default          | notes                                                                                                                        |
+| -------------- | ------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `action_line`  | string | `Make it happen` | Two to four word closing action; character-aware fit targets 70 to 85 percent of the frame width, short lines cap on height. |
+| `button_label` | string | `Start now`      | Text inside the single CTA capsule; label auto-fits, set in the body face.                                                   |
+| `accent`       | enum   | `green`          | Capsule color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                      |
+| `exit`         | enum   | `none`           | `none` holds until the cut; `fade` and `up` depart the lockup over the final 0.45s.                                          |
 
 ## Choreography
 

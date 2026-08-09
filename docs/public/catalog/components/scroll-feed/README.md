@@ -6,12 +6,12 @@ A self-scrolling column of skeleton post cards with two low-opacity trail copies
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `speed` | enum | `doom` | `doom` or `frantic`: card pitch, so frantic covers more distance in the same time. |
-| `card_count` | number | `6` | Cards per repeated cycle (4 to 10). |
-| `cues` | string | `` (empty) | Comma-separated seconds (from mount start); each cue advances the feed by exactly one card pitch (stepped doom-scroll rhythm). Sorted ascending, capped at two full cycles of steps. Empty synthesizes evenly spaced flicks, one per card, that still cover exactly one full cycle. |
-| `exit` | enum | `none` | `none` scrolls until the cut; `fade`/`up` depart over a reserved tail (min(0.4s, 15% of D)). |
+| id           | type   | default    | notes                                                                                                                                                                                                                                                                               |
+| ------------ | ------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `speed`      | enum   | `doom`     | `doom` or `frantic`: card pitch, so frantic covers more distance in the same time.                                                                                                                                                                                                  |
+| `card_count` | number | `6`        | Cards per repeated cycle (4 to 10).                                                                                                                                                                                                                                                 |
+| `cues`       | string | `` (empty) | Comma-separated seconds (from mount start); each cue advances the feed by exactly one card pitch (stepped doom-scroll rhythm). Sorted ascending, capped at two full cycles of steps. Empty synthesizes evenly spaced flicks, one per card, that still cover exactly one full cycle. |
+| `exit`       | enum   | `none`     | `none` scrolls until the cut; `fade`/`up` depart over a reserved tail (min(0.4s, 15% of D)).                                                                                                                                                                                        |
 
 ## Mount
 

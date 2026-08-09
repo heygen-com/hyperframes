@@ -6,11 +6,11 @@ Liquid ink blooms through paper to reveal a mark: several ink blobs bleed outwar
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `blobs` | number | `5` | How many ink blobs bleed and merge, clamped 4 to 6. |
-| `accent` | enum | `green` | Ink tint: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. The ink body is the accent mixed toward `--fg` so it reads as pigment. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id       | type   | default | notes                                                                                                                                                     |
+| -------- | ------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blobs`  | number | `5`     | How many ink blobs bleed and merge, clamped 4 to 6.                                                                                                       |
+| `accent` | enum   | `green` | Ink tint: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. The ink body is the accent mixed toward `--fg` so it reads as pigment. |
+| `exit`   | enum   | `none`  | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                                                                  |
 
 ## Mark slot
 

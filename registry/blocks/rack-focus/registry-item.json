@@ -11,6 +11,107 @@
   },
   "duration": 6,
   "tags": ["webgl", "shader", "camera", "depth", "cinematic", "showcase"],
+  "variables": [
+    {
+      "id": "nearfocus",
+      "type": "number",
+      "label": "Near focal distance",
+      "default": 1.2,
+      "min": 0.2,
+      "max": 100,
+      "step": 0.05,
+      "unit": "m"
+    },
+    {
+      "id": "farfocus",
+      "type": "number",
+      "label": "Far focal distance",
+      "default": 80,
+      "min": 0.3,
+      "max": 400,
+      "step": 0.5,
+      "unit": "m"
+    },
+    {
+      "id": "focallength",
+      "type": "number",
+      "label": "Focal length",
+      "default": 85,
+      "min": 12,
+      "max": 300,
+      "step": 1,
+      "unit": "mm"
+    },
+    {
+      "id": "aperture",
+      "type": "number",
+      "label": "Aperture (f-number)",
+      "default": 1.8,
+      "min": 0.95,
+      "max": 22,
+      "step": 0.05
+    },
+    {
+      "id": "blades",
+      "type": "number",
+      "label": "Aperture blades (bokeh shape)",
+      "default": 6,
+      "min": 3,
+      "max": 14,
+      "step": 1
+    },
+    {
+      "id": "catseye",
+      "type": "number",
+      "label": "Cat eye clipping at the corners",
+      "default": 0.62,
+      "min": 0,
+      "max": 1,
+      "step": 0.02
+    },
+    {
+      "id": "pullstart",
+      "type": "number",
+      "label": "Pull start",
+      "default": 1.2,
+      "min": 0,
+      "max": 30,
+      "step": 0.05,
+      "unit": "s"
+    },
+    {
+      "id": "pullduration",
+      "type": "number",
+      "label": "Pull duration",
+      "default": 3.2,
+      "min": 0.1,
+      "max": 30,
+      "step": 0.05,
+      "unit": "s"
+    },
+    {
+      "id": "pullease",
+      "type": "string",
+      "label": "Pull easing (GSAP ease)",
+      "default": "power2.inOut",
+      "placeholder": "power2.inOut"
+    },
+    {
+      "id": "bokeh",
+      "type": "number",
+      "label": "Bokeh exposure",
+      "default": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.05
+    },
+    {
+      "id": "backdrop",
+      "type": "color",
+      "label": "Backdrop",
+      "default": "#05060a"
+    }
+  ],
   "files": [
     {
       "path": "rack-focus.html",

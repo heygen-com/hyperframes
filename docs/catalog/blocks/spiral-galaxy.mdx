@@ -4,51 +4,16 @@ description: "A spiral galaxy seen from outside, turning with real differential 
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/spiral-galaxy.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Spiral Galaxy preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/spiral-galaxy.html"
+  compositionId="spiral-galaxy"
+  compositionSrc="compositions/spiral-galaxy.html"
+  variables={[{"id":"stars","type":"number","label":"Star count","default":20000,"min":2000,"max":40000,"step":1000},{"id":"arms","type":"number","label":"Arm count","default":3,"min":2,"max":8,"step":1},{"id":"rate","type":"number","label":"Rotation rate","default":0.25,"min":0,"max":1.5,"step":0.05,"unit":"rad/s"},{"id":"glow","type":"number","label":"Core brightness","default":1.9,"min":0.2,"max":4,"step":0.1},{"id":"size","type":"number","label":"Star size","default":10,"min":2,"max":40,"step":1,"unit":"px"},{"id":"core","type":"color","label":"Core colour","default":"#ffa575"},{"id":"rim","type":"color","label":"Rim colour","default":"#311599"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add spiral-galaxy" />
-
-That writes one file: `compositions/spiral-galaxy.html`.
-
-## Add it to your video
-
-It runs for 10 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="spiral-galaxy"
-  data-composition-src="compositions/spiral-galaxy.html"
-  data-start="0"
-  data-duration="10"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `stars` — Star count. Defaults to `20000`.
-- `arms` — Arm count. Defaults to `3`.
-- `rate` — Rotation rate. Defaults to `0.25`.
-- `glow` — Core brightness. Defaults to `1.9`.
-- `size` — Star size. Defaults to `10`.
-- `core` — Core colour. Defaults to `#ffa575`.
-- `rim` — Rim colour. Defaults to `#311599`.
-
-## Source
-
-<Accordion title={`spiral-galaxy.html`}>
-
-```html
+```html spiral-galaxy.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -363,7 +328,44 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add spiral-galaxy" />
+
+That writes one file: `compositions/spiral-galaxy.html`.
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="spiral-galaxy"
+  data-composition-src="compositions/spiral-galaxy.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `stars` — Star count. Defaults to `20000`.
+- `arms` — Arm count. Defaults to `3`.
+- `rate` — Rotation rate. Defaults to `0.25`.
+- `glow` — Core brightness. Defaults to `1.9`.
+- `size` — Star size. Defaults to `10`.
+- `core` — Core colour. Defaults to `#ffa575`.
+- `rim` — Rim colour. Defaults to `#311599`.
 
 {/* hf:generated-footer */}
 

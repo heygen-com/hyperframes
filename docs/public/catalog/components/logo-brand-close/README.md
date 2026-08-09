@@ -6,13 +6,13 @@ Distinct job from `cta-close`: identity, not action. No button, no cursor, no as
 
 ## Variables
 
-| Variable   | Type   | Default                     | Notes                                                              |
-| ---------- | ------ | --------------------------- | ------------------------------------------------------------------ |
+| Variable   | Type   | Default                     | Notes                                                                                                                   |
+| ---------- | ------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `wordmark` | string | `HYPERFRAMES`               | Letters cascade individually; a brand period is appended in accent (an existing trailing `.` takes the accent instead). |
-| `tagline`  | string | `Write HTML. Render video.` | Settles beneath the wordmark. Empty string hides the line.         |
-| `url`      | string | `hyperframes.heygen.com`    | Mono, wide-tracked. Empty string hides the line.                   |
-| `accent`   | enum   | `green`                     | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`. Colors the brand period. |
-| `exit`     | enum   | `none`                      | `none`, `fade`, or `up`. This is a film ender; the default hold runs to the last frame. |
+| `tagline`  | string | `Write HTML. Render video.` | Settles beneath the wordmark. Empty string hides the line.                                                              |
+| `url`      | string | `hyperframes.heygen.com`    | Mono, wide-tracked. Empty string hides the line.                                                                        |
+| `accent`   | enum   | `green`                     | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`. Colors the brand period.                     |
+| `exit`     | enum   | `none`                      | `none`, `fade`, or `up`. This is a film ender; the default hold runs to the last frame.                                 |
 
 ## Envelope
 

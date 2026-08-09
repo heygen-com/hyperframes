@@ -10,6 +10,77 @@
     "height": 1080
   },
   "duration": 12,
+  "variables": [
+    {
+      "id": "title",
+      "type": "string",
+      "label": "Title",
+      "default": "Streaming Subscribers by Service"
+    },
+    {
+      "id": "subtitle",
+      "type": "string",
+      "label": "Subtitle",
+      "default": "Ranked by reported subscribers"
+    },
+    {
+      "id": "periods",
+      "type": "string",
+      "label": "Period labels (comma separated)",
+      "default": "2019, 2020, 2021, 2022, 2023, 2024"
+    },
+    {
+      "id": "series",
+      "type": "string",
+      "label": "Series (one per line: Name: v1, v2, ...)",
+      "default": "Northwind: 42, 58, 71, 96, 118, 131\nCobalt: 30, 46, 68, 92, 126, 168\nFerry: 55, 62, 66, 70, 74, 79\nMarlow: 18, 33, 52, 61, 88, 104\nAster: 25, 28, 44, 58, 63, 72\nPell: 12, 20, 39, 47, 55, 90\nQuill: 8, 11, 15, 24, 40, 66\nDunmore: 35, 37, 38, 40, 42, 44"
+    },
+    {
+      "id": "barCount",
+      "type": "number",
+      "label": "Bars shown",
+      "default": 6,
+      "min": 3,
+      "max": 12,
+      "step": 1
+    },
+    {
+      "id": "periodDuration",
+      "type": "number",
+      "label": "Seconds per period",
+      "default": 2,
+      "min": 0.4,
+      "max": 6,
+      "step": 0.1
+    },
+    {
+      "id": "valuePrefix",
+      "type": "string",
+      "label": "Value prefix",
+      "default": "$"
+    },
+    {
+      "id": "valueSuffix",
+      "type": "string",
+      "label": "Value suffix",
+      "default": "M"
+    },
+    {
+      "id": "valueDecimals",
+      "type": "number",
+      "label": "Value decimals",
+      "default": 0,
+      "min": 0,
+      "max": 3,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "label": "Leader accent",
+      "default": "#c8452d"
+    }
+  ],
   "files": [
     {
       "path": "bar-chart-race.html",

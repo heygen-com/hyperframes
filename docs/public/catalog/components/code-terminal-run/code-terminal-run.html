@@ -112,7 +112,8 @@
             align-items: center;
             gap: var(--space-1, 1.2cqw);
             padding: var(--space-1, 1.6cqh) var(--space-2, 2.4cqw);
-            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+            border-bottom: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 55%, transparent);
             background: color-mix(in srgb, var(--surface, #0b1016) 88%, var(--bg, #000000));
           }
 
@@ -204,11 +205,24 @@
                        your own command + output lines. Keep one
                        [data-terminal="command"] and any number of
                        [data-terminal="output"] elements, in print order. -->
-                  <div data-terminal="command">run build <span class="ct-path">src/app</span> <span class="ct-flag">--minify</span> <span class="ct-flag">--out</span> <span class="ct-str">"dist/app"</span></div>
-                  <div data-terminal="output"><span class="ct-muted">-</span> resolving 128 modules</div>
-                  <div data-terminal="output"><span class="ct-muted">-</span> bundling <span class="ct-path">src/app</span></div>
-                  <div data-terminal="output"><span class="ct-ok">ok</span> 128 modules in 412 ms</div>
-                  <div data-terminal="output"><span class="ct-ok">ok</span> wrote <span class="ct-path">dist/app</span> <span class="ct-muted">(96 kB)</span></div>
+                  <div data-terminal="command">
+                    run build <span class="ct-path">src/app</span>
+                    <span class="ct-flag">--minify</span> <span class="ct-flag">--out</span>
+                    <span class="ct-str">"dist/app"</span>
+                  </div>
+                  <div data-terminal="output">
+                    <span class="ct-muted">-</span> resolving 128 modules
+                  </div>
+                  <div data-terminal="output">
+                    <span class="ct-muted">-</span> bundling <span class="ct-path">src/app</span>
+                  </div>
+                  <div data-terminal="output">
+                    <span class="ct-ok">ok</span> 128 modules in 412 ms
+                  </div>
+                  <div data-terminal="output">
+                    <span class="ct-ok">ok</span> wrote <span class="ct-path">dist/app</span>
+                    <span class="ct-muted">(96 kB)</span>
+                  </div>
                 </div>
                 <div class="ctr-tail" aria-hidden="true"><span class="ctr-caret"></span></div>
               </div>

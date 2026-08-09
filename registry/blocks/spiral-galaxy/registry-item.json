@@ -11,6 +11,67 @@
   },
   "duration": 10,
   "tags": ["hero", "space", "particles", "webgl", "background"],
+  "variables": [
+    {
+      "id": "stars",
+      "type": "number",
+      "label": "Star count",
+      "default": 20000,
+      "min": 2000,
+      "max": 40000,
+      "step": 1000
+    },
+    {
+      "id": "arms",
+      "type": "number",
+      "label": "Arm count",
+      "default": 3,
+      "min": 2,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "id": "rate",
+      "type": "number",
+      "label": "Rotation rate",
+      "default": 0.25,
+      "min": 0,
+      "max": 1.5,
+      "step": 0.05,
+      "unit": "rad/s"
+    },
+    {
+      "id": "glow",
+      "type": "number",
+      "label": "Core brightness",
+      "default": 1.9,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "label": "Star size",
+      "default": 10,
+      "min": 2,
+      "max": 40,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "core",
+      "type": "color",
+      "label": "Core colour",
+      "default": "#ffa575"
+    },
+    {
+      "id": "rim",
+      "type": "color",
+      "label": "Rim colour",
+      "default": "#311599"
+    }
+  ],
   "files": [
     {
       "path": "spiral-galaxy.html",

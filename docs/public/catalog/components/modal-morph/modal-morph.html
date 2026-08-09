@@ -118,8 +118,7 @@
             border: 0.18cqmin solid var(--border, #475569);
             border-radius: var(--radius, 2.4cqmin);
             background: var(--surface, #14171c);
-            box-shadow: 0 1.4cqmin 4.5cqmin
-              color-mix(in srgb, var(--bg, #000000) 32%, transparent);
+            box-shadow: 0 1.4cqmin 4.5cqmin color-mix(in srgb, var(--bg, #000000) 32%, transparent);
           }
 
           /* Panel layout: the destination surface. */
@@ -136,8 +135,7 @@
             border: 0.18cqmin solid var(--border, #475569);
             border-radius: var(--radius, 2.4cqmin);
             background: var(--surface, #14171c);
-            box-shadow: 0 2.2cqmin 7cqmin
-              color-mix(in srgb, var(--bg, #000000) 36%, transparent);
+            box-shadow: 0 2.2cqmin 7cqmin color-mix(in srgb, var(--bg, #000000) 36%, transparent);
           }
 
           .mm-panel-head {
@@ -291,9 +289,7 @@
                 : {};
 
             var fromScaleRaw = parseFloat(vars.from_scale);
-            var fromScale = isFinite(fromScaleRaw)
-              ? Math.min(1.5, Math.max(0.5, fromScaleRaw))
-              : 1;
+            var fromScale = isFinite(fromScaleRaw) ? Math.min(1.5, Math.max(0.5, fromScaleRaw)) : 1;
             var expandRaw = parseFloat(vars.expand_at);
             var expandVar = isFinite(expandRaw) ? Math.max(0.2, expandRaw) : 1.2;
             var register = vars.register === "snappy" ? "snappy" : "calm";

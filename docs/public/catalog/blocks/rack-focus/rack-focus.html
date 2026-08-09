@@ -466,8 +466,7 @@
 
         function hexToRgb(hex) {
           var h = String(hex).trim().replace("#", "");
-          if (h.length === 3)
-            h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+          if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
           var v = parseInt(h, 16);
           if (!isFinite(v)) return [0.02, 0.024, 0.039];
           return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
@@ -602,5 +601,21 @@
         draw(0);
       })();
     </script>
-  </body>
+  <script>
+  (function () {
+    var raw = new URLSearchParams(location.search).get('hfv');
+    if (raw === null) return;
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return; }
+    if (!v || typeof v !== 'object') return;
+    window.__hfVariables = v;
+    var hosts = document.querySelectorAll('[data-composition-src]');
+    for (var i = 0; i < hosts.length; i++) {
+      var src = (hosts[i].getAttribute('data-composition-src') || '').split('?')[0];
+      if (src.slice(src.lastIndexOf('/') + 1) !== "rack-focus.html") continue;
+      hosts[i].setAttribute('data-variable-values', JSON.stringify(v));
+    }
+  })();
+</script>
+</body>
 </html>

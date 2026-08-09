@@ -11,6 +11,89 @@
   },
   "duration": 12,
   "tags": ["webgl", "3d", "background", "showcase", "depth", "loop"],
+  "variables": [
+    {
+      "id": "images",
+      "type": "string",
+      "label": "Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png)",
+      "default": "",
+      "placeholder": "assets/shot-1.png,assets/shot-2.png"
+    },
+    {
+      "id": "imageMix",
+      "type": "number",
+      "label": "Image share of filled slots (0 = all colour, 1 = all images)",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "speed",
+      "type": "number",
+      "label": "Flight speed",
+      "default": 3,
+      "min": 0,
+      "max": 8,
+      "step": 0.1,
+      "unit": "segments/s"
+    },
+    {
+      "id": "palette",
+      "type": "string",
+      "label": "Slab palette: comma-separated hex colours",
+      "default": "#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200"
+    },
+    {
+      "id": "grid",
+      "type": "number",
+      "label": "Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment)",
+      "default": 2,
+      "min": 1,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "fill",
+      "type": "number",
+      "label": "Slot fill rate",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "fog",
+      "type": "number",
+      "label": "Fog distance: depth at which the corridor reaches pure backdrop",
+      "default": 14.25,
+      "min": 3,
+      "max": 14.5,
+      "step": 0.25,
+      "unit": "segments"
+    },
+    {
+      "id": "edgeColor",
+      "type": "color",
+      "label": "Edge line colour",
+      "default": "#B0B0B0"
+    },
+    {
+      "id": "edgeOpacity",
+      "type": "number",
+      "label": "Edge line opacity",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "backdrop",
+      "type": "color",
+      "label": "Backdrop and fog colour",
+      "default": "#000000"
+    }
+  ],
   "files": [
     {
       "path": "gallery-tunnel.html",

@@ -6,12 +6,12 @@ A seeded deterministic particle field materializes a supplied image: accent part
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `density` | enum | `med` | Particle count: `low` (320), `med` (640), `high` (1100). |
-| `direction` | enum | `ltr` | `ltr` sweeps the reveal left to right; `center` opens an iris from the middle outward with particles converging inward. |
-| `accent` | enum | `green` | Particle and monogram color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id          | type | default | notes                                                                                                                   |
+| ----------- | ---- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `density`   | enum | `med`   | Particle count: `low` (320), `med` (640), `high` (1100).                                                                |
+| `direction` | enum | `ltr`   | `ltr` sweeps the reveal left to right; `center` opens an iris from the middle outward with particles converging inward. |
+| `accent`    | enum | `green` | Particle and monogram color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                   |
+| `exit`      | enum | `none`  | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                                |
 
 ## Image slot
 

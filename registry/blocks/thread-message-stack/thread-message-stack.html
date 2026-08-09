@@ -156,11 +156,11 @@
         ></div>
 
         <div hidden data-hf-primitive-data>
-          {"messages":[{"side":"incoming","text":"wait, that is actually wild","sender":"Northbeam
-          support"},{"side":"outgoing","text":"can you fix it?"},{"side":"incoming","text":"way
-          ahead of you"},{"side":"outgoing","text":"you are unreal"},{"side":"incoming","text":"he
-          owes you dinner for this one"},{"side":"outgoing","text":"already
-          booked"}],"stagger":0.86,"hold":1}
+          { "messages": [ { "side": "incoming", "text": "wait, that is actually wild", "sender":
+          "Northbeam support" }, { "side": "outgoing", "text": "can you fix it?" }, { "side":
+          "incoming", "text": "way ahead of you" }, { "side": "outgoing", "text": "you are unreal"
+          }, { "side": "incoming", "text": "he owes you dinner for this one" }, { "side":
+          "outgoing", "text": "already booked" } ], "stagger": 0.86, "hold": 1 }
         </div>
         <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
         <script>
@@ -170,7 +170,11 @@
             var root = document.getElementById("tms-root");
             var column = document.getElementById("tms-column");
             var roll = document.getElementById("tms-roll");
-            var data = JSON.parse(root.querySelector("[data-hf-primitive-data]").textContent);
+            var data = JSON.parse(
+              root
+                .querySelector("[data-hf-primitive-data]")
+                .textContent.replace(/\s*[\r\n]+\s*/g, " "),
+            );
             var messages = data.messages;
             var duration = Number(root.dataset.duration || 8);
             var available = Math.max(0.2, duration - Math.max(0, Number(data.hold || 0)) - 0.35);

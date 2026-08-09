@@ -16,13 +16,13 @@ Inter var was considered per the spec but Inter has no `wdth` axis; the width mo
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `text` | string | `FLEX` | The word whose axes flex. |
-| `axis` | enum | `both` | `weight` (wght 120 to 840, wdth held 100), `width` (wdth 40 to 128, wght held 620), or `both`. |
-| `stagger` | number | `0.06` | Seconds between per-character flex starts, clamped 0 to 0.25. |
-| `accent` | enum | `green` | Word color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id        | type   | default | notes                                                                                          |
+| --------- | ------ | ------- | ---------------------------------------------------------------------------------------------- |
+| `text`    | string | `FLEX`  | The word whose axes flex.                                                                      |
+| `axis`    | enum   | `both`  | `weight` (wght 120 to 840, wdth held 100), `width` (wdth 40 to 128, wght held 620), or `both`. |
+| `stagger` | number | `0.06`  | Seconds between per-character flex starts, clamped 0 to 0.25.                                  |
+| `accent`  | enum   | `green` | Word color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.           |
+| `exit`    | enum   | `none`  | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                       |
 
 ## Mount
 

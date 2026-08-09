@@ -147,7 +147,8 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             place-items: center;
             width: 46cqmin;
             height: 46cqmin;
-            border: 0.18cqmin solid color-mix(in srgb, var(--htd-tile-tint) 46%, var(--border, #475569));
+            border: 0.18cqmin solid
+              color-mix(in srgb, var(--htd-tile-tint) 46%, var(--border, #475569));
             border-radius: var(--radius, 3cqmin);
             background: color-mix(in srgb, var(--surface, #14171c) 88%, var(--htd-tile-tint));
             box-shadow: 0 3cqh 9cqh color-mix(in srgb, var(--bg, #000000) 35%, transparent);
@@ -205,13 +206,10 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               return Math.max(min, Math.min(max, n));
             }
 
-            var dotSize = vars.dot_size === "small" || vars.dot_size === "large"
-              ? vars.dot_size
-              : "medium";
+            var dotSize =
+              vars.dot_size === "small" || vars.dot_size === "large" ? vars.dot_size : "medium";
             var direction =
-              vars.direction === "center" || vars.direction === "noise"
-                ? vars.direction
-                : "ltr";
+              vars.direction === "center" || vars.direction === "noise" ? vars.direction : "ltr";
             var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
             // Each enum choice routes to a DIFFERENT contract token so the
             // variable stays meaningful under a theme.
@@ -244,9 +242,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             function fillSlot(scene, slotName) {
               var slotTemplate = null;
               try {
-                slotTemplate = hostDoc.querySelector(
-                  'template[data-slot="' + slotName + '"]',
-                );
+                slotTemplate = hostDoc.querySelector('template[data-slot="' + slotName + '"]');
               } catch (error) {
                 slotTemplate = null;
               }
@@ -374,15 +370,31 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                   var xr = rw.toFixed(2);
                   var yy = dot.y.toFixed(2);
                   parts.push(
-                    "M " + x0 + " " + yy +
-                      " A " + xr + " " + xr + " 0 1 0 " + (dot.x - rw).toFixed(2) + " " + yy +
-                      " A " + xr + " " + xr + " 0 1 0 " + x0 + " " + yy + " Z",
+                    "M " +
+                      x0 +
+                      " " +
+                      yy +
+                      " A " +
+                      xr +
+                      " " +
+                      xr +
+                      " 0 1 0 " +
+                      (dot.x - rw).toFixed(2) +
+                      " " +
+                      yy +
+                      " A " +
+                      xr +
+                      " " +
+                      xr +
+                      " 0 1 0 " +
+                      x0 +
+                      " " +
+                      yy +
+                      " Z",
                   );
                 }
               }
-              applyClip(
-                parts.length ? 'path("' + parts.join(" ") + '")' : 'path("M 0 0 Z")',
-              );
+              applyClip(parts.length ? 'path("' + parts.join(" ") + '")' : 'path("M 0 0 Z")');
             }
 
             gsap.set(stage, { opacity: 1, y: "0cqh" });
@@ -400,12 +412,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // The dissolve: one plain-object progress tween. power1.inOut
             // keeps the front unhurried at both ends (smallest-first pops,
             // unforced merge).
-            tl.fromTo(
-              P,
-              { p: 0 },
-              { p: 1, duration: DISSOLVE, ease: "power1.inOut" },
-              dissolveAt,
-            );
+            tl.fromTo(P, { p: 0 }, { p: 1, duration: DISSOLVE, ease: "power1.inOut" }, dissolveAt);
 
             // HOLD: dead still on B (clip released, ink canvas clear).
 

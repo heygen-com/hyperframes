@@ -285,9 +285,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               var collapse = 1 - clamp01((t - resolveAt) / COLLAPSE);
               // Eased collapse: smooth both ends (power2.inOut shape).
               collapse =
-                collapse < 0.5
-                  ? 2 * collapse * collapse
-                  : 1 - Math.pow(-2 * collapse + 2, 2) / 2;
+                collapse < 0.5 ? 2 * collapse * collapse : 1 - Math.pow(-2 * collapse + 2, 2) / 2;
               if (collapse <= 0) {
                 // Resolved: one coherent draw, no per-slice clipping.
                 drawSubject(subjectState(t));

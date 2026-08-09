@@ -4,55 +4,16 @@ description: "A focus pull with real aperture bokeh: the focal plane travels fro
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/rack-focus.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Rack Focus preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/rack-focus.html"
+  compositionId="rack-focus"
+  compositionSrc="compositions/rack-focus.html"
+  variables={[{"id":"nearfocus","type":"number","label":"Near focal distance","default":1.2,"min":0.2,"max":100,"step":0.05,"unit":"m"},{"id":"farfocus","type":"number","label":"Far focal distance","default":80,"min":0.3,"max":400,"step":0.5,"unit":"m"},{"id":"focallength","type":"number","label":"Focal length","default":85,"min":12,"max":300,"step":1,"unit":"mm"},{"id":"aperture","type":"number","label":"Aperture (f-number)","default":1.8,"min":0.95,"max":22,"step":0.05},{"id":"blades","type":"number","label":"Aperture blades (bokeh shape)","default":6,"min":3,"max":14,"step":1},{"id":"catseye","type":"number","label":"Cat eye clipping at the corners","default":0.62,"min":0,"max":1,"step":0.02},{"id":"pullstart","type":"number","label":"Pull start","default":1.2,"min":0,"max":30,"step":0.05,"unit":"s"},{"id":"pullduration","type":"number","label":"Pull duration","default":3.2,"min":0.1,"max":30,"step":0.05,"unit":"s"},{"id":"pullease","type":"string","label":"Pull easing (GSAP ease)","default":"power2.inOut","placeholder":"power2.inOut"},{"id":"bokeh","type":"number","label":"Bokeh exposure","default":1,"min":0,"max":3,"step":0.05},{"id":"backdrop","type":"color","label":"Backdrop","default":"#05060a"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add rack-focus" />
-
-That writes one file: `compositions/rack-focus.html`.
-
-## Add it to your video
-
-It runs for 6 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="rack-focus"
-  data-composition-src="compositions/rack-focus.html"
-  data-start="0"
-  data-duration="6"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `--nearfocus` — Near focal distance in metres (where the pull starts and the near subject sits). Defaults to `1.2`.
-- `--farfocus` — Far focal distance in metres (where the pull ends and the far subject sits). Defaults to `80`.
-- `--focallength` — Focal length in mm (longer lens = shallower depth of field). Defaults to `85`.
-- `--aperture` — Aperture f-number (lower = bigger bokeh). Defaults to `1.8`.
-- `--blades` — Aperture blade count, the bokeh polygon's sides. Defaults to `6`.
-- `--catseye` — Cat's-eye clipping at the frame corners (mechanical vignetting). Defaults to `0.62`.
-- `--pullstart` — Seconds held on the near subject before the pull starts. Defaults to `1.2`.
-- `--pullduration` — Pull duration in seconds. Defaults to `3.2`.
-- `--pullease` — Pull easing (any GSAP ease name). Defaults to `power2.inOut`.
-- `--bokeh` — Bokeh exposure. Defaults to `1`.
-- `--backdrop` — Backdrop. Defaults to `#05060a`.
-
-## Source
-
-<Accordion title={`rack-focus.html`}>
-
-```html
+```html rack-focus.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -521,8 +482,7 @@ Set these CSS variables on the block:
 
         function hexToRgb(hex) {
           var h = String(hex).trim().replace("#", "");
-          if (h.length === 3)
-            h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+          if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
           var v = parseInt(h, 16);
           if (!isFinite(v)) return [0.02, 0.024, 0.039];
           return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
@@ -661,7 +621,48 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add rack-focus" />
+
+That writes one file: `compositions/rack-focus.html`.
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="rack-focus"
+  data-composition-src="compositions/rack-focus.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `--nearfocus` — Near focal distance in metres (where the pull starts and the near subject sits). Defaults to `1.2`.
+- `--farfocus` — Far focal distance in metres (where the pull ends and the far subject sits). Defaults to `80`.
+- `--focallength` — Focal length in mm (longer lens = shallower depth of field). Defaults to `85`.
+- `--aperture` — Aperture f-number (lower = bigger bokeh). Defaults to `1.8`.
+- `--blades` — Aperture blade count, the bokeh polygon's sides. Defaults to `6`.
+- `--catseye` — Cat's-eye clipping at the frame corners (mechanical vignetting). Defaults to `0.62`.
+- `--pullstart` — Seconds held on the near subject before the pull starts. Defaults to `1.2`.
+- `--pullduration` — Pull duration in seconds. Defaults to `3.2`.
+- `--pullease` — Pull easing (any GSAP ease name). Defaults to `power2.inOut`.
+- `--bokeh` — Bokeh exposure. Defaults to `1`.
+- `--backdrop` — Backdrop. Defaults to `#05060a`.
 
 {/* hf:generated-footer */}
 

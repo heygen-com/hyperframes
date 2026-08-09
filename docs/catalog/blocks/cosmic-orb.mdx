@@ -4,53 +4,16 @@ description: "An iridescent soap-bubble planet: a slowly spinning sphere of nebu
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/cosmic-orb.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Cosmic Orb preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/cosmic-orb.html"
+  compositionId="cosmic-orb"
+  compositionSrc="compositions/cosmic-orb.html"
+  variables={[{"id":"hue","type":"number","label":"Nebula hue","default":268,"min":0,"max":360,"step":1,"unit":"deg"},{"id":"accent","type":"number","label":"Accent hue","default":196,"min":0,"max":360,"step":1,"unit":"deg"},{"id":"spin","type":"number","label":"Spin rate","default":0.035,"min":0,"max":0.5,"step":0.005,"unit":"turns/s"},{"id":"stars","type":"number","label":"Star density","default":1,"min":0,"max":2,"step":0.05},{"id":"glow","type":"number","label":"Glow intensity","default":1,"min":0,"max":2,"step":0.05},{"id":"size","type":"number","label":"Orb size","default":0.86,"min":0.2,"max":1.2,"step":0.01},{"id":"pulse","type":"number","label":"Beat pulse","default":0,"min":0,"max":1,"step":0.01},{"id":"pulseEnvelope","type":"string","label":"Beat pulse envelope (comma-separated 0-1 samples)","default":"","placeholder":"0,0.2,1,0.4,0"},{"id":"backdrop","type":"color","label":"Backdrop","default":"#04040a"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add cosmic-orb" />
-
-That writes one file: `compositions/cosmic-orb.html`.
-
-## Add it to your video
-
-It runs for 10 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="cosmic-orb"
-  data-composition-src="compositions/cosmic-orb.html"
-  data-start="0"
-  data-duration="10"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `--hue` — Nebula hue. Defaults to `268`.
-- `--accent` — Accent hue. Defaults to `196`.
-- `--spin` — Spin rate (turns per second). Defaults to `0.035`.
-- `--stars` — Star density. Defaults to `1`.
-- `--glow` — Glow intensity. Defaults to `1`.
-- `--size` — Orb size (fraction of frame height). Defaults to `0.86`.
-- `--pulse` — Beat pulse (0-1, flat value when no envelope is set). Defaults to `0`.
-- `--pulseenvelope` — Beat pulse envelope: comma-separated 0-1 samples spread evenly across the clip. Defaults to ``.
-- `--backdrop` — Backdrop. Defaults to `#04040a`.
-
-## Source
-
-<Accordion title={`cosmic-orb.html`}>
-
-```html
+```html cosmic-orb.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -484,7 +447,46 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add cosmic-orb" />
+
+That writes one file: `compositions/cosmic-orb.html`.
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="cosmic-orb"
+  data-composition-src="compositions/cosmic-orb.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `--hue` — Nebula hue. Defaults to `268`.
+- `--accent` — Accent hue. Defaults to `196`.
+- `--spin` — Spin rate (turns per second). Defaults to `0.035`.
+- `--stars` — Star density. Defaults to `1`.
+- `--glow` — Glow intensity. Defaults to `1`.
+- `--size` — Orb size (fraction of frame height). Defaults to `0.86`.
+- `--pulse` — Beat pulse (0-1, flat value when no envelope is set). Defaults to `0`.
+- `--pulseenvelope` — Beat pulse envelope: comma-separated 0-1 samples spread evenly across the clip. Defaults to ``.
+- `--backdrop` — Backdrop. Defaults to `#04040a`.
 
 {/* hf:generated-footer */}
 

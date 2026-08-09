@@ -25,13 +25,13 @@ time-scaled).
 
 ## Variables
 
-| id         | type   | default | notes                                                                    |
-| ---------- | ------ | ------- | ------------------------------------------------------------------------ |
-| axis       | enum   | rows    | rows smears across horizontal slices, cols across vertical slices.       |
-| spread     | number | 0.45    | Maximum sampling offset in seconds across the frame (clamped 0.1 to 1.2). |
+| id         | type   | default | notes                                                                                                     |
+| ---------- | ------ | ------- | --------------------------------------------------------------------------------------------------------- |
+| axis       | enum   | rows    | rows smears across horizontal slices, cols across vertical slices.                                        |
+| spread     | number | 0.45    | Maximum sampling offset in seconds across the frame (clamped 0.1 to 1.2).                                 |
 | resolve_at | number | 2.2     | Seconds when the offsets start collapsing. Clamped so the 0.6s collapse and any exit fit inside the clip. |
-| accent     | enum   | green   | green maps to --brand, blue to --accent, violet to --accent-2.           |
-| exit       | enum   | none    | none holds the resolved mark (frame roots own transitions); fade or up add a 0.45s departure. |
+| accent     | enum   | green   | green maps to --brand, blue to --accent, violet to --accent-2.                                            |
+| exit       | enum   | none    | none holds the resolved mark (frame roots own transitions); fade or up add a 0.45s departure.             |
 
 ## Choreography
 

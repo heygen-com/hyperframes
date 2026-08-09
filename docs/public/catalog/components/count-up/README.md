@@ -6,15 +6,15 @@ A stat counter that eases from start to end, lands on the exact final integer wi
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `start` | number | `0` | First value shown. |
-| `end` | number | `100` | Final value; the count always lands exactly here. |
-| `prefix` | string | `` (empty) | Fixed text before the value. |
-| `suffix` | string | `%` | Fixed text after the value. |
-| `accent` | enum | `green` | Count color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `glow` | boolean | `false` | Opt-in soft accent glow under the count. The register ships flat (weight 600, no text-shadow). |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` is the upward release and fade. |
+| id       | type    | default    | notes                                                                                          |
+| -------- | ------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `start`  | number  | `0`        | First value shown.                                                                             |
+| `end`    | number  | `100`      | Final value; the count always lands exactly here.                                              |
+| `prefix` | string  | `` (empty) | Fixed text before the value.                                                                   |
+| `suffix` | string  | `%`        | Fixed text after the value.                                                                    |
+| `accent` | enum    | `green`    | Count color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.          |
+| `glow`   | boolean | `false`    | Opt-in soft accent glow under the count. The register ships flat (weight 600, no text-shadow). |
+| `exit`   | enum    | `none`     | `none` holds until the cut; `fade` departs opacity-only; `up` is the upward release and fade.  |
 
 ## Mount
 

@@ -244,8 +244,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 var rowSum = 0;
                 for (var x = 0; x < rw; x += 1) {
                   var i = (y * rw + x) * 4;
-                  rowSum +=
-                    (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255;
+                  rowSum += (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255;
                   table[(y + 1) * (rw + 1) + (x + 1)] = table[y * (rw + 1) + (x + 1)] + rowSum;
                 }
               }
@@ -255,8 +254,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               // Raster-space integer rect, clamped.
               if (x1 <= x0 || y1 <= y0) return 0;
               var s = rw + 1;
-              var sum =
-                sat[y1 * s + x1] - sat[y0 * s + x1] - sat[y1 * s + x0] + sat[y0 * s + x0];
+              var sum = sat[y1 * s + x1] - sat[y0 * s + x1] - sat[y1 * s + x0] + sat[y0 * s + x0];
               return sum / ((x1 - x0) * (y1 - y0));
             }
 
@@ -294,9 +292,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // apply inside the snapshot.
             var slotTemplate = null;
             try {
-              slotTemplate = hostDoc.querySelector(
-                'template[data-slot="ascii-render-pass-scene"]',
-              );
+              slotTemplate = hostDoc.querySelector('template[data-slot="ascii-render-pass-scene"]');
             } catch (error) {
               slotTemplate = null;
             }
@@ -311,10 +307,24 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
             if (slotTemplate) {
               var tokenNames = [
-                "--bg", "--fg", "--muted", "--surface", "--border", "--brand",
-                "--accent", "--accent-2", "--font-display", "--font-body",
-                "--font-mono", "--radius", "--space-1", "--space-2", "--space-3",
-                "--dur-beat", "--ease-standard", "--ease-emphasis",
+                "--bg",
+                "--fg",
+                "--muted",
+                "--surface",
+                "--border",
+                "--brand",
+                "--accent",
+                "--accent-2",
+                "--font-display",
+                "--font-body",
+                "--font-mono",
+                "--radius",
+                "--space-1",
+                "--space-2",
+                "--space-3",
+                "--dur-beat",
+                "--ease-standard",
+                "--ease-emphasis",
               ];
               var rootStyle = getComputedStyle(root);
               var tokenDecl = "";
@@ -330,8 +340,15 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               var wrapper = hostDoc.createElement("div");
               wrapper.setAttribute(
                 "style",
-                "width:" + rw + "px;height:" + rh + "px;overflow:hidden;position:relative;" +
-                  "display:grid;place-items:center;background:" + bgColor + ";" + tokenDecl,
+                "width:" +
+                  rw +
+                  "px;height:" +
+                  rh +
+                  "px;overflow:hidden;position:relative;" +
+                  "display:grid;place-items:center;background:" +
+                  bgColor +
+                  ";" +
+                  tokenDecl,
               );
               wrapper.appendChild(hostDoc.importNode(slotTemplate.content, true));
               var styleEl = hostDoc.createElement("style");
@@ -343,9 +360,17 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 // applies to the declaring element itself and would eject
                 // foreignObject from the SVG namespace (renders blank). The
                 // serialized wrapper div already carries the XHTML namespace.
-                '<svg xmlns="http://www.w3.org/2000/svg" width="' + rw + '" height="' + rh +
-                '"><foreignObject width="' + rw + '" height="' + rh + '">' +
-                serialized + "</foreignObject></svg>";
+                '<svg xmlns="http://www.w3.org/2000/svg" width="' +
+                rw +
+                '" height="' +
+                rh +
+                '"><foreignObject width="' +
+                rw +
+                '" height="' +
+                rh +
+                '">' +
+                serialized +
+                "</foreignObject></svg>";
               var snapshot = new Image();
               snapshot.onload = function () {
                 rctx.fillStyle = bgColor;
@@ -363,8 +388,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 paintMonogram(rctx, rw, rh);
                 finishRaster();
               };
-              snapshot.src =
-                "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
+              snapshot.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
             } else {
               paintMonogram(rctx, rw, rh);
             }
@@ -383,7 +407,9 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // Stateless integer hash for per-cell shimmer: pure function of
             // (col, row, step), no stream, no state.
             function hash01(cx, cy, step) {
-              var h = Math.imul(cx + 1, 0x9e3779b1) ^ Math.imul(cy + 1, 0x85ebca6b) ^
+              var h =
+                Math.imul(cx + 1, 0x9e3779b1) ^
+                Math.imul(cy + 1, 0x85ebca6b) ^
                 Math.imul(step + 1, 0xc2b2ae35);
               h = Math.imul(h ^ (h >>> 15), 0x27d4eb2f);
               h = (h ^ (h >>> 13)) >>> 0;
@@ -432,11 +458,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                   }
                   if (alpha <= 0.01) continue;
                   ctx.globalAlpha = clamp01(alpha);
-                  ctx.fillText(
-                    glyphs[idx],
-                    (cx + 0.5) * cellDev,
-                    (cy + 0.5) * cellDev,
-                  );
+                  ctx.fillText(glyphs[idx], (cx + 0.5) * cellDev, (cy + 0.5) * cellDev);
                 }
               }
               ctx.globalAlpha = 1;

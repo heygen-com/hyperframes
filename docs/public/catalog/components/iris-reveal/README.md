@@ -38,8 +38,8 @@ The primitive ships two named slot panels inside its `<template>` (the
 before-after-wipe convention):
 
 ```html
-<div class="ir-slot" data-slot="before"> ... </div>
-<div class="ir-slot" data-slot="after"> ... </div>
+<div class="ir-slot" data-slot="before">...</div>
+<div class="ir-slot" data-slot="after">...</div>
 ```
 
 Each slot's default children are a token-styled wireframe card (muted on the

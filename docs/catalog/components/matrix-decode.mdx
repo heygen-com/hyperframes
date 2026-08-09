@@ -111,7 +111,8 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
       text = "HYPERFRAMES";
     }
 
-    var size = typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
+    var size =
+      typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
     size = isFinite(size) && size > 0 ? Math.min(160, Math.max(24, size)) : 64;
 
     var accent = accents[pick(accents, vars.accent, "green")];

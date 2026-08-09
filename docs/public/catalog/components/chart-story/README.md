@@ -6,15 +6,15 @@ Inline SVG built synchronously from the variables, no chart library, fully deter
 
 ## Variables
 
-| Variable    | Type   | Default          | Notes                                                                                             |
-| ----------- | ------ | ---------------- | ------------------------------------------------------------------------------------------------- |
-| `type`      | enum   | `bars`           | `bars`, `line`, `donut`, or `progress`.                                                            |
-| `data`      | string | `12, 28, 45, 64` | Comma-separated numbers. The displayed finals are the raw tokens (decimals preserved, e.g. `45.5`). |
-| `labels`    | string | `Q1, Q2, Q3, Q4` | Comma-separated, one per datum. Missing entries render empty.                                       |
-| `emphasize` | number | `3`              | Index of the accented datum with the callout. Clamped to the data range; out-of-range falls to the last datum. |
+| Variable    | Type   | Default          | Notes                                                                                                                           |
+| ----------- | ------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `type`      | enum   | `bars`           | `bars`, `line`, `donut`, or `progress`.                                                                                         |
+| `data`      | string | `12, 28, 45, 64` | Comma-separated numbers. The displayed finals are the raw tokens (decimals preserved, e.g. `45.5`).                             |
+| `labels`    | string | `Q1, Q2, Q3, Q4` | Comma-separated, one per datum. Missing entries render empty.                                                                   |
+| `emphasize` | number | `3`              | Index of the accented datum with the callout. Clamped to the data range; out-of-range falls to the last datum.                  |
 | `unit`      | string | `%`              | Suffix on every displayed value. For `progress`, a `%` unit fills against 100; otherwise the largest value owns the full track. |
-| `accent`    | enum   | `green`          | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`.                          |
-| `exit`      | enum   | `none`           | `none`, `fade`, or `up`. Proof stats end on the still hold, so the default is none.                 |
+| `accent`    | enum   | `green`          | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2`.                                                      |
+| `exit`      | enum   | `none`           | `none`, `fade`, or `up`. Proof stats end on the still hold, so the default is none.                                             |
 
 Bars and lines scale against the largest value; donut segments are proportional shares of the total.
 

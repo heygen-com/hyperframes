@@ -17,14 +17,14 @@ buried under tools").
 
 ## Variables
 
-| id             | type    | default                                | notes                                                                     |
-| -------------- | ------- | -------------------------------------- | ------------------------------------------------------------------------- |
-| `center_label` | string  | `Your team`                            | label on the default center token card                                    |
-| `chips`        | string  | `Docs,Tickets,Dashboards,Inbox,Chat,Sheets` | comma list of chip labels; up to 12 render                           |
-| `close_in`     | boolean | `true`                                 | converge the ring inward with the edge dim; `false` holds the wide ring   |
-| `cues`         | string  | `""`                                   | comma-separated per-chip entrance seconds; blank entries use the cascade  |
-| `accent`       | enum    | `green`                                | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
-| `exit`         | enum    | `none`                                 | `none` holds the final frame; `fade` and `up` release the stage           |
+| id             | type    | default                                     | notes                                                                     |
+| -------------- | ------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| `center_label` | string  | `Your team`                                 | label on the default center token card                                    |
+| `chips`        | string  | `Docs,Tickets,Dashboards,Inbox,Chat,Sheets` | comma list of chip labels; up to 12 render                                |
+| `close_in`     | boolean | `true`                                      | converge the ring inward with the edge dim; `false` holds the wide ring   |
+| `cues`         | string  | `""`                                        | comma-separated per-chip entrance seconds; blank entries use the cascade  |
+| `accent`       | enum    | `green`                                     | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
+| `exit`         | enum    | `none`                                      | `none` holds the final frame; `fade` and `up` release the stage           |
 
 Envelope: IN = center settle + chip cascade (+ close-in when enabled; the
 converge lands at 4.50s at defaults), HOLD is the sole elastic phase (dead
@@ -38,7 +38,7 @@ The primitive ships one named slot for the center subject inside its
 `<template>`:
 
 ```html
-<div class="rs-center" data-slot="center"> ... </div>
+<div class="rs-center" data-slot="center">...</div>
 ```
 
 The slot is empty by default: the script generates a token card carrying

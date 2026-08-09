@@ -4,61 +4,16 @@ description: "Ranked bars grow and overtake each other as a time series advances
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/bar-chart-race.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Bar Chart Race preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/bar-chart-race.html"
+  compositionId="bar-chart-race"
+  compositionSrc="compositions/bar-chart-race.html"
+  variables={[{"id":"title","type":"string","label":"Title","default":"Streaming Subscribers by Service"},{"id":"subtitle","type":"string","label":"Subtitle","default":"Ranked by reported subscribers"},{"id":"periods","type":"string","label":"Period labels (comma separated)","default":"2019, 2020, 2021, 2022, 2023, 2024"},{"id":"series","type":"string","label":"Series (one per line: Name: v1, v2, ...)","default":"Northwind: 42, 58, 71, 96, 118, 131\nCobalt: 30, 46, 68, 92, 126, 168\nFerry: 55, 62, 66, 70, 74, 79\nMarlow: 18, 33, 52, 61, 88, 104\nAster: 25, 28, 44, 58, 63, 72\nPell: 12, 20, 39, 47, 55, 90\nQuill: 8, 11, 15, 24, 40, 66\nDunmore: 35, 37, 38, 40, 42, 44"},{"id":"barCount","type":"number","label":"Bars shown","default":6,"min":3,"max":12,"step":1},{"id":"periodDuration","type":"number","label":"Seconds per period","default":2,"min":0.4,"max":6,"step":0.1},{"id":"valuePrefix","type":"string","label":"Value prefix","default":"$"},{"id":"valueSuffix","type":"string","label":"Value suffix","default":"M"},{"id":"valueDecimals","type":"number","label":"Value decimals","default":0,"min":0,"max":3,"step":1},{"id":"accent","type":"color","label":"Leader accent","default":"#c8452d"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add bar-chart-race" />
-
-That writes one file: `compositions/bar-chart-race.html`.
-
-## Add it to your video
-
-It runs for 12 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="bar-chart-race"
-  data-composition-src="compositions/bar-chart-race.html"
-  data-start="0"
-  data-duration="12"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `title` — Title. Defaults to `Streaming Subscribers by Service`.
-- `subtitle` — Subtitle. Defaults to `Ranked by reported subscribers`.
-- `periods` — Period labels (comma separated). Defaults to `2019, 2020, 2021, 2022, 2023, 2024`.
-- `series` — Series (one per line: Name: v1, v2, ...). Defaults to `Northwind: 42, 58, 71, 96, 118, 131
-Cobalt: 30, 46, 68, 92, 126, 168
-Ferry: 55, 62, 66, 70, 74, 79
-Marlow: 18, 33, 52, 61, 88, 104
-Aster: 25, 28, 44, 58, 63, 72
-Pell: 12, 20, 39, 47, 55, 90
-Quill: 8, 11, 15, 24, 40, 66
-Dunmore: 35, 37, 38, 40, 42, 44`.
-- `barCount` — Bars shown. Defaults to `6`.
-- `periodDuration` — Seconds per period. Defaults to `2`.
-- `valuePrefix` — Value prefix. Defaults to `$`.
-- `valueSuffix` — Value suffix. Defaults to `M`.
-- `valueDecimals` — Value decimals. Defaults to `0`.
-- `accent` — Leader accent. Defaults to `#c8452d`.
-
-## Source
-
-<Accordion title={`bar-chart-race.html`}>
-
-```html
+```html bar-chart-race.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -645,7 +600,54 @@ Dunmore: 35, 37, 38, 40, 42, 44`.
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add bar-chart-race" />
+
+That writes one file: `compositions/bar-chart-race.html`.
+
+## Add it to your video
+
+It runs for 12 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="bar-chart-race"
+  data-composition-src="compositions/bar-chart-race.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `title` — Title. Defaults to `Streaming Subscribers by Service`.
+- `subtitle` — Subtitle. Defaults to `Ranked by reported subscribers`.
+- `periods` — Period labels (comma separated). Defaults to `2019, 2020, 2021, 2022, 2023, 2024`.
+- `series` — Series (one per line: Name: v1, v2, ...). Defaults to `Northwind: 42, 58, 71, 96, 118, 131
+Cobalt: 30, 46, 68, 92, 126, 168
+Ferry: 55, 62, 66, 70, 74, 79
+Marlow: 18, 33, 52, 61, 88, 104
+Aster: 25, 28, 44, 58, 63, 72
+Pell: 12, 20, 39, 47, 55, 90
+Quill: 8, 11, 15, 24, 40, 66
+Dunmore: 35, 37, 38, 40, 42, 44`.
+- `barCount` — Bars shown. Defaults to `6`.
+- `periodDuration` — Seconds per period. Defaults to `2`.
+- `valuePrefix` — Value prefix. Defaults to `$`.
+- `valueSuffix` — Value suffix. Defaults to `M`.
+- `valueDecimals` — Value decimals. Defaults to `0`.
+- `accent` — Leader accent. Defaults to `#c8452d`.
 
 {/* hf:generated-footer */}
 

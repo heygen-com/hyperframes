@@ -346,7 +346,9 @@
             var CUE_MIN = 0.85;
             var CUE_MAX = Math.max(CUE_MIN, OUT_START - THROW - 0.05);
 
-            var cues = String(vars.cues == null || String(vars.cues).trim() === "" ? "0.9, 1.7, 1.95" : vars.cues)
+            var cues = String(
+              vars.cues == null || String(vars.cues).trim() === "" ? "0.9, 1.7, 1.95" : vars.cues,
+            )
               .split(",")
               .map(function (token) {
                 return Number(token);
@@ -440,8 +442,7 @@
             function redirect(track, time, dur, to) {
               var cut = cutAt(track, time);
               var delta = to - cut.value;
-              var ease =
-                Math.abs(delta) < 1e-4 ? smooth : hermite((cut.velocity * dur) / delta);
+              var ease = Math.abs(delta) < 1e-4 ? smooth : hermite((cut.velocity * dur) / delta);
               track.segs.push({ t0: time, t1: time + dur, from: cut.value, to: to, ease: ease });
             }
 

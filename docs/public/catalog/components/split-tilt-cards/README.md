@@ -46,8 +46,8 @@ points: `badge-pop-a` at 1.85s and `badge-pop-b` at 2.15s (`hf:sfx` id
 The primitive ships two named slot panels inside its `<template>`:
 
 ```html
-<div class="stc-slot" data-slot="card-a"> ... </div>
-<div class="stc-slot" data-slot="card-b"> ... </div>
+<div class="stc-slot" data-slot="card-a">...</div>
+<div class="stc-slot" data-slot="card-b">...</div>
 ```
 
 Each slot's default children are a token-styled wireframe (muted on the left

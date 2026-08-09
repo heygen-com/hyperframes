@@ -677,8 +677,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var drift = { p: 0, dx: 0, dy: 0 };
             function applyCamera() {
               var y = -cam.t * F;
-              world.style.transform =
-                "translate(" + drift.dx + "%, " + (y + drift.dy) + "%)";
+              world.style.transform = "translate(" + drift.dx + "%, " + (y + drift.dy) + "%)";
               layerFar.style.transform = "translateY(" + cam.t * F * (1 - RATE_FAR) + "%)";
               layerMid.style.transform = "translateY(" + cam.t * F * (1 - RATE_MID) + "%)";
               layerFore.style.transform = "translateY(" + cam.t * F * (1 - RATE_FORE) + "%)";
@@ -747,7 +746,10 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // yPercent only (percent of the card's own box), never cq units.
             cards.forEach(function (card, cardIndex) {
               var arrive = cardIndex === 0 ? IN : arrivals[cardIndex - 1];
-              var rise = Math.min(0.75 * scale, Math.max(0.25, arrive - (cardIndex === 0 ? 0.1 : 0)));
+              var rise = Math.min(
+                0.75 * scale,
+                Math.max(0.25, arrive - (cardIndex === 0 ? 0.1 : 0)),
+              );
               tl.fromTo(
                 card,
                 { opacity: 0, yPercent: 10 },

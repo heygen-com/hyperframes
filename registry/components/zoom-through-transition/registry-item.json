@@ -5,13 +5,6 @@
   "title": "Zoom Through Transition",
   "description": "A transition that zooms through a focal card into the next scene.",
   "tags": ["transition-primitive", "remocn-port"],
-  "files": [
-    {
-      "path": "zoom-through-transition.html",
-      "target": "compositions/components/zoom-through-transition.html",
-      "type": "hyperframes:snippet"
-    }
-  ],
   "variables": [
     {
       "id": "from-label",
@@ -37,9 +30,18 @@
       "description": "Multiplies how far both scenes travel and how hard the outgoing one blurs, so the push covers a shorter or longer run in the same time.",
       "default": "standard",
       "options": [
-        { "value": "close", "label": "Close" },
-        { "value": "standard", "label": "Standard" },
-        { "value": "far", "label": "Far" }
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
       ]
     },
     {
@@ -47,13 +49,29 @@
       "type": "enum",
       "role": "style",
       "label": "Accent",
-      "description": "Colour pair behind the incoming scene: the shipped indigo ramp, a --brand green, or an --accent-2 violet.",
+      "description": "Theme token for the ring marking the incoming scene. Blue rides --accent, green --brand, violet --accent-2; each falls back to a neutral hairline.",
       "default": "blue",
       "options": [
-        { "value": "blue", "label": "Blue" },
-        { "value": "green", "label": "Green" },
-        { "value": "violet", "label": "Violet" }
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
       ]
+    }
+  ],
+  "files": [
+    {
+      "path": "zoom-through-transition.html",
+      "target": "compositions/components/zoom-through-transition.html",
+      "type": "hyperframes:snippet"
     }
   ],
   "preview": {

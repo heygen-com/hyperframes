@@ -239,7 +239,11 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
           }
 
           .wpc-after .wpc-card {
-            border-color: color-mix(in srgb, var(--wpc-accent, #22c55e) 52%, var(--border, #334155));
+            border-color: color-mix(
+              in srgb,
+              var(--wpc-accent, #22c55e) 52%,
+              var(--border, #334155)
+            );
             background: color-mix(in srgb, var(--surface, #172033) 86%, var(--brand, #22c55e));
           }
 
@@ -396,9 +400,10 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var WHIP_DURATION_BASE = 0.55;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "1.2"));
             var EXIT = exit === "none" ? 0 : Math.min(0.35, duration * 0.25);
-            var scale = duration - EXIT < whipAt + WHIP_DURATION_BASE
-              ? (duration - EXIT) / (whipAt + WHIP_DURATION_BASE)
-              : 1;
+            var scale =
+              duration - EXIT < whipAt + WHIP_DURATION_BASE
+                ? (duration - EXIT) / (whipAt + WHIP_DURATION_BASE)
+                : 1;
             var WHIP_AT = whipAt * scale;
             var WHIP_DURATION = WHIP_DURATION_BASE * scale;
             var WHIP_END = WHIP_AT + WHIP_DURATION;

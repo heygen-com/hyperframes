@@ -233,7 +233,6 @@
 
             var FULL = box;
 
-
             function poseFor(b, margin) {
               var bw = (b.x1 - b.x0) * margin;
               var bh = (b.y1 - b.y0) * margin;
@@ -313,8 +312,7 @@
                 var d =
                   (scale *
                     Math.sqrt(
-                      (cx - centre.x) * (cx - centre.x) +
-                        (cy - centre.y) * (cy - centre.y)
+                      (cx - centre.x) * (cx - centre.x) + (cy - centre.y) * (cy - centre.y),
                     )) /
                   HALF_DIAG;
                 tl.set(el, { "--k": (0.2 + 1.15 * Math.min(1, d)).toFixed(3) }, at);
@@ -324,32 +322,19 @@
                 world,
                 { "--amt": "0px" },
                 { "--amt": amt + "px", duration: up, ease: EASE_BLUR_UP },
-                at
+                at,
               );
-              tl.to(
-                world,
-                { "--amt": "0px", duration: down, ease: EASE_BLUR_DOWN },
-                at + up
-              );
+              tl.to(world, { "--amt": "0px", duration: down, ease: EASE_BLUR_DOWN }, at + up);
             }
 
             WORDS.forEach(function (wd, i) {
               var t = i * STEP;
               if (i === 0) return;
 
-              tl.fromTo(
-                els[i],
-                { opacity: 0 },
-                { opacity: 1, duration: 0.16, ease: EASE_INK },
-                t
-              );
+              tl.fromTo(els[i], { opacity: 0 }, { opacity: 1, duration: 0.16, ease: EASE_INK }, t);
 
               var p = poseFor(wd.box, MARGIN);
-              tl.to(
-                world,
-                { x: p.x, y: p.y, scale: p.scale, duration: MOVE, ease: EASE_STEP },
-                t
-              );
+              tl.to(world, { x: p.x, y: p.y, scale: p.scale, duration: MOVE, ease: EASE_STEP }, t);
 
               smear(
                 { x: (wd.box.x0 + wd.box.x1) / 2, y: (wd.box.y0 + wd.box.y1) / 2 },
@@ -358,7 +343,7 @@
                 t,
                 MOVE * 0.24,
                 MOVE * 0.44,
-                BLUR
+                BLUR,
               );
             });
 
@@ -374,7 +359,7 @@
                 duration: 0.94,
                 ease: EASE_WIDE,
               },
-              wideAt
+              wideAt,
             );
             smear(
               { x: (FULL.x0 + FULL.x1) / 2, y: (FULL.y0 + FULL.y1) / 2 },
@@ -383,7 +368,7 @@
               wideAt,
               0.3,
               0.58,
-              BLUR * 0.8
+              BLUR * 0.8,
             );
 
             tl.set({}, {}, DUR);

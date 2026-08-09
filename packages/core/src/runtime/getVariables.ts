@@ -65,58 +65,102 @@ export function getVariables<
  */
 const warnedUnknownEnumValues = new Set<string>();
 
+/**
+ * The declaration array on an element, or empty when there isn't a usable one.
+ *
+ * One owner for `getAttribute` -> `JSON.parse` -> "is it an array", because
+ * every reader of this attribute needs exactly that and each copy was a place
+ * the three answers could drift apart.
+ */
+function readDeclarations(el: Element | null | undefined): Record<string, unknown>[] {
+  const raw = el?.getAttribute("data-composition-variables");
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (entry): entry is Record<string, unknown> => !!entry && typeof entry === "object",
+  );
+}
+
+/**
+ * What to call the composition in a warning.
+ *
+ * The canonical top-level shape declares the variables on `<html>`, which
+ * carries no id: the composition id sits on the root element below it. Without
+ * the descendant lookup the message reads "composition variable ...", naming
+ * nothing in a project that has more than one.
+ */
+function compositionLabel(declarer: Element, compositionId?: string): string {
+  return (
+    compositionId?.trim() ||
+    declarer.getAttribute("data-composition-id")?.trim() ||
+    declarer.querySelector("[data-composition-id]")?.getAttribute("data-composition-id")?.trim() ||
+    "composition"
+  );
+}
+
+/** The declared option values of an enum entry, as comparable primitives. */
+function declaredOptions(entry: Record<string, unknown>): (string | number)[] {
+  if (!Array.isArray(entry.options)) return [];
+  return entry.options
+    .map((option) =>
+      option && typeof option === "object" ? (option as Record<string, unknown>).value : option,
+    )
+    .filter((v): v is string | number => typeof v === "string" || typeof v === "number");
+}
+
+/**
+ * Did `resolved` hand this entry a value outside its own option set?
+ *
+ * Silent for a valid value, for an absent one (an absent variable resolves to
+ * its own declared default), and for a value that already equals that default,
+ * because then nothing fell back. A default outside its own option set is a
+ * declaration defect for the linter to catch; warning here would print the
+ * self-contradictory "got X ... rendering X".
+ */
+function unknownEnumValue(
+  entry: Record<string, unknown>,
+  resolved: Record<string, unknown>,
+): { id: string; value: unknown; allowed: (string | number)[] } | null {
+  if (typeof entry.id !== "string") return null;
+  const value = resolved[entry.id];
+  if (value === undefined || value === null) return null;
+  if ("default" in entry && String(value) === String(entry.default)) return null;
+  const allowed = declaredOptions(entry);
+  // Stringified compare: `--variables` / `data-variable-values` can deliver a
+  // declared numeric option as a string, and that is not the defect here.
+  if (allowed.length === 0 || allowed.some((v) => String(v) === String(value))) return null;
+  return { id: entry.id, value, allowed };
+}
+
 export function warnUnknownEnumValues(
   declarer: Element | null | undefined,
   resolved: Record<string, unknown>,
   compositionId?: string,
 ): void {
   if (!declarer) return;
-  const raw = declarer.getAttribute("data-composition-variables");
-  if (!raw) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  if (!Array.isArray(parsed)) return;
+  const entries = readDeclarations(declarer);
+  if (entries.length === 0) return;
+  const move = compositionLabel(declarer, compositionId);
 
-  const move =
-    compositionId?.trim() ||
-    declarer.getAttribute("data-composition-id")?.trim() ||
-    // The canonical top-level shape declares the variables on <html>, which
-    // carries no id — the composition id sits on the root element below it.
-    // Without this the message reads "composition variable ...", naming
-    // nothing in a project that has more than one.
-    declarer.querySelector("[data-composition-id]")?.getAttribute("data-composition-id")?.trim() ||
-    "composition";
+  for (const entry of entries) {
+    const found = unknownEnumValue(entry, resolved);
+    if (!found) continue;
 
-  for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e.id !== "string" || !Array.isArray(e.options)) continue;
-    const value = resolved[e.id];
-    if (value === undefined || value === null) continue;
-    // Nothing was overridden: the resolved value IS the declared default, so
-    // no fallback happened and there is nothing to report. A default outside
-    // its own option set is a declaration defect (the linter's job) and
-    // warning here would print the self-contradictory "got X ... rendering X".
-    if ("default" in e && String(value) === String(e.default)) continue;
-    const allowed = e.options
-      .map((option) =>
-        option && typeof option === "object" ? (option as Record<string, unknown>).value : option,
-      )
-      .filter((v): v is string | number => typeof v === "string" || typeof v === "number");
-    // Stringified compare: `--variables` / `data-variable-values` can deliver a
-    // declared numeric option as a string, and that is not the defect here.
-    if (allowed.length === 0 || allowed.some((v) => String(v) === String(value))) continue;
-
-    const key = `${move}|${e.id}|${String(value)}`;
+    // Deduped per composition+variable+value so a remount (studio re-init,
+    // seek) cannot spam the console.
+    const key = `${move}|${found.id}|${String(found.value)}`;
     if (warnedUnknownEnumValues.has(key)) continue;
     warnedUnknownEnumValues.add(key);
-    const fallback = "default" in e ? JSON.stringify(e.default) : "the composition default";
+
+    const fallback = "default" in entry ? JSON.stringify(entry.default) : "the composition default";
     console.warn(
-      `[hyperframes] runtime_unknown_enum_value: ${move} variable "${e.id}" got ${JSON.stringify(value)}, which is not a declared option (${allowed.join(", ")}). Rendering ${fallback} instead.`,
+      `[hyperframes] runtime_unknown_enum_value: ${move} variable "${found.id}" got ${JSON.stringify(found.value)}, which is not a declared option (${found.allowed.join(", ")}). Rendering ${fallback} instead.`,
     );
   }
 }
@@ -133,24 +177,10 @@ export function resetUnknownEnumWarnings(): void {
  * compositionLoader can compute the same defaults map for sub-comp instances.
  */
 export function readDeclaredDefaults(root: Element | null): Record<string, unknown> {
-  if (!root) return {};
-  const raw = root.getAttribute("data-composition-variables");
-  if (!raw) return {};
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (!Array.isArray(parsed)) return {};
-
   const out: Record<string, unknown> = {};
-  for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e.id !== "string" || !("default" in e)) continue;
-    out[e.id] = e.default;
+  for (const entry of readDeclarations(root)) {
+    if (typeof entry.id !== "string" || !("default" in entry)) continue;
+    out[entry.id] = entry.default;
   }
   return out;
 }

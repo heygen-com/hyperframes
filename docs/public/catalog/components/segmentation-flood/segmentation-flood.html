@@ -196,7 +196,8 @@
             align-items: center;
             gap: 0.9cqmin;
             padding: 0.7cqmin 1.4cqmin;
-            border: 0.14cqmin solid color-mix(in srgb, var(--sgf-accent) 60%, var(--border, #475569));
+            border: 0.14cqmin solid
+              color-mix(in srgb, var(--sgf-accent) 60%, var(--border, #475569));
             border-radius: calc(var(--radius, 2cqmin) * 0.4);
             background: color-mix(in srgb, var(--bg, #0b0c0e) 78%, var(--sgf-accent));
             color: var(--fg, #f8fafc);
@@ -318,7 +319,10 @@
             var CHIP_DUR = 0.3;
             var passLen = STAGGER * (labels.length - 1) + REGION_DUR + CHIP_DUR;
             var floodAt = isFinite(floodAtRaw) ? floodAtRaw : 0.8;
-            floodAt = Math.min(Math.max(0.2, floodAt), Math.max(0.2, duration - passLen - OUT - 0.1));
+            floodAt = Math.min(
+              Math.max(0.2, floodAt),
+              Math.max(0.2, duration - passLen - OUT - 0.1),
+            );
             var floodEnd = floodAt + STAGGER * (labels.length - 1) + REGION_DUR;
             var OUT_START = duration - OUT;
 

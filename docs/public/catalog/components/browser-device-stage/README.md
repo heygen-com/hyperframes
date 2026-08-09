@@ -8,13 +8,13 @@ A generic app surface presented in token-native device chrome. The stage settles
 
 ## Variables
 
-| Variable  | Type   | Default           | Notes                                                                      |
-| --------- | ------ | ----------------- | -------------------------------------------------------------------------- |
-| `chrome`  | enum   | `browser`         | `browser` (toolbar dots + address pill), `window` (title bar), `phone` (notch, portrait inset, centered). |
-| `title`   | string | `app.example.com` | Address pill text (browser) or title bar text (window). Phone shows no title. |
+| Variable  | Type   | Default           | Notes                                                                                                                                 |
+| --------- | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `chrome`  | enum   | `browser`         | `browser` (toolbar dots + address pill), `window` (title bar), `phone` (notch, portrait inset, centered).                             |
+| `title`   | string | `app.example.com` | Address pill text (browser) or title bar text (window). Phone shows no title.                                                         |
 | `swap_at` | number | `0`               | Seconds from mount start to swap to the second screen. `0` disables. Clamped inside the hold so it never fights the entrance or exit. |
-| `accent`  | enum   | `green`           | `green` rides `--brand`, `blue` rides `--accent`, `violet` rides `--accent-2`. Colors the skeleton mark, chip, and one card block. |
-| `exit`    | enum   | `none`            | `none` holds the final frame (frame roots own transitions), `fade`, or `up`. |
+| `accent`  | enum   | `green`           | `green` rides `--brand`, `blue` rides `--accent`, `violet` rides `--accent-2`. Colors the skeleton mark, chip, and one card block.    |
+| `exit`    | enum   | `none`            | `none` holds the final frame (frame roots own transitions), `fade`, or `up`.                                                          |
 
 ## The screen slot
 
@@ -22,7 +22,9 @@ The screen area is a slot. Callers supply content by placing inert `<template>` 
 
 ```html
 <template data-slot="browser-device-stage-screen"> ...first screen... </template>
-<template data-slot="browser-device-stage-screen-b"> ...second screen (used when swap_at > 0)... </template>
+<template data-slot="browser-device-stage-screen-b">
+  ...second screen (used when swap_at > 0)...
+</template>
 ```
 
 Slot content can be an `<img>`, a `<video>`, or arbitrary HTML. Direct `img`/`video` children of the screen are stretched to `object-fit: cover`. When no `screen` slot exists, the primitive renders a token-styled skeleton app (header bar, sidebar, content cards). When `swap_at > 0` and no `screen-b` slot exists, the second screen is a rearranged skeleton state so the swap still reads.
@@ -67,7 +69,9 @@ Set `swap_at` to the moment the narration lands the change; the stage fades the 
 
 ```html
 <template data-slot="browser-device-stage-screen">
-  <div style="position:absolute; inset:0; display:grid; place-items:center; background:var(--surface); color:var(--fg); font-family:var(--font-mono); font-size:3cqmin;">
+  <div
+    style="position:absolute; inset:0; display:grid; place-items:center; background:var(--surface); color:var(--fg); font-family:var(--font-mono); font-size:3cqmin;"
+  >
     $ hyperframes render scene.html
   </div>
 </template>

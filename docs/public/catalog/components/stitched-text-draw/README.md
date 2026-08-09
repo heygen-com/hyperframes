@@ -14,12 +14,12 @@ The reveal is ATTRIBUTE-driven `stroke-dashoffset` on the stitched path itself (
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `text` | string | `STITCH` | Uppercased; A-Z 0-9 and space, other characters render as spaces; clamped to 12 characters. |
-| `stitch` | enum | `fine` | `fine` (dash 6.5 / gap 4.5 / width 2.6) or `coarse` (dash 10 / gap 7 / width 4.2) in glyph units, with matching jitter amplitude. |
-| `accent` | enum | `green` | Thread color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` rises out. |
+| id       | type   | default  | notes                                                                                                                             |
+| -------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `text`   | string | `STITCH` | Uppercased; A-Z 0-9 and space, other characters render as spaces; clamped to 12 characters.                                       |
+| `stitch` | enum   | `fine`   | `fine` (dash 6.5 / gap 4.5 / width 2.6) or `coarse` (dash 10 / gap 7 / width 4.2) in glyph units, with matching jitter amplitude. |
+| `accent` | enum   | `green`  | Thread color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                            |
+| `exit`   | enum   | `none`   | `none` holds until the cut; `fade` departs opacity-only; `up` rises out.                                                          |
 
 ## Mount
 

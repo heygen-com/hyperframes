@@ -4,54 +4,16 @@ description: "An infinite corridor of panels: a square tunnel receding to a vani
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/gallery-tunnel.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Gallery Tunnel preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/gallery-tunnel.html"
+  compositionId="gallery-tunnel"
+  compositionSrc="compositions/gallery-tunnel.html"
+  variables={[{"id":"images","type":"string","label":"Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png)","default":"","placeholder":"assets/shot-1.png,assets/shot-2.png"},{"id":"imageMix","type":"number","label":"Image share of filled slots (0 = all colour, 1 = all images)","default":0.5,"min":0,"max":1,"step":0.05},{"id":"speed","type":"number","label":"Flight speed","default":3,"min":0,"max":8,"step":0.1,"unit":"segments/s"},{"id":"palette","type":"string","label":"Slab palette: comma-separated hex colours","default":"#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200"},{"id":"grid","type":"number","label":"Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment)","default":2,"min":1,"max":4,"step":1},{"id":"fill","type":"number","label":"Slot fill rate","default":0.5,"min":0,"max":1,"step":0.05},{"id":"fog","type":"number","label":"Fog distance: depth at which the corridor reaches pure backdrop","default":14.25,"min":3,"max":14.5,"step":0.25,"unit":"segments"},{"id":"edgeColor","type":"color","label":"Edge line colour","default":"#B0B0B0"},{"id":"edgeOpacity","type":"number","label":"Edge line opacity","default":0.5,"min":0,"max":1,"step":0.05},{"id":"backdrop","type":"color","label":"Backdrop and fog colour","default":"#000000"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add gallery-tunnel" />
-
-That writes one file: `compositions/gallery-tunnel.html`.
-
-## Add it to your video
-
-It runs for 12 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="gallery-tunnel"
-  data-composition-src="compositions/gallery-tunnel.html"
-  data-start="0"
-  data-duration="12"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `--images` — Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png). Defaults to ``.
-- `--imagemix` — Image share of filled slots (0 = all colour, 1 = all images). Defaults to `0.5`.
-- `--speed` — Flight speed (segments per second). Defaults to `3`.
-- `--palette` — Slab palette: comma-separated hex colours. Defaults to `#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200`.
-- `--grid` — Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment). Defaults to `2`.
-- `--fill` — Slot fill rate. Defaults to `0.5`.
-- `--fog` — Fog distance in segments: depth at which the corridor reaches pure backdrop. Defaults to `14.25`.
-- `--edgecolor` — Edge line colour. Defaults to `#B0B0B0`.
-- `--edgeopacity` — Edge line opacity. Defaults to `0.5`.
-- `--backdrop` — Backdrop and fog colour. Defaults to `#000000`.
-
-## Source
-
-<Accordion title={`gallery-tunnel.html`}>
-
-```html
+```html gallery-tunnel.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -508,7 +470,47 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add gallery-tunnel" />
+
+That writes one file: `compositions/gallery-tunnel.html`.
+
+## Add it to your video
+
+It runs for 12 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="gallery-tunnel"
+  data-composition-src="compositions/gallery-tunnel.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `--images` — Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png). Defaults to ``.
+- `--imagemix` — Image share of filled slots (0 = all colour, 1 = all images). Defaults to `0.5`.
+- `--speed` — Flight speed (segments per second). Defaults to `3`.
+- `--palette` — Slab palette: comma-separated hex colours. Defaults to `#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200`.
+- `--grid` — Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment). Defaults to `2`.
+- `--fill` — Slot fill rate. Defaults to `0.5`.
+- `--fog` — Fog distance in segments: depth at which the corridor reaches pure backdrop. Defaults to `14.25`.
+- `--edgecolor` — Edge line colour. Defaults to `#B0B0B0`.
+- `--edgeopacity` — Edge line opacity. Defaults to `0.5`.
+- `--backdrop` — Backdrop and fog colour. Defaults to `#000000`.
 
 {/* hf:generated-footer */}
 

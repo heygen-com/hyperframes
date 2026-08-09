@@ -50,9 +50,9 @@ The primitive ships five named slot panels inside its `<template>`, one per
 card, front to back at mount:
 
 ```html
-<div class="sss-slot" data-slot="card-1"> ... </div>
+<div class="sss-slot" data-slot="card-1">...</div>
 ...
-<div class="sss-slot" data-slot="card-5"> ... </div>
+<div class="sss-slot" data-slot="card-5">...</div>
 ```
 
 Each slot's default children are a numbered token skeleton card, so an

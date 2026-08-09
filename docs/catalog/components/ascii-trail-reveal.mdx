@@ -232,7 +232,11 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var labelText = vars.label == null ? "The reveal" : String(vars.label);
             var accent = vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
             var trailWidth = vars.trail_width === "wide" ? "wide" : "narrow";
-            var accentColors = { green: "var(--brand, #4ade80)", blue: "var(--accent, #38bdf8)", violet: "var(--accent-2, #a78bfa)" };
+            var accentColors = {
+              green: "var(--brand, #4ade80)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
+            };
 
             label.textContent = labelText;
             root.style.setProperty("--atr-accent", accentColors[accent]);

@@ -56,7 +56,7 @@
       .b .card {
         background: #27272a;
         border: 1px solid #3f3f46;
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.40);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
       }
       .badge {
         display: inline-flex;
@@ -83,8 +83,12 @@
         height: 10px;
         border-radius: 50%;
       }
-      .a .badge-dot { background: #71717a; }
-      .b .badge-dot { background: #a1a1aa; }
+      .a .badge-dot {
+        background: #71717a;
+      }
+      .b .badge-dot {
+        background: #a1a1aa;
+      }
       .card-title {
         font-size: 72px;
         font-weight: 700;
@@ -92,22 +96,30 @@
         letter-spacing: -0.02em;
         margin: 0;
       }
-      .a .card-title { color: #18181b; }
-      .b .card-title { color: #fafafa; }
+      .a .card-title {
+        color: #18181b;
+      }
+      .b .card-title {
+        color: #fafafa;
+      }
       .card-body {
         font-size: 32px;
         font-weight: 400;
         line-height: 1.5;
         color: #71717a;
       }
-      .b .card-body { color: #71717a; }
+      .b .card-body {
+        color: #71717a;
+      }
       .divider {
         height: 1px;
         background: #e4e4e7;
         border: none;
         margin: 0;
       }
-      .b .divider { background: #3f3f46; }
+      .b .divider {
+        background: #3f3f46;
+      }
       .meta-row {
         display: flex;
         align-items: center;
@@ -117,8 +129,12 @@
         font-size: 26px;
         font-weight: 500;
       }
-      .a .meta-label { color: #71717a; }
-      .b .meta-label { color: #71717a; }
+      .a .meta-label {
+        color: #71717a;
+      }
+      .b .meta-label {
+        color: #71717a;
+      }
       .mode-pill {
         font-size: 26px;
         font-weight: 600;
@@ -155,8 +171,10 @@
       <div class="scene a hf-fade-through-out">
         <div class="card">
           <div class="badge"><span class="badge-dot"></span>Light Mode</div>
-          <h2 class="card-title">Your workspace,<br>beautifully lit.</h2>
-          <p class="card-body">Clean surfaces, crisp type, and just enough contrast to keep you focused all day long.</p>
+          <h2 class="card-title">Your workspace,<br />beautifully lit.</h2>
+          <p class="card-body">
+            Clean surfaces, crisp type, and just enough contrast to keep you focused all day long.
+          </p>
           <hr class="divider" />
           <div class="meta-row">
             <span class="meta-label">Appearance</span>
@@ -169,8 +187,10 @@
       <div class="scene b hf-fade-through-in">
         <div class="card">
           <div class="badge"><span class="badge-dot"></span>Dark Mode</div>
-          <h2 class="card-title">Easy on the eyes,<br>night or day.</h2>
-          <p class="card-body">Deep backgrounds, refined contrast, and thoughtful color for late-night sessions.</p>
+          <h2 class="card-title">Easy on the eyes,<br />night or day.</h2>
+          <p class="card-body">
+            Deep backgrounds, refined contrast, and thoughtful color for late-night sessions.
+          </p>
           <hr class="divider" />
           <div class="meta-row">
             <span class="meta-label">Appearance</span>

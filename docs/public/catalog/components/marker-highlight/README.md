@@ -6,14 +6,14 @@ The corpus emphasis unit: a line of display text settles in, then ONE hand-drawn
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `text` | string | `Ship it with confidence` | Full line; wraps and centers. |
-| `emphasis_word` | string | `confidence` | First case-insensitive substring match in `text` gets the marker. Empty or unmatched renders the line with no marker. Keep it a word or short phrase; it never wraps internally. |
-| `style` | enum | `highlight` | `highlight` (thick swipe behind the word), `circle` (loop around it), `underline` (wavy rule beneath), `scribble` (zigzag across). |
-| `draw_at` | number (s) | `0.9` | Cue for the draw, relative to mount start. Clamped so the stroke and its settle pop finish before any exit. |
-| `accent` | enum | `green` | Ink color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` and `up` depart over the final 0.45s. |
+| id              | type       | default                   | notes                                                                                                                                                                            |
+| --------------- | ---------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`          | string     | `Ship it with confidence` | Full line; wraps and centers.                                                                                                                                                    |
+| `emphasis_word` | string     | `confidence`              | First case-insensitive substring match in `text` gets the marker. Empty or unmatched renders the line with no marker. Keep it a word or short phrase; it never wraps internally. |
+| `style`         | enum       | `highlight`               | `highlight` (thick swipe behind the word), `circle` (loop around it), `underline` (wavy rule beneath), `scribble` (zigzag across).                                               |
+| `draw_at`       | number (s) | `0.9`                     | Cue for the draw, relative to mount start. Clamped so the stroke and its settle pop finish before any exit.                                                                      |
+| `accent`        | enum       | `green`                   | Ink color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                                              |
+| `exit`          | enum       | `none`                    | `none` holds until the cut; `fade` and `up` depart over the final 0.45s.                                                                                                         |
 
 ## Mount
 

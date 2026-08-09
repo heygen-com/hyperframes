@@ -6,12 +6,12 @@ A target string begins as deterministic wrong glyphs and resolves one character 
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `text` | string | `HYPERFRAMES` | Target string. Font size auto-fits to character count. |
-| `accent` | enum | `green` | Text, prefix, and frame color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `style` | enum | `terminal` | `terminal` (framed shell with `>_` prefix) or `clean` (text only). |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` is the curved arc departure (the pre-Wave-J default ending). |
+| id       | type   | default       | notes                                                                                                                      |
+| -------- | ------ | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `text`   | string | `HYPERFRAMES` | Target string. Font size auto-fits to character count.                                                                     |
+| `accent` | enum   | `green`       | Text, prefix, and frame color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                    |
+| `style`  | enum   | `terminal`    | `terminal` (framed shell with `>_` prefix) or `clean` (text only).                                                         |
+| `exit`   | enum   | `none`        | `none` holds until the cut; `fade` departs opacity-only; `up` is the curved arc departure (the pre-Wave-J default ending). |
 
 ## Mount
 

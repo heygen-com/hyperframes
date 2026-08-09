@@ -5,7 +5,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const PAYLOAD = /<div[^>]*data-hf-primitive-data[^>]*>([\s\S]*?)<\/div>/g;
+// Any element, not just the <div> this started as: a payload that moved to a
+// <script type="application/json"> to survive the formatter must stay guarded.
+const PAYLOAD = /<(\w+)[^>]*\sdata-hf-primitive-data[^>]*>([\s\S]*?)<\/\1>/g;
 
 describe("registry primitive payloads", () => {
   it("stay parseable JSON in the shipped source", () => {
@@ -13,13 +15,14 @@ describe("registry primitive payloads", () => {
     const broken: string[] = [];
     for (const file of files) {
       const html = readFileSync(resolve(repoRoot, file), "utf-8");
-      for (const [, payload] of html.matchAll(PAYLOAD)) {
+      for (const [, , payload] of html.matchAll(PAYLOAD)) {
         try {
-          JSON.parse(payload);
+          // Same normalization the compositions apply: this is inert text in
+          // HTML, so the formatter may reflow it, and whitespace is not
+          // significant. A payload that fails even after this is genuinely
+          // malformed rather than merely wrapped.
+          JSON.parse(payload.replace(/\s*[\r\n]+\s*/g, " "));
         } catch (error) {
-          // A line wrap inside a JSON string literal is the way this breaks:
-          // the file still looks fine, and the composition dies at JSON.parse
-          // in the browser, after the preview has already been captured.
           broken.push(`${file}: ${(error as Error).message}`);
         }
       }

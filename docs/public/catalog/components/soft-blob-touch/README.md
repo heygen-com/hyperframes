@@ -28,14 +28,14 @@ through the aura.
 
 ## Variables
 
-| id       | type   | default | notes                                                                 |
-| -------- | ------ | ------- | --------------------------------------------------------------------- |
-| touch_x  | number | 66      | Touch point, percent of host width (8 to 92).                          |
-| touch_y  | number | 38      | Touch point, percent of host height (8 to 92).                         |
+| id       | type   | default | notes                                                                                                                                   |
+| -------- | ------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| touch_x  | number | 66      | Touch point, percent of host width (8 to 92).                                                                                           |
+| touch_y  | number | 38      | Touch point, percent of host height (8 to 92).                                                                                          |
 | touch_at | number | 1.6     | Seconds from mount start when the dot makes contact. Clamped so the deform and recover tail (~1.57s) and any exit stay inside the clip. |
-| grain    | enum   | fine    | fine (many small specks) or coarse (fewer, larger).                    |
-| accent   | enum   | green   | green maps to --brand, blue to --accent, violet to --accent-2. Tints the aura, body, and specks. |
-| exit     | enum   | none    | none holds the settled blob (frame roots own transitions); fade or up add a 0.45s departure. |
+| grain    | enum   | fine    | fine (many small specks) or coarse (fewer, larger).                                                                                     |
+| accent   | enum   | green   | green maps to --brand, blue to --accent, violet to --accent-2. Tints the aura, body, and specks.                                        |
+| exit     | enum   | none    | none holds the settled blob (frame roots own transitions); fade or up add a 0.45s departure.                                            |
 
 ## Choreography
 

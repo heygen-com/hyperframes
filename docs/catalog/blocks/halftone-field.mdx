@@ -4,55 +4,16 @@ description: "A full-bleed halftone light field: a grid of dots whose size and c
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/halftone-field.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Halftone Field preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/halftone-field.html"
+  compositionId="halftone-field"
+  compositionSrc="compositions/halftone-field.html"
+  variables={[{"id":"frequency","type":"number","label":"Field frequency","default":2,"min":1,"max":10,"step":0.1},{"id":"speed","type":"number","label":"Flow speed","default":5,"min":0,"max":10,"step":0.1},{"id":"cellSize","type":"number","label":"Cell size","default":54,"min":1,"max":100,"step":1},{"id":"gamma","type":"number","label":"Gamma (midtone crush)","default":12,"min":1,"max":20,"step":0.1},{"id":"paletteBias","type":"number","label":"Palette bias","default":2,"min":0,"max":20,"step":0.5},{"id":"palette1","type":"color","label":"Palette stop 1 (lows)","default":"#00AAFF"},{"id":"palette2","type":"color","label":"Palette stop 2","default":"#C2FF67"},{"id":"palette3","type":"color","label":"Palette stop 3","default":"#6600FF"},{"id":"palette4","type":"color","label":"Palette stop 4 (crests)","default":"#000000"},{"id":"background","type":"color","label":"Background","default":"#000000"},{"id":"quantize","type":"boolean","label":"Quantise to 30fps (stepped)","default":false}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add halftone-field" />
-
-That writes one file: `compositions/halftone-field.html`.
-
-## Add it to your video
-
-It runs for 10 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="halftone-field"
-  data-composition-src="compositions/halftone-field.html"
-  data-start="0"
-  data-duration="10"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `--frequency` — Field frequency (1 = broad swells, 10 = fine mottle). Defaults to `2`.
-- `--speed` — Flow speed (0 freezes the field). Defaults to `5`.
-- `--cellsize` — Cell size (dot pitch, 1 = 6px, 100 = 60px). Defaults to `54`.
-- `--gamma` — Gamma: midtone crush, the whole look. Low values flatten it to an even grey dot field. Defaults to `12`.
-- `--palettebias` — Palette bias: floor under every dot's size and palette position. 0 lets the darks go fully black. Defaults to `2`.
-- `--palette1` — Palette stop 1 (lows). Defaults to `#00AAFF`.
-- `--palette2` — Palette stop 2. Defaults to `#C2FF67`.
-- `--palette3` — Palette stop 3. Defaults to `#6600FF`.
-- `--palette4` — Palette stop 4 (crests). Defaults to `#000000`.
-- `--background` — Background. Defaults to `#000000`.
-- `--quantize` — Quantise to 30fps for a stepped LED-wall look. Defaults to `false`. Options: `false`, `true`.
-
-## Source
-
-<Accordion title={`halftone-field.html`}>
-
-```html
+```html halftone-field.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -433,7 +394,48 @@ void main() {
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add halftone-field" />
+
+That writes one file: `compositions/halftone-field.html`.
+
+## Add it to your video
+
+It runs for 10 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="halftone-field"
+  data-composition-src="compositions/halftone-field.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `--frequency` — Field frequency (1 = broad swells, 10 = fine mottle). Defaults to `2`.
+- `--speed` — Flow speed (0 freezes the field). Defaults to `5`.
+- `--cellsize` — Cell size (dot pitch, 1 = 6px, 100 = 60px). Defaults to `54`.
+- `--gamma` — Gamma: midtone crush, the whole look. Low values flatten it to an even grey dot field. Defaults to `12`.
+- `--palettebias` — Palette bias: floor under every dot's size and palette position. 0 lets the darks go fully black. Defaults to `2`.
+- `--palette1` — Palette stop 1 (lows). Defaults to `#00AAFF`.
+- `--palette2` — Palette stop 2. Defaults to `#C2FF67`.
+- `--palette3` — Palette stop 3. Defaults to `#6600FF`.
+- `--palette4` — Palette stop 4 (crests). Defaults to `#000000`.
+- `--background` — Background. Defaults to `#000000`.
+- `--quantize` — Quantise to 30fps for a stepped LED-wall look. Defaults to `false`. Options: `false`, `true`.
 
 {/* hf:generated-footer */}
 

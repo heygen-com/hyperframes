@@ -18,15 +18,15 @@ marker-highlight law). Then a dead-still hold.
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `quote` | string | `We shipped our launch video in a single afternoon` | Wraps inside the card; each rendered line reveals through its own mask. |
-| `name` | string | `Maya Chen` | Attribution name in mono; also seeds the avatar initials. |
-| `role` | string | `Head of Product` | Muted mono line under the name. Empty hides it. |
-| `company` | string | `NORTHWIND` | Wide-tracked mono text mark at the byline end. Empty hides it. |
-| `emphasis` | string | `single afternoon` | First case-insensitive substring match in `quote`, expanded to whole words, gets the accent underline after the quote lands. Empty or unmatched disables the draw. |
-| `accent` | enum | `green` | Underline and glyph ink: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` and `up` depart over the final 0.45s. |
+| id         | type   | default                                             | notes                                                                                                                                                              |
+| ---------- | ------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `quote`    | string | `We shipped our launch video in a single afternoon` | Wraps inside the card; each rendered line reveals through its own mask.                                                                                            |
+| `name`     | string | `Maya Chen`                                         | Attribution name in mono; also seeds the avatar initials.                                                                                                          |
+| `role`     | string | `Head of Product`                                   | Muted mono line under the name. Empty hides it.                                                                                                                    |
+| `company`  | string | `NORTHWIND`                                         | Wide-tracked mono text mark at the byline end. Empty hides it.                                                                                                     |
+| `emphasis` | string | `single afternoon`                                  | First case-insensitive substring match in `quote`, expanded to whole words, gets the accent underline after the quote lands. Empty or unmatched disables the draw. |
+| `accent`   | enum   | `green`                                             | Underline and glyph ink: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                                                                  |
+| `exit`     | enum   | `none`                                              | `none` holds until the cut; `fade` and `up` depart over the final 0.45s.                                                                                           |
 
 ## The avatar slot
 

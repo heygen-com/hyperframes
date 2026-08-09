@@ -159,12 +159,9 @@
                 : {};
 
             var text = vars.text == null || vars.text === "" ? "FLEX" : String(vars.text);
-            var axis =
-              vars.axis === "weight" || vars.axis === "width" ? vars.axis : "both";
+            var axis = vars.axis === "weight" || vars.axis === "width" ? vars.axis : "both";
             var staggerRaw = parseFloat(vars.stagger);
-            var stagger = isFinite(staggerRaw)
-              ? Math.min(0.25, Math.max(0, staggerRaw))
-              : 0.06;
+            var stagger = isFinite(staggerRaw) ? Math.min(0.25, Math.max(0, staggerRaw)) : 0.06;
             // Each enum choice routes to a DIFFERENT contract token so the
             // variable stays meaningful under a theme.
             var accentColors = {
@@ -269,8 +266,7 @@
                 el.style.top = ((1 - settled) * 0.14).toFixed(4) + "em";
               }
               var mean = chars.length > 0 ? settledSum / chars.length : 1;
-              word.style.fontSize =
-                "calc(var(--vff-size) * " + (1 - COMP * mean).toFixed(4) + ")";
+              word.style.fontSize = "calc(var(--vff-size) * " + (1 - COMP * mean).toFixed(4) + ")";
             }
 
             gsap.set(stage, { opacity: 1, y: "0cqh" });

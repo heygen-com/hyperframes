@@ -6,12 +6,12 @@ An authored SVG path draws from start to finish using its measured `getTotalLeng
 
 ## Variables
 
-| id | type | default | notes |
-| --- | --- | --- | --- |
-| `path` | string | a wave path | SVG path data in the 1024x520 viewBox. A trailing `Z` is the single owner of fill behavior. |
-| `stroke_width` | number | `12` | Stroke width in viewBox units (2 to 32). |
-| `accent` | enum | `green` | Trace and fill color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`. |
-| `exit` | enum | `none` | `none` holds until the cut; `fade` departs opacity-only; `up` is the upward fade (the pre-Wave-J default ending). |
+| id             | type   | default     | notes                                                                                                             |
+| -------------- | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `path`         | string | a wave path | SVG path data in the 1024x520 viewBox. A trailing `Z` is the single owner of fill behavior.                       |
+| `stroke_width` | number | `12`        | Stroke width in viewBox units (2 to 32).                                                                          |
+| `accent`       | enum   | `green`     | Trace and fill color: green rides `--brand`, blue rides `--accent`, violet rides `--accent-2`.                    |
+| `exit`         | enum   | `none`      | `none` holds until the cut; `fade` departs opacity-only; `up` is the upward fade (the pre-Wave-J default ending). |
 
 ## Mount
 

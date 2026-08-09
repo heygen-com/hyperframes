@@ -241,7 +241,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             function text(x, y, size, fill, anchor, parent) {
               var node = make(
                 "text",
-                { x: x, y: y, "font-size": size, "text-anchor": anchor || "middle", class: "cs-mono" },
+                {
+                  x: x,
+                  y: y,
+                  "font-size": size,
+                  "text-anchor": anchor || "middle",
+                  class: "cs-mono",
+                },
                 parent,
               );
               node.style.fill = fill;
@@ -322,15 +328,26 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               var height = 52;
               var cx = Math.min(Math.max(anchorX, width / 2 + 8), 1000 - width / 2 - 8);
               var group = make("g", {});
-              var chip = make("rect", {
-                x: cx - width / 2,
-                y: bottomY - height,
-                width: width,
-                height: height,
-                rx: 12,
-              }, group);
+              var chip = make(
+                "rect",
+                {
+                  x: cx - width / 2,
+                  y: bottomY - height,
+                  width: width,
+                  height: height,
+                  rx: 12,
+                },
+                group,
+              );
               chip.style.fill = accentColor;
-              var valueNode = text(cx, bottomY - height / 2 + 10, 29, "var(--bg, #05070b)", "middle", group);
+              var valueNode = text(
+                cx,
+                bottomY - height / 2 + 10,
+                29,
+                "var(--bg, #05070b)",
+                "middle",
+                group,
+              );
               valueNode.setAttribute("font-weight", "600");
               popAndRoll(group, valueNode, "50% 100%");
             }
@@ -351,7 +368,11 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                   frame === frames
                     ? tokens[emphasize] + suffix
                     : (emphasizedValue * ease(frame / frames)).toFixed(emphasizedDecimals) + suffix;
-                tl.set(valueNode, { textContent: row }, (CALLOUT_AT + ROLL_DUR * (frame / frames)) * s);
+                tl.set(
+                  valueNode,
+                  { textContent: row },
+                  (CALLOUT_AT + ROLL_DUR * (frame / frames)) * s,
+                );
               }
             }
 
@@ -385,7 +406,11 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 bar.style.fill = index === emphasize ? accentColor : baseSeries;
                 tl.to(
                   bar,
-                  { attr: { height: height, y: base - height }, duration: 0.85 * s, ease: "power3.out" },
+                  {
+                    attr: { height: height, y: base - height },
+                    duration: 0.85 * s,
+                    ease: "power3.out",
+                  },
                   at * s,
                 );
 
@@ -425,7 +450,17 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
               // Translucent area fill fades in after the stroke finishes.
               var area = make("path", {
-                d: lineD + " L " + points[n - 1].x + " " + base + " L " + points[0].x + " " + base + " Z",
+                d:
+                  lineD +
+                  " L " +
+                  points[n - 1].x +
+                  " " +
+                  base +
+                  " L " +
+                  points[0].x +
+                  " " +
+                  base +
+                  " Z",
                 stroke: "none",
               });
               area.style.fill = accentColor;
@@ -457,7 +492,10 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               for (var index = 1; index < n; index += 1) {
                 cumulative.push(
                   cumulative[index - 1] +
-                    Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y),
+                    Math.hypot(
+                      points[index].x - points[index - 1].x,
+                      points[index].y - points[index - 1].y,
+                    ),
                 );
               }
               var totalLength = Math.max(cumulative[n - 1], 1e-9);
@@ -497,8 +535,20 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               var end = polar(cx, cy, radius, endDeg);
               var large = endDeg - startDeg > 180 ? 1 : 0;
               return (
-                "M " + start.x + " " + start.y +
-                " A " + radius + " " + radius + " 0 " + large + " 1 " + end.x + " " + end.y
+                "M " +
+                start.x +
+                " " +
+                start.y +
+                " A " +
+                radius +
+                " " +
+                radius +
+                " 0 " +
+                large +
+                " 1 " +
+                end.x +
+                " " +
+                end.y
               );
             }
 
@@ -515,7 +565,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               );
               var ladder = [72, 50, 36, 26, 18];
 
-              var track = make("circle", { cx: cx, cy: cy, r: radius, fill: "none", "stroke-width": strokeWidth });
+              var track = make("circle", {
+                cx: cx,
+                cy: cy,
+                r: radius,
+                fill: "none",
+                "stroke-width": strokeWidth,
+              });
               track.style.stroke = trackColor;
               fadeIn(track, AXIS_AT);
 
@@ -528,18 +584,30 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 cursor += share;
                 if (endDeg - startDeg <= gap * 2 + 0.05) return;
                 var segment = make("path", {
-                  d: arcPath(cx, cy, radius, startDeg + gap / 2, Math.min(endDeg - gap / 2, 359.98)),
+                  d: arcPath(
+                    cx,
+                    cy,
+                    radius,
+                    startDeg + gap / 2,
+                    Math.min(endDeg - gap / 2, 359.98),
+                  ),
                   fill: "none",
                   "stroke-width": strokeWidth,
                 });
                 segment.style.stroke =
                   index === emphasize
                     ? accentColor
-                    : "color-mix(in srgb, var(--fg, #f8fafc) " + ladder[index % ladder.length] + "%, var(--surface, #10161f))";
+                    : "color-mix(in srgb, var(--fg, #f8fafc) " +
+                      ladder[index % ladder.length] +
+                      "%, var(--surface, #10161f))";
                 dashPrepare(segment);
                 tl.to(
                   segment,
-                  { strokeDashoffset: 0, duration: Math.max(BUILD_DUR * share, 0.05) * s, ease: "none" },
+                  {
+                    strokeDashoffset: 0,
+                    duration: Math.max(BUILD_DUR * share, 0.05) * s,
+                    ease: "none",
+                  },
                   (BUILD_AT + BUILD_DUR * (cursor - share)) * s,
                 );
               });
@@ -554,7 +622,9 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 swatch.style.fill =
                   index === emphasize
                     ? accentColor
-                    : "color-mix(in srgb, var(--fg, #f8fafc) " + ladder[index % ladder.length] + "%, var(--surface, #10161f))";
+                    : "color-mix(in srgb, var(--fg, #f8fafc) " +
+                      ladder[index % ladder.length] +
+                      "%, var(--surface, #10161f))";
                 var entry = text(x + 32, 523, 24, mutedColor, "start", group);
                 entry.textContent = labels[index] ? labels[index] + " " : "";
                 var valueSpan = document.createElementNS(NS, "tspan");
@@ -566,7 +636,17 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
               // Center callout: the emphasized value rolls to the exact token.
               var center = make("g", {});
-              var valueText = make("text", { x: cx, y: cy + 14, "font-size": 84, "text-anchor": "middle", class: "cs-display" }, center);
+              var valueText = make(
+                "text",
+                {
+                  x: cx,
+                  y: cy + 14,
+                  "font-size": 84,
+                  "text-anchor": "middle",
+                  class: "cs-display",
+                },
+                center,
+              );
               valueText.style.fill = accentColor;
               var numberSpan = document.createElementNS(NS, "tspan");
               numberSpan.__rollUnitless = true;
@@ -598,7 +678,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 var at = BUILD_AT + stagger * index;
                 var fraction = Math.min(Math.max(value / denominator, 0), 1);
 
-                var track = make("rect", { x: trackX, y: cy - 10, width: trackWidth, height: 20, rx: 10 });
+                var track = make("rect", {
+                  x: trackX,
+                  y: cy - 10,
+                  width: trackWidth,
+                  height: 20,
+                  rx: 10,
+                });
                 track.style.fill = trackColor;
                 fadeIn(track, AXIS_AT + index * 0.08);
 

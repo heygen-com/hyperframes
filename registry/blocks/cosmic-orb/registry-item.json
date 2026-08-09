@@ -11,6 +11,87 @@
   },
   "duration": 10,
   "tags": ["webgl", "shader", "background", "showcase", "3d"],
+  "variables": [
+    {
+      "id": "hue",
+      "type": "number",
+      "label": "Nebula hue",
+      "default": 268,
+      "min": 0,
+      "max": 360,
+      "step": 1,
+      "unit": "deg"
+    },
+    {
+      "id": "accent",
+      "type": "number",
+      "label": "Accent hue",
+      "default": 196,
+      "min": 0,
+      "max": 360,
+      "step": 1,
+      "unit": "deg"
+    },
+    {
+      "id": "spin",
+      "type": "number",
+      "label": "Spin rate",
+      "default": 0.035,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.005,
+      "unit": "turns/s"
+    },
+    {
+      "id": "stars",
+      "type": "number",
+      "label": "Star density",
+      "default": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05
+    },
+    {
+      "id": "glow",
+      "type": "number",
+      "label": "Glow intensity",
+      "default": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "label": "Orb size",
+      "default": 0.86,
+      "min": 0.2,
+      "max": 1.2,
+      "step": 0.01
+    },
+    {
+      "id": "pulse",
+      "type": "number",
+      "label": "Beat pulse",
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "id": "pulseEnvelope",
+      "type": "string",
+      "label": "Beat pulse envelope (comma-separated 0-1 samples)",
+      "default": "",
+      "placeholder": "0,0.2,1,0.4,0"
+    },
+    {
+      "id": "backdrop",
+      "type": "color",
+      "label": "Backdrop",
+      "default": "#04040a"
+    }
+  ],
   "files": [
     {
       "path": "cosmic-orb.html",

@@ -299,9 +299,10 @@
             }
 
             // +2: leave room for the trailing caret so it never wraps alone.
-            var maxLength = rows.reduce(function (best, row) {
-              return Math.max(best, row.x.length);
-            }, 1) + 2;
+            var maxLength =
+              rows.reduce(function (best, row) {
+                return Math.max(best, row.x.length);
+              }, 1) + 2;
             var fittedCqw = Math.max(2.2, Math.min(4.2, 118 / maxLength));
             root.style.setProperty("--tp-font-size", "min(" + fittedCqw.toFixed(3) + "cqw, 9cqh)");
 

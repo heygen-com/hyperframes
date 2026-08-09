@@ -141,7 +141,12 @@
           data-track-index="0"
         >
           <div class="fm-stage">
-            <svg class="fm-svg" viewBox="0 0 100 100" role="img" aria-label="Reshaping faceted mass">
+            <svg
+              class="fm-svg"
+              viewBox="0 0 100 100"
+              role="img"
+              aria-label="Reshaping faceted mass"
+            >
               <g class="fm-mesh"></g>
             </svg>
           </div>
@@ -456,7 +461,8 @@
                 for (var v = 0; v < 3; v += 1) {
                   var kind = facet[v * 2];
                   var index = facet[v * 2 + 1];
-                  var pt = kind === "o" ? outerPts[index] : kind === "i" ? innerPts[index] : centerPt;
+                  var pt =
+                    kind === "o" ? outerPts[index] : kind === "i" ? innerPts[index] : centerPt;
                   pts += pt[0].toFixed(2) + "," + pt[1].toFixed(2) + (v < 2 ? " " : "");
                   sumX += pt[0];
                   sumY += pt[1];
@@ -466,8 +472,7 @@
                 var len = Math.hypot(nx, ny) || 1;
                 // Pseudo-normal: outward direction plus the facet's fixed
                 // tilt. Facets turned toward the upper-left light lift.
-                var shade =
-                  (nx / len) * LIGHT_X + (ny / len) * LIGHT_Y + facetTilt[fi];
+                var shade = (nx / len) * LIGHT_X + (ny / len) * LIGHT_Y + facetTilt[fi];
                 shade = Math.max(-1, Math.min(1, shade));
                 var fill =
                   shade >= 0

@@ -38,7 +38,9 @@
         height: 480px;
         border-radius: 16px;
         overflow: hidden;
-        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+        box-shadow:
+          0 32px 80px rgba(0, 0, 0, 0.12),
+          0 2px 8px rgba(0, 0, 0, 0.06);
         border: 1px solid #e4e4e7;
         background: #ffffff;
       }
@@ -193,7 +195,12 @@
           <!-- Outgoing view: zooms out + fades as incoming arrives -->
           <div class="axis-z-outgoing">
             <div class="axis-z-outgoing-icon">
-              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
             </div>
             <div class="axis-z-outgoing-title">Overview</div>
             <div class="axis-z-outgoing-subtitle">Select a context to zoom in</div>
@@ -209,7 +216,10 @@
             <div class="axis-z-incoming-header">
               <div class="axis-z-incoming-eyebrow">Analytics</div>
               <div class="hf-remocn-shared-axis-z"><span>Zoom</span><span>context</span></div>
-              <div class="axis-z-incoming-meta">Drill into any metric with a shared-axis Z transition — the new view scales in from the tap point.</div>
+              <div class="axis-z-incoming-meta">
+                Drill into any metric with a shared-axis Z transition — the new view scales in from
+                the tap point.
+              </div>
             </div>
             <div class="axis-z-divider"></div>
             <div class="axis-z-incoming-stats">

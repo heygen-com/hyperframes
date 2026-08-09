@@ -222,8 +222,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // overshoot. Pure function of progress, so it stays seek-safe.
             var LAND_SPLIT = 0.78; // progress where the settle tail begins
             var LAND_RESIDUAL = 0.07; // fraction of travel left for the tail
-            var LAND_SEAM_SLOPE =
-              ((1 - LAND_RESIDUAL) / LAND_SPLIT) * 0.5; // shared velocity at the seam
+            var LAND_SEAM_SLOPE = ((1 - LAND_RESIDUAL) / LAND_SPLIT) * 0.5; // shared velocity at the seam
             function landEase(p) {
               if (p <= 0) return 0;
               if (p >= 1) return 1;

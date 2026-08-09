@@ -4,53 +4,16 @@ description: "Two arcs of light travel the edge of a rounded panel and snap corn
 ---
 
 import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
-<iframe src="/public/catalog/preview/blocks/lt-neon-border.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Neon Border preview" />
+<VariablesExplorer
+  previewSrc="/public/catalog/preview/blocks/lt-neon-border.html"
+  compositionId="lt-neon-border"
+  compositionSrc="compositions/lt-neon-border.html"
+  variables={[{"id":"name","type":"string","label":"Name","default":"Dr. Maya Chen"},{"id":"role","type":"string","label":"Role","default":"Host · Neuroscientist"},{"id":"accent","type":"color","label":"Accent","default":"#cc9149"},{"id":"movement","type":"enum","label":"Movement","default":"step","options":[{"value":"step","label":"Step (snap at corners)"},{"value":"glide","label":"Glide (smooth)"}]},{"id":"speed","type":"number","label":"Speed","default":1.6,"min":0.2,"max":6,"step":0.1,"unit":"corners/s"},{"id":"cornerRadius","type":"number","label":"Corner radius","default":26,"min":0,"max":90,"step":1,"unit":"px"},{"id":"thickness","type":"number","label":"Thickness","default":5,"min":1,"max":16,"step":1,"unit":"px"},{"id":"arcLength","type":"number","label":"Arc length","default":22,"min":5,"max":100,"step":1,"unit":"%"},{"id":"glow","type":"number","label":"Glow","default":1,"min":0,"max":2,"step":0.05,"unit":"x"}]}
+>
 
-## Install
-
-<InstallCommand command="npx hyperframes add lt-neon-border" />
-
-That writes one file: `compositions/lt-neon-border.html`.
-
-## Add it to your video
-
-It runs for 4.8 seconds at 1920×1080. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="lt-neon-border"
-  data-composition-src="compositions/lt-neon-border.html"
-  data-start="0"
-  data-duration="4.8"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Change how it looks
-
-Set these CSS variables on the block:
-
-- `undefined` — Name. Defaults to `Dr. Maya Chen`.
-- `undefined` — Role. Defaults to `Host · Neuroscientist`.
-- `undefined` — Accent. Defaults to `#cc9149`.
-- `undefined` — Movement. Defaults to `step`. Options: `step`, `glide`.
-- `undefined` — Speed. Defaults to `1.6`.
-- `undefined` — Corner radius. Defaults to `26`.
-- `undefined` — Thickness. Defaults to `5`.
-- `undefined` — Arc length. Defaults to `22`.
-- `undefined` — Glow. Defaults to `1`.
-
-## Source
-
-<Accordion title={`lt-neon-border.html`}>
-
-```html
+```html lt-neon-border.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -443,7 +406,46 @@ Set these CSS variables on the block:
 </html>
 ```
 
-</Accordion>
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add lt-neon-border" />
+
+That writes one file: `compositions/lt-neon-border.html`.
+
+## Add it to your video
+
+It runs for 4.8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="lt-neon-border"
+  data-composition-src="compositions/lt-neon-border.html"
+  data-start="0"
+  data-duration="4.8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `undefined` — Name. Defaults to `Dr. Maya Chen`.
+- `undefined` — Role. Defaults to `Host · Neuroscientist`.
+- `undefined` — Accent. Defaults to `#cc9149`.
+- `undefined` — Movement. Defaults to `step`. Options: `step`, `glide`.
+- `undefined` — Speed. Defaults to `1.6`.
+- `undefined` — Corner radius. Defaults to `26`.
+- `undefined` — Thickness. Defaults to `5`.
+- `undefined` — Arc length. Defaults to `22`.
+- `undefined` — Glow. Defaults to `1`.
 
 {/* hf:generated-footer */}
 

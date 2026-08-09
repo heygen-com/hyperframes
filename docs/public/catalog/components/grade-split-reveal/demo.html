@@ -325,12 +325,7 @@
             );
 
             /* Then it commits and takes the whole plate. */
-            tl.fromTo(
-              after,
-              { width: HOLD },
-              { width: PW, duration: 1.2, ease: EASE_COMMIT },
-              3.1,
-            );
+            tl.fromTo(after, { width: HOLD }, { width: PW, duration: 1.2, ease: EASE_COMMIT }, 3.1);
             tl.fromTo(edge, { x: HOLD }, { x: PW, duration: 1.2, ease: EASE_COMMIT }, 3.1);
             tl.fromTo(
               tagBefore,

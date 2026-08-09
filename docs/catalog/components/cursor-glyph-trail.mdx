@@ -152,10 +152,8 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             height: 3.4cqmin;
             border-radius: 50%;
             background: var(--cgt-accent);
-            border: 0.35cqmin solid
-              color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--cgt-accent));
-            box-shadow: 0 0.6cqmin 2.4cqmin
-              color-mix(in srgb, var(--bg, #000000) 35%, transparent);
+            border: 0.35cqmin solid color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--cgt-accent));
+            box-shadow: 0 0.6cqmin 2.4cqmin color-mix(in srgb, var(--bg, #000000) 35%, transparent);
           }
         </style>
 
@@ -195,12 +193,9 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var density = Object.prototype.hasOwnProperty.call(spacingByDensity, vars.density)
               ? vars.density
               : "med";
-            var pathName =
-              vars.path === "arc" || vars.path === "zigzag" ? vars.path : "sweep";
+            var pathName = vars.path === "arc" || vars.path === "zigzag" ? vars.path : "sweep";
             var glyphSource =
-              typeof vars.glyphs === "string" && vars.glyphs.length > 0
-                ? vars.glyphs
-                : "░▒▓+·×";
+              typeof vars.glyphs === "string" && vars.glyphs.length > 0 ? vars.glyphs : "░▒▓+·×";
             var glyphSet = Array.from(glyphSource);
             var fadeRaw = parseFloat(vars.fade);
             var fade = isFinite(fadeRaw) ? Math.min(1.5, Math.max(0.3, fadeRaw)) : 0.8;
@@ -327,12 +322,9 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               span.style.left = row.x.toFixed(3) + "%";
               span.style.top = row.y.toFixed(3) + "%";
               span.style.fontSize = row.size.toFixed(3) + "cqmin";
-              span.style.transform =
-                "translate(-50%, -50%) rotate(" + row.rot.toFixed(2) + "deg)";
+              span.style.transform = "translate(-50%, -50%) rotate(" + row.rot.toFixed(2) + "deg)";
               span.style.color =
-                "color-mix(in srgb, var(--cgt-accent) " +
-                row.mix +
-                "%, var(--fg, #f8fafc))";
+                "color-mix(in srgb, var(--cgt-accent) " + row.mix + "%, var(--fg, #f8fafc))";
               row.el = span;
               fragment.appendChild(span);
             }

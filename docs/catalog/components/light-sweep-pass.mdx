@@ -143,10 +143,8 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             --lsp-abs: max(var(--lsp-d), calc(-1 * var(--lsp-d)));
             --lsp-glow: clamp(0, calc(1 - var(--lsp-abs) / 26), 1);
             position: relative;
-            box-shadow:
-              calc(clamp(-30, var(--lsp-d), 30) * -0.05cqw)
-              calc(0.8cqh + var(--lsp-glow) * 0.7cqh)
-              calc(2.2cqh + var(--lsp-glow) * 2.4cqh)
+            box-shadow: calc(clamp(-30, var(--lsp-d), 30) * -0.05cqw)
+              calc(0.8cqh + var(--lsp-glow) * 0.7cqh) calc(2.2cqh + var(--lsp-glow) * 2.4cqh)
               color-mix(in srgb, #000000 26%, transparent);
           }
 

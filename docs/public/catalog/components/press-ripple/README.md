@@ -24,15 +24,15 @@ the cursor never occludes the label during the hold. 3s authored, elastic HOLD
 
 ## Variables
 
-| id       | type   | default       | notes                                                          |
-| -------- | ------ | ------------- | -------------------------------------------------------------- |
-| label    | string | "Get started" | Text in the default pill. Ignored when the slot is replaced.    |
-| target_x | number | 50            | Zone center, percent of host width (8 to 92).                   |
-| target_y | number | 50            | Zone center, percent of host height (8 to 92).                  |
+| id       | type   | default       | notes                                                                                                                                                              |
+| -------- | ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| label    | string | "Get started" | Text in the default pill. Ignored when the slot is replaced.                                                                                                       |
+| target_x | number | 50            | Zone center, percent of host width (8 to 92).                                                                                                                      |
+| target_y | number | 50            | Zone center, percent of host height (8 to 92).                                                                                                                     |
 | press_at | number | 1.4           | Seconds from mount start when the compression begins. Clamped so the press tail (release, ripple, cursor exit, ~1.05s) and any exit stay inside the clip duration. |
-| cursor   | enum   | light         | light (white pointer, dark stroke) or dark (inverse).           |
-| accent   | enum   | green         | green maps to --brand, blue to --accent, violet to --accent-2. Colors the ripple ink and the pressed fill. |
-| exit     | enum   | none          | none holds the pressed state (frame roots own transitions); fade or up add a 0.45s departure. |
+| cursor   | enum   | light         | light (white pointer, dark stroke) or dark (inverse).                                                                                                              |
+| accent   | enum   | green         | green maps to --brand, blue to --accent, violet to --accent-2. Colors the ripple ink and the pressed fill.                                                         |
+| exit     | enum   | none          | none holds the pressed state (frame roots own transitions); fade or up add a 0.45s departure.                                                                      |
 
 ## Target slot
 
@@ -46,7 +46,9 @@ press (seek-safe: scrubbing backwards restores idle). Custom slot content can
 key its own pressed look off that attribute, mirroring the default rule:
 
 ```css
-.pr-target-slot[data-state="pressed"] .my-thing { /* pressed look */ }
+.pr-target-slot[data-state="pressed"] .my-thing {
+  /* pressed look */
+}
 ```
 
 ## Choreography

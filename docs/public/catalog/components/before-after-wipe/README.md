@@ -16,14 +16,14 @@ content slots: you supply the two visuals, the primitive supplies the wipe.
 
 ## Variables
 
-| id           | type   | default  | notes                                                          |
-| ------------ | ------ | -------- | -------------------------------------------------------------- |
-| `label_a`    | string | `Before` | chip on the base panel; empty string hides it                  |
-| `label_b`    | string | `After`  | chip on the revealed panel; empty string hides it              |
-| `rest_split` | number | `50`     | divider resting position, 0 to 100 percent                     |
-| `wipe_at`    | number | `0.25`   | seconds after mount start when the wipe begins (0 to 8)        |
+| id           | type   | default  | notes                                                                     |
+| ------------ | ------ | -------- | ------------------------------------------------------------------------- |
+| `label_a`    | string | `Before` | chip on the base panel; empty string hides it                             |
+| `label_b`    | string | `After`  | chip on the revealed panel; empty string hides it                         |
+| `rest_split` | number | `50`     | divider resting position, 0 to 100 percent                                |
+| `wipe_at`    | number | `0.25`   | seconds after mount start when the wipe begins (0 to 8)                   |
 | `accent`     | enum   | `green`  | `green` maps to `--brand`, `blue` to `--accent`, `violet` to `--accent-2` |
-| `exit`       | enum   | `none`   | `none` holds the final frame; `fade` and `up` release the stage |
+| `exit`       | enum   | `none`   | `none` holds the final frame; `fade` and `up` release the stage           |
 
 Envelope: IN = `wipe_at` + 1.05s wipe travel, OUT = 0.5s only when `exit` is
 `fade` or `up`, HOLD is the sole elastic phase. The `wipe-land` sync point
@@ -34,8 +34,8 @@ Envelope: IN = `wipe_at` + 1.05s wipe travel, OUT = 0.5s only when `exit` is
 The primitive ships two named slot panels inside its `<template>`:
 
 ```html
-<div class="baw-slot" data-slot="before"> ... </div>
-<div class="baw-slot" data-slot="after"> ... </div>
+<div class="baw-slot" data-slot="before">...</div>
+<div class="baw-slot" data-slot="after">...</div>
 ```
 
 Each slot's default children are a token-styled wireframe card (muted on the

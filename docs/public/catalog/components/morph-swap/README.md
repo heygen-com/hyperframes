@@ -41,8 +41,8 @@ the morph lands, 2.15s at defaults.
 The primitive ships two named slot panels inside its `<template>`:
 
 ```html
-<div class="msw-slot" data-slot="a"> ... </div>
-<div class="msw-slot" data-slot="b"> ... </div>
+<div class="msw-slot" data-slot="a">...</div>
+<div class="msw-slot" data-slot="b">...</div>
 ```
 
 Each slot's default children are a token-styled card (a muted wireframe on

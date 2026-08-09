@@ -146,7 +146,10 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
           .rs-card-label {
             overflow: hidden;
             color: var(--fg, #f8fafc);
-            font-family: var(--font-display, var(--font-body, ui-sans-serif, system-ui, sans-serif));
+            font-family: var(
+              --font-display,
+              var(--font-body, ui-sans-serif, system-ui, sans-serif)
+            );
             font-size: var(--rs-center-font, 4cqmin);
             font-weight: 600;
             line-height: 1.15;
@@ -289,10 +292,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // Deterministic center-label fitting inside the 28cqw card.
             var chars = Array.from(centerLabel).length;
             var fontCqw = Math.min(3.4, 23 / (Math.max(1, chars) * 0.62));
-            root.style.setProperty(
-              "--rs-center-font",
-              "min(" + fontCqw.toFixed(3) + "cqw, 6cqh)",
-            );
+            root.style.setProperty("--rs-center-font", "min(" + fontCqw.toFixed(3) + "cqw, 6cqh)");
 
             /* Elliptical ring, baked once (deterministic). FAR is the wide
                assembly ring; NEAR is the close-in ring, pressing corner chips
@@ -306,8 +306,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var count = labels.length;
             var step = 360 / count;
             function ringPosition(index, rx, ry) {
-              var degrees =
-                -90 + Math.ceil(index / 2) * step * (index % 2 === 1 ? 1 : -1);
+              var degrees = -90 + Math.ceil(index / 2) * step * (index % 2 === 1 ? 1 : -1);
               var a = (degrees * Math.PI) / 180;
               return {
                 ox: (Math.cos(a) * rx).toFixed(3) + "cqw",
@@ -348,9 +347,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var latestStart = Math.max(0, avail - ENTRY - closeSpan);
             // Compress the cascade together when the duration cannot fit it.
             var gap =
-              count > 1
-                ? Math.min(GAP, Math.max(0, latestStart - BASE_START) / (count - 1))
-                : GAP;
+              count > 1 ? Math.min(GAP, Math.max(0, latestStart - BASE_START) / (count - 1)) : GAP;
 
             var cueList = String(vars.cues == null ? "" : vars.cues).split(",");
             var starts = chips.map(function (chip, index) {

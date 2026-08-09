@@ -250,9 +250,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               if (!m) {
                 m = fallback.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
               }
-              return m
-                ? [Number(m[1]), Number(m[2]), Number(m[3])]
-                : [113, 245, 167];
+              return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [113, 245, 167];
             }
             var accentRgb = probeColor(accentColors[accent], "rgb(113, 245, 167)");
             var fgRgb = probeColor("var(--fg, #f8fafc)", "rgb(248, 250, 252)");
@@ -324,10 +322,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               var v0 = vCut / bCut;
               var c2 = (v0 + lambda) / omega;
               function x(s) {
-                return (
-                  Math.exp(-lambda * s) *
-                  (Math.cos(omega * s) + c2 * Math.sin(omega * s))
-                );
+                return Math.exp(-lambda * s) * (Math.cos(omega * s) + c2 * Math.sin(omega * s));
               }
               var xEnd = x(RECOVER);
               return function (p) {
@@ -401,11 +396,9 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               for (var i = 0; i < grains.length; i += 1) {
                 var g = grains[i];
                 var driftX =
-                  g.driftAmp *
-                  (Math.sin(TAU * g.driftCycles * u + g.phaseX) - Math.sin(g.phaseX));
+                  g.driftAmp * (Math.sin(TAU * g.driftCycles * u + g.phaseX) - Math.sin(g.phaseX));
                 var driftY =
-                  g.driftAmp *
-                  (Math.sin(TAU * g.driftCycles * u + g.phaseY) - Math.sin(g.phaseY));
+                  g.driftAmp * (Math.sin(TAU * g.driftCycles * u + g.phaseY) - Math.sin(g.phaseY));
                 var gx = cx + g.x + driftX;
                 var gy = cy + g.y + driftY;
                 if (P.bulge > 0.001) {

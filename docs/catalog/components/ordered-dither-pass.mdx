@@ -222,9 +222,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             }
             function parseRgb(color, fallback) {
               var m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(color);
-              return m
-                ? [Number(m[1]), Number(m[2]), Number(m[3])]
-                : fallback;
+              return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : fallback;
             }
             var bgColor = resolveColor("var(--bg, #0b0c0e)", "#0b0c0e");
             var bgRgb = parseRgb(bgColor, [11, 12, 14]);
@@ -327,10 +325,24 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
             if (slotTemplate) {
               var tokenNames = [
-                "--bg", "--fg", "--muted", "--surface", "--border", "--brand",
-                "--accent", "--accent-2", "--font-display", "--font-body",
-                "--font-mono", "--radius", "--space-1", "--space-2", "--space-3",
-                "--dur-beat", "--ease-standard", "--ease-emphasis",
+                "--bg",
+                "--fg",
+                "--muted",
+                "--surface",
+                "--border",
+                "--brand",
+                "--accent",
+                "--accent-2",
+                "--font-display",
+                "--font-body",
+                "--font-mono",
+                "--radius",
+                "--space-1",
+                "--space-2",
+                "--space-3",
+                "--dur-beat",
+                "--ease-standard",
+                "--ease-emphasis",
               ];
               var rootStyle = getComputedStyle(root);
               var tokenDecl = "";
@@ -348,8 +360,15 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               var wrapper = hostDoc.createElement("div");
               wrapper.setAttribute(
                 "style",
-                "width:" + cssW + "px;height:" + cssH + "px;overflow:hidden;position:relative;" +
-                  "display:grid;place-items:center;background:" + bgColor + ";" + tokenDecl,
+                "width:" +
+                  cssW +
+                  "px;height:" +
+                  cssH +
+                  "px;overflow:hidden;position:relative;" +
+                  "display:grid;place-items:center;background:" +
+                  bgColor +
+                  ";" +
+                  tokenDecl,
               );
               wrapper.appendChild(hostDoc.importNode(slotTemplate.content, true));
               var styleEl = hostDoc.createElement("style");
@@ -361,9 +380,17 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 // applies to the declaring element itself and would eject
                 // foreignObject from the SVG namespace (renders blank). The
                 // serialized wrapper div already carries the XHTML namespace.
-                '<svg xmlns="http://www.w3.org/2000/svg" width="' + cssW + '" height="' + cssH +
-                '"><foreignObject width="' + cssW + '" height="' + cssH + '">' +
-                serialized + "</foreignObject></svg>";
+                '<svg xmlns="http://www.w3.org/2000/svg" width="' +
+                cssW +
+                '" height="' +
+                cssH +
+                '"><foreignObject width="' +
+                cssW +
+                '" height="' +
+                cssH +
+                '">' +
+                serialized +
+                "</foreignObject></svg>";
               var snapshot = new Image();
               snapshot.onload = function () {
                 rctx.fillStyle = bgColor;
@@ -381,8 +408,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 paintMonogram(rctx, bufW, bufH);
                 finishRaster();
               };
-              snapshot.src =
-                "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
+              snapshot.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
             } else {
               paintMonogram(rctx, bufW, bufH);
               srcData = rctx.getImageData(0, 0, bufW, bufH).data;
