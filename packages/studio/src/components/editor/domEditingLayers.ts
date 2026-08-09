@@ -519,28 +519,13 @@ export function buildDomEditTextPatchOperation(
   value: string,
   childLocator?: DomEditChildLocator,
 ): PatchOperation {
-  return {
-    type: "text-content",
-    property: "text",
-    value,
-    ...childLocator,
-  };
+  return { type: "text-content", property: "text", value, ...childLocator };
 }
 
-/**
- * Replace an element's whole contents with markup, for a change no per-child
- * operation can express — a text layer added, removed or reordered.
- *
- * The same operation an inline style edit uses, because it is the same thing:
- * this element's children are now these. Both ends run the markup through the
- * one sanitizer before it reaches a file.
- */
+/** Replace an element's contents with markup, for a change no per-child operation
+ * can express (a text layer added, removed or reordered). Sanitized at both ends. */
 export function buildDomEditRichTextPatchOperation(value: string): PatchOperation {
-  return {
-    type: "rich-text",
-    property: "",
-    value,
-  };
+  return { type: "rich-text", property: "", value };
 }
 
 // ─── Non-editable reason ─────────────────────────────────────────────────────
