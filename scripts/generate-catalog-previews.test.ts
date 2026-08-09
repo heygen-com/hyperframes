@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { after, describe, it } from "node:test";
+import assert from "node:assert/strict";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const previewPath = resolve(repoRoot, "docs/images/catalog/blocks/thread-message-stack.png");
 
-afterEach(() => rmSync(previewPath, { force: true }));
+after(() => rmSync(previewPath, { force: true }));
 
 describe("catalog preview raw block boundary", () => {
   it("renders thread-message-stack through the exact Catalog Previews command", () => {
@@ -24,12 +25,12 @@ describe("catalog preview raw block boundary", () => {
     );
     const output = `${result.stdout}${result.stderr}`;
 
-    expect(result.status, output).toBe(0);
-    expect(output).not.toContain("✗ thread-message-stack");
-    expect(output).not.toContain("[Browser:ERROR]");
-    expect(output).not.toContain("timelines not registered");
-    expect(output).not.toContain("sub_timeline_readiness_timeout");
-    expect(output).toContain("✓ thread-message-stack.png");
-    expect(existsSync(previewPath)).toBe(true);
-  }, 125_000);
+    assert.equal(result.status, 0, output);
+    assert.ok(!output.includes("✗ thread-message-stack"), output);
+    assert.ok(!output.includes("[Browser:ERROR]"), output);
+    assert.ok(!output.includes("timelines not registered"), output);
+    assert.ok(!output.includes("sub_timeline_readiness_timeout"), output);
+    assert.ok(output.includes("✓ thread-message-stack.png"), output);
+    assert.ok(existsSync(previewPath), previewPath);
+  });
 });

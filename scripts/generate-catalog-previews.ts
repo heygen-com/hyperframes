@@ -150,22 +150,6 @@ function mirrorRegistryTargets(projectDir: string): void {
   }
 }
 
-/**
- * Registry primitive payloads are inert text, but HTML formatters may wrap prose
- * inside JSON strings. Normalize only control-whitespace runs in the temporary
- * preview copy; the immutable registry source and installed caller payload stay
- * byte-for-byte untouched.
- */
-function normalizePrimitiveDataForPreview(content: string): string {
-  return content.replace(
-    /(<div[^>]*data-hf-primitive-data[^>]*>)([\s\S]*?)(<\/div>)/g,
-    (_match, open: string, payload: string, close: string) => {
-      const normalized = payload.replace(/\s*[\r\n]+\s*/g, " ");
-      return `${open}${normalized}${close}`;
-    },
-  );
-}
-
 async function prepareProjectDir(item: CatalogItem): Promise<string> {
   const tmpDir = createCatalogPreviewTempDir(item.name);
   cpSync(item.sourceDir, tmpDir, { recursive: true });
@@ -176,10 +160,7 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
   // If the entry file is a standalone HTML (has its own timeline registration),
   // just rename it to index.html. Otherwise create a wrapper.
   if (!existsSync(join(tmpDir, "index.html")) && existsSync(join(tmpDir, item.entryFile))) {
-    const entryPath = join(tmpDir, item.entryFile);
-    const rawEntryContent = readFileSync(entryPath, "utf-8");
-    const entryContent = normalizePrimitiveDataForPreview(rawEntryContent);
-    if (entryContent !== rawEntryContent) writeFileSync(entryPath, entryContent, "utf-8");
+    const entryContent = readFileSync(join(tmpDir, item.entryFile), "utf-8");
     // A registration inside <template> does NOT make the file standalone: the
     // template's markup and scripts stay inert until a host composition mounts
     // it via data-composition-src. Rendering such a block as index.html paints
