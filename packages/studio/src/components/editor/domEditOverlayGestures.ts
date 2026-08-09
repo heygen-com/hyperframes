@@ -10,6 +10,7 @@ import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
+import { logSelect } from "../../utils/selectDebug";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
@@ -113,14 +114,6 @@ export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | nu
 }
 
 /**
- * Overlay-px translation that keeps the element's CENTER fixed while a corner
- * resizes: a CSS width/height change grows the layout box from its top-left, so
- * the center drifts by half the size change on each axis; translating back by that
- * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
- * when the element's real transformed corners can't be measured — the primary path
- * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
- */
-/**
  * Whether the hover cache may stand in for a hit-test at this point.
  *
  * The cache is filled asynchronously as the pointer moves, so it can describe an
@@ -139,6 +132,36 @@ export function hoverCacheDescribesPoint(
   return cachedElement === elementAtPoint || cachedElement.contains(elementAtPoint);
 }
 
+/**
+ * The element a shift-click should add, or null to let the slower path resolve it.
+ *
+ * Reading the hover cache without checking is safe for a hover outline and wrong
+ * for a shift-click: the click silently adds whatever the pointer last passed
+ * over instead of the element under it, which reads as multi-select picking
+ * things at random. Returning null means "not confident", and the caller must
+ * then fall through untouched so the mousedown path resolves the point properly.
+ */
+export function resolveShiftClickCandidate<T extends { element: Element }>(input: {
+  cached: T | null;
+  elementAtPoint: Element | null;
+}): T | null {
+  const describes = hoverCacheDescribesPoint(input.cached?.element, input.elementAtPoint);
+  logSelect("shift-pointerdown", {
+    candidate: input.cached ? ((input.cached as { selector?: string }).selector ?? null) : null,
+    pointTarget: input.elementAtPoint?.id ?? input.elementAtPoint?.tagName ?? null,
+    cacheIsAboutThisPoint: describes,
+  });
+  return describes ? input.cached : null;
+}
+
+/**
+ * Overlay-px translation that keeps the element's CENTER fixed while a corner
+ * resizes: a CSS width/height change grows the layout box from its top-left, so
+ * the center drifts by half the size change on each axis; translating back by that
+ * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
+ * when the element's real transformed corners can't be measured — the primary path
+ * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
+ */
 export function resolveResizeCenterAnchorOffset(input: {
   originWidth: number;
   originHeight: number;

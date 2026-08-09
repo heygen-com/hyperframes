@@ -4,11 +4,7 @@ import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
-import {
-  findMatchingTimelineElementId,
-  findTimelineIdByAncestor,
-  type RightPanelTab,
-} from "../utils/studioHelpers";
+import { type RightPanelTab } from "../utils/studioHelpers";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -25,6 +21,7 @@ import {
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import { useStudioTestHooks } from "./useStudioTestHooks";
 import { logSelect } from "../utils/selectDebug";
+import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
 
 // ── Types ──
 
@@ -149,51 +146,13 @@ export function useDomSelection({
 
   // ── Callbacks ──
 
-  /**
-   * Mirror a canvas selection onto the timeline: the whole set first, then the
-   * primary as its anchor.
-   *
-   * The timeline is the source of truth for what is selected and it syncs back —
-   * whatever it holds replaces the canvas selection a moment later. Announcing only
-   * the primary therefore drops every other member. Worse, anchoring with
-   * `preserveSet` on an id the set does not yet contain empties the set outright,
-   * and an empty set syncs back as "nothing is selected" — which is how adding a
-   * second element, or moving a group, could wipe the selection instead of keeping
-   * it. Publishing the members first is what makes the anchor a member, so
-   * preserving the set is meaningful rather than destructive.
-   */
   const announceTimelineSelection = useCallback(
-    (group: DomEditSelection[], primary: DomEditSelection | null) => {
-      if (!primary) {
-        setTimelineSelectionSet(new Set());
-        setSelectedTimelineElementId(null);
-        return;
-      }
-      const timelineIdFor = (selection: DomEditSelection) =>
-        findMatchingTimelineElementId(selection, timelineElements) ??
-        findTimelineIdByAncestor(
-          selection.element,
-          timelineElements,
-          selection.sourceFile || "index.html",
-        );
-      // Only a real multi-selection publishes members. A single selection keeps the
-      // older contract on purpose: anchoring with preserveSet holds a live set the
-      // element already belongs to (a late async primary must not collapse a group)
-      // and collapses otherwise, which is what a fresh click means.
-      const members = group.map(timelineIdFor).filter((id): id is string => Boolean(id));
-      const anchor = timelineIdFor(primary);
-      // A member with no timeline row of its own resolves to null and is dropped
-      // here, so a group can announce fewer ids than it has — or none, which reads
-      // back as an empty selection and takes the canvas selection with it.
-      logSelect("announce", {
-        group: group.length,
-        published: members.length,
-        anchor,
-        anchorPublished: anchor != null && members.includes(anchor),
-      });
-      if (group.length > 1) setTimelineSelectionSet(new Set(members));
-      setSelectedTimelineElementId(anchor, { preserveSet: true });
-    },
+    (group: DomEditSelection[], primary: DomEditSelection | null) =>
+      announceSelectionToTimeline(
+        { timelineElements, setSelectedTimelineElementId, setTimelineSelectionSet },
+        group,
+        primary,
+      ),
     [setSelectedTimelineElementId, setTimelineSelectionSet, timelineElements],
   );
 
