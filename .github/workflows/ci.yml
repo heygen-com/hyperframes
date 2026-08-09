@@ -34,6 +34,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
+      catalog_index: ${{ steps.filter.outputs.catalog_index }}
       codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
       gcp_beginframe: ${{ steps.filter.outputs.gcp_beginframe }}
       studio: ${{ steps.filter.outputs.studio }}
@@ -52,6 +53,10 @@ jobs:
         with:
           token: ""
           filters: |
+            catalog_index:
+              - "registry/registry.json"
+              - "registry/catalog-artifact/**"
+              - "scripts/catalog/check-artifact-coverage.ts"
             code:
               - "packages/**"
               - "scripts/**"
@@ -363,6 +368,21 @@ jobs:
   # `gen:skills-manifest --check`, which compares per-skill content hashes; the
   # manifest carries no version/timestamp, so it only fails on real content
   # drift. bun runs the TS script directly, no install needed.
+  catalog-index-coverage:
+    name: "Catalog: search index covers the registry"
+    needs: changes
+    if: needs.changes.outputs.catalog_index == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      # Comparing two name lists needs neither the embedding model nor a
+      # network call, so this stays a seconds-long gate. Regenerating the
+      # vectors does need the model, which is why CI checks rather than fixes.
+      - name: Verify every searchable registry item has a vector
+        run: bun scripts/catalog/check-artifact-coverage.ts
+
   skills-manifest:
     name: "Skills: manifest in sync"
     needs: changes
