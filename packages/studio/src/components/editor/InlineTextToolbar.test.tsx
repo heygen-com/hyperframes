@@ -200,7 +200,10 @@ describe("InlineTextToolbar", () => {
     selectAll(element);
 
     const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
-    expect(swatch.style.background).toBe("linear-gradient(90deg, red 25.00%, lime 75.00%)");
+    expect(swatch.style.backgroundImage).toBe("linear-gradient(90deg, red 25.00%, lime 75.00%)");
+    // Without this the gradient repeats under the border, painting the end
+    // colour along the leading edge and the start colour along the trailing one.
+    expect(swatch.style.backgroundOrigin).toBe("border-box");
   });
 
   it("shows a plain swatch when the whole selection is one colour", () => {
@@ -210,7 +213,7 @@ describe("InlineTextToolbar", () => {
     selectAll(element);
 
     const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
-    expect(swatch.style.background).toBe("red");
+    expect(swatch.style.backgroundColor).toBe("red");
   });
 });
 
