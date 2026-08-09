@@ -519,6 +519,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               top: cr.top,
               width: cr.width,
               height: cr.height,
+              transform: cr.angle ? `rotate(${cr.angle}deg)` : undefined,
             }}
           />
         ))}

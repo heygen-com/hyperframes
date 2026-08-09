@@ -5,6 +5,7 @@ import {
   orientedGroupAwareOverlayRect,
   overlayCornersCentroid,
   selectionCacheKey,
+  orientedVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
 
 describe("overlayCornersCentroid", () => {
@@ -157,6 +158,30 @@ describe("orientedOverlayRect — rotation gate (perf fix, V15 18a/18b)", () => 
     expect(rect!.width).toBeCloseTo(200, 5);
     expect(rect!.height).toBeCloseTo(100, 5);
     expect(rect!.angle ?? 0).toBe(0);
+  });
+
+  /**
+   * A child outline is drawn ON the child, not around it. Measured axis-aligned,
+   * a text layer inside a rotated card got an upright dashed box sitting across
+   * the rotated glyphs — the parent's chrome rotated and its children's did not.
+   */
+  it("child outlines carry the element's angle, so they can co-rotate with it", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.style.transform = ROTATE_30DEG_MATRIX;
+    const rect = orientedVisibleOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  it("an unrotated child outline is unchanged — no angle, same box as before", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    const rect = orientedVisibleOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    expect(rect!.angle ?? 0).toBe(0);
+    expect(rect!.left).toBeCloseTo(400, 5);
+    expect(rect!.top).toBeCloseTo(450, 5);
+    expect(rect!.width).toBeCloseTo(200, 5);
+    expect(rect!.height).toBeCloseTo(100, 5);
   });
 
   it("rotated element takes the corner-geometry path — reports the live angle", () => {

@@ -430,6 +430,24 @@ export function orientedOverlayRect(
   };
 }
 
+/**
+ * `toVisibleOverlayRect`'s oriented twin: the element's crop-hugged box plus its
+ * live rotation, for chrome that has to sit on a rotated element rather than
+ * around it. Rendering the result with `transform: rotate(angle)` about its
+ * centre lands it on the element's real corners.
+ *
+ * At angle 0 `orientedOverlayRect` returns the plain AABB, so an unrotated
+ * element measures exactly as it did before.
+ */
+export function orientedVisibleOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): OverlayRect | null {
+  const rect = orientedOverlayRect(overlayEl, iframe, element);
+  return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
+}
+
 const OVERLAY_RECT_EPSILON_PX = 0.5;
 const OVERLAY_RECT_ANGLE_EPSILON_DEG = 0.1;
 
