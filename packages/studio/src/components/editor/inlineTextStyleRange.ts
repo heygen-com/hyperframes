@@ -188,8 +188,9 @@ function holdsBothEnds(host: Element, range: Range): boolean {
  * agrees about it, which is what a control can honestly display.
  */
 export function readInlineStyle(range: Range, properties: string[]): Record<string, string> {
-  const covered = coveredStyles(range);
-  if (!covered) return {};
+  const chars = coveredChars(range);
+  if (!chars) return {};
+  const covered = chars.map((entry) => entry.style);
 
   const styles: Record<string, string> = {};
   for (const property of properties) {
@@ -214,10 +215,15 @@ export function readInlineStyleSpread(
   range: Range,
   property: string,
 ): Array<{ value: string; chars: number }> {
-  const covered = coveredStyles(range);
+  const covered = coveredChars(range);
   if (!covered) return [];
   const spread: Array<{ value: string; chars: number }> = [];
-  for (const style of covered) {
+  for (const { char, style } of covered) {
+    // A space paints nothing, so the colour it inherits is not a colour anyone
+    // can see. Counting it puts a band of the element's own colour in the swatch
+    // for text that shows none of it — the stray edge on a selection that just
+    // happens to start or end next to a space.
+    if (!char.trim()) continue;
     const value = style[property];
     if (value === undefined) continue;
     const last = spread.at(-1);
@@ -227,8 +233,8 @@ export function readInlineStyleSpread(
   return spread;
 }
 
-/** The style of every character the range covers, or null when it covers none. */
-function coveredStyles(range: Range): Array<Record<string, string>> | null {
+/** Every character the range covers with its style, or null when it covers none. */
+function coveredChars(range: Range): Array<{ char: string; style: Record<string, string> }> | null {
   const host = editingHost(range.startContainer);
   if (!host || !holdsBothEnds(host, range)) return null;
   const start = offsetOf(host, range.startContainer, range.startOffset);
@@ -237,7 +243,7 @@ function coveredStyles(range: Range): Array<Record<string, string>> | null {
   const collapsed = start === end;
   const covered = charRuns(readRuns(host))
     .slice(collapsed ? Math.max(0, start - 1) : start, collapsed ? Math.max(1, start) : end)
-    .map((entry) => entry.style);
+    .map((entry) => ({ char: entry.char, style: entry.style }));
   return covered.length > 0 ? covered : null;
 }
 
@@ -341,11 +347,18 @@ function ownStyle(element: HTMLElement): Record<string, string> {
 }
 
 /** One entry per character, which is the easiest thing to slice and compare. */
-function charRuns(runs: StyledRun[]): Array<Omit<StyledRun, "text">> {
-  const perChar: Array<Omit<StyledRun, "text">> = [];
+function charRuns(runs: StyledRun[]): Array<Omit<StyledRun, "text"> & { char: string }> {
+  const perChar: Array<Omit<StyledRun, "text"> & { char: string }> = [];
   for (const run of runs) {
+    // By UTF-16 unit, not code point: `restyle` indexes this list with selection
+    // offsets, which count units, so an emoji has to stay two entries long.
     for (let index = 0; index < run.text.length; index += 1) {
-      perChar.push({ style: run.style, origin: run.origin, identity: run.identity });
+      perChar.push({
+        char: run.text[index] ?? "",
+        style: run.style,
+        origin: run.origin,
+        identity: run.identity,
+      });
     }
   }
   return perChar;
