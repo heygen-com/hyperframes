@@ -249,9 +249,7 @@ describe("InlineTextToolbar", () => {
     selectAll(element);
 
     const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
-    expect(swatch.style.background).toBe(
-      "linear-gradient(90deg, red 0.00% 50.00%, lime 50.00% 100.00%)",
-    );
+    expect(swatch.style.background).toBe("linear-gradient(90deg, red 25.00%, lime 75.00%)");
   });
 
   it("shows a plain swatch when the whole selection is one colour", () => {
@@ -266,7 +264,7 @@ describe("InlineTextToolbar", () => {
 });
 
 describe("swatchBackground", () => {
-  it("shows every colour in the selection, sized by how much text carries it", () => {
+  it("blends every colour in the selection, weighted by how much text carries it", () => {
     expect(
       swatchBackground(
         [
@@ -275,7 +273,7 @@ describe("swatchBackground", () => {
         ],
         undefined,
       ),
-    ).toBe("linear-gradient(90deg, red 0.00% 25.00%, lime 25.00% 100.00%)");
+    ).toBe("linear-gradient(90deg, red 12.50%, lime 62.50%)");
   });
 
   it("stays a plain swatch when the selection is one colour", () => {
