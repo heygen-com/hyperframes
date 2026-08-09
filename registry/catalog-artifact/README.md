@@ -34,10 +34,16 @@ this registry, or not with this model.
 
 ## Rebuilding
 
-`scripts/catalog/build-local-vectors.ts` reads `catalog.json` from this
-directory, and that file is gitignored and absent. Nothing in `scripts/` writes
-it: `catalogFromRegistry` in `scripts/catalog/catalog-artifact.ts` produces
-exactly the right shape but has no caller, so the first step is currently manual.
+```bash
+bun scripts/catalog/build-local-vectors.ts
+```
+
+It reads `registry/blocks/*` and `registry/components/*` directly, so the
+rebuild has no input outside this repository. You rarely need to run it by
+hand: a lefthook `catalog-index` pre-commit command regenerates and re-stages
+both files whenever a staged `registry-item.json` changes, and CI fails the
+"Catalog: search index covers the registry" job if the index is ever missing an
+item.
 
 `build-catalog-artifact.ts` does **not** produce these files. It builds the
 3072-dimension hosted artifact from an external shelf file, for the hosted search

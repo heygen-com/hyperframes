@@ -6,15 +6,16 @@
  * interchangeable because vectors from different models cannot be compared.
  *
  * Usage:
- *   tsx scripts/catalog/build-local-vectors.ts --artifact <dir>
+ *   bun scripts/catalog/build-local-vectors.ts
+ *
+ * Defaults to reading `registry/` and writing `registry/catalog-artifact/`.
  *
  * Writes `local-vectors.bin` (float32, row-major, names in manifest order) and
- * `local-vectors.json` (names, dimensions, and the catalog digest it was built
- * from). Splitting them keeps the payload small enough to ship: 424 moves at
+ * `local-vectors.json` (names and dimensions). Splitting them keeps the payload small enough to ship: 424 moves at
  * 384 dimensions is about 650 KB as binary against several megabytes as JSON.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -22,6 +23,7 @@ import {
   LOCAL_MODEL_ID,
 } from "../../packages/cli/src/registry/localModel.js";
 import { loadLocalEmbedder } from "../../packages/cli/src/registry/localEmbedder.js";
+import { catalogFromRegistry } from "./catalog-artifact.js";
 
 const BATCH = 16;
 
@@ -31,14 +33,24 @@ function arg(name: string): string | undefined {
 }
 
 async function main(): Promise<void> {
-  const dir = arg("artifact");
-  if (!dir) throw new Error("--artifact <dir> is required");
+  const dir = arg("artifact") ?? "registry/catalog-artifact";
+  const registryDir = arg("registry") ?? "registry";
 
-  const catalog = JSON.parse(readFileSync(join(dir, "catalog.json"), "utf-8")) as Record<
-    string,
-    string
-  >;
+  // Read the corpus straight from the registry rather than from a catalog.json
+  // built by the hosted-tier script. That file is not in the repo, so the
+  // documented regeneration command used to fail on a missing path, which is
+  // the whole reason the index was allowed to drift.
+  const catalogMap = catalogFromRegistry(
+    registryDir,
+    (path) => readFileSync(path, "utf-8"),
+    (path) =>
+      readdirSync(path, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name),
+  );
+  const catalog = Object.fromEntries(catalogMap);
   const names = Object.keys(catalog).sort();
+  if (names.length === 0) throw new Error(`no registry items found under ${registryDir}`);
   const embedder = await loadLocalEmbedder();
 
   const vectors: number[][] = [];
