@@ -211,6 +211,33 @@ down thirty times a second. Applying must NOT revert, since the audition *was*
 the thing applied. And moving between two entries in a shelf is not leaving it,
 so each entry has to call its neighbours' auditions off itself.
 
+**The three rules are built too**, and so is the visual direction:
+
+- *Two faces.* A module opens on its name, what it is for, and the one control
+  that carries it — `EFFECT_COPY.primary`, with `primaryEnds` saying what its
+  two ends sound like. Everything else is behind a Details disclosure, which is
+  also where the DSP name lives. Ten of fifteen effects; the five whose primary
+  is "strength" open on all their controls until `PROFILES` ships, which is
+  honest — inventing one knob for them now would be a knob that lies.
+- *One knob that matters.* Half of it. The derived control is `PROFILES` and has
+  not shipped; what HAS is the case that made the rule incoherent — see below.
+- *Name the outcome.* Modules, knobs, the add menu and the preset shelf.
+
+- **The range IS the module.** The add menu offers five named jobs — Tame
+  Boominess, Reduce Mud, Reduce Boxiness, Add Clarity, Soften Harshness — and
+  `peaking` is not offered as itself. `packages/core/src/audioFxJobs.ts`. Every
+  one is a job the preset catalogue already ships, at the settings it ships it
+  with, so the list names the vocabulary the presets were written in rather than
+  inventing a second one.
+- **The shared ruler.** Every spectral module shows where it acts across the
+  seven named ranges, log-spaced, with the range it is in named underneath.
+- **Family lettering and the tint step.** Four families told apart by the sans,
+  the serif spent on non-linear, monospace for the measuring modules, and a
+  lightness step per module derived from registry position.
+- **The schematic**, translated to one column: IN and OUT terminals, every step
+  numbered over what the rack shows, and a preset's consecutive nodes bracketed
+  as the one thing that was added.
+
 What is still not wired: `PROFILES`, below.
 
 It has no entry for Tone or for the levelling module, because both carry their
