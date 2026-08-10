@@ -57,7 +57,7 @@ const playerVersionRange = ((): string => {
  * page still serves, which is exactly how a previous attempt at this broke
  * every catalog preview at once.
  */
-function playerEmbed(kind: ItemKind, name: string, posterUrl: string | null): string {
+function playerEmbed(kind: ItemKind, name: string, posterUrl: string | null | undefined): string {
   const payloadUrl = `/public/catalog/${typeDir(kind)}/${name}.json`;
   const poster = posterUrl ? `p.setAttribute("poster","${posterUrl}");` : "";
   const bootstrap = [

@@ -83,7 +83,7 @@
             "pages": [
               "prompting/overview",
               {
-                "group": "Level 1 \u2014 Your first video",
+                "group": "Level 1 — Your first video",
                 "pages": [
                   "prompting/product-launch",
                   "prompting/explainers",
@@ -94,7 +94,7 @@
                 ]
               },
               {
-                "group": "Level 2 \u2014 Control",
+                "group": "Level 2 — Control",
                 "pages": [
                   "prompting/anatomy",
                   "prompting/specification-dial",
@@ -104,14 +104,14 @@
                 ]
               },
               {
-                "group": "Level 3 \u2014 Life",
+                "group": "Level 3 — Life",
                 "pages": [
                   "prompting/motion",
                   "prompting/transitions"
                 ]
               },
               {
-                "group": "Level 4 \u2014 Substance",
+                "group": "Level 4 — Substance",
                 "pages": [
                   "prompting/code-blocks",
                   "prompting/data-and-maps",
@@ -124,13 +124,13 @@
                 ]
               },
               {
-                "group": "Level 5 \u2014 Voice and sound",
+                "group": "Level 5 — Voice and sound",
                 "pages": [
                   "prompting/media-and-audio"
                 ]
               },
               {
-                "group": "Level 6 \u2014 Scale",
+                "group": "Level 6 — Scale",
                 "pages": [
                   "prompting/design-systems",
                   "prompting/variables-and-templating",
@@ -143,7 +143,7 @@
                 ]
               },
               {
-                "group": "Level 7 \u2014 Capstone",
+                "group": "Level 7 — Capstone",
                 "pages": [
                   "prompting/capstone"
                 ]

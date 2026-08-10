@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { inlineAssets, localReferences } from "./catalog-payload-assets.ts";
+import { localReferences, processAssets } from "./catalog-payload-assets.ts";
 
 function project(files: Record<string, string | Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-payload-assets-"));
@@ -13,6 +13,10 @@ function project(files: Record<string, string | Buffer>): string {
     writeFileSync(path, contents);
   }
   return dir;
+}
+
+function target() {
+  return { dir: mkdtempSync(join(tmpdir(), "hf-payload-out-")), urlBase: "/public/catalog/assets" };
 }
 
 describe("localReferences", () => {
@@ -39,8 +43,8 @@ describe("localReferences", () => {
 
   it("ignores a path assigned to an identifier, which is code and not markup", () => {
     // `configSrc` names a file the composition fetches at runtime and parses.
-    // Rewriting it to a data URI would corrupt the script, so the leading
-    // non-identifier character in the pattern is what keeps this out.
+    // Rewriting it would corrupt the script, so the leading non-identifier
+    // character in the pattern is what keeps this out.
     const html = `<script>var configSrc = "config.json";</script>`;
     assert.deepEqual(localReferences(html), []);
   });
@@ -50,52 +54,88 @@ describe("localReferences", () => {
     assert.deepEqual(localReferences(html), ["assets/hero.png"]);
   });
 
-  it("ignores references with no inlinable extension", () => {
+  it("ignores references with no known extension", () => {
     const html = `<a href="/docs/guide">guide</a><div style="background:url(gradient)"></div>`;
     assert.deepEqual(localReferences(html), []);
   });
 });
 
-describe("inlineAssets", () => {
-  it("replaces a reference with a data URI carrying the file", () => {
+describe("processAssets", () => {
+  it("writes a publishable asset once and links to it", () => {
     const dir = project({ "assets/logo.png": Buffer.from([0x89, 0x50]) });
-    const result = inlineAssets(`<img src="assets/logo.png">`, dir);
+    const out = target();
+    const result = processAssets(`<img src="assets/logo.png">`, dir, out);
+
+    assert.equal(result.hosted, 1);
+    assert.equal(result.inlined, 0);
+    assert.deepEqual(result.unresolved, []);
+    assert.match(result.html, /^<img src="\/public\/catalog\/assets\/[0-9a-f]{16}\.png">$/);
+    assert.equal(readdirSync(out.dir).length, 1);
+  });
+
+  it("stores one copy when two items share a byte-identical font", () => {
+    // The reason for content addressing: the catalog's fonts were being
+    // base64'd into a hundred payloads apiece.
+    const font = Buffer.from("a-font-file");
+    const one = project({ "a.woff2": font });
+    const two = project({ "nested/b.woff2": font });
+    const out = target();
+
+    const first = processAssets(`<style>@font-face{src:url(a.woff2)}</style>`, one, out);
+    const second = processAssets(`<style>@font-face{src:url(nested/b.woff2)}</style>`, two, out);
+
+    assert.equal(readdirSync(out.dir).length, 1);
+    const url = /\/public\/catalog\/assets\/[0-9a-f]{16}\.woff2/;
+    assert.equal(first.html.match(url)?.[0], second.html.match(url)?.[0]);
+  });
+
+  it("inlines a type the host will not publish", () => {
+    // `.glb` returns 404 from the docs host, so a link would break the preview.
+    const dir = project({ "scene.glb": Buffer.from([0x67, 0x6c]) });
+    const out = target();
+    const result = processAssets(`<model-viewer src="scene.glb">`, dir, out);
 
     assert.equal(result.inlined, 1);
-    assert.deepEqual(result.unresolved, []);
-    assert.equal(result.html, `<img src="data:image/png;base64,iVA=">`);
+    assert.equal(result.hosted, 0);
+    assert.match(result.html, /data:model\/gltf-binary;base64,/);
+    assert.ok(!existsSync(join(out.dir, "scene.glb")));
+  });
+
+  it("gives the same output twice, so regeneration writes no new bytes", () => {
+    const dir = project({ "a.png": Buffer.from([0x01]) });
+    const first = processAssets(`<img src="a.png">`, dir, target());
+    const second = processAssets(`<img src="a.png">`, dir, target());
+
+    assert.equal(first.html, second.html);
   });
 
   it("replaces every occurrence of the same reference", () => {
     const dir = project({ "a.png": Buffer.from([0x01]) });
-    const result = inlineAssets(`<img src="a.png"><img src="a.png">`, dir);
+    const result = processAssets(`<img src="a.png"><img src="a.png">`, dir, target());
 
-    assert.equal(result.inlined, 1);
-    assert.equal(result.html.match(/data:image\/png/g)?.length, 2);
+    assert.equal(result.html.match(/\/public\/catalog\/assets\//g)?.length, 2);
   });
 
   it("reports a reference whose file is missing rather than dropping it", () => {
     // A runtime-built path such as `masks/${slug}.png` lands here, and the item
     // has to keep its video instead of shipping a preview with holes in it.
-    const dir = project({});
-    const result = inlineAssets(`<img src="masks/gone.png">`, dir);
+    const result = processAssets(`<img src="masks/gone.png">`, project({}), target());
 
     assert.deepEqual(result.unresolved, ["masks/gone.png"]);
-    assert.equal(result.inlined, 0);
   });
 
   it("refuses a reference that climbs out of the project directory", () => {
     const dir = project({ "keep.png": Buffer.from([0x01]) });
-    const result = inlineAssets(`<img src="../../etc/passwd.png">`, dir);
+    const result = processAssets(`<img src="../../etc/passwd.png">`, dir, target());
 
     assert.deepEqual(result.unresolved, ["../../etc/passwd.png"]);
-    assert.equal(result.inlined, 0);
+    assert.equal(result.hosted, 0);
   });
 
   it("leaves a composition with no local references untouched", () => {
-    const dir = project({});
     const html = `<div data-composition-id="x"></div>`;
+    const result = processAssets(html, project({}), target());
 
-    assert.deepEqual(inlineAssets(html, dir), { html, inlined: 0, unresolved: [] });
+    assert.deepEqual(result, { html, hosted: 0, inlined: 0, unresolved: [] });
   });
 });

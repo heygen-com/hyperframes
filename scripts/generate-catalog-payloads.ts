@@ -29,7 +29,7 @@ import {
   type CatalogItem,
   type ItemKind,
 } from "./generate-catalog-previews.js";
-import { inlineAssets } from "./catalog-payload-assets.ts";
+import { processAssets } from "./catalog-payload-assets.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -55,7 +55,15 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const projectDir = await prepareProjectDir(item);
   try {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
-    const { html: withAssets, inlined, unresolved } = inlineAssets(html, projectDir);
+    const {
+      html: withAssets,
+      hosted,
+      inlined,
+      unresolved,
+    } = processAssets(html, projectDir, {
+      dir: join(payloadRoot, "assets"),
+      urlBase: "/public/catalog/assets",
+    });
 
     // A reference we could not inline would 404 inside the player, so the item
     // keeps the MP4 rather than shipping a preview with holes in it.
@@ -73,7 +81,11 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify({ html: withAssets }), "utf-8");
 
-    const assets = inlined > 0 ? `, ${inlined} asset(s) inlined` : "";
+    const counts = [
+      hosted > 0 ? `${hosted} hosted` : "",
+      inlined > 0 ? `${inlined} inlined` : "",
+    ].filter(Boolean);
+    const assets = counts.length > 0 ? `, ${counts.join(" + ")} asset(s)` : "";
     console.log(`  ✓ ${item.name}: ${(bytes / 1024).toFixed(0)} KB${assets}`);
     return "written";
   } finally {
@@ -85,7 +97,7 @@ function parseArgs(): { only: string | null; type: ItemKind | null } {
   const argv = process.argv.slice(2);
   const value = (flag: string): string | null => {
     const at = argv.indexOf(flag);
-    return at !== -1 && argv[at + 1] ? argv[at + 1] : null;
+    return at !== -1 ? (argv[at + 1] ?? null) : null;
   };
   const type = value("--type");
   if (type && type !== "block" && type !== "component") {
