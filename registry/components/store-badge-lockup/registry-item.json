@@ -9,17 +9,18 @@
   "family": "ui-props",
   "profile": "holdable",
   "evidence": "GAP B1 mobile close: app launches need a store-badge end card instead of a URL, and the registry coverage audit found no existing two-store download lockup.",
-  "syncPoints": [{ "id": "lockup-settled", "phase": "in", "offset": 1 }],
+  "syncPoints": [
+    {
+      "id": "lockup-settled",
+      "phase": "in",
+      "offset": 1
+    }
+  ],
   "files": [
     {
       "path": "store-badge-lockup.html",
       "target": "compositions/components/store-badge-lockup.html",
       "type": "hyperframes:snippet"
-    },
-    {
-      "path": "vendor/gsap-3.14.2.min.js",
-      "target": "compositions/components/vendor/gsap-3.14.2.min.js",
-      "type": "hyperframes:asset"
     }
   ],
   "variables": [
@@ -39,8 +40,14 @@
       "description": "Show or hide the App Store badge.",
       "default": "yes",
       "options": [
-        { "value": "yes", "label": "Yes" },
-        { "value": "no", "label": "No" }
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No"
+        }
       ]
     },
     {
@@ -51,8 +58,14 @@
       "description": "Show or hide the Google Play badge.",
       "default": "yes",
       "options": [
-        { "value": "yes", "label": "Yes" },
-        { "value": "no", "label": "No" }
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No"
+        }
       ]
     }
   ]
