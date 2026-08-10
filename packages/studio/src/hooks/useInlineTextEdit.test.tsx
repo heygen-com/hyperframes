@@ -54,6 +54,55 @@ describe("useInlineTextEdit", () => {
     act(() => root.unmount());
   });
 
+  /**
+   * Removing contenteditable and blurring does not drop the browser's own
+   * highlight, so a word picked with a double press stayed painted grey after
+   * the click that closed the edit — text that reads as selected in an element
+   * that is no longer being edited.
+   */
+  it("drops the highlight when the edit closes", () => {
+    const element = heading("Hello world, style me");
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    // Select "world", the way a double press inside the text does.
+    const text = element.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 6);
+    range.setEnd(text, 11);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect(selection.toString()).toBe("world");
+
+    act(() => controls().commit());
+
+    expect(selection.toString()).toBe("");
+    act(() => root.unmount());
+  });
+
+  it("leaves a selection outside the edited element alone", () => {
+    const element = heading("Hello world, style me");
+    const outsider = heading("somewhere else entirely");
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    const range = document.createRange();
+    range.selectNodeContents(outsider);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    act(() => controls().commit());
+
+    expect(selection.toString()).toBe("somewhere else entirely");
+    act(() => root.unmount());
+  });
+
   it("makes the element editable, and focuses it once the press has finished", async () => {
     const element = heading();
     const { controls, root, onPause } = mount();

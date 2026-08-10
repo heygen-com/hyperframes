@@ -66,6 +66,20 @@ export interface InlineTextEditControls {
   cancel: () => void;
 }
 
+/**
+ * Drop the text selection, but only when it lives inside this element.
+ *
+ * A selection somewhere else in the preview belongs to whatever put it there
+ * and is not this session's to clear.
+ */
+function clearSelectionWithin(element: HTMLElement): void {
+  const selection = element.ownerDocument.defaultView?.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.commonAncestorContainer)) return;
+  selection.removeAllRanges();
+}
+
 export function useInlineTextEdit({
   onCommit,
   onPause,
@@ -98,6 +112,10 @@ export function useInlineTextEdit({
       // Restored rather than cleared: the composition may have authored one.
       open.element.style.outline = open.outline;
       open.element.style.outlineOffset = open.outlineOffset;
+      // Drop the highlight too. Removing contenteditable and blurring leaves a
+      // selection made inside the element painted on screen, so a word picked
+      // with a double press stayed grey after the click that closed the edit.
+      clearSelectionWithin(open.element);
       open.element.blur();
     }
     return open;
