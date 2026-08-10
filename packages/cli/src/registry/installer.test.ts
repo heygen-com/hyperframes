@@ -125,3 +125,46 @@ describe("installItem", () => {
     expect(second.written).toHaveLength(1);
   });
 });
+
+describe("installing several items, as a dependency plan does", () => {
+  const other = {
+    name: "shared-caption",
+    type: "hyperframes:component",
+    files: [
+      {
+        path: "shared-caption.html",
+        target: "components/shared-caption.html",
+        type: "hyperframes:file",
+      },
+    ],
+  } as unknown as RegistryItem;
+
+  const otherTarget = "components/shared-caption.html";
+
+  it("keeps a record for every item, not just the last one installed", () => {
+    // `add` installs dependencies first and the requested item last. A record
+    // rewritten per item rather than merged would forget the dependency, and
+    // the next install would read it as edited and refuse to update it.
+    const dir = project();
+    return installItem(item, { destDir: dir })
+      .then(() => installItem(other, { destDir: dir }))
+      .then(() => {
+        const record = JSON.parse(readFileSync(join(dir, "hyperframes.lock.json"), "utf-8"));
+        expect(Object.keys(record).sort()).toEqual([otherTarget, target].sort());
+      });
+  });
+
+  it("preserves an edit to one item while updating another", async () => {
+    const dir = project();
+    await installItem(item, { destDir: dir });
+    await installItem(other, { destDir: dir });
+    writeFileSync(join(dir, target), "EDITED DEPENDENCY\n", "utf-8");
+
+    const edited = await installItem(item, { destDir: dir });
+    const untouched = await installItem(other, { destDir: dir });
+
+    expect(edited.preserved).toHaveLength(1);
+    expect(untouched.written).toHaveLength(1);
+    expect(readFileSync(join(dir, target), "utf-8")).toBe("EDITED DEPENDENCY\n");
+  });
+});
