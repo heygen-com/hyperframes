@@ -1263,7 +1263,9 @@ function main(): void {
       if (!node || typeof node !== "object") return 0;
       const g = node as { pages?: unknown[]; groups?: unknown[] };
       if (Array.isArray(g.pages)) return g.pages.length;
-      if (Array.isArray(g.groups)) return g.groups.reduce((n, child) => n + countPages(child), 0);
+      if (Array.isArray(g.groups)) {
+        return g.groups.reduce((n: number, child: unknown) => n + countPages(child), 0);
+      }
       return 0;
     };
     const totalPages = catalogGroups.reduce((n: number, g) => n + countPages(g), 0);
