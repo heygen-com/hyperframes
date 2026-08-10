@@ -436,6 +436,21 @@ describe("levels and per-channel state", () => {
     expect(src?.playbackRate.value).toBeCloseTo(2, 6);
   });
 
+  /**
+   * A source node is not retired by disconnecting what it feeds. The chorus and
+   * phaser stopped their LFO and left it out of the nodes they disconnect, so
+   * every rebuild that dropped one left a modulator still wired to the delay or
+   * the allpass bank it had been driving.
+   */
+  it("unwires a modulated effect's LFO when the effect is disposed", () => {
+    for (const type of ["chorus", "phaser"]) {
+      const c = ctx();
+      buildFxNode(asCtx(c), type, defaultAudioFxParams(type)).dispose();
+      const lfo = c.created.find((node) => node.kind === "bufferSource");
+      expect(lfo?.disconnected, `${type} left its LFO connected`).toBe(true);
+    }
+  });
+
   it("starts the LFO at zero for a render, which always begins at the clip's start", () => {
     const c = ctx();
     buildFxNode(asCtx(c), "phaser", defaultAudioFxParams("phaser"));

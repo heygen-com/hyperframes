@@ -144,13 +144,23 @@ function lfoSource(
   return src;
 }
 
-/** Stop an LFO that may already have been stopped, on the way to disposal. */
-function stopLfo(src: AudioBufferSourceNode): void {
+/**
+ * Retire an LFO: stopped *and* unwired.
+ *
+ * Both halves. The old oscillators were stopped and left in their builder's
+ * dispose list — so every chain rebuild that dropped a chorus or a phaser left a
+ * modulator still connected to the delay or the allpass bank it had been
+ * driving. Nothing audible came out of it, because the shell around it was
+ * disconnected, but the nodes stayed reachable and a session of edits to a
+ * modulated track accumulated them. Same shape as the worklet leak above.
+ */
+function retireLfo(src: AudioBufferSourceNode): void {
   try {
     src.stop();
   } catch {
     /* already stopped */
   }
+  src.disconnect();
 }
 
 /** A wet/dry pair: the dry side is whatever the wet side is not. */
@@ -365,7 +375,7 @@ const chorusLfo: Builder = (ctx, p, elapsed) => {
       mix: mixTargets(wet.gain, dry.gain),
     },
     dispose: () => {
-      stopLfo(lfo);
+      retireLfo(lfo);
       [input, out, dl, depth, wet, dry].forEach((x) => x.disconnect());
     },
   };
@@ -438,7 +448,7 @@ const allpassPhaser: Builder = (ctx, p, elapsed) => {
       out_gain: [{ param: outTrim.gain }],
     },
     dispose: () => {
-      stopLfo(lfo);
+      retireLfo(lfo);
       [input, out, inTrim, outTrim, depth, wet, dry, ...stages].forEach((x) => x.disconnect());
     },
   };
