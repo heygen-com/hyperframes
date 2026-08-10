@@ -47,6 +47,18 @@ const payloadRoot = resolve(repoRoot, "docs/public/catalog");
  */
 const MAX_PAYLOAD_BYTES = Number(process.env.CATALOG_MAX_PAYLOAD_BYTES ?? 3_000_000);
 
+/**
+ * Compositions that paint DOM into a canvas via `ctx.drawElementImage()`.
+ *
+ * That API sits behind `chrome://flags/#canvas-draw-element`, so a reader
+ * without the flag gets a preview that mounts, plays, and shows an empty
+ * canvas. The recorded video was captured by a renderer that does have it, so
+ * it is the only preview these items can honestly show.
+ */
+function needsCanvasDrawElement(html: string): boolean {
+  return html.includes("drawElementImage");
+}
+
 function typeDir(kind: ItemKind): string {
   return kind === "block" ? "blocks" : "components";
 }
@@ -62,6 +74,12 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const projectDir = await prepareProjectDir(item);
   try {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
+
+    if (needsCanvasDrawElement(html)) {
+      console.log(`  – ${item.name}: needs canvas drawElement, keeping the recorded video`);
+      dropStalePayload();
+      return "skipped";
+    }
     const assetTarget = { dir: join(payloadRoot, "assets"), urlBase: "/public/catalog/assets" };
     const {
       html: withAssets,
