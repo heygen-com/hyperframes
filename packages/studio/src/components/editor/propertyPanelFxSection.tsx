@@ -314,6 +314,41 @@ export function FxSection({
     [chain.nodes, mutate],
   );
 
+  /**
+   * Bypass or restore every node a preset wrote, as one gesture.
+   *
+   * A preset is one thing the author added, so it has to be one thing they can
+   * switch off — reaching into five modules and toggling each is the bookkeeping
+   * the bracket exists to remove. Off is a bypass, not a delete: the settings
+   * survive, which is what makes it worth trying rather than committing to.
+   */
+  const toggleRun = useCallback(
+    (items: { node: HfAudioFxNode; i: number }[], on: boolean) => {
+      const slots = new Set(items.map((item) => item.i));
+      mutate(chain.nodes.map((n, i) => (slots.has(i) ? { ...n, enabled: on } : n)));
+    },
+    [chain.nodes, mutate],
+  );
+
+  /**
+   * Take a preset back out whole, lanes and all.
+   *
+   * Same contract as removing one node — an orphaned lane keeps driving a
+   * parameter that is no longer in the graph, and with ids minted lowest-free
+   * the next effect added inherits it.
+   */
+  const removeRun = useCallback(
+    (items: { node: HfAudioFxNode; i: number }[]) => {
+      for (const { node } of items) {
+        if (node.id) onRemoveNodeAutomation?.(node.id);
+      }
+      const slots = new Set(items.map((item) => item.i));
+      mutate(chain.nodes.filter((_, i) => !slots.has(i)));
+      setOpenNode(null);
+    },
+    [chain.nodes, mutate, onRemoveNodeAutomation],
+  );
+
   const removeNode = useCallback(
     (index: number) => {
       // The node's lanes go with it. `resolveAutomation` only hides an orphan at
@@ -501,15 +536,44 @@ export function FxSection({
             ));
             const preset = run.preset ? getAudioFxPreset(run.preset) : null;
             if (!preset) return rows;
+            // On unless every node in it is bypassed: one switched back on means
+            // the preset is doing something, and the switch has to offer to stop
+            // it rather than claiming it has already stopped.
+            const runOn = run.items.some(({ node }) => node.enabled !== false);
             return (
               <div
                 key={`preset-${run.preset}-${run.items[0]?.i}`}
                 className="hf-fx-preset-run space-y-1 rounded-[4px] border border-dashed border-panel-border-input p-1"
                 data-fx-preset={run.preset}
               >
-                <span className="hf-fx-preset-run-label block px-0.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
-                  {preset.label}
-                </span>
+                <div className="hf-fx-preset-run-head flex min-h-6 items-center gap-1 px-0.5">
+                  <span className="hf-fx-preset-run-label min-w-0 flex-1 truncate font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+                    {preset.label}
+                  </span>
+                  {/* The whole preset, on or off. Partly-bypassed reads as off,
+                      because "some of it is running" is not a state an author
+                      set — it is one they arrived at, and the switch is how they
+                      get back out of it. */}
+                  <button
+                    type="button"
+                    className="hf-fx-preset-run-toggle rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+                    aria-pressed={runOn}
+                    title={runOn ? `Bypass ${preset.label}` : `Switch ${preset.label} back on`}
+                    disabled={disabled}
+                    onClick={() => toggleRun(run.items, !runOn)}
+                  >
+                    {runOn ? "On" : "Off"}
+                  </button>
+                  <button
+                    type="button"
+                    className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-4 hover:text-red-400 disabled:opacity-40"
+                    title={`Remove ${preset.label}`}
+                    disabled={disabled}
+                    onClick={() => removeRun(run.items)}
+                  >
+                    &times;
+                  </button>
+                </div>
                 {rows}
               </div>
             );

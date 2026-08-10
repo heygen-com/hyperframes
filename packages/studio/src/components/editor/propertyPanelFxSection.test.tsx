@@ -11,7 +11,7 @@ import { DEFAULT_CARVE } from "@hyperframes/core/audio-carve";
 import { BANDS, EFFECT_COPY, PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
 import { HF_AUDIO_FX_JOBS, HF_AUDIO_FX_JOB_TYPES } from "@hyperframes/core/audio-fx-jobs";
 import { audioFxProfileStrength } from "@hyperframes/core/audio-fx-profiles";
-import { getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
+import { applyAudioFxPreset, getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 
 /**
  * What a knob is CALLED in the panel, looked up rather than spelled out.
@@ -87,6 +87,7 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       automatedTargets={overrides.automatedTargets}
       onAutomateParam={overrides.onAutomateParam}
       onRemoveParamAutomation={overrides.onRemoveParamAutomation}
+      onRemoveNodeAutomation={overrides.onRemoveNodeAutomation}
       onLevel={overrides.onLevel}
       onRemoveLevel={overrides.onRemoveLevel}
       levelled={overrides.levelled}
@@ -410,6 +411,90 @@ describe("FxSection chain", () => {
     expect(run).toBeTruthy();
     expect(run?.querySelector(".hf-fx-preset-run-label")?.textContent).toBe("Telephone");
     expect(run?.querySelectorAll(".hf-fx-node")).toHaveLength(written.length);
+  });
+
+  describe("a preset is one thing to switch off or take away", () => {
+    /** A telephone preset applied, plus one hand-built effect beside it. */
+    const applied = (): HfAudioFxChain => {
+      const preset = getAudioFxPreset("telephone");
+      if (!preset) throw new Error("no telephone preset");
+      // Through the real applier: `fromPreset` is stamped there, not carried in
+      // the catalogue, and the tag is the whole basis of the bracket.
+      const withPreset = applyAudioFxPreset({ version: 1, nodes: [] }, preset);
+      return {
+        ...withPreset,
+        nodes: [
+          ...withPreset.nodes,
+          { type: "reverb", id: "own", enabled: true, params: defaultAudioFxParams("reverb") },
+        ],
+      };
+    };
+
+    it("bypasses every node it wrote, in one gesture", () => {
+      // Reaching into five modules and toggling each is exactly the bookkeeping
+      // the bracket exists to remove.
+      const { host, onChainChange } = mount({ chain: applied() });
+      const run = host.querySelector("[data-fx-preset='telephone']");
+      click(run?.querySelector(".hf-fx-preset-run-toggle"));
+
+      const next = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain;
+      expect(next.nodes.filter((n) => n.fromPreset === "telephone").every((n) => !n.enabled)).toBe(
+        true,
+      );
+      // And leaves what the author added themselves alone.
+      expect(next.nodes.find((n) => n.id === "own")?.enabled).toBe(true);
+    });
+
+    it("switches back on rather than deleting, so the settings survive", () => {
+      const off = applied();
+      off.nodes = off.nodes.map((n) =>
+        n.fromPreset === "telephone" ? { ...n, enabled: false } : n,
+      );
+      const { host, onChainChange } = mount({ chain: off });
+      const toggle = host
+        .querySelector("[data-fx-preset='telephone']")
+        ?.querySelector(".hf-fx-preset-run-toggle");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+      click(toggle);
+
+      const next = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain;
+      const back = next.nodes.filter((n) => n.fromPreset === "telephone");
+      expect(back.every((n) => n.enabled)).toBe(true);
+      // Nothing was thrown away.
+      expect(back).toHaveLength(off.nodes.filter((n) => n.fromPreset === "telephone").length);
+    });
+
+    it("reads as on while any of it is still running", () => {
+      // "Some of it is bypassed" is not a state an author set — it is one they
+      // arrived at, and the switch has to offer to stop it rather than claim it
+      // has already stopped.
+      const partial = applied();
+      partial.nodes = partial.nodes.map((n, i) => (i === 0 ? { ...n, enabled: false } : n));
+      const { host } = mount({ chain: partial });
+      expect(
+        host
+          .querySelector("[data-fx-preset='telephone']")
+          ?.querySelector(".hf-fx-preset-run-toggle")
+          ?.getAttribute("aria-pressed"),
+      ).toBe("true");
+    });
+
+    it("takes the preset back out whole, with its lanes", () => {
+      const onRemoveNodeAutomation = vi.fn();
+      const { host, onChainChange } = mount({ chain: applied(), onRemoveNodeAutomation });
+      click(
+        host
+          .querySelector("[data-fx-preset='telephone']")
+          ?.querySelector(".hf-fx-preset-run-remove"),
+      );
+
+      const next = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain;
+      expect(next.nodes.filter((n) => n.fromPreset === "telephone")).toEqual([]);
+      expect(next.nodes.map((n) => n.id)).toEqual(["own"]);
+      // An orphaned lane keeps driving a parameter that is no longer in the
+      // graph, and the next effect added inherits it with the id.
+      expect(onRemoveNodeAutomation).toHaveBeenCalled();
+    });
   });
 
   it("brackets only nodes a preset still sits next to", () => {
