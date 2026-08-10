@@ -8,6 +8,29 @@ import { DomEditSelectionChrome } from "./DomEditSelectionChrome";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** A selection whose capabilities are all on or all off, plus a host to render into. */
+function selectionFixture(
+  element: HTMLElement,
+  selector: string,
+  enabled: boolean,
+  extra: Record<string, unknown> = {},
+) {
+  const selection = {
+    element,
+    selector,
+    ...extra,
+    capabilities: {
+      canCrop: enabled,
+      canApplyManualOffset: enabled,
+      canApplyManualSize: enabled,
+      canApplyManualRotation: enabled,
+    },
+  } as unknown as DomEditSelection;
+  const host = document.createElement("div");
+  document.body.append(host);
+  return { selection, host, root: createRoot(host) };
+}
+
 describe("DomEditSelectionChrome crop composition", () => {
   it("renders overlay-only transparent chrome at headline geometry without changing composition bytes", () => {
     const composition = document.implementation.createHTMLDocument();
@@ -18,19 +41,7 @@ describe("DomEditSelectionChrome crop composition", () => {
     `;
     const headline = composition.querySelector<HTMLElement>(".hl-text")!;
     const before = composition.documentElement.outerHTML;
-    const selection = {
-      element: headline,
-      selector: ".hl-text",
-      capabilities: {
-        canCrop: false,
-        canApplyManualOffset: false,
-        canApplyManualSize: false,
-        canApplyManualRotation: false,
-      },
-    } as unknown as DomEditSelection;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
+    const { selection, host, root } = selectionFixture(headline, ".hl-text", false);
     act(() => {
       root.render(
         <DomEditSelectionChrome
@@ -78,20 +89,7 @@ describe("DomEditSelectionChrome crop composition", () => {
           ? { clipPath: "inset(10px)", transform: "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)" }
           : { clipPath: "none", transform: "none" }) as CSSStyleDeclaration) as never,
     );
-    const selection = {
-      element,
-      id: "clip",
-      selector: "#clip",
-      capabilities: {
-        canCrop: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: true,
-        canApplyManualRotation: true,
-      },
-    } as unknown as DomEditSelection;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
+    const { selection, host, root } = selectionFixture(element, "#clip", true, { id: "clip" });
     act(() => {
       root.render(
         <DomEditSelectionChrome

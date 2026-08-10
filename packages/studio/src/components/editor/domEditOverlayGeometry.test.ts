@@ -165,6 +165,19 @@ describe("orientedOverlayRect — rotation gate (perf fix, V15 18a/18b)", () => 
    * a text layer inside a rotated card got an upright dashed box sitting across
    * the rotated glyphs — the parent's chrome rotated and its children's did not.
    */
+  /**
+   * The selection box and the crop outline compose the same ancestor walk, so
+   * this asserts the geometry side of the case the crop test covers: a child
+   * inside a rotated parent reports the angle it paints at, not its own.
+   */
+  it("composes the parent's rotation into the child's angle", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.parentElement!.style.transform = ROTATE_30DEG_MATRIX;
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
   it("child outlines carry the element's angle, so they can co-rotate with it", () => {
     const { overlayEl, iframe, el } = buildHarness();
     el.style.transform = ROTATE_30DEG_MATRIX;

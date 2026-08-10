@@ -7,8 +7,8 @@ import {
   resolveCropInsetFromEdgeDrag,
   resolveCropInsetFromMoveDrag,
   rotateDeltaIntoFrame,
-  individualRotateDegrees,
 } from "./domEditOverlayCrop";
+import { individualRotateDegrees } from "./domEditOverlayTransform";
 
 describe("resolveCropInsetFromEdgeDrag", () => {
   const startInsets = { top: 10, right: 20, bottom: 30, left: 40 };
@@ -161,10 +161,15 @@ describe("readElementCropInsets tri-state", () => {
 describe("readElementCropFrame", () => {
   const overlayRect = { left: 100, top: 50, width: 220, height: 130, editScaleX: 1, editScaleY: 1 };
 
+  // Models an element well enough for the ancestor walk: it reports its own
+  // transform, claims no composition-root attribute, and has no parent, so the
+  // walk composes exactly one node.
   const fakeEl = (transform: string, offsetWidth = 200, offsetHeight = 100) =>
     ({
       offsetWidth,
       offsetHeight,
+      parentElement: null,
+      hasAttribute: () => false,
       ownerDocument: { defaultView: { getComputedStyle: () => ({ transform }) } },
     }) as unknown as HTMLElement;
 
@@ -306,5 +311,67 @@ describe("individualRotateDegrees", () => {
     expect(individualRotateDegrees(undefined)).toBe(0);
     expect(individualRotateDegrees("")).toBe(0);
     expect(individualRotateDegrees("12")).toBe(0);
+  });
+});
+
+describe("readElementCropFrame — the composed walk", () => {
+  /**
+   * The case the crop outline got wrong: a text layer inside a rotated card.
+   * The layer carries its own spin and its parent turns it again, so the box
+   * belongs at the combination. Reading the element alone drew it across the
+   * text at roughly a right angle.
+   */
+  const nested = (childTransform: string, parentTransform: string) => {
+    const style = (transform: string) => ({ transform }) as CSSStyleDeclaration;
+    const parent = {
+      offsetWidth: 400,
+      offsetHeight: 300,
+      parentElement: null,
+      hasAttribute: (name: string) => name === "data-composition-id",
+      ownerDocument: { defaultView: { getComputedStyle: () => style(parentTransform) } },
+    };
+    return {
+      offsetWidth: 200,
+      offsetHeight: 100,
+      parentElement: parent,
+      hasAttribute: () => false,
+      ownerDocument: {
+        defaultView: {
+          getComputedStyle: (node: unknown) =>
+            node === parent ? style(parentTransform) : style(childTransform),
+        },
+      },
+    } as unknown as HTMLElement;
+  };
+
+  const overlayRect = { left: 100, top: 50, width: 220, height: 130, editScaleX: 1, editScaleY: 1 };
+
+  it("adds the parent's rotation to the child's", () => {
+    // child 30deg inside a parent turned 60deg → the layer paints at 90.
+    const frame = readElementCropFrame(
+      nested(
+        "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)",
+        "matrix(0.5, 0.8660254, -0.8660254, 0.5, 0, 0)",
+      ),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(90, 3);
+  });
+
+  it("takes the parent's rotation when the child has none of its own", () => {
+    const frame = readElementCropFrame(
+      nested("none", "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
+  });
+
+  it("stops at the composition root rather than walking the whole document", () => {
+    // The root itself is marked, so its own transform is the last one counted.
+    const frame = readElementCropFrame(
+      nested("none", "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
   });
 });
