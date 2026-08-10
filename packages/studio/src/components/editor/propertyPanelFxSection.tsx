@@ -35,6 +35,7 @@ import {
   type HfAudioFxJob,
 } from "@hyperframes/core/audio-fx-jobs";
 import { FxParamRow } from "./propertyPanelFxControls.js";
+import { fxPresetStyle } from "./propertyPanelFxPresetStyle.js";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -462,6 +463,17 @@ export function FxSection({
     return out;
   }, [handBuilt]);
 
+  /**
+   * Preset runs the author has folded shut.
+   *
+   * A preset is one thing they added, and once it is set the seven modules
+   * inside are detail — a rack with two presets in it was thirteen cards deep
+   * before anything hand-built appeared. Collapsed by id rather than by index so
+   * it survives a reorder, and open by default: a preset that arrives already
+   * hidden is one nobody learns is a chain they can edit.
+   */
+  const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
+
   const eqIds = useMemo(() => audioEqIds(chain), [chain]);
 
   /**
@@ -634,16 +646,54 @@ export function FxSection({
             const amount = run.items[0]?.node.presetAmount;
             const runAmount = typeof amount === "number" ? amount : 1;
             const runOn = runAmount > 0;
+            const runKey = `${run.preset}-${run.items[0]?.i ?? 0}`;
+            const collapsed = collapsedRuns.has(runKey);
+            const style = fxPresetStyle(run.preset ?? "");
             return (
               <div
                 key={`preset-${run.preset}-${run.items[0]?.i}`}
-                className="hf-fx-preset-run space-y-1 rounded-[4px] border border-dashed border-panel-border-input p-1"
+                className="hf-fx-preset-run space-y-1 rounded-[4px] border border-l-2 border-dashed border-panel-border-input p-1"
                 data-fx-preset={run.preset}
+                data-collapsed={collapsed ? "" : undefined}
+                // The bracket's edge carries the preset's own colour, the way a
+                // module's carries its family's.
+                style={{ borderLeftColor: style.color }}
               >
                 <div className="hf-fx-preset-run-head flex min-h-6 items-center gap-1 px-0.5">
-                  <span className="hf-fx-preset-run-label min-w-0 flex-1 truncate font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+                  <button
+                    type="button"
+                    className={`hf-fx-preset-run-label min-w-0 flex-1 truncate text-left text-[10px] hover:opacity-80 ${style.type}`}
+                    style={{ color: style.color }}
+                    aria-expanded={!collapsed}
+                    title={
+                      collapsed
+                        ? `Show what ${preset.label} contains`
+                        : `Hide ${preset.label}'s effects`
+                    }
+                    onClick={() =>
+                      setCollapsedRuns((was) => {
+                        const next = new Set(was);
+                        if (collapsed) next.delete(runKey);
+                        else next.add(runKey);
+                        return next;
+                      })
+                    }
+                  >
+                    <span
+                      className="hf-fx-preset-run-caret pr-1 font-mono opacity-60"
+                      aria-hidden="true"
+                    >
+                      {collapsed ? "\u25B8" : "\u25BE"}
+                    </span>
                     {preset.label}
-                  </span>
+                    {/* Collapsed, the count is what says the preset is still a
+                        chain rather than one opaque effect. */}
+                    {collapsed ? (
+                      <span className="hf-fx-preset-run-count pl-1.5 font-mono text-[9px] opacity-60">
+                        {run.items.length}
+                      </span>
+                    ) : null}
+                  </button>
                   {/* The whole preset, on or off. Partly-bypassed reads as off,
                       because "some of it is running" is not a state an author
                       set — it is one they arrived at, and the switch is how they
@@ -688,7 +738,7 @@ export function FxSection({
                       : undefined
                   }
                 />
-                {rows}
+                {collapsed ? null : rows}
               </div>
             );
           })
