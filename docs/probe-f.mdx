@@ -1,0 +1,23 @@
+---
+title: "Probe F"
+description: "real player, real composition, inline in MDX"
+---
+
+<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7.105/dist/hyperframes-player.global.js"></script>
+
+<hyperframes-player
+  style={{ width: "100%", aspectRatio: "16 / 9", display: "block" }}
+  srcdoc={`<!doctype html><html><head><script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"><\/script></head>
+<body style="margin:0">
+<div data-composition-id="probe" data-width="1280" data-height="720" data-duration="2" data-fps="30" style="width:1280px;height:720px;background:#120b3d;position:relative;overflow:hidden">
+  <div class="clip" data-start="0" data-end="2" id="box" style="position:absolute;top:300px;left:80px;width:140px;height:140px;background:#9C7CFF;border-radius:24px"></div>
+  <div style="position:absolute;bottom:50px;left:80px;color:#fff;font:700 40px system-ui,sans-serif">F: PLAYER MOUNTED</div>
+</div>
+<script>
+window.__timelines = window.__timelines || {};
+var tl = gsap.timeline({ paused: true });
+tl.to("#box", { x: 900, rotation: 180, duration: 2, ease: "power2.inOut" });
+window.__timelines["probe"] = tl;
+<\/script>
+</body></html>`}
+/>
