@@ -17,7 +17,7 @@ Two consequences you will meet immediately:
 - Reaching a preview element from a driver or a test means going through the
   iframe: `iframe.contentDocument.getElementById(...)`. Studio's own panels may
   be inside shadow roots, so a plain `document.querySelector` finds neither.
-- Every overlay box is a *measurement* of an element, not the element. When
+- Every overlay box is a _measurement_ of an element, not the element. When
   chrome disagrees with the pixels underneath it, the bug is almost always in
   the measurement, in `components/editor/domEditOverlayGeometry.ts`.
 
