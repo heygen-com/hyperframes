@@ -1031,6 +1031,14 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
   assert.ok(resolveEvent, "expected a media_use_resolve event in the intercepted batch");
   assert.equal(resolveEvent.properties.provider, "test");
   assert.equal(resolveEvent.properties.type, "bgm");
+  // "test" is not a declared registry provider, so the tier is absent rather than
+  // guessed — the same sparseness rule auth_method follows.
+  assert.equal(
+    "provider_tier" in resolveEvent.properties &&
+      resolveEvent.properties.provider_tier !== undefined,
+    false,
+    "an undeclared provider must not be assigned a cost tier",
+  );
 });
 
 // --- run ---
