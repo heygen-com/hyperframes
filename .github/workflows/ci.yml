@@ -44,6 +44,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - name: Reject accidental file deletions
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-no-main-deletions.mjs --base origin/main
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
         id: filter
         with:
