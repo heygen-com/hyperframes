@@ -82,6 +82,8 @@ export interface RunAddArgs {
   name: string;
   projectDir: string;
   skipClipboard?: boolean;
+  /** Overwrite files this project has changed since they were installed. */
+  force?: boolean;
   /** Current CLI version used for registry metadata compatibility checks. */
   cliVersion?: string;
 }
@@ -92,6 +94,8 @@ export interface RunAddResult {
   type: RegistryItem["type"];
   typeDir: string;
   written: string[];
+  /** Files left as they were because this project had changed them. */
+  preserved: string[];
   /** Names of every item installed, in order — dependencies first, then `name`. */
   installed: string[];
   snippet: string;
@@ -135,12 +139,15 @@ async function installAll(
   installPlan: RegistryItem[],
   destDir: string,
   baseUrl: string | undefined,
-): Promise<string[]> {
+  force: boolean,
+): Promise<{ written: string[]; preserved: string[] }> {
   const written: string[] = [];
+  const preserved: string[] = [];
   try {
     for (const planItem of installPlan) {
-      const result = await installItem(planItem, { destDir, baseUrl });
+      const result = await installItem(planItem, { destDir, baseUrl, force });
       written.push(...result.written);
+      preserved.push(...result.preserved);
     }
   } catch (err) {
     throw new AddError(
@@ -148,7 +155,7 @@ async function installAll(
       "install-failed",
     );
   }
-  return written;
+  return { written, preserved };
 }
 
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
@@ -196,7 +203,12 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   }));
 
   // 5. Install — dependencies first, requested item last.
-  const written = await installAll(installPlan, projectDir, config.registry);
+  const { written, preserved } = await installAll(
+    installPlan,
+    projectDir,
+    config.registry,
+    opts.force ?? false,
+  );
 
   // Report what landed, not what was asked for: a failed install throws above,
   // and the bulk `add <tag>` path re-enters here per item, so this one place
@@ -225,6 +237,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     type: item.type,
     typeDir: ITEM_TYPE_DIRS[item.type],
     written,
+    preserved,
     installed: installPlan.map((planItem) => planItem.name),
     snippet,
     clipboardCopied,
@@ -265,6 +278,11 @@ export default defineCommand({
       type: "boolean",
       description: "Print a machine-readable summary (written files + snippet) to stdout",
     },
+    force: {
+      type: "boolean",
+      description:
+        "Overwrite files you have edited since installing them (they are kept by default)",
+    },
   },
   // `run` is 28 cyclomatic and predates this change, which touches only
   // `runAdd`. Fallow scores it as new because the file changed. Splitting the
@@ -279,7 +297,12 @@ export default defineCommand({
 
     // Try single item first. If it fails, check if the name matches a tag.
     try {
-      const result = await runAdd({ name: args.name, projectDir, skipClipboard });
+      const result = await runAdd({
+        name: args.name,
+        projectDir,
+        skipClipboard,
+        force: args.force,
+      });
       const wroteConfig = !hasConfigBefore && existsSync(projectConfigPath(projectDir));
 
       if (json) {
@@ -295,6 +318,12 @@ export default defineCommand({
       }
       console.log("");
       console.log(`${c.success("✓")} Added ${c.accent(result.name)} (${result.type})`);
+      for (const file of result.preserved) {
+        console.log(
+          `  ${c.warn("kept")} ${relative(projectDir, file) || file} — you have edited this; --force to overwrite`,
+        );
+      }
+
       for (const file of result.written) {
         console.log(`  ${c.dim(relative(projectDir, file))}`);
       }
@@ -351,7 +380,12 @@ export default defineCommand({
       const results: RunAddResult[] = [];
       for (const item of items) {
         try {
-          const result = await runAdd({ name: item.name, projectDir, skipClipboard: true });
+          const result = await runAdd({
+            name: item.name,
+            projectDir,
+            skipClipboard: true,
+            force: args.force,
+          });
           results.push(result);
           for (const warning of result.warnings) {
             if (!json) console.log(`  ${c.warn("Warning:")} ${warning}`);
