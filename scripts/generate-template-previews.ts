@@ -29,15 +29,12 @@ import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
-  createFileServer,
-  createCaptureSession,
-  initializeSession,
   captureFrame,
-  getCompositionDuration,
   closeCaptureSession,
   createRenderJob,
   executeRenderJob,
 } from "@hyperframes/producer";
+import { openOpaqueCapture } from "./preview-capture.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -59,11 +56,12 @@ const TEMPLATE_CONFIG: Record<string, { width: number; height: number; captureTi
 };
 
 function patchTemplateHtml(dir: string, durationSeconds: number): void {
-  const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".html"))
-    .map((e) => join(e.parentPath ?? e.path, e.name));
+  const htmlEntries = readdirSync(dir, { withFileTypes: true, recursive: true }).filter(
+    (e) => e.isFile() && e.name.endsWith(".html"),
+  );
 
-  for (const file of htmlFiles) {
+  for (const entry of htmlEntries) {
+    const file = join(entry.parentPath, entry.name);
     let content = readFileSync(file, "utf-8");
     content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/video>/g, "");
     content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
@@ -140,34 +138,12 @@ async function generateThumbnail(templateId: string, projectDir: string): Promis
   const config = TEMPLATE_CONFIG[templateId] ?? DEFAULT_CONFIG;
 
   const framesDir = join(projectDir, "_thumb_frames");
-  mkdirSync(framesDir, { recursive: true });
-
-  const fileServer = await createFileServer({
+  const { fileServer, session, duration } = await openOpaqueCapture({
     projectDir,
-    port: 0,
-    fps: { num: 30, den: 1 },
+    width: config.width,
+    height: config.height,
   });
   try {
-    // Opaque capture, for the reason spelled out in generate-catalog-previews.ts:
-    // `format: "png"` is the engine's TRANSPARENT mode and forces
-    // `background-image: none !important` on every composition root, silently
-    // dropping any backdrop the template paints for itself.
-    const session = await createCaptureSession(fileServer.url, framesDir, {
-      width: config.width,
-      height: config.height,
-      fps: 30,
-      format: "jpeg",
-      quality: 95,
-    });
-    await initializeSession(session);
-
-    let duration: number;
-    try {
-      duration = await getCompositionDuration(session);
-    } catch {
-      duration = 5;
-    }
-
     const t = Math.min(config.captureTime, duration * 0.8);
     const result = await captureFrame(session, 0, t);
     execFileSync(

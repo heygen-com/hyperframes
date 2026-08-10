@@ -234,7 +234,7 @@ function textureGroupsFor(manifest: RegistryItem): TextureGroup[] {
     if (!group || typeof group !== "object") return false;
     if (!("title" in group) || typeof group.title !== "string") return false;
     if (!("items" in group) || !Array.isArray(group.items)) return false;
-    return group.items.every((item) => typeof item === "string");
+    return group.items.every((item: unknown) => typeof item === "string");
   });
 }
 
@@ -403,7 +403,7 @@ function generateTextureAnimationExample(
 function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGroup[]): string[] {
   const sampleItems = textureGroups
     .map((group) => group.items[0])
-    .filter(Boolean)
+    .filter((item): item is string => Boolean(item))
     .slice(0, 6);
   const lines: string[] = ['<div className="hf-texture-preview-panel">'];
 
@@ -411,8 +411,8 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
     const maskPath = textureMaskUrlFor(manifest, item);
     lines.push(
       `  <div className="hf-texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
-      `    <div className="hf-texture-preview-label">${textureLabel(item!)}</div>`,
-      `    <div className="hf-texture-preview-shadow"><div className="hf-texture-preview-word">${textureSampleWord(item!)}</div></div>`,
+      `    <div className="hf-texture-preview-label">${textureLabel(item)}</div>`,
+      `    <div className="hf-texture-preview-shadow"><div className="hf-texture-preview-word">${textureSampleWord(item)}</div></div>`,
       "  </div>",
     );
   }

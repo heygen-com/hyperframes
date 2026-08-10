@@ -226,7 +226,9 @@ function assertTagMonotonicity(version: string) {
   process.exit(1);
 }
 
-export function releaseRequiresChangelog(options: ReleaseOptions) {
+export function releaseRequiresChangelog(
+  options: Pick<ReleaseOptions, "version" | "skipTag" | "skipChangelogCheck">,
+) {
   return !options.skipTag && !options.skipChangelogCheck && !isPrerelease(options.version);
 }
 
@@ -267,7 +269,7 @@ export function unreviewedChangelogArtifacts(version: string) {
 }
 
 function artifactExists(artifact: string) {
-  const [path, marker] = artifact.split("#");
+  const [path = artifact, marker] = artifact.split("#");
   const absolutePath = join(ROOT, path);
 
   if (!existsSync(absolutePath)) {
@@ -277,7 +279,7 @@ function artifactExists(artifact: string) {
 }
 
 function artifactHasGeneratedTodo(artifact: string) {
-  const [path, marker] = artifact.split("#");
+  const [path = artifact, marker] = artifact.split("#");
   const content = readFileSync(join(ROOT, path), "utf-8");
   if (!marker) {
     return hasGeneratedChangelogTodo(content);

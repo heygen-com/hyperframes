@@ -19,7 +19,7 @@ pre-commit:
       run: bun packages/cli/scripts/gen-skills-manifest.ts && git add skills-manifest.json
     typecheck:
       glob: "*.{ts,tsx}"
-      run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit
+      run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit && cd ../.. && bunx tsc --noEmit -p scripts/tsconfig.json
     # Mirrors the CI gate (same `--base origin/main` so the local hook can't
     # pass on a branch CI would fail). Audits the working tree, which means
     # unstaged WIP in `packages/**` is part of the diff — stash before

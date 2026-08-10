@@ -24,7 +24,10 @@ import {
   type FileType,
   type RegistryItem,
   type RegistryManifest,
-} from "@hyperframes/core";
+  // Import from source, like every other script here: bun workspace linking
+  // does not resolve for scripts outside packages/, so the package name
+  // typechecks on a machine with a warm node_modules and fails in CI.
+} from "../packages/core/src/index.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");

@@ -259,6 +259,7 @@ jobs:
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run --filter '*' typecheck
+      - run: bun run typecheck:scripts
 
   test:
     name: Test

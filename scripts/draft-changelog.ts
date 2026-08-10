@@ -273,12 +273,8 @@ export function parseConventionalSubject(subject: string): ParsedSubject {
     };
   }
 
-  return {
-    type: match[1],
-    scope: match[2],
-    summary: match[4],
-    breaking: match[3] === "!",
-  };
+  const [, type = "other", scope, breaking, summary = subject] = match;
+  return { type, scope, summary, breaking: breaking === "!" };
 }
 
 function extractPrNumber(subject: string) {
@@ -444,7 +440,7 @@ function capitalize(value: string) {
   if (!value) {
     return value;
   }
-  return value[0].toUpperCase() + value.slice(1);
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function renderTagsLiteral(tags: string[]) {

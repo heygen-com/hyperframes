@@ -35,17 +35,14 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
-  createFileServer,
-  createCaptureSession,
-  initializeSession,
   captureFrame,
-  getCompositionDuration,
   closeCaptureSession,
   createRenderJob,
   executeRenderJob,
 } from "../packages/producer/src/index.js";
 import { compileForRender } from "../packages/producer/src/services/htmlCompiler.js";
 import { resolveContainedCopies } from "./registry-target-paths.mjs";
+import { openOpaqueCapture } from "./preview-capture.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -277,52 +274,25 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
   return tmpDir;
 }
 
+/** Pull a `data-<attr>` pixel value out of the wrapper markup, or fall back. */
+function wrapperDimension(html: string, attr: "width" | "height", fallback: number): number {
+  const match = html.match(new RegExp(`data-${attr}="(\\d+)"`))?.[1];
+  return match ? parseInt(match, 10) : fallback;
+}
+
 async function generateThumbnail(item: CatalogItem, projectDir: string): Promise<void> {
   const outDir = outputDir(item.kind);
   mkdirSync(outDir, { recursive: true });
 
   // Read dimensions from the wrapper index.html (which may differ from native
   // dimensions for portrait overlays that are scaled to fit landscape).
-  let width = 1920;
-  let height = 1080;
-  const wrapperPath = join(projectDir, "index.html");
-  const wrapperHtml = readFileSync(wrapperPath, "utf-8");
-  const wMatch = wrapperHtml.match(/data-width="(\d+)"/);
-  const hMatch = wrapperHtml.match(/data-height="(\d+)"/);
-  if (wMatch) width = parseInt(wMatch[1], 10);
-  if (hMatch) height = parseInt(hMatch[1], 10);
+  const wrapperHtml = readFileSync(join(projectDir, "index.html"), "utf-8");
+  const width = wrapperDimension(wrapperHtml, "width", 1920);
+  const height = wrapperDimension(wrapperHtml, "height", 1080);
 
   const framesDir = join(projectDir, "_thumb_frames");
-  mkdirSync(framesDir, { recursive: true });
-
-  const fileServer = await createFileServer({
-    projectDir,
-    port: 0,
-    fps: { num: 30, den: 1 },
-  });
+  const { fileServer, session, duration } = await openOpaqueCapture({ projectDir, width, height });
   try {
-    // `format: "png"` is the engine's TRANSPARENT capture mode: it forces
-    // `background-image: none !important` on every `[data-composition-id]`, so
-    // any block whose scene paints its own backdrop (the VS Code snippets sit
-    // on a desktop wallpaper) loses it and the poster comes out empty. These
-    // posters are opaque page images, never a compositing layer — capture
-    // opaque and transcode to the .png the catalog pages reference.
-    const session = await createCaptureSession(fileServer.url, framesDir, {
-      width,
-      height,
-      fps: { num: 30, den: 1 },
-      format: "jpeg",
-      quality: 95,
-    });
-    await initializeSession(session);
-
-    let duration: number;
-    try {
-      duration = await getCompositionDuration(session);
-    } catch {
-      duration = 5;
-    }
-
     // Capture after the treatment appears, capped for long compositions.
     const captureTime = Math.min(3.0, duration * 0.6);
     const result = await captureFrame(session, 0, captureTime);
