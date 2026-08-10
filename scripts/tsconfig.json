@@ -9,9 +9,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowJs": true,
-    "allowImportingTsExtensions": true,
-    "types": ["node"]
+    "allowImportingTsExtensions": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "catalog/*.test.ts", "generate-template-previews.ts"]
+  "exclude": ["node_modules"]
 }

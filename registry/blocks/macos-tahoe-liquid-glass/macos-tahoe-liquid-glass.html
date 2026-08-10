@@ -1271,26 +1271,6 @@
         g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
       }
 
-      // These compositions were authored around a model whose screen faced -Z
-      // (the old asset's display plane sat at its minimum Z) and every camera
-      // move and spin in the timeline assumes it. The replacement faces +Z, so
-      // align the model rather than re-time the animation. Reads the model's
-      // own parts, so a re-export facing the other way still lands right.
-      function alignScreenToMinusZ(root, frontName, backName) {
-        var front = root.getObjectByName(frontName);
-        var back = root.getObjectByName(backName);
-        if (!front || !back) return;
-        // matrixWorld is only refreshed during a render, and this runs at load,
-        // so without this the two parts both read as the origin and the test
-        // silently never fires.
-        root.updateWorldMatrix(true, true);
-        var fp = new THREE.Vector3();
-        var bp = new THREE.Vector3();
-        front.getWorldPosition(fp);
-        back.getWorldPosition(bp);
-        if (fp.z > bp.z) root.rotation.y += Math.PI;
-      }
-
       loader.load("models/macbook.glb", function (gltf) {
         var m = gltf.scene;
         var box = new THREE.Box3().setFromObject(m);

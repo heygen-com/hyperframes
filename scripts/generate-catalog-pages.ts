@@ -20,7 +20,7 @@ import {
   writeFileSync,
   rmSync,
   readdirSync,
-  statSync,
+  lstatSync,
 } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -795,7 +795,11 @@ function writePlayerPreview(
     for (const entryName of readdirSync(fromDir)) {
       if (entryName === "registry-item.json") continue;
       const from = join(fromDir, entryName);
-      if (!statSync(from).isFile()) {
+      // lstat, not stat: a symlinked directory would otherwise be followed,
+      // and one pointing at an ancestor recurses until the disk fills.
+      const stats = lstatSync(from);
+      if (stats.isSymbolicLink()) continue;
+      if (!stats.isFile()) {
         copyItemTree(from, join(toDir, entryName));
         continue;
       }
