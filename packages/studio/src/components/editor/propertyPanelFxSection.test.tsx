@@ -362,6 +362,60 @@ describe("FxSection chain", () => {
     );
   });
 
+  it("draws the rack as a signal path, with both ends named", () => {
+    // Order is audible here, and a list does not look ordered. Numbering the
+    // steps and naming the two ends is what makes "move up" read as the most
+    // consequential control in the panel rather than a cosmetic one.
+    const { host } = mount({ chain: chainOf("highpass", "limiter") });
+    const terms = Array.from(host.querySelectorAll(".hf-fx-term")).map((e) => e.textContent);
+    expect(terms).toHaveLength(2);
+    expect(terms[0]).toContain("In");
+    expect(terms[1]).toContain("Out");
+    // Counted over what the rack SHOWS: the carve module leads it, so the first
+    // hand-built effect is 02.
+    const numbers = Array.from(host.querySelectorAll(".hf-fx-node-index")).map((e) =>
+      e.textContent?.trim(),
+    );
+    expect(numbers).toEqual(["02", "03"]);
+  });
+
+  it("draws a preset's nodes as the one thing that was added", () => {
+    // Applying a preset drops five rows into the rack with nothing saying they
+    // arrived together — the same failure the carve module exists to fix, one
+    // level down.
+    const { host, onChainChange } = mount({ chain: { version: 1, nodes: [] } });
+    click(byText(host, "button", "Presets"));
+    click(presetButton(host, "telephone"));
+    // Applying does not re-render this mount — the chain comes back as a prop —
+    // so the rack is read from what was written.
+    const applied = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain | undefined;
+    const written = applied?.nodes ?? [];
+    const { host: after } = mount({ chain: { version: 1, nodes: written } });
+
+    const run = after.querySelector("[data-fx-preset='telephone']");
+    expect(run).toBeTruthy();
+    expect(run?.querySelector(".hf-fx-preset-run-label")?.textContent).toBe("Telephone");
+    expect(run?.querySelectorAll(".hf-fx-node")).toHaveLength(written.length);
+  });
+
+  it("brackets only nodes a preset still sits next to", () => {
+    // Pulled apart by a reorder, they are no longer a unit — and a bracket
+    // around the gap would claim an adjacency the signal path does not have.
+    const { host } = mount({
+      chain: {
+        version: 1,
+        nodes: [
+          { type: "highpass", fromPreset: "telephone", params: defaultAudioFxParams("highpass") },
+          { type: "reverb", params: defaultAudioFxParams("reverb") },
+          { type: "lowpass", fromPreset: "telephone", params: defaultAudioFxParams("lowpass") },
+        ],
+      } as unknown as HfAudioFxChain,
+    });
+    const runs = Array.from(host.querySelectorAll("[data-fx-preset='telephone']"));
+    expect(runs).toHaveLength(2);
+    for (const run of runs) expect(run.querySelectorAll(".hf-fx-node")).toHaveLength(1);
+  });
+
   it("letters each family differently, so the kind reads before the word does", () => {
     // A rack of eight modules is eight lines of text. Reading it should not mean
     // reading eight names — the shape of the line carries what KIND of module

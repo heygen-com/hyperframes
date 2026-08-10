@@ -73,6 +73,8 @@ function plainDef(def: HfAudioFxDef): HfAudioFxDef {
 interface FxNodeRowProps {
   node: HfAudioFxNode;
   index: number;
+  /** Where it sits in the signal path, as the rack counts it. Absent means unnumbered. */
+  position?: number;
   automatedTargets?: ReadonlySet<string>;
   liveAutomationValues?: ReadonlyMap<string, number>;
   onAutomateParam?(nodeId: string, paramKey: string): void;
@@ -117,6 +119,7 @@ function FxMoveButton({
 function FxNodeHeader({
   label,
   family,
+  position,
   open,
   bypassed,
   first,
@@ -130,6 +133,7 @@ function FxNodeHeader({
   label: string;
   /** How this family letters, so the KIND reads before the word does. */
   family: string;
+  position?: number;
   open: boolean;
   bypassed: boolean;
   first: boolean;
@@ -142,6 +146,14 @@ function FxNodeHeader({
 }) {
   return (
     <div className="hf-fx-node-head flex min-h-7 items-center gap-1 px-1.5">
+      {/* Two digits, because a rack reads as a path when its steps are numbered
+          and as a list when they are not — and the difference decides whether an
+          author thinks the order matters. It does; it is audible. */}
+      {position !== undefined ? (
+        <span className="hf-fx-node-index shrink-0 font-mono text-[9px] tabular-nums text-panel-text-4">
+          {String(position).padStart(2, "0")}
+        </span>
+      ) : null}
       <button
         type="button"
         className={`hf-fx-node-name flex-1 truncate text-left text-[11px] text-panel-text-1 hover:text-panel-text-0 ${family}`}
@@ -263,6 +275,7 @@ function FxNodeParams({
 export function FxNodeRow({
   node,
   index,
+  position,
   automatedTargets,
   liveAutomationValues,
   onAutomateParam,
@@ -307,6 +320,7 @@ export function FxNodeRow({
     >
       <FxNodeHeader
         family={FX_FAMILY_TYPE[fxFamilyOf(node)]}
+        position={position}
         // The node's own job name when a preset gave it one, because that is the
         // most specific truth available: a chain that cuts mud and then lifts
         // clarity must not show the same name twice. Then the plain name, and

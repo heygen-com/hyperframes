@@ -326,7 +326,41 @@ export function FxSection({
     [chain.nodes],
   );
 
+  /**
+   * The hand-built list cut into runs, so a preset reads as one thing.
+   *
+   * Applying a preset drops five rows into the rack with nothing saying they
+   * arrived together — which is the same failure the carve module was built to
+   * fix, one level down. Consecutive only: a preset whose nodes have been pulled
+   * apart by a reorder is no longer a unit, and drawing a bracket around the gap
+   * would claim an adjacency the signal path does not have.
+   */
+  const runs = useMemo(() => {
+    const out: { preset?: string; items: { node: HfAudioFxNode; i: number }[] }[] = [];
+    for (const item of handBuilt) {
+      const preset = item.node.fromPreset;
+      const last = out.at(-1);
+      if (last && last.preset === preset) last.items.push(item);
+      else out.push({ ...(preset ? { preset } : {}), items: [item] });
+    }
+    return out;
+  }, [handBuilt]);
+
   const eqIds = useMemo(() => audioEqIds(chain), [chain]);
+
+  /**
+   * The number each row wears, counted over what the rack actually shows.
+   *
+   * Not the chain index: the carve's filters and an EQ's bands are inside their
+   * own modules, so counting raw nodes would leave the visible rack jumping from
+   * 02 to 07 and the numbers would look like a bug rather than a position.
+   */
+  const positions = useMemo(() => {
+    const map = new Map<number, number>();
+    let at = (showCarve ? 1 : 0) + eqIds.length;
+    for (const { i } of handBuilt) map.set(i, ++at);
+    return map;
+  }, [handBuilt, eqIds.length, showCarve]);
   const [openEq, setOpenEq] = useState<string | null>(null);
 
   const addEq = useCallback(() => {
@@ -375,6 +409,13 @@ export function FxSection({
   return (
     <div className="hf-fx-section space-y-2">
       <div className="hf-fx-chain space-y-1">
+        {/* The rack IS the signal path, and saying so costs two lines. Without
+            them the order reads as a list, which is the one reading that makes
+            "move up" look cosmetic — it is the most consequential control here. */}
+        <p className="hf-fx-term flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+          <span className="hf-fx-term-cap text-panel-text-1">In</span>
+          <span>this track</span>
+        </p>
         {/* Carve leads the rack, which is also where its effects sit in the signal
             path — corrective work before anything the author added. Present
             whenever there is a voice for it to listen to, rather than appearing
@@ -413,8 +454,8 @@ export function FxSection({
             {showCarve ? "No other effects on this track." : "No effects on this track."}
           </p>
         ) : (
-          handBuilt.map(({ node, i }) => {
-            return (
+          runs.map((run) => {
+            const rows = run.items.map(({ node, i }) => (
               <FxNodeRow
                 // Keyed by id, as the carve module's list above already is.
                 // On `${type}-${index}` two effects of the same type keep their
@@ -425,6 +466,7 @@ export function FxSection({
                 key={node.id ?? `${node.type}-${i}`}
                 node={node}
                 index={i}
+                position={positions.get(i)}
                 automatedTargets={automatedTargets}
                 liveAutomationValues={liveAutomationValues}
                 onAutomateParam={onAutomateParam}
@@ -438,9 +480,27 @@ export function FxSection({
                 onRemove={removeNode}
                 onPreview={previewNode}
               />
+            ));
+            const preset = run.preset ? getAudioFxPreset(run.preset) : null;
+            if (!preset) return rows;
+            return (
+              <div
+                key={`preset-${run.preset}-${run.items[0]?.i}`}
+                className="hf-fx-preset-run space-y-1 rounded-[4px] border border-dashed border-panel-border-input p-1"
+                data-fx-preset={run.preset}
+              >
+                <span className="hf-fx-preset-run-label block px-0.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+                  {preset.label}
+                </span>
+                {rows}
+              </div>
             );
           })
         )}
+        <p className="hf-fx-term hf-fx-term-out flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+          <span className="hf-fx-term-cap text-panel-text-1">Out</span>
+          <span>to mix</span>
+        </p>
       </div>
 
       {adding ? (
