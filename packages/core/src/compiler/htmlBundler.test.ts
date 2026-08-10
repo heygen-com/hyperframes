@@ -3,9 +3,8 @@ import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
-import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { bundleToSingleHtml } from "./htmlBundler";
-import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -1387,126 +1386,5 @@ describe("bundleToSingleHtml", () => {
     } finally {
       warnSpy.mockRestore();
     }
-  });
-});
-
-/**
- * A sub-composition given a value outside a declared enum's `options` falls
- * back silently. The runtime guard in getVariables.ts cannot see it: the
- * bundler bakes the per-instance values into `window.__hfVariablesByComp` at
- * compile time and the sub-comp's scoped `getVariables` shim only reads that
- * table. Compile time is therefore the only place the defect is observable on
- * this path, so the same warning is emitted here.
- */
-describe("bundleToSingleHtml unknown enum values", () => {
-  let warnings: string[];
-
-  beforeEach(() => {
-    resetUnknownEnumWarnings();
-    warnings = [];
-    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
-      warnings.push(args.map(String).join(" "));
-    });
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    resetUnknownEnumWarnings();
-  });
-
-  const enumWarnings = () => warnings.filter((w) => w.includes("runtime_unknown_enum_value"));
-
-  const ACCENT_ENUM =
-    '[{"id":"accent","type":"enum","label":"Accent","default":"green","options":["green","blue","violet"]}]';
-
-  function makeSubCompProject(variableValues: string, declaration = ACCENT_ENUM): string {
-    return makeTempProject({
-      "index.html": `<!doctype html>
-<html><head></head><body>
-  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-    <div
-      data-composition-id="card"
-      data-composition-src="compositions/card.html"
-      data-variable-values='${variableValues}'></div>
-  </div>
-  <script>window.__timelines={};</script>
-</body></html>`,
-      "compositions/card.html": `<!doctype html>
-<html data-composition-variables='${declaration}'>
-  <body>
-    <div data-composition-id="card" data-width="1920" data-height="1080"></div>
-  </body>
-</html>`,
-    });
-  }
-
-  it("warns when a sub-composition instance value is not a declared option", async () => {
-    await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}'));
-
-    expect(enumWarnings()).toEqual([
-      '[hyperframes] runtime_unknown_enum_value: card variable "accent" got "orange", ' +
-        "which is not a declared option (green, blue, violet). " +
-        'Rendering "green" instead.',
-    ]);
-  });
-
-  it("is silent when the instance value is a declared option", async () => {
-    await bundleToSingleHtml(makeSubCompProject('{"accent":"violet"}'));
-
-    expect(enumWarnings()).toEqual([]);
-  });
-
-  it("never inspects a variable declared without options", async () => {
-    const declaration = '[{"id":"accent","type":"string","label":"Accent","default":"green"}]';
-    await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}', declaration));
-
-    expect(enumWarnings()).toEqual([]);
-  });
-
-  it("is silent for a declared enum absent from the instance values", async () => {
-    await bundleToSingleHtml(makeSubCompProject('{"unrelated":"whatever"}'));
-
-    expect(enumWarnings()).toEqual([]);
-  });
-
-  it("passes the unknown value through to the bundle unrewritten", async () => {
-    const bundled = await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}'));
-
-    expect(bundled).toContain("window.__hfVariablesByComp = Object.assign({}, ");
-    expect(bundled).toContain('{ "card": { "accent": "orange" } }');
-    expect(bundled).toMatch(/\[data-composition-id="card"\]\s*\{[^}]*--accent:\s*orange/);
-    expect(bundled).not.toContain("--accent: green");
-  });
-
-  it("warns once for the same composition, variable and value across bundles", async () => {
-    const dir = makeSubCompProject('{"accent":"orange"}');
-    await bundleToSingleHtml(dir);
-    await bundleToSingleHtml(dir);
-
-    expect(enumWarnings()).toHaveLength(1);
-  });
-
-  it("warns for a <template>-mounted composition too", async () => {
-    const dir = makeTempProject({
-      "index.html": `<!doctype html>
-<html><head></head><body>
-  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-    <div data-composition-id="card" data-variable-values='{"accent":"orange"}'></div>
-  </div>
-  <template id="card-template">
-    <div data-composition-id="card" data-width="1920" data-height="1080"
-      data-composition-variables='${ACCENT_ENUM}'></div>
-  </template>
-  <script>window.__timelines={};</script>
-</body></html>`,
-    });
-
-    await bundleToSingleHtml(dir);
-
-    expect(enumWarnings()).toEqual([
-      '[hyperframes] runtime_unknown_enum_value: card variable "accent" got "orange", ' +
-        "which is not a declared option (green, blue, violet). " +
-        'Rendering "green" instead.',
-    ]);
   });
 });

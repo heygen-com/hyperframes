@@ -152,57 +152,15 @@ function writeItem(item: RegistryItem): void {
   console.log(`wrote ${relative(repoRoot, out)}`);
 }
 
-/**
- * The manifest lists every item on disk, not just the examples this script
- * scaffolds. Blocks and components carry hand-authored registry-item.json
- * files; scanning the tree keeps them from being dropped on regeneration
- * (previously this rewrote 300+ entries down to the 8 examples).
- */
-function writeRegistryManifest(): void {
-  const items: Array<{ name: string; type: RegistryItem["type"] }> = [];
-  for (const [type, dir] of Object.entries(ITEM_TYPE_DIRS) as Array<
-    [RegistryItem["type"], string]
-  >) {
-    const typeDir = resolve(repoRoot, "registry", dir);
-    let entries: string[];
-    try {
-      entries = readdirSync(typeDir);
-    } catch {
-      continue;
-    }
-    for (const name of entries.sort()) {
-      try {
-        statSync(join(typeDir, name, "registry-item.json"));
-      } catch {
-        continue;
-      }
-      items.push({ name, type });
-    }
-  }
-  // `catalogArtifact.revision` belongs to build-local-vectors.ts, which stamps
-  // it so the CLI and the coverage gate can tell whether the published vectors
-  // still describe this registry. This script owns the item list and nothing
-  // else, so it carries that field through rather than rewriting the file
-  // without it: dropping it makes the gate fail and the staleness check answer
-  // "missing" until someone rebuilds the index.
-  const existing = ((): { catalogArtifact?: unknown } => {
-    try {
-      return JSON.parse(readFileSync(registryManifestPath, "utf-8")) as {
-        catalogArtifact?: unknown;
-      };
-    } catch {
-      return {};
-    }
-  })();
+function writeRegistryManifest(items: RegistryItem[]): void {
   const manifest: RegistryManifest = {
     $schema: "https://hyperframes.heygen.com/schema/registry.json",
     name: "hyperframes",
     homepage: "https://hyperframes.heygen.com",
-    items,
-    ...(existing.catalogArtifact ? { catalogArtifact: existing.catalogArtifact } : {}),
-  } as RegistryManifest;
+    items: items.map((item) => ({ name: item.name, type: item.type })),
+  };
   writeFileSync(registryManifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-  console.log(`wrote ${relative(repoRoot, registryManifestPath)} (${items.length} items)`);
+  console.log(`wrote ${relative(repoRoot, registryManifestPath)}`);
 }
 
 function main(): void {
@@ -225,6 +183,7 @@ function main(): void {
     process.exit(1);
   }
 
+  const items: RegistryItem[] = [];
   for (const entry of filtered) {
     const exampleDir = join(examplesDir, entry.id);
     try {
@@ -233,12 +192,14 @@ function main(): void {
       console.warn(`skip ${entry.id}: directory not found at ${relative(repoRoot, exampleDir)}`);
       continue;
     }
-    writeItem(buildItem(entry));
+    const item = buildItem(entry);
+    writeItem(item);
+    items.push(item);
   }
 
   // Only rewrite the top-level manifest on a full-run (not --only).
   if (!only) {
-    writeRegistryManifest();
+    writeRegistryManifest(items);
   }
 }
 

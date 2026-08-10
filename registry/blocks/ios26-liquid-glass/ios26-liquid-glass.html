@@ -1125,46 +1125,6 @@
       loader.setDRACOLoader(draco);
 
       // iPhone
-      // The replacement device models carry UVs authored for a tiling material
-      // (the laptop panel runs u -6.3..6.3), so mapping one screen image onto
-      // them clamps at the edges and smears the last row of pixels across the
-      // whole panel. Both screens are flat planes, so derive planar UVs from
-      // the mesh's own bounds instead of trusting what shipped.
-      function planarScreenUv(mesh) {
-        var g = mesh.geometry;
-        g.computeBoundingBox();
-        var bb = g.boundingBox;
-        var pos = g.attributes.position;
-        var w = bb.max.x - bb.min.x || 1;
-        var h = bb.max.y - bb.min.y || 1;
-        var uv = new Float32Array(pos.count * 2);
-        for (var i = 0; i < pos.count; i++) {
-          uv[i * 2] = (pos.getX(i) - bb.min.x) / w;
-          uv[i * 2 + 1] = (pos.getY(i) - bb.min.y) / h;
-        }
-        g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-      }
-
-      // These compositions were authored around a model whose screen faced -Z
-      // (the old asset's display plane sat at its minimum Z) and every camera
-      // move and spin in the timeline assumes it. The replacement faces +Z, so
-      // align the model rather than re-time the animation. Reads the model's
-      // own parts, so a re-export facing the other way still lands right.
-      function alignScreenToMinusZ(root, frontName, backName) {
-        var front = root.getObjectByName(frontName);
-        var back = root.getObjectByName(backName);
-        if (!front || !back) return;
-        // matrixWorld is only refreshed during a render, and this runs at load,
-        // so without this the two parts both read as the origin and the test
-        // silently never fires.
-        root.updateWorldMatrix(true, true);
-        var fp = new THREE.Vector3();
-        var bp = new THREE.Vector3();
-        front.getWorldPosition(fp);
-        back.getWorldPosition(bp);
-        if (fp.z > bp.z) root.rotation.y += Math.PI;
-      }
-
       loader.load("models/iphone.glb", function (gltf) {
         var m = gltf.scene;
         var box = new THREE.Box3().setFromObject(m);
@@ -1175,14 +1135,10 @@
         m.position.sub(box.getCenter(new THREE.Vector3()));
         m.traverse(function (child) {
           if (!child.isMesh) return;
-          // `front-glass` is the display face; Blender's exporter suffixes the
-          // mesh name and leaves the node name bare, so match the prefix.
-          if (child.name.indexOf("front-glass") === 0) {
-            planarScreenUv(child);
+          if (child.material && child.material.emissiveMap) {
             child.material = new THREE.MeshBasicMaterial({ map: phoneTex });
           }
         });
-        alignScreenToMinusZ(m, "front-glass", "rear-window");
         phoneGrp.add(m);
         ready++;
         if (ready === 1) onReady();

@@ -7,7 +7,6 @@ import {
   filterVariablesIfAbsent,
   parseHostVariableValues,
   readDeclaredDefaults,
-  warnUnknownEnumValues,
   readRenderOverrides,
 } from "./getVariables";
 
@@ -400,12 +399,6 @@ async function mountCompositionContent(params: {
    * separate document root so no declared defaults are passed.
    */
   declaredVariableDefaults?: Record<string, unknown>;
-  /**
-   * The element `declaredVariableDefaults` was read from. Carries the full
-   * declaration (option sets, not just defaults) so the out-of-set enum guard
-   * can run on the same merge. Same population rule as the defaults above.
-   */
-  variableDeclarer?: Element;
   onDiagnostic?: (payload: {
     code: string;
     details: Record<string, string | number | boolean | null | string[]>;
@@ -727,7 +720,6 @@ export async function loadExternalCompositions(
           // dual-carrier contract from #2081) loses its defaults on this lazy
           // external-load path — see inlineSubCompositions for the fixed path.
           declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
-          variableDeclarer: doc.documentElement,
           onDiagnostic: params.onDiagnostic,
         });
       } catch (error) {
@@ -760,11 +752,7 @@ export async function loadExternalCompositions(
  * custom properties from a previous mount are cleared before (re)applying.
  */
 function stashInstanceVariables(
-  params: {
-    host: Element;
-    declaredVariableDefaults?: Record<string, unknown>;
-    variableDeclarer?: Element;
-  },
+  params: { host: Element; declaredVariableDefaults?: Record<string, unknown> },
   contentNode: Node,
   runtimeScopeCompositionId: string,
 ): void {
@@ -775,14 +763,6 @@ function stashInstanceVariables(
     ...declaredDefaults,
     ...parseHostVariableValues(params.host),
   };
-  // The sub-comp path never reaches the top-level getVariables(), so the
-  // out-of-set enum guard runs here too, against the same merged values the
-  // instance reads back out of __hfVariablesByComp.
-  warnUnknownEnumValues(
-    params.variableDeclarer ?? (contentNode instanceof Element ? contentNode : null),
-    merged,
-    runtimeScopeCompositionId,
-  );
   clearAppliedCssVariables(params.host);
   if (Object.keys(merged).length > 0) {
     if (!window.__hfVariablesByComp) window.__hfVariablesByComp = {};

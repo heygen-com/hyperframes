@@ -414,8 +414,10 @@
           // 13. Hold
           tl.addLabel("hold5", "+=0.2");
 
-          // 14. Type correction: "Pythom" → "Python"
-          const typingStart = tl.labels["hold5"];
+          // 14. Type correction: "Pythom" → "Python" — positioned relative to the "hold5"
+          // label. Reading tl.labels back is unavailable under the render compiler's GSAP
+          // proxy (it throws before the timeline is registered, leaving the block blank),
+          // so use GSAP's own label-relative position syntax instead.
           const words = ["P", "Py", "Pyt", "Pyth", "Pytho", "Python"];
           words.forEach((word, i) => {
             tl.add(
@@ -423,18 +425,18 @@
                 if (pythonText)
                   pythonText.innerHTML = `Start with <span class="text-highlight">${word}</span>`;
               },
-              typingStart + i * 0.05,
+              `hold5+=${i * 0.05}`,
             );
           });
 
-          const typingEnd = typingStart + words.length * 0.05;
+          const typingEnd = words.length * 0.05;
           tl.add(() => {
             if (pythonText) pythonText.innerHTML = "Start with Python";
             gsap.set(S + " .squiggle-container", { opacity: 0 });
-          }, typingEnd);
+          }, `hold5+=${typingEnd}`);
 
           // 15. Hold
-          tl.addLabel("hold6", typingEnd + 0.5);
+          tl.addLabel("hold6", `hold5+=${typingEnd + 0.5}`);
 
           // 16. Cursor clicks away to deselect
           tl.to(S + " #cursor", { x: -1420, y: -500, duration: 0.3, overwrite: "auto" }, "hold6");

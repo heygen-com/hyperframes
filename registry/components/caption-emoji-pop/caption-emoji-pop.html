@@ -125,343 +125,705 @@
     </div>
 
     <script>
-      var DURATION = 8;
-      var SAFE_ZONE_WIDTH = 1400;
-      var CAPTION_FONT_SIZE = 72;
-      var MAX_WORDS_PER_GROUP = 3;
-      var WORD_SPACING = 14;
-      var PAUSE_THRESHOLD = 0.1;
-      var ENTRY_FRAMES = 4;
-      var EXIT_FRAMES = 3;
-      var FPS = 30;
-      var ENTRY_DURATION = ENTRY_FRAMES / FPS;
-      var EXIT_DURATION = EXIT_FRAMES / FPS;
-      var FONT_WIDTH_SAFETY = 1.14;
-      var PRIMARY_COLOR = "#FFFFFF";
-      var ACCENT_COLORS = ["#FF76FF", "#FF0002", "#B2F7FF"];
-      var KEYWORDS = new Set(["hyperframes", "html", "professional", "code", "cinema"]);
-      var TRANSITION_WORDS = new Set([
-        "the",
-        "a",
-        "an",
-        "and",
-        "or",
-        "but",
-        "is",
-        "are",
-        "was",
-        "were",
-        "to",
-        "of",
-        "in",
-        "on",
-        "at",
-        "for",
-        "with",
-        "by",
-        "from",
-        "as",
-        "it",
-        "its",
-        "this",
-        "that",
-        "these",
-        "those",
-        "be",
-        "been",
-        "have",
-        "has",
-        "had",
-        "do",
-        "does",
-        "did",
-        "will",
-        "would",
-        "could",
-        "should",
-        "may",
-        "might",
-        "must",
-        "can",
-        "if",
-        "then",
-        "so",
-        "just",
-        "not",
-        "no",
-        "yes",
-        "up",
-        "out",
-        "about",
-      ]);
+      // IIFE: keep every template's runtime private to itself so two caption
+      // components pasted into one composition document can't clobber each
+      // other's hfAttach/hfBuild via shared script-scope names (boot is async,
+      // so collisions surface AFTER all scripts have executed).
+      (function () {
+        var HF_COMPOSITION_ID = "caption-emoji-pop";
+        var HF_ROOT_ID = "emoji-pop";
+        var HF_GROUP_SELECTOR = ".caption-group";
 
-      // Emoji map for key words
-      var WORD_EMOJI = {
-        hyperframes: "🎬",
-        html: "💻",
-        professional: "✨",
-        code: "⌨️",
-        cinema: "🎥",
-        video: "📹",
-        frame: "🖼️",
-      };
+        var HF_DEMO_DATA = {
+          version: 1,
+          segments: [
+            {
+              start: 0,
+              text: "Every great video starts with a single frame. HyperFrames lets you write HTML and render professional video. No timeline. No drag and drop. Just code that becomes cinema.",
+              words: [
+                { text: "Every", start: 0.0, end: 0.3 },
+                { text: "great", start: 0.3, end: 0.55 },
+                { text: "video", start: 0.55, end: 0.85 },
+                { text: "starts", start: 0.85, end: 1.1 },
+                { text: "with", start: 1.1, end: 1.25 },
+                { text: "a", start: 1.25, end: 1.35 },
+                { text: "single", start: 1.35, end: 1.65 },
+                { text: "frame.", start: 1.65, end: 2.0 },
+                { text: "HyperFrames", start: 2.1, end: 2.65 },
+                { text: "lets", start: 2.65, end: 2.85 },
+                { text: "you", start: 2.85, end: 2.95 },
+                { text: "write", start: 2.95, end: 3.15 },
+                { text: "HTML", start: 3.15, end: 3.55 },
+                { text: "and", start: 3.55, end: 3.65 },
+                { text: "render", start: 3.65, end: 3.95 },
+                { text: "professional", start: 3.95, end: 4.45 },
+                { text: "video.", start: 4.45, end: 4.8 },
+                { text: "No", start: 4.9, end: 5.05 },
+                { text: "timeline.", start: 5.05, end: 5.45 },
+                { text: "No", start: 5.5, end: 5.65 },
+                { text: "drag", start: 5.65, end: 5.85 },
+                { text: "and", start: 5.85, end: 5.95 },
+                { text: "drop.", start: 5.95, end: 6.25 },
+                { text: "Just", start: 6.35, end: 6.55 },
+                { text: "code", start: 6.55, end: 6.8 },
+                { text: "that", start: 6.8, end: 6.95 },
+                { text: "becomes", start: 6.95, end: 7.3 },
+                { text: "cinema.", start: 7.3, end: 7.7 },
+              ],
+            },
+          ],
+        };
 
-      var TRANSCRIPT = [
-        { text: "Every", start: 0.0, end: 0.3 },
-        { text: "great", start: 0.3, end: 0.55 },
-        { text: "video", start: 0.55, end: 0.85 },
-        { text: "starts", start: 0.85, end: 1.1 },
-        { text: "with", start: 1.1, end: 1.25 },
-        { text: "a", start: 1.25, end: 1.35 },
-        { text: "single", start: 1.35, end: 1.65 },
-        { text: "frame.", start: 1.65, end: 2.0 },
-        { text: "HyperFrames", start: 2.1, end: 2.65 },
-        { text: "lets", start: 2.65, end: 2.85 },
-        { text: "you", start: 2.85, end: 2.95 },
-        { text: "write", start: 2.95, end: 3.15 },
-        { text: "HTML", start: 3.15, end: 3.55 },
-        { text: "and", start: 3.55, end: 3.65 },
-        { text: "render", start: 3.65, end: 3.95 },
-        { text: "professional", start: 3.95, end: 4.45 },
-        { text: "video.", start: 4.45, end: 4.8 },
-        { text: "No", start: 4.9, end: 5.05 },
-        { text: "timeline.", start: 5.05, end: 5.45 },
-        { text: "No", start: 5.5, end: 5.65 },
-        { text: "drag", start: 5.65, end: 5.85 },
-        { text: "and", start: 5.85, end: 5.95 },
-        { text: "drop.", start: 5.95, end: 6.25 },
-        { text: "Just", start: 6.35, end: 6.55 },
-        { text: "code", start: 6.55, end: 6.8 },
-        { text: "that", start: 6.8, end: 6.95 },
-        { text: "becomes", start: 6.95, end: 7.3 },
-        { text: "cinema.", start: 7.3, end: 7.7 },
-      ];
+        /* ── HyperFrames caption-data runtime (shared across caption templates) ── */
+        var HF_CONTRACT_VERSION = 1;
+        var HF_DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
 
-      function normalizeWords(rawWords) {
-        return rawWords
-          .map(function (item) {
-            var text = String(item.word || item.text || "").trim();
-            var clean = text.toLowerCase().replace(/[^a-z]/g, "");
-            return {
-              text: text,
-              start: Math.max(0, Number(item.start) || 0),
-              end: Math.min(DURATION, Math.max(Number(item.start) || 0, Number(item.end) || 0)),
-              emoji: WORD_EMOJI[clean] || null,
-            };
-          })
-          .filter(function (word) {
-            return word.text.length > 0;
+        function hfFlattenSegments(segments) {
+          var out = [];
+          (segments || []).forEach(function (seg) {
+            ((seg && seg.words) || []).forEach(function (w) {
+              var start = Math.max(0, Number(w.start) || 0);
+              out.push({
+                text: String(w.word || w.text || "").trim(),
+                start: start,
+                end: Math.max(start, Number(w.end) || 0),
+              });
+            });
           });
-      }
-
-      function seededRandom(seed) {
-        var x = Math.sin(seed * 9999) * 10000;
-        return x - Math.floor(x);
-      }
-
-      function assignWordColors(words, groupIndex) {
-        return words.map(function (word, index) {
-          var clean = word.text.toLowerCase().replace(/[^a-z]/g, "");
-          if (KEYWORDS.has(clean)) {
-            var ci = Math.floor(seededRandom(groupIndex * 23 + index * 31) * ACCENT_COLORS.length);
-            return ACCENT_COLORS[ci];
-          }
-          if (TRANSITION_WORDS.has(clean)) return PRIMARY_COLOR;
-          var rand = seededRandom(groupIndex * 13 + index);
-          if (rand > 0.55) {
-            var ci2 = Math.floor(rand * ACCENT_COLORS.length) % ACCENT_COLORS.length;
-            return ACCENT_COLORS[ci2];
-          }
-          return PRIMARY_COLOR;
-        });
-      }
-
-      var _fitCanvas = document.createElement("canvas");
-      var _fitCtx = _fitCanvas.getContext("2d");
-      function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
-        var size = baseFontSize;
-        var minSize = Math.floor(baseFontSize * 0.45);
-        while (size > minSize) {
-          _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
-          if (_fitCtx.measureText(text).width <= maxWidth) return size;
-          size -= 2;
+          out.sort(function (a, b) {
+            return a.start - b.start;
+          });
+          return out.filter(function (w) {
+            return w.text.length > 0;
+          });
         }
-        return minSize;
-      }
 
-      var measureCanvas = document.createElement("canvas");
-      var measureContext = measureCanvas.getContext("2d");
+        function hfDeriveDuration(words) {
+          var end = 0;
+          words.forEach(function (w) {
+            if (w.end > end) end = w.end;
+          });
+          return end;
+        }
 
-      function measureWord(word, fontSize) {
-        measureContext.font = "900 " + fontSize + "px Gabarito";
-        return measureContext.measureText(word.text.toUpperCase()).width * FONT_WIDTH_SAFETY;
-      }
+        function hfValidate(data) {
+          if (!data || typeof data !== "object") return { ok: false, reason: "not-an-object" };
+          if (data.version != null) {
+            // Number("v2") is NaN and NaN > x is always false — an explicit
+            // finite check keeps malformed versions from slipping past the gate.
+            var hfVersion = Number(data.version);
+            if (!Number.isFinite(hfVersion) || Math.floor(hfVersion) > HF_CONTRACT_VERSION) {
+              return { ok: false, reason: "unsupported-version" };
+            }
+          }
+          if (!Array.isArray(data.segments) || data.segments.length === 0) {
+            return { ok: false, reason: "no-segments" };
+          }
+          if (data.displayMode != null && data.displayMode !== "full") {
+            return { ok: false, reason: "unsupported-displayMode" };
+          }
+          var words = hfFlattenSegments(data.segments);
+          if (words.length === 0) return { ok: false, reason: "no-words" };
+          return { ok: true, words: words, durationS: hfDeriveDuration(words) };
+        }
 
-      function measureLineWidth(words, fontSize) {
-        return words.reduce(function (total, word, index) {
-          return total + measureWord(word, fontSize) + (index ? WORD_SPACING : 0);
-        }, 0);
-      }
+        function hfApplyStageConfig(data, durationS) {
+          var res = (data && data.resolution) || HF_DEFAULT_RESOLUTION;
+          // Mirror the published validator's <=8192 bound defensively — the
+          // validator is an optional pre-flight, and an unbounded stage size
+          // would OOM render workers.
+          var W = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.width) || HF_DEFAULT_RESOLUTION.width)),
+          );
+          var H = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.height) || HF_DEFAULT_RESOLUTION.height)),
+          );
+          var root = document.getElementById(HF_ROOT_ID);
+          [document.documentElement, document.body, root].forEach(function (el) {
+            el.style.width = W + "px";
+            el.style.height = H + "px";
+          });
+          root.setAttribute("data-width", String(W));
+          root.setAttribute("data-height", String(H));
+          root.setAttribute("data-duration", String(durationS));
+          var brand = (data && data.brand) || {};
+          if (typeof brand.primaryColor === "string" && brand.primaryColor) {
+            root.style.setProperty("--hf-caption-primary", brand.primaryColor);
+          } else {
+            root.style.removeProperty("--hf-caption-primary");
+          }
+          if (typeof brand.accentColor === "string" && brand.accentColor) {
+            root.style.setProperty("--hf-caption-accent", brand.accentColor);
+          } else {
+            root.style.removeProperty("--hf-caption-accent");
+          }
+          return {
+            W: W,
+            H: H,
+            scaleX: W / 1920,
+            scaleY: H / 1080,
+            fontScale: Math.min(W, H) / 1080,
+          };
+        }
 
-      function fitsLine(words) {
-        return measureLineWidth(words, CAPTION_FONT_SIZE) <= SAFE_ZONE_WIDTH;
-      }
+        function hfPublishStatus(status) {
+          window.__HF_CAPTION_STATUS = status;
+          document
+            .getElementById(HF_ROOT_ID)
+            .setAttribute("data-caption-status", status.ok ? "ok" : "failed");
+        }
 
-      function makeGroups(words) {
-        var groups = [];
-        var current = [];
-        words.forEach(function (word, index) {
-          var nextWord = words[index + 1];
-          var testGroup = current.concat([word]);
-          if (testGroup.length > MAX_WORDS_PER_GROUP || !fitsLine(testGroup)) {
-            if (current.length) groups.push(makeGroup(current, groups.length));
-            current = [word];
+        function hfRunGate(words, durationS, failReason) {
+          if (failReason) {
+            hfPublishStatus({
+              ok: false,
+              present: false,
+              contained: false,
+              reason: failReason,
+              version: HF_CONTRACT_VERSION,
+              durationS: durationS || 0,
+            });
             return;
           }
-          current.push(word);
-          var punctuation = /[,.:!?]$/.test(word.text);
-          var pause = nextWord ? nextWord.start - word.end : 0;
-          if (
-            !nextWord ||
-            punctuation ||
-            pause >= PAUSE_THRESHOLD ||
-            current.length >= MAX_WORDS_PER_GROUP
-          ) {
-            groups.push(makeGroup(current, groups.length));
-            current = [];
-          }
-        });
-        if (current.length) groups.push(makeGroup(current, groups.length));
-        return groups;
-      }
-
-      function makeGroup(words, groupIndex) {
-        var colors = assignWordColors(words, groupIndex);
-        var emoji = null;
-        for (var i = 0; i < words.length; i++) {
-          if (words[i].emoji) {
-            emoji = words[i].emoji;
-            break;
-          }
+          var root = document.getElementById(HF_ROOT_ID);
+          var rootRect = root.getBoundingClientRect();
+          var groups = root.querySelectorAll(HF_GROUP_SELECTOR);
+          var present = false;
+          var contained = true;
+          var tokens = [];
+          words.forEach(function (w) {
+            var t = w.text.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (t) tokens.push(t);
+          });
+          groups.forEach(function (el) {
+            var prevOpacity = el.style.opacity;
+            var prevVisibility = el.style.visibility;
+            el.style.opacity = "1";
+            el.style.visibility = "visible";
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+              var text = (el.textContent || "").toLowerCase();
+              for (var i = 0; i < tokens.length; i++) {
+                if (text.indexOf(tokens[i]) !== -1) {
+                  present = true;
+                  break;
+                }
+              }
+              if (
+                r.left < rootRect.left - 1 ||
+                r.right > rootRect.right + 1 ||
+                r.top < rootRect.top - 1 ||
+                r.bottom > rootRect.bottom + 1
+              ) {
+                contained = false;
+              }
+            }
+            el.style.opacity = prevOpacity;
+            el.style.visibility = prevVisibility;
+          });
+          hfPublishStatus({
+            ok: present && contained,
+            present: present,
+            contained: contained,
+            version: HF_CONTRACT_VERSION,
+            durationS: durationS,
+          });
         }
-        return {
-          words: words.slice(),
-          colors: colors,
-          emoji: emoji,
-          start: words[0].start,
-          end: words[words.length - 1].end,
+
+        var HF_STOPWORDS = new Set([
+          "the",
+          "a",
+          "an",
+          "and",
+          "or",
+          "but",
+          "is",
+          "are",
+          "was",
+          "were",
+          "to",
+          "of",
+          "in",
+          "on",
+          "at",
+          "for",
+          "with",
+          "by",
+          "from",
+          "as",
+          "it",
+          "its",
+          "this",
+          "that",
+          "these",
+          "those",
+          "be",
+          "been",
+          "have",
+          "has",
+          "had",
+          "do",
+          "does",
+          "did",
+          "will",
+          "would",
+          "could",
+          "should",
+          "may",
+          "might",
+          "must",
+          "can",
+          "if",
+          "then",
+          "so",
+          "just",
+          "not",
+          "no",
+          "yes",
+          "up",
+          "out",
+          "about",
+          "into",
+          "over",
+          "after",
+          "before",
+          "your",
+          "you",
+          "our",
+          "we",
+          "they",
+          "them",
+          "their",
+          "there",
+          "here",
+          "when",
+          "what",
+          "which",
+          "who",
+          "how",
+          "all",
+          "any",
+          "some",
+          "more",
+          "most",
+          "other",
+          "than",
+          "too",
+          "very",
+          "also",
+          "because",
+        ]);
+
+        function hfIsEmphasisWord(text) {
+          var clean = String(text)
+            .toLowerCase()
+            .replace(/[^a-z]/g, "");
+          return clean.length >= 5 && !HF_STOPWORDS.has(clean);
+        }
+
+        var DURATION, SAFE_ZONE_WIDTH, CAPTION_FONT_SIZE, WORD_SPACING;
+        var MAX_WORDS_PER_GROUP = 3;
+        var PAUSE_THRESHOLD = 0.1;
+        var ENTRY_FRAMES = 4;
+        var EXIT_FRAMES = 3;
+        var FPS = 30;
+        var ENTRY_DURATION = ENTRY_FRAMES / FPS;
+        var EXIT_DURATION = EXIT_FRAMES / FPS;
+        var FONT_WIDTH_SAFETY = 1.14;
+        var PRIMARY_COLOR = "#FFFFFF";
+        var ACCENT_COLORS = ["#FF76FF", "#FF0002", "#B2F7FF"];
+        var hfPrimaryColor = PRIMARY_COLOR;
+        var hfAccentColors = ACCENT_COLORS;
+        var hfFontScale = 1;
+
+        // Emoji map for a generic keyword lexicon (not tied to the demo transcript)
+        var WORD_EMOJI = {
+          amazing: "🤩",
+          awesome: "🔥",
+          big: "🐘",
+          brain: "🧠",
+          build: "🛠️",
+          built: "🛠️",
+          celebrate: "🎉",
+          change: "🔄",
+          cinema: "🎥",
+          code: "⌨️",
+          customers: "🤝",
+          data: "📊",
+          dream: "💭",
+          easy: "👌",
+          fast: "⚡",
+          fire: "🔥",
+          frame: "🖼️",
+          free: "🎁",
+          fun: "🎈",
+          future: "🔮",
+          global: "🌍",
+          grow: "📈",
+          growth: "📈",
+          heart: "❤️",
+          huge: "🐘",
+          idea: "💡",
+          launch: "🚀",
+          learn: "📚",
+          love: "❤️",
+          magic: "✨",
+          money: "💰",
+          music: "🎵",
+          new: "✨",
+          party: "🎉",
+          perfect: "💯",
+          power: "💪",
+          professional: "✨",
+          rocket: "🚀",
+          save: "🛟",
+          saves: "🛟",
+          secret: "🤫",
+          smart: "🧠",
+          star: "⭐",
+          stop: "✋",
+          strong: "💪",
+          success: "🏆",
+          team: "👥",
+          time: "⏰",
+          today: "📅",
+          video: "📹",
+          win: "🏆",
+          world: "🌍",
+          wow: "😮",
         };
-      }
 
-      function shadowForColor(color) {
-        var hex = color.replace("#", "");
-        var r = parseInt(hex.slice(0, 2), 16);
-        var g = parseInt(hex.slice(2, 4), 16);
-        var b = parseInt(hex.slice(4, 6), 16);
-        return (
-          "0 4px 8px rgba(0,0,0,0.7), 0 0 2px rgba(" +
-          r +
-          "," +
-          g +
-          "," +
-          b +
-          ",1), 0 0 8px rgba(" +
-          r +
-          "," +
-          g +
-          "," +
-          b +
-          ",0.6)"
-        );
-      }
-
-      function buildCaptions(groups) {
-        var stage = document.getElementById("caption-stage");
-        groups.forEach(function (group, groupIndex) {
-          var groupText = group.words
-            .map(function (w) {
-              return w.text.toUpperCase();
+        function normalizeWords(rawWords) {
+          return rawWords
+            .map(function (item) {
+              var text = String(item.word || item.text || "").trim();
+              var clean = text.toLowerCase().replace(/[^a-z]/g, "");
+              return {
+                text: text,
+                start: Math.max(0, Number(item.start) || 0),
+                end: Math.min(DURATION, Math.max(Number(item.start) || 0, Number(item.end) || 0)),
+                emoji: WORD_EMOJI[clean] || null,
+              };
             })
-            .join(" ");
-          var computedSize = fitFontSize(
-            groupText,
-            CAPTION_FONT_SIZE,
-            "900",
-            "Gabarito",
-            SAFE_ZONE_WIDTH,
-          );
-          var groupEl = document.createElement("div");
-          groupEl.id = "caption-group-" + groupIndex;
-          groupEl.className = "caption-group";
+            .filter(function (word) {
+              return word.text.length > 0;
+            });
+        }
 
-          if (group.emoji) {
-            var emojiEl = document.createElement("div");
-            emojiEl.className = "caption-emoji";
-            emojiEl.textContent = group.emoji;
-            groupEl.appendChild(emojiEl);
+        function seededRandom(seed) {
+          var x = Math.sin(seed * 9999) * 10000;
+          return x - Math.floor(x);
+        }
+
+        function assignWordColors(words, groupIndex) {
+          return words.map(function (word, index) {
+            var clean = word.text.toLowerCase().replace(/[^a-z]/g, "");
+            if (hfIsEmphasisWord(word.text)) {
+              var ci = Math.floor(
+                seededRandom(groupIndex * 23 + index * 31) * hfAccentColors.length,
+              );
+              return hfAccentColors[ci];
+            }
+            if (HF_STOPWORDS.has(clean)) return hfPrimaryColor;
+            var rand = seededRandom(groupIndex * 13 + index);
+            if (rand > 0.55) {
+              var ci2 = Math.floor(rand * hfAccentColors.length) % hfAccentColors.length;
+              return hfAccentColors[ci2];
+            }
+            return hfPrimaryColor;
+          });
+        }
+
+        var _fitCanvas = document.createElement("canvas");
+        var _fitCtx = _fitCanvas.getContext("2d");
+        function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
+          var size = baseFontSize;
+          var minSize = Math.floor(baseFontSize * 0.45);
+          // minSize is a hard floor returned unverified below — self-heal
+          // accepts residual overflow at the floor (clipped by the stage)
+          // rather than shrinking below legibility.
+          while (size > minSize) {
+            _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
+            if (_fitCtx.measureText(text).width <= maxWidth) return size;
+            size -= 2;
           }
+          return minSize;
+        }
 
-          var lineEl = document.createElement("div");
-          lineEl.className = "caption-line";
-          group.words.forEach(function (word, wordIndex) {
-            var color = group.colors[wordIndex] || PRIMARY_COLOR;
-            var wordEl = document.createElement("span");
-            wordEl.className = "caption-word";
-            wordEl.textContent = word.text.toUpperCase();
-            wordEl.style.color = color;
-            wordEl.style.fontSize = computedSize + "px";
-            wordEl.style.textShadow = shadowForColor(color);
-            lineEl.appendChild(wordEl);
+        var measureCanvas = document.createElement("canvas");
+        var measureContext = measureCanvas.getContext("2d");
+
+        function measureWord(word, fontSize) {
+          measureContext.font = "900 " + fontSize + "px Gabarito";
+          return measureContext.measureText(word.text.toUpperCase()).width * FONT_WIDTH_SAFETY;
+        }
+
+        function measureLineWidth(words, fontSize) {
+          return words.reduce(function (total, word, index) {
+            return total + measureWord(word, fontSize) + (index ? WORD_SPACING : 0);
+          }, 0);
+        }
+
+        function fitsLine(words) {
+          return measureLineWidth(words, CAPTION_FONT_SIZE) <= SAFE_ZONE_WIDTH;
+        }
+
+        function makeGroups(words) {
+          var groups = [];
+          var current = [];
+          words.forEach(function (word, index) {
+            var nextWord = words[index + 1];
+            var testGroup = current.concat([word]);
+            if (testGroup.length > MAX_WORDS_PER_GROUP || !fitsLine(testGroup)) {
+              if (current.length) groups.push(makeGroup(current, groups.length));
+              current = [word];
+              return;
+            }
+            current.push(word);
+            var punctuation = /[,.:!?]$/.test(word.text);
+            var pause = nextWord ? nextWord.start - word.end : 0;
+            if (
+              !nextWord ||
+              punctuation ||
+              pause >= PAUSE_THRESHOLD ||
+              current.length >= MAX_WORDS_PER_GROUP
+            ) {
+              groups.push(makeGroup(current, groups.length));
+              current = [];
+            }
+          });
+          if (current.length) groups.push(makeGroup(current, groups.length));
+          return groups;
+        }
+
+        function makeGroup(words, groupIndex) {
+          var colors = assignWordColors(words, groupIndex);
+          var emoji = null;
+          for (var i = 0; i < words.length; i++) {
+            if (words[i].emoji) {
+              emoji = words[i].emoji;
+              break;
+            }
+          }
+          return {
+            words: words.slice(),
+            colors: colors,
+            emoji: emoji,
+            start: words[0].start,
+            end: words[words.length - 1].end,
+          };
+        }
+
+        function shadowForColor(color) {
+          // color-mix handles ANY CSS color (hex of either length, rgb()/hsl(),
+          // named colors) — the old hex-pair slicing was why brand colors were
+          // gated behind a strict 6-digit regex, silently dropping payloads the
+          // sibling templates accept.
+          return (
+            "0 4px 8px rgba(0,0,0,0.7), 0 0 2px " +
+            color +
+            ", 0 0 8px color-mix(in srgb, " +
+            color +
+            " 60%, transparent)"
+          );
+        }
+
+        function buildCaptions(groups) {
+          var stage = document.getElementById("caption-stage");
+          groups.forEach(function (group, groupIndex) {
+            var groupText = group.words
+              .map(function (w) {
+                return w.text.toUpperCase();
+              })
+              .join(" ");
+            var computedSize = fitFontSize(
+              groupText,
+              CAPTION_FONT_SIZE,
+              "900",
+              "Gabarito",
+              SAFE_ZONE_WIDTH,
+            );
+            var groupEl = document.createElement("div");
+            groupEl.id = "caption-group-" + groupIndex;
+            groupEl.className = "caption-group";
+
+            if (group.emoji) {
+              var emojiEl = document.createElement("div");
+              emojiEl.className = "caption-emoji";
+              emojiEl.textContent = group.emoji;
+              emojiEl.style.fontSize = Math.round(56 * hfFontScale) + "px";
+              groupEl.appendChild(emojiEl);
+            }
+
+            var lineEl = document.createElement("div");
+            lineEl.className = "caption-line";
+            group.words.forEach(function (word, wordIndex) {
+              var color = group.colors[wordIndex] || hfPrimaryColor;
+              var wordEl = document.createElement("span");
+              wordEl.className = "caption-word";
+              wordEl.textContent = word.text.toUpperCase();
+              wordEl.style.color = color;
+              wordEl.style.fontSize = computedSize + "px";
+              wordEl.style.textShadow = shadowForColor(color);
+              lineEl.appendChild(wordEl);
+            });
+
+            groupEl.appendChild(lineEl);
+            stage.appendChild(groupEl);
+          });
+        }
+
+        function hfTeardown() {
+          document.getElementById("caption-stage").innerHTML = "";
+        }
+
+        function hfBuild(words, layout, durationS) {
+          DURATION = durationS;
+          CAPTION_FONT_SIZE = Math.round(72 * layout.fontScale);
+          SAFE_ZONE_WIDTH = Math.round(1400 * layout.scaleX);
+          WORD_SPACING = Math.round(14 * layout.fontScale);
+          hfFontScale = layout.fontScale;
+
+          var stage = document.getElementById("caption-stage");
+          var stageHeight = Math.round(280 * layout.fontScale);
+          stage.style.width = SAFE_ZONE_WIDTH + "px";
+          stage.style.height = stageHeight + "px";
+          stage.style.bottom = Math.round(80 * layout.scaleY) + "px";
+
+          var rootEl = document.getElementById(HF_ROOT_ID);
+          // Any non-empty CSS color is honored (mirrors caption-pill-karaoke) —
+          // shadowForColor no longer needs parseable hex, so the old 6-digit
+          // gate (which silently dropped #fff / rgb() / named colors that the
+          // sibling templates accept) is gone.
+          var primary = getComputedStyle(rootEl).getPropertyValue("--hf-caption-primary").trim();
+          var accent = getComputedStyle(rootEl).getPropertyValue("--hf-caption-accent").trim();
+          hfPrimaryColor = primary || "#FFFFFF";
+          hfAccentColors = accent ? [accent] : ["#FF76FF", "#FF0002", "#B2F7FF"];
+
+          var WORDS = normalizeWords(words);
+          var GROUPS = makeGroups(WORDS);
+          buildCaptions(GROUPS);
+          GROUPS.forEach(function (_, i) {
+            var el = document.getElementById("caption-group-" + i);
+            el.style.width = SAFE_ZONE_WIDTH + "px";
+            el.style.height = stageHeight + "px";
           });
 
-          groupEl.appendChild(lineEl);
-          stage.appendChild(groupEl);
-        });
-      }
+          var tl = gsap.timeline({ paused: true });
 
-      var WORDS = normalizeWords(TRANSCRIPT);
-      var GROUPS = makeGroups(WORDS);
-      buildCaptions(GROUPS);
+          var visibleStarts = GROUPS.map(function (group, groupIndex) {
+            var prev = GROUPS[groupIndex - 1];
+            var availableGap = prev ? Math.max(0, group.start - prev.end) : ENTRY_DURATION;
+            var entryLead = Math.min(ENTRY_DURATION, availableGap);
+            return Math.max(0, group.start - entryLead);
+          });
 
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+          var allGroupEls = GROUPS.map(function (_, i) {
+            return document.getElementById("caption-group-" + i);
+          });
 
-      var visibleStarts = GROUPS.map(function (group, groupIndex) {
-        var prev = GROUPS[groupIndex - 1];
-        var availableGap = prev ? Math.max(0, group.start - prev.end) : ENTRY_DURATION;
-        var entryLead = Math.min(ENTRY_DURATION, availableGap);
-        return Math.max(0, group.start - entryLead);
-      });
+          GROUPS.forEach(function (group, groupIndex) {
+            var groupEl = allGroupEls[groupIndex];
+            var visibleStart = visibleStarts[groupIndex];
+            var visibleEnd =
+              groupIndex < GROUPS.length - 1 ? visibleStarts[groupIndex + 1] : DURATION;
+            var exitStart = Math.max(visibleStart, visibleEnd - EXIT_DURATION);
 
-      var allGroupEls = GROUPS.map(function (_, i) {
-        return document.getElementById("caption-group-" + i);
-      });
+            // Each group already owns its full opacity lifecycle (set 0 at its
+            // own visibleStart, animated to 1, then set back to 0 at its own
+            // visibleEnd below), and groups occupy non-overlapping windows, so
+            // explicitly hiding every OTHER group here was redundant and made
+            // timeline construction O(groups^2) — this collapsed under dense
+            // stress transcripts (many short groups). Removed; behavior is
+            // unchanged (verified against templates.test.ts).
 
-      GROUPS.forEach(function (group, groupIndex) {
-        var groupEl = allGroupEls[groupIndex];
-        var visibleStart = visibleStarts[groupIndex];
-        var visibleEnd = groupIndex < GROUPS.length - 1 ? visibleStarts[groupIndex + 1] : DURATION;
-        var exitStart = Math.max(visibleStart, visibleEnd - EXIT_DURATION);
+            tl.set(groupEl, { opacity: 0, scaleX: 0.8, scaleY: 1 }, visibleStart);
+            tl.to(
+              groupEl,
+              {
+                opacity: 1,
+                scaleX: 1,
+                duration: ENTRY_DURATION,
+                ease: "power3.out",
+                force3D: true,
+              },
+              visibleStart,
+            );
+            tl.to(
+              groupEl,
+              {
+                scaleX: 0.75,
+                opacity: 0.8,
+                duration: EXIT_DURATION,
+                ease: "power2.in",
+                force3D: true,
+              },
+              exitStart,
+            );
+            tl.set(groupEl, { opacity: 0 }, visibleEnd);
+          });
 
-        allGroupEls.forEach(function (otherEl, otherIndex) {
-          if (otherIndex !== groupIndex) tl.set(otherEl, { opacity: 0 }, visibleStart);
-        });
+          return tl;
+        }
 
-        tl.set(groupEl, { opacity: 0, scaleX: 0.8, scaleY: 1 }, visibleStart);
-        tl.to(
-          groupEl,
-          { opacity: 1, scaleX: 1, duration: ENTRY_DURATION, ease: "power3.out", force3D: true },
-          visibleStart,
-        );
-        tl.to(
-          groupEl,
-          { scaleX: 0.75, opacity: 0.8, duration: EXIT_DURATION, ease: "power2.in", force3D: true },
-          exitStart,
-        );
-        tl.set(groupEl, { opacity: 0 }, visibleEnd);
-      });
+        var hfCurrentTimeline = null;
 
-      window.__timelines["caption-emoji-pop"] = tl;
+        function hfAttach(data) {
+          var v = hfValidate(data);
+          if (!v.ok) {
+            hfRunGate([], 0, v.reason);
+            return;
+          }
+          if (hfCurrentTimeline) {
+            hfCurrentTimeline.kill();
+            hfCurrentTimeline = null;
+          }
+          hfTeardown();
+          var layout = hfApplyStageConfig(data, v.durationS);
+          var tl = hfBuild(v.words, layout, v.durationS);
+          tl.set({}, {}, v.durationS); // pin timeline length to the data-derived duration
+          // GSAP quirk (confirmed 3.14.2): a fresh timeline already reports position 0,
+          // so seek(0) is treated as a no-op and skips rendering .set() calls scheduled
+          // at t=0 — the first frame would show pre-timeline CSS defaults (usually
+          // hidden). render(time, suppressEvents, force) with force=true bypasses that.
+          tl.render(0, true, true);
+          hfCurrentTimeline = tl;
+          window.__timelines = window.__timelines || {};
+          window.__timelines[HF_COMPOSITION_ID] = tl;
+          hfRunGate(v.words, v.durationS, null);
+        }
+        window.__HF_CAPTION_ATTACH__ = hfAttach;
+
+        (function hfBoot() {
+          function start(data) {
+            var ready =
+              document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+            ready.then(function () {
+              // A manual window.__HF_CAPTION_ATTACH__ call that lands while the
+              // sibling fetch / fonts.ready are still pending must win — never
+              // clobber it with the late-arriving boot payload.
+              if (hfCurrentTimeline) return;
+              hfAttach(data);
+            });
+          }
+          if (window.__HF_CAPTION__) {
+            start(window.__HF_CAPTION__);
+            return;
+          }
+          fetch("./caption-data.json")
+            .then(function (r) {
+              return r.ok ? r.json() : null;
+            })
+            .catch(function () {
+              return null;
+            })
+            .then(function (json) {
+              start(json || HF_DEMO_DATA);
+            });
+        })();
+      })();
     </script>
   </body>
 </html>

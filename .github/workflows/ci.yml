@@ -293,13 +293,10 @@ jobs:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run test:scripts
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
-      # After the builds: the preview scripts drive the producer, which imports
-      # @hyperframes/core from dist, so running these first fails on a missing
-      # module rather than on anything the test is actually checking.
-      - run: bun run test:scripts
       - run: bun run --filter '!@hyperframes/producer' test
 
   producer-source-tests:

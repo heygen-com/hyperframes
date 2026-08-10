@@ -73,7 +73,7 @@
         font-weight: 800;
         font-size: 80px;
         text-transform: uppercase;
-        color: #ffffff;
+        color: var(--hf-caption-primary, #ffffff);
         display: inline-block;
         letter-spacing: 0.02em;
         line-height: 1;
@@ -86,7 +86,11 @@
       .hl-word-bg {
         position: absolute;
         inset: 0;
-        background: linear-gradient(135deg, #ff1745 0%, #df1238 100%);
+        background: linear-gradient(
+          135deg,
+          var(--hf-caption-accent, #ff1745) 0%,
+          color-mix(in srgb, var(--hf-caption-accent, #ff1745) 82%, #000) 100%
+        );
         border-radius: 10px;
         box-shadow: 0 12px 30px rgba(229, 20, 58, 0.32);
         opacity: 0;
@@ -117,6 +121,10 @@
 
     <script>
       (function () {
+        var HF_COMPOSITION_ID = "caption-highlight";
+        var HF_ROOT_ID = "highlight";
+        var HF_GROUP_SELECTOR = ".hl-group";
+
         window.__timelines = window.__timelines || {};
 
         var _fitCanvas = document.createElement("canvas");
@@ -124,6 +132,9 @@
         function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
           var size = baseFontSize;
           var minSize = Math.floor(baseFontSize * 0.45);
+          // minSize is a hard floor returned unverified below — self-heal
+          // accepts residual overflow at the floor (clipped by the stage)
+          // rather than shrinking below legibility.
           while (size > minSize) {
             _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
             if (_fitCtx.measureText(text).width <= maxWidth) return size;
@@ -132,129 +143,393 @@
           return minSize;
         }
 
-        var WORDS = [
-          { text: "Every", start: 0.0, end: 0.3 },
-          { text: "great", start: 0.3, end: 0.55 },
-          { text: "video", start: 0.55, end: 0.85 },
-          { text: "starts", start: 0.85, end: 1.1 },
-          { text: "with", start: 1.1, end: 1.25 },
-          { text: "a", start: 1.25, end: 1.35 },
-          { text: "single", start: 1.35, end: 1.65 },
-          { text: "frame.", start: 1.65, end: 2.0 },
-          { text: "HyperFrames", start: 2.1, end: 2.65 },
-          { text: "lets", start: 2.65, end: 2.85 },
-          { text: "you", start: 2.85, end: 2.95 },
-          { text: "write", start: 2.95, end: 3.15 },
-          { text: "HTML", start: 3.15, end: 3.55 },
-          { text: "and", start: 3.55, end: 3.65 },
-          { text: "render", start: 3.65, end: 3.95 },
-          { text: "professional", start: 3.95, end: 4.45 },
-          { text: "video.", start: 4.45, end: 4.8 },
-          { text: "No", start: 4.9, end: 5.05 },
-          { text: "timeline.", start: 5.05, end: 5.45 },
-          { text: "No", start: 5.5, end: 5.65 },
-          { text: "drag", start: 5.65, end: 5.85 },
-          { text: "and", start: 5.85, end: 5.95 },
-          { text: "drop.", start: 5.95, end: 6.25 },
-          { text: "Just", start: 6.35, end: 6.55 },
-          { text: "code", start: 6.55, end: 6.8 },
-          { text: "that", start: 6.8, end: 6.95 },
-          { text: "becomes", start: 6.95, end: 7.3 },
-          { text: "cinema.", start: 7.3, end: 7.7 },
-        ];
+        var HF_DEMO_DATA = {
+          version: 1,
+          segments: [
+            {
+              start: 0,
+              text: "Every great video starts with a single frame. HyperFrames lets you write HTML and render professional video. No timeline. No drag and drop. Just code that becomes cinema.",
+              words: [
+                { text: "Every", start: 0.0, end: 0.3 },
+                { text: "great", start: 0.3, end: 0.55 },
+                { text: "video", start: 0.55, end: 0.85 },
+                { text: "starts", start: 0.85, end: 1.1 },
+                { text: "with", start: 1.1, end: 1.25 },
+                { text: "a", start: 1.25, end: 1.35 },
+                { text: "single", start: 1.35, end: 1.65 },
+                { text: "frame.", start: 1.65, end: 2.0 },
+                { text: "HyperFrames", start: 2.1, end: 2.65 },
+                { text: "lets", start: 2.65, end: 2.85 },
+                { text: "you", start: 2.85, end: 2.95 },
+                { text: "write", start: 2.95, end: 3.15 },
+                { text: "HTML", start: 3.15, end: 3.55 },
+                { text: "and", start: 3.55, end: 3.65 },
+                { text: "render", start: 3.65, end: 3.95 },
+                { text: "professional", start: 3.95, end: 4.45 },
+                { text: "video.", start: 4.45, end: 4.8 },
+                { text: "No", start: 4.9, end: 5.05 },
+                { text: "timeline.", start: 5.05, end: 5.45 },
+                { text: "No", start: 5.5, end: 5.65 },
+                { text: "drag", start: 5.65, end: 5.85 },
+                { text: "and", start: 5.85, end: 5.95 },
+                { text: "drop.", start: 5.95, end: 6.25 },
+                { text: "Just", start: 6.35, end: 6.55 },
+                { text: "code", start: 6.55, end: 6.8 },
+                { text: "that", start: 6.8, end: 6.95 },
+                { text: "becomes", start: 6.95, end: 7.3 },
+                { text: "cinema.", start: 7.3, end: 7.7 },
+              ],
+            },
+          ],
+        };
 
-        var RAW_GROUPS = [
-          [0, 3],
-          [4, 7],
-          [8, 8],
-          [9, 12],
-          [13, 15],
-          [16, 16],
-          [17, 19],
-          [20, 22],
-          [23, 24],
-          [25, 27],
-        ];
-        var GROUPS = RAW_GROUPS.map(function (pair, gi) {
-          var ws = pair[0],
-            we = pair[1];
-          var nextStart = gi + 1 < RAW_GROUPS.length ? WORDS[RAW_GROUPS[gi + 1][0]].start : 8.0;
-          var gEnd = Math.min(WORDS[we].end + 0.5, nextStart - 0.05);
-          return { wordStart: ws, wordEnd: we, start: WORDS[ws].start, end: gEnd };
-        });
+        /* ── HyperFrames caption-data runtime (shared across caption templates) ── */
+        var HF_CONTRACT_VERSION = 1;
+        var HF_DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
 
-        var container = document.getElementById("hl-container");
-        var tl = gsap.timeline({ paused: true });
-
-        GROUPS.forEach(function (g, gi) {
-          var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
-          var grp = document.createElement("div");
-          grp.className = "hl-group";
-          grp.id = "hl-grp-" + gi;
-
-          var groupText = groupWords
-            .map(function (w) {
-              return w.text.toUpperCase();
-            })
-            .join(" ");
-          var computedSize = fitFontSize(groupText, 80, "800", "Montserrat", 1620);
-
-          groupWords.forEach(function (w, i) {
-            var wi = g.wordStart + i;
-            var wordEl = document.createElement("span");
-            wordEl.className = "hl-word";
-            wordEl.id = "hl-w-" + wi;
-            wordEl.style.fontSize = computedSize + "px";
-
-            var bgEl = document.createElement("span");
-            bgEl.className = "hl-word-bg";
-            bgEl.id = "hl-bg-" + wi;
-
-            var textEl = document.createElement("span");
-            textEl.className = "hl-word-text";
-            textEl.textContent = w.text.toUpperCase();
-
-            wordEl.appendChild(bgEl);
-            wordEl.appendChild(textEl);
-            grp.appendChild(wordEl);
+        function hfFlattenSegments(segments) {
+          var out = [];
+          (segments || []).forEach(function (seg) {
+            ((seg && seg.words) || []).forEach(function (w) {
+              var start = Math.max(0, Number(w.start) || 0);
+              out.push({
+                text: String(w.word || w.text || "").trim(),
+                start: start,
+                end: Math.max(start, Number(w.end) || 0),
+              });
+            });
           });
+          out.sort(function (a, b) {
+            return a.start - b.start;
+          });
+          return out.filter(function (w) {
+            return w.text.length > 0;
+          });
+        }
 
-          container.appendChild(grp);
+        function hfDeriveDuration(words) {
+          var end = 0;
+          words.forEach(function (w) {
+            if (w.end > end) end = w.end;
+          });
+          return end;
+        }
 
-          tl.set(grp, { visibility: "visible" }, g.start);
-          tl.fromTo(
-            grp,
-            { opacity: 0 },
-            { opacity: 1, duration: 0.12, ease: "power2.out" },
-            g.start,
+        function hfValidate(data) {
+          if (!data || typeof data !== "object") return { ok: false, reason: "not-an-object" };
+          if (data.version != null) {
+            // Number("v2") is NaN and NaN > x is always false — an explicit
+            // finite check keeps malformed versions from slipping past the gate.
+            var hfVersion = Number(data.version);
+            if (!Number.isFinite(hfVersion) || Math.floor(hfVersion) > HF_CONTRACT_VERSION) {
+              return { ok: false, reason: "unsupported-version" };
+            }
+          }
+          if (!Array.isArray(data.segments) || data.segments.length === 0) {
+            return { ok: false, reason: "no-segments" };
+          }
+          if (data.displayMode != null && data.displayMode !== "full") {
+            return { ok: false, reason: "unsupported-displayMode" };
+          }
+          var words = hfFlattenSegments(data.segments);
+          if (words.length === 0) return { ok: false, reason: "no-words" };
+          return { ok: true, words: words, durationS: hfDeriveDuration(words) };
+        }
+
+        function hfApplyStageConfig(data, durationS) {
+          var res = (data && data.resolution) || HF_DEFAULT_RESOLUTION;
+          // Mirror the published validator's <=8192 bound defensively — the
+          // validator is an optional pre-flight, and an unbounded stage size
+          // would OOM render workers.
+          var W = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.width) || HF_DEFAULT_RESOLUTION.width)),
           );
+          var H = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.height) || HF_DEFAULT_RESOLUTION.height)),
+          );
+          var root = document.getElementById(HF_ROOT_ID);
+          [document.documentElement, document.body, root].forEach(function (el) {
+            el.style.width = W + "px";
+            el.style.height = H + "px";
+          });
+          root.setAttribute("data-width", String(W));
+          root.setAttribute("data-height", String(H));
+          root.setAttribute("data-duration", String(durationS));
+          var brand = (data && data.brand) || {};
+          if (typeof brand.primaryColor === "string" && brand.primaryColor) {
+            root.style.setProperty("--hf-caption-primary", brand.primaryColor);
+          } else {
+            root.style.removeProperty("--hf-caption-primary");
+          }
+          if (typeof brand.accentColor === "string" && brand.accentColor) {
+            root.style.setProperty("--hf-caption-accent", brand.accentColor);
+          } else {
+            root.style.removeProperty("--hf-caption-accent");
+          }
+          return {
+            W: W,
+            H: H,
+            scaleX: W / 1920,
+            scaleY: H / 1080,
+            fontScale: Math.min(W, H) / 1080,
+          };
+        }
 
-          groupWords.forEach(function (w, i) {
-            var wi = g.wordStart + i;
-            var bgEl = document.getElementById("hl-bg-" + wi);
-            var wordEl = document.getElementById("hl-w-" + wi);
+        function hfPublishStatus(status) {
+          window.__HF_CAPTION_STATUS = status;
+          document
+            .getElementById(HF_ROOT_ID)
+            .setAttribute("data-caption-status", status.ok ? "ok" : "failed");
+        }
 
-            tl.to(bgEl, { opacity: 1, scaleX: 1, duration: 0.15, ease: "power2.out" }, w.start);
-            tl.to(
-              wordEl,
-              { filter: "brightness(1.05)", duration: 0.08, ease: "power2.out" },
-              w.start,
+        function hfRunGate(words, durationS, failReason) {
+          if (failReason) {
+            hfPublishStatus({
+              ok: false,
+              present: false,
+              contained: false,
+              reason: failReason,
+              version: HF_CONTRACT_VERSION,
+              durationS: durationS || 0,
+            });
+            return;
+          }
+          var root = document.getElementById(HF_ROOT_ID);
+          var rootRect = root.getBoundingClientRect();
+          var groups = root.querySelectorAll(HF_GROUP_SELECTOR);
+          var present = false;
+          var contained = true;
+          var tokens = [];
+          words.forEach(function (w) {
+            var t = w.text.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (t) tokens.push(t);
+          });
+          groups.forEach(function (el) {
+            var prevOpacity = el.style.opacity;
+            var prevVisibility = el.style.visibility;
+            el.style.opacity = "1";
+            el.style.visibility = "visible";
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+              var text = (el.textContent || "").toLowerCase();
+              for (var i = 0; i < tokens.length; i++) {
+                if (text.indexOf(tokens[i]) !== -1) {
+                  present = true;
+                  break;
+                }
+              }
+              if (
+                r.left < rootRect.left - 1 ||
+                r.right > rootRect.right + 1 ||
+                r.top < rootRect.top - 1 ||
+                r.bottom > rootRect.bottom + 1
+              ) {
+                contained = false;
+              }
+            }
+            el.style.opacity = prevOpacity;
+            el.style.visibility = prevVisibility;
+          });
+          hfPublishStatus({
+            ok: present && contained,
+            present: present,
+            contained: contained,
+            version: HF_CONTRACT_VERSION,
+            durationS: durationS,
+          });
+        }
+
+        var MAX_WORDS_PER_GROUP = 4;
+        var PAUSE_THRESHOLD = 0.1;
+
+        function hfMakeGroups(words, fontPx, safeWidth, durationS) {
+          var raw = [];
+          var current = [];
+          function fits(ws) {
+            var text = ws
+              .map(function (w) {
+                return w.text.toUpperCase();
+              })
+              .join(" ");
+            _fitCtx.font = "800 " + fontPx + "px Montserrat";
+            // 1.6× headroom: fitFontSize can shrink to 45% of base
+            return _fitCtx.measureText(text).width <= safeWidth * 1.6;
+          }
+          words.forEach(function (w, i) {
+            var next = words[i + 1];
+            var test = current.concat([w]);
+            if (test.length > MAX_WORDS_PER_GROUP || !fits(test)) {
+              if (current.length) raw.push(current);
+              current = [w];
+            } else {
+              current.push(w);
+            }
+            var punctuation = /[,.:!?]$/.test(w.text);
+            var pause = next ? next.start - w.end : Infinity;
+            if (
+              current.length &&
+              (punctuation ||
+                pause >= PAUSE_THRESHOLD ||
+                current.length >= MAX_WORDS_PER_GROUP ||
+                !next)
+            ) {
+              raw.push(current);
+              current = [];
+            }
+          });
+          if (current.length) raw.push(current);
+          return raw.map(function (ws, gi) {
+            var nextStart = gi + 1 < raw.length ? raw[gi + 1][0].start : durationS;
+            return {
+              words: ws,
+              start: ws[0].start,
+              end: Math.min(
+                ws[ws.length - 1].end + 0.5,
+                Math.max(ws[0].start + 0.2, nextStart - 0.05),
+              ),
+            };
+          });
+        }
+
+        function hfTeardown() {
+          document.getElementById("hl-container").innerHTML = "";
+        }
+
+        function hfBuild(words, layout, durationS) {
+          var fontPx = Math.round(80 * layout.fontScale);
+          var safeWidth = Math.round(1620 * layout.scaleX);
+          var container = document.getElementById("hl-container");
+          var groups = hfMakeGroups(words, fontPx, safeWidth, durationS);
+          var tl = gsap.timeline({ paused: true });
+          var wordCounter = 0;
+
+          groups.forEach(function (g, gi) {
+            var grp = document.createElement("div");
+            grp.className = "hl-group";
+            grp.id = "hl-grp-" + gi;
+            grp.style.bottom = Math.round(140 * layout.scaleY) + "px";
+            grp.style.paddingLeft = Math.round(100 * layout.scaleX) + "px";
+            grp.style.paddingRight = Math.round(100 * layout.scaleX) + "px";
+
+            var groupText = g.words
+              .map(function (w) {
+                return w.text.toUpperCase();
+              })
+              .join(" ");
+            var computedSize = fitFontSize(groupText, fontPx, "800", "Montserrat", safeWidth);
+
+            var ids = [];
+            g.words.forEach(function (w) {
+              var wi = wordCounter++;
+              ids.push(wi);
+              var wordEl = document.createElement("span");
+              wordEl.className = "hl-word";
+              wordEl.id = "hl-w-" + wi;
+              wordEl.style.fontSize = computedSize + "px";
+              var bgEl = document.createElement("span");
+              bgEl.className = "hl-word-bg";
+              bgEl.id = "hl-bg-" + wi;
+              var textEl = document.createElement("span");
+              textEl.className = "hl-word-text";
+              textEl.textContent = w.text.toUpperCase();
+              wordEl.appendChild(bgEl);
+              wordEl.appendChild(textEl);
+              grp.appendChild(wordEl);
+            });
+            container.appendChild(grp);
+
+            tl.set(grp, { visibility: "visible" }, g.start);
+            tl.fromTo(
+              grp,
+              { opacity: 0 },
+              { opacity: 1, duration: 0.12, ease: "power2.out" },
+              g.start,
             );
+            g.words.forEach(function (w, i) {
+              var bgEl = document.getElementById("hl-bg-" + ids[i]);
+              var wordEl = document.getElementById("hl-w-" + ids[i]);
+              tl.to(bgEl, { opacity: 1, scaleX: 1, duration: 0.15, ease: "power2.out" }, w.start);
+              tl.to(
+                wordEl,
+                { filter: "brightness(1.05)", duration: 0.08, ease: "power2.out" },
+                w.start,
+              );
+              tl.to(
+                wordEl,
+                { filter: "brightness(1)", duration: 0.16, ease: "power2.out" },
+                w.start + 0.08,
+              );
+              tl.to(bgEl, { opacity: 0, scaleX: 1.02, duration: 0.1, ease: "power2.in" }, w.end);
+              tl.set(bgEl, { scaleX: 0 }, w.end + 0.1);
+            });
             tl.to(
-              wordEl,
-              { filter: "brightness(1)", duration: 0.16, ease: "power2.out" },
-              w.start + 0.08,
+              grp,
+              { opacity: 0, duration: 0.1, ease: "power2.in" },
+              Math.max(g.start, g.end - 0.1),
             );
-            tl.to(bgEl, { opacity: 0, scaleX: 1.02, duration: 0.1, ease: "power2.in" }, w.end);
-            tl.set(bgEl, { scaleX: 0 }, w.end + 0.1);
+            tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
           });
 
-          tl.to(grp, { opacity: 0, duration: 0.1, ease: "power2.in" }, g.end - 0.1);
-          tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
-        });
+          return tl;
+        }
 
-        tl.seek(0);
-        window.__timelines["caption-highlight"] = tl;
+        var hfCurrentTimeline = null;
+
+        function hfAttach(data) {
+          var v = hfValidate(data);
+          if (!v.ok) {
+            hfRunGate([], 0, v.reason);
+            return;
+          }
+          if (hfCurrentTimeline) {
+            hfCurrentTimeline.kill();
+            hfCurrentTimeline = null;
+          }
+          hfTeardown();
+          var layout = hfApplyStageConfig(data, v.durationS);
+          var tl = hfBuild(v.words, layout, v.durationS);
+          tl.set({}, {}, v.durationS); // pin timeline length to the data-derived duration
+          // GSAP quirk (confirmed 3.14.2): a fresh timeline already reports position 0,
+          // so seek(0) is treated as a no-op and skips rendering .set() calls scheduled
+          // at t=0 — the first frame would show pre-timeline CSS defaults (usually
+          // hidden). render(time, suppressEvents, force) with force=true bypasses that.
+          tl.render(0, true, true);
+          hfCurrentTimeline = tl;
+          window.__timelines = window.__timelines || {};
+          window.__timelines[HF_COMPOSITION_ID] = tl;
+          hfRunGate(v.words, v.durationS, null);
+        }
+        window.__HF_CAPTION_ATTACH__ = hfAttach;
+
+        (function hfBoot() {
+          function start(data) {
+            var ready =
+              document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+            ready.then(function () {
+              // A manual window.__HF_CAPTION_ATTACH__ call that lands while the
+              // sibling fetch / fonts.ready are still pending must win — never
+              // clobber it with the late-arriving boot payload.
+              if (hfCurrentTimeline) return;
+              hfAttach(data);
+            });
+          }
+          if (window.__HF_CAPTION__) {
+            start(window.__HF_CAPTION__);
+            return;
+          }
+          fetch("./caption-data.json")
+            .then(function (r) {
+              return r.ok ? r.json() : null;
+            })
+            .catch(function () {
+              return null;
+            })
+            .then(function (json) {
+              start(json || HF_DEMO_DATA);
+            });
+        })();
       })();
     </script>
   </body>

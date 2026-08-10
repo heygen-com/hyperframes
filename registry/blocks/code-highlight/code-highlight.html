@@ -536,6 +536,9 @@
         id: "code-highlight",
         effect: "highlight",
         seq: "feature",
+        // `line` is ZERO-BASED: line: 1 highlights the SECOND displayed line
+        // (gutter 2). Note code-scroll's target is 1-based — don't carry a
+        // value between the two blocks without re-checking it.
         line: 1,
         duration: 5,
       };

@@ -3,79 +3,23 @@ title: "Vignette"
 description: "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center"
 ---
 
-import { InstallCommand } from "/snippets/install-command.jsx";
-
-<iframe src="/public/catalog/preview/components/vignette.html" className="w-full aspect-video rounded-xl border border-zinc-200 dark:border-zinc-800" loading="lazy" title="Vignette preview" />
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.png" autoPlay muted loop playsInline />
 
 ## Install
 
-<InstallCommand command="npx hyperframes add vignette" />
+```bash Terminal
+npx hyperframes add vignette
+```
 
 That writes one file: `compositions/components/vignette.html`.
 
-## Source
+## Paste it into your composition
 
-<Accordion title={`vignette.html`}>
+Open `compositions/components/vignette.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
 
-```html
-<!--
-  Vignette — cinematic radial darkening overlay.
-
-  Usage: paste this snippet inside your composition's positioned stage.
-  The overlay covers the full viewport with pointer-events: none so it
-  sits on top of all content without blocking interaction.
-
-  Customize:
-  - --vignette-color: edge color and alpha (default rgba(0, 0, 0, 0.7))
-  - --vignette-size: where the transparent center ends (default 45%)
-  - --vignette-edge: where the color reaches its final stop (default 100%)
-  - --vignette-shape: ellipse | circle (default ellipse)
-  - z-index: defaults to 90 so grain-overlay (100) reads on top
--->
-
-<div
-  id="hf-vignette"
-  style="
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 90;
-  "
-></div>
-
-<style>
-  #hf-vignette {
-    background: radial-gradient(
-      var(--vignette-shape, ellipse) at center,
-      transparent var(--vignette-size, 45%),
-      var(--vignette-color, rgba(0, 0, 0, 0.7)) var(--vignette-edge, 100%)
-    );
-  }
-</style>
-
-<!--
-  Timeline integration example (add to your composition's GSAP timeline):
-
-  // Fade the vignette in over the first second
-  tl.fromTo("#hf-vignette",
-    { "--vignette-color": "rgba(0, 0, 0, 0)" },
-    { "--vignette-color": "rgba(0, 0, 0, 0.7)", duration: 1, ease: "power2.out" },
-    0,
-  );
-
-  // Or breathe the size in and out (works with any easing)
-  tl.to("#hf-vignette", { "--vignette-size": "35%", duration: 1, ease: "sine.inOut" }, 2);
--->
-```
-
-</Accordion>
-
-## Usage
-
-Open `compositions/components/vignette.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 

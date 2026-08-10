@@ -1,44 +1,5 @@
 [
   {
-    "name": "ai-generation-canvas",
-    "type": "component",
-    "title": "AI Generation Canvas",
-    "description": "A prompt composer expands into a generated dashboard preview.",
-    "tags": [
-      "showcase",
-      "remocn-port",
-      "ai"
-    ],
-    "href": "/catalog/components/ai-generation-canvas",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ai-generation-canvas.png"
-  },
-  {
-    "name": "ai-prompt-flow",
-    "type": "component",
-    "title": "AI Prompt Flow",
-    "description": "A composed AI prompt flow with prompt field, suggestion chips, generate action, and preview result card",
-    "tags": [
-      "ui-flow",
-      "remocn-port",
-      "ai",
-      "prompt"
-    ],
-    "href": "/catalog/components/ai-prompt-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ai-prompt-flow.png"
-  },
-  {
-    "name": "animated-bar-chart",
-    "type": "component",
-    "title": "Animated Bar Chart",
-    "description": "A compact data card with deterministic bar growth and value callouts.",
-    "tags": [
-      "data",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/animated-bar-chart",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png"
-  },
-  {
     "name": "app-showcase",
     "type": "block",
     "title": "App Showcase",
@@ -67,143 +28,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png"
   },
   {
-    "name": "arc-motion-path",
-    "type": "component",
-    "title": "Arc Motion Path",
-    "description": "A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation.",
-    "tags": [
-      "video-primitive",
-      "motionpath",
-      "gsap-plugin",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/arc-motion-path",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/arc-motion-path.png"
-  },
-  {
-    "name": "ascii-render-pass",
-    "type": "component",
-    "title": "ASCII Render Pass",
-    "description": "A slotted scene renders as live ASCII: a canvas samples the source's luminance grid (rasterized once at mount) and draws glyphs from a density ramp charset; resolution steps coarse to fine as the piece resolves, then holds legible-fine.",
-    "tags": [
-      "motion-primitive",
-      "experiment",
-      "texture",
-      "ascii",
-      "quantize"
-    ],
-    "href": "/catalog/components/ascii-render-pass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ascii-render-pass.png"
-  },
-  {
-    "name": "ascii-trail-reveal",
-    "type": "component",
-    "title": "ASCII Trail Reveal",
-    "description": "An authored S-curve sweeps through a deterministic ASCII grid, flipping cells away to reveal a labeled panel.",
-    "tags": [
-      "motion-primitive",
-      "intro",
-      "reveal",
-      "ascii",
-      "trail",
-      "grid"
-    ],
-    "href": "/catalog/components/ascii-trail-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ascii-trail-reveal.png"
-  },
-  {
-    "name": "aurora-drift",
-    "type": "component",
-    "title": "Aurora Drift",
-    "description": "Three soft accent-derived aurora fields drift in an exact ambient loop over a deep base and faint vignette.",
-    "tags": [
-      "motion-primitive",
-      "background",
-      "aurora",
-      "gradient",
-      "ambient",
-      "loopable"
-    ],
-    "href": "/catalog/components/aurora-drift",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aurora-drift.png"
-  },
-  {
-    "name": "avatar-cloud",
-    "type": "component",
-    "title": "Avatar Cloud",
-    "description": "Lettermark avatars populate a loose elliptical cloud while fine SVG links draw between the community and its central proof label.",
-    "tags": [
-      "effects",
-      "avatars",
-      "community",
-      "network",
-      "social-proof",
-      "prove"
-    ],
-    "href": "/catalog/components/avatar-cloud",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar-cloud.png"
-  },
-  {
-    "name": "avatar-group-hover",
-    "type": "component",
-    "title": "Avatar Group Hover",
-    "description": "A distance-falloff avatar group lift with bouncy hover return",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "avatar",
-      "hover"
-    ],
-    "href": "/catalog/components/avatar-group-hover",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar-group-hover.png"
-  },
-  {
-    "name": "badge-pop",
-    "type": "component",
-    "title": "Badge Pop",
-    "description": "A transitions.dev-inspired notification badge pop with elastic scale and count reveal",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "badge",
-      "microinteraction"
-    ],
-    "href": "/catalog/components/badge-pop",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge-pop.png"
-  },
-  {
-    "name": "bar-chart-race",
-    "type": "block",
-    "title": "Bar Chart Race",
-    "description": "Ranked bars grow and overtake each other as a time series advances, with the axis rescaling as values climb and the accent handing over to whoever leads",
-    "tags": [
-      "data",
-      "chart",
-      "statistics",
-      "ranking"
-    ],
-    "href": "/catalog/blocks/bar-chart-race",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/bar-chart-race.png"
-  },
-  {
-    "name": "beat-accent",
-    "type": "component",
-    "title": "Beat Accent",
-    "description": "A single music-hit sting: impact flash, micro scale-pulse on the subject, immediate decay.",
-    "tags": [
-      "motion-primitive",
-      "effects",
-      "burst",
-      "sting",
-      "emphasize",
-      "impact"
-    ],
-    "href": "/catalog/components/beat-accent",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/beat-accent.png"
-  },
-  {
     "name": "beat-freeze-cut",
     "type": "block",
     "title": "Beat Freeze Cut",
@@ -218,54 +42,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/beat-freeze-cut.png"
   },
   {
-    "name": "beat-pulse-background",
-    "type": "component",
-    "title": "Beat Pulse Background",
-    "description": "An accent-derived backdrop pulses its glow intensity and saturation on a deterministic, supplied beat grid.",
-    "tags": [
-      "motion-primitive",
-      "background",
-      "beat",
-      "pulse",
-      "rhythmic",
-      "reactive"
-    ],
-    "href": "/catalog/components/beat-pulse-background",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/beat-pulse-background.png"
-  },
-  {
-    "name": "beat-timeline",
-    "type": "component",
-    "title": "Beat Timeline",
-    "description": "A paused master-timeline orchestration spine that pins titled beat rows to evenly spaced named labels. Each row enters on its label, holds with the sequence, then exits with the group.",
-    "tags": [
-      "orchestration",
-      "transitions",
-      "sequencing",
-      "bridge",
-      "timeline"
-    ],
-    "href": "/catalog/components/beat-timeline",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/beat-timeline.png"
-  },
-  {
-    "name": "before-after-wipe",
-    "type": "component",
-    "title": "Before After Wipe",
-    "description": "Two full-bleed content slots compare before and after states as a persistent divider wipes the after layer over the before layer and rests at a configurable split. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "compare",
-      "holdable",
-      "before-after",
-      "wipe",
-      "slots"
-    ],
-    "href": "/catalog/components/before-after-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/before-after-wipe.png"
-  },
-  {
     "name": "blue-sweater-intro-video",
     "type": "block",
     "title": "Blue Sweater Intro Video",
@@ -278,64 +54,6 @@
     ],
     "href": "/catalog/blocks/blue-sweater-intro-video",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
-  },
-  {
-    "name": "blur-in",
-    "type": "component",
-    "title": "Blur In",
-    "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
-    "tags": [
-      "video-primitive",
-      "remocn-port",
-      "blur-in",
-      "text-effect"
-    ],
-    "href": "/catalog/components/blur-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-in.png"
-  },
-  {
-    "name": "blur-out-up",
-    "type": "component",
-    "title": "Blur Out Up",
-    "description": "Words arrive clean and depart upward with increasing blur for airy exits.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/blur-out-up",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-out-up.png"
-  },
-  {
-    "name": "bottom-up-letters",
-    "type": "component",
-    "title": "Bottom Up Letters",
-    "description": "Splits text into letters and reveals each glyph from below with deterministic staggered timing",
-    "tags": [
-      "motion-primitive",
-      "text",
-      "letters",
-      "reveal"
-    ],
-    "href": "/catalog/components/bottom-up-letters",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/bottom-up-letters.png"
-  },
-  {
-    "name": "browser-device-stage",
-    "type": "component",
-    "title": "Browser Device Stage",
-    "description": "A generic app surface in token-native device chrome (browser, window, or phone). The screen is a slot for caller img/video/HTML with a token-styled skeleton default; one settle entrance, a readable hold, and an optional screen swap.",
-    "tags": [
-      "stage",
-      "product-demo",
-      "device",
-      "browser",
-      "phone",
-      "slot",
-      "chrome"
-    ],
-    "href": "/catalog/components/browser-device-stage",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/browser-device-stage.png"
   },
   {
     "name": "camcorder-hud",
@@ -355,65 +73,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/camcorder-hud.png"
   },
   {
-    "name": "camera-dolly-zoom",
-    "type": "block",
-    "title": "Dolly Zoom (Vertigo Shot)",
-    "description": "Camera tracks toward or away from the subject while the field of view changes the opposite way, so the subject holds its frame size while the background collapses behind it or rushes in. Focal length is solved from dolly distance every frame against d * tan(FOV/2) = const, not keyframed beside it. Requires depth: the subject sits on the z = 0 plane and the content behind it must be layered or genuinely 3D (translateZ at two or more distinct depths) -- a flat element gains nothing from this move.",
-    "tags": [
-      "camera",
-      "depth",
-      "3d",
-      "cinematic"
-    ],
-    "href": "/catalog/blocks/camera-dolly-zoom",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/camera-dolly-zoom.png"
-  },
-  {
-    "name": "camera-rig-depth-stack",
-    "type": "component",
-    "title": "Camera Rig Depth Stack",
-    "description": "A 3D camera-rig-style card stack with depth, parallax, and focus shift.",
-    "tags": [
-      "advanced-motion",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/camera-rig-depth-stack",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-rig-depth-stack.png"
-  },
-  {
-    "name": "camera-scan-gate",
-    "type": "component",
-    "title": "Camera Scan Gate",
-    "description": "A camera and QR recognition moment with a viewfinder sweep, bracket lock, confirmation pulse, and verified next beat.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "camera",
-      "qr",
-      "scan",
-      "recognition",
-      "interaction",
-      "demonstrate"
-    ],
-    "href": "/catalog/components/camera-scan-gate",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-scan-gate.png"
-  },
-  {
-    "name": "camera-shake",
-    "type": "component",
-    "title": "Camera Shake",
-    "description": "Procedural handheld, telephoto and rig camera shake for any wrapper: nine measured profiles with per-lens projection, closed-form and seek-safe",
-    "tags": [
-      "camera",
-      "shake",
-      "handheld",
-      "effect",
-      "cinematic"
-    ],
-    "href": "/catalog/components/camera-shake",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/camera-shake.png"
-  },
-  {
     "name": "caption-blend-difference",
     "type": "component",
     "title": "Blend Difference",
@@ -428,22 +87,6 @@
     ],
     "href": "/catalog/components/caption-blend-difference",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-blend-difference.png"
-  },
-  {
-    "name": "caption-camera-follow",
-    "type": "component",
-    "title": "Camera Follow Captions",
-    "description": "One sentence written across a world far larger than the frame. Each word is sized against everything already written, so the block grows geometrically and the camera pulls back at a steady rate to keep landing the new word at the same size. Old words stay lit and simply become small.",
-    "tags": [
-      "captions",
-      "caption-style",
-      "camera",
-      "typography",
-      "motion-primitive",
-      "portrait"
-    ],
-    "href": "/catalog/components/caption-camera-follow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-camera-follow.png"
   },
   {
     "name": "caption-clip-wipe",
@@ -666,83 +309,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-weight-shift.png"
   },
   {
-    "name": "card-resize",
-    "type": "component",
-    "title": "Card Resize",
-    "description": "A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "card",
-      "layout"
-    ],
-    "href": "/catalog/components/card-resize",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
-  },
-  {
-    "name": "char-slam-explode",
-    "type": "component",
-    "title": "Char Slam Explode",
-    "description": "Headline glyphs hold in a deterministic scatter, then reassemble with an overshooting slam and a three-frame landing shake.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "text-treatment",
-      "scatter",
-      "slam",
-      "impact"
-    ],
-    "href": "/catalog/components/char-slam-explode",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/char-slam-explode.png"
-  },
-  {
-    "name": "chart-story",
-    "type": "component",
-    "title": "Chart Story",
-    "description": "One chart builds from data in reading order and lands the exact supplied values: staggered bars, a left-to-right line with area fill, a sweeping donut, or filling progress bars, with an accented value callout on the emphasized datum.",
-    "tags": [
-      "motion-primitive",
-      "proof",
-      "stats",
-      "chart",
-      "bars",
-      "line",
-      "donut",
-      "progress",
-      "deterministic"
-    ],
-    "href": "/catalog/components/chart-story",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chart-story.png"
-  },
-  {
-    "name": "checkout-flow",
-    "type": "component",
-    "title": "Checkout Flow",
-    "description": "A composed checkout flow with plan summary, payment field rows, total, and purchase action",
-    "tags": [
-      "ui-flow",
-      "remocn-port",
-      "checkout",
-      "commerce"
-    ],
-    "href": "/catalog/components/checkout-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/checkout-flow.png"
-  },
-  {
-    "name": "chromatic-aberration-wipe",
-    "type": "component",
-    "title": "Chromatic Aberration Wipe",
-    "description": "A fast slide wipe with RGB channel split on peak frames.",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/chromatic-aberration-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chromatic-aberration-wipe.png"
-  },
-  {
     "name": "chromatic-radial-split",
     "type": "block",
     "title": "Chromatic Radial Split",
@@ -799,7 +365,7 @@
     "name": "code-highlight",
     "type": "block",
     "title": "Code Highlight Sweep",
-    "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.",
+    "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line. `line` is 0-based: `line: 1` targets the second displayed line (unlike code-scroll, whose target is 1-based).",
     "tags": [
       "code",
       "code-animation",
@@ -882,8 +448,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-basic",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-basic.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-basic"
   },
   {
     "name": "code-snippet-apple-terminal-clear-dark",
@@ -898,8 +463,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-clear-dark",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-clear-dark.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-clear-dark"
   },
   {
     "name": "code-snippet-apple-terminal-clear-light",
@@ -914,8 +478,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-clear-light",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-clear-light.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-clear-light"
   },
   {
     "name": "code-snippet-apple-terminal-grass",
@@ -930,8 +493,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-grass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-grass.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-grass"
   },
   {
     "name": "code-snippet-apple-terminal-homebrew",
@@ -946,8 +508,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-homebrew",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-homebrew"
   },
   {
     "name": "code-snippet-apple-terminal-man-page",
@@ -962,8 +523,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-man-page",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-man-page.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-man-page"
   },
   {
     "name": "code-snippet-apple-terminal-novel",
@@ -978,8 +538,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-novel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-novel.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-novel"
   },
   {
     "name": "code-snippet-apple-terminal-ocean",
@@ -994,8 +553,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-ocean",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-ocean.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-ocean"
   },
   {
     "name": "code-snippet-apple-terminal-pro",
@@ -1010,8 +568,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-pro",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-pro.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-pro"
   },
   {
     "name": "code-snippet-apple-terminal-red-sands",
@@ -1026,8 +583,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-red-sands",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-red-sands.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-red-sands"
   },
   {
     "name": "code-snippet-apple-terminal-silver-aerogel",
@@ -1042,8 +598,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-silver-aerogel.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-silver-aerogel"
   },
   {
     "name": "code-snippet-apple-terminal-solid-colors",
@@ -1058,8 +613,7 @@
       "apple",
       "apple-terminal"
     ],
-    "href": "/catalog/blocks/code-snippet-apple-terminal-solid-colors",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-solid-colors.png"
+    "href": "/catalog/blocks/code-snippet-apple-terminal-solid-colors"
   },
   {
     "name": "code-snippet-dark-2026",
@@ -1244,21 +798,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-visual-studio-light.png"
   },
   {
-    "name": "code-terminal-run",
-    "type": "component",
-    "title": "Code Terminal Run",
-    "description": "A token-chrome terminal panel runs one command: the prompt line types deterministically behind an integer-cycle caret, executes after a beat, and output lines print one per cue before a fresh prompt appears.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "terminal",
-      "typing",
-      "deterministic"
-    ],
-    "href": "/catalog/components/code-terminal-run",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/code-terminal-run.png"
-  },
-  {
     "name": "code-typing",
     "type": "block",
     "title": "Code Typing",
@@ -1273,97 +812,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-typing.png"
   },
   {
-    "name": "comparison-split",
-    "type": "component",
-    "title": "Comparison Split",
-    "description": "Two full-bleed panels compare before and after states as a persistent divider wipes the vivid after layer over the muted before layer and rests at a configurable split.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "compare",
-      "holdable",
-      "before-after",
-      "wipe"
-    ],
-    "href": "/catalog/components/comparison-split",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/comparison-split.png"
-  },
-  {
-    "name": "confetti",
-    "type": "component",
-    "title": "Confetti",
-    "description": "A deterministic celebration burst with seeded particles and gravity.",
-    "tags": [
-      "effect",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/confetti",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/confetti.png"
-  },
-  {
-    "name": "conic-progress-ring",
-    "type": "component",
-    "title": "Conic Progress Ring",
-    "description": "A token-driven conic progress ring whose angular fill and center count settle together from one registered percentage.",
-    "tags": [
-      "data",
-      "progress",
-      "ring",
-      "conic-gradient",
-      "prove",
-      "demonstrate"
-    ],
-    "href": "/catalog/components/conic-progress-ring",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/conic-progress-ring.png"
-  },
-  {
-    "name": "constellation-hub",
-    "type": "component",
-    "title": "Constellation Hub",
-    "description": "Feature nodes brighten in narration order as real-length SVG connectors draw outward from a fixed central hub, then settle into one lockup.",
-    "tags": [
-      "motion-primitive",
-      "feature-tour",
-      "hub",
-      "nodes",
-      "connector",
-      "reveal"
-    ],
-    "href": "/catalog/components/constellation-hub",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/constellation-hub.png"
-  },
-  {
-    "name": "cosmic-orb",
-    "type": "block",
-    "title": "Cosmic Orb",
-    "description": "An iridescent soap-bubble planet: a slowly spinning sphere of nebula bands, dust lanes and twinkling stars wrapped in a refracting glass limb with chromatic aberration at the edge.",
-    "tags": [
-      "webgl",
-      "shader",
-      "background",
-      "showcase",
-      "3d"
-    ],
-    "href": "/catalog/blocks/cosmic-orb",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cosmic-orb.png"
-  },
-  {
-    "name": "count-up",
-    "type": "component",
-    "title": "Count Up",
-    "description": "A token-native stat counter that eases between values and lands with a restrained scale pulse.",
-    "tags": [
-      "motion-primitive",
-      "proof",
-      "stats",
-      "counter",
-      "number",
-      "deterministic"
-    ],
-    "href": "/catalog/components/count-up",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/count-up.png"
-  },
-  {
     "name": "cross-warp-morph",
     "type": "block",
     "title": "Cross Warp Morph",
@@ -1374,70 +822,6 @@
     ],
     "href": "/catalog/blocks/cross-warp-morph",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cross-warp-morph.png"
-  },
-  {
-    "name": "cta-close",
-    "type": "component",
-    "title": "CTA Close",
-    "description": "A display-scale action line lands per word and fills the frame with air, one generous CTA capsule pops beneath it with a single overshoot, and the finished close holds completely still.",
-    "tags": [
-      "motion-primitive",
-      "ui-props",
-      "cta",
-      "end-card",
-      "close",
-      "ask"
-    ],
-    "href": "/catalog/components/cta-close",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cta-close.png"
-  },
-  {
-    "name": "cta-lockup",
-    "type": "component",
-    "title": "CTA Lockup",
-    "description": "A canonical closing lockup that reveals an action line, pops in an accent CTA capsule, settles supporting microcopy, and holds with confidence.",
-    "tags": [
-      "motion-primitive",
-      "ui-props",
-      "cta",
-      "end-card",
-      "lockup",
-      "ask"
-    ],
-    "href": "/catalog/components/cta-lockup",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cta-lockup.png"
-  },
-  {
-    "name": "cursor-glyph-trail",
-    "type": "component",
-    "title": "Cursor Glyph Trail",
-    "description": "An actor travels an authored path depositing small dithered glyphs at its past positions, each popping in and decaying in place, stamp rate scaling with the actor's velocity.",
-    "tags": [
-      "motion-primitive",
-      "demonstrate",
-      "trail",
-      "cursor",
-      "glyphs",
-      "deterministic"
-    ],
-    "href": "/catalog/components/cursor-glyph-trail",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cursor-glyph-trail.png"
-  },
-  {
-    "name": "cut-the-curve",
-    "type": "component",
-    "title": "Cut the Curve",
-    "description": "A velocity-matched directional hard cut: the outgoing subject accelerates with power4.in, swaps at peak velocity, and the incoming subject continues in the same direction with power4.out.",
-    "tags": [
-      "transition",
-      "directional-cut",
-      "velocity-match",
-      "whip",
-      "bridge",
-      "demonstrate"
-    ],
-    "href": "/catalog/components/cut-the-curve",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/cut-the-curve.png"
   },
   {
     "name": "data-chart",
@@ -1453,50 +837,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png"
   },
   {
-    "name": "decline-chart",
-    "type": "component",
-    "title": "Decline Chart",
-    "description": "A metric line draws downward as its value counts down and the ambient background darkens in lockstep.",
-    "tags": [
-      "motion-primitive",
-      "data",
-      "chart",
-      "decline",
-      "metric",
-      "problem"
-    ],
-    "href": "/catalog/components/decline-chart",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/decline-chart.png"
-  },
-  {
-    "name": "device-frame-stage",
-    "type": "component",
-    "title": "Device Frame Stage",
-    "description": "A phone or tablet mockup staged as a physical scene prop with a screen slot for arbitrary reconstructed UI, rising onto the stage, settling, and holding an idle float",
-    "tags": [
-      "prop",
-      "device",
-      "mobile",
-      "tablet",
-      "ui-props",
-      "holdable"
-    ],
-    "href": "/catalog/components/device-frame-stage",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/device-frame-stage.png"
-  },
-  {
-    "name": "directional-wipe",
-    "type": "component",
-    "title": "Directional Wipe",
-    "description": "A directional scene push that slides one panel over another.",
-    "tags": [
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/directional-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/directional-wipe.png"
-  },
-  {
     "name": "domain-warp-dissolve",
     "type": "block",
     "title": "Domain Warp Dissolve",
@@ -1507,53 +847,6 @@
     ],
     "href": "/catalog/blocks/domain-warp-dissolve",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/domain-warp-dissolve.png"
-  },
-  {
-    "name": "drift-hold",
-    "type": "component",
-    "title": "Drift Hold",
-    "description": "A centered content card stays subtly alive through loop-exact rotation, scale breathing, and a slow light sweep.",
-    "tags": [
-      "motion-primitive",
-      "camera",
-      "ambient",
-      "drift",
-      "hold",
-      "loopable"
-    ],
-    "href": "/catalog/components/drift-hold",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drift-hold.png"
-  },
-  {
-    "name": "dynamic-grid",
-    "type": "component",
-    "title": "Dynamic Grid",
-    "description": "A responsive animated grid background driven by CSS variables for SaaS, code, and data scenes",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "background",
-      "grid",
-      "ui"
-    ],
-    "href": "/catalog/components/dynamic-grid",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dynamic-grid.png"
-  },
-  {
-    "name": "echo-trail",
-    "type": "component",
-    "title": "Echo Trail",
-    "description": "A moving element renders with N ghosted copies of itself at t minus i times delta, opacity stepped down per ghost; one traversal, echoes collapsing into the settled element at rest.",
-    "tags": [
-      "motion-primitive",
-      "demonstrate",
-      "trail",
-      "onion-skin",
-      "ghosts",
-      "deterministic"
-    ],
-    "href": "/catalog/components/echo-trail",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/echo-trail.png"
   },
   {
     "name": "editorial-flash-overlay",
@@ -1571,36 +864,6 @@
     ],
     "href": "/catalog/blocks/editorial-flash-overlay",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png"
-  },
-  {
-    "name": "facet-morph",
-    "type": "component",
-    "title": "Facet Morph",
-    "description": "A faceted low-poly mass of 36 triangles continuously reshapes between three authored silhouettes (blob, mark, badge) with per-facet flat shading that recomputes as the vertices move. Light reads from the upper left; lit facets lift toward a pale accent-tinted tone while turned-away facets fall toward near-black. One calm continuous morph, then a settled hold.",
-    "tags": [
-      "motion-primitive",
-      "intro",
-      "morph",
-      "low-poly",
-      "svg",
-      "deterministic"
-    ],
-    "href": "/catalog/components/facet-morph",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/facet-morph.png"
-  },
-  {
-    "name": "fade-through",
-    "type": "component",
-    "title": "Fade Through",
-    "description": "A calm transition primitive that fades one layer out, passes through a wash, and reveals the next layer",
-    "tags": [
-      "motion-primitive",
-      "transition",
-      "fade",
-      "scene"
-    ],
-    "href": "/catalog/components/fade-through",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/fade-through.png"
   },
   {
     "name": "flash-through-white",
@@ -1642,52 +905,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart-vertical.png"
   },
   {
-    "name": "focus-blur-resolve",
-    "type": "component",
-    "title": "Focus Blur Resolve",
-    "description": "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/focus-blur-resolve",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-blur-resolve.png"
-  },
-  {
-    "name": "focus-rack",
-    "type": "component",
-    "title": "Focus Rack",
-    "description": "Focus shifts once between two cards at different apparent depths through synchronized blur, dimming, scale, and parallax.",
-    "tags": [
-      "motion-primitive",
-      "camera",
-      "focus",
-      "focus-rack",
-      "depth",
-      "parallax",
-      "emphasize"
-    ],
-    "href": "/catalog/components/focus-rack",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-rack.png"
-  },
-  {
-    "name": "focus-swap",
-    "type": "component",
-    "title": "Focus Swap",
-    "description": "Moves attention between two side-by-side cards as one recedes with scale, blur, and dimming while the other advances to full focus.",
-    "tags": [
-      "effect",
-      "ui-props",
-      "focus",
-      "blur",
-      "attention",
-      "demonstrate"
-    ],
-    "href": "/catalog/components/focus-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-swap.png"
-  },
-  {
     "name": "freeze-frame-dressing",
     "type": "block",
     "title": "Freeze-Frame Dressing",
@@ -1705,37 +922,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-dressing.png"
   },
   {
-    "name": "gallery-tunnel",
-    "type": "block",
-    "title": "Gallery Tunnel",
-    "description": "An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog.",
-    "tags": [
-      "webgl",
-      "3d",
-      "background",
-      "showcase",
-      "depth",
-      "loop"
-    ],
-    "href": "/catalog/blocks/gallery-tunnel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gallery-tunnel.png"
-  },
-  {
-    "name": "gesture-tap",
-    "type": "component",
-    "title": "Gesture Tap",
-    "description": "A contact circle taps a mobile pill button, releases it into a new labeled accent state, and lifts away.",
-    "tags": [
-      "motion-primitive",
-      "gesture",
-      "tap",
-      "interaction",
-      "ui-props"
-    ],
-    "href": "/catalog/components/gesture-tap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gesture-tap.png"
-  },
-  {
     "name": "glitch",
     "type": "block",
     "title": "Glitch",
@@ -1746,55 +932,6 @@
     ],
     "href": "/catalog/blocks/glitch",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
-  },
-  {
-    "name": "gloss-sweep",
-    "type": "component",
-    "title": "Gloss Sweep",
-    "description": "A card lands with a restrained slam, catches one diagonal specular gloss, and holds perfectly still.",
-    "tags": [
-      "motion-primitive",
-      "celebration",
-      "gloss",
-      "card",
-      "badge",
-      "payoff"
-    ],
-    "href": "/catalog/components/gloss-sweep",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/gloss-sweep.png"
-  },
-  {
-    "name": "grade-split-reveal",
-    "type": "component",
-    "title": "Grade Split Reveal",
-    "description": "The same picture twice, one flat and one finished, with a hard edge sweeping between them. It stops in the middle long enough to compare, then commits and the graded look takes the frame. Both looks are real HyperFrames color grading run through the WebGL shader, so the preview and the render match.",
-    "tags": [
-      "color-grading",
-      "media",
-      "compare",
-      "reveal",
-      "motion-primitive",
-      "grade"
-    ],
-    "href": "/catalog/components/grade-split-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grade-split-reveal.png"
-  },
-  {
-    "name": "grain-field",
-    "type": "component",
-    "title": "Grain Field",
-    "description": "A clearly visible accent-tinted dot field drifts over a subtle luminance gradient in an exact ambient loop.",
-    "tags": [
-      "motion-primitive",
-      "background",
-      "grain",
-      "dots",
-      "texture",
-      "ambient",
-      "loopable"
-    ],
-    "href": "/catalog/components/grain-field",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grain-field.png"
   },
   {
     "name": "grain-overlay",
@@ -1823,23 +960,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gravitational-lens.png"
   },
   {
-    "name": "grid-card-assemble",
-    "type": "component",
-    "title": "Grid Card Assemble",
-    "description": "N capability cards (thin-line icon that draws on, mono label, optional muted body) stagger-assemble into a grid or vertical list with a fade plus short slide into slot, then hold perfectly still.",
-    "tags": [
-      "motion-primitive",
-      "layout",
-      "grid",
-      "list",
-      "stagger",
-      "assemble",
-      "feature-tour"
-    ],
-    "href": "/catalog/components/grid-card-assemble",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-card-assemble.png"
-  },
-  {
     "name": "grid-pixelate-wipe",
     "type": "component",
     "title": "Grid Pixelate Wipe",
@@ -1852,52 +972,6 @@
     ],
     "href": "/catalog/components/grid-pixelate-wipe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
-  },
-  {
-    "name": "halftone-dissolve",
-    "type": "component",
-    "title": "Halftone Dissolve",
-    "description": "Scene A dissolves into scene B through a growing halftone dot field: accent ink dots pop onto a fixed grid smallest-first, each opens into a window onto B, until the windows merge and B fully replaces A.",
-    "tags": [
-      "motion-primitive",
-      "transition",
-      "texture",
-      "halftone",
-      "dissolve"
-    ],
-    "href": "/catalog/components/halftone-dissolve",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/halftone-dissolve.png"
-  },
-  {
-    "name": "halftone-field",
-    "type": "block",
-    "title": "Halftone Field",
-    "description": "A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type.",
-    "tags": [
-      "webgl",
-      "shader",
-      "background",
-      "texture",
-      "halftone"
-    ],
-    "href": "/catalog/blocks/halftone-field",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/halftone-field.png"
-  },
-  {
-    "name": "headline-slam",
-    "type": "component",
-    "title": "Headline Slam",
-    "description": "A heavyweight headline scales down into frame, lands with a deterministic three-frame shake, holds with subtle drift, and whips upward on exit.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "headline",
-      "slam",
-      "impact",
-      "exit"
-    ],
-    "href": "/catalog/components/headline-slam",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/headline-slam.png"
   },
   {
     "name": "hw-arrow",
@@ -2048,82 +1122,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hw-underline.png"
   },
   {
-    "name": "icon-morph-beat",
-    "type": "component",
-    "title": "Icon Morph Beat",
-    "description": "An icon morphs between authored state silhouettes, shifts to an accent color, and marks completion with one restrained pulse.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "icon",
-      "morph",
-      "state-change",
-      "completion"
-    ],
-    "href": "/catalog/components/icon-morph-beat",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/icon-morph-beat.png"
-  },
-  {
-    "name": "icon-swap",
-    "type": "component",
-    "title": "Icon Swap",
-    "description": "A scale-and-blur icon swap primitive for toolbar and action state changes",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "icon",
-      "swap"
-    ],
-    "href": "/catalog/components/icon-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/icon-swap.png"
-  },
-  {
-    "name": "ink-bleed-reveal",
-    "type": "component",
-    "title": "Ink Bleed Reveal",
-    "description": "Liquid ink blooms through paper under a gooey blur-plus-threshold filter, merges, then contracts as a crisp slotted mark resolves beneath it, with static seeded paper grain riding the result.",
-    "tags": [
-      "motion-primitive",
-      "texture",
-      "reveal",
-      "gooey",
-      "svg-filter",
-      "deterministic",
-      "experiment"
-    ],
-    "href": "/catalog/components/ink-bleed-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ink-bleed-reveal.png"
-  },
-  {
-    "name": "inline-highlight",
-    "type": "component",
-    "title": "Inline Highlight",
-    "description": "A clean marker-style inline highlight that animates behind text using a CSS scale variable",
-    "tags": [
-      "motion-primitive",
-      "text",
-      "highlight",
-      "caption"
-    ],
-    "href": "/catalog/components/inline-highlight",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/inline-highlight.png"
-  },
-  {
-    "name": "input-feedback",
-    "type": "component",
-    "title": "Input Feedback",
-    "description": "A transitions.dev-inspired input feedback primitive with shake, clear affordance, and success state",
-    "tags": [
-      "transition-primitive",
-      "transitions-dev-port",
-      "input",
-      "feedback"
-    ],
-    "href": "/catalog/components/input-feedback",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-feedback.png"
-  },
-  {
     "name": "instagram-follow",
     "type": "block",
     "title": "Instagram Follow",
@@ -2155,50 +1153,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png"
   },
   {
-    "name": "iris-reveal",
-    "type": "component",
-    "title": "Iris Reveal",
-    "description": "A circle clip-path opens from an authored origin revealing state B over state A in one confident pass, then holds on B. Classic register dims and desaturates the before state so the after state lands in full color; a thin accent rim rides the iris edge. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.",
-    "tags": [
-      "transition",
-      "iris",
-      "circle-reveal",
-      "clip-path",
-      "bridge",
-      "slots"
-    ],
-    "href": "/catalog/components/iris-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/iris-reveal.png"
-  },
-  {
-    "name": "keyframe-scrub-stack",
-    "type": "component",
-    "title": "Keyframe Scrub Stack",
-    "description": "A keyframe-sequenced stack of cards with offset timing and easing presets.",
-    "tags": [
-      "advanced-motion",
-      "anime-inspired",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/keyframe-scrub-stack",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/keyframe-scrub-stack.png"
-  },
-  {
-    "name": "kinetic-type-swap",
-    "type": "component",
-    "title": "Kinetic Type Swap",
-    "description": "A held sentence keeps its fixed text in place while one widest-word masked slot rolls through alternatives and settles on the final option.",
-    "tags": [
-      "motion-primitive",
-      "text-effects",
-      "kinetic-type",
-      "word-swap",
-      "reveal"
-    ],
-    "href": "/catalog/components/kinetic-type-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-type-swap.png"
-  },
-  {
     "name": "light-leak",
     "type": "block",
     "title": "Light Leak",
@@ -2209,50 +1163,6 @@
     ],
     "href": "/catalog/blocks/light-leak",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.png"
-  },
-  {
-    "name": "light-sweep-pass",
-    "type": "component",
-    "title": "Light Sweep Pass",
-    "description": "A traveling key light re-shades a slotted scene: a soft diagonal gradient band crosses the frame once while every per-element highlight and shadow shifts in lockstep (all driven by one --light-x property), then the light settles into a resting key. Quiet, expensive-feeling; the scene itself never moves. Callers fill the named scene slot; a token hero-and-cards default renders when it is left empty.",
-    "tags": [
-      "motion-primitive",
-      "overlay",
-      "light",
-      "sweep",
-      "slots",
-      "deterministic"
-    ],
-    "href": "/catalog/components/light-sweep-pass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/light-sweep-pass.png"
-  },
-  {
-    "name": "line-by-line-slide",
-    "type": "component",
-    "title": "Line-by-Line Slide",
-    "description": "Each line enters from the left with staggered slide and exits to the right.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/line-by-line-slide",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-by-line-slide.png"
-  },
-  {
-    "name": "line-swap",
-    "type": "component",
-    "title": "Line Swap",
-    "description": "A masked full-line beat replacement: line A holds center then exits up through an overflow-hidden mask as line B enters bottom-up on the same beat, with an optional accent underline drawing beneath one word of line B.",
-    "tags": [
-      "motion-primitive",
-      "text-effects",
-      "swap",
-      "beat",
-      "deterministic"
-    ],
-    "href": "/catalog/components/line-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-swap.png"
   },
   {
     "name": "liquid-glass-context-menu",
@@ -2307,38 +1217,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png"
   },
   {
-    "name": "locked-nucleus-orbit",
-    "type": "component",
-    "title": "Locked Nucleus Orbit",
-    "description": "A fixed center nucleus anchors deterministic satellite orbits that settle into a composed lockup.",
-    "tags": [
-      "motion-primitive",
-      "intro",
-      "reveal",
-      "orbit",
-      "lockup",
-      "deterministic"
-    ],
-    "href": "/catalog/components/locked-nucleus-orbit",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/locked-nucleus-orbit.png"
-  },
-  {
-    "name": "logo-brand-close",
-    "type": "component",
-    "title": "Logo Brand Close",
-    "description": "A display-scale wordmark cascades letter by letter into a centered lockup, the accent brand period lands last, an optional tagline and wide-tracked mono URL settle beneath, and the finished identity holds dead still to the end of the film.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "brand",
-      "logo",
-      "end-card",
-      "close"
-    ],
-    "href": "/catalog/components/logo-brand-close",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/logo-brand-close.png"
-  },
-  {
     "name": "logo-outro",
     "type": "block",
     "title": "Logo Outro",
@@ -2350,37 +1228,6 @@
     ],
     "href": "/catalog/blocks/logo-outro",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png"
-  },
-  {
-    "name": "logo-sting",
-    "type": "component",
-    "title": "Logo Sting",
-    "description": "A wordmark slams into its final scale, fires one accent ring and one white impact frame, then holds completely still.",
-    "tags": [
-      "motion-primitive",
-      "brand",
-      "logo",
-      "sting",
-      "impact",
-      "reveal"
-    ],
-    "href": "/catalog/components/logo-sting",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/logo-sting.png"
-  },
-  {
-    "name": "logo-wall",
-    "type": "component",
-    "title": "Logo Wall",
-    "description": "A trusted-by wall of placeholder lettermark logos that fades and scales into place with a deterministic per-cell stagger.",
-    "tags": [
-      "data",
-      "logos",
-      "social-proof",
-      "stagger",
-      "prove"
-    ],
-    "href": "/catalog/components/logo-wall",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/logo-wall.png"
   },
   {
     "name": "lower-third-bild",
@@ -2501,20 +1348,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-mask-reveal.png"
   },
   {
-    "name": "lt-neon-border",
-    "type": "block",
-    "title": "Neon Border",
-    "description": "Two arcs of light travel the edge of a rounded panel and snap corner to corner, trailing a soft three-layer bloom. A lower third for a name and role.",
-    "tags": [
-      "lower-third",
-      "glow",
-      "loop",
-      "video-primitive"
-    ],
-    "href": "/catalog/blocks/lt-neon-border",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-neon-border.png"
-  },
-  {
     "name": "lt-side-rule",
     "type": "block",
     "title": "Lower Third — Side Rule",
@@ -2586,92 +1419,6 @@
     ],
     "href": "/catalog/blocks/macos-tahoe-liquid-glass",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
-  },
-  {
-    "name": "marker-highlight",
-    "type": "component",
-    "title": "Marker Highlight",
-    "description": "Display text settles in, then one hand-drawn marker stroke (highlight, circle, underline, or scribble) draws over the emphasized word on cue.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "emphasis",
-      "marker",
-      "deterministic"
-    ],
-    "href": "/catalog/components/marker-highlight",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/marker-highlight.png"
-  },
-  {
-    "name": "match-cut",
-    "type": "component",
-    "title": "Match Cut",
-    "description": "A circle accelerates into a hard single-frame scene swap, matches the incoming circle exactly, and continues into a smaller resting pose.",
-    "tags": [
-      "motion-primitive",
-      "transition",
-      "match-cut",
-      "hard-cut",
-      "continuity"
-    ],
-    "href": "/catalog/components/match-cut",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/match-cut.png"
-  },
-  {
-    "name": "matrix-decode",
-    "type": "component",
-    "title": "Matrix Decode",
-    "description": "Random scramble resolves left-to-right into the target text.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/matrix-decode",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/matrix-decode.png"
-  },
-  {
-    "name": "menu-morph",
-    "type": "component",
-    "title": "Menu Morph",
-    "description": "A transitions.dev-inspired hamburger and plus-menu morph primitive for compact action menus",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "menu",
-      "morph"
-    ],
-    "href": "/catalog/components/menu-morph",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/menu-morph.png"
-  },
-  {
-    "name": "mesh-gradient-bg",
-    "type": "component",
-    "title": "Mesh Gradient Background",
-    "description": "A render-safe mesh gradient using animated radial layers.",
-    "tags": [
-      "effect",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/mesh-gradient-bg",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mesh-gradient-bg.png"
-  },
-  {
-    "name": "micro-transitions",
-    "type": "component",
-    "title": "Micro Transitions",
-    "description": "A transitions.dev-inspired pack of badge, dropdown, modal, tabs, tooltip, and success-check micro transitions",
-    "tags": [
-      "transition-primitive",
-      "motion-primitive",
-      "transitions-dev-port",
-      "ui",
-      "transition",
-      "microinteraction"
-    ],
-    "href": "/catalog/components/micro-transitions",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/micro-transitions.png"
   },
   {
     "name": "mk-background",
@@ -2797,40 +1544,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mk-usage-arc.png"
   },
   {
-    "name": "modal-morph",
-    "type": "component",
-    "title": "Modal Morph",
-    "description": "A small card expands into a full panel, shared-element style: both layouts measured once at mount, the container morphs by transform only (never width/height tweens) while keyed children counter-scale and re-flow onto their own measured targets as pure functions of time.",
-    "tags": [
-      "motion-primitive",
-      "structure",
-      "flip",
-      "shared-element",
-      "modal",
-      "deterministic",
-      "experiment"
-    ],
-    "href": "/catalog/components/modal-morph",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/modal-morph.png"
-  },
-  {
-    "name": "morph-swap",
-    "type": "component",
-    "title": "Morph Swap",
-    "description": "Two slotted siblings stacked at one shared center: A holds, then condenses or reshapes into B on a shared 50% 50% transform origin. Condense shrink-fades A exactly as B scales up; reshape morphs the silhouette on scaleX/scaleY, never width or height tweens. Token card defaults render when a slot is left empty.",
-    "tags": [
-      "transition",
-      "morph",
-      "swap",
-      "condense",
-      "reshape",
-      "holdable",
-      "slots"
-    ],
-    "href": "/catalog/components/morph-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/morph-swap.png"
-  },
-  {
     "name": "morph-text",
     "type": "component",
     "title": "Morph Text",
@@ -2862,54 +1575,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png"
   },
   {
-    "name": "multi-device-splay",
-    "type": "component",
-    "title": "Multi Device Splay",
-    "description": "Phone, tablet, and desktop product mockups fan from a centered stack into a proud splayed arrangement with a subtle idle float.",
-    "tags": [
-      "motion-primitive",
-      "device",
-      "phone",
-      "tablet",
-      "desktop",
-      "splay"
-    ],
-    "href": "/catalog/components/multi-device-splay",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/multi-device-splay.png"
-  },
-  {
-    "name": "multiplayer-cursors",
-    "type": "component",
-    "title": "Multiplayer Cursors",
-    "description": "Labeled collaborator cursors with token-derived colors and soft glows drift from spread positions into a shared center zone, proving live multiplayer presence.",
-    "tags": [
-      "cursor",
-      "pointer",
-      "multiplayer",
-      "collaboration",
-      "presence",
-      "loop",
-      "prove"
-    ],
-    "href": "/catalog/components/multiplayer-cursors",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/multiplayer-cursors.png"
-  },
-  {
-    "name": "native-notification-pop",
-    "type": "component",
-    "title": "Native Notification Pop",
-    "description": "One system-faithful notification banner (iOS or macOS) drops in over any scene on an accurate interruptible spring: fast arrival, soft overshoot, settled mass, backdrop blur, app dot, title, one body line. Holds; tucks away only via exit.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "overlay",
-      "notification",
-      "spring"
-    ],
-    "href": "/catalog/components/native-notification-pop",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/native-notification-pop.png"
-  },
-  {
     "name": "news-ticker",
     "type": "block",
     "title": "News Ticker",
@@ -2939,68 +1604,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/north-korea-locked-down.png"
   },
   {
-    "name": "notification-pileup",
-    "type": "component",
-    "title": "Notification Pileup",
-    "description": "Mobile notification cards arrive faster and faster, each new alert pushing the existing stack downward into a dense, anxious tower.",
-    "tags": [
-      "notification",
-      "mobile",
-      "ui-props",
-      "overload",
-      "pileup",
-      "loop",
-      "agitate"
-    ],
-    "href": "/catalog/components/notification-pileup",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/notification-pileup.png"
-  },
-  {
-    "name": "notification-stack",
-    "type": "component",
-    "title": "Notification Stack",
-    "description": "1 to 5 token notification cards slide-settle into a vertical stack on cues, newest on top; one card grows slightly and brightens as the focus while the rest dim by position.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "notification",
-      "stack",
-      "stagger"
-    ],
-    "href": "/catalog/components/notification-stack",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/notification-stack.png"
-  },
-  {
-    "name": "number-pop-in",
-    "type": "component",
-    "title": "Number Pop In",
-    "description": "A transitions.dev-inspired digit pop-in with blur, lift, and staggered value reveal",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "number",
-      "pop"
-    ],
-    "href": "/catalog/components/number-pop-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/number-pop-in.png"
-  },
-  {
-    "name": "number-wheel",
-    "type": "component",
-    "title": "Number Wheel",
-    "description": "A rolling digit counter primitive for metrics, prices, counts, and scoreboards",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "number",
-      "counter",
-      "data"
-    ],
-    "href": "/catalog/components/number-wheel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/number-wheel.png"
-  },
-  {
     "name": "nyc-paris-flight",
     "type": "block",
     "title": "NYC Paris Flight",
@@ -3014,51 +1617,6 @@
     ],
     "href": "/catalog/blocks/nyc-paris-flight",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/nyc-paris-flight.png"
-  },
-  {
-    "name": "offset-path-traveler",
-    "type": "component",
-    "title": "Offset Path Traveler",
-    "description": "A slotted traveler follows an authored path with tangent rotation, curved entry, and curved exit.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "path",
-      "traveler",
-      "auto-rotate"
-    ],
-    "href": "/catalog/components/offset-path-traveler",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/offset-path-traveler.png"
-  },
-  {
-    "name": "onboarding-stepper-flow",
-    "type": "component",
-    "title": "Onboarding Stepper Flow",
-    "description": "A composed onboarding flow with milestone rail, active step card, and next-action button",
-    "tags": [
-      "ui-flow",
-      "remocn-port",
-      "onboarding",
-      "stepper"
-    ],
-    "href": "/catalog/components/onboarding-stepper-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/onboarding-stepper-flow.png"
-  },
-  {
-    "name": "ordered-dither-pass",
-    "type": "component",
-    "title": "Ordered Dither Pass",
-    "description": "Bayer-matrix ordered dithering quantizes a slotted scene (rasterized once at mount): the image emerges from pure 2-tone noise to clean, or dissolves the reverse. Stateless per frame, never error diffusion.",
-    "tags": [
-      "motion-primitive",
-      "experiment",
-      "texture",
-      "dither",
-      "transition",
-      "quantize"
-    ],
-    "href": "/catalog/components/ordered-dither-pass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ordered-dither-pass.png"
   },
   {
     "name": "organic-light-leak-overlay",
@@ -3075,128 +1633,6 @@
     ],
     "href": "/catalog/blocks/organic-light-leak-overlay",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/organic-light-leak-overlay.png"
-  },
-  {
-    "name": "oscilloscope-trace",
-    "type": "block",
-    "title": "Oscilloscope Trace",
-    "description": "CRT oscilloscope beam sweeping a waveform across a 10x8 graticule, with closed-form phosphor persistence: the tail decays as exp(-age/tau) and brightens where the beam slows",
-    "tags": [
-      "instrument",
-      "data",
-      "showcase",
-      "retro"
-    ],
-    "href": "/catalog/blocks/oscilloscope-trace",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/oscilloscope-trace.png"
-  },
-  {
-    "name": "outline-draw",
-    "type": "component",
-    "title": "Outline Draw",
-    "description": "A rounded outline that proves a callout by drawing clockwise as a hollow conic-gradient border with a clean closure.",
-    "tags": [
-      "motion-primitive",
-      "effects",
-      "outline",
-      "border",
-      "mask",
-      "proof"
-    ],
-    "href": "/catalog/components/outline-draw",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/outline-draw.png"
-  },
-  {
-    "name": "oversized-cursor",
-    "type": "component",
-    "title": "Oversized Cursor",
-    "description": "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits",
-    "tags": [
-      "motion-primitive",
-      "actor",
-      "cursor",
-      "pointer",
-      "interaction"
-    ],
-    "href": "/catalog/components/oversized-cursor",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/oversized-cursor.png"
-  },
-  {
-    "name": "overwhelm-surround",
-    "type": "component",
-    "title": "Overwhelm Surround",
-    "description": "Tasks, tabs, pings, and notification bubbles accelerate inward around a calm central subject, turning overload into visible spatial pressure.",
-    "tags": [
-      "effects",
-      "agitate",
-      "overwhelm",
-      "pressure",
-      "notifications"
-    ],
-    "href": "/catalog/components/overwhelm-surround",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/overwhelm-surround.png"
-  },
-  {
-    "name": "page-slide",
-    "type": "component",
-    "title": "Page Slide",
-    "description": "A transitions.dev-inspired page slide primitive with outgoing and incoming panels",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "page",
-      "slide"
-    ],
-    "href": "/catalog/components/page-slide",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/page-slide.png"
-  },
-  {
-    "name": "pan-stations",
-    "type": "component",
-    "title": "Pan Stations",
-    "description": "A lateral camera move across a continuous row of labeled feature stations, with a steady dwell at each stop before the next pan.",
-    "tags": [
-      "camera",
-      "pan",
-      "stations",
-      "features",
-      "exhibit",
-      "agitate",
-      "cross-shelved"
-    ],
-    "href": "/catalog/components/pan-stations",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pan-stations.png"
-  },
-  {
-    "name": "panel-reveal",
-    "type": "component",
-    "title": "Panel Reveal",
-    "description": "A panel reveal primitive with height expansion and content fade",
-    "tags": [
-      "transition-primitive",
-      "transitions-dev-port",
-      "panel",
-      "reveal"
-    ],
-    "href": "/catalog/components/panel-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/panel-reveal.png"
-  },
-  {
-    "name": "parallax-device-dive",
-    "type": "component",
-    "title": "Parallax Device Dive",
-    "description": "A canonical phone rises into view before the camera pushes through its screen and layered app UI expands to fill the frame.",
-    "tags": [
-      "motion-primitive",
-      "camera",
-      "device",
-      "phone",
-      "parallax",
-      "transition"
-    ],
-    "href": "/catalog/components/parallax-device-dive",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-device-dive.png"
   },
   {
     "name": "parallax-unzoom",
@@ -3230,191 +1666,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png"
   },
   {
-    "name": "particle-image-reveal",
-    "type": "component",
-    "title": "Particle Image Reveal",
-    "description": "A seeded deterministic particle field converges and settles while a slotted image reveals beneath it, the trail thinning until the image holds clean.",
-    "tags": [
-      "motion-primitive",
-      "intros-reveals",
-      "particles",
-      "reveal",
-      "canvas",
-      "deterministic"
-    ],
-    "href": "/catalog/components/particle-image-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/particle-image-reveal.png"
-  },
-  {
-    "name": "particle-text-dissolve",
-    "type": "component",
-    "title": "Particle Text Dissolve",
-    "description": "Text assembles from a seeded particle cloud (or dissolves into it): per-particle targets sampled once from the rendered text bitmap at mount, table-driven particles, zero per-particle tweens, one onUpdate painter.",
-    "tags": [
-      "motion-primitive",
-      "text-effects",
-      "particles",
-      "canvas",
-      "deterministic",
-      "experiment"
-    ],
-    "href": "/catalog/components/particle-text-dissolve",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/particle-text-dissolve.png"
-  },
-  {
-    "name": "per-word-crossfade",
-    "type": "component",
-    "title": "Per-Word Crossfade",
-    "description": "Words gently fade into place with a short vertical drift for calm keynote rhythm.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/per-word-crossfade",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/per-word-crossfade.png"
-  },
-  {
-    "name": "per-word-rise",
-    "type": "component",
-    "title": "Per Word Rise",
-    "description": "Words or characters rise into place in a controlled blur-to-sharp cascade, settle softly on landing, and hold still until the cut (optional fade or up exit).",
-    "tags": [
-      "motion-primitive",
-      "text-effects",
-      "typography",
-      "stagger",
-      "reveal"
-    ],
-    "href": "/catalog/components/per-word-rise",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/per-word-rise.png"
-  },
-  {
-    "name": "perspective-marquee",
-    "type": "component",
-    "title": "Perspective Marquee",
-    "description": "A 3D tilted marquee with depth feel as items roll toward the horizon.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/perspective-marquee",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/perspective-marquee.png"
-  },
-  {
-    "name": "physical-exit",
-    "type": "component",
-    "title": "Physical Exit",
-    "description": "A card exits with physical momentum in toss, drop, or slide mode, carrying acceleration and rotation through the final offscreen pose without fading.",
-    "tags": [
-      "motion-primitive",
-      "exit",
-      "momentum",
-      "toss",
-      "drop",
-      "slide"
-    ],
-    "href": "/catalog/components/physical-exit",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/physical-exit.png"
-  },
-  {
-    "name": "press-ripple",
-    "type": "component",
-    "title": "Press Ripple",
-    "description": "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, then exits off-stage while the pressed state holds.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "cursor",
-      "press",
-      "ripple",
-      "payoff"
-    ],
-    "href": "/catalog/components/press-ripple",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/press-ripple.png"
-  },
-  {
-    "name": "pull-back-reveal",
-    "type": "component",
-    "title": "Pull Back Reveal",
-    "description": "A tight stat detail holds, then one decelerating camera pull-back reveals the headline and supporting cards that recontextualize it.",
-    "tags": [
-      "motion-primitive",
-      "camera",
-      "pull-back",
-      "reveal",
-      "recontextualize"
-    ],
-    "href": "/catalog/components/pull-back-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pull-back-reveal.png"
-  },
-  {
-    "name": "pull-to-refresh",
-    "type": "component",
-    "title": "Pull to Refresh",
-    "description": "A mobile list pulls through nonlinear rubber-band resistance, arms at a threshold, commits to a bounded loading indicator, then snaps exactly back to rest.",
-    "tags": [
-      "pointer",
-      "pointers",
-      "mobile",
-      "gesture",
-      "interaction",
-      "refresh",
-      "demonstrate"
-    ],
-    "href": "/catalog/components/pull-to-refresh",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pull-to-refresh.png"
-  },
-  {
-    "name": "push-in",
-    "type": "component",
-    "title": "Push In",
-    "description": "A centered headline gains focus through one slow, continuous camera push and a gentle fade out.",
-    "tags": [
-      "motion-primitive",
-      "camera",
-      "push-in",
-      "focus",
-      "emphasize",
-      "holdable"
-    ],
-    "href": "/catalog/components/push-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/push-in.png"
-  },
-  {
-    "name": "rack-focus",
-    "type": "block",
-    "title": "Rack Focus",
-    "description": "A focus pull with real aperture bokeh: the focal plane travels from a near subject to a far one, so one resolves as the other blows into hard-edged polygon discs that clip to a cat's eye toward the corners. A focus pull only reads against content at two clearly separated depths, so this block carries its own depth-layered night exterior and puts both subject depths on variables.",
-    "tags": [
-      "webgl",
-      "shader",
-      "camera",
-      "depth",
-      "cinematic",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/rack-focus",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/rack-focus.png"
-  },
-  {
-    "name": "radial-surround",
-    "type": "component",
-    "title": "Radial Surround",
-    "description": "Labeled hairline chips assemble around a centered subject on an elliptical ring, then optionally converge inward with a subtle edge dim. The center never moves: surrounded, not zoomed.",
-    "tags": [
-      "motion-primitive",
-      "problem-setup",
-      "radial",
-      "ring",
-      "surround",
-      "converge"
-    ],
-    "href": "/catalog/components/radial-surround",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/radial-surround.png"
-  },
-  {
     "name": "reddit-post",
     "type": "block",
     "title": "Reddit Post Card",
@@ -3426,19 +1677,6 @@
     ],
     "href": "/catalog/blocks/reddit-post",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/reddit-post.png"
-  },
-  {
-    "name": "rgb-glitch-text",
-    "type": "component",
-    "title": "RGB Glitch Text",
-    "description": "RGB-offset text copies jitter briefly for a controlled glitch window.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/rgb-glitch-text",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rgb-glitch-text.png"
   },
   {
     "name": "ridged-burn",
@@ -3465,101 +1703,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ripple-waves.png"
   },
   {
-    "name": "rubber-band-bumper",
-    "type": "component",
-    "title": "Rubber Band Bumper",
-    "description": "An outgoing panel pulls against increasing resistance, holds at tension, then snaps past an edge with overshoot as the incoming panel settles behind it.",
-    "tags": [
-      "motion-primitive",
-      "transition",
-      "rubber-band",
-      "resistance",
-      "overshoot"
-    ],
-    "href": "/catalog/components/rubber-band-bumper",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rubber-band-bumper.png"
-  },
-  {
-    "name": "scan-band",
-    "type": "component",
-    "title": "Scan Band",
-    "description": "A diagonal distortion band sweeps once across a clean wordmark, revealing clipped red and cyan offsets only inside the moving band.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "scan",
-      "chromatic",
-      "distortion",
-      "wordmark"
-    ],
-    "href": "/catalog/components/scan-band",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scan-band.png"
-  },
-  {
-    "name": "scramble-reveal",
-    "type": "component",
-    "title": "Scramble Reveal",
-    "description": "A deterministic hacker-style text reveal that cycles fixed glyph rows and locks the target string from left to right.",
-    "tags": [
-      "motion-primitive",
-      "text-effects",
-      "scramble",
-      "reveal",
-      "deterministic"
-    ],
-    "href": "/catalog/components/scramble-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scramble-reveal.png"
-  },
-  {
-    "name": "screen-flow-carousel",
-    "type": "component",
-    "title": "Screen Flow Carousel",
-    "description": "Two to five app screens ride a horizontal rail: one primary at center, neighbors receded, advancing on cues with a velocity-matched throw and a smooth long-tail catch while a mono caption swaps with each advance. Screens are slots with token skeleton defaults.",
-    "tags": [
-      "product-demo",
-      "feature-tour",
-      "carousel",
-      "rail",
-      "slot",
-      "screens"
-    ],
-    "href": "/catalog/components/screen-flow-carousel",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/screen-flow-carousel.png"
-  },
-  {
-    "name": "scroll-camera-story",
-    "type": "component",
-    "title": "Scroll Camera Story",
-    "description": "A compressed forced-scroll cinematic pass: a tall scene of slotted sections travels past the camera top to bottom, depth layers parallax at different rates, each section rises as the camera reaches it, and the pass decelerates into a held final section.",
-    "tags": [
-      "camera",
-      "scroll",
-      "parallax",
-      "story",
-      "sections",
-      "slot",
-      "servo"
-    ],
-    "href": "/catalog/components/scroll-camera-story",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scroll-camera-story.png"
-  },
-  {
-    "name": "scroll-feed",
-    "type": "component",
-    "title": "Scroll Feed",
-    "description": "A loop-friendly column of varied skeleton post cards scrolls upward with subtle motion trails and an agitated pace.",
-    "tags": [
-      "motion-primitive",
-      "effects",
-      "scroll",
-      "feed",
-      "loop",
-      "agitation"
-    ],
-    "href": "/catalog/components/scroll-feed",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scroll-feed.png"
-  },
-  {
     "name": "sdf-iris",
     "type": "block",
     "title": "SDF Iris",
@@ -3570,77 +1713,6 @@
     ],
     "href": "/catalog/blocks/sdf-iris",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/sdf-iris.png"
-  },
-  {
-    "name": "segmentation-flood",
-    "type": "component",
-    "title": "Segmentation Flood",
-    "description": "Machine-vision read of a slotted subject: translucent accent segmentation masks flood on in quantized scanline steps, each region gets a thin bracket and mono label chip, a deterministic 2-frame HUD flicker rides the pass, then the labeled read settles clean.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "ai",
-      "hud",
-      "canvas",
-      "deterministic",
-      "experiment"
-    ],
-    "href": "/catalog/components/segmentation-flood",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/segmentation-flood.png"
-  },
-  {
-    "name": "separator",
-    "type": "component",
-    "title": "Separator",
-    "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
-    "tags": [
-      "video-primitive",
-      "remocn-port",
-      "separator",
-      "layout"
-    ],
-    "href": "/catalog/components/separator",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/separator.png"
-  },
-  {
-    "name": "settings-toggle-flow",
-    "type": "component",
-    "title": "Settings Toggle Flow",
-    "description": "A composed settings flow with preference rows, toggle switches, and active-state feedback",
-    "tags": [
-      "ui-flow",
-      "remocn-port",
-      "settings",
-      "toggle"
-    ],
-    "href": "/catalog/components/settings-toggle-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/settings-toggle-flow.png"
-  },
-  {
-    "name": "shared-axis-y",
-    "type": "component",
-    "title": "Shared Axis Y",
-    "description": "Per-word vertical shared-axis transition for sharp editorial swaps.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/shared-axis-y",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-y.png"
-  },
-  {
-    "name": "shared-axis-z",
-    "type": "component",
-    "title": "Shared Axis Z",
-    "description": "Scale-based shared-axis transition for focus shifts and context depth.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/shared-axis-z",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-z.png"
   },
   {
     "name": "shimmer-sweep",
@@ -3655,110 +1727,6 @@
     ],
     "href": "/catalog/components/shimmer-sweep",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
-  },
-  {
-    "name": "signup-flow",
-    "type": "component",
-    "title": "Signup Flow",
-    "description": "A composed signup flow with social action, email field, password field, and submit button",
-    "tags": [
-      "ui-flow",
-      "remocn-port",
-      "signup",
-      "form"
-    ],
-    "href": "/catalog/components/signup-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/signup-flow.png"
-  },
-  {
-    "name": "simulated-cursor",
-    "type": "component",
-    "title": "Simulated Cursor",
-    "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "cursor",
-      "ui",
-      "walkthrough"
-    ],
-    "href": "/catalog/components/simulated-cursor",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/simulated-cursor.png"
-  },
-  {
-    "name": "skeleton-reveal",
-    "type": "component",
-    "title": "Skeleton Reveal",
-    "description": "A skeleton loader transition that pulses, then cross-fades into content",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "skeleton",
-      "reveal"
-    ],
-    "href": "/catalog/components/skeleton-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton-reveal.png"
-  },
-  {
-    "name": "slit-scan-reveal",
-    "type": "component",
-    "title": "Slit Scan Reveal",
-    "description": "The frame's rows sample an authored subject at offset times: a canvas painter draws row slices of one pure position function evaluated at t minus offset(row), smearing arrival through time until the offsets collapse to zero and the mark holds coherent.",
-    "tags": [
-      "motion-primitive",
-      "time",
-      "slit-scan",
-      "canvas",
-      "deterministic",
-      "experiment"
-    ],
-    "href": "/catalog/components/slit-scan-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slit-scan-reveal.png"
-  },
-  {
-    "name": "slot-machine-roll",
-    "type": "component",
-    "title": "Slot Machine Roll",
-    "description": "A vertical reel scrolls characters from one value to another.",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/slot-machine-roll",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slot-machine-roll.png"
-  },
-  {
-    "name": "soft-blob-touch",
-    "type": "component",
-    "title": "Soft Blob Touch",
-    "description": "A granular soft blob idles with slow internal drift; a scripted touch dot decel-arrives, the blob deforms toward it with an attraction bulge, then recovers with a velocity-preserving spring. No hard edges anywhere.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "material",
-      "blob",
-      "touch",
-      "grain"
-    ],
-    "href": "/catalog/components/soft-blob-touch",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/soft-blob-touch.png"
-  },
-  {
-    "name": "soft-blur-in",
-    "type": "component",
-    "title": "Soft Blur In",
-    "description": "A soft opacity, blur, and lift reveal for headlines, captions, and product UI callouts",
-    "tags": [
-      "motion-primitive",
-      "text",
-      "reveal",
-      "blur"
-    ],
-    "href": "/catalog/components/soft-blur-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/soft-blur-in.png"
   },
   {
     "name": "spain-map",
@@ -3777,55 +1745,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.png"
   },
   {
-    "name": "spiral-galaxy",
-    "type": "block",
-    "title": "Spiral Galaxy",
-    "description": "A spiral galaxy seen from outside, turning with real differential rotation: inner stars orbit faster than outer ones, so the arms wind up over the shot instead of spinning rigidly. 20,000 additive GPU sprites, seeded once and solved directly from time, so any frame can be rendered on its own.",
-    "tags": [
-      "hero",
-      "space",
-      "particles",
-      "webgl",
-      "background"
-    ],
-    "href": "/catalog/blocks/spiral-galaxy",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spiral-galaxy.png"
-  },
-  {
-    "name": "split-flap-board",
-    "type": "block",
-    "title": "Split-Flap Board",
-    "description": "Solari-style departure board: every cell walks its drum forward through the intervening characters of a fixed alphabet until it lands on its target, so the text resolves as a mechanical cascade instead of a fade.",
-    "tags": [
-      "text",
-      "kinetic",
-      "mechanical",
-      "split-flap",
-      "solari",
-      "departure-board",
-      "reveal"
-    ],
-    "href": "/catalog/blocks/split-flap-board",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/split-flap-board.png"
-  },
-  {
-    "name": "split-tilt-cards",
-    "type": "component",
-    "title": "Split Tilt Cards",
-    "description": "Two equal-weight cards arrive from opposite wings with mirrored rotateY book-open tilts under one shared perspective, pill badges spring-pop at each inner edge, and the pair holds with a barely-there phase-opposed idle float. Card bodies are content slots with token skeleton defaults.",
-    "tags": [
-      "motion-primitive",
-      "layout",
-      "compare",
-      "holdable",
-      "book-open",
-      "tilt",
-      "slots"
-    ],
-    "href": "/catalog/components/split-tilt-cards",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/split-tilt-cards.png"
-  },
-  {
     "name": "spotify-card",
     "type": "block",
     "title": "Spotify Now Playing",
@@ -3839,278 +1758,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spotify-card.png"
   },
   {
-    "name": "spotlight-card",
-    "type": "component",
-    "title": "Spotlight Card",
-    "description": "A card with a scripted cursor spotlight and lit border.",
-    "tags": [
-      "effect",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/spotlight-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spotlight-card.png"
-  },
-  {
-    "name": "spring-pop",
-    "type": "component",
-    "title": "Spring Pop",
-    "description": "A badge pops in from a visible near-rest scale, overshoots full size once, and settles cleanly.",
-    "tags": [
-      "motion-primitive",
-      "effects",
-      "spring",
-      "overshoot",
-      "pop",
-      "reveal"
-    ],
-    "href": "/catalog/components/spring-pop",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spring-pop.png"
-  },
-  {
-    "name": "spring-stack-shuffle",
-    "type": "component",
-    "title": "Spring Stack Shuffle",
-    "description": "A stack of 3 to 5 slotted cards reshuffles on cues: the back card throws over the top and lands at the front with real mass, the rest compress and resettle; cues that land mid-flight redirect the moving cards with velocity preserved.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "physics",
-      "stack",
-      "interruptible-spring"
-    ],
-    "href": "/catalog/components/spring-stack-shuffle",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spring-stack-shuffle.png"
-  },
-  {
-    "name": "stagger-cascade",
-    "type": "component",
-    "title": "Stagger Cascade",
-    "description": "A responsive grid of tile cards that fades and travels into place with an evenly spaced per-item GSAP stagger. The ordered cascade is the only visual mechanic.",
-    "tags": [
-      "effects",
-      "grid",
-      "stagger",
-      "entrance",
-      "exhibit"
-    ],
-    "href": "/catalog/components/stagger-cascade",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stagger-cascade.png"
-  },
-  {
-    "name": "stagger-lattice",
-    "type": "component",
-    "title": "Stagger Lattice",
-    "description": "A staggered grid reveal inspired by Anime.js v4 stagger utilities, implemented with GSAP for HyperFrames.",
-    "tags": [
-      "advanced-motion",
-      "anime-inspired",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/stagger-lattice",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stagger-lattice.png"
-  },
-  {
-    "name": "staggered-fade-up",
-    "type": "component",
-    "title": "Staggered Fade Up",
-    "description": "Words fade in and slide up one after another with configurable delay.",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/staggered-fade-up",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/staggered-fade-up.png"
-  },
-  {
-    "name": "star-rating-fill",
-    "type": "component",
-    "title": "Star Rating Fill",
-    "description": "A token-driven star row whose colored layer sweeps to a rating, preserves the fractional final star, and can count the value in sync.",
-    "tags": [
-      "data",
-      "rating",
-      "stars",
-      "fractional",
-      "fill",
-      "prove"
-    ],
-    "href": "/catalog/components/star-rating-fill",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/star-rating-fill.png"
-  },
-  {
-    "name": "state-chip-rail",
-    "type": "component",
-    "title": "State Chip Rail",
-    "description": "A rail of mono status chips advances a seek-safe data-state snap machine on a cue schedule: active chip ink on surface, done chips dim, pending chips hollow, optional badges pop beside one state.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "state-machine",
-      "status",
-      "chips",
-      "rail"
-    ],
-    "href": "/catalog/components/state-chip-rail",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/state-chip-rail.png"
-  },
-  {
-    "name": "sticky-mock-swap",
-    "type": "component",
-    "title": "Sticky Mock Swap",
-    "description": "A pinned product mock cross-fades through accent-tinted feature states while matching captions rise, hold, and exit beside it.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "sticky",
-      "mock",
-      "crossfade",
-      "feature-tour"
-    ],
-    "href": "/catalog/components/sticky-mock-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sticky-mock-swap.png"
-  },
-  {
-    "name": "stitched-text-draw",
-    "type": "component",
-    "title": "Stitched Text Draw",
-    "description": "Text drawn as thread stitches: a single-stroke display alphabet draws via attribute-driven dashoffset with stitch-tuned dash patterns, seeded angle jitter, needle-hole dots, a leading needle, and a thread-tail overshoot per letter.",
-    "tags": [
-      "motion-primitive",
-      "experiment",
-      "type",
-      "craft",
-      "stitch",
-      "deterministic"
-    ],
-    "href": "/catalog/components/stitched-text-draw",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stitched-text-draw.png"
-  },
-  {
-    "name": "stop-motion-cadence",
-    "type": "component",
-    "title": "Stop Motion Cadence",
-    "description": "The stepped-time law as a demo primitive: one driver quantizes timeline time to floor(t * fps) / fps and feeds ALL motion; four token paper-cut shapes throw-and-land with squash on hits, 2-frame boil jitter seeded per step, and sparkle accents living exactly 2 to 3 frames.",
-    "tags": [
-      "motion-primitive",
-      "time-law",
-      "stop-motion",
-      "stepped",
-      "boil",
-      "deterministic",
-      "experiment"
-    ],
-    "href": "/catalog/components/stop-motion-cadence",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stop-motion-cadence.png"
-  },
-  {
-    "name": "store-badge-lockup",
-    "type": "component",
-    "title": "Store Badge Lockup",
-    "description": "Settles a short headline above equal-size App Store and Google Play badges as a token-driven mobile end-card call to action.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "mobile",
-      "store-badges",
-      "cta",
-      "ask"
-    ],
-    "href": "/catalog/components/store-badge-lockup",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/store-badge-lockup.png"
-  },
-  {
-    "name": "strikethrough-replace",
-    "type": "component",
-    "title": "Strikethrough Replace",
-    "description": "Draw a strike line across old text, then reveal the replacement.",
-    "tags": [
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/strikethrough-replace",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/strikethrough-replace.png"
-  },
-  {
-    "name": "success-check",
-    "type": "component",
-    "title": "Success Check",
-    "description": "A success check primitive with ring pop, path draw, and subtle rotate blur",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "success",
-      "check"
-    ],
-    "href": "/catalog/components/success-check",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/success-check.png"
-  },
-  {
-    "name": "svg-line-draw-loader",
-    "type": "component",
-    "title": "SVG Line Draw Loader",
-    "description": "An Anime.js-style path drawing loader implemented as a seekable GSAP stroke timeline.",
-    "tags": [
-      "video-primitive",
-      "advanced-motion",
-      "anime-inspired",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/svg-line-draw-loader",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/svg-line-draw-loader.png"
-  },
-  {
-    "name": "svg-mask-reveal",
-    "type": "component",
-    "title": "SVG Mask Reveal",
-    "description": "A soft token-colored sweep reveals media only through an editable SVG wordmark mask.",
-    "tags": [
-      "effect",
-      "svg",
-      "mask",
-      "wordmark",
-      "reveal",
-      "exhibit"
-    ],
-    "href": "/catalog/components/svg-mask-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/svg-mask-reveal.png"
-  },
-  {
-    "name": "svg-stroke-trace",
-    "type": "component",
-    "title": "SVG Stroke Trace",
-    "description": "An authored SVG path draws from its measured length, holds with subtle drift, and optionally fills when the path is closed.",
-    "tags": [
-      "motion-primitive",
-      "intro",
-      "reveal",
-      "svg",
-      "stroke",
-      "line-draw"
-    ],
-    "href": "/catalog/components/svg-stroke-trace",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/svg-stroke-trace.png"
-  },
-  {
-    "name": "swipe-rail",
-    "type": "component",
-    "title": "Swipe Rail",
-    "description": "A contact circle leads a horizontal card rail through a fast drag, momentum carry, and settled snap to the next card.",
-    "tags": [
-      "motion-primitive",
-      "interaction",
-      "gesture",
-      "swipe",
-      "cards",
-      "rail"
-    ],
-    "href": "/catalog/components/swipe-rail",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/swipe-rail.png"
-  },
-  {
     "name": "swirl-vortex",
     "type": "block",
     "title": "Swirl Vortex",
@@ -4121,124 +1768,6 @@
     ],
     "href": "/catalog/blocks/swirl-vortex",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/swirl-vortex.png"
-  },
-  {
-    "name": "tabs-slide-indicator",
-    "type": "component",
-    "title": "Tabs Slide Indicator",
-    "description": "A pill indicator transition that slides between active tabs",
-    "tags": [
-      "transition-primitive",
-      "transitions-dev-port",
-      "tabs",
-      "indicator"
-    ],
-    "href": "/catalog/components/tabs-slide-indicator",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tabs-slide-indicator.png"
-  },
-  {
-    "name": "telemetry-hud",
-    "type": "component",
-    "title": "Telemetry HUD",
-    "description": "Quiet mono debug-HUD readouts frame a slotted subject: corner brackets draw on, label:value lines tick their values on cues, one readout emphasized in accent. The subject never moves; the HUD breathes zero.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "hud",
-      "telemetry",
-      "deterministic"
-    ],
-    "href": "/catalog/components/telemetry-hud",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/telemetry-hud.png"
-  },
-  {
-    "name": "terminal-simulator",
-    "type": "component",
-    "title": "Terminal Simulator",
-    "description": "A terminal window types commands and streams log output.",
-    "tags": [
-      "code-animation",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/terminal-simulator",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/terminal-simulator.png"
-  },
-  {
-    "name": "testimonial-card",
-    "type": "component",
-    "title": "Testimonial Card",
-    "description": "Reveals a customer quote at reading pace, then settles its avatar, author name, and handle beneath as a clean proof beat.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "testimonial",
-      "social-proof",
-      "quote",
-      "prove"
-    ],
-    "href": "/catalog/components/testimonial-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/testimonial-card.png"
-  },
-  {
-    "name": "testimonial-proof-card",
-    "type": "component",
-    "title": "Testimonial Proof Card",
-    "description": "A quote card whose testimonial reveals per-line through a soft mask, with an avatar disc (initials default, image slot), mono name and role, an optional company text mark, and one emphasis substring underlined in accent ink after the quote lands.",
-    "tags": [
-      "motion-primitive",
-      "proof",
-      "testimonial",
-      "quote",
-      "social-proof",
-      "deterministic"
-    ],
-    "href": "/catalog/components/testimonial-proof-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/testimonial-proof-card.png"
-  },
-  {
-    "name": "text-shimmer",
-    "type": "component",
-    "title": "Text Shimmer",
-    "description": "A static headline receives one clean specular gradient sweep through its glyphs, then returns to its ordinary text color.",
-    "tags": [
-      "motion-primitive",
-      "text-effects",
-      "shimmer",
-      "specular",
-      "emphasis"
-    ],
-    "href": "/catalog/components/text-shimmer",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-shimmer.png"
-  },
-  {
-    "name": "text-stagger",
-    "type": "component",
-    "title": "Text Stagger",
-    "description": "A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "text",
-      "stagger"
-    ],
-    "href": "/catalog/components/text-stagger",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-stagger.png"
-  },
-  {
-    "name": "text-state-swap",
-    "type": "component",
-    "title": "Text State Swap",
-    "description": "A text state swap primitive with outgoing blur and incoming lift",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "text",
-      "swap"
-    ],
-    "href": "/catalog/components/text-state-swap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-state-swap.png"
   },
   {
     "name": "texture-mask-text",
@@ -4268,49 +1797,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thermal-distortion.png"
   },
   {
-    "name": "thread-message-stack",
-    "type": "block",
-    "title": "Thread Message Stack",
-    "description": "A source-owned editable conversation stack with arbitrary incoming and outgoing messages",
-    "tags": [
-      "social",
-      "conversation",
-      "messages"
-    ],
-    "href": "/catalog/blocks/thread-message-stack",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thread-message-stack.png"
-  },
-  {
-    "name": "three-orbiting-cards",
-    "type": "component",
-    "title": "Three Orbiting Cards",
-    "description": "A Three.js-powered orbit scene driven by a paused GSAP timeline for deterministic renders.",
-    "tags": [
-      "video-primitive",
-      "three-js",
-      "webgl",
-      "hyperframes-native"
-    ],
-    "href": "/catalog/components/three-orbiting-cards",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/three-orbiting-cards.png"
-  },
-  {
-    "name": "ticker-takeover",
-    "type": "component",
-    "title": "Ticker Takeover",
-    "description": "A mono ticker rolls through options, locks on a final word with an accent flash, and promotes it into a full-frame headline.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "ticker",
-      "slot-machine",
-      "headline",
-      "reveal"
-    ],
-    "href": "/catalog/components/ticker-takeover",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ticker-takeover.png"
-  },
-  {
     "name": "tiktok-follow",
     "type": "block",
     "title": "TikTok Follow",
@@ -4322,127 +1808,6 @@
     ],
     "href": "/catalog/blocks/tiktok-follow",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.png"
-  },
-  {
-    "name": "tilt-card",
-    "type": "component",
-    "title": "Tilt Card",
-    "description": "A transitions.dev-inspired tilt card primitive with depth layers and hover-style parallax",
-    "tags": [
-      "video-primitive",
-      "transition-primitive",
-      "transitions-dev-port",
-      "card",
-      "tilt"
-    ],
-    "href": "/catalog/components/tilt-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tilt-card.png"
-  },
-  {
-    "name": "titlecard-calm",
-    "type": "component",
-    "title": "Titlecard Calm",
-    "description": "A restrained title card where a mono kicker and generous grotesque headline fade upward, drift almost imperceptibly, and exit cleanly.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "title-card",
-      "calm",
-      "orient"
-    ],
-    "href": "/catalog/components/titlecard-calm",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/titlecard-calm.png"
-  },
-  {
-    "name": "titlecard-lockup",
-    "type": "component",
-    "title": "Titlecard Lockup",
-    "description": "The calm breather titlecard: an optional mono kicker fades up, the wordmark settles dead-center with one restrained move, a hairline rule draws left to right, a mono label fades beneath, and the lockup holds truly still.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "title-card",
-      "lockup",
-      "breather",
-      "orient"
-    ],
-    "href": "/catalog/components/titlecard-lockup",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/titlecard-lockup.png"
-  },
-  {
-    "name": "toggle-flip",
-    "type": "component",
-    "title": "Toggle Flip",
-    "description": "An oversized UI toggle switch that flips with real physicality: thumb overshoot, track color crossfade, and a soft press-compress before release. The reference prop of the ui-props family.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "toggle",
-      "interaction",
-      "reference-prop",
-      "demonstrate"
-    ],
-    "href": "/catalog/components/toggle-flip",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toggle-flip.png"
-  },
-  {
-    "name": "top-down-letters",
-    "type": "component",
-    "title": "Top-Down Letters",
-    "description": "Letters descend from above in a pronounced staircase with zero blur.",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/top-down-letters",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/top-down-letters.png"
-  },
-  {
-    "name": "touch-indicator",
-    "type": "component",
-    "title": "Touch Indicator",
-    "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass, causes a same-frame response, and lifts. Tap or swipe, picked by variable.",
-    "tags": [
-      "motion-primitive",
-      "mobile",
-      "gesture",
-      "touch",
-      "pointer"
-    ],
-    "href": "/catalog/components/touch-indicator",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/touch-indicator.png"
-  },
-  {
-    "name": "tracing-beam",
-    "type": "component",
-    "title": "Tracing Beam",
-    "description": "A glowing dash follows one SVG path through three UI elements, lifting and brightening each element in sequence.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "attention",
-      "beam",
-      "path",
-      "spotlight"
-    ],
-    "href": "/catalog/components/tracing-beam",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tracing-beam.png"
-  },
-  {
-    "name": "tracking-in",
-    "type": "component",
-    "title": "Tracking In",
-    "description": "A precise letter-spacing reveal for premium headings and interface labels",
-    "tags": [
-      "motion-primitive",
-      "text",
-      "reveal",
-      "typography"
-    ],
-    "href": "/catalog/components/tracking-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tracking-in.png"
   },
   {
     "name": "transitions-3d",
@@ -4601,65 +1966,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-scale.png"
   },
   {
-    "name": "trust-strip",
-    "type": "component",
-    "title": "Trust Strip",
-    "description": "A monochrome trust row of wide-tracked mono wordmarks that fade in with an opacity-only left-to-right stagger, then hold dead still.",
-    "tags": [
-      "motion-primitive",
-      "proof",
-      "trust",
-      "logo-strip",
-      "wordmarks"
-    ],
-    "href": "/catalog/components/trust-strip",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/trust-strip.png"
-  },
-  {
-    "name": "type-match-cut",
-    "type": "component",
-    "title": "Type Match Cut",
-    "description": "A headline splits vertically around an incoming panel, which grows from the negative space and takes the frame as the words exit through opposite edges.",
-    "tags": [
-      "motion-primitive",
-      "transition",
-      "typography",
-      "match-cut",
-      "continuity"
-    ],
-    "href": "/catalog/components/type-match-cut",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/type-match-cut.png"
-  },
-  {
-    "name": "typed-prompt",
-    "type": "component",
-    "title": "Typed Prompt",
-    "description": "A prompt line types itself in chunked human cadence behind a deterministic blinking caret, with optional backspace-and-retype correction of the final word.",
-    "tags": [
-      "motion-primitive",
-      "product-demo",
-      "typing",
-      "prompt",
-      "deterministic"
-    ],
-    "href": "/catalog/components/typed-prompt",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/typed-prompt.png"
-  },
-  {
-    "name": "typewriter",
-    "type": "component",
-    "title": "Typewriter",
-    "description": "Character-by-character text reveal with a deterministic blinking cursor.",
-    "tags": [
-      "video-primitive",
-      "motion-primitive",
-      "remocn-port",
-      "typography"
-    ],
-    "href": "/catalog/components/typewriter",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/typewriter.png"
-  },
-  {
     "name": "ui-3d-reveal",
     "type": "block",
     "title": "3D UI Reveal",
@@ -4671,23 +1977,6 @@
     ],
     "href": "/catalog/blocks/ui-3d-reveal",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.png"
-  },
-  {
-    "name": "ui-focus-zoom",
-    "type": "component",
-    "title": "UI Focus Zoom",
-    "description": "A full app surface establishes with one settle, then the camera zooms and pans to an anchored region on its cue and holds the zoomed state, with an optional soft focus halo at the anchor. The surface is a slot with a token-styled skeleton default.",
-    "tags": [
-      "camera",
-      "product-demo",
-      "zoom",
-      "focus",
-      "pan",
-      "slot",
-      "servo"
-    ],
-    "href": "/catalog/components/ui-focus-zoom",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ui-focus-zoom.png"
   },
   {
     "name": "us-map",
@@ -4752,86 +2041,6 @@
     ],
     "href": "/catalog/blocks/us-map-hex",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-hex.png"
-  },
-  {
-    "name": "variable-axis-type",
-    "type": "component",
-    "title": "Variable Axis Type",
-    "description": "A locked one-line headline whose weight or width axis morphs into a decisive emphasis beat.",
-    "tags": [
-      "typography",
-      "variable-font",
-      "kinetic-type",
-      "axis",
-      "emphasize"
-    ],
-    "href": "/catalog/components/variable-axis-type",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/variable-axis-type.png"
-  },
-  {
-    "name": "variable-font-flex",
-    "type": "component",
-    "title": "Variable Font Flex",
-    "description": "A word lands while its variable-font weight and width axes flex from hairline-condensed to black-wide with per-character stagger; font-size eases inversely so the letterforms gain mass while the box holds.",
-    "tags": [
-      "motion-primitive",
-      "experiment",
-      "type",
-      "variable-font",
-      "deterministic"
-    ],
-    "href": "/catalog/components/variable-font-flex",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/variable-font-flex.png"
-  },
-  {
-    "name": "vector-editor-rig",
-    "type": "component",
-    "title": "Vector Editor Rig",
-    "description": "A dark design-tool app chrome with a live vector pen path, sequential anchor points, bezier handles, a selection frame, and theme-driven blue accents.",
-    "tags": [
-      "prop",
-      "ui-props",
-      "demonstrate",
-      "vector",
-      "design-tool",
-      "pen-tool",
-      "bezier",
-      "app-chrome"
-    ],
-    "href": "/catalog/components/vector-editor-rig",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vector-editor-rig.png"
-  },
-  {
-    "name": "velocity-throw-snap",
-    "type": "component",
-    "title": "Velocity Throw Snap",
-    "description": "A five-shot rail whips past on a fast decaying curve, then overshoots and snaps the selected hero shot exactly to center.",
-    "tags": [
-      "motion-primitive",
-      "feature-tour",
-      "rail",
-      "velocity",
-      "throw",
-      "snap",
-      "physics"
-    ],
-    "href": "/catalog/components/velocity-throw-snap",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/velocity-throw-snap.png"
-  },
-  {
-    "name": "vfx-anamorphic-flare",
-    "type": "block",
-    "title": "Anamorphic Streak Flare",
-    "description": "A drifting field of bright points, each one throwing the long horizontal blue-violet streak a real anamorphic cinema lens produces. Built from the measured filter constants: a 0.3 high-pass, 80 horizontal taps at quarter resolution, a samples/3 gain and a 0x7a8aff tint.",
-    "tags": [
-      "vfx",
-      "background",
-      "showcase",
-      "optical",
-      "canvas"
-    ],
-    "href": "/catalog/blocks/vfx-anamorphic-flare",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-anamorphic-flare.png"
   },
   {
     "name": "vfx-iphone-device",
@@ -4942,21 +2151,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.png"
   },
   {
-    "name": "vox-annotate",
-    "type": "component",
-    "title": "Vox Annotate",
-    "description": "The Vox-style annotate gesture: a keyword in a held sentence gets a hand-drawn marker while a thin connector draws up to a mono callout label, all as one choreographed beat on the cue.",
-    "tags": [
-      "motion-primitive",
-      "typography",
-      "annotation",
-      "marker",
-      "deterministic"
-    ],
-    "href": "/catalog/components/vox-annotate",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vox-annotate.png"
-  },
-  {
     "name": "vpn-youtube-spot",
     "type": "block",
     "title": "VPN YouTube Spot",
@@ -4971,21 +2165,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
-    "name": "weight-wave",
-    "type": "block",
-    "title": "Weight Wave",
-    "description": "A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms.",
-    "tags": [
-      "typography",
-      "kinetic-type",
-      "title",
-      "variable-font",
-      "text"
-    ],
-    "href": "/catalog/blocks/weight-wave",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/weight-wave.png"
-  },
-  {
     "name": "whip-pan",
     "type": "block",
     "title": "Whip Pan",
@@ -4996,55 +2175,6 @@
     ],
     "href": "/catalog/blocks/whip-pan",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/whip-pan.png"
-  },
-  {
-    "name": "whip-pan-cut",
-    "type": "component",
-    "title": "Whip Pan Cut",
-    "description": "A full-frame whip pan: scene A whips off laterally with capped directional motion blur while scene B enters in the same direction at matched velocity, on a speed-ramp profile with a decelerating catch. Both scenes ride one strip, so seam velocity is exact by construction. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.",
-    "tags": [
-      "transition",
-      "whip-pan",
-      "motion-blur",
-      "velocity-match",
-      "speed-ramp",
-      "bridge",
-      "slots"
-    ],
-    "href": "/catalog/components/whip-pan-cut",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/whip-pan-cut.png"
-  },
-  {
-    "name": "whiteboard-ink",
-    "type": "component",
-    "title": "Whiteboard Ink",
-    "description": "A whiteboard sketch draws one measured stroke at a time while a pen nib follows the active tip. Preset sketches (bulb, flow, rocket) or your own multi-stroke SVG paths via the strokes slot; a path marked data-ink=accent rides the accent token.",
-    "tags": [
-      "motion-primitive",
-      "intro",
-      "reveal",
-      "svg",
-      "whiteboard",
-      "line-draw",
-      "slot"
-    ],
-    "href": "/catalog/components/whiteboard-ink",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/whiteboard-ink.png"
-  },
-  {
-    "name": "wordmark-tiles",
-    "type": "component",
-    "title": "Wordmark Tiles",
-    "description": "A wordmark resolves from deterministic color noise into correctly cropped glyph tiles through a spatially modulated GSAP wave.",
-    "tags": [
-      "typography",
-      "wordmark",
-      "tiles",
-      "raster",
-      "reveal"
-    ],
-    "href": "/catalog/components/wordmark-tiles",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/wordmark-tiles.png"
   },
   {
     "name": "world-map",
@@ -5060,18 +2190,6 @@
     ],
     "href": "/catalog/blocks/world-map",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.png"
-  },
-  {
-    "name": "x-follow-card",
-    "type": "component",
-    "title": "X Follow Card",
-    "description": "A social follow card with avatar, handle, and follower motion.",
-    "tags": [
-      "social-overlay",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/x-follow-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-follow-card.png"
   },
   {
     "name": "x-post",
@@ -5218,17 +2336,5 @@
     ],
     "href": "/catalog/blocks/yt-vertical-fill",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-vertical-fill.png"
-  },
-  {
-    "name": "zoom-through-transition",
-    "type": "component",
-    "title": "Zoom Through Transition",
-    "description": "A transition that zooms through a focal card into the next scene.",
-    "tags": [
-      "transition-primitive",
-      "remocn-port"
-    ],
-    "href": "/catalog/components/zoom-through-transition",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/zoom-through-transition.png"
   }
 ]

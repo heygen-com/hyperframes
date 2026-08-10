@@ -3,7 +3,7 @@
   "name": "code-highlight",
   "type": "hyperframes:block",
   "title": "Code Highlight Sweep",
-  "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.",
+  "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line. `line` is 0-based: `line: 1` targets the second displayed line (unlike code-scroll, whose target is 1-based).",
   "dimensions": {
     "width": 1920,
     "height": 1080

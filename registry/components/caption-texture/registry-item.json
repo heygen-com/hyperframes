@@ -3,15 +3,8 @@
   "name": "caption-texture",
   "type": "hyperframes:component",
   "title": "Texture",
-  "description": "Flowing texture mask over large uppercase text \u2014 ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
+  "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
   "tags": ["captions", "caption-style", "texture", "mask"],
-  "variables": [
-    {
-      "id": "texture",
-      "type": "string",
-      "default": "lava"
-    }
-  ],
   "files": [
     {
       "path": "caption-texture.html",

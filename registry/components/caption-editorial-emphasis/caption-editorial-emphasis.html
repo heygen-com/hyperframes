@@ -80,7 +80,7 @@
 
       .word {
         display: inline-block;
-        color: #f5f0d0;
+        color: var(--hf-caption-primary, #f5f0d0);
         text-shadow:
           0 2px 12px rgba(0, 0, 0, 0.6),
           0 4px 24px rgba(0, 0, 0, 0.35);
@@ -95,20 +95,13 @@
         font-style: normal;
       }
 
-      .word--italic {
-        font-family: "Inter", sans-serif;
-        font-size: 86px;
-        font-weight: 400;
-        font-style: italic;
-      }
-
       .word--emphasis {
         font-family: "Playfair Display", serif;
         font-size: 180px;
         font-weight: 800;
         font-style: italic;
         line-height: 0.9;
-        color: #f5f0d0;
+        color: var(--hf-caption-primary, #f5f0d0);
       }
     </style>
   </head>
@@ -129,268 +122,507 @@
     </div>
 
     <script>
-      var DURATION = 8;
-      var SAFE_WIDTH = 1800;
-      var ENTRY_DUR = 0.1;
-      var SLIDE_DUR = 0.2;
+      // IIFE: keep every template's runtime private to itself so two caption
+      // components pasted into one composition document can't clobber each
+      // other's hfAttach/hfBuild via shared script-scope names (boot is async,
+      // so collisions surface AFTER all scripts have executed).
+      (function () {
+        var HF_COMPOSITION_ID = "caption-editorial-emphasis";
+        var HF_ROOT_ID = "editorial-emphasis";
+        var HF_GROUP_SELECTOR = ".caption-block";
 
-      var _fitCanvas = document.createElement("canvas");
-      var _fitCtx = _fitCanvas.getContext("2d");
-      function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
-        var size = baseFontSize;
-        var minSize = Math.floor(baseFontSize * 0.45);
-        while (size > minSize) {
-          _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
-          if (_fitCtx.measureText(text).width <= maxWidth) return size;
-          size -= 2;
-        }
-        return minSize;
-      }
+        var HF_DEMO_DATA = {
+          version: 1,
+          segments: [
+            {
+              start: 0,
+              text: "Every great video starts with a single frame. HyperFrames lets you write HTML and render professional video. No timeline. No drag and drop. Just code that becomes cinema.",
+              words: [
+                { text: "Every", start: 0.0, end: 0.3 },
+                { text: "great", start: 0.3, end: 0.55 },
+                { text: "video", start: 0.55, end: 0.85 },
+                { text: "starts", start: 0.85, end: 1.1 },
+                { text: "with", start: 1.1, end: 1.25 },
+                { text: "a", start: 1.25, end: 1.35 },
+                { text: "single", start: 1.35, end: 1.65 },
+                { text: "frame.", start: 1.65, end: 2.0 },
+                { text: "HyperFrames", start: 2.1, end: 2.65 },
+                { text: "lets", start: 2.65, end: 2.85 },
+                { text: "you", start: 2.85, end: 2.95 },
+                { text: "write", start: 2.95, end: 3.15 },
+                { text: "HTML", start: 3.15, end: 3.55 },
+                { text: "and", start: 3.55, end: 3.65 },
+                { text: "render", start: 3.65, end: 3.95 },
+                { text: "professional", start: 3.95, end: 4.45 },
+                { text: "video.", start: 4.45, end: 4.8 },
+                { text: "No", start: 4.9, end: 5.05 },
+                { text: "timeline.", start: 5.05, end: 5.45 },
+                { text: "No", start: 5.5, end: 5.65 },
+                { text: "drag", start: 5.65, end: 5.85 },
+                { text: "and", start: 5.85, end: 5.95 },
+                { text: "drop.", start: 5.95, end: 6.25 },
+                { text: "Just", start: 6.35, end: 6.55 },
+                { text: "code", start: 6.55, end: 6.8 },
+                { text: "that", start: 6.8, end: 6.95 },
+                { text: "becomes", start: 6.95, end: 7.3 },
+                { text: "cinema.", start: 7.3, end: 7.7 },
+              ],
+            },
+          ],
+        };
 
-      // Generic transcript words
-      var W = [
-        { text: "Every", start: 0.0, end: 0.3 },
-        { text: "great", start: 0.3, end: 0.55 },
-        { text: "video", start: 0.55, end: 0.85 },
-        { text: "starts", start: 0.85, end: 1.1 },
-        { text: "with", start: 1.1, end: 1.25 },
-        { text: "a", start: 1.25, end: 1.35 },
-        { text: "single", start: 1.35, end: 1.65 },
-        { text: "frame.", start: 1.65, end: 2.0 },
-        { text: "HyperFrames", start: 2.1, end: 2.65 },
-        { text: "lets", start: 2.65, end: 2.85 },
-        { text: "you", start: 2.85, end: 2.95 },
-        { text: "write", start: 2.95, end: 3.15 },
-        { text: "HTML", start: 3.15, end: 3.55 },
-        { text: "and", start: 3.55, end: 3.65 },
-        { text: "render", start: 3.65, end: 3.95 },
-        { text: "professional", start: 3.95, end: 4.45 },
-        { text: "video.", start: 4.45, end: 4.8 },
-        { text: "No", start: 4.9, end: 5.05 },
-        { text: "timeline.", start: 5.05, end: 5.45 },
-        { text: "No", start: 5.5, end: 5.65 },
-        { text: "drag", start: 5.65, end: 5.85 },
-        { text: "and", start: 5.85, end: 5.95 },
-        { text: "drop.", start: 5.95, end: 6.25 },
-        { text: "Just", start: 6.35, end: 6.55 },
-        { text: "code", start: 6.55, end: 6.8 },
-        { text: "that", start: 6.8, end: 6.95 },
-        { text: "becomes", start: 6.95, end: 7.3 },
-        { text: "cinema.", start: 7.3, end: 7.7 },
-      ];
+        /* ── HyperFrames caption-data runtime (shared across caption templates) ── */
+        var HF_CONTRACT_VERSION = 1;
+        var HF_DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
 
-      // Block layout: [wordIndex, type] — n=normal, i=italic, e=emphasis(large)
-      // Emphasis words: HyperFrames(8), HTML(12), professional(15), code(24), cinema.(27)
-      var BLOCKS = [
-        {
-          line1: [
-            [0, "n"],
-            [1, "n"],
-            [2, "n"],
-          ],
-          line2: [
-            [3, "n"],
-            [4, "n"],
-          ],
-        },
-        {
-          line1: [
-            [5, "n"],
-            [6, "n"],
-          ],
-          line2: [[7, "e"]],
-        },
-        { line1: [[8, "e"]], line2: null },
-        {
-          line1: [
-            [9, "n"],
-            [10, "n"],
-            [11, "n"],
-          ],
-          line2: [[12, "e"]],
-        },
-        {
-          line1: [
-            [13, "n"],
-            [14, "n"],
-          ],
-          line2: [[15, "e"]],
-        },
-        {
-          line1: [
-            [16, "n"],
-            [17, "n"],
-          ],
-          line2: null,
-        },
-        {
-          line1: [[18, "n"]],
-          line2: [
-            [19, "n"],
-            [20, "n"],
-          ],
-        },
-        {
-          line1: [
-            [21, "n"],
-            [22, "n"],
-          ],
-          line2: null,
-        },
-        {
-          line1: [
-            [23, "i"],
-            [24, "e"],
-          ],
-          line2: null,
-        },
-        {
-          line1: [
-            [25, "n"],
-            [26, "n"],
-          ],
-          line2: [[27, "e"]],
-        },
-      ];
-
-      var CLASS_MAP = { n: "word word--normal", i: "word word--italic", e: "word word--emphasis" };
-
-      function computeLineSize(linePairs) {
-        var hasEmphasis = linePairs.some(function (p) {
-          return p[1] === "e";
-        });
-        if (hasEmphasis) {
-          var lineText = linePairs
-            .map(function (p) {
-              return W[p[0]].text;
-            })
-            .join(" ");
-          return fitFontSize(lineText, 180, "800", "Playfair Display", SAFE_WIDTH);
-        }
-        var lineText = linePairs
-          .map(function (p) {
-            return W[p[0]].text;
-          })
-          .join(" ");
-        return fitFontSize(lineText, 86, "400", "Inter", SAFE_WIDTH);
-      }
-
-      function buildBlocks() {
-        var stage = document.getElementById("caption-stage");
-        BLOCKS.forEach(function (block, bi) {
-          var el = document.createElement("div");
-          el.className = "caption-block";
-          el.id = "b" + bi;
-
-          var l1Size = computeLineSize(block.line1);
-          var l1 = document.createElement("div");
-          l1.className = "caption-line";
-          l1.id = "b" + bi + "L1";
-          block.line1.forEach(function (pair, wi) {
-            var span = document.createElement("span");
-            span.className = CLASS_MAP[pair[1]];
-            span.id = "b" + bi + "L1w" + wi;
-            span.textContent = W[pair[0]].text;
-            if (pair[1] === "e") {
-              span.style.fontSize = l1Size + "px";
-            } else {
-              span.style.fontSize = l1Size + "px";
-            }
-            l1.appendChild(span);
-          });
-          el.appendChild(l1);
-
-          if (block.line2) {
-            var l2Size = computeLineSize(block.line2);
-            var l2 = document.createElement("div");
-            l2.className = "caption-line";
-            l2.id = "b" + bi + "L2";
-            block.line2.forEach(function (pair, wi) {
-              var span = document.createElement("span");
-              span.className = CLASS_MAP[pair[1]];
-              span.id = "b" + bi + "L2w" + wi;
-              span.textContent = W[pair[0]].text;
-              if (pair[1] === "e") {
-                span.style.fontSize = l2Size + "px";
-              } else {
-                span.style.fontSize = l2Size + "px";
-              }
-              l2.appendChild(span);
+        function hfFlattenSegments(segments) {
+          var out = [];
+          (segments || []).forEach(function (seg) {
+            ((seg && seg.words) || []).forEach(function (w) {
+              var start = Math.max(0, Number(w.start) || 0);
+              out.push({
+                text: String(w.word || w.text || "").trim(),
+                start: start,
+                end: Math.max(start, Number(w.end) || 0),
+              });
             });
-            el.appendChild(l2);
-          }
-
-          stage.appendChild(el);
-        });
-      }
-
-      buildBlocks();
-
-      // Scale blocks that exceed safe width
-      (function fitBlocks() {
-        BLOCKS.forEach(function (block, bi) {
-          var el = document.getElementById("b" + bi);
-          el.style.opacity = "1";
-          el.style.position = "relative";
-          var lines = el.querySelectorAll(".caption-line");
-          var maxW = 0;
-          lines.forEach(function (line) {
-            if (line.scrollWidth > maxW) maxW = line.scrollWidth;
           });
-          if (maxW > SAFE_WIDTH) {
-            var s = SAFE_WIDTH / maxW;
-            el.style.transform = "scale(" + s + ")";
+          out.sort(function (a, b) {
+            return a.start - b.start;
+          });
+          return out.filter(function (w) {
+            return w.text.length > 0;
+          });
+        }
+
+        function hfDeriveDuration(words) {
+          var end = 0;
+          words.forEach(function (w) {
+            if (w.end > end) end = w.end;
+          });
+          return end;
+        }
+
+        function hfValidate(data) {
+          if (!data || typeof data !== "object") return { ok: false, reason: "not-an-object" };
+          if (data.version != null) {
+            // Number("v2") is NaN and NaN > x is always false — an explicit
+            // finite check keeps malformed versions from slipping past the gate.
+            var hfVersion = Number(data.version);
+            if (!Number.isFinite(hfVersion) || Math.floor(hfVersion) > HF_CONTRACT_VERSION) {
+              return { ok: false, reason: "unsupported-version" };
+            }
           }
-          el.style.opacity = "0";
-          el.style.position = "";
-        });
-      })();
+          if (!Array.isArray(data.segments) || data.segments.length === 0) {
+            return { ok: false, reason: "no-segments" };
+          }
+          if (data.displayMode != null && data.displayMode !== "full") {
+            return { ok: false, reason: "unsupported-displayMode" };
+          }
+          var words = hfFlattenSegments(data.segments);
+          if (words.length === 0) return { ok: false, reason: "no-words" };
+          return { ok: true, words: words, durationS: hfDeriveDuration(words) };
+        }
 
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
-
-      var allEls = BLOCKS.map(function (_, i) {
-        return document.getElementById("b" + i);
-      });
-
-      function blockStart(bi) {
-        return W[BLOCKS[bi].line1[0][0]].start;
-      }
-
-      BLOCKS.forEach(function (block, bi) {
-        var el = allEls[bi];
-        var start = blockStart(bi);
-        var nextStart = bi < BLOCKS.length - 1 ? blockStart(bi + 1) : DURATION;
-
-        allEls.forEach(function (other, oi) {
-          if (oi !== bi) tl.set(other, { opacity: 0 }, start);
-        });
-        tl.set(el, { opacity: 1 }, start);
-
-        block.line1.forEach(function (pair, wi) {
-          var wordEl = document.getElementById("b" + bi + "L1w" + wi);
-          var wordStart = W[pair[0]].start;
-          tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
-          tl.to(
-            wordEl,
-            { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
-            wordStart,
+        function hfApplyStageConfig(data, durationS) {
+          var res = (data && data.resolution) || HF_DEFAULT_RESOLUTION;
+          // Mirror the published validator's <=8192 bound defensively — the
+          // validator is an optional pre-flight, and an unbounded stage size
+          // would OOM render workers.
+          var W = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.width) || HF_DEFAULT_RESOLUTION.width)),
           );
-        });
-
-        if (block.line2) {
-          var hasEmphasis = block.line2.some(function (p) {
-            return p[1] === "e";
+          var H = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.height) || HF_DEFAULT_RESOLUTION.height)),
+          );
+          var root = document.getElementById(HF_ROOT_ID);
+          [document.documentElement, document.body, root].forEach(function (el) {
+            el.style.width = W + "px";
+            el.style.height = H + "px";
           });
-          var l2El = document.getElementById("b" + bi + "L2");
-          if (hasEmphasis) {
-            var l2Start = W[block.line2[0][0]].start;
-            tl.set(l2El, { opacity: 0, x: -1920 }, start);
-            tl.to(l2El, { opacity: 1, x: 0, duration: SLIDE_DUR, ease: "power2.out" }, l2Start);
+          root.setAttribute("data-width", String(W));
+          root.setAttribute("data-height", String(H));
+          root.setAttribute("data-duration", String(durationS));
+          var brand = (data && data.brand) || {};
+          if (typeof brand.primaryColor === "string" && brand.primaryColor) {
+            root.style.setProperty("--hf-caption-primary", brand.primaryColor);
           } else {
-            tl.set(l2El, { opacity: 1 }, start);
-            block.line2.forEach(function (pair, wi) {
-              var wordEl = document.getElementById("b" + bi + "L2w" + wi);
+            root.style.removeProperty("--hf-caption-primary");
+          }
+          if (typeof brand.accentColor === "string" && brand.accentColor) {
+            root.style.setProperty("--hf-caption-accent", brand.accentColor);
+          } else {
+            root.style.removeProperty("--hf-caption-accent");
+          }
+          return {
+            W: W,
+            H: H,
+            scaleX: W / 1920,
+            scaleY: H / 1080,
+            fontScale: Math.min(W, H) / 1080,
+          };
+        }
+
+        function hfPublishStatus(status) {
+          window.__HF_CAPTION_STATUS = status;
+          document
+            .getElementById(HF_ROOT_ID)
+            .setAttribute("data-caption-status", status.ok ? "ok" : "failed");
+        }
+
+        function hfRunGate(words, durationS, failReason) {
+          if (failReason) {
+            hfPublishStatus({
+              ok: false,
+              present: false,
+              contained: false,
+              reason: failReason,
+              version: HF_CONTRACT_VERSION,
+              durationS: durationS || 0,
+            });
+            return;
+          }
+          var root = document.getElementById(HF_ROOT_ID);
+          var rootRect = root.getBoundingClientRect();
+          var groups = root.querySelectorAll(HF_GROUP_SELECTOR);
+          var present = false;
+          var contained = true;
+          var tokens = [];
+          words.forEach(function (w) {
+            var t = w.text.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (t) tokens.push(t);
+          });
+          groups.forEach(function (el) {
+            var prevOpacity = el.style.opacity;
+            var prevVisibility = el.style.visibility;
+            el.style.opacity = "1";
+            el.style.visibility = "visible";
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+              var text = (el.textContent || "").toLowerCase();
+              for (var i = 0; i < tokens.length; i++) {
+                if (text.indexOf(tokens[i]) !== -1) {
+                  present = true;
+                  break;
+                }
+              }
+              if (
+                r.left < rootRect.left - 1 ||
+                r.right > rootRect.right + 1 ||
+                r.top < rootRect.top - 1 ||
+                r.bottom > rootRect.bottom + 1
+              ) {
+                contained = false;
+              }
+            }
+            el.style.opacity = prevOpacity;
+            el.style.visibility = prevVisibility;
+          });
+          hfPublishStatus({
+            ok: present && contained,
+            present: present,
+            contained: contained,
+            version: HF_CONTRACT_VERSION,
+            durationS: durationS,
+          });
+        }
+
+        var HF_STOPWORDS = new Set([
+          "the",
+          "a",
+          "an",
+          "and",
+          "or",
+          "but",
+          "is",
+          "are",
+          "was",
+          "were",
+          "to",
+          "of",
+          "in",
+          "on",
+          "at",
+          "for",
+          "with",
+          "by",
+          "from",
+          "as",
+          "it",
+          "its",
+          "this",
+          "that",
+          "these",
+          "those",
+          "be",
+          "been",
+          "have",
+          "has",
+          "had",
+          "do",
+          "does",
+          "did",
+          "will",
+          "would",
+          "could",
+          "should",
+          "may",
+          "might",
+          "must",
+          "can",
+          "if",
+          "then",
+          "so",
+          "just",
+          "not",
+          "no",
+          "yes",
+          "up",
+          "out",
+          "about",
+          "into",
+          "over",
+          "after",
+          "before",
+          "your",
+          "you",
+          "our",
+          "we",
+          "they",
+          "them",
+          "their",
+          "there",
+          "here",
+          "when",
+          "what",
+          "which",
+          "who",
+          "how",
+          "all",
+          "any",
+          "some",
+          "more",
+          "most",
+          "other",
+          "than",
+          "too",
+          "very",
+          "also",
+          "because",
+        ]);
+
+        function hfIsEmphasisWord(text) {
+          var clean = String(text)
+            .toLowerCase()
+            .replace(/[^a-z]/g, "");
+          return clean.length >= 5 && !HF_STOPWORDS.has(clean);
+        }
+
+        var DURATION, SAFE_WIDTH;
+        var ENTRY_DUR = 0.1;
+        var SLIDE_DUR = 0.2;
+
+        var _fitCanvas = document.createElement("canvas");
+        var _fitCtx = _fitCanvas.getContext("2d");
+        function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
+          var size = baseFontSize;
+          var minSize = Math.floor(baseFontSize * 0.45);
+          // minSize is a hard floor returned unverified below — self-heal
+          // accepts residual overflow at the floor (clipped by the stage)
+          // rather than shrinking below legibility.
+          while (size > minSize) {
+            _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
+            if (_fitCtx.measureText(text).width <= maxWidth) return size;
+            size -= 2;
+          }
+          return minSize;
+        }
+
+        var CLASS_MAP = { n: "word word--normal", e: "word word--emphasis" };
+
+        var W = [];
+        var BLOCKS = [];
+
+        var MAX_WORDS_PER_BLOCK = 5;
+        var PAUSE_THRESHOLD = 0.1;
+
+        function hfMakeBlocks(words) {
+          var blocks = [];
+          var current = [];
+          words.forEach(function (w, i) {
+            current.push(i);
+            var isEmph = hfIsEmphasisWord(w.text);
+            var punctuation = /[,.:!?]$/.test(w.text);
+            var next = words[i + 1];
+            var pause = next ? next.start - w.end : Infinity;
+            if (
+              isEmph ||
+              punctuation ||
+              pause >= PAUSE_THRESHOLD ||
+              current.length >= MAX_WORDS_PER_BLOCK ||
+              !next
+            ) {
+              if (isEmph && current.length > 1) {
+                blocks.push({
+                  line1: current.slice(0, -1).map(function (ix) {
+                    return [ix, "n"];
+                  }),
+                  line2: [[current[current.length - 1], "e"]],
+                });
+              } else if (isEmph) {
+                blocks.push({ line1: [[current[0], "e"]], line2: null });
+              } else if (current.length > 3) {
+                var split = Math.ceil(current.length / 2);
+                blocks.push({
+                  line1: current.slice(0, split).map(function (ix) {
+                    return [ix, "n"];
+                  }),
+                  line2: current.slice(split).map(function (ix) {
+                    return [ix, "n"];
+                  }),
+                });
+              } else {
+                blocks.push({
+                  line1: current.map(function (ix) {
+                    return [ix, "n"];
+                  }),
+                  line2: null,
+                });
+              }
+              current = [];
+            }
+          });
+          return blocks;
+        }
+
+        function hfTeardown() {
+          document.getElementById("caption-stage").innerHTML = "";
+        }
+
+        function hfBuild(words, layout, durationS) {
+          DURATION = durationS;
+          var stage = document.getElementById("caption-stage");
+          var fontNormal = Math.round(86 * layout.fontScale);
+          var fontEmphasis = Math.round(180 * layout.fontScale);
+          var marginX = Math.round(60 * layout.scaleX);
+          var blockH = Math.round(430 * layout.fontScale);
+          SAFE_WIDTH = layout.W - marginX * 2;
+          stage.style.left = marginX + "px";
+          stage.style.width = SAFE_WIDTH + "px";
+          stage.style.height = blockH + "px";
+          stage.style.top = Math.max(0, layout.H - blockH - Math.round(70 * layout.scaleY)) + "px";
+
+          W = words;
+          BLOCKS = hfMakeBlocks(words);
+
+          function computeLineSize(linePairs) {
+            var hasEmphasis = linePairs.some(function (p) {
+              return p[1] === "e";
+            });
+            var lineText = linePairs
+              .map(function (p) {
+                return W[p[0]].text;
+              })
+              .join(" ");
+            if (hasEmphasis) {
+              return fitFontSize(lineText, fontEmphasis, "800", "Playfair Display", SAFE_WIDTH);
+            }
+            return fitFontSize(lineText, fontNormal, "400", "Inter", SAFE_WIDTH);
+          }
+
+          function buildBlocks() {
+            BLOCKS.forEach(function (block, bi) {
+              var el = document.createElement("div");
+              el.className = "caption-block";
+              el.id = "b" + bi;
+
+              var l1Size = computeLineSize(block.line1);
+              var l1 = document.createElement("div");
+              l1.className = "caption-line";
+              l1.id = "b" + bi + "L1";
+              block.line1.forEach(function (pair, wi) {
+                var span = document.createElement("span");
+                span.className = CLASS_MAP[pair[1]];
+                span.id = "b" + bi + "L1w" + wi;
+                span.textContent = W[pair[0]].text;
+                span.style.fontSize = l1Size + "px";
+                l1.appendChild(span);
+              });
+              el.appendChild(l1);
+
+              if (block.line2) {
+                var l2Size = computeLineSize(block.line2);
+                var l2 = document.createElement("div");
+                l2.className = "caption-line";
+                l2.id = "b" + bi + "L2";
+                block.line2.forEach(function (pair, wi) {
+                  var span = document.createElement("span");
+                  span.className = CLASS_MAP[pair[1]];
+                  span.id = "b" + bi + "L2w" + wi;
+                  span.textContent = W[pair[0]].text;
+                  span.style.fontSize = l2Size + "px";
+                  l2.appendChild(span);
+                });
+                el.appendChild(l2);
+              }
+
+              stage.appendChild(el);
+            });
+          }
+
+          buildBlocks();
+
+          // Scale blocks that exceed safe width
+          function fitBlocks() {
+            BLOCKS.forEach(function (block, bi) {
+              var el = document.getElementById("b" + bi);
+              el.style.opacity = "1";
+              el.style.position = "relative";
+              var lines = el.querySelectorAll(".caption-line");
+              var maxW = 0;
+              lines.forEach(function (line) {
+                if (line.scrollWidth > maxW) maxW = line.scrollWidth;
+              });
+              if (maxW > SAFE_WIDTH) {
+                var s = SAFE_WIDTH / maxW;
+                el.style.transform = "scale(" + s + ")";
+              }
+              el.style.opacity = "0";
+              el.style.position = "";
+            });
+          }
+
+          fitBlocks();
+
+          var tl = gsap.timeline({ paused: true });
+
+          var allEls = BLOCKS.map(function (_, i) {
+            return document.getElementById("b" + i);
+          });
+
+          function blockStart(bi) {
+            return W[BLOCKS[bi].line1[0][0]].start;
+          }
+
+          BLOCKS.forEach(function (block, bi) {
+            var el = allEls[bi];
+            var start = blockStart(bi);
+            var nextStart = bi < BLOCKS.length - 1 ? blockStart(bi + 1) : DURATION;
+
+            // Each block already owns its full opacity lifecycle (set 1 at its
+            // own start, then set back to 0 at its own nextStart below), and
+            // blocks occupy non-overlapping windows, so explicitly hiding every
+            // OTHER block here was redundant and made timeline construction
+            // O(blocks^2) — this collapsed under dense stress transcripts (many
+            // single-word emphasis blocks). Removed; behavior is unchanged
+            // (verified against templates.test.ts).
+
+            tl.set(el, { opacity: 1 }, start);
+
+            block.line1.forEach(function (pair, wi) {
+              var wordEl = document.getElementById("b" + bi + "L1w" + wi);
               var wordStart = W[pair[0]].start;
               tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
               tl.to(
@@ -399,14 +631,94 @@
                 wordStart,
               );
             });
-          }
+
+            if (block.line2) {
+              var hasEmphasis = block.line2.some(function (p) {
+                return p[1] === "e";
+              });
+              var l2El = document.getElementById("b" + bi + "L2");
+              if (hasEmphasis) {
+                var l2Start = W[block.line2[0][0]].start;
+                tl.set(l2El, { opacity: 0, x: -layout.W }, start);
+                tl.to(l2El, { opacity: 1, x: 0, duration: SLIDE_DUR, ease: "power2.out" }, l2Start);
+              } else {
+                tl.set(l2El, { opacity: 1 }, start);
+                block.line2.forEach(function (pair, wi) {
+                  var wordEl = document.getElementById("b" + bi + "L2w" + wi);
+                  var wordStart = W[pair[0]].start;
+                  tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
+                  tl.to(
+                    wordEl,
+                    { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
+                    wordStart,
+                  );
+                });
+              }
+            }
+
+            tl.set(el, { opacity: 0 }, nextStart);
+          });
+
+          tl.to({}, { duration: DURATION }, 0);
+          return tl;
         }
 
-        tl.set(el, { opacity: 0 }, nextStart);
-      });
+        var hfCurrentTimeline = null;
 
-      tl.to({}, { duration: DURATION }, 0);
-      window.__timelines["caption-editorial-emphasis"] = tl;
+        function hfAttach(data) {
+          var v = hfValidate(data);
+          if (!v.ok) {
+            hfRunGate([], 0, v.reason);
+            return;
+          }
+          if (hfCurrentTimeline) {
+            hfCurrentTimeline.kill();
+            hfCurrentTimeline = null;
+          }
+          hfTeardown();
+          var layout = hfApplyStageConfig(data, v.durationS);
+          var tl = hfBuild(v.words, layout, v.durationS);
+          tl.set({}, {}, v.durationS); // pin timeline length to the data-derived duration
+          // GSAP quirk (confirmed 3.14.2): a fresh timeline already reports position 0,
+          // so seek(0) is treated as a no-op and skips rendering .set() calls scheduled
+          // at t=0 — the first frame would show pre-timeline CSS defaults (usually
+          // hidden). render(time, suppressEvents, force) with force=true bypasses that.
+          tl.render(0, true, true);
+          hfCurrentTimeline = tl;
+          window.__timelines = window.__timelines || {};
+          window.__timelines[HF_COMPOSITION_ID] = tl;
+          hfRunGate(v.words, v.durationS, null);
+        }
+        window.__HF_CAPTION_ATTACH__ = hfAttach;
+
+        (function hfBoot() {
+          function start(data) {
+            var ready =
+              document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+            ready.then(function () {
+              // A manual window.__HF_CAPTION_ATTACH__ call that lands while the
+              // sibling fetch / fonts.ready are still pending must win — never
+              // clobber it with the late-arriving boot payload.
+              if (hfCurrentTimeline) return;
+              hfAttach(data);
+            });
+          }
+          if (window.__HF_CAPTION__) {
+            start(window.__HF_CAPTION__);
+            return;
+          }
+          fetch("./caption-data.json")
+            .then(function (r) {
+              return r.ok ? r.json() : null;
+            })
+            .catch(function () {
+              return null;
+            })
+            .then(function (json) {
+              start(json || HF_DEMO_DATA);
+            });
+        })();
+      })();
     </script>
   </body>
 </html>

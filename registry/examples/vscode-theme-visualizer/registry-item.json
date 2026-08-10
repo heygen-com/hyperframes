@@ -4,16 +4,87 @@
   "type": "hyperframes:example",
   "title": "VS Code Theme Visualizer",
   "description": "Faithful VS Code workbench recreation with per-character typing animation across 12 built-in themes. Activity bar, sidebar, tabs, editor, terminal, and status bar — all driven by official theme JSON files.",
+  "tags": ["code", "developer", "showcase", "vscode", "themes"],
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
-  "duration": 11,
+  "duration": 132,
   "files": [
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/dark-2026.html",
+      "target": "compositions/dark-2026.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/dark-modern.html",
+      "target": "compositions/dark-modern.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/dark-plus.html",
+      "target": "compositions/dark-plus.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/high-contrast-light.html",
+      "target": "compositions/high-contrast-light.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/high-contrast.html",
+      "target": "compositions/high-contrast.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/light-2026.html",
+      "target": "compositions/light-2026.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/light-modern.html",
+      "target": "compositions/light-modern.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/light-plus.html",
+      "target": "compositions/light-plus.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/monokai.html",
+      "target": "compositions/monokai.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/solarized-light.html",
+      "target": "compositions/solarized-light.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/visual-studio-dark.html",
+      "target": "compositions/visual-studio-dark.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/visual-studio-light.html",
+      "target": "compositions/visual-studio-light.html",
+      "type": "hyperframes:composition"
+    },
     {
       "path": "assets/background.jpeg",
       "target": "assets/background.jpeg",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vscode-sequence.css",
+      "target": "assets/vscode-sequence.css",
+      "type": "hyperframes:style"
     },
     {
       "path": "assets/vscode-sequence-runtime.js",
@@ -21,149 +92,9 @@
       "type": "hyperframes:asset"
     },
     {
-      "path": "assets/vscode-sequence.css",
-      "target": "assets/vscode-sequence.css",
-      "type": "hyperframes:asset"
-    },
-    {
       "path": "assets/vscode-theme-registry.js",
       "target": "assets/vscode-theme-registry.js",
       "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/2026-dark.json",
-      "target": "assets/vscode-themes/2026-dark.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/2026-light.json",
-      "target": "assets/vscode-themes/2026-light.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/dark_modern.json",
-      "target": "assets/vscode-themes/dark_modern.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/dark_plus.json",
-      "target": "assets/vscode-themes/dark_plus.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/dark_vs.json",
-      "target": "assets/vscode-themes/dark_vs.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/hc_black.json",
-      "target": "assets/vscode-themes/hc_black.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/hc_light.json",
-      "target": "assets/vscode-themes/hc_light.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/LICENSE",
-      "target": "assets/vscode-themes/LICENSE",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/light_modern.json",
-      "target": "assets/vscode-themes/light_modern.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/light_plus.json",
-      "target": "assets/vscode-themes/light_plus.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/light_vs.json",
-      "target": "assets/vscode-themes/light_vs.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/monokai-color-theme.json",
-      "target": "assets/vscode-themes/monokai-color-theme.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "assets/vscode-themes/solarized-light-color-theme.json",
-      "target": "assets/vscode-themes/solarized-light-color-theme.json",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "DESIGN.md",
-      "target": "DESIGN.md",
-      "type": "hyperframes:asset"
-    },
-    {
-      "path": "index.html",
-      "target": "index.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/dark-2026.html",
-      "target": "render-entries/dark-2026.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/dark-modern.html",
-      "target": "render-entries/dark-modern.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/dark-plus.html",
-      "target": "render-entries/dark-plus.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/high-contrast-light.html",
-      "target": "render-entries/high-contrast-light.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/high-contrast.html",
-      "target": "render-entries/high-contrast.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/light-2026.html",
-      "target": "render-entries/light-2026.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/light-modern.html",
-      "target": "render-entries/light-modern.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/light-plus.html",
-      "target": "render-entries/light-plus.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/monokai.html",
-      "target": "render-entries/monokai.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/solarized-light.html",
-      "target": "render-entries/solarized-light.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/visual-studio-dark.html",
-      "target": "render-entries/visual-studio-dark.html",
-      "type": "hyperframes:composition"
-    },
-    {
-      "path": "render-entries/visual-studio-light.html",
-      "target": "render-entries/visual-studio-light.html",
-      "type": "hyperframes:composition"
     },
     {
       "path": "scripts/build-compositions.mjs",
@@ -173,6 +104,11 @@
     {
       "path": "scripts/build-theme-registry.mjs",
       "target": "scripts/build-theme-registry.mjs",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "DESIGN.md",
+      "target": "DESIGN.md",
       "type": "hyperframes:asset"
     }
   ]
