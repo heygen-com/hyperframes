@@ -5,17 +5,16 @@ routing, what is driven versus set. But information a casual author cannot read
 is decoration, and the rack speaks entirely in Hz, dB and ratios. So the drawing
 stays and the **language changes**.
 
-The plain-language layer over every effect in the registry now ships as
-`packages/core/src/audioFxCopy.ts`, with the coverage that used to gate this
-page — every effect, parameter and preset must have copy — as
-`audioFxCopy.test.ts`. `build-preview.mts` renders the review page from it
-**plus the real registry and preset catalogue**, including the shipped one-knob
-profiles — sampled off their real curves, so the page cannot disagree with what
-the knob does.
+The plain-language layer over every effect in the registry ships as
+`packages/core/src/audioFxCopy.ts`, and the coverage that used to gate a review
+page — every effect, parameter and preset must have copy — is now
+`audioFxCopy.test.ts`, so it runs on every commit rather than when somebody
+remembers to regenerate a page.
 
-```bash
-bun plans/audio-fx-ux/build-preview.mts /tmp/rack-ux.html
-```
+This document is the design record. What it describes is built: read it against
+the FX rack in the studio, or against `audioFxCopy.ts`, `audioFxJobs.ts`,
+`audioFxProfiles.ts` and the panel components under
+`packages/studio/src/components/editor/propertyPanelFx*`.
 
 ## The three rules
 
@@ -256,5 +255,3 @@ track quieter at full evenness, saturation's trim went the wrong way and made
 "Warmth" mean "much quieter", and the gate did essentially nothing because
 `release` was not in the profile at all. Measurements, method and the sweep that
 found the last one are in `~/audio-fx-profiles-ab/README.md`.
-
-The stub that used to hold them, `plans/audio-fx-ux/copy.mts`, is gone.
