@@ -8,7 +8,7 @@
   "jobs": ["prove"],
   "family": "effects",
   "profile": "burst",
-  "evidence": "OutlineDraw entry, Border that draws with a composite donut, in /Users/miguel07code/dev/hyperframes-research-css-masks.md",
+  "evidence": "OutlineDraw entry, Border that draws with a composite donut, from the CSS mask research notes",
   "syncPoints": [{ "id": "draw-complete", "phase": "in", "offset": 0.8 }],
   "files": [
     {

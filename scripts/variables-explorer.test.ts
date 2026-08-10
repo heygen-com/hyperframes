@@ -57,7 +57,7 @@ const geometry = (() => {
     "shapePathData",
   ];
   const body = `${source.slice(open, close)}\nreturn { ${names.join(", ")} };`;
-  return new Function(body)() as Record<string, (...args: never[]) => never>;
+  return new Function(body)() as Record<string, unknown>;
 })();
 
 /** `shapePathData` answers null for a tag it does not draw; every call here passes one it does. */
@@ -83,7 +83,7 @@ const {
   printPathData,
   shapePathData,
   transformPathData,
-} = geometry as unknown as {
+} = geometry as {
   arcToCubics: (...args: number[]) => { code: string; args: number[] }[];
   fitMatrix: (
     source: { x: number; y: number; width: number; height: number },
@@ -387,12 +387,7 @@ test("rect, circle, ellipse, line, polyline and polygon become path data", () =>
   assert.equal(codes(rounded), "MLCLCLCLCZ");
   const roundedBounds = boundsOf(rounded);
   closeAll(
-    [
-      roundedBounds.x ?? NaN,
-      roundedBounds.y ?? NaN,
-      roundedBounds.width ?? NaN,
-      roundedBounds.height ?? NaN,
-    ],
+    [roundedBounds.x, roundedBounds.y, roundedBounds.width, roundedBounds.height],
     [0, 0, 100, 60],
     0.01,
   );
@@ -400,19 +395,15 @@ test("rect, circle, ellipse, line, polyline and polygon become path data", () =>
   // One radius declared defines both, which is what a file exported with only
   // `rx` relies on, and a radius past half the side is clamped to it.
   const clamped = boundsOf(drawn(shapePathData("rect", { width: "40", height: "40", ry: "500" })));
-  closeAll([clamped.width ?? NaN, clamped.height ?? NaN], [40, 40], 0.01);
+  closeAll([clamped.width, clamped.height], [40, 40], 0.01);
 
   const circle = boundsOf(drawn(shapePathData("circle", { cx: "50", cy: "50", r: "25" })));
-  closeAll(
-    [circle.x ?? NaN, circle.y ?? NaN, circle.width ?? NaN, circle.height ?? NaN],
-    [25, 25, 50, 50],
-    0.05,
-  );
+  closeAll([circle.x, circle.y, circle.width, circle.height], [25, 25, 50, 50], 0.05);
 
   const ellipse = boundsOf(
     drawn(shapePathData("ellipse", { cx: "0", cy: "0", rx: "40", ry: "10" })),
   );
-  closeAll([ellipse.width ?? NaN, ellipse.height ?? NaN], [80, 20], 0.05);
+  closeAll([ellipse.width, ellipse.height], [80, 20], 0.05);
 
   assert.equal(
     drawn(shapePathData("line", { x1: "0", y1: "0", x2: "10", y2: "5" })),

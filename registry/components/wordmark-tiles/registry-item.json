@@ -8,7 +8,7 @@
   "jobs": ["reveal"],
   "family": "typography",
   "profile": "holdable",
-  "evidence": "power-reel production source /Users/miguel07code/dev/hyperframes-power-reel-sources/12-tile-field.html, tile grid with a traveling, spatially modulated wave",
+  "evidence": "a power-reel production source, tile grid with a traveling, spatially modulated wave",
   "syncPoints": [{ "id": "wave-start", "phase": "in", "offset": 0.2 }],
   "files": [
     {
