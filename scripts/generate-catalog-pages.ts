@@ -1107,6 +1107,7 @@ function main(): void {
     "Shader Transitions": 5,
     "CSS Transitions": 6,
     Showcases: 7,
+    "Code Snippets": 7.5,
     Data: 8,
     "Motion Primitives": 9,
     "Motion Scenes": 11,
@@ -1138,6 +1139,10 @@ function main(): void {
     if (tags.includes("social")) return "Social Overlays";
     if (tags.includes("transition"))
       return entry.type === "component" ? "Effects" : "CSS Transitions";
+    // The editor and terminal themes are 24 near-identical pages. Left in
+    // Showcases they were two thirds of it, and the handful of actual showcase
+    // scenes were unfindable underneath them.
+    if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
     if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
     if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
     // Split what used to be one 267-item "Effects" list. Ordered most specific
@@ -1175,9 +1180,45 @@ function main(): void {
     groupMap.get(group)!.push(page);
   }
 
-  const catalogGroups = [...groupMap.entries()]
+  const flatGroups = [...groupMap.entries()]
     .sort(([a], [b]) => (GROUP_ORDER[a] ?? 50) - (GROUP_ORDER[b] ?? 50))
     .map(([group, pages]) => ({ group, pages }));
+
+  // Nineteen shelves in one column is a list to read, not a menu to scan.
+  // Collapsing them under what a reader came here to make turns it into eight
+  // openable sections, and keeps every existing shelf name intact underneath.
+  const SECTIONS: { section: string; groups: string[] }[] = [
+    { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
+    { section: "Code", groups: ["Code Animations", "Code Snippets"] },
+    { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },
+    { section: "Data & charts", groups: ["Data"] },
+    {
+      section: "Scenes & demos",
+      groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
+    },
+    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera & 3D"] },
+    { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
+    { section: "Blocks", groups: ["Blocks"] },
+  ];
+
+  const byName = new Map(flatGroups.map((g) => [g.group, g]));
+  const placed = new Set<string>();
+  const catalogGroups: unknown[] = [];
+
+  for (const { section, groups } of SECTIONS) {
+    const children = groups
+      .map((name) => byName.get(name))
+      .filter((g): g is { group: string; pages: string[] } => g !== undefined);
+    if (children.length === 0) continue;
+    for (const child of children) placed.add(child.group);
+    catalogGroups.push({ group: section, groups: children });
+  }
+
+  // A shelf nobody assigned a section still has to appear, or a new tag would
+  // silently drop its items out of the sidebar.
+  for (const group of flatGroups) {
+    if (!placed.has(group.group)) catalogGroups.push(group);
+  }
 
   if (catalogGroups.length > 0) {
     const existingIdx = tabs.findIndex((t) => t.tab === "Catalog");
@@ -1188,8 +1229,17 @@ function main(): void {
     // catalog landing page from the sidebar entirely.
     const isGeneratedPage = (p: unknown): boolean =>
       typeof p === "string" && /^catalog\/(blocks|components)\//.test(p);
+    // Has to recurse: a section holds groups rather than pages, so a check that
+    // only reads `pages` finds nothing generated in one, keeps it as if a human
+    // had written it, and appends a fresh copy on every run.
+    const holdsGeneratedPages = (node: unknown): boolean => {
+      if (!node || typeof node !== "object") return false;
+      const g = node as { pages?: unknown[]; groups?: unknown[] };
+      if ((g.pages ?? []).some(isGeneratedPage)) return true;
+      return (g.groups ?? []).some(holdsGeneratedPages);
+    };
     const handAddedGroups: unknown[] = (existing?.groups ?? []).filter(
-      (g: { pages?: unknown[] }) => !(g.pages ?? []).some(isGeneratedPage),
+      (g: unknown) => !holdsGeneratedPages(g),
     );
 
     const catalogTab = {
@@ -1207,8 +1257,17 @@ function main(): void {
       tabs.splice(docsIdx >= 0 ? docsIdx + 1 : 1, 0, catalogTab);
     }
     writeFileSync(docsJsonPath, JSON.stringify(docsJson, null, 2) + "\n", "utf-8");
-    const totalPages = catalogGroups.reduce((n, g) => n + g.pages.length, 0);
-    console.log(`  ✓ docs.json updated with ${catalogGroups.length} groups, ${totalPages} pages`);
+    // A section holds groups, a shelf holds pages; the count has to walk both
+    // or it reports zero for everything that was nested.
+    const countPages = (node: unknown): number => {
+      if (!node || typeof node !== "object") return 0;
+      const g = node as { pages?: unknown[]; groups?: unknown[] };
+      if (Array.isArray(g.pages)) return g.pages.length;
+      if (Array.isArray(g.groups)) return g.groups.reduce((n, child) => n + countPages(child), 0);
+      return 0;
+    };
+    const totalPages = catalogGroups.reduce((n: number, g) => n + countPages(g), 0);
+    console.log(`  ✓ docs.json updated with ${catalogGroups.length} sections, ${totalPages} pages`);
   }
 
   console.log("\nDone.");
