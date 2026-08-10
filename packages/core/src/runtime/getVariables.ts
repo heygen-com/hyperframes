@@ -42,7 +42,119 @@ export function getVariables<
   }
   const overrides = readRenderOverrides();
 
-  return { ...declaredDefaults, ...overrides } as Partial<T>;
+  const merged = { ...declaredDefaults, ...overrides };
+  for (const el of declarers) warnUnknownEnumValues(el, merged);
+  return merged as Partial<T>;
+}
+
+/**
+ * An enum variable given a value outside its declared `options` is coerced to
+ * the composition's default by the composition's own guard. That fallback is
+ * deliberate (a bad value must never break a frame) but it was silent, so a
+ * meaningless value could sit in a project indefinitely and look correct only
+ * by coincidence. Warn; do not change what renders.
+ *
+ * Reads the option set straight off `data-composition-variables`, so it covers
+ * every declared enum, not just the `accentColors` guard shape, and needs no
+ * per-composition code. Deduped per composition+variable+value so a remount
+ * (studio re-init, seek) cannot spam the console.
+ *
+ * Silent for a valid value, for an absent one (an absent variable resolves to
+ * its own declared default), and for a value that already equals that default
+ * (nothing fell back).
+ */
+const warnedUnknownEnumValues = new Set<string>();
+
+/** The declared entries, or `null` when the attribute is absent or unusable. */
+function declaredEnumEntries(declarer: Element): Record<string, unknown>[] | null {
+  const raw = declarer.getAttribute("data-composition-variables");
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  return parsed.filter(
+    (entry): entry is Record<string, unknown> => !!entry && typeof entry === "object",
+  );
+}
+
+/** What to call the composition in the message. */
+function enumWarningScopeName(declarer: Element, compositionId?: string): string {
+  return (
+    compositionId?.trim() ||
+    declarer.getAttribute("data-composition-id")?.trim() ||
+    // The canonical top-level shape declares the variables on <html>, which
+    // carries no id — the composition id sits on the root element below it.
+    // Without this the message reads "composition variable ...", naming
+    // nothing in a project that has more than one.
+    declarer.querySelector("[data-composition-id]")?.getAttribute("data-composition-id")?.trim() ||
+    "composition"
+  );
+}
+
+/** The option set as comparable scalars, dropping shapes we cannot compare. */
+function allowedOptionValues(options: unknown[]): (string | number)[] {
+  return options
+    .map((option) =>
+      option && typeof option === "object" ? (option as Record<string, unknown>).value : option,
+    )
+    .filter((v): v is string | number => typeof v === "string" || typeof v === "number");
+}
+
+/**
+ * True when `value` fell back: it is set, it differs from the declared
+ * default, and it is not in the option set.
+ *
+ * Stringified compare: `--variables` / `data-variable-values` can deliver a
+ * declared numeric option as a string, and that is not the defect here.
+ */
+function isUnknownEnumValue(
+  entry: Record<string, unknown>,
+  value: unknown,
+  allowed: (string | number)[],
+): boolean {
+  if (value === undefined || value === null) return false;
+  // Nothing was overridden: the resolved value IS the declared default, so no
+  // fallback happened and there is nothing to report. A default outside its
+  // own option set is a declaration defect (the linter's job) and warning here
+  // would print the self-contradictory "got X ... rendering X".
+  if ("default" in entry && String(value) === String(entry.default)) return false;
+  if (allowed.length === 0) return false;
+  return !allowed.some((v) => String(v) === String(value));
+}
+
+export function warnUnknownEnumValues(
+  declarer: Element | null | undefined,
+  resolved: Record<string, unknown>,
+  compositionId?: string,
+): void {
+  if (!declarer) return;
+  const entries = declaredEnumEntries(declarer);
+  if (!entries) return;
+  const move = enumWarningScopeName(declarer, compositionId);
+
+  for (const entry of entries) {
+    if (typeof entry.id !== "string" || !Array.isArray(entry.options)) continue;
+    const value = resolved[entry.id];
+    const allowed = allowedOptionValues(entry.options);
+    if (!isUnknownEnumValue(entry, value, allowed)) continue;
+
+    const key = `${move}|${entry.id}|${String(value)}`;
+    if (warnedUnknownEnumValues.has(key)) continue;
+    warnedUnknownEnumValues.add(key);
+    const fallback = "default" in entry ? JSON.stringify(entry.default) : "the composition default";
+    console.warn(
+      `[hyperframes] runtime_unknown_enum_value: ${move} variable "${entry.id}" got ${JSON.stringify(value)}, which is not a declared option (${allowed.join(", ")}). Rendering ${fallback} instead.`,
+    );
+  }
+}
+
+/** Test-only: clear the per-page dedupe set. */
+export function resetUnknownEnumWarnings(): void {
+  warnedUnknownEnumValues.clear();
 }
 
 /**

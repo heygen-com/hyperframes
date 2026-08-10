@@ -22,6 +22,7 @@ import {
 } from "./compositionScoping";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
 import { enumerateNestedCompositionHosts, planCompositionAssembly } from "./compositionAssembly";
+import { warnUnknownEnumValues } from "../runtime/getVariables";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -272,6 +273,14 @@ export function inlineSubCompositions(
       if (Object.keys(mergedVariables).length > 0) {
         variablesByComp[runtimeCompId] = mergedVariables;
       }
+      // Compile time is the only place this defect is visible on the sub-comp
+      // path: the instance value is baked into `__hfVariablesByComp` right
+      // here, and the scoped `getVariables` shim only reads that table, so the
+      // runtime's identical guard never runs. Same helper, so the message and
+      // the per-process dedupe set are shared with the runtime path and the
+      // author sees one warning either way.
+      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, runtimeCompId);
+      warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
     }
 
     // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
