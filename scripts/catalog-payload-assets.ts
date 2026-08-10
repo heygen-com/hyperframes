@@ -190,7 +190,10 @@ const EXTERNALIZE_MIN_BYTES = 4096;
  * repeated. Hashing gives one copy per distinct file no matter how many items
  * embed it.
  */
-export function externalizeDataUris(html: string, target: AssetTarget): { html: string; externalized: number } {
+export function externalizeDataUris(
+  html: string,
+  target: AssetTarget,
+): { html: string; externalized: number } {
   let externalized = 0;
   const out = html.replace(
     /data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/gi,
