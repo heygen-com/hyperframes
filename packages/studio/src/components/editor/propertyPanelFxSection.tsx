@@ -5,7 +5,7 @@
  * is not an entry in the chain.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   defaultAudioFxParams,
   getAudioFxDef,
@@ -499,8 +499,34 @@ export function FxSection({
     [chain.nodes, mutate],
   );
 
+  /**
+   * Escape closes whichever menu is open.
+   *
+   * The first thing anyone reaches for, and on a surface that covers the rack it
+   * is the one that needs no discovering. Bound on the section rather than the
+   * window: a keystroke aimed at the timeline is not aimed at this.
+   */
+  const closeMenus = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || (!adding && !picking)) return;
+      // Stops the panel's own Escape handling from also firing — closing a menu
+      // and deselecting the clip on one keystroke loses the author their place.
+      event.stopPropagation();
+      audition(null);
+      onAuditionLevel?.(false);
+      setAdding(false);
+      setPicking(false);
+    },
+    [adding, picking, audition, onAuditionLevel],
+  );
+
   return (
-    <div className="hf-fx-section space-y-2">
+    <div
+      className="hf-fx-section space-y-2"
+      // Focus lives on the buttons and menu items inside, so the keystroke
+      // bubbles to here without the section needing focus of its own.
+      onKeyDown={closeMenus}
+    >
       <div className="hf-fx-chain space-y-1">
         {/* The rack IS the signal path, and saying so costs two lines. Without
             them the order reads as a list, which is the one reading that makes
@@ -791,26 +817,44 @@ export function FxSection({
         />
       ) : null}
 
-      {adding || picking ? null : (
-        <div className="flex gap-1">
-          <button
-            type="button"
-            className="hf-fx-preset w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
-            disabled={disabled}
-            onClick={() => setPicking(true)}
-          >
-            Presets
-          </button>
-          <button
-            type="button"
-            className="hf-fx-add w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
-            disabled={disabled}
-            onClick={() => setAdding(true)}
-          >
-            Add effect
-          </button>
-        </div>
-      )}
+      {/* The buttons stay while their menu is open, and close it — an author who
+          opened one and changed their mind had no way back: picking something
+          was the only thing that set these false, so the only exits were adding
+          an effect they did not want or deselecting the clip. */}
+      <div className="flex gap-1">
+        <button
+          type="button"
+          className="hf-fx-preset w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+          aria-expanded={picking}
+          disabled={disabled}
+          onClick={() => {
+            // Leaving the shelf by closing it is still leaving it, and an
+            // audition left playing is audible over a chain the document does
+            // not have.
+            if (picking) audition(null);
+            setPicking(!picking);
+            setAdding(false);
+          }}
+        >
+          {picking ? "Close" : "Presets"}
+        </button>
+        <button
+          type="button"
+          className="hf-fx-add w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+          aria-expanded={adding}
+          disabled={disabled}
+          onClick={() => {
+            if (adding) {
+              audition(null);
+              onAuditionLevel?.(false);
+            }
+            setAdding(!adding);
+            setPicking(false);
+          }}
+        >
+          {adding ? "Close" : "Add effect"}
+        </button>
+      </div>
     </div>
   );
 }
