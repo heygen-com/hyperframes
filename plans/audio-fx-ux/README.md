@@ -161,17 +161,31 @@ detent is what an equaliser looks like to everyone who has met one. Collapsed,
 it reads like every other module: "Bass +3, Middle −2, Treble +2", or "Flat"
 when nothing has been touched.
 
-## What still needs deciding
+## Decided (2026-08-10)
 
-- Does the plain name **replace** the DSP name or sit beside it? Replacing is
-  friendlier but strands what the author learns.
-- Should the **menus** be organised by complaint ("my voice sounds boomy")
-  rather than by effect family? The rack itself must stay in signal order,
-  because order is audible — but the menus have no such constraint, and the
-  preset section of the preview is written that way to show the difference.
-- How much should **hover audition**? Hearing a preset before committing is the
-  single strongest affordance here. Cheap for static presets; a measuring script
-  has to analyse first and cannot preview instantly.
+All three were open until now, and the first was blocking the wiring.
+
+**The plain name replaces the DSP name; the DSP name lives under Details.**
+The rack reads plain top to bottom — `Remove Rumble`, not `highpass` — and the
+header stays narrow, which matters because it already carries a summary, a
+bypass, two arrows and a delete. Nothing is lost: opening a module shows the
+DSP name beside its real parameters, so the author who wants the mapping finds
+it exactly where the mechanism is, and the author who does not never meets it.
+
+**Presets sort by complaint; the effect list stays in signal order.**
+The two menus stop competing to be the same thing. Presets are the casual
+author's door and `PRESET_PROBLEM` already carries the line for all 18 of them,
+so this costs no new writing. The effect list stays Filters / Dynamics /
+Non-linear / Time — it is the expert's tool, and that grouping teaches the
+signal path the rack itself is ordered by.
+
+**Everything auditions on hover, with a spinner for the ones that measure.**
+Static presets apply to the playing audio and revert on leave, which the graph
+rebuild path already supports. A carve or an Even Out Levels analyses first and
+says so while it does — the same spinner the carve module already shows. This
+is the expensive answer of the three: analysis is seconds, and a hover that
+takes seconds is one the author has often already left, so whatever gets built
+needs a cancel on leave and must not apply a result that arrives late.
 
 ## Status
 
@@ -180,10 +194,12 @@ layer has now landed as `packages/core/src/audioFxCopy.ts` — `EFFECT_COPY`,
 `BANDS`, `PRESET_PROBLEM` and `SUMMARY`, with the completeness check as a test
 beside it rather than a build step.
 
-Landing the data is not the same as wiring it. Nothing in the studio reads it
-yet, and it should not until the three questions above are answered — whether
-the plain name replaces the DSP name or sits beside it decides what the rack
-renders, and building it twice to find out is the expensive way.
+Landing the data is not the same as wiring it, and **nothing in the studio reads
+it yet**. That was blocked on the naming question until 2026-08-10; it is now
+just unbuilt. What it takes: `propertyPanelFxNodeRow.tsx` reads `EFFECT_COPY`
+for the header and `SUMMARY` for the collapsed line, `propertyPanelFxSection`'s
+preset menu groups by `PRESET_PROBLEM`, and the hover-audition path is new work
+of its own.
 
 It has no entry for Tone or for the levelling module, because both carry their
 own copy in core (`audioEqSummary`, `levellingSummary`). That is the right home
