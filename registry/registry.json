@@ -39,6 +39,10 @@
       "type": "hyperframes:example"
     },
     {
+      "name": "vscode-theme-visualizer",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "data-chart",
       "type": "hyperframes:block"
     },
