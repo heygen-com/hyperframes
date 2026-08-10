@@ -192,6 +192,21 @@ const prerolling = new WeakSet<HTMLMediaElement>();
 // would still reach its boundary at the wrong offset, paying the cold seek this
 // whole path exists to avoid. Instead we leave it unlatched and retry on the
 // next tick, once metadata has arrived.
+// HTMLMediaElement.play() on media sitting at its end seeks back to the
+// beginning before playing. A segment whose roll-in point lies at/past the end
+// of its source can't escape that state: the `currentTime` assignment below
+// CLAMPS to `duration`, `ended` stays true, and play() silently rewinds — the
+// hidden element then plays the source's HEAD, and the boundary flip flashes
+// it while the activation seek recovers (a visible "frame 0" blink at every
+// cut of a clip whose in-point outlives its media). Parked at the end IS that
+// element's best readiness: skip the roll and let the active tick hold the
+// last frame. (A roll-in BEFORE the end is safe even on an `ended` element —
+// the assignment clears the ended state before play() runs.)
+function prerollWouldRewind(el: HTMLMediaElement, prerollFrom: number): boolean {
+  const dur = el.duration;
+  return Number.isFinite(dur) && dur > 0 && prerollFrom >= dur - 0.05;
+}
+
 function preseekUpcoming(el: HTMLMediaElement, mediaStart: number): void {
   if (upcomingPreseeked.has(el)) return;
   if (el.readyState < HTMLMediaElement.HAVE_METADATA) return;
@@ -540,7 +555,8 @@ export function syncRuntimeMedia(params: {
         el.tagName === "VIDEO" &&
         mutedThroughPreroll &&
         leadSeconds <= PREROLL_WINDOW_SECONDS &&
-        prerollFrom >= 0
+        prerollFrom >= 0 &&
+        !prerollWouldRewind(el, prerollFrom)
       ) {
         if (!prerolling.has(el)) {
           prerolling.add(el);

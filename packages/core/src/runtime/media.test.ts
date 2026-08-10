@@ -1149,6 +1149,32 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
+    it("skips the pre-roll when the roll-in point sits at/past the media end — play() would rewind to 0", () => {
+      // In-point beyond the source's real duration: the roll-in assignment
+      // clamps to the end, `ended` stays true, and play() would silently seek
+      // back to 0 — the hidden element then plays the source's HEAD and the
+      // boundary flip flashes it (the "frame 0 blink" at every cut of an
+      // over-extended clip). The element must stay parked and paused instead.
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 2.2 });
+      Object.defineProperty(clip.el, "duration", { value: 1.96, configurable: true });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).not.toHaveBeenCalled();
+      // Falls back to the pre-seek stage (assignment clamps in a real browser;
+      // the mock records the raw target — the point is the park, not the roll).
+      expect(clip.el.currentTime).toBe(2.2);
+    });
+
+    it("still pre-rolls when the roll-in lands before the media end", () => {
+      // Safe even on an element parked at the end (`ended`): the roll-in
+      // assignment moves currentTime off the end first, clearing the ended
+      // state before play() runs.
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 1.9 });
+      Object.defineProperty(clip.el, "duration", { value: 1.96, configurable: true });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).toHaveBeenCalled();
+      expect(clip.el.currentTime).toBeCloseTo(1.7, 5);
+    });
+
     it("retries the pre-seek on a later tick when the first tick is below HAVE_METADATA", () => {
       const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
       setReadyState(clip.el, 0 /* HAVE_NOTHING */);
