@@ -1,6 +1,6 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
-import { hugRectForElement } from "./domEditOverlayCrop";
+import { hugRectForElement, individualRotateDegrees } from "./domEditOverlayCrop";
 
 export interface OverlayRect {
   left: number;
@@ -149,11 +149,20 @@ function readElementTransformSnapshot(
   try {
     let matrix = new DOMMatrixCtor();
     for (let node: HTMLElement | null = element; node; node = node.parentElement) {
-      const transform = node === element ? cs.transform : win.getComputedStyle(node).transform;
-      if (transform && transform !== "none") {
-        // An ancestor applies outside, so it multiplies on the left.
-        matrix = new DOMMatrixCtor(transform).multiply(matrix);
-      }
+      const style = node === element ? cs : win.getComputedStyle(node);
+      const transform = style.transform;
+      let own =
+        transform && transform !== "none" ? new DOMMatrixCtor(transform) : new DOMMatrixCtor();
+      // `rotate` is its own CSS property, not part of `transform`, and it is what
+      // Studio's own rotate handle writes. Reading `transform` alone reported a
+      // rotated element as upright, so every piece of chrome measured from this
+      // matrix — the selection box, the crop outline, the child outlines — drew
+      // square across a rotated element. CSS applies the individual properties
+      // before `transform`, so it composes on the left.
+      const spin = individualRotateDegrees(style.rotate);
+      if (spin !== 0) own = new DOMMatrixCtor().rotateSelf(spin).multiply(own);
+      // An ancestor applies outside, so it multiplies on the left.
+      matrix = own.multiply(matrix);
       if (node.hasAttribute("data-composition-id")) break;
     }
     return { matrix, cs };

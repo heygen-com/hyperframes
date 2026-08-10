@@ -112,6 +112,30 @@ export function resolveCropInsetFromMoveDrag(input: {
 
 /** Display-only hug: shrink a projected rect by the element's inset crop.
  *  For rects nothing writes back to (e.g. the hover ring). */
+/**
+ * The planar rotation in the CSS `rotate` property, in degrees.
+ *
+ * Computes to `none`, an angle (`-22deg`), or an axis plus an angle
+ * (`0 0 1 -22deg`). Only a rotation about z stays in the overlay's plane; any
+ * other axis is 3D and reports 0, which leaves the caller on its axis-aligned
+ * fallback rather than drawing a box at a plausible-looking wrong angle.
+ */
+export function individualRotateDegrees(value: string | undefined): number {
+  if (!value || value === "none") return 0;
+  const parts = value.trim().split(/\s+/);
+  const angle = parts.at(-1);
+  if (!angle?.endsWith("deg")) return 0;
+  if (parts.length === 4) {
+    const [x, y, z] = parts;
+    if (Number(x) !== 0 || Number(y) !== 0 || Math.abs(Number(z)) !== 1) return 0;
+    const deg = Number.parseFloat(angle);
+    return Number.isFinite(deg) ? deg * Math.sign(Number(z)) : 0;
+  }
+  if (parts.length !== 1) return 0;
+  const deg = Number.parseFloat(angle);
+  return Number.isFinite(deg) ? deg : 0;
+}
+
 export function hugRectForElement(
   rect: CropScreenRect & { editScaleX: number; editScaleY: number },
   element: HTMLElement,
@@ -147,6 +171,51 @@ export interface CropFrame {
   scaleY: number;
 }
 
+/**
+ * The element's own 2D transform as matrix components, plus the `rotate`
+ * property's angle.
+ *
+ * `rotate` is a separate CSS property, not part of `transform`, and it is the
+ * one Studio's rotate handle writes — reading `transform` alone reported a
+ * turned element as upright, so the crop outline drew square across it.
+ *
+ * Null means there is nothing planar to draw against: no transform and no
+ * rotation, or a 3D/unparseable matrix. The caller falls back to the
+ * axis-aligned box rather than guessing an angle.
+ */
+/** The 2D matrix components of a `matrix(...)` transform, or null if it is 3D or unparseable. */
+function parseMatrixComponents(
+  transform: string,
+): { a: number; b: number; c: number; d: number } | null {
+  const m = /^matrix\(([^)]+)\)$/.exec(transform);
+  if (!m) return null;
+  const [a, b, c, d] = m[1]!.split(",").map((v) => Number.parseFloat(v));
+  if (![a, b, c, d].every(Number.isFinite)) return null;
+  return { a: a!, b: b!, c: c!, d: d! };
+}
+
+/** The element's own `transform` and `rotate`, read together in one pass. */
+function readTransformAndSpin(element: HTMLElement): { transform: string; spin: number } | null {
+  try {
+    const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+    return { transform: style?.transform ?? "", spin: individualRotateDegrees(style?.rotate) };
+  } catch {
+    return null;
+  }
+}
+
+function readPlanarTransform(
+  element: HTMLElement,
+): { a: number; b: number; c: number; d: number; spin: number } | null {
+  const read = readTransformAndSpin(element);
+  if (!read) return null;
+  const { transform, spin } = read;
+  const hasTransform = Boolean(transform) && transform !== "none";
+  if (!hasTransform) return spin === 0 ? null : { a: 1, b: 0, c: 0, d: 1, spin };
+  const parts = parseMatrixComponents(transform);
+  return parts ? { ...parts, spin } : null;
+}
+
 export function readElementCropFrame(
   element: HTMLElement,
   overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
@@ -162,22 +231,14 @@ export function readElementCropFrame(
     scaleX: editX,
     scaleY: editY,
   };
-  let transform = "";
-  try {
-    transform = element.ownerDocument.defaultView?.getComputedStyle(element).transform ?? "";
-  } catch {
-    return aabb;
-  }
-  if (!transform || transform === "none") return aabb;
-  const m = /^matrix\(([^)]+)\)$/.exec(transform);
-  if (!m) return aabb; // matrix3d or unparseable → axis-aligned fallback
-  const [a, b, c, d] = m[1]!.split(",").map((v) => Number.parseFloat(v));
-  if (![a, b, c, d].every(Number.isFinite)) return aabb;
-  const elScaleX = Math.hypot(a!, b!);
-  const det = a! * d! - b! * c!;
+  const planar = readPlanarTransform(element);
+  if (!planar) return aabb;
+  const { a, b, c, d, spin } = planar;
+  const elScaleX = Math.hypot(a, b);
+  const det = a * d - b * c;
   const elScaleY = elScaleX !== 0 ? det / elScaleX : 1;
   if (elScaleX <= 0 || elScaleY <= 0) return aabb;
-  const angleDeg = (Math.atan2(b!, a!) * 180) / Math.PI;
+  const angleDeg = (Math.atan2(b, a) * 180) / Math.PI + spin;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
   const width = element.offsetWidth * scaleX;

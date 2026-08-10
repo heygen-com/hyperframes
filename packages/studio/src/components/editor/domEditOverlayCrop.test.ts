@@ -7,6 +7,7 @@ import {
   resolveCropInsetFromEdgeDrag,
   resolveCropInsetFromMoveDrag,
   rotateDeltaIntoFrame,
+  individualRotateDegrees,
 } from "./domEditOverlayCrop";
 
 describe("resolveCropInsetFromEdgeDrag", () => {
@@ -239,5 +240,37 @@ describe("rotateDeltaIntoFrame", () => {
     const back = rotateDeltaIntoFrame(local.deltaX, local.deltaY, -30);
     expect(back.deltaX).toBeCloseTo(7, 6);
     expect(back.deltaY).toBeCloseTo(-3, 6);
+  });
+});
+
+describe("individualRotateDegrees", () => {
+  /**
+   * Studio's rotate handle writes the CSS `rotate` property, not `transform`.
+   * Everything that measured an element's angle read `transform` alone, so a
+   * turned element reported upright and the selection box, crop outline and
+   * child outlines all drew square across it.
+   */
+  it("reads a plain angle", () => {
+    expect(individualRotateDegrees("-22deg")).toBeCloseTo(-22, 6);
+    expect(individualRotateDegrees("45deg")).toBeCloseTo(45, 6);
+  });
+
+  it("reads an explicit z-axis rotation, honouring the axis sign", () => {
+    expect(individualRotateDegrees("0 0 1 30deg")).toBeCloseTo(30, 6);
+    expect(individualRotateDegrees("0 0 -1 30deg")).toBeCloseTo(-30, 6);
+  });
+
+  it("reports nothing for a rotation that leaves the overlay's plane", () => {
+    // A 3D turn has no single in-plane angle. Reporting one would draw the
+    // chrome at a plausible-looking wrong angle instead of falling back square.
+    expect(individualRotateDegrees("1 0 0 45deg")).toBe(0);
+    expect(individualRotateDegrees("0 1 0 45deg")).toBe(0);
+  });
+
+  it("reports nothing when the property is absent or unparseable", () => {
+    expect(individualRotateDegrees("none")).toBe(0);
+    expect(individualRotateDegrees(undefined)).toBe(0);
+    expect(individualRotateDegrees("")).toBe(0);
+    expect(individualRotateDegrees("12")).toBe(0);
   });
 });
