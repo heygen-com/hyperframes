@@ -9,8 +9,9 @@ The plain-language layer over every effect in the registry now ships as
 `packages/core/src/audioFxCopy.ts`, with the coverage that used to gate this
 page — every effect, parameter and preset must have copy — as
 `audioFxCopy.test.ts`. `build-preview.mts` renders the review page from it
-**plus the real registry and preset catalogue**. Only `PROFILES` is still a
-proposal, and it is all that is left in `copy.mts`.
+**plus the real registry and preset catalogue**, including the shipped one-knob
+profiles — sampled off their real curves, so the page cannot disagree with what
+the knob does.
 
 ```bash
 bun plans/audio-fx-ux/build-preview.mts /tmp/rack-ux.html
@@ -219,8 +220,10 @@ so each entry has to call its neighbours' auditions off itself.
   also where the DSP name lives. Ten of fifteen effects; the five whose primary
   is "strength" open on all their controls until `PROFILES` ships, which is
   honest — inventing one knob for them now would be a knob that lies.
-- *One knob that matters.* Half of it. The derived control is `PROFILES` and has
-  not shipped; what HAS is the case that made the rule incoherent — see below.
+- *One knob that matters.* `packages/core/src/audioFxProfiles.ts`. Five effects
+  get a derived control over several parameters, continuous rather than the
+  three-point tables proposed here. **Three of the five figures were wrong** and
+  only rendering showed it — the write-up is `~/audio-fx-profiles-ab/README.md`.
 - *Name the outcome.* Modules, knobs, the add menu and the preset shelf.
 
 - **The range IS the module.** The add menu offers five named jobs — Tame
@@ -238,15 +241,20 @@ so each entry has to call its neighbours' auditions off itself.
   numbered over what the rack shows, and a preset's consecutive nodes bracketed
   as the one thing that was added.
 
-What is still not wired: `PROFILES`, below.
+Everything in this document is now built.
 
 It has no entry for Tone or for the levelling module, because both carry their
 own copy in core (`audioEqSummary`, `levellingSummary`). That is the right home
 for it: a summary that has to read the chain belongs beside the code that
 writes it.
 
-The `PROFILES` figures — what one knob derives at gentle/middle/strong — are
-**still proposed values, not measured ones**, which is why they stayed behind in
-`copy.mts` rather than going to core with the rest. They want the same
-before/after listen the clip-before-duck fix got before a knob is wired to
-them.
+The `PROFILES` figures — what one knob derives at gentle/middle/strong — have
+**shipped and been corrected**. They are `HF_AUDIO_FX_PROFILES` in
+`packages/core/src/audioFxProfiles.ts`, continuous rather than three-point, and
+three of the five were wrong as proposed: the compressor's make-up left the
+track quieter at full evenness, saturation's trim went the wrong way and made
+"Warmth" mean "much quieter", and the gate did essentially nothing because
+`release` was not in the profile at all. Measurements, method and the sweep that
+found the last one are in `~/audio-fx-profiles-ab/README.md`.
+
+The stub that used to hold them, `plans/audio-fx-ux/copy.mts`, is gone.
