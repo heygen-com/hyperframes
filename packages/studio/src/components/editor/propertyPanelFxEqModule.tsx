@@ -13,6 +13,7 @@ import {
   HF_AUDIO_EQ_RANGE_DB,
   type HfAudioEqBand,
 } from "@hyperframes/core/audio-fx-eq";
+import { FX_FAMILY_TYPE, fxFamilyTint } from "./propertyPanelFxFamily.js";
 
 export interface FxEqModuleProps {
   eqId: string;
@@ -137,13 +138,17 @@ export function FxEqModule({
 
   return (
     <div
-      className="hf-fx-node hf-fx-eq-module rounded-[4px] border border-panel-border-input"
+      className="hf-fx-node hf-fx-eq-module rounded-[4px] border border-l-2 border-panel-border-input"
       data-fx-node="eq"
+      data-fx-family="smart"
+      // Smart, with the carve and the leveller: three bands the author sets by
+      // ear on a control surface, not three filters they configured.
+      style={{ borderLeftColor: fxFamilyTint({ type: "eq", fromEq: "eq" }) }}
     >
       <div className="hf-fx-node-head flex items-center gap-1.5 px-1.5 py-1">
         <button
           type="button"
-          className="hf-fx-node-name flex-1 text-left text-[11px] text-panel-text-0"
+          className={`hf-fx-node-name flex-1 text-left text-[11px] text-panel-text-0 ${FX_FAMILY_TYPE.smart}`}
           aria-expanded={open}
           onClick={onToggleOpen}
         >

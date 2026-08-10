@@ -362,6 +362,35 @@ describe("FxSection chain", () => {
     );
   });
 
+  it("letters each family differently, so the kind reads before the word does", () => {
+    // A rack of eight modules is eight lines of text. Reading it should not mean
+    // reading eight names — the shape of the line carries what KIND of module
+    // this is, and the word only confirms it.
+    const { host } = mount({ chain: chainOf("lowpass", "compressor", "saturate", "delay") });
+    const families = Array.from(host.querySelectorAll("[data-fx-family]")).map((e) =>
+      e.getAttribute("data-fx-family"),
+    );
+    // The carve module leads the rack and is smart; then the four registry ones.
+    expect(families).toEqual(["smart", "filter", "dynamics", "nonlinear", "time"]);
+
+    const names = Array.from(host.querySelectorAll(".hf-fx-node-name")).map((e) => e.className);
+    // Four families told apart by the sans, and the serif spent on the one that
+    // generates signal rather than measuring or shaping what is there.
+    expect(names.filter((c) => c.includes("font-serif"))).toHaveLength(1);
+    expect(names[3]).toContain("font-serif");
+    expect(new Set(names.map((c) => c.replace(/^.*?(?=font-)/, "")))).toHaveProperty("size", 5);
+  });
+
+  it("tints two modules of the same family apart without changing family", () => {
+    const { host } = mount({ chain: chainOf("lowpass", "highpass") });
+    const cards = Array.from(host.querySelectorAll<HTMLElement>("[data-fx-family='filter']"));
+    expect(cards).toHaveLength(2);
+    // Same hue, different step: two filters, visibly two modules.
+    const tints = cards.map((c) => c.style.borderLeftColor);
+    expect(tints[0]).not.toBe(tints[1]);
+    for (const tint of tints) expect(tint).toContain("205");
+  });
+
   it("says where a filter is working, in the words the rack shares", () => {
     // Frequencies mean nothing to somebody who has not been taught them, and the
     // rack speaks entirely in them. The ruler is where they get taught.

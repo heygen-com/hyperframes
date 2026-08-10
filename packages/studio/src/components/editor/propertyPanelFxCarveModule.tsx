@@ -17,6 +17,7 @@ import {
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
 import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParamRow } from "./propertyPanelFxControls.js";
+import { FX_FAMILY_TYPE, fxFamilyTint } from "./propertyPanelFxFamily.js";
 // Shared with the timeline's lane labels: a band is named by its frequency in
 // both places, and two formatters would drift.
 import { formatHz } from "../../player/components/automationLaneData";
@@ -201,16 +202,21 @@ export function FxCarveModule({
           : "pick a voice";
   return (
     <div
-      className={`hf-fx-node hf-fx-carve-module hf-fx-carve rounded-[4px] border border-panel-border-input${
+      className={`hf-fx-node hf-fx-carve-module hf-fx-carve rounded-[4px] border border-l-2 border-panel-border-input${
         on ? "" : " opacity-50"
       }`}
       data-fx-node="carve"
+      data-fx-family="smart"
+      // Smart, like the Tone EQ and the leveller: it measures the audio and
+      // writes its own settings, and what it shows is a readout of what it
+      // decided rather than controls the author set.
+      style={{ borderLeftColor: fxFamilyTint({ type: "carve", fromCarve: true }) }}
       data-carve-enabled={on ? "" : undefined}
     >
       <div className="hf-fx-node-head flex min-h-7 items-center gap-1 px-1.5">
         <button
           type="button"
-          className="hf-fx-node-name min-w-0 flex-1 truncate text-left text-[11px] font-semibold text-panel-text-1 hover:text-panel-text-0"
+          className={`hf-fx-node-name min-w-0 flex-1 truncate text-left text-[11px] text-panel-text-1 hover:text-panel-text-0 ${FX_FAMILY_TYPE.smart}`}
           aria-expanded={open}
           onClick={onToggleOpen}
         >

@@ -22,6 +22,7 @@ import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParams } from "./propertyPanelFxControls.js";
 import { FxBandRuler } from "./propertyPanelFxBandRuler.js";
+import { FX_FAMILY_TYPE, fxFamilyOf, fxFamilyTint } from "./propertyPanelFxFamily.js";
 
 /**
  * The one control that carries the module, if it has one.
@@ -115,6 +116,7 @@ function FxMoveButton({
 /** Name, bypass, reorder and remove for one effect. */
 function FxNodeHeader({
   label,
+  family,
   open,
   bypassed,
   first,
@@ -126,6 +128,8 @@ function FxNodeHeader({
   onRemove,
 }: {
   label: string;
+  /** How this family letters, so the KIND reads before the word does. */
+  family: string;
   open: boolean;
   bypassed: boolean;
   first: boolean;
@@ -140,7 +144,7 @@ function FxNodeHeader({
     <div className="hf-fx-node-head flex min-h-7 items-center gap-1 px-1.5">
       <button
         type="button"
-        className="hf-fx-node-name flex-1 truncate text-left text-[11px] font-semibold text-panel-text-1 hover:text-panel-text-0"
+        className={`hf-fx-node-name flex-1 truncate text-left text-[11px] text-panel-text-1 hover:text-panel-text-0 ${family}`}
         aria-expanded={open}
         onClick={onToggleOpen}
       >
@@ -293,10 +297,16 @@ export function FxNodeRow({
   const summary = SUMMARY[node.type]?.(params);
   return (
     <div
-      className={`hf-fx-node rounded-[4px] border border-panel-border-input${bypassed ? " opacity-50" : ""}`}
+      className={`hf-fx-node rounded-[4px] border border-l-2 border-panel-border-input${bypassed ? " opacity-50" : ""}`}
       data-fx-node={node.type}
+      data-fx-family={fxFamilyOf(node)}
+      // The tint is on the edge rather than the text: the name already carries
+      // the family in its lettering, and colouring it too would fight the
+      // panel's own tokens for automated and bypassed.
+      style={{ borderLeftColor: fxFamilyTint(node) }}
     >
       <FxNodeHeader
+        family={FX_FAMILY_TYPE[fxFamilyOf(node)]}
         // The node's own job name when a preset gave it one, because that is the
         // most specific truth available: a chain that cuts mud and then lifts
         // clarity must not show the same name twice. Then the plain name, and
