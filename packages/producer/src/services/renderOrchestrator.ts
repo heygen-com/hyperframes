@@ -815,8 +815,7 @@ export function buildMissingFrameRetryBatches(
  * `frameCapture`'s preMode (`headlessShell && isLinux && !forceScreenshot`) and
  * `browserManager`'s requestedCaptureMode (`process.platform === "linux"`) —
  * but the observability field derived the mode from `forceScreenshot` alone,
- * with no platform test, and nothing corrects it afterwards (it is assigned
- * exactly once). Every non-Linux render that did not force screenshot
+ * with no platform test. Every non-Linux render that did not force screenshot
  * therefore reported `beginframe` for a capture that was really screenshot:
  * 30,625 Windows renders over 14 days, a fifth of the fast-capture dashboard's
  * capture-mode data.
@@ -824,8 +823,20 @@ export function buildMissingFrameRetryBatches(
  * `config.ts` documents this same failure for "darwin + software" and adds a
  * `forceScreenshot` clamp as defence-in-depth — but that clamp only fires on
  * software GPU, so Windows-on-hardware slipped straight past it (41,102 of the
- * mislabelled renders). Mirror the real gates' platform test instead of
- * relying on a clamp that cannot cover the hardware case.
+ * mislabelled renders).
+ *
+ * NECESSARY, NOT SUFFICIENT — read this before trusting the value on Linux.
+ * The platform test is the only condition modelled here. Linux BeginFrame
+ * additionally requires a headless-shell binary, no supersampling, no
+ * transparent drawElement route (`frameCapture.ts` preMode) and the
+ * `--enable-begin-frame-control` flag (`browserManager.ts`). Any of those can
+ * make the ACTUAL mode screenshot while this still reports `beginframe`, so a
+ * Linux `beginframe` reading is an upper bound, not a fact. The authoritative
+ * value is the session's own `launchCaptureMode` — the same field the runtime
+ * video gate already falls back to. Deriving this field from the resolved
+ * session instead of from config is the real fix and is deliberately NOT in
+ * this change: it closes the Windows mislabel, which is platform-only and
+ * needs no session plumbing.
  *
  * Pure; exported for tests.
  */
@@ -834,6 +845,33 @@ export function resolveObservedCaptureMode(
   platform: NodeJS.Platform = process.platform,
 ): "screenshot" | "beginframe" {
   return forceScreenshot || platform !== "linux" ? "screenshot" : "beginframe";
+}
+
+/**
+ * Build the observability patcher, re-deriving `captureMode` on every patch.
+ *
+ * Extracted and exported because the previous inline closure was where the
+ * Windows mislabel actually lived. Seeding `captureMode` correctly at
+ * construction is NOT sufficient: this updater is invoked at 23 sites through
+ * the pipeline, and one of them —
+ * `updateCaptureObservability({ forceScreenshot: captureForceScreenshot })`
+ * straight after compile — runs unconditionally on every render. The old body
+ * re-derived from `forceScreenshot` alone, so the seeded value was overwritten
+ * with `beginframe` again before capture began, and both the success and error
+ * telemetry emits read the reverted object. A helper-only test cannot catch
+ * that: it never round-trips through this closure. Hence the export.
+ */
+export function createCaptureObservabilityUpdater(
+  observability: RenderCaptureObservability,
+  platform: NodeJS.Platform = process.platform,
+): (patch: Partial<RenderCaptureObservability>) => void {
+  return (patch: Partial<RenderCaptureObservability>): void => {
+    Object.assign(observability, patch);
+    observability.captureMode = resolveObservedCaptureMode(
+      Boolean(observability.forceScreenshot),
+      platform,
+    );
+  };
 }
 
 export function getNextRetryWorkerCount(currentWorkers: number): number {
@@ -2054,12 +2092,7 @@ async function executeRenderPipeline(input: {
   };
   let extractionObservability: RenderExtractionObservability | undefined;
   let compositionHash: string | undefined;
-  const updateCaptureObservability = (patch: Partial<RenderCaptureObservability>): void => {
-    Object.assign(captureObservability, patch);
-    captureObservability.captureMode = captureObservability.forceScreenshot
-      ? "screenshot"
-      : "beginframe";
-  };
+  const updateCaptureObservability = createCaptureObservabilityUpdater(captureObservability);
   // Function-scoped (not inside the try) so both the success path AND the catch
   // can read it — the catch records transient-retry burn on renders that still
   // failed, which is the more actionable signal for tuning the retry cap.
@@ -3095,8 +3128,9 @@ async function executeRenderPipeline(input: {
       // Which mode will stream: the engine picks beginframe only on Linux with
       // headless-shell and no forced screenshot (frameCapture.ts preMode);
       // everything else is screenshot. Recorded for telemetry cohorting.
-      const captureParallelStream =
-        process.platform === "linux" && !captureForceScreenshot ? "beginframe" : "screenshot";
+      // Same predicate as the observability field — use the one helper so the
+      // two cannot drift if the router's modes ever change.
+      const captureParallelStream = resolveObservedCaptureMode(captureForceScreenshot);
       log.info(
         `[Render] Parallel ${captureParallelStream} capture will stream to the encoder ` +
           `(interleaved, ${workerCount} workers) instead of the disk path. ` +

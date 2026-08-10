@@ -45,6 +45,7 @@ import {
   shouldStreamParallelCapture,
   shouldUseStreamingEncode,
   resolveObservedCaptureMode,
+  createCaptureObservabilityUpdater,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -2678,5 +2679,54 @@ describe("resolveObservedCaptureMode", () => {
   it("reports screenshot whenever screenshot was forced, linux included", () => {
     expect(resolveObservedCaptureMode(true, "linux")).toBe("screenshot");
     expect(resolveObservedCaptureMode(true, "win32")).toBe("screenshot");
+  });
+});
+
+// The blocker found in review: seeding `captureMode` at construction is not
+// enough. `updateCaptureObservability` fires at 23 sites, and the post-compile
+// `{ forceScreenshot }` patch runs on EVERY render — the old closure re-derived
+// from `forceScreenshot` alone and put `beginframe` back before capture began,
+// so both telemetry emits read the reverted value. These go through the closure
+// rather than the helper, which is the only way to catch that.
+describe("createCaptureObservabilityUpdater", () => {
+  const seed = (platform: NodeJS.Platform, forceScreenshot: boolean) => {
+    const observability = {
+      forceScreenshot,
+      captureMode: resolveObservedCaptureMode(forceScreenshot, platform),
+      browserGpuMode: "hardware" as const,
+    } as Parameters<typeof createCaptureObservabilityUpdater>[0];
+    return { observability, update: createCaptureObservabilityUpdater(observability, platform) };
+  };
+
+  // The exact production case: Windows, hardware GPU, screenshot not forced.
+  it("keeps screenshot on win32 across an unrelated patch", () => {
+    const { observability, update } = seed("win32", false);
+    expect(observability.captureMode).toBe("screenshot");
+    update({ transientRetries: 1 });
+    expect(observability.captureMode).toBe("screenshot");
+  });
+
+  // The unconditional post-compile patch — the one that guaranteed the revert.
+  it("keeps screenshot on win32 when forceScreenshot is re-patched false", () => {
+    const { observability, update } = seed("win32", false);
+    update({ forceScreenshot: false });
+    expect(observability.captureMode).toBe("screenshot");
+  });
+
+  // Linux must still be able to report beginframe, or the fix would have
+  // silently disabled the field everywhere instead of correcting it.
+  it("still reports beginframe on linux, and honours a later force", () => {
+    const { observability, update } = seed("linux", false);
+    expect(observability.captureMode).toBe("beginframe");
+    update({ transientRetries: 2 });
+    expect(observability.captureMode).toBe("beginframe");
+    update({ forceScreenshot: true });
+    expect(observability.captureMode).toBe("screenshot");
+  });
+
+  it("applies the patch itself, not only the derived mode", () => {
+    const { observability, update } = seed("win32", false);
+    update({ workerCount: 4 });
+    expect(observability.workerCount).toBe(4);
   });
 });

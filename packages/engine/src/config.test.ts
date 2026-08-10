@@ -258,6 +258,17 @@ describe("resolveConfig", () => {
     // The Windows case this shipped for: hardware GPU, supported platform,
     // worker-encode on — nothing environmental explains it, so it was an
     // explicit opt-out. Must NOT masquerade as one of the other three.
+    // The caller-side path: resolveDefaultDrawElement never even runs when the
+    // feature is off at a higher config level, so the orchestrator seeds from
+    // the environment alone and must land on `disabled` rather than inventing
+    // an environmental cause.
+    it("reports `disabled` for a config-time refusal on a healthy host", () => {
+      expect(
+        resolveDefaultDrawElement({ ...base, useDrawElement: false, platform: "darwin" }),
+      ).toBe(false);
+      expect(explainDrawElementDisabled({ ...base, platform: "darwin" })).toBe("disabled");
+    });
+
     it("falls back to `disabled` when nothing environmental explains it", () => {
       expect(explainDrawElementDisabled({ ...base, platform: "win32" })).toBe("disabled");
       expect(explainDrawElementDisabled({ ...base, platform: "darwin" })).toBe("disabled");
