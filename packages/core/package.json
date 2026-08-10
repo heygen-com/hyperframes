@@ -106,6 +106,12 @@
       "import": "./src/audioFx.ts",
       "types": "./src/audioFx.ts"
     },
+    "./audio-fx-copy": {
+      "bun": "./src/audioFxCopy.ts",
+      "node": "./dist/audioFxCopy.js",
+      "import": "./src/audioFxCopy.ts",
+      "types": "./src/audioFxCopy.ts"
+    },
     "./audio-fx-eq": {
       "bun": "./src/audioFxEq.ts",
       "node": "./dist/audioFxEq.js",
@@ -409,6 +415,10 @@
       "./audio-fx": {
         "import": "./dist/audioFx.js",
         "types": "./dist/audioFx.d.ts"
+      },
+      "./audio-fx-copy": {
+        "import": "./dist/audioFxCopy.js",
+        "types": "./dist/audioFxCopy.d.ts"
       },
       "./audio-fx-eq": {
         "import": "./dist/audioFxEq.js",

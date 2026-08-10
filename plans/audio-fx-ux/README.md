@@ -5,10 +5,12 @@ routing, what is driven versus set. But information a casual author cannot read
 is decoration, and the rack speaks entirely in Hz, dB and ratios. So the drawing
 stays and the **language changes**.
 
-`copy.mts` is the design work: a plain-language layer over every effect in the
-registry. `build-preview.mts` renders the review page from it **plus the real
-registry and preset catalogue**, and **fails** if any effect, parameter or
-preset lacks copy — so the page cannot quietly omit something that ships.
+The plain-language layer over every effect in the registry now ships as
+`packages/core/src/audioFxCopy.ts`, with the coverage that used to gate this
+page — every effect, parameter and preset must have copy — as
+`audioFxCopy.test.ts`. `build-preview.mts` renders the review page from it
+**plus the real registry and preset catalogue**. Only `PROFILES` is still a
+proposal, and it is all that is left in `copy.mts`.
 
 ```bash
 bun plans/audio-fx-ux/build-preview.mts /tmp/rack-ux.html
@@ -173,19 +175,23 @@ when nothing has been touched.
 
 ## Status
 
-The EQ, the named jobs and the levelling script are **built**. `copy.mts`
-itself is still a proposal — the plain-language layer over the other thirteen
-effects has not landed, and neither have the `PROFILES` figures.
+The EQ, the named jobs and the levelling script are **built**, and the copy
+layer has now landed as `packages/core/src/audioFxCopy.ts` — `EFFECT_COPY`,
+`BANDS`, `PRESET_PROBLEM` and `SUMMARY`, with the completeness check as a test
+beside it rather than a build step.
 
-`copy.mts` has no entry for Tone or for the levelling module, because both
-carry their own copy in core (`audioEqSummary`, `levellingSummary`). That is
-the right home for it: a summary that has to read the chain belongs beside the
-code that writes it.
+Landing the data is not the same as wiring it. Nothing in the studio reads it
+yet, and it should not until the three questions above are answered — whether
+the plain name replaces the DSP name or sits beside it decides what the rack
+renders, and building it twice to find out is the expensive way.
 
-`copy.mts` is a proposal, not shipped code. When it lands it wants to be
-`packages/core/src/audioFxCopy.ts` beside the registry, with the completeness
-check as a test rather than a build step.
+It has no entry for Tone or for the levelling module, because both carry their
+own copy in core (`audioEqSummary`, `levellingSummary`). That is the right home
+for it: a summary that has to read the chain belongs beside the code that
+writes it.
 
 The `PROFILES` figures — what one knob derives at gentle/middle/strong — are
-proposed values, not measured ones. They want the same before/after listen the
-clip-before-duck fix got.
+**still proposed values, not measured ones**, which is why they stayed behind in
+`copy.mts` rather than going to core with the rest. They want the same
+before/after listen the clip-before-duck fix got before a knob is wired to
+them.

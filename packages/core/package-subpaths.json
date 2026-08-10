@@ -92,6 +92,12 @@
       "types": "./dist/audioFx.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-fx-copy": {
+      "source": "./src/audioFxCopy.ts",
+      "runtime": "./dist/audioFxCopy.js",
+      "types": "./dist/audioFxCopy.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-fx-eq": {
       "source": "./src/audioFxEq.ts",
       "runtime": "./dist/audioFxEq.js",
