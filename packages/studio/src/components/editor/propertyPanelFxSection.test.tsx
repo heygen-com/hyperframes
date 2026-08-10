@@ -8,7 +8,7 @@ import {
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import { DEFAULT_CARVE } from "@hyperframes/core/audio-carve";
-import { EFFECT_COPY, PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
+import { BANDS, EFFECT_COPY, PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
 import { HF_AUDIO_FX_JOBS, HF_AUDIO_FX_JOB_TYPES } from "@hyperframes/core/audio-fx-jobs";
 import { getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 
@@ -360,6 +360,35 @@ describe("FxSection chain", () => {
     expect(node.querySelectorAll(".hf-fx-row").length).toBe(
       getAudioFxDef("highpass")?.params.length,
     );
+  });
+
+  it("says where a filter is working, in the words the rack shares", () => {
+    // Frequencies mean nothing to somebody who has not been taught them, and the
+    // rack speaks entirely in them. The ruler is where they get taught.
+    const { host } = mount({
+      chain: {
+        version: 1,
+        nodes: [{ type: "highpass", params: { frequency: 250, q: 0.707, poles: "2" } }],
+      } as unknown as HfAudioFxChain,
+    });
+    const ruler = fxCard(host).querySelector(".hf-fx-ruler");
+    expect(ruler?.getAttribute("data-band")).toBe("Mud");
+    expect(ruler?.querySelector(".hf-fx-ruler-name")?.textContent).toBe("Mud");
+    // Every named range is on the bar, or it is not a shared ruler.
+    const segments = Array.from(ruler?.querySelectorAll<HTMLElement>(".hf-fx-ruler-band") ?? []);
+    expect(segments).toHaveLength(BANDS.length);
+    // Log-spaced, because hearing is. Rumble is 20-80 Hz — three tenths of one
+    // percent of the range linearly, and a fifth of it by ear. Laid out linearly
+    // the bottom six bands collapse into a sliver and the ruler teaches nothing.
+    const rumble = Number.parseFloat(segments[0]?.style.width ?? "0");
+    expect(rumble).toBeGreaterThan(10);
+  });
+
+  it("puts no ruler under an effect that does not act on a range", () => {
+    // A limiter has no frequency to place, and a bar under one would be a
+    // decoration claiming to be information.
+    const { host } = mount({ chain: chainOf("limiter") });
+    expect(fxCard(host).querySelector(".hf-fx-ruler")).toBeNull();
   });
 
   it("opens a module on all of its controls when its one knob does not exist yet", () => {

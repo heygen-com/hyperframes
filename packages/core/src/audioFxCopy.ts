@@ -294,6 +294,24 @@ export const BANDS: { from: number; to: number; name: string; says: string }[] =
   { from: 10000, to: 20000, name: "Air", says: "sparkle, openness" },
 ];
 
+/**
+ * Which named range a frequency falls in.
+ *
+ * The whole point of `BANDS` is that the words get taught, and they only get
+ * taught if a module can say which one it is working in. Below the first band
+ * and above the last both clamp rather than returning nothing: 15 Hz is still
+ * rumble to anybody who can hear it, and the alternative is a filter at the edge
+ * of its range having no name at all.
+ */
+export function audioBandAt(hz: number): (typeof BANDS)[number] | undefined {
+  if (!Number.isFinite(hz)) return undefined;
+  const first = BANDS[0];
+  const last = BANDS.at(-1);
+  if (first && hz < first.from) return first;
+  if (last && hz >= last.to) return last;
+  return BANDS.find((band) => hz >= band.from && hz < band.to);
+}
+
 /** Which everyday complaint each preset answers. Presets ARE the product here. */
 export const PRESET_PROBLEM: Record<string, string> = {
   "voice-clean": "My voice sounds amateur",

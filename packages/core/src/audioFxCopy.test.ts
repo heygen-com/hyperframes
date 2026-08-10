@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultAudioFxParams, HF_AUDIO_FX } from "./audioFx.js";
 import { HF_AUDIO_FX_PRESETS } from "./audioFxPresets.js";
-import { BANDS, EFFECT_COPY, PRESET_PROBLEM, SUMMARY } from "./audioFxCopy.js";
+import { audioBandAt, BANDS, EFFECT_COPY, PRESET_PROBLEM, SUMMARY } from "./audioFxCopy.js";
 
 /**
  * The copy layer is only worth having if it covers everything that ships. A gap
@@ -72,4 +72,34 @@ it("covers the spectrum without a gap or an overlap", () => {
   for (let i = 1; i < BANDS.length; i++) {
     expect(BANDS[i]?.from, `gap or overlap before ${BANDS[i]?.name}`).toBe(BANDS[i - 1]?.to);
   }
+});
+
+describe("audioBandAt", () => {
+  it("names the range a frequency sits in", () => {
+    expect(audioBandAt(50)?.name).toBe("Rumble");
+    expect(audioBandAt(250)?.name).toBe("Mud");
+    expect(audioBandAt(3000)?.name).toBe("Presence");
+    expect(audioBandAt(12000)?.name).toBe("Air");
+  });
+
+  it("puts a boundary in the band it opens, not the one it closes", () => {
+    // Off by one here means a filter at exactly 250 Hz reads as "Weight" while
+    // the ruler beside it highlights Mud.
+    for (let i = 1; i < BANDS.length; i++) {
+      const edge = BANDS[i]?.from;
+      if (edge === undefined) continue;
+      expect(audioBandAt(edge)?.name).toBe(BANDS[i]?.name);
+    }
+  });
+
+  it("clamps past both ends rather than going nameless", () => {
+    // A filter parked at the edge of its range still has to say where it works.
+    expect(audioBandAt(5)?.name).toBe(BANDS[0]?.name);
+    expect(audioBandAt(30000)?.name).toBe(BANDS.at(-1)?.name);
+    expect(audioBandAt(20000)?.name).toBe(BANDS.at(-1)?.name);
+  });
+
+  it("has no answer for a value that is not a frequency", () => {
+    expect(audioBandAt(Number.NaN)).toBeUndefined();
+  });
 });

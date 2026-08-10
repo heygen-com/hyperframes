@@ -21,6 +21,7 @@ import {
 import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParams } from "./propertyPanelFxControls.js";
+import { FxBandRuler } from "./propertyPanelFxBandRuler.js";
 
 /**
  * The one control that carries the module, if it has one.
@@ -346,6 +347,12 @@ export function FxNodeRow({
                   <span className="truncate">{copy.primaryEnds.low}</span>
                   <span className="truncate text-right">{copy.primaryEnds.high}</span>
                 </p>
+              ) : null}
+              {/* Where it is working, in the words the rack shares. Only for a
+                  module that acts on a range at all — there is nothing spectral
+                  about a limiter, and a ruler under one would be noise. */}
+              {copy?.band && typeof params.frequency === "number" ? (
+                <FxBandRuler band={copy.band} at={params.frequency} />
               ) : null}
             </>
           ) : null}
