@@ -8,6 +8,22 @@ import {
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import { DEFAULT_CARVE } from "@hyperframes/core/audio-carve";
+import { EFFECT_COPY, PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
+import { getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
+
+/**
+ * What a knob is CALLED in the panel, looked up rather than spelled out.
+ *
+ * The rack speaks the plain-language layer now, so a row is addressed by the
+ * parameter it belongs to and the copy decides the words. Hard-coding them here
+ * would make every copy edit a test edit, and these tests are about which row
+ * carries the automate button — not about how it reads.
+ */
+function plainLabel(effectId: string, key: string): string {
+  const label = EFFECT_COPY[effectId]?.params[key]?.label;
+  if (!label) throw new Error(`no copy for ${effectId}.${key}`);
+  return label;
+}
 import { createRoot } from "react-dom/client";
 import { FxSection } from "./propertyPanelFxSection.js";
 
@@ -56,7 +72,7 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
   const onChainChange = vi.fn();
   const onChainPreview = vi.fn();
   const onCarveChange = vi.fn();
-  const { host } = renderInto(
+  const { host, root } = renderInto(
     <FxSection
       chain={overrides.chain ?? { version: 1, nodes: [] }}
       onChainChange={overrides.onChainChange ?? onChainChange}
@@ -72,9 +88,11 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       onLevel={overrides.onLevel}
       onRemoveLevel={overrides.onRemoveLevel}
       levelled={overrides.levelled}
+      onAuditionLevel={overrides.onAuditionLevel}
+      auditioningLevel={overrides.auditioningLevel}
     />,
   );
-  return { host, onChainChange, onChainPreview, onCarveChange };
+  return { host, root, onChainChange, onChainPreview, onCarveChange };
 }
 
 const click = (el: Element | null | undefined) => {
@@ -85,6 +103,19 @@ const click = (el: Element | null | undefined) => {
 };
 const byText = (host: HTMLElement, sel: string, text: string) =>
   Array.from(host.querySelectorAll(sel)).find((e) => e.textContent?.trim() === text);
+
+/**
+ * A preset button, found by the preset it applies rather than by its words.
+ *
+ * The shelf leads with the complaint and follows with the name, so a button's
+ * text is two sentences and neither of them alone is what an author would call
+ * it. Addressing it by id keeps the test about what applying it does.
+ */
+const presetButton = (host: HTMLElement, id: string): Element | undefined =>
+  Array.from(host.querySelectorAll(".hf-fx-preset-item")).find(
+    (e) =>
+      e.querySelector(".hf-fx-preset-name")?.textContent?.trim() === getAudioFxPreset(id)?.label,
+  );
 
 /**
  * React tracks an input's value on the DOM node, so assigning `.value` and
@@ -140,7 +171,7 @@ describe("FxSection chain", () => {
     const labels = Array.from(host.querySelectorAll(".hf-fx-label")).map((e) =>
       e.textContent?.trim(),
     );
-    for (const p of def.params) expect(labels).toContain(p.label);
+    for (const p of def.params) expect(labels).toContain(plainLabel("compressor", p.key));
   });
 
   it("uses a select for an enum parameter and a slider for a number", () => {
@@ -218,7 +249,7 @@ describe("FxSection chain", () => {
   it("applies a preset as ordinary nodes, tagged with where they came from", () => {
     const { host, onChainChange } = mount({ chain: { version: 1, nodes: [] } });
     click(byText(host, "button", "Presets"));
-    click(byText(host, "button", "Telephone"));
+    click(presetButton(host, "telephone"));
 
     const next = onChainChange.mock.calls[0]![0] as HfAudioFxChain;
     // The band, its honk and de-mud shaping, and the soft clip — a chain the
@@ -237,6 +268,125 @@ describe("FxSection chain", () => {
     expect(new Set(next.nodes.map((n) => n.id)).size).toBe(next.nodes.length);
   });
 
+  it("names an effect for the job it does, and keeps the DSP name for inside", () => {
+    // The rack is read by somebody who has never opened a mixer. "Remove Rumble"
+    // is what they came here for; "High-pass" is a fact about the mechanism, so
+    // it waits until they open the module and ask.
+    const { host } = mount({ chain: chainOf("highpass") });
+    const node = fxCard(host);
+    const name = node.querySelector(".hf-fx-node-name")?.textContent?.trim();
+    expect(name).toBe(EFFECT_COPY.highpass?.title);
+    expect(name).not.toBe(getAudioFxDef("highpass")?.label);
+    // And a sentence under it, so the rack reads top to bottom.
+    expect(node.querySelector(".hf-fx-node-summary")?.textContent).toContain("Cutting everything");
+    // The first node is open by default, which is where the DSP name lives.
+    expect(node.querySelector(".hf-fx-node-mechanism")?.textContent).toContain(
+      getAudioFxDef("highpass")?.label,
+    );
+  });
+
+  it("offers presets as the complaint they answer", () => {
+    const { host } = mount({ chain: { version: 1, nodes: [] } });
+    click(byText(host, "button", "Presets"));
+    const item = presetButton(host, "telephone");
+    expect(item?.querySelector(".hf-fx-preset-problem")?.textContent).toBe(
+      PRESET_PROBLEM.telephone,
+    );
+    // The name is still there, under it — which is how it gets learned.
+    expect(item?.querySelector(".hf-fx-preset-name")?.textContent).toBe("Telephone");
+  });
+
+  describe("hover-audition", () => {
+    /** Focus is the keyboard's hover, and both go through the same handler. */
+    const enter = (el: Element | null | undefined) => {
+      if (!el) throw new Error("element not found");
+      act(() => (el as HTMLElement).focus());
+    };
+    const leave = (host: HTMLElement, sel: string) =>
+      act(() => {
+        host.querySelector(sel)?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+
+    it("plays a preset without committing to it", () => {
+      const { host, onChainPreview, onChainChange } = mount({ chain: { version: 1, nodes: [] } });
+      click(byText(host, "button", "Presets"));
+      enter(presetButton(host, "telephone"));
+
+      const heard = onChainPreview.mock.calls.at(-1)?.[0] as HfAudioFxChain;
+      expect(heard.nodes.length).toBeGreaterThan(0);
+      expect(heard.nodes.every((n) => n.fromPreset === "telephone")).toBe(true);
+      // Heard, not written. Hovering is not a decision.
+      expect(onChainChange).not.toHaveBeenCalled();
+    });
+
+    it("puts the chain back on the way out", () => {
+      const { host, onChainPreview } = mount({ chain: chainOf("peaking") });
+      click(byText(host, "button", "Presets"));
+      enter(presetButton(host, "telephone"));
+      leave(host, ".hf-fx-preset-menu");
+
+      const back = onChainPreview.mock.calls.at(-1)?.[0] as HfAudioFxChain;
+      expect(back.nodes.map((n) => n.type)).toEqual(["peaking"]);
+    });
+
+    it("does not put the old chain back over the preset it just applied", () => {
+      // The audition WAS the preset, so reverting after the write is a race the
+      // author hears as it arriving and then leaving again.
+      //
+      // Applying closes the shelf, so the pointer never leaves it — the revert
+      // that would fire is the panel's own teardown, which is what unmounting
+      // here exercises. It is also the real route: applying a preset and then
+      // clicking another clip does exactly this.
+      const { host, root, onChainPreview } = mount({ chain: { version: 1, nodes: [] } });
+      click(byText(host, "button", "Presets"));
+      enter(presetButton(host, "telephone"));
+      const auditions = onChainPreview.mock.calls.length;
+      click(presetButton(host, "telephone"));
+      act(() => root.unmount());
+
+      expect(onChainPreview.mock.calls.length).toBe(auditions);
+    });
+
+    it("puts the chain back if the panel goes away mid-audition", () => {
+      // Deselecting the clip while hovering is not a decision either, and the
+      // preview channel does not persist — so without this the author hears a
+      // chain the document does not have until something else writes.
+      const { host, root, onChainPreview } = mount({ chain: chainOf("peaking") });
+      click(byText(host, "button", "Presets"));
+      enter(presetButton(host, "telephone"));
+      act(() => root.unmount());
+
+      const back = onChainPreview.mock.calls.at(-1)?.[0] as HfAudioFxChain;
+      expect(back.nodes.map((n) => n.type)).toEqual(["peaking"]);
+    });
+
+    it("auditions an effect the add menu is offering", () => {
+      const { host, onChainPreview, onChainChange } = mount({ chain: chainOf("peaking") });
+      click(byText(host, "button", "Add effect"));
+      enter(byText(host, "button", "Reverb"));
+
+      const heard = onChainPreview.mock.calls.at(-1)?.[0] as HfAudioFxChain;
+      expect(heard.nodes.map((n) => n.type)).toEqual(["peaking", "reverb"]);
+      expect(onChainChange).not.toHaveBeenCalled();
+    });
+
+    it("asks for a levelling measurement on hover, and calls it off on the way out", () => {
+      // The one module that cannot answer instantly: there is nothing to hear
+      // until the track has been decoded and measured.
+      const onAuditionLevel = vi.fn();
+      const { host } = mount({
+        chain: { version: 1, nodes: [] },
+        onLevel: vi.fn(),
+        onAuditionLevel,
+      });
+      click(byText(host, "button", "Add effect"));
+      enter(byText(host, "button", "Even Out Levels"));
+      expect(onAuditionLevel).toHaveBeenLastCalledWith(true);
+      leave(host, ".hf-fx-add-menu");
+      expect(onAuditionLevel).toHaveBeenLastCalledWith(false);
+    });
+  });
+
   it("adds a preset to what is already there rather than replacing it", () => {
     const existing: HfAudioFxChain = {
       version: 1,
@@ -246,7 +396,7 @@ describe("FxSection chain", () => {
     };
     const { host, onChainChange } = mount({ chain: existing });
     click(byText(host, "button", "Presets"));
-    click(byText(host, "button", "Cut Rumble"));
+    click(presetButton(host, "rumble-cut"));
 
     const next = onChainChange.mock.calls[0]![0] as HfAudioFxChain;
     expect(next.nodes.map((n) => n.id)).toContain("mine");
@@ -762,8 +912,12 @@ describe("automation in the panel", () => {
     // Saturate: `output` is a make-up gain, but the curve's type and threshold
     // are rebuilt wholesale and cannot be scheduled.
     const { host } = automatable(idChain("saturate"));
-    expect(rowFor(host, "Output")?.querySelector(".hf-fx-automate")).toBeTruthy();
-    expect(rowFor(host, "Threshold")?.querySelector(".hf-fx-automate")).toBeNull();
+    expect(
+      rowFor(host, plainLabel("saturate", "output"))?.querySelector(".hf-fx-automate"),
+    ).toBeTruthy();
+    expect(
+      rowFor(host, plainLabel("saturate", "threshold"))?.querySelector(".hf-fx-automate"),
+    ).toBeNull();
   });
 
   it("offers nothing for a worklet effect, which exposes no AudioParams", () => {
@@ -774,7 +928,9 @@ describe("automation in the panel", () => {
   it("asks to automate a parameter by node id and key", () => {
     const onAutomateParam = vi.fn();
     const { host } = automatable(idChain("lowpass", "n7"), { onAutomateParam });
-    const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+    const button = rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector(
+      ".hf-fx-automate",
+    ) as HTMLButtonElement;
     expect(button.hasAttribute("title")).toBe(false);
     act(() => button.click());
     expect(onAutomateParam).toHaveBeenCalledWith("n7", "frequency");
@@ -784,12 +940,12 @@ describe("automation in the panel", () => {
     const { host } = automatable(idChain("lowpass"), {
       automatedTargets: new Set(["fx.n1.frequency"]),
     });
-    const row = rowFor(host, "Cutoff")!;
+    const row = rowFor(host, plainLabel("lowpass", "frequency"))!;
     expect(row.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(true);
     expect(row.querySelector<HTMLInputElement>('input[type="number"]')?.disabled).toBe(true);
     expect(row.hasAttribute("data-automated")).toBe(true);
     // A sibling parameter on the same effect stays editable.
-    const q = rowFor(host, "Q")!;
+    const q = rowFor(host, plainLabel("lowpass", "q"))!;
     expect(q.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(false);
   });
 
@@ -799,7 +955,9 @@ describe("automation in the panel", () => {
       automatedTargets: new Set(["fx.n1.frequency"]),
       onRemoveParamAutomation,
     });
-    const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+    const button = rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector(
+      ".hf-fx-automate",
+    ) as HTMLButtonElement;
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("aria-label")).toMatch(/remove/i);
     // The wording lives in the Tooltip component, which only renders its bubble
@@ -815,7 +973,9 @@ describe("automation in the panel", () => {
       const { host } = automatable(idChain("lowpass"), {
         automatedTargets: new Set(["fx.n1.frequency"]),
       });
-      const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+      const button = rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector(
+        ".hf-fx-automate",
+      ) as HTMLButtonElement;
       // Tooltip positions itself from the trigger's box and gives up on a 0x0
       // one, which is every element in happy-dom.
       vi.spyOn(button, "getBoundingClientRect").mockReturnValue({

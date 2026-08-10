@@ -5,7 +5,7 @@
  * is not an entry in the chain.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultAudioFxParams,
   HF_AUDIO_FX,
@@ -64,6 +64,17 @@ export interface FxSectionProps {
   onRemoveLevel?(): void;
   /** Whether a levelling stage is already on the track. */
   levelled?: boolean;
+  /**
+   * Hover-audition of the levelling script: measure this track and play the
+   * result without persisting it, and put it back on `false`.
+   *
+   * Separate from `onChainPreview` because it is the one audition that cannot be
+   * synthesised from the chain in hand — the numbers do not exist until the
+   * audio has been decoded and measured.
+   */
+  onAuditionLevel?(on: boolean): void;
+  /** Whether that measurement is running, so the button can say so. */
+  auditioningLevel?: boolean;
   /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
   /** Continuous updates while a control is being dragged. */
@@ -104,6 +115,8 @@ export function FxSection({
   onLevel,
   onRemoveLevel,
   levelled,
+  onAuditionLevel,
+  auditioningLevel,
 }: FxSectionProps) {
   // Falls back to the persisting write when no preview handler is supplied, which
   // keeps the control working rather than going dead.
@@ -139,6 +152,48 @@ export function FxSection({
     [chain, onChainPreview],
   );
 
+  /**
+   * The chain as it is really stored, captured when an audition starts.
+   *
+   * Auditioning writes through the preview channel, which does not persist and
+   * does not come back as a new `chain` prop — so reverting has to remember what
+   * was there rather than read it back. Null means nothing is being auditioned,
+   * which is also what makes a stray leave a no-op instead of a write.
+   */
+  const auditionBase = useRef<HfAudioFxChain | null>(null);
+
+  /**
+   * Play something without committing to it, and put it back on the way out.
+   *
+   * Hearing a preset before choosing it is the strongest affordance in this
+   * panel — see `plans/audio-fx-ux/README.md` §Decided. It costs nothing new:
+   * the preview channel a slider drag already uses rebuilds the running graph
+   * without touching the document.
+   */
+  const audition = useCallback(
+    (make: ((base: HfAudioFxChain) => HfAudioFxChain) | null) => {
+      if (!onChainPreview) return;
+      if (make) {
+        auditionBase.current ??= chain;
+        onChainPreview(make(auditionBase.current));
+      } else if (auditionBase.current) {
+        onChainPreview(auditionBase.current);
+        auditionBase.current = null;
+      }
+    },
+    [chain, onChainPreview],
+  );
+
+  // Leaving by any route other than the pointer — the element deselected, the
+  // panel closed — would otherwise leave the audition playing over a chain the
+  // document does not have.
+  useEffect(
+    () => () => {
+      if (auditionBase.current) onChainPreview?.(auditionBase.current);
+    },
+    [onChainPreview],
+  );
+
   const applyPreset = useCallback(
     (id: string) => {
       const preset = getAudioFxPreset(id);
@@ -147,6 +202,10 @@ export function FxSection({
       // real thing to want, and replacing silently would throw work away — so
       // the destructive option is a separate gesture, not the default one.
       const next = applyAudioFxPreset(chain, preset);
+      // The audition WAS this, so there is nothing to put back — and putting the
+      // old chain back over the write that just landed is a race the author
+      // hears as the preset arriving and then leaving again.
+      auditionBase.current = null;
       mutate(next.nodes);
       // Land on the first node the preset wrote, so the author can hear what
       // arrived and immediately see what it is made of.
@@ -156,16 +215,26 @@ export function FxSection({
     [chain, mutate],
   );
 
+  /** One effect at its defaults, appended — what both adding and auditioning do. */
+  const withEffect = useCallback(
+    (base: HfAudioFxChain, type: string): HfAudioFxChain => ({
+      ...base,
+      nodes: [
+        ...base.nodes,
+        { type, id: mintAudioFxNodeId(base), enabled: true, params: defaultAudioFxParams(type) },
+      ],
+    }),
+    [],
+  );
+
   const addEffect = useCallback(
     (type: string) => {
-      mutate([
-        ...chain.nodes,
-        { type, id: mintAudioFxNodeId(chain), enabled: true, params: defaultAudioFxParams(type) },
-      ]);
+      auditionBase.current = null;
+      mutate(withEffect(chain, type).nodes);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain, mutate],
+    [chain, mutate, withEffect],
   );
 
   const updateNode = useCallback(
@@ -208,6 +277,7 @@ export function FxSection({
   const [openEq, setOpenEq] = useState<string | null>(null);
 
   const addEq = useCallback(() => {
+    auditionBase.current = null;
     const { chain: next, eqId } = addAudioEq(chain);
     mutate(next.nodes);
     setOpenEq(eqId);
@@ -321,7 +391,21 @@ export function FxSection({
       </div>
 
       {adding ? (
-        <div className="hf-fx-add-menu space-y-1.5 rounded-[4px] border border-panel-border-input p-1.5">
+        <div
+          className="hf-fx-add-menu space-y-1.5 rounded-[4px] border border-panel-border-input p-1.5"
+          // On the shelf, not on each button: moving between two of them passes
+          // through the gap, and a per-button leave would revert on the way.
+          onMouseLeave={() => {
+            audition(null);
+            onAuditionLevel?.(false);
+          }}
+          // The keyboard's version of leaving. Tabbing between two entries fires
+          // this and then the next one's focus, so it reverts and re-auditions.
+          onBlur={() => {
+            audition(null);
+            onAuditionLevel?.(false);
+          }}
+        >
           <div className="hf-fx-add-group flex flex-wrap items-center gap-1">
             <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
               Tone
@@ -337,8 +421,16 @@ export function FxSection({
                   else onLevel();
                   setAdding(false);
                 }}
+                // The one module here that cannot answer instantly: it has to
+                // decode the track and measure it before there is anything to
+                // hear. So it says it is working rather than doing nothing
+                // visible, and whoever handles this must drop a result that
+                // arrives after the pointer has gone.
+                onMouseEnter={levelled ? undefined : () => onAuditionLevel?.(true)}
+                onFocus={levelled ? undefined : () => onAuditionLevel?.(true)}
               >
                 {levelled ? "Remove levelling" : "Even Out Levels"}
+                {auditioningLevel ? <span className="hf-fx-add-working"> measuring…</span> : null}
               </button>
             ) : null}
             <button
@@ -348,6 +440,9 @@ export function FxSection({
               // must not include it.
               className="hf-fx-add-composite rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
               title="Bass, middle and treble on one set of faders."
+              // No audition: a Tone module arrives with every band at 0 dB, so
+              // there is nothing to hear until a fader moves. A hover that
+              // changes nothing teaches that hovering does nothing.
               onClick={addEq}
             >
               Tone (EQ)
@@ -365,6 +460,8 @@ export function FxSection({
                   className="hf-fx-add-item rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
                   title={d.description}
                   onClick={() => addEffect(d.id)}
+                  onMouseEnter={() => audition((base) => withEffect(base, d.id))}
+                  onFocus={() => audition((base) => withEffect(base, d.id))}
                 >
                   {d.label}
                 </button>
@@ -374,7 +471,19 @@ export function FxSection({
         </div>
       ) : null}
 
-      {picking ? <FxPresetMenu onPick={applyPreset} /> : null}
+      {picking ? (
+        <FxPresetMenu
+          onPick={applyPreset}
+          onAudition={
+            onChainPreview
+              ? (id) => {
+                  const preset = id ? getAudioFxPreset(id) : null;
+                  audition(preset ? (base) => applyAudioFxPreset(base, preset) : null);
+                }
+              : undefined
+          }
+        />
+      ) : null}
 
       {adding || picking ? null : (
         <div className="flex gap-1">

@@ -4,7 +4,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { AudioFxGroup } from "./propertyPanelAudioFxGroup.js";
 import type { DomEditSelection } from "./domEditingTypes";
+import { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
 import { liveTime, usePlayerStore } from "../../player";
+
+/**
+ * What a knob is CALLED in the panel, looked up rather than spelled out.
+ *
+ * The rack speaks the plain-language layer now, so a row is addressed by the
+ * parameter it belongs to and the copy decides the words. Hard-coding them here
+ * would make every copy edit a test edit, and these tests are about which row
+ * carries the automate button — not about how it reads.
+ */
+function plainLabel(effectId: string, key: string): string {
+  const label = EFFECT_COPY[effectId]?.params[key]?.label;
+  if (!label) throw new Error(`no copy for ${effectId}.${key}`);
+  return label;
+}
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,6 +64,11 @@ function audioSelection(
   return { dataAttributes, id: "bed", element: bed } as unknown as DomEditSelection;
 }
 
+/** A button found by the text it contains, since several now read as sentences. */
+function byTextButton(host: HTMLElement, text: string): HTMLButtonElement | undefined {
+  return Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes(text));
+}
+
 function mount(dataAttributes: Record<string, string>, alone = false, voices = 2) {
   // Every write is quiet: persisted without the preview reload that would
   // restart every playing track, but with a selection resync so the panel sees
@@ -91,15 +111,17 @@ const writeTo = (calls: unknown[][], attr: string): unknown[] | undefined =>
 describe("AudioFxGroup automation", () => {
   it("renders the chain's parameters", () => {
     const { host } = mount({ "fx-chain": CHAIN });
-    expect(rowFor(host, "Cutoff")).toBeTruthy();
-    expect(rowFor(host, "Q")).toBeTruthy();
+    expect(rowFor(host, plainLabel("lowpass", "frequency"))).toBeTruthy();
+    expect(rowFor(host, plainLabel("lowpass", "q"))).toBeTruthy();
   });
 
   it("seeds a new lane at the value the control already holds", () => {
     // Switching to an envelope must not change the sound — only where the value
     // comes from. The chain has frequency at 900, not the registry default.
     const { host, onSetAttributeQuiet } = mount({ "fx-chain": CHAIN });
-    const button = rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement;
+    const button = rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector(
+      ".hf-fx-automate",
+    ) as HTMLButtonElement;
     act(() => button.click());
     const write = writeTo(onSetAttributeQuiet.mock.calls, "data-automation");
     expect(write).toBeTruthy();
@@ -117,7 +139,13 @@ describe("AudioFxGroup automation", () => {
         lanes: [{ target: "volume", points: [{ t: 0, v: 0.5 }] }],
       }),
     });
-    act(() => (rowFor(host, "Q")!.querySelector(".hf-fx-automate") as HTMLButtonElement).click());
+    act(() =>
+      (
+        rowFor(host, plainLabel("lowpass", "q"))!.querySelector(
+          ".hf-fx-automate",
+        ) as HTMLButtonElement
+      ).click(),
+    );
     expect(
       parseWrite(writeTo(onSetAttributeQuiet.mock.calls, "data-automation")!).lanes.map(
         (l: { target: string }) => l.target,
@@ -133,11 +161,13 @@ describe("AudioFxGroup automation", () => {
         lanes: [{ target: "fx.n1.frequency", points: [{ t: 0, v: 400 }] }],
       }),
     });
-    const cutoff = rowFor(host, "Cutoff")!;
+    const cutoff = rowFor(host, plainLabel("lowpass", "frequency"))!;
     expect(cutoff.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(true);
     expect(cutoff.hasAttribute("data-automated")).toBe(true);
     expect(
-      rowFor(host, "Q")!.querySelector<HTMLInputElement>('input[type="range"]')?.disabled,
+      rowFor(host, plainLabel("lowpass", "q"))!.querySelector<HTMLInputElement>(
+        'input[type="range"]',
+      )?.disabled,
     ).toBe(false);
   });
 
@@ -153,7 +183,11 @@ describe("AudioFxGroup automation", () => {
       }),
     });
     act(() =>
-      (rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement).click(),
+      (
+        rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector(
+          ".hf-fx-automate",
+        ) as HTMLButtonElement
+      ).click(),
     );
     expect(
       parseWrite(writeTo(onSetAttributeQuiet.mock.calls, "data-automation")!).lanes.map(
@@ -171,7 +205,11 @@ describe("AudioFxGroup automation", () => {
       }),
     });
     act(() =>
-      (rowFor(host, "Cutoff")!.querySelector(".hf-fx-automate") as HTMLButtonElement).click(),
+      (
+        rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector(
+          ".hf-fx-automate",
+        ) as HTMLButtonElement
+      ).click(),
     );
     // Null rather than "": the live path removes an attribute it is given null for.
     expect(writeTo(onSetAttributeQuiet.mock.calls, "data-automation")![1]).toBeNull();
@@ -187,7 +225,9 @@ describe("AudioFxGroup automation", () => {
     });
     // Nothing is automated, so every control stays live.
     expect(
-      rowFor(host, "Cutoff")!.querySelector<HTMLInputElement>('input[type="range"]')?.disabled,
+      rowFor(host, plainLabel("lowpass", "frequency"))!.querySelector<HTMLInputElement>(
+        'input[type="range"]',
+      )?.disabled,
     ).toBe(false);
   });
 });
@@ -327,6 +367,64 @@ describe("AudioFxGroup dynamic carve", () => {
   }
 
   afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * Hover-auditioning the leveller has to measure before there is anything to
+   * hear, and measuring a long voiceover takes seconds — by which time the
+   * pointer has usually moved on. Applying then would put levelling on a track
+   * nobody asked to level, through a channel that does not persist: audible,
+   * absent from the document, and gone on the next reload.
+   */
+  it("drops a levelling measurement that lands after the pointer has gone", async () => {
+    const sampleRate = 48000;
+    const data = new Float32Array(sampleRate * 4);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sampleRate;
+      data[i] = t > 1 && t < 3 ? 0.7 * Math.sin(2 * Math.PI * 1000 * t) : 0;
+    }
+    let release: (() => void) | null = null;
+    const decoded = new Promise<void>((r) => {
+      release = r;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
+    );
+    vi.stubGlobal(
+      "OfflineAudioContext",
+      class {
+        async decodeAudioData() {
+          await decoded;
+          return { sampleRate, getChannelData: () => data };
+        }
+      },
+    );
+
+    const { host, onSetAttributeLive } = mount({ "fx-chain": CHAIN });
+    document.getElementById("bed")?.setAttribute("src", "bed.wav");
+    act(() => byTextButton(host, "Add effect")?.click());
+    const level = byTextButton(host, "Even Out Levels");
+    expect(level, "the levelling button was not offered").toBeTruthy();
+    act(() => level?.focus());
+    // Gone again before the decode finishes.
+    act(() => {
+      host
+        .querySelector(".hf-fx-add-menu")
+        ?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    await act(async () => {
+      release?.();
+      await decoded;
+      // Two turns: the decode resolves, then the measurement it feeds.
+      await Promise.resolve();
+    });
+
+    // The revert on the way out is allowed to write; a levelling stage is not.
+    const levelled = onSetAttributeLive.mock.calls.filter((c) =>
+      String(c[1] ?? "").includes("fromLeveller"),
+    );
+    expect(levelled).toEqual([]);
+  });
 
   it("automates the carve filters' gain from the voice, in the bed's own time", async () => {
     stubDecode();
@@ -933,7 +1031,7 @@ describe("AudioFxGroup carve module readouts", () => {
         ],
       }),
     });
-    const mixRow = rowFor(host, "Mix");
+    const mixRow = rowFor(host, plainLabel("delay", "mix"));
     const number = mixRow?.querySelector<HTMLInputElement>(".hf-fx-number");
     const slider = mixRow?.querySelector<HTMLInputElement>(".hf-fx-slider");
     expect(number?.disabled).toBe(true); // the lane owns it

@@ -7,7 +7,7 @@
  * budget, and self-contained enough to test on its own.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   defaultAudioFxParams,
   HF_AUDIO_FX_ATTR,
@@ -492,23 +492,43 @@ export function AudioFxGroup({
    * works, write once — but it listens to the track it is on rather than to a
    * voice above it, so it needs no source picker.
    */
-  const runLeveller = async (): Promise<void> => {
+  /**
+   * This track's audio, decoded once and kept.
+   *
+   * Levelling is measured from it, and hover-auditioning means measuring on every
+   * pass over the button — fetching and decoding a several-minute voiceover each
+   * time would make the audition slower than the thing it is previewing. Keyed by
+   * `src` so a track pointed at a different file re-decodes.
+   */
+  const decoded = useRef<{ src: string; samples: Float32Array; sampleRate: number } | null>(null);
+
+  const decodeTrack = async (): Promise<{ samples: Float32Array; sampleRate: number } | null> => {
     const el = element.element;
     const src = el?.getAttribute("src");
     const doc = el?.ownerDocument;
-    if (!src || !doc) return;
+    if (!src || !doc) return null;
+    const cached = decoded.current;
+    if (cached?.src === src) return cached;
+    const Ctor =
+      window.OfflineAudioContext ??
+      (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
+        .webkitOfflineAudioContext;
+    if (!Ctor) return null;
+    const res = await fetch(new URL(src, doc.baseURI).href);
+    const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
+      await res.arrayBuffer(),
+    );
+    const next = { src, samples: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
+    decoded.current = next;
+    return next;
+  };
+
+  const runLeveller = async (): Promise<void> => {
     setAnalysing(true);
     try {
-      const Ctor =
-        window.OfflineAudioContext ??
-        (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
-          .webkitOfflineAudioContext;
-      if (!Ctor) return;
-      const res = await fetch(new URL(src, doc.baseURI).href);
-      const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
-        await res.arrayBuffer(),
-      );
-      const result = levellingResult(chain, buffer.getChannelData(0), buffer.sampleRate);
+      const audio = await decodeTrack();
+      if (!audio) return;
+      const result = levellingResult(chain, audio.samples, audio.sampleRate);
       if (!result) return;
       await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
       // Merged by target, never written wholesale: the script describes its own
@@ -526,6 +546,60 @@ export function AudioFxGroup({
       // levelling, the same way an unreadable carve source is skipped.
     } finally {
       setAnalysing(false);
+    }
+  };
+
+  const [auditioningLevel, setAuditioningLevel] = useState(false);
+  /**
+   * Bumped on every enter and leave, so a measurement can tell whether the
+   * pointer is still on the button when it finishes.
+   *
+   * Decoding a long voiceover takes seconds, and a hover that takes seconds is
+   * one the author has usually already left. Applying the result then would put
+   * levelling on a track nobody asked to level, through a channel that does not
+   * persist — so it would be audible, invisible in the document, and gone on the
+   * next reload. This counter is what makes a late result a no-op.
+   */
+  const auditionRun = useRef(0);
+
+  /**
+   * Measure this track and play the levelling without persisting it.
+   *
+   * `false` puts the stored chain and automation back. Both attributes, because
+   * levelling is a node AND the lane that drives it: reverting only the chain
+   * would leave an envelope writing to a gain stage that is no longer there.
+   */
+  const auditionLevel = async (on: boolean): Promise<void> => {
+    const run = ++auditionRun.current;
+    if (!on) {
+      setAuditioningLevel(false);
+      void onSetAttributeLive(
+        HF_AUDIO_FX_ATTR,
+        chain.nodes.length ? serializeAudioFxChain(chain) : null,
+      );
+      void onSetAttributeLive(HF_AUDIO_AUTOMATION_ATTR, automationAttrValue(automation) || null);
+      return;
+    }
+    setAuditioningLevel(true);
+    try {
+      const audio = await decodeTrack();
+      // Gone, or superseded by a later hover. Either way this result is stale.
+      if (!audio || run !== auditionRun.current) return;
+      const result = levellingResult(chain, audio.samples, audio.sampleRate);
+      if (!result || run !== auditionRun.current) return;
+      void onSetAttributeLive(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
+      const lane = result.automation.lanes[0];
+      if (lane) {
+        void onSetAttributeLive(
+          HF_AUDIO_AUTOMATION_ATTR,
+          automationAttrValue(withLane(automation, lane)) || null,
+        );
+      }
+    } catch {
+      // Same as the real run: a track that cannot be decoded simply does not
+      // audition, rather than failing the panel.
+    } finally {
+      if (run === auditionRun.current) setAuditioningLevel(false);
     }
   };
 
@@ -722,6 +796,8 @@ export function AudioFxGroup({
       onLevel={() => void runLeveller()}
       onRemoveLevel={removeLeveller}
       levelled={chain.nodes.some((n) => n.fromLeveller)}
+      onAuditionLevel={(on) => void auditionLevel(on)}
+      auditioningLevel={auditioningLevel}
       carvedAgainstBy={carvedAgainstBy}
       analysing={analysing}
     />

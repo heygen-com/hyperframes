@@ -3,8 +3,14 @@
  *
  * An entry in the chain, as opposed to a composite module — the carve and the
  * Tone EQ own several nodes each and have their own files.
+ *
+ * The row speaks the author's language, not the registry's. `EFFECT_COPY`
+ * supplies the name and every knob's name, `SUMMARY` the sentence under it, and
+ * the DSP name moves inside — it is a fact about the mechanism, so it belongs
+ * with the mechanism. See `plans/audio-fx-ux/README.md` §Decided.
  */
 
+import { useMemo } from "react";
 import {
   defaultAudioFxParams,
   getAudioFxDef,
@@ -12,8 +18,32 @@ import {
   type HfAudioFxNode,
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
+import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParams } from "./propertyPanelFxControls.js";
+
+/**
+ * The registry's definition with the plain names written over it.
+ *
+ * Over rather than instead of: the registry stays the authority on range, step,
+ * unit and what is automatable, and only the words change. A parameter with no
+ * copy keeps its own label rather than disappearing — `audioFxCopy.test.ts` is
+ * what makes sure there is never one.
+ */
+function plainDef(def: HfAudioFxDef): HfAudioFxDef {
+  const copy = EFFECT_COPY[def.id];
+  if (!copy) return def;
+  return {
+    ...def,
+    params: def.params.map((param) => {
+      const plain = copy.params[param.key];
+      if (!plain) return param;
+      // The registry's hint explains the mechanism, which is still the better
+      // tooltip than none — but the plain one wins where it exists.
+      return { ...param, label: plain.label, ...(plain.hint ? { hint: plain.hint } : {}) };
+    }),
+  };
+}
 
 interface FxNodeRowProps {
   node: HfAudioFxNode;
@@ -218,18 +248,26 @@ export function FxNodeRow({
   onRemove,
   onPreview,
 }: FxNodeRowProps) {
-  const def = getAudioFxDef(node.type);
-  if (!def) return null;
+  const registryDef = getAudioFxDef(node.type);
+  const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
+  if (!registryDef || !def) return null;
   const bypassed = node.enabled === false;
+  const params = node.params ?? defaultAudioFxParams(node.type);
+  // What this effect is doing to the sound, as a sentence. The rack is read top
+  // to bottom far more often than any one module is opened, so this is the line
+  // that decides whether an author can follow their own mix.
+  const summary = SUMMARY[node.type]?.(params);
   return (
     <div
       className={`hf-fx-node rounded-[4px] border border-panel-border-input${bypassed ? " opacity-50" : ""}`}
       data-fx-node={node.type}
     >
       <FxNodeHeader
-        // The node's own job name when a preset gave it one: a chain that cuts
-        // mud and then lifts clarity must not show "Peaking EQ" twice.
-        label={node.label ?? def.label}
+        // The node's own job name when a preset gave it one, because that is the
+        // most specific truth available: a chain that cuts mud and then lifts
+        // clarity must not show the same name twice. Then the plain name, and
+        // the registry's only if an effect somehow has no copy.
+        label={node.label ?? EFFECT_COPY[node.type]?.title ?? registryDef.label}
         open={open}
         bypassed={bypassed}
         first={index === 0}
@@ -240,19 +278,32 @@ export function FxNodeRow({
         onMove={(delta) => onMove(index, delta)}
         onRemove={() => onRemove(index)}
       />
+      {summary ? (
+        <p className="hf-fx-node-summary truncate px-1.5 pb-1 text-[10px] text-panel-text-4">
+          {summary}
+        </p>
+      ) : null}
       {open ? (
-        <FxNodeParams
-          node={node}
-          def={def}
-          index={index}
-          disabled={Boolean(disabled) || bypassed}
-          automatedTargets={automatedTargets}
-          liveAutomationValues={liveAutomationValues}
-          onUpdate={onUpdate}
-          onPreview={onPreview}
-          onAutomateParam={onAutomateParam}
-          onRemoveParamAutomation={onRemoveParamAutomation}
-        />
+        <>
+          {/* The DSP name, once, where the mechanism is. An author who wants to
+              know what "Remove Rumble" really is finds out by opening it; one who
+              does not never has to meet the word. */}
+          <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+            Details — {registryDef.label}
+          </p>
+          <FxNodeParams
+            node={node}
+            def={def}
+            index={index}
+            disabled={Boolean(disabled) || bypassed}
+            automatedTargets={automatedTargets}
+            liveAutomationValues={liveAutomationValues}
+            onUpdate={onUpdate}
+            onPreview={onPreview}
+            onAutomateParam={onAutomateParam}
+            onRemoveParamAutomation={onRemoveParamAutomation}
+          />
+        </>
       ) : null}
     </div>
   );
