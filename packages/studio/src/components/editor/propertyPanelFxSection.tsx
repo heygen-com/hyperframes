@@ -184,14 +184,28 @@ export function FxSection({
     [chain, onChainPreview],
   );
 
+  /**
+   * The preview handler as of the last render, held rather than closed over.
+   *
+   * The teardown below must run on teardown and at no other time, so its deps
+   * have to be empty — and `onChainPreview` is an inline arrow in the group,
+   * which re-renders on every playhead tick to move the automation readouts. A
+   * dep on it made React tear down and re-run the effect on every one of those
+   * ticks, so an audition reverted itself about 30 times a second while the
+   * pointer was still on the button: the preset was heard for a frame during
+   * playback, which is the exact case the whole affordance exists for.
+   */
+  const previewRef = useRef(onChainPreview);
+  previewRef.current = onChainPreview;
+
   // Leaving by any route other than the pointer — the element deselected, the
   // panel closed — would otherwise leave the audition playing over a chain the
   // document does not have.
   useEffect(
     () => () => {
-      if (auditionBase.current) onChainPreview?.(auditionBase.current);
+      if (auditionBase.current) previewRef.current?.(auditionBase.current);
     },
-    [onChainPreview],
+    [],
   );
 
   const applyPreset = useCallback(
@@ -426,7 +440,14 @@ export function FxSection({
                 // hear. So it says it is working rather than doing nothing
                 // visible, and whoever handles this must drop a result that
                 // arrives after the pointer has gone.
-                onMouseEnter={levelled ? undefined : () => onAuditionLevel?.(true)}
+                onMouseEnter={
+                  levelled
+                    ? undefined
+                    : () => {
+                        audition(null);
+                        onAuditionLevel?.(true);
+                      }
+                }
                 onFocus={levelled ? undefined : () => onAuditionLevel?.(true)}
               >
                 {levelled ? "Remove levelling" : "Even Out Levels"}
@@ -440,9 +461,14 @@ export function FxSection({
               // must not include it.
               className="hf-fx-add-composite rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
               title="Bass, middle and treble on one set of faders."
-              // No audition: a Tone module arrives with every band at 0 dB, so
-              // there is nothing to hear until a fader moves. A hover that
-              // changes nothing teaches that hovering does nothing.
+              // No audition of its own: a Tone module arrives with every band at
+              // 0 dB, so there is nothing to hear until a fader moves, and a
+              // hover that changes nothing teaches that hovering does nothing.
+              // It still has to call the neighbours' auditions off.
+              onMouseEnter={() => {
+                audition(null);
+                onAuditionLevel?.(false);
+              }}
               onClick={addEq}
             >
               Tone (EQ)
@@ -460,7 +486,16 @@ export function FxSection({
                   className="hf-fx-add-item rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
                   title={d.description}
                   onClick={() => addEffect(d.id)}
-                  onMouseEnter={() => audition((base) => withEffect(base, d.id))}
+                  // Cancels the levelling audition as well as starting its own.
+                  // The shelf's leave handler only fires on the way OUT of the
+                  // menu, so sliding from Even Out Levels straight to here left a
+                  // measurement in flight — and it landed on top of this one, a
+                  // levelled version of the chain as it was, written through a
+                  // channel the document never sees.
+                  onMouseEnter={() => {
+                    onAuditionLevel?.(false);
+                    audition((base) => withEffect(base, d.id));
+                  }}
                   onFocus={() => audition((base) => withEffect(base, d.id))}
                 >
                   {d.label}

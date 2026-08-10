@@ -360,6 +360,34 @@ describe("FxSection chain", () => {
       expect(back.nodes.map((n) => n.type)).toEqual(["peaking"]);
     });
 
+    it("survives the panel re-rendering under it, which playback does constantly", () => {
+      // The group re-renders on every playhead tick to move the automation
+      // readouts, handing down a fresh preview callback each time. A teardown
+      // keyed on that callback ran on every tick, so an audition reverted itself
+      // about thirty times a second — during playback, which is the only time
+      // there is anything to audition.
+      const { host, root, onChainPreview } = mount({ chain: chainOf("peaking") });
+      click(byText(host, "button", "Presets"));
+      enter(presetButton(host, "telephone"));
+      const auditions = onChainPreview.mock.calls.length;
+
+      // Same behaviour, new identity — exactly what a tick hands down.
+      act(() =>
+        root.render(
+          <FxSection
+            chain={chainOf("peaking")}
+            onChainChange={vi.fn()}
+            onChainPreview={(next) => onChainPreview(next)}
+            carve={null}
+            onCarveChange={vi.fn()}
+            sourceOptions={[{ id: "vo", label: "Voiceover" }]}
+          />,
+        ),
+      );
+
+      expect(onChainPreview.mock.calls.length).toBe(auditions);
+    });
+
     it("auditions an effect the add menu is offering", () => {
       const { host, onChainPreview, onChainChange } = mount({ chain: chainOf("peaking") });
       click(byText(host, "button", "Add effect"));

@@ -366,23 +366,21 @@ describe("AudioFxGroup dynamic carve", () => {
     );
   }
 
-  afterEach(() => vi.unstubAllGlobals());
-
   /**
-   * Hover-auditioning the leveller has to measure before there is anything to
-   * hear, and measuring a long voiceover takes seconds — by which time the
-   * pointer has usually moved on. Applying then would put levelling on a track
-   * nobody asked to level, through a channel that does not persist: audible,
-   * absent from the document, and gone on the next reload.
+   * The same voice, but the decode does not finish until it is let go.
+   *
+   * Hover-auditioning the leveller is the one path where the result can arrive
+   * after the author has moved on, so the tests that cover that need to hold the
+   * decode open across a second gesture.
    */
-  it("drops a levelling measurement that lands after the pointer has gone", async () => {
+  function stubGatedDecode(): { release: () => void; decoded: Promise<void> } {
     const sampleRate = 48000;
     const data = new Float32Array(sampleRate * 4);
     for (let i = 0; i < data.length; i++) {
       const t = i / sampleRate;
       data[i] = t > 1 && t < 3 ? 0.7 * Math.sin(2 * Math.PI * 1000 * t) : 0;
     }
-    let release: (() => void) | null = null;
+    let release = (): void => {};
     const decoded = new Promise<void>((r) => {
       release = r;
     });
@@ -399,7 +397,29 @@ describe("AudioFxGroup dynamic carve", () => {
         }
       },
     );
+    return { release: () => release(), decoded };
+  }
 
+  /** Let the held decode finish, and the measurement it feeds after it. */
+  async function settleDecode(release: () => void, decoded: Promise<void>): Promise<void> {
+    await act(async () => {
+      release();
+      await decoded;
+      await Promise.resolve();
+    });
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * Hover-auditioning the leveller has to measure before there is anything to
+   * hear, and measuring a long voiceover takes seconds — by which time the
+   * pointer has usually moved on. Applying then would put levelling on a track
+   * nobody asked to level, through a channel that does not persist: audible,
+   * absent from the document, and gone on the next reload.
+   */
+  it("drops a levelling measurement that lands after the pointer has gone", async () => {
+    const { release, decoded } = stubGatedDecode();
     const { host, onSetAttributeLive } = mount({ "fx-chain": CHAIN });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");
     act(() => byTextButton(host, "Add effect")?.click());
@@ -412,18 +432,37 @@ describe("AudioFxGroup dynamic carve", () => {
         .querySelector(".hf-fx-add-menu")
         ?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     });
-    await act(async () => {
-      release?.();
-      await decoded;
-      // Two turns: the decode resolves, then the measurement it feeds.
-      await Promise.resolve();
-    });
+    await settleDecode(release, decoded);
 
     // The revert on the way out is allowed to write; a levelling stage is not.
     const levelled = onSetAttributeLive.mock.calls.filter((c) =>
       String(c[1] ?? "").includes("fromLeveller"),
     );
     expect(levelled).toEqual([]);
+  });
+
+  /**
+   * Sliding from the leveller to the effect beside it is not leaving the menu,
+   * so the shelf's own leave never fires — and the measurement already in flight
+   * used to land on top of whatever was being auditioned next, writing a
+   * levelled version of the chain as it was through a channel the document never
+   * sees. Every entry in the shelf calls its neighbours' auditions off.
+   */
+  it("calls the levelling measurement off when the pointer moves to the effect beside it", async () => {
+    const { release, decoded } = stubGatedDecode();
+    const { host, onSetAttributeLive } = mount({ "fx-chain": CHAIN });
+    document.getElementById("bed")?.setAttribute("src", "bed.wav");
+    act(() => byTextButton(host, "Add effect")?.click());
+    act(() => byTextButton(host, "Even Out Levels")?.focus());
+    // Straight to a neighbour, without ever leaving the shelf.
+    act(() =>
+      byTextButton(host, "Reverb")?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })),
+    );
+    await settleDecode(release, decoded);
+
+    expect(
+      onSetAttributeLive.mock.calls.filter((c) => String(c[1] ?? "").includes("fromLeveller")),
+    ).toEqual([]);
   });
 
   it("automates the carve filters' gain from the voice, in the bed's own time", async () => {
