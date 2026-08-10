@@ -55,8 +55,6 @@
  * other edit, so it reaches the preview by the same debounced post as the rest.
  */
 
-const PLAYER_RANGE = "0.7";
-
 export const VariablesExplorer = ({
   previewSrc,
   compositionId,
@@ -1528,7 +1526,8 @@ export const VariablesExplorer = ({
     "<!doctype html><html><head><meta charset='utf-8'>",
     "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}",
     "hyperframes-player{display:block;width:100%;height:100%}</style>",
-    `<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@${PLAYER_RANGE}/dist/hyperframes-player.global.js"></' + 'script>`,
+    '<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"></' +
+      "script>",
     "</head><body><script>",
     "(function(){",
     `  var PAYLOAD = ${JSON.stringify(previewSrc)};`,
