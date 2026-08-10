@@ -10,7 +10,7 @@
  * with the mechanism. See `plans/audio-fx-ux/README.md` §Decided.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   defaultAudioFxParams,
   getAudioFxDef,
@@ -21,6 +21,29 @@ import {
 import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
 import { FxParams } from "./propertyPanelFxControls.js";
+
+/**
+ * The one control that carries the module, if it has one.
+ *
+ * "Two faces": a module opens on its name, a line about what it is for, and one
+ * knob — the rest is one click away and never in the way. Nothing is hidden; it
+ * is ordered.
+ *
+ * `primary` is either a real parameter key or the string "strength", which means
+ * the module wants a single DERIVED control over several parameters — the
+ * `PROFILES` idea, whose figures are proposed rather than measured and which has
+ * not shipped. Until it does, those five effects (compressor, gate, saturate,
+ * reverb, bitcrush) open on all of their controls, which is honest: the one knob
+ * they want does not exist yet, and inventing one would be a knob that lies.
+ */
+function primaryParamOf(def: HfAudioFxDef): string | null {
+  const primary = EFFECT_COPY[def.id]?.primary;
+  // "strength" names no parameter, which is exactly what makes this work: the
+  // day `PROFILES` ships and a derived `strength` knob really is in the
+  // registry, this starts using it without being told.
+  if (!primary) return null;
+  return def.params.some((p) => p.key === primary) ? primary : null;
+}
 
 /**
  * The registry's definition with the plain names written over it.
@@ -250,7 +273,17 @@ export function FxNodeRow({
 }: FxNodeRowProps) {
   const registryDef = getAudioFxDef(node.type);
   const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
-  if (!registryDef || !def) return null;
+  const primary = registryDef ? primaryParamOf(registryDef) : null;
+  /** The same def cut down to the one knob, so the open face reuses every wire. */
+  const onlyPrimary = useMemo(
+    () => (def && primary ? { ...def, params: def.params.filter((p) => p.key === primary) } : def),
+    [def, primary],
+  );
+  // Local, because nothing outside the row needs to know. Keyed by node id like
+  // the row itself, so it stays with its effect across a reorder.
+  const [details, setDetails] = useState(false);
+  if (!registryDef || !def || !onlyPrimary) return null;
+  const copy = EFFECT_COPY[node.type];
   const bypassed = node.enabled === false;
   const params = node.params ?? defaultAudioFxParams(node.type);
   // What this effect is doing to the sound, as a sentence. The rack is read top
@@ -285,24 +318,68 @@ export function FxNodeRow({
       ) : null}
       {open ? (
         <>
-          {/* The DSP name, once, where the mechanism is. An author who wants to
-              know what "Remove Rumble" really is finds out by opening it; one who
-              does not never has to meet the word. */}
-          <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
-            Details — {registryDef.label}
-          </p>
-          <FxNodeParams
-            node={node}
-            def={def}
-            index={index}
-            disabled={Boolean(disabled) || bypassed}
-            automatedTargets={automatedTargets}
-            liveAutomationValues={liveAutomationValues}
-            onUpdate={onUpdate}
-            onPreview={onPreview}
-            onAutomateParam={onAutomateParam}
-            onRemoveParamAutomation={onRemoveParamAutomation}
-          />
+          {/* What it is for, before what it is made of. */}
+          {copy?.does ? (
+            <p className="hf-fx-node-does border-t border-panel-border-input px-1.5 py-1 text-[10px] text-panel-text-4">
+              {copy.does}
+            </p>
+          ) : null}
+          {primary && !details ? (
+            <>
+              <FxNodeParams
+                node={node}
+                def={onlyPrimary}
+                index={index}
+                disabled={Boolean(disabled) || bypassed}
+                automatedTargets={automatedTargets}
+                liveAutomationValues={liveAutomationValues}
+                onUpdate={onUpdate}
+                onPreview={onPreview}
+                onAutomateParam={onAutomateParam}
+                onRemoveParamAutomation={onRemoveParamAutomation}
+              />
+              {/* What the two ends of that knob sound like. A number tells an
+                  author where the control is; this tells them which way to move
+                  it, which is the question they actually have. */}
+              {copy?.primaryEnds ? (
+                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-4">
+                  <span className="truncate">{copy.primaryEnds.low}</span>
+                  <span className="truncate text-right">{copy.primaryEnds.high}</span>
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          {/* The DSP name lives on the disclosure, so it is read at the moment
+              the author asks what this really is — and never before. */}
+          {primary ? (
+            <button
+              type="button"
+              className="hf-fx-node-details flex w-full items-center gap-1 border-t border-panel-border-input px-1.5 py-1 text-left font-mono text-[9px] uppercase tracking-wide text-panel-text-4 hover:text-panel-text-0"
+              aria-expanded={details}
+              onClick={() => setDetails((was) => !was)}
+            >
+              <span aria-hidden="true">{details ? "\u25BE" : "\u25B8"}</span>
+              Details — {registryDef.label}
+            </button>
+          ) : (
+            <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+              Details — {registryDef.label}
+            </p>
+          )}
+          {details || !primary ? (
+            <FxNodeParams
+              node={node}
+              def={def}
+              index={index}
+              disabled={Boolean(disabled) || bypassed}
+              automatedTargets={automatedTargets}
+              liveAutomationValues={liveAutomationValues}
+              onUpdate={onUpdate}
+              onPreview={onPreview}
+              onAutomateParam={onAutomateParam}
+              onRemoveParamAutomation={onRemoveParamAutomation}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

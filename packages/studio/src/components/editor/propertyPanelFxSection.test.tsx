@@ -102,6 +102,17 @@ const click = (el: Element | null | undefined) => {
     (el as HTMLElement).click();
   });
 };
+/**
+ * Open a module's Details, where every control that is not the primary one now
+ * lives — a module opens on one knob and the rest is one click away.
+ */
+function openDetails(host: HTMLElement, index = 0): void {
+  const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(".hf-fx-node-details"));
+  const button = buttons[index];
+  if (!button) throw new Error("no Details disclosure to open");
+  act(() => button.click());
+}
+
 const byText = (host: HTMLElement, sel: string, text: string) =>
   Array.from(host.querySelectorAll(sel)).find((e) => e.textContent?.trim() === text);
 
@@ -284,6 +295,9 @@ describe("FxSection chain", () => {
       });
 
     render(chainOfNodes(a, b));
+    // Frequency is behind Details for a peaking node — the module opens on how
+    // much, now that picking the module is what picks the range.
+    openDetails(host);
     // Only the first card is open, which is the one being edited.
     const openFrequency = (): HTMLInputElement =>
       host.querySelector<HTMLInputElement>(".hf-fx-node .hf-fx-number")!;
@@ -295,6 +309,9 @@ describe("FxSection chain", () => {
     // The author moves that effect down; the other one takes the open slot.
     render(chainOfNodes(b, a));
 
+    // Its own Details, not the one that was open: the disclosure is per module,
+    // so the effect arriving in the slot arrives closed like any other.
+    openDetails(host);
     expect(openFrequency().value).toBe("1600");
   });
 
@@ -331,9 +348,31 @@ describe("FxSection chain", () => {
     expect(name).not.toBe(getAudioFxDef("highpass")?.label);
     // And a sentence under it, so the rack reads top to bottom.
     expect(node.querySelector(".hf-fx-node-summary")?.textContent).toContain("Cutting everything");
-    // The first node is open by default, which is where the DSP name lives.
-    expect(node.querySelector(".hf-fx-node-mechanism")?.textContent).toContain(
-      getAudioFxDef("highpass")?.label,
+    // Open, it says what it is for and offers ONE knob — the rest is behind a
+    // disclosure, which is also the only place the DSP name appears.
+    expect(node.querySelector(".hf-fx-node-does")?.textContent).toBe(EFFECT_COPY.highpass?.does);
+    expect(node.querySelectorAll(".hf-fx-row")).toHaveLength(1);
+    const details = node.querySelector(".hf-fx-node-details");
+    expect(details?.textContent).toContain(getAudioFxDef("highpass")?.label);
+    expect(details?.getAttribute("aria-expanded")).toBe("false");
+
+    openDetails(host);
+    expect(node.querySelectorAll(".hf-fx-row").length).toBe(
+      getAudioFxDef("highpass")?.params.length,
+    );
+  });
+
+  it("opens a module on all of its controls when its one knob does not exist yet", () => {
+    // Five effects want a single DERIVED control over several parameters — the
+    // `PROFILES` idea, whose figures are proposed rather than measured. Until it
+    // ships they open on everything, which is honest: inventing one knob for
+    // them now would be a knob that lies about what it sets.
+    const { host } = mount({ chain: chainOf("compressor") });
+    const node = fxCard(host);
+    expect(EFFECT_COPY.compressor?.primary).toBe("strength");
+    expect(node.querySelector(".hf-fx-node-details")).toBeNull();
+    expect(node.querySelectorAll(".hf-fx-row").length).toBe(
+      getAudioFxDef("compressor")?.params.length,
     );
   });
 
@@ -654,6 +693,9 @@ describe("FxSection chain", () => {
     // Persisting on every input event refreshes the preview, which reloads the
     // composition and restarts audio — that is what made playback stutter.
     const { host, onChainChange, onChainPreview } = mount({ chain: chainOf("peaking") });
+    // Details, because this is about the drag mechanics on a real control and
+    // the frequency it asserts on is not the one knob the module opens with.
+    openDetails(host);
     const slider = fxCard(host).querySelector<HTMLInputElement>(".hf-fx-slider")!;
     act(() => slider.dispatchEvent(new Event("pointerdown", { bubbles: true })));
     for (const v of ["5000", "10000", "15000"]) {
@@ -705,6 +747,7 @@ describe("FxSection chain", () => {
       sourceOptions: [{ id: "vo", label: "Voiceover" }],
     };
     const { host, root } = renderInto(<FxSection {...shared} chain={chainOf("peaking")} />);
+    openDetails(host);
     const slider = fxCard(host).querySelector<HTMLInputElement>(".hf-fx-slider")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     act(() => slider.dispatchEvent(new Event("pointerdown", { bubbles: true })));
@@ -747,6 +790,7 @@ describe("FxSection chain", () => {
 
   it("clamps a typed value into the renderable range", () => {
     const { host, onChainChange } = mount({ chain: chainOf("peaking") });
+    openDetails(host);
     const input = fxCard(host).querySelector<HTMLInputElement>(".hf-fx-number")!;
     typeInto(input, "999999");
     // React delegates onBlur through focusout, which is the event that bubbles.
@@ -1024,7 +1068,9 @@ describe("automation in the panel", () => {
     expect(row.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(true);
     expect(row.querySelector<HTMLInputElement>('input[type="number"]')?.disabled).toBe(true);
     expect(row.hasAttribute("data-automated")).toBe(true);
-    // A sibling parameter on the same effect stays editable.
+    // A sibling parameter on the same effect stays editable — one click in,
+    // which is where every control that is not the primary one lives.
+    openDetails(host);
     const q = rowFor(host, plainLabel("lowpass", "q"))!;
     expect(q.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(false);
   });

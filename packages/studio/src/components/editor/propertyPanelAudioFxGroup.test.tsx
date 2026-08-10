@@ -64,6 +64,17 @@ function audioSelection(
   return { dataAttributes, id: "bed", element: bed } as unknown as DomEditSelection;
 }
 
+/**
+ * Open a module's Details, where every control that is not the primary one now
+ * lives — a module opens on one knob and the rest is one click away.
+ */
+function openDetails(host: HTMLElement, index = 0): void {
+  const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(".hf-fx-node-details"));
+  const button = buttons[index];
+  if (!button) throw new Error("no Details disclosure to open");
+  act(() => button.click());
+}
+
 /** A button found by the text it contains, since several now read as sentences. */
 function byTextButton(host: HTMLElement, text: string): HTMLButtonElement | undefined {
   return Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes(text));
@@ -111,7 +122,11 @@ const writeTo = (calls: unknown[][], attr: string): unknown[] | undefined =>
 describe("AudioFxGroup automation", () => {
   it("renders the chain's parameters", () => {
     const { host } = mount({ "fx-chain": CHAIN });
+    // The one knob that carries the module is on the open face; the rest are one
+    // click away, which is what Details is.
     expect(rowFor(host, plainLabel("lowpass", "frequency"))).toBeTruthy();
+    expect(rowFor(host, plainLabel("lowpass", "q"))).toBeNull();
+    openDetails(host);
     expect(rowFor(host, plainLabel("lowpass", "q"))).toBeTruthy();
   });
 
@@ -139,6 +154,7 @@ describe("AudioFxGroup automation", () => {
         lanes: [{ target: "volume", points: [{ t: 0, v: 0.5 }] }],
       }),
     });
+    openDetails(host);
     act(() =>
       (
         rowFor(host, plainLabel("lowpass", "q"))!.querySelector(
@@ -164,6 +180,7 @@ describe("AudioFxGroup automation", () => {
     const cutoff = rowFor(host, plainLabel("lowpass", "frequency"))!;
     expect(cutoff.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(true);
     expect(cutoff.hasAttribute("data-automated")).toBe(true);
+    openDetails(host);
     expect(
       rowFor(host, plainLabel("lowpass", "q"))!.querySelector<HTMLInputElement>(
         'input[type="range"]',
