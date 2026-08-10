@@ -709,6 +709,46 @@
     {
       "name": "beat-freeze-cut",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-badge-pill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-bracket-frame",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-glass-panel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-hairline-rule",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-slab-wipe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-split-flap",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-stacked-caps",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-tape-strike",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-ticker-crawl",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-underline-grow",
+      "type": "hyperframes:block"
     }
   ]
 }

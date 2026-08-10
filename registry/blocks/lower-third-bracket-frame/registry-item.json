@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-bracket-frame",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Bracket Frame",
+  "description": "Four corner brackets draw themselves around the text. No fill, so the footage stays visible.",
+  "tags": ["lower-third", "podcast", "interview", "no-fill"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-bracket-frame.html",
+      "target": "compositions/lower-third-bracket-frame.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

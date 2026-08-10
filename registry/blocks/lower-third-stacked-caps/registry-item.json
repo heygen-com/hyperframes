@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-stacked-caps",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Stacked Caps",
+  "description": "Three lines of condensed caps, each masked up in sequence. Returning guests and episode credits.",
+  "tags": ["lower-third", "podcast", "interview", "condensed"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-stacked-caps.html",
+      "target": "compositions/lower-third-stacked-caps.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

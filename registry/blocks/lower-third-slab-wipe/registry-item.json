@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-slab-wipe",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Slab Wipe",
+  "description": "Solid bar clips open left to right under a heavy slab serif. Interview and documentary.",
+  "tags": ["lower-third", "podcast", "interview", "documentary"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-slab-wipe.html",
+      "target": "compositions/lower-third-slab-wipe.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

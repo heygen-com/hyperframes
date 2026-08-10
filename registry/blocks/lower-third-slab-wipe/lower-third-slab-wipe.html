@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lower Third / Slab Wipe</title>
+    <style>
+      /* HyperFrames rewrites this @import to a local base64 @fontsource copy at
+     compile time, so there is no network round-trip at render. */
+      @import url("https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;900&family=Barlow+Condensed:wght@400;600&family=Zilla+Slab:wght@700&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;700&display=block");
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: geometricPrecision;
+        font-kerning: normal;
+
+        /* ---- shared token contract (override these to theme the block) ---- */
+        --lt-inset-x: 96px; /* 5% safe area */
+        --lt-inset-y: 64px;
+        --lt-max-w: 1180px; /* overflow guard shrinks type past this */
+        --lt-accent: #e8452b; /* broadcast red */
+        --lt-name-size: 76px;
+        --lt-title-size: 34px;
+        --lt-affil-size: 26px;
+        --lt-track: 0.01em;
+
+        --lt-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+        --lt-cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+        --lt-slab: "Zilla Slab", Georgia, serif;
+        --lt-serif: "Instrument Serif", Georgia, serif;
+        --lt-mono: "IBM Plex Mono", Consolas, monospace;
+      }
+      #root[data-theme="dark"] {
+        --lt-fg: #ffffff;
+        --lt-fg-dim: rgba(255, 255, 255, 0.76);
+        --lt-panel: rgba(12, 14, 18, 0.86);
+        --lt-hairline: rgba(255, 255, 255, 0.45);
+        --lt-shade: 0 2px 14px rgba(0, 0, 0, 0.62);
+        --lt-scrim-rgb: 0, 0, 0;
+        --lt-accent-type: #ffd3c7; /* accent as TYPE - tinted to clear AA */
+      }
+      #root[data-theme="light"] {
+        --lt-fg: #0c0e12;
+        --lt-fg-dim: rgba(12, 14, 18, 0.72);
+        --lt-panel: rgba(255, 255, 255, 0.93);
+        --lt-hairline: rgba(12, 14, 18, 0.35);
+        --lt-shade: 0 2px 14px rgba(255, 255, 255, 0.55);
+        --lt-scrim-rgb: 255, 255, 255;
+        --lt-accent-type: #5c1206;
+      }
+      /* Every block anchors to the same corner and flips on data-side. */
+      .lt-anchor {
+        position: absolute;
+        bottom: var(--lt-inset-y);
+        left: var(--lt-inset-x);
+        max-width: var(--lt-max-w);
+        will-change: transform, opacity;
+        isolation: isolate;
+      }
+      /* Contrast plate for the blocks that deliberately carry no panel.
+     Sized and weighted so `hyperframes validate` clears 4.5:1 even over
+     blown-out footage. See contrast.mjs for the arithmetic. */
+      .lt-scrim {
+        position: absolute;
+        z-index: -1;
+        pointer-events: none;
+        left: -150px;
+        right: -280px;
+        top: -80px;
+        bottom: -170px;
+        background: radial-gradient(
+          115% 135% at 0% 100%,
+          rgba(var(--lt-scrim-rgb), 0.86) 0%,
+          rgba(var(--lt-scrim-rgb), 0.62) 45%,
+          rgba(var(--lt-scrim-rgb), 0) 80%
+        );
+      }
+      #root[data-side="right"] .lt-scrim {
+        background: radial-gradient(
+          115% 135% at 100% 100%,
+          rgba(var(--lt-scrim-rgb), 0.86) 0%,
+          rgba(var(--lt-scrim-rgb), 0.62) 45%,
+          rgba(var(--lt-scrim-rgb), 0) 80%
+        );
+      }
+      #root[data-side="right"] .lt-anchor {
+        left: auto;
+        right: var(--lt-inset-x);
+        text-align: right;
+      }
+      .lt-mask {
+        overflow: hidden;
+        display: block;
+      }
+      .lt-name {
+        color: var(--lt-fg);
+        font-size: var(--lt-name-size);
+        line-height: 1.02;
+        letter-spacing: var(--lt-track);
+        text-shadow: var(--lt-shade);
+        margin: 0;
+        white-space: nowrap;
+      }
+      .lt-title {
+        color: var(--lt-fg-dim);
+        font-size: var(--lt-title-size);
+        line-height: 1.2;
+        margin: 0;
+        text-shadow: var(--lt-shade);
+      }
+      .lt-affil {
+        color: var(--lt-fg-dim);
+        font-size: var(--lt-affil-size);
+        line-height: 1.2;
+        margin: 0;
+        text-shadow: var(--lt-shade);
+      }
+      /* ---- lower-third-slab-wipe ---- */
+
+      .lower-third-slab-wipe .sw-bar {
+        background: var(--lt-panel);
+        border-left: 12px solid var(--lt-accent);
+        padding: 26px 54px 28px 34px;
+        clip-path: inset(0 100% 0 0);
+      }
+      #root[data-side="right"] .lower-third-slab-wipe .sw-bar {
+        border-left: 0;
+        border-right: 12px solid var(--lt-accent);
+        padding: 26px 34px 28px 54px;
+        clip-path: inset(0 0 0 100%);
+      }
+      .lower-third-slab-wipe .sw-name {
+        font-family: var(--lt-slab);
+        font-weight: 700;
+        text-shadow: none;
+        font-size: calc(var(--lt-name-size) * 0.92);
+        letter-spacing: -0.012em;
+      }
+      .lower-third-slab-wipe .sw-title {
+        font-family: var(--lt-sans);
+        font-weight: 300;
+        text-shadow: none;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: calc(var(--lt-title-size) * 0.82);
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lower-third-slab-wipe"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-theme="dark"
+      data-side="left"
+      data-lt-duration="5"
+    >
+      <div
+        id="lower-third-slab-wipe-clip"
+        class="clip lower-third-slab-wipe"
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+      >
+        <div class="lt-anchor sw">
+          <div class="sw-bar">
+            <h1 class="lt-name sw-name">Dr. Amara Osei</h1>
+            <p class="lt-title sw-title">Guest &middot; Neuroscientist, UCL</p>
+          </div>
+        </div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          var ID = "lower-third-slab-wipe";
+          var host = document.getElementById("root");
+          var root = document.getElementById("lower-third-slab-wipe-clip");
+          var q = function (sel) {
+            return root.querySelector(sel);
+          };
+          var qa = function (sel) {
+            return Array.prototype.slice.call(root.querySelectorAll(sel));
+          };
+
+          /* ---- content contract -------------------------------------------
+         Set data-lt-* on #root to fill the slots. Omit an attribute to keep
+         the markup default; set it to "" to drop that line entirely. Runs
+         once at load, before the timeline exists, so a seek is unaffected. */
+          var SLOTS = {
+            "data-lt-eyebrow": ".lt-eyebrow",
+            "data-lt-name": ".lt-name",
+            "data-lt-title": ".lt-title",
+            "data-lt-affil": ".lt-affil",
+          };
+          Object.keys(SLOTS).forEach(function (attr) {
+            if (!host.hasAttribute(attr)) return;
+            var el = q(SLOTS[attr]);
+            if (!el) return;
+            var val = host.getAttribute(attr);
+            if (val === "") {
+              el.style.display = "none";
+              return;
+            }
+            el.textContent = val;
+          });
+
+          /* ---- timing contract --------------------------------------------
+         One number drives entrance, exit and kill, and rewrites the clip's
+         own data-duration so the renderer and the timeline cannot drift. */
+          var END = parseFloat(host.getAttribute("data-lt-duration"));
+          if (!(END > 1.2)) END = 5;
+          var IN = 0.0;
+          var OUT = Math.max(END - 0.8, IN + 0.9);
+          root.setAttribute("data-duration", String(END));
+
+          /* Overflow guard. Runs once at load, before the timeline exists, so it
+         never affects a seek. Shrinks the name until it clears the safe area. */
+          (function fit() {
+            var el = q(".lt-name");
+            if (!el || !el.scrollWidth) return;
+            var limit =
+              parseFloat(
+                getComputedStyle(document.getElementById("root")).getPropertyValue("--lt-max-w"),
+              ) || 1180;
+            var size = parseFloat(getComputedStyle(el).fontSize);
+            var guard = 0;
+            while (el.scrollWidth > limit && size > 44 && guard++ < 48) {
+              size -= 2;
+              document.getElementById("root").style.setProperty("--lt-name-size", size + "px");
+            }
+          })();
+
+          var tl = gsap.timeline({ paused: true });
+
+          /* Scrim fades with the block so it never lands as a hard rectangle. */
+          var scrim = q(".lt-scrim");
+          if (scrim) {
+            tl.from(scrim, { opacity: 0, duration: 0.5, ease: "power2.out" }, IN);
+            tl.to(scrim, { opacity: 0, duration: 0.34, ease: "power2.in" }, OUT - 0.1);
+          }
+
+          var side = document.getElementById("root").getAttribute("data-side");
+          var closed = side === "right" ? "inset(0px 0px 0px 100%)" : "inset(0px 100% 0px 0px)";
+          var open = "inset(0px 0px 0px 0px)";
+          tl.fromTo(
+            q(".sw-bar"),
+            { clipPath: closed },
+            { clipPath: open, duration: 0.66, ease: "power4.out" },
+            IN,
+          );
+          tl.from(
+            [q(".sw-name"), q(".sw-title")],
+            { opacity: 0, x: -26, duration: 0.5, stagger: 0.1, ease: "power2.out" },
+            IN + 0.28,
+          );
+          tl.to(q(".sw-bar"), { clipPath: closed, duration: 0.46, ease: "power3.in" }, OUT - 0.1);
+
+          /* Rule 5 - hard kill. Nothing lingers past the clip. */
+          tl.to(root, { opacity: 0, duration: 0.28, ease: "power1.in" }, OUT);
+          tl.set(root, { opacity: 0, visibility: "hidden" }, END);
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines[ID] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

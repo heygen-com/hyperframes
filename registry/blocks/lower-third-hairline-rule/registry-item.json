@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lower-third-hairline-rule",
+  "type": "hyperframes:block",
+  "title": "Lower Third / Hairline Rule",
+  "description": "Editorial restraint. A one-pixel rule draws across, then name and title stagger up through masks.",
+  "tags": ["lower-third", "podcast", "interview", "editorial"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "files": [
+    {
+      "path": "lower-third-hairline-rule.html",
+      "target": "compositions/lower-third-hairline-rule.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
