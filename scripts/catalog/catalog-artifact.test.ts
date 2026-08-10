@@ -4,10 +4,13 @@ import { join } from "node:path";
 
 import {
   buildArtifact,
+  LOCAL_VECTOR_BATCH_SIZE,
+  localVectorRevision,
   MANIFEST_SCHEMA_VERSION,
   movesMissingFromRegistry,
   parseShelf,
   payloadDigest,
+  sha256Hex,
   sortedNames,
   verifyArtifact,
   type Embedder,
@@ -144,6 +147,68 @@ describe("build contract", () => {
     const ragged: Embedder = async (texts) =>
       texts.map((_, i) => (i === 0 ? [1, 1, 1, 1] : [1, 1]));
     await expect(build({ embed: ragged })).rejects.toThrow(/expected 4/);
+  });
+});
+
+describe("local vector revision", () => {
+  it("is stable across filesystem traversal order", () => {
+    const first = new Map([
+      ["whip-pan", "Fast transition"],
+      ["count-up", "Animated number"],
+    ]);
+    const reversed = new Map([...first].reverse());
+
+    expect(localVectorRevision("model", "revision", 384, first)).toBe(
+      localVectorRevision("model", "revision", 384, reversed),
+    );
+  });
+
+  it("uses locale-independent code-unit ordering", () => {
+    const corpus = new Map([
+      ["ä-item", "Third"],
+      ["a-item", "First"],
+      ["z-item", "Second"],
+    ]);
+    const expectedRows = [
+      ["a-item", "First"],
+      ["z-item", "Second"],
+      ["ä-item", "Third"],
+    ];
+
+    expect(localVectorRevision("model", "revision", 384, corpus)).toBe(
+      sha256Hex(
+        JSON.stringify({
+          model: "model",
+          modelRevision: "revision",
+          dimensions: 384,
+          batchSize: LOCAL_VECTOR_BATCH_SIZE,
+          rows: expectedRows,
+        }),
+      ),
+    );
+  });
+
+  it("changes when searchable text changes under the same name", () => {
+    const before = new Map([["whip-pan", "Fast transition"]]);
+    const after = new Map([["whip-pan", "Fast energetic transition"]]);
+
+    expect(localVectorRevision("model", "revision", 384, before)).not.toBe(
+      localVectorRevision("model", "revision", 384, after),
+    );
+  });
+
+  it("changes when the embedding contract changes", () => {
+    const corpus = new Map([["whip-pan", "Fast transition"]]);
+
+    expect(localVectorRevision("model-a", "revision", 384, corpus)).not.toBe(
+      localVectorRevision("model-b", "revision", 384, corpus),
+    );
+    expect(localVectorRevision("model-a", "revision", 384, corpus)).not.toBe(
+      localVectorRevision("model-a", "revision", 768, corpus),
+    );
+    expect(localVectorRevision("model-a", "revision-a", 384, corpus)).not.toBe(
+      localVectorRevision("model-a", "revision-b", 384, corpus),
+    );
   });
 });
 

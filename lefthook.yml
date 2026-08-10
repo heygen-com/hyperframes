@@ -29,7 +29,7 @@ pre-commit:
       # opt-in they were never asked to install; CI names the gap instead.
       run: |
         bun scripts/catalog/build-local-vectors.ts || { [ $? -eq 3 ] && exit 0; exit 1; }
-        git add registry/catalog-artifact/local-vectors.json registry/catalog-artifact/local-vectors.bin
+        git add registry/registry.json registry/catalog-artifact/local-vectors.json registry/catalog-artifact/local-vectors.bin
     typecheck:
       glob: "*.{ts,tsx}"
       run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit && cd ../.. && bunx tsc --noEmit -p scripts/tsconfig.json

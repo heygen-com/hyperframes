@@ -25,6 +25,17 @@ interface LocalVectorSet {
   vectors: Float32Array;
 }
 
+interface LocalVectorMetadata {
+  names: string[];
+  dimensions: number;
+  revision?: string;
+}
+
+export interface FetchLocalVectorOptions {
+  directory?: string;
+  expectedRevision?: string;
+}
+
 const CATALOG_ARTIFACT_TIMEOUT_MS = 30_000;
 
 /** Where the bundled vector set lives, overridable for development. */
@@ -57,7 +68,10 @@ function vectorPairAgrees(fetched: Array<[string, Buffer]>): boolean {
   const bin = fetched.find(([file]) => file === "local-vectors.bin")?.[1];
   if (!meta || !bin) return false;
   try {
-    const parsed = JSON.parse(meta.toString("utf-8")) as { names?: string[]; dimensions?: number };
+    const parsed = JSON.parse(meta.toString("utf-8")) as {
+      names?: string[];
+      dimensions?: number;
+    };
     if (parsed.dimensions !== LOCAL_MODEL_DIMENSIONS) return false;
     return bin.byteLength === (parsed.names?.length ?? -1) * LOCAL_MODEL_DIMENSIONS * 4;
   } catch {
@@ -65,10 +79,27 @@ function vectorPairAgrees(fetched: Array<[string, Buffer]>): boolean {
   }
 }
 
+/** The registry manifest and fetched pair must describe the same generation. */
+function vectorRevisionAgrees(
+  fetched: Array<[string, Buffer]>,
+  expectedRevision?: string,
+): boolean {
+  if (expectedRevision === undefined) return true;
+  const meta = fetched.find(([file]) => file === "local-vectors.json")?.[1];
+  if (!meta) return false;
+  try {
+    const parsed = JSON.parse(meta.toString("utf-8")) as { revision?: unknown };
+    return parsed.revision === expectedRevision;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchLocalVectors(
   registryBaseUrl: string,
-  directory = localVectorDirectory(),
+  options: FetchLocalVectorOptions = {},
 ): Promise<boolean> {
+  const directory = options.directory ?? localVectorDirectory();
   const base = registryBaseUrl.replace(/\/+$/, "");
   try {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -88,7 +119,9 @@ export async function fetchLocalVectors(
     // discovering the mismatch at load time leaves a cache that fails every
     // subsequent search until someone deletes it by hand, and it is the only
     // point where a truncated or wrong-model response can still be refused.
-    if (!vectorPairAgrees(fetched)) return false;
+    if (!vectorPairAgrees(fetched) || !vectorRevisionAgrees(fetched, options.expectedRevision)) {
+      return false;
+    }
     // 0o600: the cache is this user's, and the directory may be world-writable
     // when the caller overrides it.
     for (const [file, bytes] of fetched) {
@@ -108,10 +141,9 @@ export function hasLocalVectors(directory = localVectorDirectory()): boolean {
 }
 
 function loadLocalVectors(directory = localVectorDirectory()): LocalVectorSet {
-  const meta = JSON.parse(readFileSync(join(directory, "local-vectors.json"), "utf-8")) as {
-    names: string[];
-    dimensions: number;
-  };
+  const meta = JSON.parse(
+    readFileSync(join(directory, "local-vectors.json"), "utf-8"),
+  ) as LocalVectorMetadata;
   const buffer = readFileSync(join(directory, "local-vectors.bin"));
   const vectors = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4);
 
@@ -147,6 +179,19 @@ export function localVectorNames(directory = localVectorDirectory()): string[] {
     return meta.names ?? [];
   } catch {
     return [];
+  }
+}
+
+/** Revision of the last complete pair, absent for pre-revision and unreadable caches. */
+export function cachedLocalVectorRevision(directory = localVectorDirectory()): string | undefined {
+  if (!hasLocalVectors(directory)) return undefined;
+  try {
+    const meta = JSON.parse(readFileSync(join(directory, "local-vectors.json"), "utf-8")) as {
+      revision?: unknown;
+    };
+    return typeof meta.revision === "string" ? meta.revision : undefined;
+  } catch {
+    return undefined;
   }
 }
 

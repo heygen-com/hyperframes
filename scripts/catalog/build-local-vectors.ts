@@ -17,16 +17,20 @@
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { RegistryManifest } from "../../packages/core/src/index.js";
 
 import {
   LOCAL_MODEL_DIMENSIONS,
   LOCAL_MODEL_ID,
+  LOCAL_MODEL_REVISION,
 } from "../../packages/cli/src/registry/localModel.js";
 import { loadLocalEmbedder } from "../../packages/cli/src/registry/localEmbedder.js";
 import { isLocalModelReady } from "../../packages/cli/src/registry/localModel.js";
-import { catalogFromRegistry } from "./catalog-artifact.js";
-
-const BATCH = 16;
+import {
+  catalogFromRegistry,
+  LOCAL_VECTOR_BATCH_SIZE,
+  localVectorRevision,
+} from "./catalog-artifact.js";
 
 /** Distinct from 1 so the pre-commit hook can tell "cannot" from "failed". */
 const EXIT_NO_MODEL = 3;
@@ -49,11 +53,13 @@ async function embedInBatches(
   embedder: Awaited<ReturnType<typeof loadLocalEmbedder>>,
 ): Promise<number[][]> {
   const vectors: number[][] = [];
-  for (let start = 0; start < names.length; start += BATCH) {
-    const slice = names.slice(start, start + BATCH);
+  for (let start = 0; start < names.length; start += LOCAL_VECTOR_BATCH_SIZE) {
+    const slice = names.slice(start, start + LOCAL_VECTOR_BATCH_SIZE);
     // Passages carry no query instruction; only queries do.
     vectors.push(...(await embedder.embed(slice.map((name) => catalog[name] as string))));
-    process.stdout.write(`\r  embedded ${Math.min(start + BATCH, names.length)}/${names.length}`);
+    process.stdout.write(
+      `\r  embedded ${Math.min(start + LOCAL_VECTOR_BATCH_SIZE, names.length)}/${names.length}`,
+    );
   }
   process.stdout.write("\n");
   return vectors;
@@ -91,6 +97,12 @@ async function main(): Promise<void> {
   const catalog = Object.fromEntries(catalogMap);
   const names = Object.keys(catalog).sort();
   if (names.length === 0) throw new Error(`no registry items found under ${registryDir}`);
+  const revision = localVectorRevision(
+    LOCAL_MODEL_ID,
+    LOCAL_MODEL_REVISION,
+    LOCAL_MODEL_DIMENSIONS,
+    catalogMap,
+  );
   // Embedding needs the model, and the model is a 32 MB opt-in that most
   // contributors will not have. Say so and stop, rather than failing inside the
   // ONNX loader with an ENOENT that names a path nobody set.
@@ -113,13 +125,20 @@ async function main(): Promise<void> {
   writeFileSync(join(dir, "local-vectors.bin"), Buffer.from(flat.buffer));
   writeFileSync(
     join(dir, "local-vectors.json"),
-    `${JSON.stringify({ model: LOCAL_MODEL_ID, dimensions: LOCAL_MODEL_DIMENSIONS, names }, null, 2)}\n`,
+    `${JSON.stringify({ model: LOCAL_MODEL_ID, modelRevision: LOCAL_MODEL_REVISION, dimensions: LOCAL_MODEL_DIMENSIONS, revision, names }, null, 2)}\n`,
+  );
+  const registryPath = join(registryDir, "registry.json");
+  const registry = JSON.parse(readFileSync(registryPath, "utf-8")) as RegistryManifest;
+  writeFileSync(
+    registryPath,
+    `${JSON.stringify({ ...registry, catalogArtifact: { revision } }, null, 2)}\n`,
   );
 
   const megabytes = (flat.byteLength / 1024 / 1024).toFixed(2);
   console.log(`moves      ${names.length}`);
   console.log(`model      ${LOCAL_MODEL_ID}`);
   console.log(`dimensions ${LOCAL_MODEL_DIMENSIONS}`);
+  console.log(`revision   ${revision}`);
   console.log(`payload    ${megabytes} MB`);
   console.log(`written    ${dir}`);
 }

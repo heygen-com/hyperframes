@@ -12,7 +12,8 @@ export const examples: Example[] = [
 import * as clack from "@clack/prompts";
 import { type ItemType } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { listRegistryItems, loadAllItems } from "../registry/resolver.js";
+import { loadAllItems } from "../registry/resolver.js";
+import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
@@ -21,12 +22,14 @@ import { searchByWords } from "../registry/localSearch.js";
 import {
   downloadOfferMessage,
   ensureLocalModel,
+  type LocalModelStatus,
   localModelStatus,
   nonInteractiveConsentMessage,
   recordLocalModelConsent,
 } from "../registry/localModel.js";
 import { localRuntimeAvailable } from "../registry/localEmbedder.js";
 import {
+  cachedLocalVectorRevision,
   fetchLocalVectors,
   hasLocalVectors,
   localSemanticRanking,
@@ -46,9 +49,11 @@ import {
 // fallow-ignore-next-line complexity
 async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
+  artifactRevision?: string;
   canPrompt: boolean;
   registry: string;
   registryNames: ReadonlySet<string>;
+  status: LocalModelStatus;
 }): Promise<string[]> {
   const warnings: string[] = [];
   const warn = (message: string): void => {
@@ -56,7 +61,7 @@ async function prepareOnDeviceTier(opts: {
     console.error(message);
   };
 
-  const status = localModelStatus();
+  const status = opts.status;
   if (!opts.assumedYes && status.status === "declined") {
     warn(
       "on-device search skipped: the model download was previously declined. Re-run with --yes to consent.",
@@ -99,14 +104,14 @@ async function prepareOnDeviceTier(opts: {
     recordLocalModelConsent(true);
   }
   const model = await ensureLocalModel();
-  // The vectors are fetched once and nothing ever invalidates them, so an index
-  // that no longer covers the registry is the same situation as one that is not
-  // there at all: meaning search cannot reach part of the catalog. Both take the
-  // path this flag already takes. Deciding it costs a local read of the
-  // artifact's own name list; the only fetch is the one --on-device already
-  // performs when the vectors are absent.
-  if (!hasLocalVectors() || countUnindexed(opts.registryNames, localVectorNames()) > 0) {
-    await fetchLocalVectors(opts.registry);
+  const revisionStale =
+    opts.artifactRevision !== undefined && cachedLocalVectorRevision() !== opts.artifactRevision;
+  if (
+    !hasLocalVectors() ||
+    revisionStale ||
+    countUnindexed(opts.registryNames, localVectorNames()) > 0
+  ) {
+    await fetchLocalVectors(opts.registry, { expectedRevision: opts.artifactRevision });
   }
   // Deliberately not the fetch's own answer. A refresh that fails still leaves
   // the previous vectors on disk, and those still rank: reporting the tier
@@ -117,6 +122,11 @@ async function prepareOnDeviceTier(opts: {
     warn(
       `on-device search unavailable: ${!model ? "model" : "catalog vectors"} could not be fetched`,
     );
+  } else if (
+    opts.artifactRevision !== undefined &&
+    cachedLocalVectorRevision() !== opts.artifactRevision
+  ) {
+    warn("on-device search is using the previous catalog vectors because the update failed");
   }
   return warnings;
 }
@@ -178,11 +188,11 @@ export default defineCommand({
       finishCommand(1);
     }
 
-    // Asked for unnarrowed on purpose. `listRegistryItems` filters the same
-    // in-memory manifest either way, so the whole list costs no extra fetch,
-    // and its names are the only honest definition of "in this registry" once
-    // the user's own --type/--tag has narrowed what gets loaded.
-    const entries = await listRegistryItems(undefined, { baseUrl: config.registry });
+    // Asked for the whole manifest on purpose: its item list defines coverage,
+    // and its artifact revision is the one owner of vector freshness.
+    const manifest = await fetchRegistryManifest(config.registry);
+    const entries = manifest?.items ?? [];
+    const artifactRevision = manifest?.catalogArtifact?.revision;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
     const registryNames = new Set(catalog.map((e) => e.name));
     const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;
@@ -204,16 +214,31 @@ export default defineCommand({
     // Collected rather than only printed, so --json can carry the same reasons
     // the terminal shows. A machine that asked for a tier deserves to be told
     // it did not run.
-    const warnings =
-      query && args["on-device"] === true
-        ? await prepareOnDeviceTier({
-            assumedYes: args.yes === true,
-            canPrompt: process.stdout.isTTY === true && !json,
-            registry: config.registry,
-            registryNames,
-          })
-        : [];
-    const searched = query ? await applySearch(tagged, query, registryNames) : null;
+    const searchContext = query ? { status: localModelStatus() } : null;
+    const routineUpdate =
+      searchContext?.status.status === "unavailable" ||
+      (searchContext?.status.status === "ready" &&
+        artifactRevision !== undefined &&
+        cachedLocalVectorRevision() !== artifactRevision);
+    const shouldPrepare = args["on-device"] === true || routineUpdate;
+    let warnings: string[] = [];
+    let effectiveStatus = searchContext?.status;
+    if (searchContext && shouldPrepare) {
+      warnings = await prepareOnDeviceTier({
+        assumedYes: args.yes === true,
+        artifactRevision,
+        canPrompt: process.stdout.isTTY === true && !json,
+        registry: config.registry,
+        registryNames,
+        status: searchContext.status,
+      });
+      // A successful preparation can move not-asked/unavailable to ready. Read
+      // the state owner again rather than carrying the pre-download snapshot.
+      effectiveStatus = localModelStatus();
+    }
+    const searched = effectiveStatus
+      ? await applySearch(tagged, query, registryNames, effectiveStatus)
+      : null;
     if (searched) warnings.push(...searched.warnings);
     const matching = searched ? searched.items : tagged;
 
@@ -250,7 +275,7 @@ export default defineCommand({
         ].filter(Boolean);
         console.log(`No items match ${criteria.join(" and ")}.`);
       }
-      if (query) await offerLocalModel(0, json, config.registry);
+      if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
       return;
     }
 
@@ -322,7 +347,7 @@ export default defineCommand({
         // reads as the tool arguing with itself.
         if (warnings.length === 0) {
           reportLocalModelOption(json);
-          await offerLocalModel(matching.length, json, config.registry);
+          await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
       }
     }
@@ -465,11 +490,16 @@ interface SearchOutcome<T> {
 
 async function applySearch<
   T extends { name: string; title: string; description: string; tags?: string[] },
->(items: T[], query: string, registryNames: ReadonlySet<string>): Promise<SearchOutcome<T>> {
+>(
+  items: T[],
+  query: string,
+  registryNames: ReadonlySet<string>,
+  status: LocalModelStatus,
+): Promise<SearchOutcome<T>> {
   const warnings: string[] = [];
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
-  if (localModelStatus().status === "ready") {
+  if (status.status === "ready") {
     try {
       const ranking = await localSemanticRanking(query);
       if (ranking) {
@@ -554,6 +584,7 @@ async function offerLocalModel(
   matchCount: number,
   json: boolean,
   registryBaseUrl: string,
+  artifactRevision?: string,
 ): Promise<void> {
   if (json || !process.stdout.isTTY) return;
   if (localModelStatus().status !== "not-asked") return;
@@ -573,7 +604,9 @@ async function offerLocalModel(
   // The vectors come from the registry rather than the package, so consent is
   // also the moment to fetch them. A failure here is reported: the alternative
   // is an offline tier the user turned on that silently never ranks anything.
-  const vectors = hasLocalVectors() || (await fetchLocalVectors(registryBaseUrl));
+  const vectors =
+    hasLocalVectors() ||
+    (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision }));
   console.log(
     c.dim(
       vectors

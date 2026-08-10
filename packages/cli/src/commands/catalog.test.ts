@@ -70,6 +70,10 @@ describe("countUnindexed", () => {
 
 const state = vi.hoisted(() => ({
   registry: [] as Array<{ name: string; type: string; tags?: string[] }>,
+  artifactRevision: "revision-current",
+  cachedVectorRevision: "revision-current",
+  vectorFetches: 0,
+  vectorFetchSucceeds: true,
   ranking: null as Array<{ name: string; score: number }> | null,
   rankingError: null as Error | null,
   indexed: [] as string[],
@@ -84,7 +88,6 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../registry/resolver.js", () => ({
-  listRegistryItems: async () => state.registry,
   loadAllItems: async (entries: Array<{ name: string; type: string; tags?: string[] }>) =>
     entries.map((entry) => ({
       name: entry.name,
@@ -93,6 +96,13 @@ vi.mock("../registry/resolver.js", () => ({
       description: `${entry.name} description`,
       tags: entry.tags ?? [],
     })),
+}));
+
+vi.mock("../registry/remote.js", () => ({
+  fetchRegistryManifest: async () => ({
+    items: state.registry,
+    catalogArtifact: { revision: state.artifactRevision },
+  }),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -116,6 +126,7 @@ vi.mock("../registry/localModel.js", () => ({
   },
   ensureLocalModel: async () => {
     state.downloads += 1;
+    if (state.modelStatus === "unavailable") state.modelStatus = "ready";
     return true;
   },
   recordLocalModelConsent: (enabled: boolean) => {
@@ -138,8 +149,15 @@ vi.mock("../registry/localSemantic.js", () => ({
     return state.ranking;
   },
   localVectorNames: () => state.indexed,
+  cachedLocalVectorRevision: () => state.cachedVectorRevision,
   hasLocalVectors: () => true,
-  fetchLocalVectors: async () => true,
+  fetchLocalVectors: async (_registry: string, options: { expectedRevision?: string } = {}) => {
+    state.vectorFetches += 1;
+    if (state.vectorFetchSucceeds && options.expectedRevision !== undefined) {
+      state.cachedVectorRevision = options.expectedRevision;
+    }
+    return state.vectorFetchSucceeds;
+  },
 }));
 
 const block = (name: string, tags?: string[]): { name: string; type: string; tags?: string[] } => ({
@@ -187,6 +205,10 @@ async function runEnvelope(args: Record<string, unknown>): Promise<Envelope> {
 
 beforeEach(() => {
   state.modelStatus = "ready";
+  state.artifactRevision = "revision-current";
+  state.cachedVectorRevision = "revision-current";
+  state.vectorFetches = 0;
+  state.vectorFetchSucceeds = true;
   state.rankingError = null;
   state.confirmAnswer = true;
   state.consentRecorded = [];
@@ -290,6 +312,40 @@ describe("catalog --json meaning search", () => {
 
     expect(envelope.tier).toBe("words");
     expect(envelope.warnings).toEqual(["on-device search did not run: model could not load"]);
+  });
+
+  it("refreshes a changed vector revision under existing consent", async () => {
+    state.cachedVectorRevision = "revision-previous";
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(state.vectorFetches).toBe(1);
+    expect(state.cachedVectorRevision).toBe("revision-current");
+    expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("replaces a changed model revision under existing consent", async () => {
+    state.modelStatus = "unavailable";
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(state.downloads).toBe(1);
+    expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("keeps the previous vectors and reports a failed routine refresh", async () => {
+    state.cachedVectorRevision = "revision-previous";
+    state.vectorFetchSucceeds = false;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(state.cachedVectorRevision).toBe("revision-previous");
+    expect(envelope.warnings).toEqual([
+      "on-device search is using the previous catalog vectors because the update failed",
+    ]);
   });
 });
 

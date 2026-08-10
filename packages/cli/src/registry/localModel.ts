@@ -44,7 +44,7 @@ const MODELS_DIR = join(homedir(), ".hyperframes", "models");
  * catalog vectors were produced by a specific set of weights.
  */
 const MODEL_REPO = "Xenova/bge-small-en-v1.5";
-const MODEL_REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
+export const LOCAL_MODEL_REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
 
 /**
  * The quantized export, 32 MB, not the 126 MB full-precision one.
@@ -63,13 +63,13 @@ interface ModelFile {
 
 export const LOCAL_MODEL_ARTIFACTS: ReadonlyArray<ModelFile> = [
   {
-    url: `https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/onnx/model_quantized.onnx`,
+    url: `https://huggingface.co/${MODEL_REPO}/resolve/${LOCAL_MODEL_REVISION}/onnx/model_quantized.onnx`,
     dest: () => localModelPath(),
     bytes: 34_014_426,
     sha256: "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4",
   },
   {
-    url: `https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/tokenizer.json`,
+    url: `https://huggingface.co/${MODEL_REPO}/resolve/${LOCAL_MODEL_REVISION}/tokenizer.json`,
     dest: () => localTokenizerPath(),
     bytes: 711_396,
     sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",

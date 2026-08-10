@@ -2,6 +2,9 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry.json",
   "name": "hyperframes",
   "homepage": "https://hyperframes.heygen.com",
+  "catalogArtifact": {
+    "revision": "3e0b7c140466db717b69481be5a87e77b1fdec5000b33ca61846ba27e5558238"
+  },
   "items": [
     {
       "name": "warm-grain",

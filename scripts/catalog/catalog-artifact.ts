@@ -17,6 +17,8 @@ import { createHash } from "node:crypto";
 
 export const RETRIEVAL_FIELDS = ["group", "what", "use_when", "avoid_when"] as const;
 export const MANIFEST_SCHEMA_VERSION = 1;
+/** Padding changes quantized embeddings, so batch size is part of vector identity. */
+export const LOCAL_VECTOR_BATCH_SIZE = 16;
 
 export interface CatalogManifest {
   schema_version: number;
@@ -117,6 +119,33 @@ export function sortedNames(entries: Map<string, string>): string[] {
 
 export function sha256Hex(data: Buffer | string): string {
   return createHash("sha256").update(data).digest("hex");
+}
+
+/**
+ * Identity of the searchable corpus and the model contract that embedded it.
+ *
+ * Sorted entries make filesystem traversal order irrelevant. The text stays
+ * in the digest, so changing a title, description, or tag changes the revision
+ * even when every catalog name remains the same.
+ */
+export function localVectorRevision(
+  model: string,
+  modelRevision: string,
+  dimensions: number,
+  entries: ReadonlyMap<string, string>,
+): string {
+  const rows = [...entries.entries()].sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  return sha256Hex(
+    JSON.stringify({
+      model,
+      modelRevision,
+      dimensions,
+      batchSize: LOCAL_VECTOR_BATCH_SIZE,
+      rows,
+    }),
+  );
 }
 
 /**
