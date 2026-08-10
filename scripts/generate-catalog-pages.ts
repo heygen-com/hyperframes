@@ -29,6 +29,61 @@ const repoRoot = resolve(scriptDir, "..");
 const registryDir = resolve(repoRoot, "registry");
 const docsDir = resolve(repoRoot, "docs");
 const catalogImageBase = "https://static.heygen.ai/hyperframes-oss/docs/images/catalog";
+const payloadRoot = resolve(repoRoot, "docs/public/catalog");
+
+/**
+ * The player is loaded from a CDN rather than bundled into the docs, pinned to
+ * the minor line this repo ships so a patch release reaches the catalog without
+ * regenerating every page, and a major one never does silently.
+ */
+const playerVersionRange = ((): string => {
+  const pkg = JSON.parse(
+    readFileSync(resolve(repoRoot, "packages/player/package.json"), "utf-8"),
+  ) as { version: string };
+  const [major, minor] = pkg.version.split(".");
+  return `${major}.${minor}`;
+})();
+
+/**
+ * A live preview: the real composition, running in the real player.
+ *
+ * The player is mounted inside the iframe rather than written into the page
+ * because the docs renderer strips unknown custom elements from MDX, so a
+ * `<hyperframes-player>` written here would never reach the DOM. Nothing
+ * rewrites the inside of a `srcDoc` document, so it survives there.
+ *
+ * The composition arrives as JSON because the docs host publishes only JSON and
+ * images out of `docs/public`; an `.html` payload 404s in production while its
+ * page still serves, which is exactly how a previous attempt at this broke
+ * every catalog preview at once.
+ */
+function playerEmbed(kind: ItemKind, name: string, posterUrl: string | null): string {
+  const payloadUrl = `/public/catalog/${typeDir(kind)}/${name}.json`;
+  const poster = posterUrl ? `p.setAttribute("poster","${posterUrl}");` : "";
+  const bootstrap = [
+    '<!doctype html><html><head><meta charset="utf-8">',
+    "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}",
+    "hyperframes-player{display:block;width:100%;height:100%}</style>",
+    `<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@${playerVersionRange}/dist/hyperframes-player.global.js"><\\/script>`,
+    "</head><body><script>",
+    `fetch("${payloadUrl}").then(function(r){return r.json()}).then(function(d){`,
+    'var p=document.createElement("hyperframes-player");',
+    'p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");',
+    'p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");',
+    poster,
+    "document.body.appendChild(p)});",
+    "<\\/script></body></html>",
+  ].join("");
+
+  return [
+    "<iframe",
+    '  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"',
+    `  title=${JSON.stringify(`${name} preview`)}`,
+    '  loading="lazy"',
+    `  srcDoc={${"`"}${bootstrap}${"`"}}`,
+    "/>",
+  ].join("\n");
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -541,11 +596,18 @@ function generateItemMdx(
     // without a poster has no .png, and asking for one is a 403 the browser
     // fetches before the video.
     const posterUrl = catalogPreviewFor(kind, manifest);
-    const poster = posterUrl ? ` poster="${posterUrl}"` : "";
-    lines.push(
-      `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
-      "",
-    );
+
+    // Items whose payload could not be built — an asset that cannot be inlined,
+    // or one heavy enough to be worth streaming — keep the uploaded video.
+    if (existsSync(join(payloadRoot, typeDir(kind), `${manifest.name}.json`))) {
+      lines.push(playerEmbed(kind, manifest.name, posterUrl), "");
+    } else {
+      const poster = posterUrl ? ` poster="${posterUrl}"` : "";
+      lines.push(
+        `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
+        "",
+      );
+    }
   }
 
   // 2. How to get it. A CodeGroup around a single block just drew an empty tab bar.

@@ -57,9 +57,9 @@ if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type ItemKind = "block" | "component";
+export type ItemKind = "block" | "component";
 
-interface CatalogItem {
+export interface CatalogItem {
   name: string;
   kind: ItemKind;
   /** Directory containing the item's files in the registry. */
@@ -70,7 +70,10 @@ interface CatalogItem {
 
 // ── Discovery ──────────────────────────────────────────────────────────────
 
-function discoverItems(kindFilter: ItemKind | null, nameFilter: string | null): CatalogItem[] {
+export function discoverItems(
+  kindFilter: ItemKind | null,
+  nameFilter: string | null,
+): CatalogItem[] {
   const items: CatalogItem[] = [];
 
   // Blocks and components only — examples use the existing generate-template-previews.ts.
@@ -149,7 +152,7 @@ function mirrorRegistryTargets(projectDir: string): void {
   }
 }
 
-async function prepareProjectDir(item: CatalogItem): Promise<string> {
+export async function prepareProjectDir(item: CatalogItem): Promise<string> {
   const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   cpSync(item.sourceDir, tmpDir, { recursive: true });
@@ -430,7 +433,12 @@ async function main(): Promise<void> {
   console.log("\nDone.");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only render when run as a command. This module also exports discoverItems
+// and prepareProjectDir for the payload generator, and an unguarded main()
+// would render every preview the moment that script imported them.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
