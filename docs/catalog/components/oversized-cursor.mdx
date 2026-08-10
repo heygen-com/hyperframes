@@ -234,8 +234,8 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
           "use strict";
 
           // NOTE: once mounted, document.documentElement is the HOST page's
-          // <html>, not this file's own <html> (the mount contract discards
-          // this file's <head>/<html> after the loader reads its declared
+          // root element, not this file's own (the mount contract discards
+          // this file's head and html elements after the loader reads declared
           // variables/duration once, before cloning). html.getAttribute(...)
           // below therefore resolves to null under mount, and every read
           // falls through to its inline default (55 / 55 / "Generate" /

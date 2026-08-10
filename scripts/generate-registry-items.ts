@@ -179,12 +179,28 @@ function writeRegistryManifest(): void {
       items.push({ name, type });
     }
   }
+  // `catalogArtifact.revision` belongs to build-local-vectors.ts, which stamps
+  // it so the CLI and the coverage gate can tell whether the published vectors
+  // still describe this registry. This script owns the item list and nothing
+  // else, so it carries that field through rather than rewriting the file
+  // without it: dropping it makes the gate fail and the staleness check answer
+  // "missing" until someone rebuilds the index.
+  const existing = ((): { catalogArtifact?: unknown } => {
+    try {
+      return JSON.parse(readFileSync(registryManifestPath, "utf-8")) as {
+        catalogArtifact?: unknown;
+      };
+    } catch {
+      return {};
+    }
+  })();
   const manifest: RegistryManifest = {
     $schema: "https://hyperframes.heygen.com/schema/registry.json",
     name: "hyperframes",
     homepage: "https://hyperframes.heygen.com",
     items,
-  };
+    ...(existing.catalogArtifact ? { catalogArtifact: existing.catalogArtifact } : {}),
+  } as RegistryManifest;
   writeFileSync(registryManifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
   console.log(`wrote ${relative(repoRoot, registryManifestPath)} (${items.length} items)`);
 }

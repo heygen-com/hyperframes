@@ -328,10 +328,14 @@
             if (urlElement.isConnected) {
               tl.fromTo(
                 urlElement,
-                { opacity: 0, letterSpacing: "0.46em" },
+                // scaleX, not letterSpacing: tracking is a layout property, so
+                // the browser snaps it to integer device pixels and the
+                // ease-out tail stutters under seek-by-frame capture. The
+                // widening reads the same and stays on the compositor.
+                { opacity: 0, scaleX: 1.06 },
                 {
                   opacity: 1,
-                  letterSpacing: "0.28em",
+                  scaleX: 1,
                   duration: URL_DURATION_BASE * scale,
                   ease: "power2.out",
                 },
