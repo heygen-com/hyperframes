@@ -1,0 +1,55 @@
+---
+title: "Data Chart Copy"
+description: "Animated bar + line chart with staggered reveal, NYT-style typography, and value labels"
+---
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="data-chart preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/data-chart.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+```bash Terminal
+npx hyperframes add data-chart
+```
+
+That writes one file: `compositions/data-chart.html`.
+
+## Add it to your video
+
+It runs for 15 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="data-chart"
+  data-composition-src="compositions/data-chart.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change the colors
+
+Set these CSS variables on the block:
+
+- `--bg-color` — Background. Defaults to `#faf9f6`.
+- `--text-color` — Text color. Defaults to `#333333`.
+
+{/* hf:generated-footer */}
+
+Tagged `data` `chart` `statistics`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
