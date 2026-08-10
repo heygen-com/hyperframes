@@ -421,8 +421,7 @@
               "catalog/blocks/us-map-bubble",
               "catalog/blocks/us-map-flow",
               "catalog/blocks/us-map-hex",
-              "catalog/blocks/world-map",
-              "catalog/blocks/data-chart-copy"
+              "catalog/blocks/world-map"
             ]
           },
           {
