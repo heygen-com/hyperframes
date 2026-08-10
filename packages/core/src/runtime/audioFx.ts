@@ -179,7 +179,9 @@ export function attachElementFxChain(
 
   const scheduleFor = (next: HfAudioFxChain, at: AutomationTiming | null): void => {
     automated =
-      at && handle ? scheduleChainAutomation(readAutomation(el, next), next, handle.nodes, at) : [];
+      at && handle
+        ? scheduleChainAutomation(readAutomation(el, next), next, handle.nodes, at, handle.presets)
+        : [];
   };
 
   // The reference frame every later reschedule measures from. Mutable because a

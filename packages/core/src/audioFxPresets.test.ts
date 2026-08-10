@@ -120,6 +120,45 @@ describe("the catalogue is internally valid", () => {
     }
   });
 
+  it("round-trips how much of the preset is applied", () => {
+    // `presetAmount` is what the switch writes and what a lane ramps, so losing
+    // it on reload silently turns every part-applied or switched-off preset back
+    // on — the same failure `fromPreset` had, one field along. The INVARIANT: a
+    // new HfAudioFxNode field goes in BOTH parseAudioFxChain and
+    // serializeAudioFxChain.
+    const preset = HF_AUDIO_FX_PRESETS[0];
+    if (!preset) throw new Error("empty catalogue");
+    for (const amount of [0, 0.4, 1]) {
+      const chain = applyAudioFxPreset(empty(), preset);
+      const withAmount = {
+        ...chain,
+        nodes: chain.nodes.map((n) => ({ ...n, presetAmount: amount })),
+      };
+      const back = parseAudioFxChain(serializeAudioFxChain(withAmount));
+      // 1 is the absent case — a fully applied preset should not grow a field in
+      // every chain that carries one — and reads back as fully applied.
+      const expected = amount === 1 ? undefined : amount;
+      expect(
+        back.nodes.map((n) => n.presetAmount),
+        `amount ${amount} did not survive`,
+      ).toEqual(chain.nodes.map(() => expected));
+    }
+  });
+
+  it("refuses an amount outside the blend it drives", () => {
+    // Two gains in opposition: past 1 the dry leg goes negative rather than the
+    // preset simply getting louder.
+    const preset = HF_AUDIO_FX_PRESETS[0];
+    if (!preset) throw new Error("empty catalogue");
+    const chain = applyAudioFxPreset(empty(), preset);
+    const raw = JSON.parse(serializeAudioFxChain(chain)) as {
+      nodes: { presetAmount?: number }[];
+    };
+    raw.nodes = raw.nodes.map((n) => ({ ...n, presetAmount: 4 }));
+    const back = parseAudioFxChain(JSON.stringify(raw));
+    for (const node of back.nodes) expect(node.presetAmount).toBe(1);
+  });
+
   it("names every node for the job it is doing", () => {
     for (const p of HF_AUDIO_FX_PRESETS) {
       for (const node of p.nodes) {

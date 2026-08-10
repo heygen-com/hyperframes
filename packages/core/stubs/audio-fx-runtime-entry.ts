@@ -103,11 +103,13 @@ async function render(
   // time is offline time — the envelope needs no offset here. Same scheduler as
   // preview, which is what makes the two agree.
   if (parsedAutomation) {
-    scheduleChainAutomation(parsedAutomation, chain, fx.nodes, {
-      scheduledAt: 0,
-      elapsed: 0,
-      rate: 1,
-    });
+    scheduleChainAutomation(
+      parsedAutomation,
+      chain,
+      fx.nodes,
+      { scheduledAt: 0, elapsed: 0, rate: 1 },
+      fx.presets,
+    );
   }
 
   source.connect(fx.input);

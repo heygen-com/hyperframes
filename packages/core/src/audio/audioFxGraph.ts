@@ -13,6 +13,7 @@ import {
   getAudioFxDef,
   normalizeAudioFxParams,
   type HfAudioFxChain,
+  type HfAudioFxNode,
   type HfAudioFxParamValues,
 } from "../audioFx.js";
 import { audioFxWorkletsReady, ensureAudioFxWorklets } from "./audioFxWorklets.js";
@@ -535,9 +536,43 @@ export interface FxChainHandle {
   output: AudioNode;
   /** Built effects in chain order, carrying the node ids lanes address. */
   nodes: { id?: string; type: string; handle: FxNodeHandle }[];
+  /**
+   * The wet/dry blend around each preset run, by preset id — where a
+   * whole-preset lane writes. Two gains in opposition, the same shape
+   * `mixTargets` builds for an effect's own mix knob.
+   */
+  presets: Record<string, FxParamTarget[]>;
   /** Re-parameterise in place when the shape is unchanged; false if a rebuild is needed. */
   update(chain: HfAudioFxChain): boolean;
   dispose(): void;
+}
+
+/**
+ * Consecutive nodes grouped by the preset that wrote them.
+ *
+ * `amount` comes off the nodes themselves — a preset is bypassed by setting its
+ * members' `enabled` to false everywhere else in the codebase, and the wrap has
+ * to agree with that or the switch and the lane would fight. Absent means fully
+ * applied, which is what every chain written before this shipped means.
+ */
+function presetRuns(
+  nodes: readonly HfAudioFxNode[],
+): { preset?: string; amount: number; nodes: HfAudioFxNode[] }[] {
+  const out: { preset?: string; amount: number; nodes: HfAudioFxNode[] }[] = [];
+  for (const node of nodes) {
+    const preset = node.fromPreset;
+    const last = out.at(-1);
+    if (last && last.preset === preset) last.nodes.push(node);
+    else {
+      const amount = typeof node.presetAmount === "number" ? node.presetAmount : 1;
+      out.push({
+        ...(preset ? { preset } : {}),
+        amount: Math.min(1, Math.max(0, amount)),
+        nodes: [node],
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -581,21 +616,67 @@ export function buildFxChain(
   const input = ctx.createGain();
   const output = ctx.createGain();
   const handles: { id?: string; type: string; handle: FxNodeHandle }[] = [];
+  const presets: { id: string; entry: GainNode; wet: GainNode; dry: GainNode; join: GainNode }[] =
+    [];
+
+  /**
+   * A preset's consecutive nodes, wrapped in a wet/dry pair.
+   *
+   * The rest of the chain is a strict series, which is right for an effect the
+   * author placed: it is either in the path or it is not. A preset is not one
+   * effect, though — it is several the author added as a unit, and "how much of
+   * it is applied" is a question about the unit. Its nodes share no automatable
+   * parameter, and the worklet ones expose no AudioParams at all, so there is
+   * nothing to aim a lane at node-by-node. One crossfade around the run is the
+   * whole answer, and it cannot go half-wrong the way seven lanes can.
+   *
+   * Consecutive only, matching what the rack brackets: a preset pulled apart by
+   * a reorder is no longer a unit, and wrapping across the gap would route the
+   * effect between its members through the dry leg too.
+   */
+  const runs = presetRuns(enabledAudioFxNodes(chain));
 
   let tail: AudioNode = input;
-  for (const node of enabledAudioFxNodes(chain)) {
-    const handle = buildFxNode(ctx, node.type, node.params ?? {}, elapsed);
-    tail.connect(handle.input);
-    tail = handle.output;
-    handles.push({ ...(node.id ? { id: node.id } : {}), type: node.type, handle });
+  for (const run of runs) {
+    let wrap: { entry: GainNode; wet: GainNode; dry: GainNode; join: GainNode } | null = null;
+    if (run.preset) {
+      const entry = ctx.createGain();
+      const dry = ctx.createGain();
+      const wet = ctx.createGain();
+      const join = ctx.createGain();
+      wet.gain.value = run.amount;
+      dry.gain.value = 1 - run.amount;
+      tail.connect(entry);
+      // The dry leg bridges the whole run: it leaves before the first effect and
+      // rejoins after the last, which is what makes amount 0 the untouched
+      // signal rather than a quieter version of the processed one.
+      entry.connect(dry).connect(join);
+      wrap = { entry, wet, dry, join };
+      tail = entry;
+    }
+    for (const node of run.nodes) {
+      const handle = buildFxNode(ctx, node.type, node.params ?? {}, elapsed);
+      tail.connect(handle.input);
+      tail = handle.output;
+      handles.push({ ...(node.id ? { id: node.id } : {}), type: node.type, handle });
+    }
+    if (wrap && run.preset) {
+      tail.connect(wrap.wet).connect(wrap.join);
+      presets.push({ id: run.preset, ...wrap });
+      tail = wrap.join;
+    }
   }
   tail.connect(output);
 
   const shape = shapeOf(chain);
 
+  const presetTargets: Record<string, FxParamTarget[]> = {};
+  for (const p of presets) presetTargets[p.id] = mixTargets(p.wet.gain, p.dry.gain);
+
   return {
     input,
     output,
+    presets: presetTargets,
     nodes: handles,
     update(next) {
       if (shapeOf(next) !== shape) return false;
@@ -612,6 +693,16 @@ export function buildFxChain(
         if (node.id === undefined) delete held.id;
         else held.id = node.id;
       });
+      // The blend is a value like any other: switching a preset off writes
+      // `presetAmount`, and pushing it into the running graph is what keeps that
+      // from being a rebuild — and from restarting the audio underneath it.
+      for (const run of presetRuns(enabledAudioFxNodes(next))) {
+        if (!run.preset) continue;
+        const wrap = presets.find((p) => p.id === run.preset);
+        if (!wrap) continue;
+        wrap.wet.gain.value = run.amount;
+        wrap.dry.gain.value = 1 - run.amount;
+      }
       // `shape` is not reassigned: the early return above already established
       // that `shapeOf(next)` equals it, so recomputing was a whole normalise +
       // join per observer tick to write back the string that was already there.
@@ -619,6 +710,15 @@ export function buildFxChain(
     },
     dispose() {
       for (const { handle } of handles) handle.dispose();
+      // The wrap is not one of `handles` — it belongs to the chain rather than
+      // to any effect — so it has to be unwired here or a rebuild leaves a
+      // crossfade still connected to the graph it used to bridge.
+      for (const { entry, wet, dry, join } of presets) {
+        entry.disconnect();
+        wet.disconnect();
+        dry.disconnect();
+        join.disconnect();
+      }
       input.disconnect();
       output.disconnect();
     },

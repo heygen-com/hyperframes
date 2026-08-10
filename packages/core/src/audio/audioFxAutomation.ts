@@ -245,13 +245,24 @@ export function scheduleChainAutomation(
   chain: HfAudioFxChain,
   nodes: readonly AutomatableNode[],
   timing: AutomationTiming,
+  /** The wet/dry blend around each preset run, from `FxChainHandle.presets`. */
+  presets?: Record<string, FxParamTarget[]>,
 ): FxParamTarget[] {
   const byId = new Map(nodes.filter((n) => n.id).map((n) => [n.id as string, n.handle]));
   const scheduled: FxParamTarget[] = [];
   for (const lane of automation.lanes) {
     const parsed = parseAutomationTarget(lane.target);
-    if (!parsed || parsed.kind !== "fx") continue;
-    const targets = byId.get(parsed.nodeId)?.automation?.[parsed.param];
+    if (!parsed) continue;
+    // A whole-preset lane drives the wet/dry blend the graph wrapped its run in,
+    // rather than any node's parameter — which is the point of it: a preset's
+    // nodes share no automatable parameter, and its worklet effects expose none
+    // at all.
+    const targets =
+      parsed.kind === "preset"
+        ? presets?.[parsed.presetId]
+        : parsed.kind === "fx"
+          ? byId.get(parsed.nodeId)?.automation?.[parsed.param]
+          : undefined;
     if (!targets || targets.length === 0) continue;
     const range = resolveAutomationRange(lane.target, chain);
     if (!range) continue;

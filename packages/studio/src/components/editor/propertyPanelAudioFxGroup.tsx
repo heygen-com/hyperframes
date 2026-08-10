@@ -34,6 +34,8 @@ import {
 } from "@hyperframes/core/audio-carve";
 import {
   fxAutomationTarget,
+  parseAutomationTarget,
+  presetAutomationTarget,
   sampleAutomationLane,
   type HfAutomation,
   type HfAutomationLane,
@@ -191,6 +193,29 @@ export function AudioFxGroup({
   const removeParamAutomation = (nodeId: string, paramKey: string): void => {
     writeAutomation(withoutLane(automation, fxAutomationTarget(nodeId, paramKey)));
   };
+
+  /**
+   * Automate a whole preset's amount — the wet/dry blend around its run.
+   *
+   * Seeded where the preset already sits, so switching to a lane never changes
+   * the sound; the author then draws the ramp in the timeline. Same contract as
+   * automating one parameter, one level up.
+   */
+  const automatePreset = (presetId: string, amount: number): void => {
+    writeAutomation(withSeededLane(automation, presetAutomationTarget(presetId), amount));
+  };
+
+  const removePresetAutomation = (presetId: string): void => {
+    writeAutomation(withoutLane(automation, presetAutomationTarget(presetId)));
+  };
+
+  /** Presets a lane already drives, so the panel shows a readout not a slider. */
+  const automatedPresets = new Set(
+    automation.lanes
+      .map((lane) => parseAutomationTarget(lane.target))
+      .filter((t): t is { kind: "preset"; presetId: string } => t?.kind === "preset")
+      .map((t) => t.presetId),
+  );
 
   /**
    * Turn carve on or off.
@@ -796,6 +821,9 @@ export function AudioFxGroup({
       onLevel={() => void runLeveller()}
       onRemoveLevel={removeLeveller}
       levelled={chain.nodes.some((n) => n.fromLeveller)}
+      onAutomatePreset={automatePreset}
+      onRemovePresetAutomation={removePresetAutomation}
+      automatedPresets={automatedPresets}
       onAuditionLevel={(on) => void auditionLevel(on)}
       auditioningLevel={auditioningLevel}
       carvedAgainstBy={carvedAgainstBy}

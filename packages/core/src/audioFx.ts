@@ -832,6 +832,18 @@ export interface HfAudioFxNode {
    * effect type and its bands stay ordinary filters underneath.
    */
   fromEq?: string;
+
+  /**
+   * How much of this node's preset is applied, 0..1 — the wet/dry blend the
+   * graph wraps its run in.
+   *
+   * On every node of the run rather than beside the chain, because the chain has
+   * nowhere else to put it: `HfAudioFxChain` is a version and a list of nodes,
+   * and a preset is defined by which nodes carry its tag. The graph reads it off
+   * the first node of each run. Absent means fully applied, which is what every
+   * chain written before this means.
+   */
+  presetAmount?: number;
   /**
    * Set on the gain stage the leveller writes, so re-running replaces it rather
    * than stacking a second one — the same contract `fromCarve` has.
@@ -890,6 +902,7 @@ export function parseAudioFxChain(json: string): HfAudioFxChain {
       label?: unknown;
       fromEq?: unknown;
       fromLeveller?: unknown;
+      presetAmount?: unknown;
     };
     if (typeof node.type !== "string" || !BY_ID.has(node.type)) {
       throw new AudioFxChainError(`Node ${i} has unknown effect type: ${String(node.type)}`);
@@ -907,6 +920,11 @@ export function parseAudioFxChain(json: string): HfAudioFxChain {
       ...(typeof node.label === "string" && node.label ? { label: node.label } : {}),
       ...(typeof node.fromEq === "string" && node.fromEq ? { fromEq: node.fromEq } : {}),
       ...(node.fromLeveller === true ? { fromLeveller: true as const } : {}),
+      // Clamped on the way in: the blend is two gains in opposition, and a value
+      // outside 0..1 makes the dry leg negative rather than simply loud.
+      ...(typeof node.presetAmount === "number" && Number.isFinite(node.presetAmount)
+        ? { presetAmount: Math.min(1, Math.max(0, node.presetAmount)) }
+        : {}),
       enabled: node.enabled !== false,
       params: normalizeAudioFxParams(
         node.type,
@@ -934,6 +952,11 @@ export function serializeAudioFxChain(chain: HfAudioFxChain): string {
       ...(node.label ? { label: node.label } : {}),
       ...(node.fromEq ? { fromEq: node.fromEq } : {}),
       ...(node.fromLeveller === true ? { fromLeveller: true } : {}),
+      // Omitted when fully applied, so an untouched preset does not grow a field
+      // in every chain that carries one.
+      ...(typeof node.presetAmount === "number" && node.presetAmount !== 1
+        ? { presetAmount: node.presetAmount }
+        : {}),
       ...(node.enabled === false ? { enabled: false } : {}),
       params: normalizeAudioFxParams(node.type, node.params),
     })),

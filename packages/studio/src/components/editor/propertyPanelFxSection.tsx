@@ -14,6 +14,7 @@ import {
   type HfAudioFxChain,
   type HfAudioFxGroup,
   type HfAudioFxNode,
+  type HfAudioFxParam,
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
@@ -33,6 +34,7 @@ import {
   HF_AUDIO_FX_JOB_TYPES,
   type HfAudioFxJob,
 } from "@hyperframes/core/audio-fx-jobs";
+import { FxParamRow } from "./propertyPanelFxControls.js";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -46,6 +48,25 @@ const GROUP_LABEL: Record<HfAudioFxGroup, string> = {
   dynamics: "Dynamics",
   nonlinear: "Non-linear",
   time: "Time",
+};
+
+/**
+ * The one control over a whole preset: how much of it is applied.
+ *
+ * Not in the effect registry — a preset is not an effect — so the row is
+ * fabricated the same way the derived one-knob control is, and rendered by the
+ * ordinary controls.
+ */
+const PRESET_AMOUNT_PARAM: HfAudioFxParam = {
+  kind: "number",
+  key: "amount",
+  label: "Amount",
+  unit: "",
+  min: 0,
+  max: 1,
+  step: 0.01,
+  default: 1,
+  hint: "How much of this preset is applied. Automate it to bring the whole preset in or out over time.",
 };
 
 export interface FxSectionProps {
@@ -67,6 +88,12 @@ export interface FxSectionProps {
   onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
   /** Delete every lane belonging to a node that is being removed. */
   onRemoveNodeAutomation?(nodeId: string): void;
+  /** Add a lane for a whole preset's amount, seeded where it sits now. */
+  onAutomatePreset?(presetId: string, amount: number): void;
+  /** Delete that lane. */
+  onRemovePresetAutomation?(presetId: string): void;
+  /** Presets whose amount a lane already drives. */
+  automatedPresets?: ReadonlySet<string>;
   /** Measure this track and write the levelling lane. Absent when unavailable. */
   onLevel?(): void;
   /** Take the levelling stage and its lane back out. */
@@ -126,7 +153,11 @@ export function FxSection({
   levelled,
   onAuditionLevel,
   auditioningLevel,
+  onAutomatePreset,
+  onRemovePresetAutomation,
+  automatedPresets,
 }: FxSectionProps) {
+  const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
   // keeps the control working rather than going dead.
   const previewCarve = onCarvePreview ?? onCarveChange;
@@ -315,19 +346,28 @@ export function FxSection({
   );
 
   /**
-   * Bypass or restore every node a preset wrote, as one gesture.
+   * How much of a preset is applied, 0..1.
    *
-   * A preset is one thing the author added, so it has to be one thing they can
-   * switch off — reaching into five modules and toggling each is the bookkeeping
-   * the bracket exists to remove. Off is a bypass, not a delete: the settings
-   * survive, which is what makes it worth trying rather than committing to.
+   * The switch and the lane are the same value, not two ways of silencing a
+   * preset: `presetAmount` drives the wet/dry blend the graph wraps the run in,
+   * so Off is amount 0 and a lane ramping 0 → 1 is the same control moving
+   * continuously. Writing `enabled` instead would take the nodes out of the
+   * graph, which a lane cannot do part-way and cannot do without a rebuild.
+   *
+   * On every node of the run because that is where the chain can hold it — see
+   * `HfAudioFxNode.presetAmount`.
    */
-  const toggleRun = useCallback(
-    (items: { node: HfAudioFxNode; i: number }[], on: boolean) => {
+  const setRunAmount = useCallback(
+    (items: { node: HfAudioFxNode; i: number }[], amount: number, persist = true) => {
       const slots = new Set(items.map((item) => item.i));
-      mutate(chain.nodes.map((n, i) => (slots.has(i) ? { ...n, enabled: on } : n)));
+      const next = {
+        ...chain,
+        nodes: chain.nodes.map((n, i) => (slots.has(i) ? { ...n, presetAmount: amount } : n)),
+      };
+      if (persist) mutate(next.nodes);
+      else onChainPreview?.(next);
     },
-    [chain.nodes, mutate],
+    [chain, mutate, onChainPreview],
   );
 
   /**
@@ -539,7 +579,11 @@ export function FxSection({
             // On unless every node in it is bypassed: one switched back on means
             // the preset is doing something, and the switch has to offer to stop
             // it rather than claiming it has already stopped.
-            const runOn = run.items.some(({ node }) => node.enabled !== false);
+            // How much of it is applied. Any node of the run carries it, and the
+            // first is the one the graph reads.
+            const amount = run.items[0]?.node.presetAmount;
+            const runAmount = typeof amount === "number" ? amount : 1;
+            const runOn = runAmount > 0;
             return (
               <div
                 key={`preset-${run.preset}-${run.items[0]?.i}`}
@@ -558,9 +602,9 @@ export function FxSection({
                     type="button"
                     className="hf-fx-preset-run-toggle rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
                     aria-pressed={runOn}
-                    title={runOn ? `Bypass ${preset.label}` : `Switch ${preset.label} back on`}
+                    title={runOn ? `Switch ${preset.label} off` : `Switch ${preset.label} back on`}
                     disabled={disabled}
-                    onClick={() => toggleRun(run.items, !runOn)}
+                    onClick={() => setRunAmount(run.items, runOn ? 0 : 1)}
                   >
                     {runOn ? "On" : "Off"}
                   </button>
@@ -574,6 +618,26 @@ export function FxSection({
                     &times;
                   </button>
                 </div>
+                {/* The same value the switch sets, so an author can put the
+                    preset half in — and the lane below ramps it continuously. */}
+                <FxParamRow
+                  param={PRESET_AMOUNT_PARAM}
+                  value={runAmount}
+                  disabled={disabled || presetAutomated.has(run.preset ?? "")}
+                  automated={presetAutomated.has(run.preset ?? "")}
+                  onChange={(_k, v) => setRunAmount(run.items, Number(v), false)}
+                  onCommit={(_k, v) => setRunAmount(run.items, Number(v))}
+                  onAutomate={
+                    run.preset && onAutomatePreset && !presetAutomated.has(run.preset)
+                      ? () => onAutomatePreset(run.preset ?? "", runAmount)
+                      : undefined
+                  }
+                  onRemoveAutomation={
+                    run.preset && onRemovePresetAutomation && presetAutomated.has(run.preset)
+                      ? () => onRemovePresetAutomation(run.preset ?? "")
+                      : undefined
+                  }
+                />
                 {rows}
               </div>
             );

@@ -79,12 +79,22 @@ export class AudioAutomationError extends Error {
 
 export const VOLUME_TARGET = "volume";
 
-export type HfAutomationTarget = { kind: "volume" } | { kind: "fx"; nodeId: string; param: string };
+export type HfAutomationTarget =
+  | { kind: "volume" }
+  | { kind: "fx"; nodeId: string; param: string }
+  | { kind: "preset"; presetId: string };
 
 /** Split a target string. Returns null for anything unrecognised. */
 export function parseAutomationTarget(target: string): HfAutomationTarget | null {
   if (target === VOLUME_TARGET) return { kind: "volume" };
   const parts = target.split(".");
+  // `fx.preset.<id>` before the 3-part fx form, because it IS a 3-part fx form
+  // with a reserved node id — an effect can never be called "preset", since ids
+  // are minted `n1`, `n2`, ….
+  if (parts.length === 3 && parts[0] === "fx" && parts[1] === PRESET_TARGET_KEY) {
+    const presetId = parts[2];
+    return presetId ? { kind: "preset", presetId } : null;
+  }
   if (parts.length !== 3 || parts[0] !== "fx") return null;
   const [, nodeId, param] = parts;
   if (!nodeId || !param) return null;
@@ -94,6 +104,33 @@ export function parseAutomationTarget(target: string): HfAutomationTarget | null
 export function fxAutomationTarget(nodeId: string, param: string): string {
   return `fx.${nodeId}.${param}`;
 }
+
+/** The reserved node-id slot that marks a whole-preset target. */
+const PRESET_TARGET_KEY = "preset";
+
+/**
+ * How much of a preset is applied, 0..1.
+ *
+ * A preset's nodes share no automatable parameter — and its worklet effects
+ * expose no AudioParams at all — so there is nothing to aim a lane at
+ * node-by-node. The graph wraps a preset's run in a wet/dry pair instead, and
+ * this drives the blend: 0 is the dry signal untouched, 1 is the preset fully
+ * applied, and between them it crossfades.
+ */
+export function presetAutomationTarget(presetId: string): string {
+  return `fx.${PRESET_TARGET_KEY}.${presetId}`;
+}
+
+/** 0..1 blend, the same shape as a wet/dry mix knob. */
+export const PRESET_RANGE: AutomationRange = {
+  min: 0,
+  max: 1,
+  step: 0.01,
+  unit: "",
+  label: "Amount",
+  scale: "linear",
+  default: 1,
+};
 
 /**
  * The value range a lane is drawn and clamped against.
@@ -136,6 +173,13 @@ export function resolveAutomationRange(
   const parsed = parseAutomationTarget(target);
   if (!parsed) return null;
   if (parsed.kind === "volume") return VOLUME_RANGE;
+  if (parsed.kind === "preset") {
+    // Only for a preset the chain actually carries, so a lane left behind by a
+    // removed preset resolves to nothing and is dropped at read time — the same
+    // contract an orphaned node lane has.
+    const present = chain?.nodes.some((n) => n.fromPreset === parsed.presetId);
+    return present ? { ...PRESET_RANGE, label: `${parsed.presetId} · Amount` } : null;
+  }
   const node = chain?.nodes.find((n) => n.id === parsed.nodeId);
   if (!node) return null;
   const def = getAudioFxDef(node.type);
