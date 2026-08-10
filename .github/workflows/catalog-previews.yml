@@ -70,9 +70,13 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # Find which blocks/components changed in this PR
+          # Find which blocks/components changed in this PR. The trailing slash
+          # in the grep matters: an item is a directory, and a file sitting
+          # directly under registry/components (CATALOG.md) does not match the
+          # sed, so without it the whole path survives and is passed to the
+          # renderer as if it were an item name.
           CHANGED_ITEMS=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- registry/blocks/ registry/components/ \
-            | grep -E '^registry/(blocks|components)/' \
+            | grep -E '^registry/(blocks|components)/[^/]+/' \
             | sed 's|^registry/[^/]*/\([^/]*\)/.*|\1|' \
             | sort -u)
 
