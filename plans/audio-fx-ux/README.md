@@ -194,12 +194,24 @@ layer has now landed as `packages/core/src/audioFxCopy.ts` — `EFFECT_COPY`,
 `BANDS`, `PRESET_PROBLEM` and `SUMMARY`, with the completeness check as a test
 beside it rather than a build step.
 
-Landing the data is not the same as wiring it, and **nothing in the studio reads
-it yet**. That was blocked on the naming question until 2026-08-10; it is now
-just unbuilt. What it takes: `propertyPanelFxNodeRow.tsx` reads `EFFECT_COPY`
-for the header and `SUMMARY` for the collapsed line, `propertyPanelFxSection`'s
-preset menu groups by `PRESET_PROBLEM`, and the hover-audition path is new work
-of its own.
+**It is wired.** `propertyPanelFxNodeRow.tsx` takes the name from `EFFECT_COPY`,
+the sentence under it from `SUMMARY`, and every knob's name from the same place
+via `plainDef` — which writes the words over the registry's def and leaves range,
+step, unit and automatability alone. The DSP name sits above the knobs as
+`Details — High-pass`. The preset shelf leads with `PRESET_PROBLEM` and follows
+with the preset's own name. Hover and focus both audition, through the same
+preview channel a slider drag uses; the leveller measures first, says
+"measuring…" while it does, caches the decode per `src`, and drops a result that
+arrives after the pointer has gone.
+
+Three things that took a second pass, all worth knowing before touching this
+again. An audition has to survive the panel re-rendering under it — the group
+re-renders every playhead tick, so anything keyed on its inline callbacks tears
+down thirty times a second. Applying must NOT revert, since the audition *was*
+the thing applied. And moving between two entries in a shelf is not leaving it,
+so each entry has to call its neighbours' auditions off itself.
+
+What is still not wired: `PROFILES`, below.
 
 It has no entry for Tone or for the levelling module, because both carry their
 own copy in core (`audioEqSummary`, `levellingSummary`). That is the right home
