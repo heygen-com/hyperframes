@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { shouldOpenInspector } from "./StudioHeader";
+import { describe, expect, it, vi } from "vitest";
+import { openRenderPanel, shouldOpenInspector } from "./StudioHeader";
+
+describe("openRenderPanel", () => {
+  it("opens render settings without starting a render", () => {
+    const setRightPanelTab = vi.fn();
+    const setRightCollapsed = vi.fn();
+
+    openRenderPanel(setRightPanelTab, setRightCollapsed);
+
+    expect(setRightPanelTab).toHaveBeenCalledWith("renders");
+    expect(setRightCollapsed).toHaveBeenCalledWith(false);
+  });
+});
 
 describe("shouldOpenInspector", () => {
   it("opens when the panel is hidden", () => {

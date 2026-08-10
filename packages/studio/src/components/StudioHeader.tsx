@@ -15,7 +15,6 @@ export interface StudioHeaderProps {
   capturing?: boolean;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
-  onExport?: () => void;
 }
 
 function HyperframesLogo() {
@@ -211,6 +210,14 @@ export function shouldOpenInspector(
   return effectiveRightCollapsed || !inspectorPanelActive;
 }
 
+export function openRenderPanel(
+  setRightPanelTab: (tab: "renders") => void,
+  setRightCollapsed: (collapsed: boolean) => void,
+): void {
+  setRightPanelTab("renders");
+  setRightCollapsed(false);
+}
+
 // fallow-ignore-next-line complexity
 export function StudioHeader({
   captureFrameHref,
@@ -220,16 +227,13 @@ export function StudioHeader({
   capturing,
   inspectorButtonActive,
   inspectorPanelActive,
-  onExport,
 }: StudioHeaderProps) {
-  const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
+  const { projectId, editHistory, handleUndo, handleRedo } = useStudioShellContext();
   // effectiveRightCollapsed, not the raw intent: in the auto-railed state the
   // intent is still "open" while the panel is hidden, so branching on intent
   // made this button write rightCollapsed=true — and that value is synced into
   // the shareable Studio URL, so a dead click would rewrite a link.
   const { effectiveRightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
-  const isRendering = renderQueue.isRendering;
-
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
       {/* Left: logo + project name */}
@@ -380,24 +384,15 @@ export function StudioHeader({
             Inspector
           </button>
         </Tooltip>
-        <Tooltip
-          label={
-            isRendering ? "A render is already in progress" : "Render and export this composition"
-          }
-          side="bottom"
-        >
+        <Tooltip label="Open render settings" side="bottom">
           <button
             type="button"
-            disabled={isRendering}
             onClick={() => {
-              if (isRendering) return;
-              setRightPanelTab("renders");
-              setRightCollapsed(false);
-              onExport?.();
+              openRenderPanel(setRightPanelTab, setRightCollapsed);
             }}
-            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] hover:brightness-110 transition-[filter,transform] active:scale-[0.98]"
           >
-            {isRendering ? "Rendering…" : "Export"}
+            Export
           </button>
         </Tooltip>
       </div>
