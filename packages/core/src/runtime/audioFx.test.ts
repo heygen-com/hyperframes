@@ -16,6 +16,10 @@ class Node {
   Q = { value: 0 };
   gain = { value: 0 };
   delayTime = { value: 0 };
+  playbackRate = { value: 0 };
+  loop = false;
+  /** `start(when, offset)` — the offset is an LFO's phase, so it is asserted. */
+  startArgs: (number | undefined)[] | null = null;
   type = "";
   curve: Float32Array | null = null;
   oversample = "none";
@@ -28,7 +32,9 @@ class Node {
   disconnect(): void {
     this.disconnected = true;
   }
-  start(): void {}
+  start(...args: (number | undefined)[]): void {
+    this.startArgs = args;
+  }
   stop(): void {}
 }
 class Ctx {
@@ -46,6 +52,9 @@ class Ctx {
     return new Node();
   }
   createOscillator() {
+    return new Node();
+  }
+  createBufferSource() {
     return new Node();
   }
   createWaveShaper() {
@@ -302,6 +311,67 @@ describe("attachElementFxChain", () => {
 
       expect(violations).toEqual([]);
       expect(node.getAttribute("data-fx-chain")).toContain("1200");
+    });
+
+    /**
+     * A rebuild hands the graph the clip position it happens at, so an LFO
+     * resumes at the phase the render would be at rather than restarting.
+     *
+     * Without it, every structural edit — and every seek, which rebuilds the same
+     * way — put a chorus back at the top of its sweep wherever the playhead was:
+     * preview disagreeing with the render, and with itself across an edit.
+     */
+    it("hands a rebuilt graph the playhead it happens at", async () => {
+      const clock = { currentTime: 0 };
+      class ClockCtx extends Ctx {
+        made: Node[] = [];
+        get currentTime(): number {
+          return clock.currentTime;
+        }
+        override createBufferSource(): Node {
+          const node = new Node();
+          this.made.push(node);
+          return node;
+        }
+      }
+      const withChorus = (mix: number) => ({
+        version: 1,
+        nodes: [
+          {
+            type: "chorus",
+            id: "n1",
+            params: { ...defaultAudioFxParams("chorus"), speed: 2, mix },
+          },
+        ],
+      });
+      const ctxClock = new ClockCtx();
+      const node = audioEl(withChorus(0.5));
+      attachElementFxChain(
+        ctxClock as unknown as BaseAudioContext,
+        node,
+        new Node() as never,
+        new Node() as never,
+        { scheduledAt: 0, elapsed: 0, rate: 1 },
+      );
+      // Attached at the clip's start: phase zero, the same as a render.
+      expect(ctxClock.made[0]?.startArgs?.[1]).toBeCloseTo(0, 6);
+
+      // 3.6 s later, and structural — a bypass, so the shape changes and the
+      // graph is rebuilt rather than re-parameterised.
+      clock.currentTime = 3.6;
+      node.setAttribute(
+        "data-fx-chain",
+        JSON.stringify({
+          version: 1,
+          nodes: [
+            ...withChorus(0.5).nodes,
+            { type: "peaking", id: "n2", params: defaultAudioFxParams("peaking") },
+          ],
+        }),
+      );
+      await settle();
+      // 3.6 s at 2 Hz is seven cycles and a fifth.
+      expect(ctxClock.made.at(-1)?.startArgs?.[1]).toBeCloseTo(0.2, 6);
     });
 
     it("keeps playing dry when an edit leaves the chain unreadable", async () => {
@@ -689,6 +759,9 @@ describe("attachElementFxChain", () => {
       override Q = new RecordingParam() as unknown as { value: number };
       override gain = new RecordingParam() as unknown as { value: number };
       override delayTime = new RecordingParam() as unknown as { value: number };
+      // A modulated effect's `speed` lane drives its LFO's rate, which is where a
+      // looping buffer keeps the frequency an oscillator kept on `frequency`.
+      override playbackRate = new RecordingParam() as unknown as { value: number };
       port = { postMessage: () => {} };
     }
     class RichCtx extends Ctx {
@@ -718,6 +791,9 @@ describe("attachElementFxChain", () => {
         return this.make();
       }
       override createOscillator() {
+        return this.make();
+      }
+      override createBufferSource() {
         return this.make();
       }
       override createWaveShaper() {
@@ -790,7 +866,7 @@ describe("attachElementFxChain", () => {
           expect(src.connections.at(-1), `${def.id} was left out of the path`).not.toBe(dst);
           if (automatable) {
             const scheduled = ctxRich.made.some((n) =>
-              [n.frequency, n.Q, n.gain, n.delayTime].some(
+              [n.frequency, n.Q, n.gain, n.delayTime, n.playbackRate].some(
                 (p) => (p as unknown as RecordingParam).scheduled,
               ),
             );

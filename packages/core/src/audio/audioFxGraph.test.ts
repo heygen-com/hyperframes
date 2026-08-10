@@ -25,13 +25,17 @@ class FakeNode {
   Q = new FakeParam();
   gain = new FakeParam();
   delayTime = new FakeParam();
+  playbackRate = new FakeParam();
+  loop = false;
   type = "";
   curve: Float32Array | null = null;
   oversample = "none";
-  buffer: unknown = null;
+  buffer: FakeBuffer | null = null;
   normalize = true;
   port = { postMessage: (m: unknown) => this.messages.push(m) };
   messages: unknown[] = [];
+  /** `start(when, offset)` — the offset is the LFO's phase, so it is asserted. */
+  startArgs: (number | undefined)[] | null = null;
   constructor(public kind: string) {}
   connect(next: FakeNode): FakeNode {
     this.connections.push(next);
@@ -40,8 +44,21 @@ class FakeNode {
   disconnect(): void {
     this.disconnected = true;
   }
-  start(): void {}
+  start(...args: (number | undefined)[]): void {
+    this.startArgs = args;
+  }
   stop(): void {}
+}
+
+/** One channel, kept across `getChannelData` calls so what is written can be read. */
+class FakeBuffer {
+  private data: Float32Array;
+  constructor(public length: number) {
+    this.data = new Float32Array(length);
+  }
+  getChannelData(): Float32Array {
+    return this.data;
+  }
 }
 
 class FakeCtx {
@@ -67,6 +84,9 @@ class FakeCtx {
   createOscillator() {
     return this.make("osc");
   }
+  createBufferSource() {
+    return this.make("bufferSource");
+  }
   createWaveShaper() {
     return this.make("waveshaper");
   }
@@ -74,7 +94,7 @@ class FakeCtx {
     return this.make("convolver");
   }
   createBuffer(_c: number, length: number) {
-    return { length, getChannelData: () => new Float32Array(length) };
+    return new FakeBuffer(length);
   }
 }
 
@@ -350,19 +370,76 @@ describe("levels and per-channel state", () => {
   });
 
   it("sets the phaser LFO waveform it declares", () => {
-    const ctx = new FakeCtx();
-    buildFxNode(ctx as unknown as BaseAudioContext, "phaser", {
-      ...defaultAudioFxParams("phaser"),
-      type: "0",
+    // A quarter of the way through the cycle both waveforms peak at 1, so the
+    // eighth is where they part: a sine is at sin(π/4), a triangle halfway up.
+    const eighth = (c: FakeCtx): number => {
+      const buffer = c.created.find((n) => n.kind === "bufferSource")?.buffer;
+      if (!buffer) throw new Error("no LFO buffer");
+      return buffer.getChannelData()[Math.round(buffer.length / 8)] ?? 0;
+    };
+    const build = (type: string): FakeCtx => {
+      const c = new FakeCtx();
+      buildFxNode(c as unknown as BaseAudioContext, "phaser", {
+        ...defaultAudioFxParams("phaser"),
+        type,
+      });
+      return c;
+    };
+    expect(eighth(build("0"))).toBeCloseTo(0.5, 3);
+    expect(eighth(build("1"))).toBeCloseTo(Math.SQRT1_2, 3);
+  });
+
+  /**
+   * The waveform is baked into a buffer at construction, so pushing a type change
+   * into the running graph would be a no-op — preview would keep sweeping on a
+   * triangle while the render used the sine the attribute now says.
+   */
+  it("rebuilds a phaser when its LFO waveform changes", () => {
+    const phaser = (params: Record<string, number | string>): HfAudioFxChain => ({
+      version: 1,
+      nodes: [
+        {
+          type: "phaser",
+          enabled: true,
+          params: { ...defaultAudioFxParams("phaser"), type: "0", ...params },
+        },
+      ],
     });
-    const osc = ctx.created.find((n) => n.kind === "osc");
-    expect(osc?.type).toBe("triangle");
-    const ctx2 = new FakeCtx();
-    buildFxNode(ctx2 as unknown as BaseAudioContext, "phaser", {
-      ...defaultAudioFxParams("phaser"),
-      type: "1",
-    });
-    expect(ctx2.created.find((n) => n.kind === "osc")?.type).toBe("sine");
+    const built = buildFxChain(asCtx(ctx()), phaser({}));
+    expect(built.update(phaser({ type: "1" }))).toBe(false);
+    // Everything else about a phaser still updates in place.
+    const other = buildFxChain(asCtx(ctx()), phaser({}));
+    expect(other.update(phaser({ speed: 2 }))).toBe(true);
+  });
+
+  /**
+   * An LFO's phase is the whole reason it is a looping buffer rather than an
+   * OscillatorNode, whose phase is zero at `start()` and cannot be set.
+   *
+   * Preview rebuilds the graph mid-play — a seek, a scrub, any structural edit —
+   * and an oscillator restarted there put the chorus at the top of its sweep
+   * wherever the playhead happened to be, so preview disagreed with the render
+   * and with itself across an edit.
+   */
+  it("starts a modulated effect's LFO at the phase the clip has reached", () => {
+    // 3.5 s at 2 Hz is seven whole cycles: back at phase zero.
+    const whole = ctx();
+    buildFxNode(asCtx(whole), "chorus", { ...defaultAudioFxParams("chorus"), speed: 2 }, 3.5);
+    expect(whole.created.find((n) => n.kind === "bufferSource")?.startArgs?.[1]).toBeCloseTo(0, 6);
+    // 3.6 s at 2 Hz is seven cycles and a fifth.
+    const part = ctx();
+    buildFxNode(asCtx(part), "chorus", { ...defaultAudioFxParams("chorus"), speed: 2 }, 3.6);
+    const src = part.created.find((n) => n.kind === "bufferSource");
+    expect(src?.startArgs?.[1]).toBeCloseTo(0.2, 6);
+    expect(src?.loop).toBe(true);
+    // One second of waveform: the rate reads in Hz, so a speed lane needs no map.
+    expect(src?.playbackRate.value).toBeCloseTo(2, 6);
+  });
+
+  it("starts the LFO at zero for a render, which always begins at the clip's start", () => {
+    const c = ctx();
+    buildFxNode(asCtx(c), "phaser", defaultAudioFxParams("phaser"));
+    expect(c.created.find((n) => n.kind === "bufferSource")?.startArgs?.[1]).toBe(0);
   });
 
   it("rebuilds a one-pole filter when its cutoff moves", () => {

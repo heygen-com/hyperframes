@@ -83,12 +83,75 @@ export interface FxNodeHandle {
   dispose(): void;
 }
 
-type Builder = (ctx: BaseAudioContext, p: HfAudioFxParamValues) => FxNodeHandle;
+/**
+ * `elapsed` is the clip-relative time, in seconds, the graph is being built at.
+ *
+ * Zero for the render, which always starts a clip's audio from its first sample,
+ * and zero for a preview attached before playback. It is non-zero in the one case
+ * that used to be wrong: preview rebuilding the graph mid-play — a seek, a scrub,
+ * or any structural edit — where an LFO restarting from phase 0 made preview
+ * disagree with the render, and with itself across an edit.
+ */
+type Builder = (ctx: BaseAudioContext, p: HfAudioFxParamValues, elapsed: number) => FxNodeHandle;
 
 const n = (v: number | string | undefined): number => (typeof v === "number" ? v : Number(v ?? 0));
 
 /** Milliseconds on the knob, seconds on the AudioParam. */
 const msToSec = (v: number): number => v / 1000;
+
+/**
+ * An LFO with a settable phase.
+ *
+ * An OscillatorNode cannot have one: its phase is zero at `start()`, and
+ * `start(when)` clamps a past `when` to now. So the modulator is one cycle of the
+ * waveform in a looping buffer instead, where `start(when, offset)` *is* a phase
+ * control.
+ *
+ * The buffer holds exactly one second, so it plays at 1 Hz at the default rate
+ * and `playbackRate` reads directly in Hz — which is what the `speed` knob is in,
+ * and what an automation lane aimed at it writes, so neither needs a mapping.
+ *
+ * Phase is taken as `elapsed × speed`, which is exact for the constant speed this
+ * is built with. A lane that sweeps `speed` advances the real phase by its
+ * integral, so a graph rebuilt mid-sweep resumes fractionally off — smaller than
+ * the whole-cycle error this replaces, and not worth integrating a curve for.
+ */
+function lfoSource(
+  ctx: BaseAudioContext,
+  wave: "sine" | "triangle",
+  speed: number,
+  elapsed: number,
+): AudioBufferSourceNode {
+  const length = Math.max(1, Math.round(ctx.sampleRate));
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const cycle = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) {
+    const phase = i / length;
+    // Both start at zero and rise, the convention an OscillatorNode uses, so a
+    // render — which builds at elapsed 0 — is unmoved by this change.
+    cycle[i] =
+      wave === "sine"
+        ? Math.sin(2 * Math.PI * phase)
+        : 4 * Math.abs(((phase + 0.75) % 1) - 0.5) - 1;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  src.playbackRate.value = speed;
+  // A negative `offset` throws, and `elapsed` is only trusted to be a number.
+  const offset = ((((elapsed * speed) % 1) + 1) % 1) * (length / ctx.sampleRate);
+  src.start(typeof ctx.currentTime === "number" ? ctx.currentTime : 0, offset);
+  return src;
+}
+
+/** Stop an LFO that may already have been stopped, on the way to disposal. */
+function stopLfo(src: AudioBufferSourceNode): void {
+  try {
+    src.stop();
+  } catch {
+    /* already stopped */
+  }
+}
 
 /** A wet/dry pair: the dry side is whatever the wet side is not. */
 function mixTargets(wet: AudioParam, dry: AudioParam): FxParamTarget[] {
@@ -271,22 +334,21 @@ const delayFeedback: Builder = (ctx, p) => {
   };
 };
 
-const chorusLfo: Builder = (ctx, p) => {
+const chorusLfo: Builder = (ctx, p, elapsed) => {
   const input = ctx.createGain();
   const out = ctx.createGain();
   const dl = ctx.createDelay(0.5);
-  const lfo = ctx.createOscillator();
+  const lfo = lfoSource(ctx, "sine", n(p.speed), elapsed);
   const depth = ctx.createGain();
   const wet = ctx.createGain();
   const dry = ctx.createGain();
   lfo.connect(depth).connect(dl.delayTime);
   input.connect(dl).connect(wet).connect(out);
   input.connect(dry).connect(out);
-  lfo.start();
   const apply = (v: HfAudioFxParamValues): void => {
     dl.delayTime.value = n(v.delay) / 1000;
     depth.gain.value = n(v.depth) / 1000;
-    lfo.frequency.value = n(v.speed);
+    lfo.playbackRate.value = n(v.speed);
     wet.gain.value = n(v.mix);
     dry.gain.value = 1 - n(v.mix);
   };
@@ -298,15 +360,12 @@ const chorusLfo: Builder = (ctx, p) => {
     automation: {
       delay: [{ param: dl.delayTime, map: msToSec }],
       depth: [{ param: depth.gain, map: msToSec }],
-      speed: [{ param: lfo.frequency }],
+      // One second of waveform, so the rate is the frequency in Hz the knob names.
+      speed: [{ param: lfo.playbackRate }],
       mix: mixTargets(wet.gain, dry.gain),
     },
     dispose: () => {
-      try {
-        lfo.stop();
-      } catch {
-        /* already stopped */
-      }
+      stopLfo(lfo);
       [input, out, dl, depth, wet, dry].forEach((x) => x.disconnect());
     },
   };
@@ -314,7 +373,7 @@ const chorusLfo: Builder = (ctx, p) => {
 
 const PHASER_STAGES = 6;
 
-const allpassPhaser: Builder = (ctx, p) => {
+const allpassPhaser: Builder = (ctx, p, elapsed) => {
   const input = ctx.createGain();
   const out = ctx.createGain();
   // aphaser's in_gain/out_gain trim the signal entering and leaving the effect.
@@ -323,7 +382,12 @@ const allpassPhaser: Builder = (ctx, p) => {
   // track level.
   const inTrim = ctx.createGain();
   const outTrim = ctx.createGain();
-  const lfo = ctx.createOscillator();
+  // aphaser's type 0 is triangular, 1 sinusoidal. The builder once left this
+  // unset, so the declared default ("Triangular") was silently a sine. The
+  // waveform is baked into the LFO's buffer, so switching it is a shape change
+  // that rebuilds the chain rather than a value pushed into the running graph —
+  // see `shapeOf`.
+  const lfo = lfoSource(ctx, String(p.type) === "1" ? "sine" : "triangle", n(p.speed), elapsed);
   const depth = ctx.createGain();
   const wet = ctx.createGain();
   const dry = ctx.createGain();
@@ -340,11 +404,6 @@ const allpassPhaser: Builder = (ctx, p) => {
     stages.push(ap);
   }
   lfo.connect(depth);
-  // aphaser's type 0 is triangular, 1 sinusoidal. The builder never set this, so
-  // the declared default ("Triangular") was silently a sine. An OscillatorNode
-  // has no triangle-with-the-same-phase primitive to switch to, so triangle is
-  // the node's own "triangle" type.
-  lfo.start();
   node.connect(wet).connect(outTrim);
   inTrim.connect(dry).connect(outTrim);
   outTrim.connect(out);
@@ -354,8 +413,7 @@ const allpassPhaser: Builder = (ctx, p) => {
     const centre = 1000 / Math.max(0.1, n(v.delay));
     for (const ap of stages) ap.frequency.value = centre;
     depth.gain.value = centre * n(v.decay);
-    lfo.frequency.value = n(v.speed);
-    lfo.type = String(v.type) === "1" ? "sine" : "triangle";
+    lfo.playbackRate.value = n(v.speed);
     inTrim.gain.value = n(v.in_gain);
     outTrim.gain.value = n(v.out_gain);
     // Summed at unity: the sweep is the effect, not a blend control.
@@ -370,7 +428,7 @@ const allpassPhaser: Builder = (ctx, p) => {
     // `delay` and `decay` set the sweep centre, which feeds every stage's
     // frequency at once — not one knob, one param — so they stay unautomated.
     automation: {
-      speed: [{ param: lfo.frequency }],
+      speed: [{ param: lfo.playbackRate }],
       // The trims, not wet/dry. apply() drives inTrim/outTrim from these knobs
       // and pins wet and dry to 1 — so a lane aimed at wet/dry modulated a
       // constant and left the trim frozen, and the next values-only edit slammed
@@ -380,11 +438,7 @@ const allpassPhaser: Builder = (ctx, p) => {
       out_gain: [{ param: outTrim.gain }],
     },
     dispose: () => {
-      try {
-        lfo.stop();
-      } catch {
-        /* already stopped */
-      }
+      stopLfo(lfo);
       [input, out, inTrim, outTrim, depth, wet, dry, ...stages].forEach((x) => x.disconnect());
     },
   };
@@ -452,17 +506,18 @@ export function buildFxNode(
   ctx: BaseAudioContext,
   type: string,
   params: HfAudioFxParamValues,
+  elapsed = 0,
 ): FxNodeHandle {
   const def = getAudioFxDef(type);
   if (!def) throw new Error(`Unknown effect type: ${type}`);
   const resolved = normalizeAudioFxParams(type, params);
   // One-pole is a different node type, not a different parameter value.
   if ((type === "highpass" || type === "lowpass") && String(resolved.poles) === "1") {
-    return onePoleBuilder(type)(ctx, resolved);
+    return onePoleBuilder(type)(ctx, resolved, elapsed);
   }
   const builder = BUILDERS[def.web];
   if (!builder) throw new Error(`No Web Audio builder for ${def.web}`);
-  return builder(ctx, resolved);
+  return builder(ctx, resolved, elapsed);
 }
 
 export interface FxChainHandle {
@@ -491,7 +546,11 @@ function shapeOf(chain: HfAudioFxChain): string {
       // being pushed into a no-op updater — which is what let preview keep
       // filtering at the old frequency while the render used the new one.
       const fixedFreq = String(p.poles) === "1" ? `@${p.frequency}` : "";
-      return `${node.type}${poles}${fixedFreq}`;
+      // The phaser's LFO waveform is baked into a buffer at construction, for the
+      // same reason: pushed into the running graph it would be a no-op, and
+      // preview would keep sweeping on a triangle while the render used a sine.
+      const wave = node.type === "phaser" ? `~${p.type}` : "";
+      return `${node.type}${poles}${fixedFreq}${wave}`;
     })
     .join("|");
 }
@@ -499,15 +558,23 @@ function shapeOf(chain: HfAudioFxChain): string {
 /**
  * Build the whole chain in series. Returns a handle whose `input`/`output` can
  * be spliced into any graph; an empty chain yields a pass-through.
+ *
+ * `elapsed` is where in the clip this is being built — see `Builder`. It only
+ * reaches the modulated effects, and only matters when the graph is built after
+ * the audio has already started.
  */
-export function buildFxChain(ctx: BaseAudioContext, chain: HfAudioFxChain): FxChainHandle {
+export function buildFxChain(
+  ctx: BaseAudioContext,
+  chain: HfAudioFxChain,
+  elapsed = 0,
+): FxChainHandle {
   const input = ctx.createGain();
   const output = ctx.createGain();
   const handles: { id?: string; type: string; handle: FxNodeHandle }[] = [];
 
   let tail: AudioNode = input;
   for (const node of enabledAudioFxNodes(chain)) {
-    const handle = buildFxNode(ctx, node.type, node.params ?? {});
+    const handle = buildFxNode(ctx, node.type, node.params ?? {}, elapsed);
     tail.connect(handle.input);
     tail = handle.output;
     handles.push({ ...(node.id ? { id: node.id } : {}), type: node.type, handle });
