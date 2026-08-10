@@ -85,6 +85,7 @@
     "@types/react-dom": "19",
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
+    "chokidar": "^4.0.3",
     "fake-indexeddb": "^6.2.5",
     "postcss": "^8.4.0",
     "puppeteer-core": "^25.2.1",
