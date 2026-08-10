@@ -206,9 +206,44 @@ describe("readElementCropFrame", () => {
     expect(frame.height).toBeCloseTo(200, 3);
   });
 
-  it("3D transform falls back to the axis-aligned frame", () => {
+  /**
+   * A 3D matrix is not automatically unmeasurable. GSAP writes one for an
+   * ordinary 2D move or spin (force3D), so refusing every `matrix3d` drew the
+   * crop outline square on elements the rest of the chrome drew rotated.
+   * The identity here is a 2D transform written the long way.
+   */
+  it("reads a planar matrix3d rather than giving up on it", () => {
     const frame = readElementCropFrame(
       fakeEl("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBe(0);
+    // The element's own box, centred on the overlay rect, not the rect itself.
+    expect(frame.width).toBeCloseTo(200, 6);
+    expect(frame.height).toBeCloseTo(100, 6);
+  });
+
+  it("reads a 2D rotation written as matrix3d", () => {
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(0.866025,0.5,0,0,-0.5,0.866025,0,0,0,0,1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
+  });
+
+  it("reads a flipped element, which still has a real size", () => {
+    // Negative z scale — a composition that mirrors an element writes this.
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(-0.866025,-0.5,0,0,-0.5,0.866025,0,0,0,0,-1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame.width).toBeGreaterThan(0);
+    expect(frame.height).toBeGreaterThan(0);
+  });
+
+  it("still falls back on a perspective transform, which no single angle describes", () => {
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(1,0,0,0.002,0,1,0,0,0,0,1,0,0,0,0,1)"),
       overlayRect,
     );
     expect(frame).toEqual({

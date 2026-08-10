@@ -183,15 +183,36 @@ export interface CropFrame {
  * rotation, or a 3D/unparseable matrix. The caller falls back to the
  * axis-aligned box rather than guessing an angle.
  */
-/** The 2D matrix components of a `matrix(...)` transform, or null if it is 3D or unparseable. */
+/** Perspective terms this far from zero mean the mapping is not affine. */
+const PERSPECTIVE_EPSILON = 1e-6;
+
+/**
+ * The 2D components of a computed transform, or null when it cannot be used.
+ *
+ * Accepts `matrix3d` as well as `matrix`, taking the same 2D projection the
+ * rest of the overlay reads through DOMMatrix. GSAP writes a 3D matrix for an
+ * ordinary 2D move or spin (force3D), and a composition that flips an element
+ * writes one with a negative z scale — treating either as unmeasurable left the
+ * crop outline square on an element every other piece of chrome drew rotated.
+ *
+ * Only a perspective term rules the matrix out, because that is where the
+ * mapping stops being affine and a single angle stops describing it.
+ */
 function parseMatrixComponents(
   transform: string,
 ): { a: number; b: number; c: number; d: number } | null {
-  const m = /^matrix\(([^)]+)\)$/.exec(transform);
-  if (!m) return null;
-  const [a, b, c, d] = m[1]!.split(",").map((v) => Number.parseFloat(v));
-  if (![a, b, c, d].every(Number.isFinite)) return null;
-  return { a: a!, b: b!, c: c!, d: d! };
+  const flat = /^matrix\(([^)]+)\)$/.exec(transform);
+  if (flat) {
+    const [a, b, c, d] = flat[1]!.split(",").map((v) => Number.parseFloat(v));
+    return [a, b, c, d].every(Number.isFinite) ? { a: a!, b: b!, c: c!, d: d! } : null;
+  }
+  const spatial = /^matrix3d\(([^)]+)\)$/.exec(transform);
+  if (!spatial) return null;
+  const m = spatial[1]!.split(",").map((v) => Number.parseFloat(v));
+  if (m.length !== 16 || !m.every(Number.isFinite)) return null;
+  const affine = [m[3], m[7], m[11]].every((v) => Math.abs(v!) < PERSPECTIVE_EPSILON);
+  if (!affine) return null;
+  return { a: m[0]!, b: m[1]!, c: m[4]!, d: m[5]! };
 }
 
 /** The element's own `transform` and `rotate`, read together in one pass. */
@@ -236,7 +257,8 @@ export function readElementCropFrame(
   const { a, b, c, d, spin } = planar;
   const elScaleX = Math.hypot(a, b);
   const det = a * d - b * c;
-  const elScaleY = elScaleX !== 0 ? det / elScaleX : 1;
+  // |det| : a flipped element (negative determinant) still has a real size.
+  const elScaleY = elScaleX !== 0 ? Math.abs(det) / elScaleX : 1;
   if (elScaleX <= 0 || elScaleY <= 0) return aabb;
   const angleDeg = (Math.atan2(b, a) * 180) / Math.PI + spin;
   const scaleX = elScaleX * editX;
