@@ -1,0 +1,141 @@
+---
+title: "Arc Motion Path"
+description: "A GSAP MotionPath primitive that flies a callout along a curved arc with autorotation."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="arc-motion-path preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/arc-motion-path.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/arc-motion-path.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add arc-motion-path" />
+
+That writes one file: `compositions/components/arc-motion-path.html`.
+
+## Source
+
+<Accordion title={`arc-motion-path.html`}>
+
+```html
+<!--
+  Arc Motion Path - advanced HyperFrames primitive.
+
+  This is intentionally seekable: drive it from a paused GSAP timeline.
+  MotionPath examples require GSAP MotionPathPlugin. Three.js examples expose
+  a render(progress) adapter instead of a free-running requestAnimationFrame loop.
+-->
+
+<div class="hf-advanced-arc-motion-path">
+  <svg viewBox="0 0 760 430" aria-hidden="true">
+    <path
+      id="arc-motion-path-path-a"
+      class="path"
+      d="M104 310 C178 110, 334 74, 442 178 S592 306, 668 120"
+    />
+    <path id="arc-motion-path-path-b" class="path" d="M118 142 C224 300, 410 330, 642 206" />
+  </svg>
+  <div class="core">Arc Motion Path</div>
+  <div class="chip chip-a"><span class="dot"></span>Plan</div>
+  <div class="chip chip-b"><span class="dot"></span>Render</div>
+</div>
+
+<style>
+  .hf-advanced-arc-motion-path {
+    color: var(--fg, #111827);
+    font-family: var(--font-body, Inter, system-ui, sans-serif);
+  }
+  .hf-advanced-arc-motion-path {
+    position: relative;
+    width: 760px;
+    height: 430px;
+    border-radius: var(--radius, 30px);
+    overflow: hidden;
+    background: radial-gradient(
+      circle at 50% 20%,
+      var(--bg, #f4f4f5),
+      var(--bg, #f8fafc) 54%,
+      var(--bg, #e4e4e7)
+    );
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+  }
+  .hf-advanced-arc-motion-path svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .hf-advanced-arc-motion-path .path {
+    fill: none;
+    stroke: color-mix(in srgb, var(--fg, #111827) 18%, transparent);
+    stroke-width: 3;
+    stroke-dasharray: 10 12;
+  }
+  .hf-advanced-arc-motion-path .core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 176px;
+    height: 176px;
+    margin: -88px 0 0 -88px;
+    border-radius: 42px;
+    background: var(--fg, #111827);
+    color: var(--bg, #fff);
+    display: grid;
+    place-items: center;
+    text-align: center;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    box-shadow: 0 22px 54px rgba(15, 23, 42, 0.25);
+  }
+  .hf-advanced-arc-motion-path .chip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 8px);
+    height: 42px;
+    padding: 0 var(--space-2, 16px);
+    border-radius: var(--radius, 999px);
+    background: var(--surface, #fff);
+    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
+    font-weight: 800;
+    transform-origin: 50% 50%;
+  }
+  .hf-advanced-arc-motion-path .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius, 999px);
+    background: var(--accent, #18181b);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  const startTime = 0;
+  if (window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin); tl.to('.hf-advanced-arc-motion-path .chip-a', { motionPath: { path: '#arc-motion-path-path-a', align: '#arc-motion-path-path-a', alignOrigin: [0.5, 0.5], autoRotate: true }, duration: 2.4, ease: 'power1.inOut' }, startTime); tl.to('.hf-advanced-arc-motion-path .chip-b', { motionPath: { path: '#arc-motion-path-path-b', align: '#arc-motion-path-path-b', alignOrigin: [0.5, 0.5], autoRotate: true, start: 0.1, end: 0.92 }, duration: 2.1, ease: 'sine.inOut' }, startTime + 0.25);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/arc-motion-path.html` and paste its contents into your composition. The comment header describes the timeline integration and any optional dependency setup.
+
+{/* hf:generated-footer */}
+
+Tagged `video-primitive` `motionpath` `gsap-plugin` `hyperframes-native`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

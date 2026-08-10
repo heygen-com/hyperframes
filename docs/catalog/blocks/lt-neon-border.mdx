@@ -1,0 +1,489 @@
+---
+title: "Neon Border"
+description: "Two arcs of light travel the edge of a rounded panel and snap corner to corner, trailing a soft three-layer bloom. A lower third for a name and role."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="lt-neon-border preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/lt-neon-border.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-neon-border.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add lt-neon-border" />
+
+That writes one file: `compositions/lt-neon-border.html`.
+
+## Add it to your video
+
+It runs for 4.8 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="lt-neon-border"
+  data-composition-src="compositions/lt-neon-border.html"
+  data-start="0"
+  data-duration="4.8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `undefined` — Name. Defaults to `Dr. Maya Chen`.
+- `undefined` — Role. Defaults to `Host · Neuroscientist`.
+- `undefined` — Accent. Defaults to `#cc9149`.
+- `undefined` — Movement. Defaults to `step`. Options: `step`, `glide`.
+- `undefined` — Speed. Defaults to `1.6`.
+- `undefined` — Corner radius. Defaults to `26`.
+- `undefined` — Thickness. Defaults to `5`.
+- `undefined` — Arc length. Defaults to `22`.
+- `undefined` — Glow. Defaults to `1`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `name` | `Dr. Maya Chen` | string |  |
+| `role` | `Host · Neuroscientist` | string |  |
+| `accent` | `#cc9149` | color |  |
+| `movement` | `step` | `step`, `glide` |  |
+| `speed` | `1.6` | 0.2corners/s to 6corners/s, step 0.1corners/s |  |
+| `cornerRadius` | `26` | 0px to 90px, step 1px |  |
+| `thickness` | `5` | 1px to 16px, step 1px |  |
+| `arcLength` | `22` | 5% to 100%, step 1% |  |
+| `glow` | `1` | 0x to 2x, step 0.05x |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="lt-neon-border"
+  data-composition-src="compositions/lt-neon-border.html"
+  data-variable-values='{"name":"Dr. Maya Chen","role":"Host · Neuroscientist","accent":"#cc9149","movement":"step","speed":1.6,"cornerRadius":26,"thickness":5,"arcLength":22,"glow":1}'
+></div>
+```
+
+## Source
+
+<Accordion title={`lt-neon-border.html`}>
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+        font-family: "Inter", sans-serif;
+      }
+
+      #root .nb-wrap {
+        position: absolute;
+        left: 50px;
+        bottom: 56px;
+        width: 1120px;
+        height: 510px;
+      }
+      #root .nb-svg {
+        position: absolute;
+        inset: 0;
+        display: block;
+      }
+      /* The frame's inner box, inset by the bloom padding so the copy lands
+         inside the traced rectangle. */
+      #root .nb-panel {
+        position: absolute;
+        left: 150px;
+        top: 150px;
+        width: 820px;
+        height: 210px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 14px;
+        padding: 0 52px;
+      }
+      #root .nb-name {
+        display: block;
+        font-size: 54px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1;
+        letter-spacing: -0.015em;
+        white-space: nowrap;
+        text-shadow: 0 2px 20px rgba(0, 0, 0, 0.75);
+      }
+      #root .nb-role {
+        display: block;
+        font-size: 25px;
+        font-weight: 400;
+        color: #d5dae3;
+        line-height: 1.2;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.75);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-neon-border"
+      data-composition-variables='[
+        {"id":"name","type":"string","label":"Name","default":"Dr. Maya Chen"},
+        {"id":"role","type":"string","label":"Role","default":"Host · Neuroscientist"},
+        {"id":"accent","type":"color","label":"Accent","default":"#cc9149"},
+        {"id":"movement","type":"enum","label":"Movement","default":"step","options":[{"value":"step","label":"Step (snap at corners)"},{"value":"glide","label":"Glide (smooth)"}]},
+        {"id":"speed","type":"number","label":"Speed","default":1.6,"min":0.2,"max":6,"step":0.1,"unit":"corners/s"},
+        {"id":"cornerRadius","type":"number","label":"Corner radius","default":26,"min":0,"max":90,"step":1,"unit":"px"},
+        {"id":"thickness","type":"number","label":"Thickness","default":5,"min":1,"max":16,"step":1,"unit":"px"},
+        {"id":"arcLength","type":"number","label":"Arc length","default":22,"min":5,"max":100,"step":1,"unit":"%"},
+        {"id":"glow","type":"number","label":"Glow","default":1,"min":0,"max":2,"step":0.05,"unit":"x"}
+      ]'
+      data-start="0"
+      data-duration="4.8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="nb-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="nb-wrap" class="nb-wrap">
+          <svg
+            id="nb-svg"
+            class="nb-svg"
+            width="1120"
+            height="510"
+            viewBox="0 0 1120 510"
+            fill="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <g id="nb-seg-a-glow"></g>
+              <g id="nb-seg-a-core"></g>
+              <g id="nb-seg-b-glow"></g>
+              <g id="nb-seg-b-core"></g>
+            </defs>
+            <g transform="translate(150,150)">
+              <!-- Wide bloom sits UNDER the panel so the halo reads outside the
+                   frame and the interior stays hardware-clean. -->
+              <g id="nb-bloom-under"></g>
+              <path id="nb-fill" d="" fill="rgba(9,11,15,0.78)" />
+              <path id="nb-rail" d="" fill="none" stroke-linejoin="round" />
+              <g id="nb-bloom-over"></g>
+            </g>
+          </svg>
+          <div id="nb-panel" class="nb-panel">
+            <span id="nb-name" class="nb-name" data-var-text="name">Dr. Maya Chen</span>
+            <span id="nb-role" class="nb-role" data-var-text="role">Host · Neuroscientist</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        var SVG_NS = "http://www.w3.org/2000/svg";
+        var W = 820; // traced rectangle width
+        var H = 210; // traced rectangle height
+        var DUR = 4.8;
+
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        function num(v, fallback) {
+          var n = typeof v === "number" ? v : parseFloat(v);
+          return isFinite(n) ? n : fallback;
+        }
+
+        var accent = /^#[0-9a-fA-F]{6}$/.test(String(vars.accent))
+          ? String(vars.accent)
+          : "#cc9149";
+        var mode = vars.movement === "glide" ? "glide" : "step";
+        var speed = Math.max(0.05, num(vars.speed, 1.6)); // corners per second
+        var radius = Math.min(Math.min(W, H) / 2, Math.max(0, num(vars.cornerRadius, 26)));
+        var thickness = Math.max(0.5, num(vars.thickness, 5));
+        var arcFrac = Math.min(1, Math.max(0.02, num(vars.arcLength, 22) / 100));
+        var glow = Math.max(0, num(vars.glow, 1));
+
+        // Hot core: the accent lifted most of the way to white, the way a real
+        // filament reads brighter than its halo.
+        function towardWhite(hex, amount) {
+          var v = parseInt(hex.slice(1), 16);
+          var out = "#";
+          for (var s = 16; s >= 0; s -= 8) {
+            var c = (v >> s) & 255;
+            var m = Math.round(c + (255 - c) * amount);
+            out += (m < 16 ? "0" : "") + m.toString(16);
+          }
+          return out;
+        }
+        var hot = towardWhite(accent, 0.78);
+
+        // ---- geometry -------------------------------------------------------
+        // Rounded rect, clockwise, starting where the top edge leaves the
+        // top-left corner arc.
+        var r = radius;
+        var arc = "A " + r + " " + r + " 0 0 1 ";
+        var d = [
+          "M " + r + " 0",
+          "H " + (W - r),
+          arc + W + " " + r,
+          "V " + (H - r),
+          arc + (W - r) + " " + H,
+          "H " + r,
+          arc + "0 " + (H - r),
+          "V " + r,
+          arc + r + " 0",
+          "Z",
+        ].join(" ");
+
+        var fillEl = document.getElementById("nb-fill");
+        var railEl = document.getElementById("nb-rail");
+        fillEl.setAttribute("d", d);
+        railEl.setAttribute("d", d);
+        railEl.setAttribute("stroke", accent);
+        railEl.setAttribute("stroke-width", String(thickness));
+        railEl.setAttribute("stroke-opacity", "0.14");
+
+        // Analytic perimeter, then rescaled to whatever length the renderer
+        // actually measures for the path so dash distances line up exactly.
+        var SW = W - 2 * r; // straight run, horizontal
+        var SH = H - 2 * r; // straight run, vertical
+        var AC = (Math.PI * r) / 2; // one corner arc
+        var P_ANALYTIC = 2 * SW + 2 * SH + 4 * AC;
+        var P = railEl.getTotalLength() || P_ANALYTIC;
+        var K = P / P_ANALYTIC;
+
+        // Distance along the path of the MIDPOINT of each corner arc, so the
+        // light parks centred on the corner rather than skidding past it.
+        var CORNERS = [
+          (SW + AC / 2) * K, // top-right
+          (SW + SH + 1.5 * AC) * K, // bottom-right
+          (2 * SW + SH + 2.5 * AC) * K, // bottom-left
+          (2 * SW + 2 * SH + 3.5 * AC) * K, // top-left
+        ];
+
+        /** Absolute path distance of corner k, for any integer k (k may be
+         * negative or beyond one lap). Pure function of k — no accumulator. */
+        function cornerPos(k) {
+          var lap = Math.floor(k / 4);
+          var i = k - lap * 4;
+          return CORNERS[i] + lap * P;
+        }
+
+        // ---- easing ---------------------------------------------------------
+        // The step curve overshoots (y2 = 1.05); that overshoot IS the snap.
+        function cubicBezier(x1, y1, x2, y2) {
+          function axis(t, a, b) {
+            var u = 1 - t;
+            return 3 * u * u * t * a + 3 * u * t * t * b + t * t * t;
+          }
+          return function (x) {
+            if (x <= 0) return 0;
+            if (x >= 1) return 1;
+            var lo = 0;
+            var hi = 1;
+            var t = x;
+            // Fixed iteration count: same input, same output, every run.
+            for (var i = 0; i < 32; i++) {
+              t = (lo + hi) / 2;
+              if (axis(t, x1, x2) < x) lo = t;
+              else hi = t;
+            }
+            return axis(t, y1, y2);
+          };
+        }
+        var ease =
+          mode === "glide" ? cubicBezier(0.65, 0, 0.35, 1) : cubicBezier(0.72, 0.16, 0.18, 1.05);
+
+        var beat = 1 / speed; // seconds per corner hop
+
+        /** Head position (path distance) at time t. floor/frac of t/beat is the
+         * closed form of the reference's `stepT += dt` accumulator. */
+        function headAt(t) {
+          var total = t / beat;
+          var k = Math.floor(total);
+          var u = total - k;
+          var a = cornerPos(k);
+          var b = cornerPos(k + 1);
+          return a + (b - a) * ease(u);
+        }
+
+        // ---- arc construction ----------------------------------------------
+        // Each arc is a run of abutting dash segments whose opacity falls off
+        // behind the head; that ramp is the taper. Geometry lives once in
+        // <defs> and is shared by every bloom layer through <use>.
+        function buildSegments(groupId, count, falloff) {
+          var g = document.getElementById(groupId);
+          var segs = [];
+          for (var i = 0; i < count; i++) {
+            var p = document.createElementNS(SVG_NS, "path");
+            p.setAttribute("d", d);
+            p.setAttribute("fill", "none");
+            p.setAttribute("stroke-linecap", i === 0 ? "round" : "butt");
+            p.setAttribute("opacity", String(Math.pow(1 - i / count, falloff)));
+            g.appendChild(p);
+            segs.push(p);
+          }
+          return segs;
+        }
+
+        var GLOW_SEGS = 20;
+        var CORE_SEGS = 26;
+        var glowLen = arcFrac * P;
+        var coreLen = 0.34 * glowLen;
+
+        var arcs = [
+          {
+            offset: 0,
+            glow: buildSegments("nb-seg-a-glow", GLOW_SEGS, 2.6),
+            core: buildSegments("nb-seg-a-core", CORE_SEGS, 1.4),
+          },
+          {
+            // Half a lap behind: the diametrically opposite corner. The pairing
+            // is most of why the effect reads as designed rather than random.
+            offset: 2,
+            glow: buildSegments("nb-seg-b-glow", GLOW_SEGS, 2.6),
+            core: buildSegments("nb-seg-b-core", CORE_SEGS, 1.4),
+          },
+        ];
+
+        // Three stacked bloom layers (soft / medium / wide) plus the filament.
+        // `spread` widens the stroke before it is blurred — that pairing, not
+        // the blur alone, is what makes the halo read as emitted light.
+        var MAX_REACH = 36;
+        var LAYERS = [
+          { blur: 30, spread: 1, opacity: 0.18, stroke: accent, deep: true },
+          { blur: 15, spread: 0.6, opacity: 0.3, stroke: accent, deep: true },
+          { blur: 8, spread: 0.3, opacity: 0.5, stroke: accent, deep: true },
+          { blur: 4, spread: 0.05, opacity: 0.9, stroke: hot, core: true },
+          { blur: 0, spread: -0.012, opacity: 1, stroke: "#ffffff", core: true },
+        ];
+
+        var under = document.getElementById("nb-bloom-under");
+        var over = document.getElementById("nb-bloom-over");
+        ["a", "b"].forEach(function (tag) {
+          LAYERS.forEach(function (layer) {
+            var u = document.createElementNS(SVG_NS, "use");
+            u.setAttribute("href", "#nb-seg-" + tag + "-" + (layer.core ? "core" : "glow"));
+            u.setAttribute("stroke", layer.stroke);
+            u.setAttribute(
+              "stroke-width",
+              String(Math.max(0.5, thickness + 2 * layer.spread * MAX_REACH * glow)),
+            );
+            u.setAttribute("opacity", String(Math.min(1, layer.opacity * glow)));
+            if (layer.blur > 0) u.style.filter = "blur(" + layer.blur + "px)";
+            (layer.deep ? under : over).appendChild(u);
+          });
+        });
+
+        /** Lay a segment run out behind `head`. Every value derives from head. */
+        function layout(segs, head, length) {
+          var step = length / segs.length;
+          for (var i = 0; i < segs.length; i++) {
+            var start = head - (i + 1) * step;
+            start = ((start % P) + P) % P;
+            segs[i].setAttribute("stroke-dasharray", step + " " + (P - step));
+            segs[i].setAttribute("stroke-dashoffset", String(-start));
+          }
+        }
+
+        function render(t) {
+          for (var i = 0; i < arcs.length; i++) {
+            var head = headAt(t + arcs[i].offset * beat);
+            layout(arcs[i].glow, head, glowLen);
+            layout(arcs[i].core, head, coreLen);
+          }
+        }
+
+        // ---- timeline -------------------------------------------------------
+        var wrap = document.getElementById("nb-wrap");
+        var panel = document.getElementById("nb-panel");
+        var nameEl = document.getElementById("nb-name");
+        var roleEl = document.getElementById("nb-role");
+
+        var tl = gsap.timeline({ paused: true });
+
+        gsap.set(wrap, { opacity: 0, scale: 0.965, transformOrigin: "0% 100%" });
+        gsap.set(nameEl, { y: 18, opacity: 0 });
+        gsap.set(roleEl, { y: 12, opacity: 0 });
+
+        // The driver: linear, spans the whole clip, and every arc position is
+        // recomputed from its own time value. Seeking to frame N gives the same
+        // state as playing to frame N because nothing carries over.
+        var driver = { t: 0 };
+        tl.to(
+          driver,
+          {
+            t: DUR,
+            duration: DUR,
+            ease: "none",
+            onUpdate: function () {
+              render(driver.t);
+            },
+          },
+          0,
+        );
+
+        tl.to(wrap, { opacity: 1, scale: 1, duration: 0.55, ease: "power3.out" }, 0.08);
+        tl.to(nameEl, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.3);
+        tl.to(roleEl, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.44);
+
+        tl.to(roleEl, { y: -10, opacity: 0, duration: 0.3, ease: "power2.in" }, 4.24);
+        tl.to(nameEl, { y: -14, opacity: 0, duration: 0.32, ease: "power2.in" }, 4.3);
+        tl.to(wrap, { opacity: 0, scale: 0.985, duration: 0.36, ease: "power2.in" }, 4.36);
+        tl.set(panel, { visibility: "hidden" }, 4.76);
+
+        render(0);
+
+        window.__timelines["lt-neon-border"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `lower-third` `glow` `loop` `video-primitive`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

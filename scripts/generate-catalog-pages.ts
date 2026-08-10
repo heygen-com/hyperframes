@@ -44,6 +44,11 @@ const playerVersionRange = ((): string => {
   return `${major}.${minor}`;
 })();
 
+/** Has a preview payload been built for this item? */
+function hasPayload(kind: ItemKind, name: string): boolean {
+  return existsSync(join(payloadRoot, typeDir(kind), `${name}.json`));
+}
+
 /**
  * A live preview: the real composition, running in the real player.
  *
@@ -166,6 +171,8 @@ function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
 const GENERATED_HEADINGS = new Set([
   // current template
   "install",
+  "variables",
+  "source",
   "add it to your video",
   "paste it into your composition",
   "change the colors",
@@ -463,6 +470,7 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
   const lines: string[] = ['<div className="hf-texture-preview-panel">'];
 
   for (const item of sampleItems) {
+    if (!item) continue;
     const maskPath = textureMaskUrlFor(manifest, item);
     lines.push(
       `  <div className="hf-texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
@@ -474,6 +482,122 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
 
   lines.push("</div>", "");
   return lines;
+}
+
+/**
+ * Puts the values from `?hfv=<json>` where a composition looks for them, and
+ * nowhere else.
+ *
+ * Two readers, because there are two ways a preview consumes variables:
+ *   - `window.__hfVariables` — what `getVariables()` merges over the declared
+ *     defaults in a composition that reads them itself.
+ *   - `data-variable-values` on the host element — what the runtime loader
+ *     layers over a mounted sub-composition's defaults.
+ *
+ * `hfv` is written with `encodeURIComponent` and read back with
+ * `URLSearchParams.get`, which is its inverse: `encodeURIComponent` escapes
+ * both space (`%20`) and plus (`%2B`), the only two characters the two codecs
+ * disagree about, so form-decoding its output is lossless. Reading with
+ * `decodeURIComponent` instead is not safe here, because anything on the path
+ * that re-serializes the query as form data — the player used to — writes
+ * spaces as `+`, and percent-decoding leaves those `+` in the value.
+ *
+ * This runs from the end of `<body>`: late enough that every host element is
+ * parsed, and early enough that the runtime — which the player injects on a
+ * 200ms poll after load — has not started resolving them.
+ *
+ * Only hosts pointing at `ownFile` are stamped. A demo is free to mount other
+ * scenes, and their variables are not the ones this page documents.
+ */
+export function variableBootstrap(ownFile: string): string {
+  return [
+    "<script>",
+    "  (function () {",
+    "    var raw = new URLSearchParams(location.search).get('hfv');",
+    "    if (raw === null) return;",
+    "    var v;",
+    "    try { v = JSON.parse(raw); } catch (e) { return; }",
+    "    if (!v || typeof v !== 'object') return;",
+    "    window.__hfVariables = v;",
+    "    var hosts = document.querySelectorAll('[data-composition-src]');",
+    "    for (var i = 0; i < hosts.length; i++) {",
+    "      var src = (hosts[i].getAttribute('data-composition-src') || '').split('?')[0];",
+    `      if (src.slice(src.lastIndexOf('/') + 1) !== ${JSON.stringify(ownFile)}) continue;`,
+    "      hosts[i].setAttribute('data-variable-values', JSON.stringify(v));",
+    "    }",
+    "  })();",
+    "</script>",
+  ].join("\n");
+}
+
+/**
+ * The wrapper for an item the explorer drives.
+ *
+ * A composition reads its variables once, at init, so a new value can only
+ * arrive by loading the composition again. That reload is deliberately kept one
+ * frame deep: the explorer talks to this wrapper, and only the player's own
+ * iframe reloads. The page, the wrapper and the panel never blink, and the
+ * playhead is carried across so a change mid-shot does not throw the reader
+ * back to frame zero.
+ *
+ * Values travel in the query string rather than a message into the composition
+ * because they have to be readable before its first script runs. The path is
+ * untouched, so `data-composition-src="./sibling.html"` still resolves.
+ *
+ * Every hop re-encodes with `encodeURIComponent` and reads with
+ * `URLSearchParams.get`, so a value is percent-encoded on the wire no matter
+ * how it arrived — including from a player build that form-encoded it.
+ */
+export function variablePreviewWrapper(src: string): string[] {
+  return [
+    '<hyperframes-player id="p" controls muted></hyperframes-player>',
+    "<script>",
+    "  const player = document.getElementById('p');",
+    `  const BASE = ${JSON.stringify(src)};`,
+    "  const load = (values) => player.setAttribute('src', values ? BASE + '?hfv=' + values : BASE);",
+    "",
+    "  // Retry until the clock actually moves. `ready` can flip before the runtime",
+    "  // the player injects for a mounted sub-composition has finished wiring up, and",
+    "  // a play() that lands in that window silently does nothing. It gives up rather",
+    "  // than spinning forever: in a hidden tab the rAF clock never advances at all.",
+    "  let poll = null;",
+    "  const arm = (resumeAt) => {",
+    "    clearInterval(poll);",
+    "    let last = -1;",
+    "    let tries = 0;",
+    "    let seeked = false;",
+    "    poll = setInterval(() => {",
+    "      if (player.ready) {",
+    "        if (!seeked) {",
+    "          seeked = true;",
+    "          if (resumeAt > 0) player.seek(resumeAt);",
+    "        }",
+    "        player.play();",
+    "      }",
+    "      if (seeked && player.currentTime > 0 && player.currentTime !== last) {",
+    "        clearInterval(poll);",
+    "        return;",
+    "      }",
+    "      last = player.currentTime;",
+    "      if (++tries > 150) clearInterval(poll);",
+    "    }, 100);",
+    "  };",
+    "",
+    "  const initial = new URLSearchParams(location.search).get('hfv');",
+    "  load(initial && encodeURIComponent(initial));",
+    "  arm(0);",
+    "",
+    "  addEventListener('message', (event) => {",
+    "    if (event.origin !== location.origin) return;",
+    "    const values = event.data && event.data.hfVariables;",
+    "    if (!values) return;",
+    "    const resumeAt = player.currentTime || 0;",
+    "    load(encodeURIComponent(JSON.stringify(values)));",
+    "    arm(resumeAt);",
+    "  });",
+    "  player.addEventListener('ended', () => { player.seek(0); player.play(); });",
+    "</script>",
+  ];
 }
 
 function catalogPreviewFor(kind: ItemKind, manifest: RegistryItem): string | undefined {
@@ -563,79 +687,168 @@ function generateParams(manifest: RegistryItem): string[] {
   return lines;
 }
 
-// fallow-ignore-next-line complexity
-function generateItemMdx(
-  kind: ItemKind,
-  manifest: RegistryItem,
-  carried: CarriedContent = { sections: [], hasCustomUsage: false },
-): string {
-  const tags = manifest.tags ?? [];
-  const installCmd = `npx hyperframes add ${manifest.name}`;
-  const source = manifest as RegistryItem & SourceMetadata;
-  const textureGroups = textureGroupsFor(manifest);
-  const primaryTarget = primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
+interface ItemVariable {
+  id: string;
+  type: string;
+  role?: string;
+  label?: string;
+  description?: string;
+  default?: string | number | boolean;
+  options?: { value: string; label?: string }[];
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+}
 
-  // Frontmatter only. Mintlify renders `title` as the H1 and `description` as
-  // the standfirst, so repeating both in the body (as this generator used to)
-  // printed each one twice on every page.
-  const lines: string[] = [
-    "---",
-    `title: ${yamlString(manifest.title)}`,
-    `description: ${yamlString(manifest.description)}`,
-    "---",
-    "",
-  ];
-
-  // 1. What it looks like, before anything else. Credits, tags and the source
-  //    prompt used to sit above this and pushed the preview below the fold.
-  if (textureGroups.length > 0) {
-    lines.push(...generateTexturePreview(manifest, textureGroups));
-  } else {
-    const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
-    // Same source of truth as the index: a manifest that declares a preview
-    // without a poster has no .png, and asking for one is a 403 the browser
-    // fetches before the video.
-    const posterUrl = catalogPreviewFor(kind, manifest);
-
-    // Items whose payload could not be built — an asset that cannot be inlined,
-    // or one heavy enough to be worth streaming — keep the uploaded video.
-    if (existsSync(join(payloadRoot, typeDir(kind), `${manifest.name}.json`))) {
-      lines.push(playerEmbed(kind, manifest.name, posterUrl), "");
-    } else {
-      const poster = posterUrl ? ` poster="${posterUrl}"` : "";
-      lines.push(
-        `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
-        "",
-      );
-    }
+/** The allowed values for one variable, written the way a reader has to type them. */
+function variableRange(v: ItemVariable): string {
+  if (v.options?.length) return v.options.map((o) => `\`${o.value}\``).join(", ");
+  if (typeof v.min === "number" && typeof v.max === "number") {
+    const unit = v.unit ? `${v.unit}` : "";
+    const step = typeof v.step === "number" ? `, step ${v.step}${unit}` : "";
+    return `${v.min}${unit} to ${v.max}${unit}${step}`;
   }
+  return v.type;
+}
 
-  // 2. How to get it. A CodeGroup around a single block just drew an empty tab bar.
-  lines.push(
-    "## Install",
+/**
+ * A mount element carrying this item's variables, with its own defaults filled in.
+ *
+ * The table above lists what can be set; without this the reader is told to "set
+ * them on the element" by a page that never shows the element. Defaults are used
+ * as the values so the snippet is copy-and-run correct before it is edited.
+ */
+function generateVariableUsage(manifest: RegistryItem, target: string): string[] {
+  const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  const withDefaults = raw.filter((v) => v.default !== undefined);
+  if (withDefaults.length === 0) return [];
+
+  const values = JSON.stringify(Object.fromEntries(withDefaults.map((v) => [v.id, v.default])));
+  return [
+    "Set them with `data-variable-values` on the element that mounts it. These are the",
+    "defaults, so this behaves exactly like the preview above until you change one:",
     "",
-    "```bash Terminal",
-    installCmd,
+    "```html wrap",
+    "<div",
+    `  data-composition-id="${manifest.name}"`,
+    `  data-composition-src="${target}"`,
+    `  data-variable-values='${values}'`,
+    "></div>",
     "```",
     "",
-    installOutcome(manifest, primaryTarget),
+  ];
+}
+
+function generateVariables(manifest: RegistryItem): string[] {
+  const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  const lines: string[] = [
+    "## Variables",
     "",
-  );
-
-  // Prerequisite where it bites: you need the flag to preview what you just installed.
-  if (tags.includes("html-in-canvas")) {
-    lines.push(
-      "<Warning>",
-      "  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.",
-      "  Rendering from the CLI switches it on for you. [How it",
-      "  works](/guides/html-in-canvas)",
-      "</Warning>",
-      "",
-    );
+    "Every one of these has a default, so the piece works untouched. Set the ones you",
+    "want to change on the element:",
+    "",
+    "| Variable | Default | Accepts | What it does |",
+    "| --- | --- | --- | --- |",
+  ];
+  for (const v of raw) {
+    // A missing description is left blank rather than filled with the label
+    // again — a column that repeats its neighbour teaches the reader to skip it.
+    const what = v.description ?? "";
+    const def = v.default === undefined ? "" : `\`${v.default}\``;
+    lines.push(`| \`${v.id}\` | ${def} | ${variableRange(v)} | ${what} |`);
   }
+  lines.push("");
+  return lines;
+}
 
-  // 3. How to use it — unless a human already wrote that section, in which case
-  //    their version is carried through below instead of being overwritten.
+// fallow-ignore-next-line complexity
+/**
+ * The item's own source, collapsed.
+ *
+ * Without this the page can only tell the reader to go and open a file they have
+ * not installed yet. Collapsed because these run to several hundred lines and an
+ * expanded wall of markup would push everything else off the page.
+ */
+function primarySource(
+  kind: ItemKind,
+  manifest: RegistryItem,
+): { path: string; source: string } | null {
+  const file = primaryFileFor(manifest);
+  if (!file) return null;
+  const path = join(registryDir, typeDir(kind), manifest.name, file.path);
+  if (!existsSync(path)) return null;
+
+  const source = readFileSync(path, "utf-8").trimEnd();
+  // A fence inside the source would close the one wrapping it.
+  if (source.includes("```")) return null;
+
+  return { path: file.path, source };
+}
+
+function generateSource(kind: ItemKind, manifest: RegistryItem): string[] {
+  const file = primarySource(kind, manifest);
+  if (!file) return [];
+
+  return [
+    "## Source",
+    "",
+    "<Accordion title={`" + file.path + "`}>",
+    "",
+    "```html",
+    file.source,
+    "```",
+    "",
+    "</Accordion>",
+    "",
+  ];
+}
+
+/** The one thing above the fold: a live player, a texture sheet or a recorded video. */
+function previewSection(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  textureGroups: ReturnType<typeof textureGroupsFor>,
+): string[] {
+  if (textureGroups.length > 0) return generateTexturePreview(manifest, textureGroups);
+
+  // A built payload plays the real composition, and takes precedence over both
+  // iframe paths below. The variables explorer is parked rather than wired up:
+  // its preview document is an `.html` file the docs host does not publish, so
+  // it would show an empty frame in production. Reconnecting it to payloads is
+  // a follow-up. The machinery that fed it is gone rather than left uncalled:
+  // its whole job was writing preview documents the docs host discards, and it
+  // is recoverable from 3b53bfd2f when the explorer is rebuilt on payloads.
+  if (hasPayload(kind, manifest.name)) {
+    return [playerEmbed(kind, manifest.name, catalogPreviewFor(kind, manifest)), ""];
+  }
+  // No demo.html to play, so fall back to the recorded video. Blocks are the
+  // population that lands here: 125 of 132 ship no demo.
+  const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
+  // Same source of truth as the index: a manifest that declares a preview
+  // without a poster has no .png, and asking for one is a 403 the browser
+  // fetches before the video.
+  const posterUrl = catalogPreviewFor(kind, manifest);
+  const poster = posterUrl ? ` poster="${posterUrl}"` : "";
+  return [
+    `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4"${poster} autoPlay muted loop playsInline />`,
+    "",
+  ];
+}
+
+/** How to use it. Empty when a human already wrote that section by hand. */
+function usageSection(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  primaryTarget: string,
+  carried: CarriedContent,
+  textureGroups: ReturnType<typeof textureGroupsFor>,
+): string[] {
+  const lines: string[] = [];
   if (carried.hasCustomUsage) {
     // nothing: the carried "## Usage" section covers it
   } else if (kind === "block" && isBlockItem(manifest)) {
@@ -688,28 +901,15 @@ function generateItemMdx(
       "",
     );
   }
+  return lines;
+}
 
-  lines.push(...generateParams(manifest));
-
-  if (textureGroups.length > 0) {
-    lines.push(...generateTextureAgentUsage(manifest, textureGroups));
-    lines.push(...generateTextureAnimationExample(manifest, textureGroups));
-    lines.push(...generateTextureExamples(manifest, textureGroups));
-  }
-
-  // 4. Sections a human added to the previously generated page. Carried through
-  //    verbatim so regenerating never silently deletes hand-written docs.
-  if (carried.sections.length > 0) {
-    lines.push(...carried.sections);
-  }
-
-  if (manifest.relatedSkill) {
-    lines.push(`<Tip>Related skill: \`/${manifest.relatedSkill}\`</Tip>`, "");
-  }
-
-  // 5. Generated tail: provenance (the least of what a reader came for) and
-  //    then the required `## Related topics` continuation, so the page ends with
-  //    it per docs/AGENTS.md. The marker delimits everything generated below it.
+/** Tags, author and the source prompt, in the order a reader wants them least. */
+function footerSection(
+  manifest: RegistryItem,
+  tags: readonly string[],
+  source: RegistryItem & SourceMetadata,
+): string[] {
   const footer: string[] = [];
 
   if (tags.length > 0) {
@@ -733,6 +933,92 @@ function generateItemMdx(
       "",
     );
   }
+  return footer;
+}
+
+function generateItemMdx(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  carried: CarriedContent = { sections: [], hasCustomUsage: false },
+): string {
+  const tags = manifest.tags ?? [];
+  const installCmd = `npx hyperframes add ${manifest.name}`;
+  const source = manifest as RegistryItem & SourceMetadata;
+  const textureGroups = textureGroupsFor(manifest);
+  const primaryTarget = primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
+
+  // Frontmatter only. Mintlify renders `title` as the H1 and `description` as
+  // the standfirst, so repeating both in the body (as this generator used to)
+  // printed each one twice on every page.
+  const lines: string[] = [
+    "---",
+    `title: ${yamlString(manifest.title)}`,
+    `description: ${yamlString(manifest.description)}`,
+    "---",
+    "",
+    'import { InstallCommand } from "/snippets/install-command.jsx";',
+    "",
+  ];
+
+  // 1. What it looks like, before anything else. Credits, tags and the source
+  //    prompt used to sit above this and pushed the preview below the fold.
+  lines.push(...previewSection(kind, manifest, textureGroups));
+
+  // 2. How to get it. A CodeGroup around a single block just drew an empty tab bar.
+  lines.push(
+    "## Install",
+    "",
+    `<InstallCommand command="${installCmd}" />`,
+    "",
+    installOutcome(manifest, primaryTarget),
+    "",
+  );
+
+  // Prerequisite where it bites: you need the flag to preview what you just installed.
+  if (tags.includes("html-in-canvas")) {
+    lines.push(
+      // Danger, not Warning: without the flag the preview on this page is a
+      // black rectangle, so this is a prerequisite for seeing anything rather
+      // than a caveat about the result.
+      "<Danger>",
+      "  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.",
+      "  Without it this item's screen renders black. Rendering from the CLI switches",
+      "  it on for you. [How it works](/guides/html-in-canvas)",
+      "</Danger>",
+      "",
+    );
+  }
+
+  // 3. How to use it — unless a human already wrote that section, in which case
+  //    their version is carried through below instead of being overwritten.
+  lines.push(...usageSection(kind, manifest, primaryTarget, carried, textureGroups));
+
+  lines.push(...generateParams(manifest));
+  lines.push(...generateVariables(manifest));
+  lines.push(...generateVariableUsage(manifest, primaryTarget));
+
+  lines.push(...generateSource(kind, manifest));
+
+  if (textureGroups.length > 0) {
+    lines.push(...generateTextureAgentUsage(manifest, textureGroups));
+    lines.push(...generateTextureAnimationExample(manifest, textureGroups));
+    lines.push(...generateTextureExamples(manifest, textureGroups));
+  }
+
+  // 4. Sections a human added to the previously generated page. Carried through
+  //    verbatim so regenerating never silently deletes hand-written docs.
+  if (carried.sections.length > 0) {
+    lines.push(...carried.sections);
+  }
+
+  if (manifest.relatedSkill) {
+    lines.push(`<Tip>Related skill: \`/${manifest.relatedSkill}\`</Tip>`, "");
+  }
+
+  // 5. Generated tail: provenance (the least of what a reader came for) and
+  //    then the required `## Related topics` continuation, so the page ends with
+  //    it per docs/AGENTS.md. The marker delimits everything generated below it.
+  const footer = footerSection(manifest, tags, source);
 
   lines.push(FOOTER_MARKER, "", ...footer, ...RELATED_TOPICS);
 
@@ -822,13 +1108,23 @@ function main(): void {
     "CSS Transitions": 6,
     Showcases: 7,
     Data: 8,
-    Effects: 9,
-    Blocks: 10,
+    "Motion Primitives": 9,
+    "Motion Scenes": 11,
+    "Typography & Text": 10,
+    "Camera & 3D": 12,
+    "Product Demo": 13,
+    Texture: 14,
+    Effects: 15,
+    Blocks: 16,
   };
 
   // fallow-ignore-next-line complexity
   function groupForItem(entry: CatalogEntry): string {
     const tags = entry.tags;
+    // Declared membership beats every inferred rule below: `video-primitive` is
+    // the tag a human puts on an item to put it on the primitives shelf, and it
+    // must not be overridden by whatever else the item happens to be tagged.
+    if (tags.includes("video-primitive")) return "Motion Primitives";
     // Two-tag combos for specific grouping
     if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
     if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
@@ -844,6 +1140,27 @@ function main(): void {
       return entry.type === "component" ? "Effects" : "CSS Transitions";
     if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
     if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
+    // Split what used to be one 267-item "Effects" list. Ordered most specific
+    // first: an item tagged both `camera` and `motion-primitive` is a camera
+    // move, which is the narrower and more useful shelf to find it on.
+    if (tags.includes("texture")) return "Texture";
+    if (tags.includes("camera") || tags.includes("3d")) return "Camera & 3D";
+    if (
+      tags.includes("product-demo") ||
+      tags.includes("demonstrate") ||
+      tags.includes("pointers")
+    ) {
+      return "Product Demo";
+    }
+    if (
+      tags.includes("typography") ||
+      tags.includes("text-effects") ||
+      tags.includes("text") ||
+      tags.includes("caption-style")
+    ) {
+      return "Typography & Text";
+    }
+    if (tags.includes("motion-primitive")) return "Motion Scenes";
     if (entry.type === "component") return "Effects";
     // Remaining blocks
     return "Blocks";

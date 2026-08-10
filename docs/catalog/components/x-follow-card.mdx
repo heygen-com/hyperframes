@@ -1,0 +1,131 @@
+---
+title: "X Follow Card"
+description: "A social follow card with avatar, handle, and follower motion."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="x-follow-card preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/x-follow-card.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-follow-card.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add x-follow-card" />
+
+That writes one file: `compositions/components/x-follow-card.html`.
+
+## Source
+
+<Accordion title={`x-follow-card.html`}>
+
+```html
+<!--
+  X Follow Card - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-x-follow-card">
+  <header>
+    <div class="avatar"></div>
+    <div>
+      <h3>X Follow Card</h3>
+      <p>A social follow card with avatar, handle, and follower motion.</p>
+    </div>
+  </header>
+  <div class="stat">30.6K</div>
+  <div class="avatars">
+    <span style="--c: var(--hf-l1)"></span><span style="--c: var(--hf-l2)"></span
+    ><span style="--c: var(--hf-l2)"></span><span style="--c: var(--hf-l2)"></span
+    ><span style="--c: var(--hf-l2)"></span><span style="--c: var(--hf-l2)"></span>
+  </div>
+</div>
+
+<style>
+  .hf-remocn-x-follow-card {
+    --hf-accent: var(--accent, #f8fafc);
+    --hf-ink: #111827;
+    --hf-l1: rgba(255, 255, 255, 0.72);
+    --hf-l2: rgba(255, 255, 255, 0.45);
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-x-follow-card {
+    width: 700px;
+    border-radius: 30px;
+    padding: 34px;
+    background: #0f172a;
+    color: #fff;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-x-follow-card header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .hf-remocn-x-follow-card .avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 22px;
+    background: var(--hf-l1);
+  }
+  .hf-remocn-x-follow-card h3 {
+    margin: 0;
+    font-size: 36px;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-x-follow-card p {
+    color: #94a3b8;
+    margin: 4px 0 0;
+  }
+  .hf-remocn-x-follow-card .stat {
+    margin-top: 30px;
+    font-size: 82px;
+    font-weight: 900;
+    letter-spacing: -0.08em;
+    transform: translateY(var(--hf-stat-y, 0px));
+  }
+  .hf-remocn-x-follow-card .avatars {
+    display: flex;
+    margin-top: 18px;
+  }
+  .hf-remocn-x-follow-card .avatars span {
+    width: 46px;
+    height: 46px;
+    border-radius: 999px;
+    border: 3px solid #0f172a;
+    margin-left: -10px;
+    background: var(--c);
+    opacity: var(--hf-avatar-opacity, 1);
+    transform: translateY(var(--hf-avatar-y, 0px));
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-x-follow-card .stat', { '--hf-stat-y': '28px', opacity: 0 }, { '--hf-stat-y': '0px', opacity: 1, duration: 0.46, ease: 'back.out(1.6)' }, startTime); tl.fromTo('.hf-remocn-x-follow-card .avatars span', { '--hf-avatar-y': '18px', '--hf-avatar-opacity': 0 }, { '--hf-avatar-y': '0px', '--hf-avatar-opacity': 1, duration: 0.28, stagger: 0.05, ease: 'power2.out' }, startTime + 0.22);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/x-follow-card.html` and paste its contents into your composition. See the comment header in the file for timeline integration guidance.
+
+{/* hf:generated-footer */}
+
+Tagged `social-overlay` `remocn-port`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

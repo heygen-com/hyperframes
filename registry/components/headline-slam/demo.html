@@ -1,0 +1,84 @@
+<!doctype html>
+<!--
+  headline-slam demo. This standalone composition mounts headline-slam.html
+  through data-composition-src. Non-default copy, accent index, and color
+  prove that all variables flow through the elastic host mount.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Headline Slam Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f7f8fa;
+        --surface: #15181e;
+        --border: #343943;
+        --font-display: Inter, system-ui, sans-serif;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 44%, #171a21 0%, var(--bg) 72%);
+      }
+
+      .mount-card {
+        width: 80%;
+        height: 60%;
+        left: 10%;
+        top: 20%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(247, 248, 250, 0.12);
+        border-radius: 32px;
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
+        box-shadow: 0 54px 120px rgba(0, 0, 0, 0.46);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="headline-slam-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="headline-slam-mount"
+        class="mount-card clip"
+        data-composition-id="headline-slam"
+        data-composition-src="./headline-slam.html"
+        data-variable-values='{"text":"Make the moment count","accent_word_index":3,"accent":"violet"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1536"
+        data-height="648"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["headline-slam-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,368 @@
+---
+title: "Count Up"
+description: "A token-native stat counter that eases between values and lands with a restrained scale pulse."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="count-up preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/count-up.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/count-up.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add count-up" />
+
+That writes one file: `compositions/components/count-up.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/count-up.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `start` | `0` | number | First value shown by the count. |
+| `end` | `100` | number | Final value where the count lands. |
+| `prefix` | `` | string | Optional text shown before the value. |
+| `suffix` | `%` | string | Optional text shown after the value. |
+| `accent` | `green` | `green`, `blue`, `violet` | Color used by the count. |
+| `glow` | `false` | boolean | Optional soft accent glow under the count. Off by default. |
+| `exit` | `none` | `none`, `fade`, `up` | Optional departure. Default none: the landed value holds until the frame cuts. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="count-up"
+  data-composition-src="compositions/components/count-up.html"
+  data-variable-values='{"start":0,"end":100,"prefix":"","suffix":"%","accent":"green","glow":false,"exit":"none"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`count-up.html`}>
+
+```html
+<!doctype html>
+<!--
+  count-up: HyperFrames video primitive (proof and stats / prove)
+
+  A value accelerates from start to end, decelerates into the exact final
+  integer, and lands with one restrained scale pulse. Prefix and suffix stay
+  fixed while tabular numerals prevent the line from shifting as digits change.
+
+  Variables:
+    - start (number, default 0): first value shown.
+    - end (number, default 100): final value shown.
+    - prefix (string, default ""): optional text before the value.
+    - suffix (string, default "%"): optional text after the value.
+    - accent (green | blue | violet, default "green"): count color.
+    - glow (boolean, default false): optional accent glow under the count.
+    - exit (none | fade | up, default "none"): optional departure.
+
+  Envelope, fixed IN and OUT with elastic HOLD only:
+    IN_BASE  = 2.05s, stage arrival, eased count, and landing pulse
+    HOLD     = max(0, D - IN - OUT), subtle drift then 0.25s stillness
+    OUT_BASE = 0.45s departure when exit is fade or up, 0s when exit is
+               none (the default: the landed value holds until the cut)
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Determinism: each displayed integer is computed synchronously for a fixed
+  timeline position. The paused timeline sets the authored frame rows directly,
+  so reverse or repeated seeks show the same value without update callbacks.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal count-up key.
+-->
+<html
+  lang="en"
+  data-composition-id="count-up"
+  data-composition-duration="3"
+  data-composition-variables='[
+    { "id": "start", "type": "number", "role": "content", "label": "Start value", "description": "First value shown by the count.", "default": 0, "step": 1 },
+    { "id": "end", "type": "number", "role": "content", "label": "End value", "description": "Final value where the count lands.", "default": 100, "step": 1 },
+    { "id": "prefix", "type": "string", "role": "content", "label": "Prefix", "description": "Optional text shown before the value.", "default": "" },
+    { "id": "suffix", "type": "string", "role": "content", "label": "Suffix", "description": "Optional text shown after the value.", "default": "%" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the count.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "glow", "type": "boolean", "role": "style", "label": "Glow", "description": "Optional soft accent glow under the count. Off by default.", "default": false },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the landed value holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Count Up</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="count-up" data-duration="3" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .cu-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .cu-stage {
+            display: flex;
+            width: 92cqw;
+            align-items: baseline;
+            justify-content: center;
+            overflow: hidden;
+            color: var(--cu-accent);
+            font-size: var(--cu-font-size);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: -0.045em;
+            text-align: center;
+            transform-origin: 50% 58%;
+            white-space: nowrap;
+            will-change: transform, opacity;
+          }
+
+          /* Glow is opt-in via the glow variable; the register ships flat. */
+          .cu-stage.cu-glow {
+            text-shadow: 0 2.4cqh 7cqh color-mix(in srgb, var(--cu-accent) 24%, transparent);
+          }
+
+          .cu-affix {
+            position: relative;
+            flex: 0 0 auto;
+            color: color-mix(in srgb, var(--cu-accent) 72%, var(--fg, #f8fafc));
+            font-size: 0.55em;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+          }
+
+          /* Affix gaps are font-relative (em of the affix), never layout
+             spacing tokens, so the lockup scales with the figure. */
+          .cu-prefix {
+            margin-right: 0.14em;
+          }
+
+          .cu-suffix {
+            margin-left: 0.14em;
+          }
+
+          .cu-affix:empty {
+            display: none;
+          }
+
+          .cu-value {
+            display: inline-block;
+            min-width: 1ch;
+          }
+        </style>
+
+        <div
+          id="count-up-clip"
+          class="cu-clip clip"
+          data-start="0"
+          data-duration="3"
+          data-track-index="0"
+        >
+          <div class="cu-stage" role="img">
+            <span class="cu-affix cu-prefix" aria-hidden="true"></span>
+            <span class="cu-value" aria-hidden="true"></span>
+            <span class="cu-affix cu-suffix" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".cu-stage");
+            var valueElement = root.querySelector(".cu-value");
+            var prefixElement = root.querySelector(".cu-prefix");
+            var suffixElement = root.querySelector(".cu-suffix");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var startCandidate = vars.start;
+            var endCandidate = vars.end;
+            var start = Number.isFinite(startCandidate) ? startCandidate : 0;
+            var end = Number.isFinite(endCandidate) ? endCandidate : 100;
+            var prefix = vars.prefix == null ? "" : String(vars.prefix);
+            var suffix = vars.suffix == null ? "%" : String(vars.suffix);
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var glow = vars.glow === true || vars.glow === "true";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            function formatValue(value) {
+              return Math.round(value).toLocaleString("en-US");
+            }
+
+            prefixElement.textContent = prefix;
+            suffixElement.textContent = suffix;
+
+            // Optical trim: flex baseline alignment is metric, not optical.
+            // At 0.55em a lone currency glyph hugs the baseline and a lone
+            // math-axis glyph (+, ~) sits below the figures' visual middle,
+            // so the two affixes land at different heights. Lift both onto
+            // the figures' optical center; full-height strings (%, letters,
+            // digits) stay on the shared baseline.
+            function affixLift(text) {
+              if (/^[$€£¥₹₩]$/.test(text)) return "-0.31em";
+              if (/^[+−±×=~<>-]+$/.test(text)) return "-0.36em";
+              return "";
+            }
+            prefixElement.style.top = affixLift(prefix);
+            suffixElement.style.top = affixLift(suffix);
+            root.style.setProperty("--cu-accent", accentColors[accent]);
+            stage.classList.toggle("cu-glow", glow);
+
+            var startText = prefix + formatValue(start) + suffix;
+            var endText = prefix + formatValue(end) + suffix;
+            var characterCount = Math.max(
+              Array.from(startText).length,
+              Array.from(endText).length,
+              1,
+            );
+            var fittedCqw = Math.min(20, 150 / characterCount);
+            root.style.setProperty("--cu-font-size", "min(" + fittedCqw.toFixed(3) + "cqw, 34cqh)");
+            stage.setAttribute("aria-label", endText);
+
+            var IN_BASE = 2.05;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var COUNT_BASE = 1.72;
+            var PULSE_HALF_BASE = 0.165;
+            var ARRIVAL_BASE = 0.38;
+            var STILLNESS = 0.25;
+            var FPS = 30;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var COUNT = COUNT_BASE * scale;
+            var PULSE_HALF = PULSE_HALF_BASE * scale;
+            var ARRIVAL = ARRIVAL_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var lastFrame = Math.max(1, Math.round(COUNT * FPS));
+            var countEase = gsap.parseEase("sine.inOut");
+            var frameRows = [];
+
+            for (var frame = 0; frame <= lastFrame; frame += 1) {
+              var progress = frame / lastFrame;
+              var easedProgress = countEase(progress);
+              frameRows.push(formatValue(start + (end - start) * easedProgress));
+            }
+
+            gsap.set(stage, { opacity: 0, y: "2.2cqh", scale: 0.98 });
+            valueElement.textContent = frameRows[0];
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(stage, { opacity: 1, duration: ARRIVAL, ease: "power2.out" }, 0);
+            tl.to(stage, { y: "0cqh", scale: 1, duration: ARRIVAL, ease: "power3.out" }, 0);
+
+            frameRows.forEach(function (row, frameIndex) {
+              tl.set(valueElement, { textContent: row }, COUNT * (frameIndex / lastFrame));
+            });
+
+            tl.to(stage, { scale: 1.07, duration: PULSE_HALF, ease: "power3.out" }, COUNT);
+            tl.to(
+              stage,
+              { scale: 1, duration: PULSE_HALF, ease: "power2.out" },
+              COUNT + PULSE_HALF,
+            );
+
+            var driftDuration = Math.max(0, HOLD - STILLNESS);
+            if (driftDuration > 0) {
+              tl.to(
+                stage,
+                {
+                  y: "-0.55cqh",
+                  duration: driftDuration / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-2.2cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(
+                stage,
+                { opacity: 0, scale: 0.985, duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["count-up"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `proof` `stats` `counter` `number` `deterministic`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

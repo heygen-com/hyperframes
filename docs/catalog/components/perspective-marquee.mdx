@@ -1,0 +1,201 @@
+---
+title: "Perspective Marquee"
+description: "A 3D tilted marquee with depth feel as items roll toward the horizon."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="perspective-marquee preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/perspective-marquee.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/perspective-marquee.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add perspective-marquee" />
+
+That writes one file: `compositions/components/perspective-marquee.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tilt` | `standard` | `flat`, `standard`, `steep` | How far the marquee plane leans back toward the horizon. |
+| `travel` | `standard` | `short`, `standard`, `long` | Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time. |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Pill colour: ink for light frames, paper for dark ones, accent rides the brand token. |
+| `words` | `COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS` | string | Comma separated pill labels. The list is laid down twice so the strip still reads as a continuous loop. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="perspective-marquee"
+  data-composition-src="compositions/components/perspective-marquee.html"
+  data-variable-values='{"tilt":"standard","travel":"standard","tone":"ink","words":"COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`perspective-marquee.html`}>
+
+```html
+<!--
+  Perspective Marquee - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe below is untouched by them: it
+  keeps driving one horizontal offset, and these decide how far that offset
+  carries and what the strip looks like while it rolls.
+
+    - tilt (flat | standard | steep, default standard): how far the marquee
+      plane leans back toward the horizon. flat is almost head-on, steep sends
+      the strip deep into the frame.
+    - travel (short | standard | long, default standard): scales the offset the
+      timeline drives, so the strip covers a shorter or longer run in the same
+      time. short reads as a slow drift, long as a fast roll.
+    - tone (ink | paper | accent, default ink): pill colour. ink is near-black
+      with white type for light frames, paper near-white with dark type for
+      dark ones, accent rides the brand token.
+    - words (string, default COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS): the
+      comma separated list of pill labels. The list is laid down twice so the
+      strip still reads as a continuous loop.
+
+  On every default the result is identical to the original: four near-black
+  pills, laid down twice, rolling 360px left across an 18 degree tilt.
+-->
+
+<div
+  class="hf-remocn-perspective-marquee"
+  data-composition-variables='[
+    { "id": "tilt", "type": "enum", "role": "style", "label": "Tilt", "description": "How far the marquee plane leans back toward the horizon.", "default": "standard", "options": [{ "value": "flat", "label": "Flat" }, { "value": "standard", "label": "Standard" }, { "value": "steep", "label": "Steep" }] },
+    { "id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "short", "label": "Short" }, { "value": "standard", "label": "Standard" }, { "value": "long", "label": "Long" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Pill colour: ink for light frames, paper for dark ones, accent rides the brand token.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "words", "type": "string", "role": "content", "label": "Words", "description": "Comma separated pill labels. The list is laid down twice so the strip still reads as a continuous loop.", "default": "COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS" }
+  ]'
+>
+  <div>
+    <span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span><span>AGENTS</span
+    ><span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span><span>AGENTS</span>
+  </div>
+</div>
+
+<style>
+  .hf-remocn-perspective-marquee {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-perspective-marquee {
+    width: 720px;
+    perspective: 900px;
+    overflow: hidden;
+    transform: rotateX(var(--hf-marquee-tilt, 18deg));
+  }
+  .hf-remocn-perspective-marquee div {
+    display: inline-flex;
+    gap: 22px;
+    white-space: nowrap;
+    transform: translateX(calc(var(--hf-marquee-x, 0px) * var(--hf-marquee-reach, 1)));
+  }
+  .hf-remocn-perspective-marquee span {
+    padding: 12px 18px;
+    border-radius: 999px;
+    background: var(--hf-marquee-pill-bg, #18181b);
+    color: var(--hf-marquee-pill-fg, #fff);
+    font-size: 28px;
+    box-shadow: 0 18px 44px rgba(24, 24, 27, 0.18);
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var tilts = { flat: "6deg", standard: "18deg", steep: "34deg" };
+    var reaches = { short: 0.55, standard: 1, long: 1.8 };
+    var tones = {
+      ink: { bg: "#18181b", fg: "#fff" },
+      paper: { bg: "#fafafa", fg: "#18181b" },
+      accent: { bg: "var(--brand, #34d399)", fg: "#fff" },
+    };
+    var defaultWords = "COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS";
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function parseWords(value) {
+      var source = typeof value === "string" ? value : "";
+      var parts = source.split(",");
+      var words = [];
+      for (var i = 0; i < parts.length; i += 1) {
+        var word = parts[i].trim();
+        if (word) words.push(word);
+      }
+      return words.length ? words : parseWords(defaultWords);
+    }
+
+    var tilt = tilts[pick(tilts, vars.tilt, "standard")];
+    var reach = reaches[pick(reaches, vars.travel, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+    var words = parseWords(vars.words);
+
+    var roots = document.querySelectorAll(".hf-remocn-perspective-marquee");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-marquee-tilt", tilt);
+      roots[i].style.setProperty("--hf-marquee-reach", String(reach));
+      roots[i].style.setProperty("--hf-marquee-pill-bg", tone.bg);
+      roots[i].style.setProperty("--hf-marquee-pill-fg", tone.fg);
+
+      var strip = roots[i].querySelector("div");
+      if (!strip) continue;
+      var markup = "";
+      for (var pass = 0; pass < 2; pass += 1) {
+        for (var w = 0; w < words.length; w += 1) {
+          markup += "<span>" + words[w].replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</span>";
+        }
+      }
+      strip.innerHTML = markup;
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-perspective-marquee div', { '--hf-marquee-x': '0px' }, { '--hf-marquee-x': '-360px', duration: 4.5, ease: 'none' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/perspective-marquee.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `remocn-port` `typography`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

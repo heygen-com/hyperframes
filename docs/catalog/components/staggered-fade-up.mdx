@@ -1,0 +1,185 @@
+---
+title: "Staggered Fade Up"
+description: "Words fade in and slide up one after another with configurable delay."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="staggered-fade-up preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/staggered-fade-up.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/staggered-fade-up.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add staggered-fade-up" />
+
+That writes one file: `compositions/components/staggered-fade-up.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `direction` | `up` | `up`, `down`, `left`, `right` | Where the offset the timeline drives points. |
+| `distance` | `standard` | `close`, `standard`, `far` | Scales the travel offset, so the words cover a shorter or longer run in the same time. |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
+| `words` | `Staggered fade up` | string | The words themselves, split on spaces, one span and one stagger step each. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="staggered-fade-up"
+  data-composition-src="compositions/components/staggered-fade-up.html"
+  data-variable-values='{"direction":"up","distance":"standard","tone":"ink","words":"Staggered fade up"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`staggered-fade-up.html`}>
+
+```html
+<!--
+  Staggered Fade Up - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe at the bottom is untouched by
+  them: it keeps driving one offset, one scale and one blur, and these decide
+  what that offset means on screen and what colour the words arrive in.
+
+    - direction (up | down | left | right, default up): where the offset the
+      timeline drives points. up rises into place, down drops in, left and
+      right slide in along the baseline.
+    - distance (close | standard | far, default standard): scales that offset,
+      so the words cover a shorter or longer run in the same time. close covers
+      half the run, far nearly double.
+    - tone (ink | paper | accent, default ink): word colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+      It writes its own property and never touches the shared --fg token.
+    - words (text, default "Staggered fade up"): the words themselves, split on
+      spaces, one span and one stagger step each. Anything empty, blank or not
+      a string leaves the authored markup alone.
+
+  On every default the result is identical to the original: three near-black
+  words rise 22px through a 5px blur, 0.055s apart.
+-->
+
+<div
+  class="hf-remocn-staggered-fade-up"
+  data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Where the offset the timeline drives points.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }, { "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }] },
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the travel offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "words", "type": "string", "role": "content", "label": "Words", "description": "The words themselves, split on spaces, one span and one stagger step each.", "default": "Staggered fade up" }
+  ]'
+>
+  <span>Staggered</span><span>fade</span><span>up</span>
+</div>
+
+<style>
+  .hf-remocn-staggered-fade-up {
+    color: var(--hf-fade-word-color, var(--fg, #18181b));
+    font-family: var(--font-display, Inter, system-ui, sans-serif);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-staggered-fade-up {
+    display: inline-flex;
+    gap: var(--space-1, 12px);
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-staggered-fade-up span {
+    display: inline-block;
+    transform: translate(
+        calc(var(--hf-word-x, 0px) + var(--hf-word-y, 0px) * var(--hf-word-axis-x, 0)),
+        calc(var(--hf-word-y, 0px) * var(--hf-word-axis-y, 1))
+      )
+      scale(var(--hf-word-scale, 1));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var axes = {
+      up: { x: 0, y: 1 },
+      down: { x: 0, y: -1 },
+      left: { x: -1, y: 0 },
+      right: { x: 1, y: 0 },
+    };
+    var reaches = { close: 0.5, standard: 1, far: 1.85 };
+    var tones = {
+      ink: "var(--fg, #18181b)",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var axis = axes[pick(axes, vars.direction, "up")];
+    var reach = reaches[pick(reaches, vars.distance, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+    var words =
+      typeof vars.words === "string" && vars.words.trim() ? vars.words.trim().split(/\s+/) : null;
+
+    var roots = document.querySelectorAll(".hf-remocn-staggered-fade-up");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-word-axis-x", String(axis.x * reach));
+      roots[i].style.setProperty("--hf-word-axis-y", String(axis.y * reach));
+      roots[i].style.setProperty("--hf-fade-word-color", tone);
+      if (words) {
+        roots[i].textContent = "";
+        for (var j = 0; j < words.length; j += 1) {
+          var span = document.createElement("span");
+          span.textContent = words[j];
+          roots[i].appendChild(span);
+        }
+      }
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-staggered-fade-up span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/staggered-fade-up.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `video-primitive` `motion-primitive` `remocn-port` `typography`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

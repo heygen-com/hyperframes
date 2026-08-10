@@ -1,0 +1,193 @@
+---
+title: "Matrix Decode"
+description: "Random scramble resolves left-to-right into the target text."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="matrix-decode preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/matrix-decode.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/matrix-decode.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add matrix-decode" />
+
+That writes one file: `compositions/components/matrix-decode.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `HYPERFRAMES` | string | Word the scramble resolves into. One scrambling cell per character, up to 32. |
+| `accent` | `green` | `green`, `blue`, `violet` | Colour family of the cells and their glow. |
+| `size` | `64` | 24px to 160px, step 4px | Type size of the cells in pixels. Cell width follows it. |
+| `glow` | `standard` | `none`, `standard`, `strong` | Strength of the halo behind the cells, from none to a heavy bloom. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="matrix-decode"
+  data-composition-src="compositions/components/matrix-decode.html"
+  data-variable-values='{"text":"HYPERFRAMES","accent":"green","size":64,"glow":"standard"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`matrix-decode.html`}>
+
+```html
+<!--
+  Matrix Decode - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or invalid, and writes the result as a custom property the
+  CSS consumes (or, for the target text, as the cells themselves). The timeline
+  recipe below is untouched by them: it keeps staggering whatever cells are
+  present.
+
+    - text (text, default HYPERFRAMES): the word the scramble resolves into.
+      One scrambling cell per character, up to 32. Also written to data-final,
+      which a decode routine can read.
+    - accent (green | blue | violet, default green): colour family of the cells
+      and of their glow.
+    - size (24 to 160 px, default 64): type size of the cells. The per-cell
+      minimum width is a fixed fraction of it, so the row scales as a whole.
+    - glow (none | standard | strong, default standard): halo strength behind
+      the cells, from no shadow at all to a heavy bloom.
+
+  On every default the result is identical to the original: eleven 64px green
+  cells with an 18px halo.
+-->
+
+<div
+  class="hf-remocn-matrix-decode"
+  data-final="HYPERFRAMES"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Target text", "description": "Word the scramble resolves into. One scrambling cell per character, up to 32.", "default": "HYPERFRAMES" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the cells and their glow.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "size", "type": "number", "role": "style", "label": "Size", "description": "Type size of the cells in pixels. Cell width follows it.", "default": 64, "min": 24, "max": 160, "step": 4, "unit": "px" },
+    { "id": "glow", "type": "enum", "role": "style", "label": "Glow", "description": "Strength of the halo behind the cells, from none to a heavy bloom.", "default": "standard", "options": [{ "value": "none", "label": "None" }, { "value": "standard", "label": "Standard" }, { "value": "strong", "label": "Strong" }] }
+  ]'
+>
+  <span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span
+  ><span>0</span><span>0</span><span>0</span><span>0</span>
+</div>
+
+<style>
+  .hf-remocn-matrix-decode {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-matrix-decode {
+    display: inline-flex;
+    gap: 3px;
+    font:
+      900 64px/1 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      monospace;
+    font-size: var(--hf-matrix-size, 64px);
+    color: var(--hf-matrix-color, #16a34a);
+    text-shadow: 0 0 var(--hf-matrix-glow-radius, 18px)
+      rgba(var(--hf-matrix-glow-rgb, 22, 163, 74), var(--hf-matrix-glow-alpha, 0.28));
+  }
+  .hf-remocn-matrix-decode span {
+    display: inline-block;
+    min-width: 0.64em;
+    opacity: var(--hf-matrix-opacity, 1);
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Anything missing or invalid returns to its declared default.
+    var accents = {
+      green: { color: "#16a34a", rgb: "22, 163, 74" },
+      blue: { color: "#2563eb", rgb: "37, 99, 235" },
+      violet: { color: "#7c3aed", rgb: "124, 58, 237" },
+    };
+    var glows = {
+      none: { radius: "0px", alpha: "0" },
+      standard: { radius: "18px", alpha: "0.28" },
+      strong: { radius: "34px", alpha: "0.55" },
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var text = typeof vars.text === "string" ? vars.text.trim().slice(0, 32) : "";
+    if (!text) {
+      text = "HYPERFRAMES";
+    }
+
+    var size =
+      typeof vars.size === "number" || typeof vars.size === "string" ? Number(vars.size) : NaN;
+    size = isFinite(size) && size > 0 ? Math.min(160, Math.max(24, size)) : 64;
+
+    var accent = accents[pick(accents, vars.accent, "green")];
+    var glow = glows[pick(glows, vars.glow, "standard")];
+
+    var roots = document.querySelectorAll(".hf-remocn-matrix-decode");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-matrix-size", size + "px");
+      roots[i].style.setProperty("--hf-matrix-color", accent.color);
+      roots[i].style.setProperty("--hf-matrix-glow-rgb", accent.rgb);
+      roots[i].style.setProperty("--hf-matrix-glow-radius", glow.radius);
+      roots[i].style.setProperty("--hf-matrix-glow-alpha", glow.alpha);
+      roots[i].setAttribute("data-final", text);
+      while (roots[i].firstChild) {
+        roots[i].removeChild(roots[i].firstChild);
+      }
+      for (var j = 0; j < text.length; j += 1) {
+        var cell = document.createElement("span");
+        cell.textContent = text.charAt(j) === " " ? "\u00a0" : "0";
+        roots[i].appendChild(cell);
+      }
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-matrix-decode span', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/matrix-decode.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `remocn-port` `typography`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

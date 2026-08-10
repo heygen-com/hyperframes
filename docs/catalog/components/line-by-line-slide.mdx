@@ -1,0 +1,170 @@
+---
+title: "Line-by-Line Slide"
+description: "Each line enters from the left with staggered slide and exits to the right."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="line-by-line-slide preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/line-by-line-slide.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-by-line-slide.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add line-by-line-slide" />
+
+That writes one file: `compositions/components/line-by-line-slide.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `size` | `standard` | `compact`, `standard`, `display` | Type size of the whole stack. |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Line colour: ink for light frames, paper for dark ones, accent rides the brand token. |
+| `density` | `standard` | `fine`, `standard`, `coarse` | The gap between lines, from a tight block to an airy stack. |
+| `direction` | `left` | `left`, `right` | Which side the lines slide in from as the timeline drives the offset. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="line-by-line-slide"
+  data-composition-src="compositions/components/line-by-line-slide.html"
+  data-variable-values='{"size":"standard","tone":"ink","density":"standard","direction":"left"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`line-by-line-slide.html`}>
+
+```html
+<!--
+  Line-by-Line Slide - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes a custom property the CSS above
+  consumes. The timeline recipe below is untouched by them: it keeps driving
+  one sideways offset, and direction decides which way that offset points.
+
+    - size (compact | standard | display, default standard): type size of the
+      stack, 40px, 52px, or 68px.
+    - tone (ink | paper | accent, default ink): line colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides the
+      brand token.
+    - density (fine | standard | coarse, default standard): the gap between
+      lines, 4px, 10px, or 20px.
+    - direction (left | right, default left): which side the lines slide in
+      from. left keeps the original entry, right mirrors it.
+
+  On every default the result is identical to the original: near-black 52px
+  lines, 10px apart, entering from the left.
+-->
+
+<div
+  class="hf-remocn-line-by-line-slide"
+  data-composition-variables='[
+    {"id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Type size of the whole stack.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "display", "label": "Display"}]},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: ink for light frames, paper for dark ones, accent rides the brand token.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]},
+    {"id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "The gap between lines, from a tight block to an airy stack.", "default": "standard", "options": [{"value": "fine", "label": "Fine"}, {"value": "standard", "label": "Standard"}, {"value": "coarse", "label": "Coarse"}]},
+    {"id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side the lines slide in from as the timeline drives the offset.", "default": "left", "options": [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]}
+  ]'
+>
+  <span>Design faster</span><span>Render cleaner</span><span>Ship louder</span>
+</div>
+
+<style>
+  .hf-remocn-line-by-line-slide {
+    color: var(--hf-line-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-line-by-line-slide {
+    display: grid;
+    gap: var(--hf-line-gap, 10px);
+    font-size: var(--hf-line-size, 52px);
+    line-height: 1;
+    overflow: hidden;
+  }
+  .hf-remocn-line-by-line-slide span {
+    display: block;
+    transform: translate(
+      calc(var(--hf-line-x, 0px) * var(--hf-line-axis-x, 1)),
+      var(--hf-line-y, 0px)
+    );
+    filter: blur(var(--hf-line-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var sizes = { compact: "40px", standard: "52px", display: "68px" };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+    var gaps = { fine: "4px", standard: "10px", coarse: "20px" };
+    var axes = { left: 1, right: -1 };
+
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+    var gap = gaps[pick(gaps, vars.density, "standard")];
+    var axis = axes[pick(axes, vars.direction, "left")];
+
+    var roots = document.querySelectorAll(".hf-remocn-line-by-line-slide");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-line-size", size);
+      root.style.setProperty("--hf-line-color", tone);
+      root.style.setProperty("--hf-line-gap", gap);
+      root.style.setProperty("--hf-line-axis-x", String(axis));
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-line-by-line-slide span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/line-by-line-slide.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `remocn-port` `typography`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

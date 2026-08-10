@@ -1,0 +1,177 @@
+---
+title: "Icon Swap"
+description: "A scale-and-blur icon swap primitive for toolbar and action state changes"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="icon-swap preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/icon-swap.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/icon-swap.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add icon-swap" />
+
+That writes one file: `compositions/components/icon-swap.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tone` | `dark` | `dark`, `light`, `accent` | Button fill and glyph colour. Accent rides --brand. |
+| `size` | `standard` | `small`, `standard`, `large` | Button box and glyph size, from a toolbar chip to a hero action. |
+| `shape` | `rounded` | `rounded`, `circle`, `square` | Corner treatment of the button box. |
+| `blur` | `standard` | `soft`, `standard`, `heavy` | Scales the blur radius the timeline drives through the swap, from a light haze to a full smear. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="icon-swap"
+  data-composition-src="compositions/components/icon-swap.html"
+  data-variable-values='{"tone":"dark","size":"standard","shape":"rounded","blur":"standard"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`icon-swap.html`}>
+
+```html
+<!--
+  Icon Swap - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+
+  Variables. The script reads each one, falls back to the declared default on anything
+  missing or unrecognised, and writes the result as a custom property the CSS above
+  consumes. The timeline recipe below is untouched by them.
+
+    - tone (dark | light | accent, default dark): button fill and glyph colour. dark is the
+      matte chip, light inverts it for bright frames, accent rides --brand.
+    - size (small | standard | large, default standard): the button box and the glyph inside
+      it, 44px, 58px or 76px.
+    - shape (rounded | circle | square, default rounded): corner radius of the box.
+    - blur (soft | standard | heavy, default standard): scales the blur radius the timeline
+      drives through the swap, from a light haze to a full smear.
+
+  On every default the result is identical to the original: a 58px near-black chip with
+  16px corners and an 8px swap blur.
+-->
+
+<button
+  class="hf-transition-icon-swap"
+  type="button"
+  data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Button fill and glyph colour. Accent rides --brand.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Button box and glyph size, from a toolbar chip to a hero action.", "default": "standard", "options": [{ "value": "small", "label": "Small" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
+    { "id": "shape", "type": "enum", "role": "style", "label": "Shape", "description": "Corner treatment of the button box.", "default": "rounded", "options": [{ "value": "rounded", "label": "Rounded" }, { "value": "circle", "label": "Circle" }, { "value": "square", "label": "Square" }] },
+    { "id": "blur", "type": "enum", "role": "motion", "label": "Blur", "description": "Scales the blur radius the timeline drives through the swap, from a light haze to a full smear.", "default": "standard", "options": [{ "value": "soft", "label": "Soft" }, { "value": "standard", "label": "Standard" }, { "value": "heavy", "label": "Heavy" }] }
+  ]'
+>
+  <span class="from">+</span><span class="to">OK</span>
+</button>
+
+<style>
+  .hf-transition-icon-swap {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--hf-icon-size, 58px);
+    height: var(--hf-icon-size, 58px);
+    border: 0;
+    border-radius: var(--hf-icon-radius, 16px);
+    background: var(--hf-icon-bg, #18181b);
+    color: var(--hf-icon-fg, #fff);
+    font:
+      900 28px/1 Inter,
+      system-ui,
+      sans-serif;
+    font-size: var(--hf-icon-font-size, 28px);
+    box-shadow: 0 18px 44px rgba(24, 24, 27, 0.22);
+  }
+  .hf-transition-icon-swap span {
+    position: absolute;
+    filter: blur(calc(var(--hf-icon-blur, 0px) * var(--hf-icon-blur-scale, 1)));
+    transform: scale(var(--hf-icon-scale, 1)) rotate(var(--hf-icon-rotate, 0deg));
+    will-change: transform, filter, opacity;
+  }
+  .hf-transition-icon-swap .to {
+    opacity: 0;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var tones = {
+      dark: { bg: "#18181b", fg: "#ffffff" },
+      light: { bg: "#fafafa", fg: "#18181b" },
+      accent: { bg: "var(--brand, #34d399)", fg: "#052e21" },
+    };
+    var sizes = {
+      small: { box: "44px", font: "22px" },
+      standard: { box: "58px", font: "28px" },
+      large: { box: "76px", font: "38px" },
+    };
+    var shapes = { rounded: "16px", circle: "50%", square: "6px" };
+    var blurScales = { soft: 0.45, standard: 1, heavy: 2.2 };
+
+    var tone = tones[pick(tones, vars.tone, "dark")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var shape = shapes[pick(shapes, vars.shape, "rounded")];
+    var blurScale = blurScales[pick(blurScales, vars.blur, "standard")];
+
+    var roots = document.querySelectorAll(".hf-transition-icon-swap");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-icon-bg", tone.bg);
+      roots[i].style.setProperty("--hf-icon-fg", tone.fg);
+      roots[i].style.setProperty("--hf-icon-size", size.box);
+      roots[i].style.setProperty("--hf-icon-font-size", size.font);
+      roots[i].style.setProperty("--hf-icon-radius", shape);
+      roots[i].style.setProperty("--hf-icon-blur-scale", String(blurScale));
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-transition-icon-swap .from', { opacity: 0, '--hf-icon-scale': 0.55, '--hf-icon-blur': '8px', '--hf-icon-rotate': '-18deg', duration: 0.18, ease: 'power2.in' }, startTime); tl.fromTo('.hf-transition-icon-swap .to', { opacity: 0, '--hf-icon-scale': 1.35, '--hf-icon-blur': '8px', '--hf-icon-rotate': '18deg' }, { opacity: 1, '--hf-icon-scale': 1, '--hf-icon-blur': '0px', '--hf-icon-rotate': '0deg', duration: 0.26, ease: 'back.out(1.7)' }, startTime + 0.12);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/icon-swap.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `icon` `swap`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

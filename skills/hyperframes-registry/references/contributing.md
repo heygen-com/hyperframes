@@ -89,6 +89,10 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 
 #### All types
 
+- **Placeholder content is monochrome** — read
+  [placeholder-material.md](placeholder-material.md) before choosing a single colour. Stand-in
+  screens, images, cards, avatars, logos and chart series use four alpha steps of the
+  composition's ink; accent marks one element and never a placeholder.
 - `data-composition-id` MUST match `window.__timelines["id"]`
 - All element IDs prefixed with block abbreviation
 - `gsap.timeline({ paused: true })` — always paused

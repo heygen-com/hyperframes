@@ -1,0 +1,76 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "blur-in",
+  "type": "hyperframes:component",
+  "title": "Blur In",
+  "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
+  "tags": ["video-primitive", "remocn-port", "blur-in", "text-effect"],
+  "files": [
+    {
+      "path": "blur-in.html",
+      "target": "compositions/components/blur-in.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Type size of the revealed words in pixels; the gap between words scales with it.",
+      "default": 52,
+      "min": 24,
+      "max": 120,
+      "step": 2,
+      "unit": "px"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Word colour: strong for headlines, muted for supporting lines, accent for the brand green.",
+      "default": "strong",
+      "options": [
+        {
+          "value": "strong",
+          "label": "Strong"
+        },
+        {
+          "value": "muted",
+          "label": "Muted"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    },
+    {
+      "id": "align",
+      "type": "enum",
+      "role": "style",
+      "label": "Align",
+      "description": "Horizontal alignment of the words in the frame.",
+      "default": "left",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "center",
+          "label": "Center"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-in.png"
+  }
+}

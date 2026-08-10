@@ -1,0 +1,137 @@
+---
+title: "Stagger Lattice"
+description: "A staggered grid reveal inspired by Anime.js v4 stagger utilities, implemented with GSAP for HyperFrames."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="stagger-lattice preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/stagger-lattice.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stagger-lattice.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add stagger-lattice" />
+
+That writes one file: `compositions/components/stagger-lattice.html`.
+
+## Source
+
+<Accordion title={`stagger-lattice.html`}>
+
+```html
+<!--
+  Stagger Lattice - advanced HyperFrames primitive.
+
+  This is intentionally seekable: drive it from a paused GSAP timeline.
+  MotionPath examples require GSAP MotionPathPlugin. Three.js examples expose
+  a render(progress) adapter instead of a free-running requestAnimationFrame loop.
+-->
+
+<div class="hf-advanced-stagger-lattice">
+  <div class="grid">
+    <span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span><span class="cell"></span><span class="cell"></span
+    ><span class="cell"></span>
+  </div>
+</div>
+
+<style>
+  .hf-advanced-stagger-lattice {
+    --hf-accent: var(--accent, rgba(17, 24, 39, 0.72));
+    --hf-l1: rgba(17, 24, 39, 0.72);
+    --hf-l3: rgba(17, 24, 39, 0.18);
+    --hf-l4: rgba(17, 24, 39, 0.08);
+    --hf-hair: rgba(17, 24, 39, 0.14);
+    color: var(--hf-l1);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-advanced-stagger-lattice {
+    width: 720px;
+    min-height: 420px;
+    border-radius: 30px;
+    padding: 36px;
+    background: #fff;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+    display: grid;
+    place-items: center;
+  }
+  .hf-advanced-stagger-lattice .grid {
+    display: grid;
+    grid-template-columns: repeat(8, 46px);
+    gap: 10px;
+  }
+  .hf-advanced-stagger-lattice .cell {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: var(--hf-l1);
+    transform: translateY(var(--hf-cell-y, 0px)) scale(var(--hf-cell-scale, 1));
+    opacity: var(--hf-cell-opacity, 1);
+  }
+  .hf-advanced-stagger-lattice svg {
+    width: 520px;
+    height: 220px;
+    overflow: visible;
+  }
+  .hf-advanced-stagger-lattice path {
+    fill: none;
+    stroke: var(--hf-accent);
+    stroke-width: 14;
+    stroke-linecap: round;
+    stroke-dasharray: 900;
+    stroke-dashoffset: var(--hf-dash, 0);
+  }
+  .hf-advanced-stagger-lattice .stack {
+    position: relative;
+    width: 520px;
+    height: 260px;
+  }
+  .hf-advanced-stagger-lattice .card {
+    position: absolute;
+    inset: 0;
+    border-radius: 26px;
+    background: linear-gradient(var(--hf-l4), var(--hf-l4)), #ffffff;
+    border: 1px solid var(--hf-hair);
+    box-shadow: 0 20px 54px rgba(15, 23, 42, 0.14);
+    transform: translateY(var(--hf-card-y, 0px)) scale(var(--hf-card-scale, 1));
+    opacity: var(--hf-card-opacity, 1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  const startTime = 0;
+  tl.fromTo('.hf-advanced-stagger-lattice .cell', { '--hf-cell-y': '24px', '--hf-cell-scale': 0.72, '--hf-cell-opacity': 0 }, { '--hf-cell-y': '0px', '--hf-cell-scale': 1, '--hf-cell-opacity': 1, duration: 0.28, stagger: { each: 0.018, from: 'center', grid: [5, 8] }, ease: 'power2.out' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/stagger-lattice.html` and paste its contents into your composition. The comment header describes the timeline integration and any optional dependency setup.
+
+{/* hf:generated-footer */}
+
+Tagged `advanced-motion` `anime-inspired` `hyperframes-native`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

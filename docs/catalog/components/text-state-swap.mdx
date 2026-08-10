@@ -1,0 +1,178 @@
+---
+title: "Text State Swap"
+description: "A text state swap primitive with outgoing blur and incoming lift"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="text-state-swap preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/text-state-swap.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-state-swap.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add text-state-swap" />
+
+That writes one file: `compositions/components/text-state-swap.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `from-text` | `Saving draft` | string | The outgoing label, on screen before the swap. |
+| `to-text` | `Saved` | string | The incoming label, on screen after the swap. It rests hidden until the timeline reveals it. |
+| `distance` | `standard` | `close`, `standard`, `far` | Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time. |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Label colour: ink for light frames, paper for dark ones, accent rides --brand. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="text-state-swap"
+  data-composition-src="compositions/components/text-state-swap.html"
+  data-variable-values='{"from-text":"Saving draft","to-text":"Saved","distance":"standard","tone":"ink"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`text-state-swap.html`}>
+
+```html
+<!--
+  Text State Swap - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result into the markup or
+  into a custom property the CSS above consumes. The timeline recipe below is
+  untouched by them: it keeps driving one offset and one blur, and these decide
+  what that offset means on screen.
+
+    - from-text (string, default "Saving draft"): the outgoing label, on screen
+      before the swap. Blank falls back to the default.
+    - to-text (string, default "Saved"): the incoming label, on screen after the
+      swap. It rests at zero opacity, so it only shows once the timeline reveals
+      it. Blank falls back to the default.
+    - distance (close | standard | far, default standard): scales the vertical
+      offset the timeline drives, so the outgoing label leaves further and the
+      incoming label starts further below, in the same time. Both labels rest at
+      their settled position on every setting, so this only changes the middle
+      of the swap.
+    - tone (ink | paper | accent, default ink): label colour for both states.
+      ink is near-black for light frames, paper near-white for dark ones, accent
+      rides --brand.
+
+  On every default the result is identical to the original: near-black
+  "Saving draft" lifts 18px through an 8px blur while "Saved" rises into place.
+-->
+
+<div
+  class="hf-transition-text-state-swap"
+  data-composition-variables='[
+    {"id": "from-text", "type": "string", "role": "content", "label": "From text", "description": "The outgoing label, on screen before the swap.", "default": "Saving draft"},
+    {"id": "to-text", "type": "string", "role": "content", "label": "To text", "description": "The incoming label, on screen after the swap. It rests hidden until the timeline reveals it.", "default": "Saved"},
+    {"id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.", "default": "standard", "options": [{"value": "close", "label": "Close"}, {"value": "standard", "label": "Standard"}, {"value": "far", "label": "Far"}]},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Label colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]}
+  ]'
+>
+  <span class="from">Saving draft</span><span class="to">Saved</span>
+</div>
+
+<style>
+  .hf-transition-text-state-swap {
+    position: relative;
+    width: 250px;
+    height: 36px;
+    color: var(--hf-text-color, #18181b);
+    font:
+      900 28px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-transition-text-state-swap span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    filter: blur(var(--hf-text-blur, 0px));
+    transform: translateY(calc(var(--hf-text-y, 0px) * var(--hf-text-reach, 1)));
+    will-change: transform, filter, opacity;
+  }
+  .hf-transition-text-state-swap .to {
+    opacity: 0;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var reaches = { close: 0.5, standard: 1, far: 1.85 };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      var resolved = value == null ? "" : String(value).trim();
+      return resolved.length > 0 ? resolved : fallback;
+    }
+
+    var fromText = text(vars["from-text"], "Saving draft");
+    var toText = text(vars["to-text"], "Saved");
+    var reach = reaches[pick(reaches, vars.distance, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-transition-text-state-swap");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-text-reach", String(reach));
+      root.style.setProperty("--hf-text-color", tone);
+      root.querySelector(".from").textContent = fromText;
+      root.querySelector(".to").textContent = toText;
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-transition-text-state-swap .from', { opacity: 0, '--hf-text-y': '-18px', '--hf-text-blur': '8px', duration: 0.18, ease: 'power2.in' }, startTime); tl.fromTo('.hf-transition-text-state-swap .to', { opacity: 0, '--hf-text-y': '18px', '--hf-text-blur': '8px' }, { opacity: 1, '--hf-text-y': '0px', '--hf-text-blur': '0px', duration: 0.26, ease: 'power2.out' }, startTime + 0.12);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/text-state-swap.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `text` `swap`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

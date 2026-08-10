@@ -1,0 +1,155 @@
+---
+title: "Focus Blur Resolve"
+description: "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="focus-blur-resolve preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/focus-blur-resolve.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-blur-resolve.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add focus-blur-resolve" />
+
+That writes one file: `compositions/components/focus-blur-resolve.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
+| `size` | `standard` | `compact`, `standard`, `display` | Type size of the words, from a caption-scale line to a full display card. |
+| `blur` | `standard` | `soft`, `standard`, `heavy` | Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="focus-blur-resolve"
+  data-composition-src="compositions/components/focus-blur-resolve.html"
+  data-variable-values='{"tone":"ink","size":"standard","blur":"standard"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`focus-blur-resolve.html`}>
+
+```html
+<!--
+  Focus Blur Resolve - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them: it keeps
+  driving one scale and one blur, and these decide how big the words are, what
+  colour they resolve to, and how deep the blur they resolve from goes.
+
+    - tone (ink | paper | accent, default ink): word colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+    - size (compact | standard | display, default standard): type size, 40px,
+      56px or 84px.
+    - blur (soft | standard | heavy, default standard): scales the blur radius,
+      so the pull starts as a light haze or a full smear over the same run.
+
+  On every default the result is identical to the original: near-black 56px
+  words resolving out of a 16px blur.
+-->
+
+<div
+  class="hf-remocn-focus-blur-resolve"
+  data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Type size of the words, from a caption-scale line to a full display card.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "display", "label": "Display" }] },
+    { "id": "blur", "type": "enum", "role": "style", "label": "Blur", "description": "Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear.", "default": "standard", "options": [{ "value": "soft", "label": "Soft" }, { "value": "standard", "label": "Standard" }, { "value": "heavy", "label": "Heavy" }] }
+  ]'
+>
+  <span>Crystal</span><span>clear</span>
+</div>
+
+<style>
+  .hf-remocn-focus-blur-resolve {
+    color: var(--hf-word-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-focus-blur-resolve {
+    display: inline-flex;
+    gap: 12px;
+    font-size: var(--hf-word-size, 56px);
+    line-height: 1;
+  }
+  .hf-remocn-focus-blur-resolve span {
+    display: inline-block;
+    transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+      scale(var(--hf-word-scale, 1));
+    filter: blur(calc(var(--hf-word-blur, 0px) * var(--hf-word-blur-scale, 1)));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var tones = { ink: "#18181b", paper: "#fafafa", accent: "var(--brand, #34d399)" };
+    var sizes = { compact: "40px", standard: "56px", display: "84px" };
+    var blurScales = { soft: 0.45, standard: 1, heavy: 2.2 };
+
+    var tone = tones[pick(tones, vars.tone, "ink")];
+    var size = sizes[pick(sizes, vars.size, "standard")];
+    var blurScale = blurScales[pick(blurScales, vars.blur, "standard")];
+
+    var roots = document.querySelectorAll(".hf-remocn-focus-blur-resolve");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-word-color", tone);
+      roots[i].style.setProperty("--hf-word-size", size);
+      roots[i].style.setProperty("--hf-word-blur-scale", String(blurScale));
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-focus-blur-resolve span', { opacity: 0, '--hf-word-scale': 1.08, '--hf-word-blur': '16px' }, { opacity: 1, '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.52, stagger: 0.05, ease: 'power3.out' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/focus-blur-resolve.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `remocn-port` `typography`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

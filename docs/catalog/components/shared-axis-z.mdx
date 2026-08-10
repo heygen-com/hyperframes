@@ -1,0 +1,161 @@
+---
+title: "Shared Axis Z"
+description: "Scale-based shared-axis transition for focus shifts and context depth."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="shared-axis-z preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/shared-axis-z.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-z.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add shared-axis-z" />
+
+That writes one file: `compositions/components/shared-axis-z.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `direction` | `in` | `in`, `out` | Which way the words travel along the z axis: in swells up from small, out settles down from large. |
+| `depth` | `standard` | `shallow`, `standard`, `deep` | Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time. |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Word colour: ink for light frames, paper for dark ones, accent rides --brand. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="shared-axis-z"
+  data-composition-src="compositions/components/shared-axis-z.html"
+  data-variable-values='{"direction":"in","depth":"standard","tone":"ink"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`shared-axis-z.html`}>
+
+```html
+<!--
+  Shared Axis Z - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe below is untouched by them: it
+  keeps driving one scale from 0.72 to 1, and these decide how far from the
+  final size that start really sits. At rest the scale is 1, so every setting
+  lands on the same final frame.
+
+    - direction (in | out, default in): which way the words travel along the
+      z axis. in swells up from a smaller start, out settles down from a
+      larger one.
+    - depth (shallow | standard | deep, default standard): scales the gap
+      between the start size and the final size. shallow covers half the run,
+      deep nearly double, in the same time.
+    - tone (ink | paper | accent, default ink): word colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+
+  On every default the result is identical to the original: words swell from
+  0.72 to full size in near-black.
+-->
+
+<div
+  class="hf-remocn-shared-axis-z"
+  data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which way the words travel along the z axis: in swells up from small, out settles down from large.", "default": "in", "options": [{ "value": "in", "label": "In" }, { "value": "out", "label": "Out" }] },
+    { "id": "depth", "type": "enum", "role": "motion", "label": "Depth", "description": "Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "shallow", "label": "Shallow" }, { "value": "standard", "label": "Standard" }, { "value": "deep", "label": "Deep" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+>
+  <span>Zoom</span><span>context</span>
+</div>
+
+<style>
+  .hf-remocn-shared-axis-z {
+    color: var(--hf-word-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-shared-axis-z {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-shared-axis-z span {
+    display: inline-block;
+    transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+      scale(calc(1 + (var(--hf-word-scale, 1) - 1) * var(--hf-word-depth, 1)));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var signs = { in: 1, out: -1 };
+    var reaches = { shallow: 0.5, standard: 1, deep: 1.85 };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var sign = signs[pick(signs, vars.direction, "in")];
+    var reach = reaches[pick(reaches, vars.depth, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-remocn-shared-axis-z");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-word-depth", String(sign * reach));
+      roots[i].style.setProperty("--hf-word-color", tone);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-shared-axis-z span', { opacity: 0, '--hf-word-scale': 0.72 }, { opacity: 1, '--hf-word-scale': 1, duration: 0.34, stagger: 0.06, ease: 'back.out(1.8)' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/shared-axis-z.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `remocn-port` `typography`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

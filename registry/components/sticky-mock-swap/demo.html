@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  sticky-mock-swap demo. This standalone composition mounts the primitive
+  with four non-default captions and a green accent, proving that variable
+  parsing and caption-count-driven phase thresholds flow through the mount.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Sticky Mock Swap Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #9ca3af;
+        --surface: #151922;
+        --border: #3b4352;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 38% 42%, #18211f 0%, #0b0c0e 68%);
+      }
+
+      .mount-card {
+        width: 84%;
+        height: 76%;
+        left: 8%;
+        top: 12%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 30px;
+        background: var(--bg);
+        box-shadow: 0 44px 120px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="sticky-mock-swap-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+      data-fps="30"
+    >
+      <div
+        id="sticky-mock-swap-mount"
+        class="mount-card clip"
+        data-composition-id="sticky-mock-swap"
+        data-composition-src="./sticky-mock-swap.html"
+        data-variable-values='{"captions":"Draft instantly,Review together,Publish safely,Measure impact","accent":"green"}'
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        data-width="1613"
+        data-height="821"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["sticky-mock-swap-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

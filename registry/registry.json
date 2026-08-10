@@ -2,16 +2,25 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry.json",
   "name": "hyperframes",
   "homepage": "https://hyperframes.heygen.com",
-  "catalogArtifact": {
-    "revision": "3e0b7c140466db717b69481be5a87e77b1fdec5000b33ca61846ba27e5558238"
-  },
   "items": [
     {
-      "name": "warm-grain",
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
       "type": "hyperframes:example"
     },
     {
       "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
       "type": "hyperframes:example"
     },
     {
@@ -23,247 +32,15 @@
       "type": "hyperframes:example"
     },
     {
-      "name": "decision-tree",
+      "name": "vscode-theme-visualizer",
       "type": "hyperframes:example"
     },
     {
-      "name": "kinetic-type",
+      "name": "warm-grain",
       "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "data-chart",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map-bubble",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map-hex",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map-flow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "world-map",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "spain-map",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "flowchart",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "logo-outro",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "grain-overlay",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "camcorder-hud",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "editorial-flash-overlay",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "organic-light-leak-overlay",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "freeze-frame-dressing",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "shimmer-sweep",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "grid-pixelate-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "motion-blur",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "texture-mask-text",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "vignette",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-pill-karaoke",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-neon-accent",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-weight-shift",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-emoji-pop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-editorial-emphasis",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-parallax-layers",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-glitch-rgb",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-matrix-decode",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-particle-burst",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-texture",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-clip-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-kinetic-slam",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-gradient-fill",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-neon-glow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-highlight",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-blend-difference",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "morph-text",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "instagram-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "tiktok-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-lower-third",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "news-ticker",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-accent-underline",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-bold-block",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-clean-bar",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-color-block",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-dark-card",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-kicker-name",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-mask-reveal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-side-rule",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-soft-pill",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-stack-bars",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lower-third-bild",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "x-post",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "reddit-post",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "spotify-card",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "macos-notification",
-      "type": "hyperframes:block"
     },
     {
       "name": "app-showcase",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "north-korea-locked-down",
       "type": "hyperframes:block"
     },
     {
@@ -271,7 +48,11 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "vpn-youtube-spot",
+      "name": "bar-chart-race",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "beat-freeze-cut",
       "type": "hyperframes:block"
     },
     {
@@ -279,39 +60,11 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "nyc-paris-flight",
+      "name": "camcorder-hud",
       "type": "hyperframes:block"
     },
     {
-      "name": "ui-3d-reveal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "domain-warp-dissolve",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ridged-burn",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "whip-pan",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "sdf-iris",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ripple-waves",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "gravitational-lens",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "cinematic-zoom",
+      "name": "camera-dolly-zoom",
       "type": "hyperframes:block"
     },
     {
@@ -319,127 +72,35 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "glitch",
+      "name": "cinematic-zoom",
       "type": "hyperframes:block"
     },
     {
-      "name": "swirl-vortex",
+      "name": "code-3d-extrude",
       "type": "hyperframes:block"
     },
     {
-      "name": "thermal-distortion",
+      "name": "code-diff",
       "type": "hyperframes:block"
     },
     {
-      "name": "flash-through-white",
+      "name": "code-highlight",
       "type": "hyperframes:block"
     },
     {
-      "name": "cross-warp-morph",
+      "name": "code-morph",
       "type": "hyperframes:block"
     },
     {
-      "name": "light-leak",
+      "name": "code-particle-assemble",
       "type": "hyperframes:block"
     },
     {
-      "name": "transitions-3d",
+      "name": "code-scroll",
       "type": "hyperframes:block"
     },
     {
-      "name": "transitions-blur",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-cover",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-destruction",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-dissolve",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-distortion",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-grid",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-mechanical",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-other",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-push",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-radial",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-scale",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-text-cursor",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-liquid-background",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-iphone-device",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-magnetic",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-portal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-notification",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-context-menu",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-media-controls",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-widgets",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ios26-liquid-glass",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "macos-tahoe-liquid-glass",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-shatter",
+      "name": "code-shader-dissolve",
       "type": "hyperframes:block"
     },
     {
@@ -503,6 +164,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "code-snippet-flight",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "code-snippet-high-contrast",
       "type": "hyperframes:block"
     },
@@ -539,39 +204,35 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "code-morph",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-flight",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "code-typing",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-diff",
+      "name": "cosmic-orb",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-highlight",
+      "name": "cross-warp-morph",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-scroll",
+      "name": "data-chart",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-3d-extrude",
+      "name": "domain-warp-dissolve",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-shader-dissolve",
+      "name": "editorial-flash-overlay",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-particle-assemble",
+      "name": "flash-through-white",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "flowchart",
       "type": "hyperframes:block"
     },
     {
@@ -579,88 +240,40 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "vfx-liquid-glass",
+      "name": "freeze-frame-dressing",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-background",
+      "name": "gallery-tunnel",
       "type": "hyperframes:block"
     },
     {
-      "name": "parallax-zoom",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "parallax-unzoom",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "mk-specs-list",
+      "name": "glitch",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-callout-highlight",
+      "name": "gravitational-lens",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-placeholder-grid",
+      "name": "halftone-field",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-clone-wall-transition",
+      "name": "hw-frame",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-progress-stat",
+      "name": "hw-path-text",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-line-graph",
+      "name": "hw-pipeline",
       "type": "hyperframes:block"
     },
     {
-      "name": "mk-usage-arc",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "mk-emphasis-type",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "yt-lcd-background",
+      "name": "hw-scribble-transition",
       "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-comment-card",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-prism-title",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-logo-intro",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-vertical-fill",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-camera-move",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "yt-feather-highlight",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "yt-circle-pointer",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "yt-screen-warp",
-      "type": "hyperframes:component"
     },
     {
       "name": "hw-text-cloud",
@@ -671,23 +284,631 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "hw-pipeline",
+      "name": "instagram-follow",
       "type": "hyperframes:block"
     },
     {
-      "name": "hw-path-text",
+      "name": "ios26-liquid-glass",
       "type": "hyperframes:block"
     },
     {
-      "name": "hw-frame",
+      "name": "light-leak",
       "type": "hyperframes:block"
     },
     {
-      "name": "hw-scribble-transition",
+      "name": "liquid-glass-context-menu",
       "type": "hyperframes:block"
     },
     {
-      "name": "hw-boil",
+      "name": "liquid-glass-media-controls",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-notification",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-widgets",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "logo-outro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-bild",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-accent-underline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-bold-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-clean-bar",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-color-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-dark-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-kicker-name",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-mask-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-neon-border",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-side-rule",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-soft-pill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-stack-bars",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "macos-notification",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "macos-tahoe-liquid-glass",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-background",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-callout-highlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-clone-wall-transition",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-line-graph",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-placeholder-grid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-progress-stat",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mk-specs-list",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "news-ticker",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "north-korea-locked-down",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "nyc-paris-flight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "organic-light-leak-overlay",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "oscilloscope-trace",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "rack-focus",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "reddit-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ridged-burn",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ripple-waves",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "sdf-iris",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "spain-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "spiral-galaxy",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "split-flap-board",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "spotify-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "swirl-vortex",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "thermal-distortion",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "thread-message-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "tiktok-follow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-3d",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-blur",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-cover",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-destruction",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-dissolve",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-distortion",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-grid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-light",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-mechanical",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-other",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-push",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-radial",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-scale",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ui-3d-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map-bubble",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map-flow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map-hex",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-anamorphic-flare",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-iphone-device",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-liquid-background",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-liquid-glass",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-magnetic",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-portal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-shatter",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-text-cursor",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vpn-youtube-spot",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "weight-wave",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "whip-pan",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "world-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "x-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-comment-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-lcd-background",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-logo-intro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-lower-third",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-prism-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-vertical-fill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ai-generation-canvas",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ai-prompt-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "animated-bar-chart",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "arc-motion-path",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ascii-render-pass",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ascii-trail-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "aurora-drift",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "avatar-cloud",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "avatar-group-hover",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "badge-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "beat-accent",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "beat-pulse-background",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "beat-timeline",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "before-after-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-out-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "bottom-up-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "browser-device-stage",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "camera-rig-depth-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "camera-scan-gate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "camera-shake",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-blend-difference",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-camera-follow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-clip-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-editorial-emphasis",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-emoji-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-glitch-rgb",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-gradient-fill",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-kinetic-slam",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-matrix-decode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-neon-accent",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-neon-glow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-parallax-layers",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-particle-burst",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-pill-karaoke",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-texture",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-weight-shift",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "card-resize",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "char-slam-explode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chart-story",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "checkout-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chromatic-aberration-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "code-terminal-run",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "comparison-split",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "confetti",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "conic-progress-ring",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "constellation-hub",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "count-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cta-close",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cta-lockup",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor-glyph-trail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cut-the-curve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "decline-chart",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "device-frame-stage",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "directional-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "drift-hold",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dynamic-grid",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "echo-trail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "facet-morph",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "fade-through",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "focus-blur-resolve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "focus-rack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "focus-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "gesture-tap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "gloss-sweep",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grade-split-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grain-field",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grain-overlay",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grid-card-assemble",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grid-pixelate-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "halftone-dissolve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "headline-slam",
       "type": "hyperframes:component"
     },
     {
@@ -695,7 +916,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "hw-callout-circle",
+      "name": "hw-boil",
       "type": "hyperframes:component"
     },
     {
@@ -703,12 +924,555 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "hw-callout-circle",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "hw-underline",
       "type": "hyperframes:component"
     },
     {
-      "name": "beat-freeze-cut",
-      "type": "hyperframes:block"
+      "name": "icon-morph-beat",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "icon-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ink-bleed-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "inline-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-feedback",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "iris-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "keyframe-scrub-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "kinetic-type-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "light-sweep-pass",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "line-by-line-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "line-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "locked-nucleus-orbit",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "logo-brand-close",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "logo-sting",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "logo-wall",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "marker-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "match-cut",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "matrix-decode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "menu-morph",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mesh-gradient-bg",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "micro-transitions",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mk-emphasis-type",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mk-usage-arc",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "modal-morph",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "morph-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "morph-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "motion-blur",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "multi-device-splay",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "multiplayer-cursors",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "native-notification-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "notification-pileup",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "notification-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-pop-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-wheel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "offset-path-traveler",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "onboarding-stepper-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ordered-dither-pass",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "outline-draw",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "oversized-cursor",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "overwhelm-surround",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "page-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pan-stations",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "panel-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "parallax-device-dive",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "parallax-unzoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "parallax-zoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "particle-image-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "particle-text-dissolve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "per-word-crossfade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "per-word-rise",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "perspective-marquee",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "physical-exit",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "press-ripple",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pull-back-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pull-to-refresh",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "push-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "radial-surround",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "rgb-glitch-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "rubber-band-bumper",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scan-band",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scramble-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "screen-flow-carousel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scroll-camera-story",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scroll-feed",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "segmentation-flood",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "separator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "settings-toggle-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shared-axis-y",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shared-axis-z",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shimmer-sweep",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "signup-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "simulated-cursor",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "skeleton-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slit-scan-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slot-machine-roll",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "soft-blob-touch",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "soft-blur-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "split-tilt-cards",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spotlight-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spring-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spring-stack-shuffle",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stagger-cascade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stagger-lattice",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "staggered-fade-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "star-rating-fill",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "state-chip-rail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "sticky-mock-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stitched-text-draw",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stop-motion-cadence",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "store-badge-lockup",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "strikethrough-replace",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "success-check",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "svg-line-draw-loader",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "svg-mask-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "svg-stroke-trace",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "swipe-rail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tabs-slide-indicator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "telemetry-hud",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "terminal-simulator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "testimonial-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "testimonial-proof-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-shimmer",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-stagger",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-state-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "texture-mask-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "three-orbiting-cards",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ticker-takeover",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tilt-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "titlecard-calm",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "titlecard-lockup",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toggle-flip",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "top-down-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "touch-indicator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tracing-beam",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tracking-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "trust-strip",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "type-match-cut",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "typed-prompt",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "typewriter",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ui-focus-zoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "variable-axis-type",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "variable-font-flex",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "vector-editor-rig",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "velocity-throw-snap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "vignette",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "vox-annotate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "whip-pan-cut",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "whiteboard-ink",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "wordmark-tiles",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "x-follow-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-camera-move",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-circle-pointer",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-feather-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-screen-warp",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "zoom-through-transition",
+      "type": "hyperframes:component"
     }
-  ]
+  ],
+  "catalogArtifact": {
+    "revision": "a823e13eb98937e709ea70bbdc5f9e6dc0be1feed6346fb1d8746069fea6796b"
+  }
 }

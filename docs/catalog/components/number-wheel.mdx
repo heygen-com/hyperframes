@@ -1,0 +1,186 @@
+---
+title: "Number Wheel"
+description: "A rolling digit counter primitive for metrics, prices, counts, and scoreboards"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="number-wheel preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/number-wheel.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/number-wheel.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add number-wheel" />
+
+That writes one file: `compositions/components/number-wheel.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `spin` | `single` | `single`, `double`, `triple` | How many full 0 to 9 revolutions each column adds before it lands, which is how far the reel travels in the same time. |
+| `spacing` | `standard` | `tight`, `standard`, `wide` | Gap between the digit columns. |
+| `tone` | `inherit` | `inherit`, `ink`, `paper`, `accent` | Digit colour: inherit keeps the surrounding text colour, ink suits light frames, paper suits dark ones, accent rides --brand. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="number-wheel"
+  data-composition-src="compositions/components/number-wheel.html"
+  data-variable-values='{"spin":"single","spacing":"standard","tone":"inherit"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`number-wheel.html`}>
+
+```html
+<!--
+  Number Wheel - rolling digit counter.
+
+  Markup:
+    <span class="hf-number-wheel" data-value="30222"></span>
+
+  Paste this snippet once. It builds one column per digit. Animate the generated
+  .hf-number-wheel-strip elements with the data-target-y custom property.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and either builds a longer strip or writes a
+  custom property the CSS above consumes. Every strip still starts on 0 and
+  still lands on its own digit, so only the run in between changes.
+
+    - spin (single | double | triple, default single): how many full 0 to 9
+      revolutions each column adds before it lands. Extra revolutions lengthen
+      the strip and push --hf-number-target-y further, so the reel covers more
+      ground in the same time. Nothing moves at rest, so this one only shows
+      once the timeline runs.
+    - spacing (tight | standard | wide, default standard): the gap between digit
+      columns.
+    - tone (inherit | ink | paper | accent, default inherit): digit colour.
+      inherit leaves the surrounding text colour alone, ink is near-black for
+      light frames, paper near-white for dark ones, accent rides --brand.
+
+  On every default the result is identical to the original: one column per
+  digit, each rolling 0 up to its own digit in the inherited text colour.
+-->
+
+<style
+  data-composition-variables='[
+    { "id": "spin", "type": "enum", "role": "motion", "label": "Spin", "description": "How many full 0 to 9 revolutions each column adds before it lands, which is how far the reel travels in the same time.", "default": "single", "options": [{ "value": "single", "label": "Single" }, { "value": "double", "label": "Double" }, { "value": "triple", "label": "Triple" }] },
+    { "id": "spacing", "type": "enum", "role": "layout", "label": "Spacing", "description": "Gap between the digit columns.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Digit colour: inherit keeps the surrounding text colour, ink suits light frames, paper suits dark ones, accent rides --brand.", "default": "inherit", "options": [{ "value": "inherit", "label": "Inherit" }, { "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+>
+  .hf-number-wheel {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--hf-wheel-gap, 0.02em);
+    color: var(--hf-wheel-color, inherit);
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-number-wheel-digit {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+  }
+  .hf-number-wheel-strip {
+    display: grid;
+    transform: translateY(0em);
+    will-change: transform;
+  }
+  .hf-number-wheel-strip span {
+    height: 1em;
+    line-height: 1em;
+  }
+</style>
+
+<script>
+  (function () {
+    const vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    const spins = { single: 0, double: 1, triple: 2 };
+    const gaps = { tight: "0em", standard: "0.02em", wide: "0.14em" };
+    const tones = {
+      inherit: "inherit",
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+    const pick = (table, value, fallback) =>
+      Object.prototype.hasOwnProperty.call(table, value) ? table[value] : table[fallback];
+
+    const cycles = pick(spins, vars.spin, "single");
+    const gap = pick(gaps, vars.spacing, "standard");
+    const tone = pick(tones, vars.tone, "inherit");
+
+    document.querySelectorAll(".hf-number-wheel").forEach((el) => {
+      if (el.dataset.hfNumberWheelReady === "1") return;
+      el.style.setProperty("--hf-wheel-gap", gap);
+      el.style.setProperty("--hf-wheel-color", tone);
+      const value = el.dataset.value || "0";
+      el.textContent = "";
+      for (const char of value) {
+        if (!/\d/.test(char)) {
+          el.append(document.createTextNode(char));
+          continue;
+        }
+        const stops = cycles * 10 + Number(char);
+        const frame = document.createElement("span");
+        frame.className = "hf-number-wheel-digit";
+        const strip = document.createElement("span");
+        strip.className = "hf-number-wheel-strip";
+        strip.style.setProperty("--hf-number-target-y", `${-stops}em`);
+        for (let i = 0; i <= stops; i++) {
+          const step = document.createElement("span");
+          step.textContent = String(i % 10);
+          strip.appendChild(step);
+        }
+        frame.appendChild(strip);
+        el.appendChild(frame);
+      }
+      el.dataset.hfNumberWheelReady = "1";
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-number-wheel-strip", {
+    y: (_, strip) => strip.style.getPropertyValue("--hf-number-target-y"),
+    duration: 1.1,
+    ease: "power3.out",
+    stagger: 0.05,
+  }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/number-wheel.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `video-primitive` `motion-primitive` `number` `counter` `data`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

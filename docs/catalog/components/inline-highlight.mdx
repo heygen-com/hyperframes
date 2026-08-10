@@ -1,0 +1,156 @@
+---
+title: "Inline Highlight"
+description: "A clean marker-style inline highlight that animates behind text using a CSS scale variable"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="inline-highlight preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/inline-highlight.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/inline-highlight.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add inline-highlight" />
+
+That writes one file: `compositions/components/inline-highlight.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `tint` | `yellow` | `yellow`, `green`, `blue`, `violet` | Marker colour. Green, blue and violet ride --brand, --accent and --accent-2. |
+| `thickness` | `standard` | `thin`, `standard`, `thick` | Height of the marker band behind the text, as a share of the font size. |
+| `origin` | `left` | `left`, `right`, `center` | Edge the marker grows out of as the scale variable runs from 0 to 1. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="inline-highlight"
+  data-composition-src="compositions/components/inline-highlight.html"
+  data-variable-values='{"tint":"yellow","thickness":"standard","origin":"left"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`inline-highlight.html`}>
+
+```html
+<!--
+  Inline Highlight - animated marker underline/fill.
+
+  Wrap target text with class="hf-inline-highlight". Animate
+  --hf-highlight-scale from 0 to 1 on the element.
+
+  Variables. The script reads each one, falls back to the declared default on anything
+  missing or unrecognised, and writes the result onto the document root, so highlights
+  authored anywhere in the composition pick it up no matter when they are parsed. The
+  timeline recipe below is untouched by them.
+
+    - tint (yellow | green | blue | violet, default yellow): marker colour. yellow is the
+      highlighter default, the other three ride --brand, --accent and --accent-2.
+    - thickness (thin | standard | thick, default standard): height of the band behind the
+      text, 0.22em, 0.38em or 0.62em.
+    - origin (left | right | center, default left): edge the marker grows out of while
+      --hf-highlight-scale runs from 0 to 1.
+
+  Setting --hf-highlight-color, --hf-highlight-height or --hf-highlight-origin on an
+  individual highlight still wins over the variable, so one-off overrides keep working.
+-->
+
+<style
+  data-composition-variables='[
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Marker colour. Green, blue and violet ride --brand, --accent and --accent-2.", "default": "yellow", "options": [{ "value": "yellow", "label": "Yellow" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "thickness", "type": "enum", "role": "style", "label": "Thickness", "description": "Height of the marker band behind the text, as a share of the font size.", "default": "standard", "options": [{ "value": "thin", "label": "Thin" }, { "value": "standard", "label": "Standard" }, { "value": "thick", "label": "Thick" }] },
+    { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Edge the marker grows out of as the scale variable runs from 0 to 1.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "center", "label": "Center" }] }
+  ]'
+>
+  .hf-inline-highlight {
+    --hf-highlight-scale: 0;
+    position: relative;
+    display: inline;
+    z-index: 0;
+  }
+  .hf-inline-highlight::after {
+    content: "";
+    position: absolute;
+    left: -0.08em;
+    right: -0.08em;
+    bottom: 0.05em;
+    height: var(--hf-highlight-height, 0.38em);
+    background: var(--hf-highlight-color, #fff06a);
+    transform: scaleX(var(--hf-highlight-scale));
+    transform-origin: var(--hf-highlight-origin, left center);
+    z-index: -1;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var tints = {
+      yellow: "#fff06a",
+      green: "var(--brand, #34d399)",
+      blue: "var(--accent, #38bdf8)",
+      violet: "var(--accent-2, #a78bfa)",
+    };
+    var heights = { thin: "0.22em", standard: "0.38em", thick: "0.62em" };
+    var origins = { left: "left center", right: "right center", center: "center" };
+
+    var root = document.documentElement;
+    root.style.setProperty("--hf-highlight-color", tints[pick(tints, vars.tint, "yellow")]);
+    root.style.setProperty(
+      "--hf-highlight-height",
+      heights[pick(heights, vars.thickness, "standard")],
+    );
+    root.style.setProperty("--hf-highlight-origin", origins[pick(origins, vars.origin, "left")]);
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-inline-highlight", {
+    "--hf-highlight-scale": 1,
+    duration: 0.55,
+    ease: "power2.out",
+    stagger: 0.12,
+  }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/inline-highlight.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `text` `highlight` `caption`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

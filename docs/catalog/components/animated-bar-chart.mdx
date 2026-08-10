@@ -1,0 +1,140 @@
+---
+title: "Animated Bar Chart"
+description: "A compact data card with deterministic bar growth and value callouts."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="animated-bar-chart preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/animated-bar-chart.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add animated-bar-chart" />
+
+That writes one file: `compositions/components/animated-bar-chart.html`.
+
+## Source
+
+<Accordion title={`animated-bar-chart.html`}>
+
+```html
+<!--
+  Animated Bar Chart - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-animated-bar-chart">
+  <header>
+    <div>
+      <h3>Animated Bar Chart</h3>
+      <p>A compact data card with deterministic bar growth and value callouts.</p>
+    </div>
+    <strong>+42%</strong>
+  </header>
+  <div class="bars">
+    <span class="bar" style="--h: 42%"></span><span class="bar" style="--h: 72%"></span
+    ><span class="bar" style="--h: 56%"></span><span class="bar" style="--h: 88%"></span
+    ><span class="bar" style="--h: 64%"></span><span class="bar" style="--h: 95%"></span
+    ><span class="bar" style="--h: 78%"></span>
+  </div>
+  <svg viewBox="0 0 700 210">
+    <path
+      d="M20 172 C120 90, 190 118, 260 74 S430 112, 508 42 S620 82, 680 30"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="10"
+      stroke-linecap="round"
+    />
+  </svg>
+</div>
+
+<style>
+  .hf-remocn-animated-bar-chart {
+    --hf-accent: var(--accent, #111827);
+    --hf-ink: #111827;
+    --hf-l1: rgba(17, 24, 39, 0.72);
+    --hf-l2: rgba(17, 24, 39, 0.45);
+    --hf-l3: rgba(17, 24, 39, 0.18);
+    --hf-l4: rgba(17, 24, 39, 0.08);
+    --hf-hair: rgba(17, 24, 39, 0.14);
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-animated-bar-chart {
+    width: 760px;
+    min-height: 420px;
+    border-radius: 28px;
+    background: #fff;
+    padding: 34px;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+    display: grid;
+    gap: 22px;
+  }
+  .hf-remocn-animated-bar-chart header {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+  }
+  .hf-remocn-animated-bar-chart h3 {
+    margin: 0;
+    font-size: 34px;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-animated-bar-chart strong {
+    font-size: 54px;
+    letter-spacing: -0.06em;
+  }
+  .hf-remocn-animated-bar-chart .bars {
+    height: 210px;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    align-items: end;
+    gap: 14px;
+  }
+  .hf-remocn-animated-bar-chart .bar {
+    height: calc(var(--h) * var(--hf-grow, 1));
+    border-radius: 14px 14px 5px 5px;
+    background: var(--hf-l1);
+  }
+  .hf-remocn-animated-bar-chart svg {
+    width: 100%;
+    height: 210px;
+    overflow: visible;
+  }
+  .hf-remocn-animated-bar-chart path {
+    color: var(--hf-l2);
+    stroke-dasharray: 900;
+    stroke-dashoffset: var(--hf-dash, 0);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-animated-bar-chart', { '--hf-grow': 0, '--hf-dash': 900 }, { '--hf-grow': 1, '--hf-dash': 0, duration: 1.2, ease: 'power3.out' }, startTime);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/animated-bar-chart.html` and paste its contents into your composition. See the comment header in the file for timeline integration guidance.
+
+{/* hf:generated-footer */}
+
+Tagged `data` `remocn-port`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -1,0 +1,219 @@
+---
+title: "Input Feedback"
+description: "A transitions.dev-inspired input feedback primitive with shake, clear affordance, and success state"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="input-feedback preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/input-feedback.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-feedback.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add input-feedback" />
+
+That writes one file: `compositions/components/input-feedback.html`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `status` | `valid` | `valid`, `error` | Whether the field reads as accepted or rejected, colouring the border, chip and hint. |
+| `value` | `mia@example.com` | string | Text held by the field. |
+| `hint` | `Looks good.` | string | Helper line under the field. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="input-feedback"
+  data-composition-src="compositions/components/input-feedback.html"
+  data-variable-values='{"status":"valid","value":"mia@example.com","hint":"Looks good."}'
+></div>
+```
+
+## Source
+
+<Accordion title={`input-feedback.html`}>
+
+```html
+<!--
+  Input Feedback - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Use the timeline
+  integration note at the bottom as the starting point for deterministic GSAP
+  animation.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the text or state attribute the
+  CSS below already keys off. The timeline recipe at the bottom is untouched
+  by them: it keeps shaking the same shell and popping the same chip.
+
+    - status (valid | error, default valid): whether the field reads as
+      accepted or rejected. valid is the green border, chip and hint; error
+      turns all three red and swaps the chip glyph to an exclamation mark.
+      Pair it with a matching hint.
+    - value (string, default "mia@example.com"): the text held by the field.
+      A blank or non-text override keeps the default.
+    - hint (string, default "Looks good."): the helper line under the field.
+
+  On every default the result is identical to the original: a green valid
+  field holding mia@example.com over Looks good.
+-->
+
+<div
+  class="hf-transition-input-feedback"
+  data-state="valid"
+  data-composition-variables='[
+    { "id": "status", "type": "enum", "role": "style", "label": "Status", "description": "Whether the field reads as accepted or rejected, colouring the border, chip and hint.", "default": "valid", "options": [{ "value": "valid", "label": "Valid" }, { "value": "error", "label": "Error" }] },
+    { "id": "value", "type": "string", "role": "content", "label": "Value", "description": "Text held by the field.", "default": "mia@example.com" },
+    { "id": "hint", "type": "string", "role": "content", "label": "Hint", "description": "Helper line under the field.", "default": "Looks good." }
+  ]'
+>
+  <label>Email</label>
+  <div class="hf-transition-input-shell">
+    <span class="hf-transition-input-value">mia@example.com</span>
+    <button class="hf-transition-input-clear" type="button">x</button>
+    <span class="hf-transition-input-check">OK</span>
+  </div>
+  <p class="hf-transition-input-hint">Looks good.</p>
+</div>
+
+<style>
+  .hf-transition-input-feedback {
+    --hf-fb-border: #d4d4d8;
+    --hf-fb-chip-bg: #dcfce7;
+    --hf-fb-chip-fg: #166534;
+    --hf-fb-hint: #16a34a;
+    display: grid;
+    gap: 10px;
+    width: 430px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-input-feedback label {
+    color: #52525b;
+    font-size: 15px;
+    font-weight: 850;
+  }
+  .hf-transition-input-shell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 62px;
+    padding: 0 16px;
+    border: 1px solid var(--hf-fb-border);
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+  }
+  .hf-transition-input-value {
+    flex: 1;
+    font-size: 20px;
+    font-weight: 760;
+  }
+  .hf-transition-input-clear,
+  .hf-transition-input-check {
+    display: grid;
+    place-items: center;
+    height: 28px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .hf-transition-input-clear {
+    width: 28px;
+    border: 0;
+    background: #f4f4f5;
+    color: #71717a;
+  }
+  .hf-transition-input-check {
+    min-width: 38px;
+    padding: 0 8px;
+    background: var(--hf-fb-chip-bg);
+    color: var(--hf-fb-chip-fg);
+  }
+  .hf-transition-input-hint {
+    margin: 0;
+    color: var(--hf-fb-hint);
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .hf-transition-input-feedback[data-state="error"] {
+    --hf-fb-border: #fca5a5;
+    --hf-fb-chip-bg: #fee2e2;
+    --hf-fb-chip-fg: #991b1b;
+    --hf-fb-hint: #dc2626;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    function text(value, fallback) {
+      return typeof value === "string" && value.trim() !== "" ? value : fallback;
+    }
+
+    var statuses = { valid: "OK", error: "!" };
+
+    var status = pick(statuses, vars.status, "valid");
+    var value = text(vars.value, "mia@example.com");
+    var hint = text(vars.hint, "Looks good.");
+
+    var roots = document.querySelectorAll(".hf-transition-input-feedback");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.setAttribute("data-state", status);
+      var valueEl = root.querySelector(".hf-transition-input-value");
+      if (valueEl) valueEl.textContent = value;
+      var hintEl = root.querySelector(".hf-transition-input-hint");
+      if (hintEl) hintEl.textContent = hint;
+      var chip = root.querySelector(".hf-transition-input-check");
+      if (chip) chip.textContent = statuses[status];
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-input-feedback', { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, ease: 'power2.out' }, 0.3);
+  tl.to('.hf-transition-input-shell', { x: -12, duration: 0.06, repeat: 5, yoyo: true, ease: 'none' }, 0.72);
+  tl.fromTo('.hf-transition-input-check', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: 'back.out(2)' }, 1.18);
+  tl.fromTo('.hf-transition-input-hint', { opacity: 0, y: -6 }, { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' }, 1.28);
+-->
+```
+
+</Accordion>
+
+## Usage
+
+Open `compositions/components/input-feedback.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+
+{/* hf:generated-footer */}
+
+Tagged `transition-primitive` `transitions-dev-port` `input` `feedback`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
