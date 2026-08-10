@@ -251,7 +251,7 @@
           },
           {
             "group": "Text & captions",
-            "groups": [
+            "pages": [
               {
                 "group": "Captions",
                 "pages": [
@@ -340,7 +340,7 @@
           },
           {
             "group": "Code",
-            "groups": [
+            "pages": [
               {
                 "group": "Code Animations",
                 "pages": [
@@ -389,7 +389,7 @@
           },
           {
             "group": "Transitions",
-            "groups": [
+            "pages": [
               {
                 "group": "Shader Transitions",
                 "pages": [
@@ -435,7 +435,7 @@
           },
           {
             "group": "Data & charts",
-            "groups": [
+            "pages": [
               {
                 "group": "Data",
                 "pages": [
@@ -462,7 +462,7 @@
           },
           {
             "group": "Scenes & demos",
-            "groups": [
+            "pages": [
               {
                 "group": "Showcases",
                 "pages": [
@@ -570,7 +570,7 @@
           },
           {
             "group": "Motion & effects",
-            "groups": [
+            "pages": [
               {
                 "group": "Motion Primitives",
                 "pages": [
@@ -681,7 +681,7 @@
           },
           {
             "group": "Surfaces",
-            "groups": [
+            "pages": [
               {
                 "group": "Texture",
                 "pages": [
@@ -716,7 +716,7 @@
           },
           {
             "group": "Blocks",
-            "groups": [
+            "pages": [
               {
                 "group": "Blocks",
                 "pages": [

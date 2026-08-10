@@ -1211,7 +1211,10 @@ function main(): void {
       .filter((g): g is { group: string; pages: string[] } => g !== undefined);
     if (children.length === 0) continue;
     for (const child of children) placed.add(child.group);
-    catalogGroups.push({ group: section, groups: children });
+    // A nested shelf is an entry in the parent's `pages`, beside the page
+    // strings. A sibling `groups` key parses without complaint and renders
+    // nothing, which took the whole catalog out of the sidebar.
+    catalogGroups.push({ group: section, pages: children });
   }
 
   // A shelf nobody assigned a section still has to appear, or a new tag would
@@ -1233,10 +1236,10 @@ function main(): void {
     // only reads `pages` finds nothing generated in one, keeps it as if a human
     // had written it, and appends a fresh copy on every run.
     const holdsGeneratedPages = (node: unknown): boolean => {
+      if (isGeneratedPage(node)) return true;
       if (!node || typeof node !== "object") return false;
-      const g = node as { pages?: unknown[]; groups?: unknown[] };
-      if ((g.pages ?? []).some(isGeneratedPage)) return true;
-      return (g.groups ?? []).some(holdsGeneratedPages);
+      const g = node as { pages?: unknown[] };
+      return (g.pages ?? []).some(holdsGeneratedPages);
     };
     const handAddedGroups: unknown[] = (existing?.groups ?? []).filter(
       (g: unknown) => !holdsGeneratedPages(g),
@@ -1260,13 +1263,11 @@ function main(): void {
     // A section holds groups, a shelf holds pages; the count has to walk both
     // or it reports zero for everything that was nested.
     const countPages = (node: unknown): number => {
+      if (typeof node === "string") return 1;
       if (!node || typeof node !== "object") return 0;
-      const g = node as { pages?: unknown[]; groups?: unknown[] };
-      if (Array.isArray(g.pages)) return g.pages.length;
-      if (Array.isArray(g.groups)) {
-        return g.groups.reduce((n: number, child: unknown) => n + countPages(child), 0);
-      }
-      return 0;
+      const g = node as { pages?: unknown[] };
+      if (!Array.isArray(g.pages)) return 0;
+      return g.pages.reduce((n: number, entry: unknown) => n + countPages(entry), 0);
     };
     const totalPages = catalogGroups.reduce((n: number, g) => n + countPages(g), 0);
     console.log(`  ✓ docs.json updated with ${catalogGroups.length} sections, ${totalPages} pages`);
