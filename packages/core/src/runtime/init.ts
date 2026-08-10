@@ -857,6 +857,26 @@ export function initSandboxRuntimeModular(): void {
     return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
   };
 
+  /**
+   * The MACHINE-CALCULATED composition duration from
+   * `<html data-composition-duration>`, used as a playable-duration CEILING.
+   * Emitters that stamp this attribute (the generator, external compilers)
+   * compute it from the content schedule, so a GSAP master running longer —
+   * one scene component's 20s ambient background drift inside a 12s
+   * composition is enough — must not stretch playback into a blank tail past
+   * the calculated end. A composition HOST's `data-duration` is deliberately
+   * NOT a ceiling: hand/agent-authored documents often declare a stale value
+   * there, and playing the full timeline is the safer default (see the
+   * authored-duration floor above, and the "keeps the timeline duration"
+   * test).
+   */
+  const resolveCalculatedCompositionDurationCeilingSeconds = (): number | null => {
+    const declared = Number.parseFloat(
+      document.documentElement.getAttribute("data-composition-duration") ?? "",
+    );
+    return Number.isFinite(declared) && declared > 0 ? declared : null;
+  };
+
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
@@ -880,6 +900,16 @@ export function initSandboxRuntimeModular(): void {
       safeDuration = Math.max(durationFloor, fallbackDuration);
     } else {
       safeDuration = fallbackDuration;
+    }
+    // The machine-calculated document-level duration is a CEILING. The floor
+    // half already lives in resolveAuthoredCompositionDurationFloorSeconds (a
+    // GSAP timeline ending slightly short must not shrink the playable
+    // window); symmetrically, a timeline running LONGER than the calculated
+    // schedule must not extend playback past it into frames where every clip
+    // has ended.
+    const declaredCeiling = resolveCalculatedCompositionDurationCeilingSeconds();
+    if (isUsableTimelineDuration(declaredCeiling) && safeDuration > declaredCeiling) {
+      safeDuration = declaredCeiling;
     }
     return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
   };

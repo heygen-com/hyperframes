@@ -516,6 +516,28 @@ describe("initSandboxRuntimeModular", () => {
     expect(warned).not.toContain("Root timeline not bound");
   });
 
+  it("caps the playable duration at <html data-composition-duration>", () => {
+    // The document-level duration is machine-calculated from the content
+    // schedule, so it is a CEILING: one over-long ambient tween (a scene
+    // component's 20s background drift) must not stretch playback into a
+    // blank tail past the calculated end. (A composition HOST's declared
+    // data-duration stays floor-only — see "keeps the timeline duration when
+    // it exceeds the root's declared data-duration".)
+    document.documentElement.setAttribute("data-composition-duration", "11.5");
+    const root = document.createElement("div");
+    root.className = "clip";
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(20) };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(11.5);
+    document.documentElement.removeAttribute("data-composition-duration");
+  });
+
   it("uses the shorter authored host window when the child timeline is longer", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
