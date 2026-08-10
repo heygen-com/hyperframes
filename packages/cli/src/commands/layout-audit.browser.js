@@ -296,11 +296,7 @@
 
   function hasPaint(style) {
     const backgroundColor = style.backgroundColor || "";
-    const hasBackground =
-      backgroundColor !== "" &&
-      backgroundColor !== "transparent" &&
-      !backgroundColor.endsWith(", 0)") &&
-      backgroundColor !== "rgba(0, 0, 0, 0)";
+    const hasBackground = backgroundColor !== "" && colorAlpha(backgroundColor) > 0;
     const hasImage = style.backgroundImage && style.backgroundImage !== "none";
     const hasBorder =
       parsePx(style.borderTopWidth) +
@@ -548,28 +544,10 @@
     return !!element.closest("[data-layout-allow-overlap]");
   }
 
-  function isTransparentColor(color) {
-    return (
-      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
-    );
-  }
-
-  function alphaFromParts(parts, index) {
-    if (parts.length <= index) return 1;
-    const raw = parts[index].trim();
-    return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
-  }
-
-  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
-  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
-  function colorAlpha(color) {
-    const match = (color || "").match(/rgba?\(([^)]+)\)/);
-    if (!match) return 1;
-    const body = match[1];
-    return body.includes(",")
-      ? alphaFromParts(body.split(","), 3)
-      : alphaFromParts(body.split("/"), 1);
-  }
+  // Injected from @hyperframes/core/visual-paint by prepareBrowserScript. Keeping the
+  // binding lexical makes the final browser script standalone without installing globals.
+  const colorAlpha = __hyperframesCssColorAlpha;
+  const isTransparentColor = (color) => colorAlpha(color) === 0;
 
   // A text block competes for space only when it is solid: watermark-style text
   // (low colour alpha) is decorative and exempt, as are elements opted out with

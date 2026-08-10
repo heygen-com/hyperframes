@@ -283,6 +283,43 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     ).toBe(visible);
   });
 
+  it("skips zero-alpha backgrounds regardless of their RGB channels", () => {
+    const document = createDocument(`
+      <div id="transparent" style="background-color: rgba(255, 255, 255, 0)"></div>
+      <button id="visible">Visible</button>
+    `);
+    const transparent = document.getElementById("transparent") as HTMLElement;
+    const visible = document.getElementById("visible") as HTMLElement;
+    setElementRect(transparent, { width: 120, height: 32 });
+    setElementRect(visible, { width: 120, height: 32 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([transparent, visible], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toBe(visible);
+  });
+
+  it("keeps a box-shadow-only element selectable", () => {
+    const document = createDocument(`<div id="shadow" style="box-shadow: 0 4px 20px #000"></div>`);
+    const shadow = document.getElementById("shadow") as HTMLElement;
+    setElementRect(shadow, { width: 120, height: 32 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([shadow], { activeCompositionPath: "index.html" }),
+    ).toBe(shadow);
+  });
+
+  it("keeps audio elements selectable as Studio visual leaves", () => {
+    const document = createDocument(`<audio id="sound" controls style="display: block"></audio>`);
+    const audio = document.getElementById("sound") as HTMLElement;
+    setElementRect(audio, { width: 300, height: 54 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([audio], { activeCompositionPath: "index.html" }),
+    ).toBe(audio);
+  });
+
   it("falls back to the nearest stable editable ancestor when a visual child has no target", () => {
     const document = createDocument(`
       <section id="card">
