@@ -23,9 +23,13 @@ import {
   LOCAL_MODEL_ID,
 } from "../../packages/cli/src/registry/localModel.js";
 import { loadLocalEmbedder } from "../../packages/cli/src/registry/localEmbedder.js";
+import { isLocalModelReady } from "../../packages/cli/src/registry/localModel.js";
 import { catalogFromRegistry } from "./catalog-artifact.js";
 
 const BATCH = 16;
+
+/** Distinct from 1 so the pre-commit hook can tell "cannot" from "failed". */
+const EXIT_NO_MODEL = 3;
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -86,6 +90,20 @@ async function main(): Promise<void> {
   const catalog = Object.fromEntries(catalogMap);
   const names = Object.keys(catalog).sort();
   if (names.length === 0) throw new Error(`no registry items found under ${registryDir}`);
+  // Embedding needs the model, and the model is a 32 MB opt-in that most
+  // contributors will not have. Say so and stop, rather than failing inside the
+  // ONNX loader with an ENOENT that names a path nobody set.
+  if (!isLocalModelReady()) {
+    console.error(
+      "The embedding model is not on this machine, so the index cannot be rebuilt here.\n" +
+        "That is fine: adding a registry item does not require it. Open the pull request\n" +
+        "and a maintainer regenerates the index before merge.\n\n" +
+        "To do it yourself, fetch the model once with:\n" +
+        "  hyperframes catalog --query anything --on-device\n",
+    );
+    process.exit(EXIT_NO_MODEL);
+  }
+
   const embedder = await loadLocalEmbedder();
 
   const vectors = await embedInBatches(names, catalog, embedder);

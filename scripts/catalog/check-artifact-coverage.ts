@@ -71,7 +71,9 @@ console.error(show(unindexed));
 console.error(
   "\nMeaning search cannot return these at all: they are absent from the candidate\n" +
     "set, not ranked low. Word search still finds them.\n\n" +
-    "Regenerate and commit the artifact:\n" +
-    "  bun scripts/catalog/build-local-vectors.ts\n",
+    "If you have the embedding model, regenerate and commit the artifact:\n" +
+    "  bun scripts/catalog/build-local-vectors.ts\n\n" +
+    "If you do not, leave it: adding a registry item does not require the model,\n" +
+    "and a maintainer regenerates the index before merge.\n",
 );
 process.exit(1);
