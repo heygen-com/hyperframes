@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-samurai-eye",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Samurai Eye",
+  "description": "Cinematic lower third on a navy scrim: a gold eye emblem ignites, the name slams in, and a gold baseline draws with a sheen sweep. Self-contained, transparent background for overlay on footage.",
+  "tags": ["lower-third", "overlay", "cinematic", "sports", "broadcast"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-samurai-eye.html",
+      "target": "compositions/lt-samurai-eye.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
