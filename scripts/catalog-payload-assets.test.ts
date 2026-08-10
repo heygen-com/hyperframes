@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { externalizeDataUris, localReferences, processAssets } from "./catalog-payload-assets.ts";
+import {
+  externalizeDataUris,
+  localReferences,
+  probableReferences,
+  processAssets,
+} from "./catalog-payload-assets.ts";
 
 function project(files: Record<string, string | Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-payload-assets-"));
@@ -186,5 +191,53 @@ describe("externalizeDataUris", () => {
 
     assert.equal(result.externalized, 0);
     assert.match(result.html, /data:model\/gltf-binary/);
+  });
+});
+
+describe("probableReferences", () => {
+  it("finds a model a script loads by name", () => {
+    // `loader.load("models/iphone.glb")` is how the 3D blocks fetch their
+    // model, and no attribute or url() pattern can see it.
+    const html = `<script>loader.load("models/iphone.glb", cb);</script>`;
+    assert.deepEqual(probableReferences(html), ["models/iphone.glb"]);
+  });
+
+  it("does not repeat a reference an attribute already covers", () => {
+    const html = `<img src="a.png"><script>preload("a.png")</script>`;
+    assert.deepEqual(probableReferences(html), []);
+  });
+});
+
+describe("processAssets with script-loaded files", () => {
+  it("inlines a model loaded by name, since the host will not publish glb", () => {
+    const dir = project({ "models/iphone.glb": Buffer.alloc(64, 3) });
+    const result = processAssets(
+      `<script>loader.load("models/iphone.glb")</script>`,
+      dir,
+      target(),
+    );
+
+    assert.equal(result.inlined, 1);
+    assert.match(result.html, /data:model\/gltf-binary;base64,/);
+    assert.deepEqual(result.unresolved, []);
+  });
+
+  it("ignores a name that is not a file, rather than failing the item", () => {
+    // An ordinary string that happens to look like a filename must not push an
+    // item onto the video fallback.
+    const result = processAssets(
+      `<script>track("checkout.step.png")</script>`,
+      project({}),
+      target(),
+    );
+
+    assert.deepEqual(result.unresolved, []);
+    assert.equal(result.hosted + result.inlined, 0);
+  });
+
+  it("still fails an item whose markup points at a missing file", () => {
+    const result = processAssets(`<img src="gone.png">`, project({}), target());
+
+    assert.deepEqual(result.unresolved, ["gone.png"]);
   });
 });

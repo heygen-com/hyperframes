@@ -95,6 +95,28 @@ export function localReferences(html: string): string[] {
   return [...found];
 }
 
+/**
+ * Files a script loads by name, such as `loader.load("models/iphone.glb")`.
+ *
+ * These cannot be told apart from ordinary strings by shape alone, so unlike
+ * the definite references above they are only acted on when the name resolves
+ * to a real file in the item's own directory, and a miss is ignored rather than
+ * failing the item. Without this pass a 3D model stayed a relative path, which
+ * resolves against the docs page inside a `srcdoc` iframe and 404s: the preview
+ * renders, just with nothing in it.
+ */
+export function probableReferences(html: string): string[] {
+  const definite = new Set(localReferences(html));
+  const found = new Set<string>();
+  for (const [, ref] of html.matchAll(/["']([^"'\s]+\.[a-z0-9]{2,5})["']/gi)) {
+    if (!ref || definite.has(ref)) continue;
+    if (/^(https?:|data:|blob:|mailto:|#|%23|\/\/)/i.test(ref)) continue;
+    if (!MIME_TYPES[extname(pathPart(ref)).toLowerCase()]) continue;
+    found.add(ref);
+  }
+  return [...found];
+}
+
 export interface AssetResult {
   html: string;
   /** Written once to the shared directory and linked. */
@@ -131,14 +153,22 @@ export function processAssets(html: string, projectDir: string, target: AssetTar
   let inlined = 0;
   const unresolved: string[] = [];
 
-  for (const ref of localReferences(html)) {
+  const definite = localReferences(html);
+  const candidates = [
+    ...definite.map((ref) => ({ ref, strict: true })),
+    ...probableReferences(html).map((ref) => ({ ref, strict: false })),
+  ];
+
+  for (const { ref, strict } of candidates) {
     const source = resolve(projectDir, pathPart(ref));
 
     // A composition reaching outside its own directory would pull an arbitrary
     // file from the build machine into a published payload.
     const contained = source === root || source.startsWith(`${root}/`);
     if (!contained || !existsSync(source) || !statSync(source).isFile()) {
-      unresolved.push(ref);
+      // A name a script passed around that turned out not to be a file is just
+      // a string; only a reference we are sure about counts as a broken one.
+      if (strict) unresolved.push(ref);
       continue;
     }
 

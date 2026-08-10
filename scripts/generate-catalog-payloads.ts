@@ -52,6 +52,13 @@ function typeDir(kind: ItemKind): string {
 }
 
 async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
+  const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
+
+  // An item that stops qualifying has to lose its payload, or the page
+  // generator keeps finding one on disk and emits a player for a preview this
+  // run just decided it cannot build.
+  const dropStalePayload = () => rmSync(outPath, { force: true });
+
   const projectDir = await prepareProjectDir(item);
   try {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
@@ -71,15 +78,16 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     // keeps the MP4 rather than shipping a preview with holes in it.
     if (unresolved.length > 0) {
       console.log(`  – ${item.name}: cannot inline ${unresolved.slice(0, 3).join(", ")}`);
+      dropStalePayload();
       return "skipped";
     }
     const bytes = Buffer.byteLength(withShared, "utf-8");
     if (bytes > MAX_PAYLOAD_BYTES) {
       console.log(`  – ${item.name}: ${(bytes / 1e6).toFixed(1)} MB payload, over budget`);
+      dropStalePayload();
       return "skipped";
     }
 
-    const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify({ html: withShared }), "utf-8");
 
@@ -124,6 +132,7 @@ async function main(): Promise<void> {
       else skipped += 1;
     } catch (err) {
       failed += 1;
+      rmSync(join(payloadRoot, typeDir(item.kind), `${item.name}.json`), { force: true });
       console.error(`  ✗ ${item.name}: ${err instanceof Error ? err.message : err}`);
     }
   }
