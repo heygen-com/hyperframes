@@ -197,19 +197,32 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
       {
         type: "saturate",
         label: "Circuit Grit",
-        params: { type: "tanh", threshold: -18, output: -2 },
+        params: { type: "tanh", threshold: -9, output: -2 },
       },
     ],
   ),
   preset("radio-am", "character", "AM Radio", "Narrow, gritty and a little crushed.", [
-    { type: "highpass", label: "Strip the Bass", params: { frequency: 400, q: 0.707, poles: "2" } },
+    // Narrower than the megaphone at BOTH ends, which is most of the difference
+    // between them: an AM channel is a few kHz wide and the receiver rolls off
+    // well before a horn does.
+    { type: "highpass", label: "Strip the Bass", params: { frequency: 220, q: 0.707, poles: "2" } },
     {
       type: "lowpass",
       label: "Strip the Treble",
-      params: { frequency: 3000, q: 0.707, poles: "2" },
+      params: { frequency: 2200, q: 0.707, poles: "2" },
     },
-    { type: "saturate", label: "Radio Grit", params: { type: "tanh", threshold: -15, output: -2 } },
-    { type: "bitcrush", label: "Crunch", params: { bits: 10, samples: 1, mix: 0.25 } },
+    // Where the telephone honks, a receiver DIPS: the IF filter's droop, and the
+    // reason the two stop sounding alike. Telephone's band is its identity (it
+    // is the G.712 passband), so the radio is what moves.
+    { type: "peaking", label: "IF Droop", params: { frequency: 1200, gain: -5, q: 0.9 } },
+    // And a lift at the bottom of the band — AM is boxy where a phone is thin.
+    { type: "lowshelf", label: "Boxy", params: { frequency: 500, gain: 4 } },
+    // Soft — a receiver compressing, not a driver being overdriven. `tanh`
+    // rounds the peaks where the megaphone's `hard` clips them flat.
+    { type: "saturate", label: "Radio Grit", params: { type: "tanh", threshold: -8, output: -1 } },
+    // The crush is the AM signature: quantisation noise reads as carrier hiss,
+    // and it is the one thing the megaphone has none of.
+    { type: "bitcrush", label: "Carrier Hiss", params: { bits: 8, samples: 1, mix: 0.45 } },
   ]),
   preset(
     "megaphone",
@@ -220,20 +233,30 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
       {
         type: "highpass",
         label: "Strip the Bass",
-        params: { frequency: 500, q: 0.707, poles: "2" },
+        params: { frequency: 700, q: 0.707, poles: "2" },
       },
       {
         type: "lowpass",
         label: "Strip the Treble",
         params: { frequency: 4000, q: 0.707, poles: "2" },
       },
-      { type: "peaking", label: "Horn Honk", params: { frequency: 1800, gain: 8, q: 1.5 } },
+      // A horn is a resonant tube and that resonance IS the sound: one narrow
+      // peak with a second ringing above it, where the radio has none at all.
+      { type: "peaking", label: "Horn Honk", params: { frequency: 1900, gain: 14, q: 3 } },
+      { type: "peaking", label: "Horn Ring", params: { frequency: 3200, gain: 6, q: 3 } },
+      // A driver pushed past its limit — flat-topped, not rounded. Measured on a
+      // log sweep, the threshold is the whole ballgame: at -14 the clipper
+      // flattened the response to a dead -19 dB line and ERASED the horn peaks
+      // above, leaving this indistinguishable from AM Radio. Backed off until
+      // the resonance survives the clipping that is supposed to sit on top of it.
       {
         type: "saturate",
         label: "Overdrive",
-        params: { type: "hard", threshold: -12, output: -3 },
+        params: { type: "hard", threshold: -5, output: -3 },
       },
-      { type: "delay", label: "Horn Slap", params: { time: 40, feedback: 0.15, mix: 0.15 } },
+      // The outdoor reflection that comes back off whatever is being shouted at.
+      // Far enough to be a slap rather than a thickening.
+      { type: "delay", label: "Horn Slap", params: { time: 65, feedback: 0.2, mix: 0.28 } },
     ],
   ),
   preset(
@@ -259,22 +282,24 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
     ],
   ),
   preset("pa-system", "character", "Tannoy", "Announced across a concourse.", [
-    { type: "highpass", label: "Strip the Bass", params: { frequency: 350, q: 0.707, poles: "2" } },
+    { type: "highpass", label: "Strip the Bass", params: { frequency: 250, q: 0.707, poles: "2" } },
     {
       type: "lowpass",
       label: "Strip the Treble",
-      params: { frequency: 3500, q: 0.707, poles: "2" },
+      params: { frequency: 5000, q: 0.707, poles: "2" },
     },
-    { type: "peaking", label: "Tannoy Honk", params: { frequency: 1500, gain: 5, q: 1.2 } },
+    // Higher and harder than the telephone's honk, which is what a big horn
+    // does — and it keeps the top the phone throws away.
+    { type: "peaking", label: "Tannoy Honk", params: { frequency: 2400, gain: 9, q: 2 } },
     {
       type: "saturate",
       label: "Driver Grit",
-      params: { type: "tanh", threshold: -16, output: -1 },
+      params: { type: "tanh", threshold: -10, output: -1 },
     },
     {
       type: "reverb",
       label: "Concourse",
-      params: { size: 0.5, damping: 0.7, wet: 0.25, dry: 0.8 },
+      params: { size: 0.54, damping: 0.48, wet: 0.25, dry: 0.8 },
     },
   ]),
   preset("intercom", "character", "Intercom", "Buzzed through a door panel, squelch and all.", [
