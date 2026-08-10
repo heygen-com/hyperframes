@@ -10,6 +10,7 @@ import {
 import { DEFAULT_CARVE } from "@hyperframes/core/audio-carve";
 import { BANDS, EFFECT_COPY, PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
 import { HF_AUDIO_FX_JOBS, HF_AUDIO_FX_JOB_TYPES } from "@hyperframes/core/audio-fx-jobs";
+import { audioFxProfileStrength } from "@hyperframes/core/audio-fx-profiles";
 import { getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 
 /**
@@ -218,14 +219,17 @@ describe("FxSection chain", () => {
   });
 
   it("adds an effect seeded with its declared defaults", () => {
+    // An effect with no derived knob arrives exactly as the registry declares
+    // it. The five that DO have one are seeded on their curve instead — see
+    // "adds a profiled effect on its curve" below.
     const { host, onChainChange } = mount();
     click(host.querySelector(".hf-fx-add"));
-    click(byText(host, ".hf-fx-add-item", EFFECT_COPY.compressor?.title ?? ""));
+    click(byText(host, ".hf-fx-add-item", EFFECT_COPY.delay?.title ?? ""));
     expect(onChainChange).toHaveBeenCalledTimes(1);
     const next = onChainChange.mock.calls[0]![0] as HfAudioFxChain;
     expect(next.nodes).toHaveLength(1);
-    expect(next.nodes[0]!.type).toBe("compressor");
-    expect(next.nodes[0]!.params).toEqual(defaultAudioFxParams("compressor"));
+    expect(next.nodes[0]!.type).toBe("delay");
+    expect(next.nodes[0]!.params).toEqual(defaultAudioFxParams("delay"));
   });
 
   it("renders a control for every parameter the effect declares", () => {
@@ -482,6 +486,23 @@ describe("FxSection chain", () => {
     // decoration claiming to be information.
     const { host } = mount({ chain: chainOf("limiter") });
     expect(fxCard(host).querySelector(".hf-fx-ruler")).toBeNull();
+  });
+
+  it("adds a profiled effect on its curve, not at registry defaults", () => {
+    // The registry's defaults are not a point on the profile's curve, so an
+    // effect seeded with them opened reading a strength it was not set to: a
+    // compressor arrived showing Evenness 0.67 with its make-up gain at 0 dB —
+    // the "quieter as you turn it up" bug the profiles exist to prevent, on the
+    // very first frame. Caught in a running studio, not by these tests.
+    const { host, onChainChange } = mount({ chain: { version: 1, nodes: [] } });
+    click(host.querySelector(".hf-fx-add"));
+    click(byText(host, ".hf-fx-add-item", EFFECT_COPY.compressor?.title ?? ""));
+
+    const written = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain | undefined;
+    const added = written?.nodes[0]?.params ?? {};
+    expect(audioFxProfileStrength("compressor", added)).toBeCloseTo(0.5, 2);
+    // And the mechanism agrees with the knob rather than sitting at its default.
+    expect(added.makeup).not.toBe(defaultAudioFxParams("compressor").makeup);
   });
 
   it("gives a module with no single real control a derived one", () => {

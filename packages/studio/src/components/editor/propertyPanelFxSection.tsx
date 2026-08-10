@@ -26,6 +26,7 @@ import {
   setAudioEqBandGain,
 } from "@hyperframes/core/audio-fx-eq";
 import { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
+import { applyAudioFxProfile, getAudioFxProfile } from "@hyperframes/core/audio-fx-profiles";
 import {
   audioFxJobNode,
   HF_AUDIO_FX_JOBS,
@@ -249,13 +250,30 @@ export function FxSection({
     [chain, mutate],
   );
 
-  /** One effect at its defaults, appended — what both adding and auditioning do. */
+  /**
+   * One effect appended, at the values its module opens on.
+   *
+   * For most effects that is the registry's defaults. For the five with a
+   * derived knob it is NOT: the registry defaults are not a point on the
+   * profile's curve, so the module opened reading a strength it was not set to —
+   * a compressor arrived showing Evenness 0.67 with its make-up gain at 0 dB,
+   * which is the "quieter as you turn it up" bug the profiles exist to prevent,
+   * on the very first frame. Seeding through the profile puts the knob and the
+   * mechanism in agreement from the start.
+   */
   const withEffect = useCallback(
     (base: HfAudioFxChain, type: string): HfAudioFxChain => ({
       ...base,
       nodes: [
         ...base.nodes,
-        { type, id: mintAudioFxNodeId(base), enabled: true, params: defaultAudioFxParams(type) },
+        {
+          type,
+          id: mintAudioFxNodeId(base),
+          enabled: true,
+          params: getAudioFxProfile(type)
+            ? applyAudioFxProfile(type, 0.5, defaultAudioFxParams(type))
+            : defaultAudioFxParams(type),
+        },
       ],
     }),
     [],
