@@ -21,7 +21,6 @@ import { searchByWords } from "../registry/localSearch.js";
 import {
   downloadOfferMessage,
   ensureLocalModel,
-  localModelConsent,
   localModelStatus,
   nonInteractiveConsentMessage,
   recordLocalModelConsent,
@@ -47,6 +46,7 @@ import {
 // fallow-ignore-next-line complexity
 async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
+  canPrompt: boolean;
   registry: string;
   registryNames: ReadonlySet<string>;
 }): Promise<string[]> {
@@ -56,13 +56,22 @@ async function prepareOnDeviceTier(opts: {
     console.error(message);
   };
 
-  // The flag is the record that a person agreed. The CLI cannot ask here, so it
-  // trusts the caller to have asked, and says as much in the docs. A person
-  // present gets asked. The flag only stands in for consent when there is
-  // nobody to ask, or when they said so with --yes.
-  if (!opts.assumedYes && localModelStatus().status === "not-asked") {
+  const status = localModelStatus();
+  if (!opts.assumedYes && status.status === "declined") {
+    warn(
+      "on-device search skipped: the model download was previously declined. Re-run with --yes to consent.",
+    );
+    return warnings;
+  }
+
+  if (!opts.assumedYes && status.status === "not-asked" && !opts.canPrompt) {
+    warn(nonInteractiveConsentMessage());
+    return warnings;
+  }
+
+  if (!opts.assumedYes && status.status === "not-asked") {
     const answer = await clack.confirm({
-      message: downloadOfferMessage(0),
+      message: downloadOfferMessage(),
       initialValue: true,
     });
     if (clack.isCancel(answer) || answer !== true) {
@@ -76,7 +85,7 @@ async function prepareOnDeviceTier(opts: {
     }
   }
 
-  if (localModelConsent() !== false && !(await localRuntimeAvailable())) {
+  if (!(await localRuntimeAvailable())) {
     // Checked before downloading. Fetching 32 MB and then discovering the
     // runtime is missing wastes the bandwidth the consent was granted for.
     warn(
@@ -86,7 +95,9 @@ async function prepareOnDeviceTier(opts: {
     return warnings;
   }
 
-  recordLocalModelConsent(true);
+  if (status.status === "declined" || status.status === "not-asked") {
+    recordLocalModelConsent(true);
+  }
   const model = await ensureLocalModel();
   // The vectors are fetched once and nothing ever invalidates them, so an index
   // that no longer covers the registry is the same situation as one that is not
@@ -135,7 +146,7 @@ export default defineCommand({
     query: {
       type: "string",
       description:
-        "Search by meaning when the on-device model is on, otherwise by name, title and description",
+        "Search by meaning when the on-device model is on, otherwise by name, title, description and tags",
     },
     yes: {
       type: "boolean",
@@ -148,7 +159,7 @@ export default defineCommand({
       // prompt that fires on a TTY, which leaves every agent and CI run unable
       // to opt in at all.
       description:
-        "Use on-device meaning search, downloading the model and refreshing a stale index if needed",
+        "Use on-device meaning search; pass --yes to approve a first non-interactive download",
     },
   },
   // one flag-parsing entry point feeding three output paths (json, interactive, table); splitting those is its own change
@@ -196,12 +207,14 @@ export default defineCommand({
     const warnings =
       query && args["on-device"] === true
         ? await prepareOnDeviceTier({
-            assumedYes: args.yes === true || !process.stdout.isTTY || json,
+            assumedYes: args.yes === true,
+            canPrompt: process.stdout.isTTY === true && !json,
             registry: config.registry,
             registryNames,
           })
         : [];
     const searched = query ? await applySearch(tagged, query, registryNames) : null;
+    if (searched) warnings.push(...searched.warnings);
     const matching = searched ? searched.items : tagged;
 
     if (matching.length === 0) {
@@ -430,6 +443,7 @@ export function countUnindexed(
 interface SearchOutcome<T> {
   items: T[];
   localMode: LocalMode;
+  warnings: string[];
   /** Over-coverage: ranked names this registry has no item for. */
   missing: number;
   /**
@@ -449,11 +463,10 @@ interface SearchOutcome<T> {
   topScore: number | null;
 }
 
-async function applySearch<T extends { name: string; title: string; description: string }>(
-  items: T[],
-  query: string,
-  registryNames: ReadonlySet<string>,
-): Promise<SearchOutcome<T>> {
+async function applySearch<
+  T extends { name: string; title: string; description: string; tags?: string[] },
+>(items: T[], query: string, registryNames: ReadonlySet<string>): Promise<SearchOutcome<T>> {
+  const warnings: string[] = [];
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
   if (localModelStatus().status === "ready") {
@@ -471,6 +484,7 @@ async function applySearch<T extends { name: string; title: string; description:
           return {
             items: ranked.slice(0, 25),
             localMode: "local-model",
+            warnings,
             missing,
             unindexed: countUnindexed(registryNames, localVectorNames()),
             topScore: scoreByName.get(best.name) ?? null,
@@ -481,9 +495,9 @@ async function applySearch<T extends { name: string; title: string; description:
       // A broken model costs ranking quality, never the command. It does not
       // get to cost it silently: a tier the user switched on that quietly does
       // not run is indistinguishable from one that ran badly.
-      console.error(
-        `on-device search did not run: ${error instanceof Error ? error.message : "unknown error"}`,
-      );
+      const warning = `on-device search did not run: ${error instanceof Error ? error.message : "unknown error"}`;
+      warnings.push(warning);
+      console.error(warning);
     }
   }
 
@@ -493,10 +507,10 @@ async function applySearch<T extends { name: string; title: string; description:
   const words = searchByWords(
     query,
     items,
-    (item) => `${item.name} ${item.title} ${item.description}`,
+    (item) => `${item.name} ${item.title} ${item.description} ${(item.tags ?? []).join(" ")}`,
   );
   // Word matching ranks the items in hand, so nothing can go missing.
-  return { items: words, localMode: "words", missing: 0, unindexed: 0, topScore: null };
+  return { items: words, localMode: "words", warnings, missing: 0, unindexed: 0, topScore: null };
 }
 
 /**

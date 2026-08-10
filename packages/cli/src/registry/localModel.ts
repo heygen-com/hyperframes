@@ -13,7 +13,8 @@
  * does not.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -53,14 +54,25 @@ const MODEL_REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
  * with one precision and the query with another degrades ranking silently,
  * which is the failure mode this whole feature keeps having to defend against.
  */
-const MODEL_FILES: ReadonlyArray<{ url: string; dest: () => string }> = [
+interface ModelFile {
+  readonly url: string;
+  readonly dest: () => string;
+  readonly bytes: number;
+  readonly sha256: string;
+}
+
+export const LOCAL_MODEL_ARTIFACTS: ReadonlyArray<ModelFile> = [
   {
     url: `https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/onnx/model_quantized.onnx`,
     dest: () => localModelPath(),
+    bytes: 34_014_426,
+    sha256: "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4",
   },
   {
     url: `https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/tokenizer.json`,
     dest: () => localTokenizerPath(),
+    bytes: 711_396,
+    sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
   },
 ];
 
@@ -82,9 +94,19 @@ export function localTokenizerPath(): string {
   return join(MODELS_DIR, `${LOCAL_MODEL_ID}.tokenizer.json`);
 }
 
-/** Both halves must be present. A model without its tokenizer cannot embed anything. */
+function modelFileIsValid(file: ModelFile): boolean {
+  const path = file.dest();
+  if (!existsSync(path)) return false;
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex") === file.sha256;
+  } catch {
+    return false;
+  }
+}
+
+/** Both halves must match the pinned revision. Presence alone cannot establish readiness. */
 export function isLocalModelReady(): boolean {
-  return existsSync(localModelPath()) && existsSync(localTokenizerPath());
+  return LOCAL_MODEL_ARTIFACTS.every(modelFileIsValid);
 }
 
 export type LocalModelStatus =
@@ -121,9 +143,14 @@ export async function ensureLocalModel(): Promise<boolean> {
   if (isLocalModelReady()) return true;
   try {
     mkdirSync(MODELS_DIR, { recursive: true });
-    for (const file of MODEL_FILES) {
-      if (existsSync(file.dest())) continue;
-      await downloadFile(file.url, file.dest());
+    for (const file of LOCAL_MODEL_ARTIFACTS) {
+      if (modelFileIsValid(file)) continue;
+      const dest = file.dest();
+      await downloadFile(file.url, dest, { maxBytes: file.bytes });
+      if (!modelFileIsValid(file)) {
+        unlinkSync(dest);
+        return false;
+      }
     }
     return isLocalModelReady();
   } catch {
@@ -141,15 +168,17 @@ export async function ensureLocalModel(): Promise<boolean> {
 export function nonInteractiveConsentMessage(): string {
   return (
     `On-device search needs a one-time ${LOCAL_MODEL_SIZE_MB} MB download that stays on this machine. ` +
-    "Nothing is sent anywhere. Ask the person you are working for, and pass --on-device once they agree."
+    "Nothing is sent anywhere. Ask the person you are working for, and pass --on-device --yes once they agree."
   );
 }
 
 /** What the prompt should say. Costs, not privacy: nothing is sent anywhere. */
-export function downloadOfferMessage(matchCount: number): string {
+export function downloadOfferMessage(matchCount?: number): string {
   const found =
-    matchCount === 0
-      ? "No matches from word search."
-      : `Only ${matchCount} match${matchCount === 1 ? "" : "es"} from word search.`;
+    matchCount === undefined
+      ? "Use on-device meaning search."
+      : matchCount === 0
+        ? "No matches from word search."
+        : `Only ${matchCount} match${matchCount === 1 ? "" : "es"} from word search.`;
   return `${found} Download a ${LOCAL_MODEL_SIZE_MB} MB search model for better offline results? It stays on your machine and nothing is sent.`;
 }

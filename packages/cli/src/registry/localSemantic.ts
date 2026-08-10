@@ -25,6 +25,8 @@ interface LocalVectorSet {
   vectors: Float32Array;
 }
 
+const CATALOG_ARTIFACT_TIMEOUT_MS = 30_000;
+
 /** Where the bundled vector set lives, overridable for development. */
 function localVectorDirectory(): string {
   return (
@@ -76,7 +78,9 @@ export async function fetchLocalVectors(
     // with an old matrix, which loads as an error instead of as stale data.
     const fetched: Array<[string, Buffer]> = [];
     for (const file of ["local-vectors.json", "local-vectors.bin"] as const) {
-      const response = await fetch(`${base}/catalog-artifact/${file}`);
+      const response = await fetch(`${base}/catalog-artifact/${file}`, {
+        signal: AbortSignal.timeout(CATALOG_ARTIFACT_TIMEOUT_MS),
+      });
       if (!response.ok) return false;
       fetched.push([file, Buffer.from(await response.arrayBuffer())]);
     }

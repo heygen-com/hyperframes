@@ -71,6 +71,7 @@ function packVectors(names: string[], vectors: number[][]): Float32Array {
   return flat;
 }
 
+// fallow-ignore-next-line complexity
 async function main(): Promise<void> {
   const dir = arg("artifact") ?? "registry/catalog-artifact";
   const registryDir = arg("registry") ?? "registry";

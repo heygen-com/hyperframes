@@ -29,6 +29,9 @@ describe("fetchLocalVectors", () => {
   it("writes both files into the cache directory", async () => {
     servePair(["whip-pan"], LOCAL_MODEL_DIMENSIONS, LOCAL_MODEL_DIMENSIONS);
     expect(await fetchLocalVectors("http://registry.test/", dir)).toBe(true);
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), {
+      signal: expect.any(AbortSignal),
+    });
     expect(existsSync(join(dir, "local-vectors.bin"))).toBe(true);
     expect(existsSync(join(dir, "local-vectors.json"))).toBe(true);
   });

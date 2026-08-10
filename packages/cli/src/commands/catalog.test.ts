@@ -69,13 +69,14 @@ describe("countUnindexed", () => {
 // helper that computes them.
 
 const state = vi.hoisted(() => ({
-  registry: [] as Array<{ name: string; type: string }>,
+  registry: [] as Array<{ name: string; type: string; tags?: string[] }>,
   ranking: null as Array<{ name: string; score: number }> | null,
+  rankingError: null as Error | null,
   indexed: [] as string[],
   // The consent path. Static stubs could not reach it: with the status pinned
   // to "ready" the prompt never fires, so the answer was never a variable and
   // the decline branch was never executed by any test.
-  modelStatus: "ready" as "ready" | "not-asked",
+  modelStatus: "ready" as "ready" | "not-asked" | "declined" | "unavailable",
   confirmAnswer: true as boolean,
   consentRecorded: [] as boolean[],
   downloads: 0,
@@ -84,13 +85,13 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../registry/resolver.js", () => ({
   listRegistryItems: async () => state.registry,
-  loadAllItems: async (entries: Array<{ name: string; type: string }>) =>
+  loadAllItems: async (entries: Array<{ name: string; type: string; tags?: string[] }>) =>
     entries.map((entry) => ({
       name: entry.name,
       type: entry.type,
       title: entry.name,
       description: `${entry.name} description`,
-      tags: [],
+      tags: entry.tags ?? [],
     })),
 }));
 
@@ -107,15 +108,12 @@ vi.mock("../registry/localModel.js", () => ({
   // move with it. Pinned to "not-asked" the second offer later in the run also
   // fires, and the double prompt looks like a product bug rather than a stub
   // that does not model the contract.
-  localModelStatus: () => ({
-    status: state.consentRecorded.length > 0 ? "ready" : state.modelStatus,
-  }),
-  // Reads back what was recorded, so a decline is visible to the code under
-  // test the way it would be on disk rather than pinned to true.
-  localModelConsent: () =>
-    state.consentRecorded.length > 0
-      ? state.consentRecorded[state.consentRecorded.length - 1]
-      : true,
+  localModelStatus: () => {
+    const answer = state.consentRecorded.at(-1);
+    return {
+      status: answer === false ? "declined" : answer === true ? "ready" : state.modelStatus,
+    };
+  },
   ensureLocalModel: async () => {
     state.downloads += 1;
     return true;
@@ -135,15 +133,19 @@ vi.mock("../registry/localEmbedder.js", () => ({
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
-  localSemanticRanking: async () => state.ranking,
+  localSemanticRanking: async () => {
+    if (state.rankingError) throw state.rankingError;
+    return state.ranking;
+  },
   localVectorNames: () => state.indexed,
   hasLocalVectors: () => true,
   fetchLocalVectors: async () => true,
 }));
 
-const block = (name: string): { name: string; type: string } => ({
+const block = (name: string, tags?: string[]): { name: string; type: string; tags?: string[] } => ({
   name,
   type: "hyperframes:block",
+  tags,
 });
 const component = (name: string): { name: string; type: string } => ({
   name,
@@ -156,6 +158,7 @@ interface Envelope {
   unindexed: number;
   top_score?: number;
   shown: number;
+  warnings?: string[];
 }
 
 async function runCatalog(args: Record<string, unknown>): Promise<string> {
@@ -184,6 +187,7 @@ async function runEnvelope(args: Record<string, unknown>): Promise<Envelope> {
 
 beforeEach(() => {
   state.modelStatus = "ready";
+  state.rankingError = null;
   state.confirmAnswer = true;
   state.consentRecorded = [];
   state.downloads = 0;
@@ -267,6 +271,26 @@ describe("catalog --json meaning search", () => {
     // Word matching ranks the live registry listing, so it is never stale.
     expect(envelope.unindexed).toBe(0);
   });
+
+  it("finds registry tags on the word tier", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+    state.registry = [block("fade-through", ["transition"]), block("count-up", ["number"])];
+
+    const envelope = await runEnvelope({ query: "transition" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.shown).toBe(1);
+  });
+
+  it("carries an on-device runtime failure into the JSON envelope", async () => {
+    state.rankingError = new Error("model could not load");
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.warnings).toEqual(["on-device search did not run: model could not load"]);
+  });
 });
 
 describe("catalog meaning search, on a terminal", () => {
@@ -288,7 +312,7 @@ describe("catalog meaning search, on a terminal", () => {
 
 describe("the on-device download offer", () => {
   // The offer only exists for someone who can answer it. Off a terminal the
-  // command treats --on-device as the consent, so a test that forgets this
+  // caller must add --yes explicitly, so a test that forgets the terminal
   // never reaches the prompt and passes for the wrong reason.
   const asATerminal = async (run: () => Promise<string>): Promise<string> => {
     const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
@@ -323,5 +347,30 @@ describe("the on-device download offer", () => {
 
     expect(state.downloads).toBe(1);
     expect(state.consentRecorded).toEqual([true]);
+  });
+
+  it("keeps a decline sticky until explicit --yes consent", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+
+    await asATerminal(() => runCatalog({ query: "count up", "on-device": true }));
+    state.confirmAnswer = true;
+    await asATerminal(() => runCatalog({ query: "count up", "on-device": true }));
+
+    expect(state.downloads).toBe(0);
+    expect(state.consentRecorded).toEqual([false]);
+
+    await asATerminal(() => runCatalog({ query: "count up", "on-device": true, yes: true }));
+    expect(state.downloads).toBe(1);
+    expect(state.consentRecorded).toEqual([false, true]);
+  });
+
+  it("does not treat non-interactive output as download consent", async () => {
+    state.modelStatus = "not-asked";
+
+    await runEnvelope({ query: "count up", "on-device": true });
+
+    expect(state.downloads).toBe(0);
+    expect(state.consentRecorded).toEqual([]);
   });
 });

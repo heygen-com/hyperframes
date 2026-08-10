@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const readConfig = vi.fn();
 const writeConfig = vi.fn();
 const existsSync = vi.fn();
+const readFileSync = vi.fn();
+const unlinkSync = vi.fn();
+const downloadFile = vi.fn();
+const digest = vi.fn();
 
 vi.mock("../telemetry/config.js", () => ({
   readConfig: () => readConfig(),
@@ -12,13 +16,29 @@ vi.mock("node:fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs")>()),
   existsSync: (p: string) => existsSync(p),
   mkdirSync: vi.fn(),
+  readFileSync: (p: string) => readFileSync(p),
+  unlinkSync: (p: string) => unlinkSync(p),
+}));
+vi.mock("node:crypto", () => ({
+  createHash: () => {
+    const hash = {
+      update: () => hash,
+      digest: () => digest(),
+    };
+    return hash;
+  },
+}));
+vi.mock("../utils/download.js", () => ({
+  downloadFile: (...args: unknown[]) => downloadFile(...args),
 }));
 
 const {
   LOCAL_MODEL_DIMENSIONS,
+  LOCAL_MODEL_ARTIFACTS,
   LOCAL_MODEL_SIZE_MB,
   QUERY_INSTRUCTION,
   downloadOfferMessage,
+  ensureLocalModel,
   isLocalModelReady,
   localModelConsent,
   localModelStatus,
@@ -27,10 +47,28 @@ const {
   recordLocalModelConsent,
 } = await import("./localModel.js");
 
+function returnMatchingDigests(rounds = 1): void {
+  for (let round = 0; round < rounds; round += 1) {
+    for (const artifact of LOCAL_MODEL_ARTIFACTS) digest.mockReturnValueOnce(artifact.sha256);
+  }
+}
+
+function makeDownloadsAppearOnDisk(): void {
+  const present = new Set<string>();
+  existsSync.mockImplementation((path: string) => present.has(path));
+  downloadFile.mockImplementation(async (_url: string, path: string) => {
+    present.add(path);
+  });
+}
+
 beforeEach(() => {
   readConfig.mockReturnValue({});
   existsSync.mockReturnValue(false);
   writeConfig.mockReset();
+  readFileSync.mockReturnValue(Buffer.from("artifact"));
+  unlinkSync.mockReset();
+  downloadFile.mockReset();
+  digest.mockReset();
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -68,7 +106,41 @@ describe("readiness", () => {
     expect(isLocalModelReady()).toBe(false);
 
     existsSync.mockReturnValue(true);
+    returnMatchingDigests();
     expect(isLocalModelReady()).toBe(true);
+  });
+
+  it("rejects present files whose digest does not match the pinned revision", () => {
+    existsSync.mockReturnValue(true);
+    digest.mockReturnValue("wrong");
+
+    expect(isLocalModelReady()).toBe(false);
+  });
+
+  it("bounds each download and rejects a digest mismatch before reporting ready", async () => {
+    makeDownloadsAppearOnDisk();
+    digest.mockReturnValue("wrong");
+
+    expect(await ensureLocalModel()).toBe(false);
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.stringContaining("model_quantized.onnx"),
+      localModelPath(),
+      { maxBytes: 34_014_426 },
+    );
+    expect(unlinkSync).toHaveBeenCalledWith(localModelPath());
+  });
+
+  it("accepts only two bounded downloads that match both pinned digests", async () => {
+    makeDownloadsAppearOnDisk();
+    returnMatchingDigests(2);
+
+    expect(await ensureLocalModel()).toBe(true);
+    expect(downloadFile).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("tokenizer.json"),
+      localTokenizerPath(),
+      { maxBytes: 711_396 },
+    );
   });
 });
 
@@ -82,6 +154,7 @@ describe("status", () => {
   it("is ready when consented and downloaded", () => {
     readConfig.mockReturnValue({ localEmbeddingEnabled: true });
     existsSync.mockReturnValue(true);
+    returnMatchingDigests();
     expect(localModelStatus()).toEqual({ status: "ready" });
   });
 
@@ -114,6 +187,10 @@ describe("the offer text", () => {
     expect(downloadOfferMessage(0)).toMatch(/^No matches/);
     expect(downloadOfferMessage(1)).toMatch(/^Only 1 match\b/);
     expect(downloadOfferMessage(3)).toMatch(/^Only 3 matches/);
+  });
+
+  it("does not claim word search already ran for an explicit on-device request", () => {
+    expect(downloadOfferMessage()).toMatch(/^Use on-device meaning search/);
   });
 });
 
