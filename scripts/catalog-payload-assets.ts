@@ -168,3 +168,48 @@ export function processAssets(html: string, projectDir: string, target: AssetTar
 
   return { html: out, hosted, inlined, unresolved };
 }
+
+/** `image/png` -> `.png`, for naming a blob that arrives without a filename. */
+const EXTENSION_FOR_MIME: Record<string, string> = Object.entries(MIME_TYPES).reduce(
+  (acc, [ext, mime]) => (acc[mime] ? acc : { ...acc, [mime]: ext }),
+  {} as Record<string, string>,
+);
+
+/**
+ * Below this, a data URI is cheaper than the request it would cost to fetch.
+ * Fonts, the reason this exists, are far above it.
+ */
+const EXTERNALIZE_MIN_BYTES = 4096;
+
+/**
+ * Pull large data URIs already baked into the composition out into shared files.
+ *
+ * Compositions arrive with their fonts embedded, so `processAssets` never sees
+ * them as references and they survive into the payload untouched. Across the
+ * catalog that was 53.8 MB of base64, most of it the same few typefaces
+ * repeated. Hashing gives one copy per distinct file no matter how many items
+ * embed it.
+ */
+export function externalizeDataUris(html: string, target: AssetTarget): { html: string; externalized: number } {
+  let externalized = 0;
+  const out = html.replace(
+    /data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/gi,
+    (whole, mime: string, blob: string) => {
+      const ext = EXTENSION_FOR_MIME[mime.toLowerCase()];
+      if (!ext || !HOSTED_EXTENSIONS.has(ext)) return whole;
+
+      const bytes = Buffer.from(blob, "base64");
+      if (bytes.length < EXTERNALIZE_MIN_BYTES) return whole;
+
+      const name = `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${ext}`;
+      const dest = join(target.dir, name);
+      if (!existsSync(dest)) {
+        mkdirSync(target.dir, { recursive: true });
+        writeFileSync(dest, bytes);
+      }
+      externalized += 1;
+      return `${target.urlBase}/${name}`;
+    },
+  );
+  return { html: out, externalized };
+}

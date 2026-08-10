@@ -29,7 +29,7 @@ import {
   type CatalogItem,
   type ItemKind,
 } from "./generate-catalog-previews.js";
-import { processAssets } from "./catalog-payload-assets.ts";
+import { externalizeDataUris, processAssets } from "./catalog-payload-assets.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -55,15 +55,17 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const projectDir = await prepareProjectDir(item);
   try {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
+    const assetTarget = { dir: join(payloadRoot, "assets"), urlBase: "/public/catalog/assets" };
     const {
       html: withAssets,
       hosted,
       inlined,
       unresolved,
-    } = processAssets(html, projectDir, {
-      dir: join(payloadRoot, "assets"),
-      urlBase: "/public/catalog/assets",
-    });
+    } = processAssets(html, projectDir, assetTarget);
+
+    // Compositions arrive with their fonts already embedded, so this catches
+    // what never looked like a reference in the first place.
+    const { html: withShared, externalized } = externalizeDataUris(withAssets, assetTarget);
 
     // A reference we could not inline would 404 inside the player, so the item
     // keeps the MP4 rather than shipping a preview with holes in it.
@@ -71,7 +73,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
       console.log(`  – ${item.name}: cannot inline ${unresolved.slice(0, 3).join(", ")}`);
       return "skipped";
     }
-    const bytes = Buffer.byteLength(withAssets, "utf-8");
+    const bytes = Buffer.byteLength(withShared, "utf-8");
     if (bytes > MAX_PAYLOAD_BYTES) {
       console.log(`  – ${item.name}: ${(bytes / 1e6).toFixed(1)} MB payload, over budget`);
       return "skipped";
@@ -79,10 +81,10 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
 
     const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify({ html: withAssets }), "utf-8");
+    writeFileSync(outPath, JSON.stringify({ html: withShared }), "utf-8");
 
     const counts = [
-      hosted > 0 ? `${hosted} hosted` : "",
+      hosted + externalized > 0 ? `${hosted + externalized} hosted` : "",
       inlined > 0 ? `${inlined} inlined` : "",
     ].filter(Boolean);
     const assets = counts.length > 0 ? `, ${counts.join(" + ")} asset(s)` : "";

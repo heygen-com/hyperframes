@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { localReferences, processAssets } from "./catalog-payload-assets.ts";
+import { externalizeDataUris, localReferences, processAssets } from "./catalog-payload-assets.ts";
 
 function project(files: Record<string, string | Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-payload-assets-"));
@@ -137,5 +137,54 @@ describe("processAssets", () => {
     const result = processAssets(html, project({}), target());
 
     assert.deepEqual(result, { html, hosted: 0, inlined: 0, unresolved: [] });
+  });
+});
+
+describe("externalizeDataUris", () => {
+  const font = (n: number) => Buffer.alloc(n, 7).toString("base64");
+
+  it("pulls an embedded font out into a shared file", () => {
+    // Compositions arrive with fonts already embedded, which is where the bulk
+    // of the catalog's payload weight came from.
+    const out = target();
+    const result = externalizeDataUris(
+      `<style>@font-face{src:url(data:font/woff2;base64,${font(8000)})}</style>`,
+      out,
+    );
+
+    assert.equal(result.externalized, 1);
+    assert.match(result.html, /url\(\/public\/catalog\/assets\/[0-9a-f]{16}\.woff2\)/);
+    assert.equal(readdirSync(out.dir).length, 1);
+  });
+
+  it("stores one copy when two payloads embed the same font", () => {
+    const out = target();
+    const blob = font(8000);
+    externalizeDataUris(`<style>src:url(data:font/woff2;base64,${blob})</style>`, out);
+    externalizeDataUris(
+      `<b>other item</b><style>src:url(data:font/woff2;base64,${blob})</style>`,
+      out,
+    );
+
+    assert.equal(readdirSync(out.dir).length, 1);
+  });
+
+  it("leaves a small blob alone, where a request costs more than the bytes", () => {
+    const out = target();
+    const result = externalizeDataUris(`<img src="data:image/png;base64,${font(64)}">`, out);
+
+    assert.equal(result.externalized, 0);
+    assert.ok(!existsSync(out.dir) || readdirSync(out.dir).length === 0);
+  });
+
+  it("leaves a type the host will not publish embedded", () => {
+    const out = target();
+    const result = externalizeDataUris(
+      `<a href="data:model/gltf-binary;base64,${font(8000)}">`,
+      out,
+    );
+
+    assert.equal(result.externalized, 0);
+    assert.match(result.html, /data:model\/gltf-binary/);
   });
 });
