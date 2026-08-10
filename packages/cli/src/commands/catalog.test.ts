@@ -72,6 +72,14 @@ const state = vi.hoisted(() => ({
   registry: [] as Array<{ name: string; type: string }>,
   ranking: null as Array<{ name: string; score: number }> | null,
   indexed: [] as string[],
+  // The consent path. Static stubs could not reach it: with the status pinned
+  // to "ready" the prompt never fires, so the answer was never a variable and
+  // the decline branch was never executed by any test.
+  modelStatus: "ready" as "ready" | "not-asked",
+  confirmAnswer: true as boolean,
+  consentRecorded: [] as boolean[],
+  downloads: 0,
+  runtimeAvailable: true,
 }));
 
 vi.mock("../registry/resolver.js", () => ({
@@ -86,16 +94,44 @@ vi.mock("../registry/resolver.js", () => ({
     })),
 }));
 
+vi.mock("@clack/prompts", () => ({
+  confirm: async () => state.confirmAnswer,
+  isCancel: (value: unknown) => value === null,
+}));
+
 vi.mock("../registry/localModel.js", () => ({
   // "ready" is a user who opted into the on-device tier at some point. Every
   // later search takes that tier with no flag, which is how a frozen artifact
-  // goes on answering forever.
-  localModelStatus: () => ({ status: "ready" }),
-  localModelConsent: () => true,
-  ensureLocalModel: async () => true,
-  recordLocalModelConsent: () => {},
+  // goes on answering forever. "not-asked" is the first run, the one that asks.
+  // Recording an answer is what stops the CLI asking again, so the stub has to
+  // move with it. Pinned to "not-asked" the second offer later in the run also
+  // fires, and the double prompt looks like a product bug rather than a stub
+  // that does not model the contract.
+  localModelStatus: () => ({
+    status: state.consentRecorded.length > 0 ? "ready" : state.modelStatus,
+  }),
+  // Reads back what was recorded, so a decline is visible to the code under
+  // test the way it would be on disk rather than pinned to true.
+  localModelConsent: () =>
+    state.consentRecorded.length > 0
+      ? state.consentRecorded[state.consentRecorded.length - 1]
+      : true,
+  ensureLocalModel: async () => {
+    state.downloads += 1;
+    return true;
+  },
+  recordLocalModelConsent: (enabled: boolean) => {
+    state.consentRecorded.push(enabled);
+  },
   downloadOfferMessage: () => "offer",
   nonInteractiveConsentMessage: () => "consent",
+}));
+
+vi.mock("../registry/localEmbedder.js", () => ({
+  // The native runtime is present in these tests. Left unmocked it answers
+  // false under vitest, and every accepted offer returns at the runtime guard
+  // before it can download, which looks like the download being skipped.
+  localRuntimeAvailable: async () => state.runtimeAvailable,
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
@@ -147,6 +183,11 @@ async function runEnvelope(args: Record<string, unknown>): Promise<Envelope> {
 }
 
 beforeEach(() => {
+  state.modelStatus = "ready";
+  state.confirmAnswer = true;
+  state.consentRecorded = [];
+  state.downloads = 0;
+  state.runtimeAvailable = true;
   state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
   state.indexed = ["count-up", "fade-through", "whip-pan"];
   state.ranking = [
@@ -242,5 +283,45 @@ describe("catalog meaning search, on a terminal", () => {
     const output = await runCatalog({ query: "make a number count up" });
 
     expect(output).not.toContain("missing from the on-device index");
+  });
+});
+
+describe("the on-device download offer", () => {
+  // The offer only exists for someone who can answer it. Off a terminal the
+  // command treats --on-device as the consent, so a test that forgets this
+  // never reaches the prompt and passes for the wrong reason.
+  const asATerminal = async (run: () => Promise<string>): Promise<string> => {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    try {
+      return await run();
+    } finally {
+      if (descriptor) Object.defineProperty(process.stdout, "isTTY", descriptor);
+      else delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
+    }
+  };
+
+  it("downloads nothing and records no consent when the offer is declined", async () => {
+    // The whole point of asking. Nothing below this line may fetch 32 MB.
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+
+    const output = await asATerminal(() =>
+      runCatalog({ query: "make a number count up", "on-device": true }),
+    );
+
+    expect(state.downloads).toBe(0);
+    expect(state.consentRecorded).toEqual([false]);
+    expect(output).not.toContain("offer");
+  });
+
+  it("downloads once when the offer is accepted", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+
+    await asATerminal(() => runCatalog({ query: "make a number count up", "on-device": true }));
+
+    expect(state.downloads).toBe(1);
+    expect(state.consentRecorded).toEqual([true]);
   });
 });

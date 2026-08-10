@@ -68,6 +68,11 @@ async function prepareOnDeviceTier(opts: {
     if (clack.isCancel(answer) || answer !== true) {
       recordLocalModelConsent(false);
       warn("on-device search skipped: the download was declined.");
+      // Return, or the decline is the only thing that does not happen: the
+      // runtime check below is skipped precisely because consent is now false,
+      // control reaches recordLocalModelConsent(true), and the answer is
+      // overwritten with yes before the download it refused.
+      return warnings;
     }
   }
 
