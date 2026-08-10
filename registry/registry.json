@@ -2,9 +2,6 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry.json",
   "name": "hyperframes",
   "homepage": "https://hyperframes.heygen.com",
-  "catalogArtifact": {
-    "revision": "3e0b7c140466db717b69481be5a87e77b1fdec5000b33ca61846ba27e5558238"
-  },
   "items": [
     {
       "name": "decision-tree",
@@ -1474,5 +1471,8 @@
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
     }
-  ]
+  ],
+  "catalogArtifact": {
+    "revision": "a823e13eb98937e709ea70bbdc5f9e6dc0be1feed6346fb1d8746069fea6796b"
+  }
 }

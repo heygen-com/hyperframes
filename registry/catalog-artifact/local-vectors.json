@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "3e0b7c140466db717b69481be5a87e77b1fdec5000b33ca61846ba27e5558238",
+  "revision": "a823e13eb98937e709ea70bbdc5f9e6dc0be1feed6346fb1d8746069fea6796b",
   "names": [
     "ai-generation-canvas",
     "ai-prompt-flow",
