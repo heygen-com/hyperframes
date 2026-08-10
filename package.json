@@ -62,7 +62,6 @@
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "@hyperframes/player": "workspace:*",
-    "@hyperframes/producer": "workspace:*",
     "@types/node": "^25.0.10",
     "concurrently": "^8.2.0",
     "fallow": "^2.75.0",
