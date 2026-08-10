@@ -21,6 +21,7 @@ import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audi
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { acquireBrowser } from "./browserManager.js";
 import { createEnvelopeWalker } from "./audioVolumeEnvelope.js";
+import { riffChunks } from "./wavChunks.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
 export class AudioFxRenderError extends Error {
@@ -49,22 +50,22 @@ function readWavChunks(buf: Buffer): {
   bits: number;
   data?: Buffer;
 } {
-  let offset = 12;
   const head = { format: 1, channels: 1, sampleRate: 48000, bits: 16 };
   let data: Buffer | undefined;
-  while (offset + 8 <= buf.length) {
-    const id = buf.toString("ascii", offset, offset + 4);
-    const size = buf.readUInt32LE(offset + 4);
+  for (const { id, body, size } of riffChunks(buf)) {
     if (id === "fmt ") {
-      head.format = buf.readUInt16LE(offset + 8);
-      head.channels = buf.readUInt16LE(offset + 10);
-      head.sampleRate = buf.readUInt32LE(offset + 12);
-      head.bits = buf.readUInt16LE(offset + 22);
+      head.format = buf.readUInt16LE(body);
+      head.channels = buf.readUInt16LE(body + 2);
+      head.sampleRate = buf.readUInt32LE(body + 4);
+      head.bits = buf.readUInt16LE(body + 14);
     } else if (id === "data") {
-      data = buf.subarray(offset + 8, Math.min(buf.length, offset + 8 + size));
+      data = buf.subarray(body, Math.min(buf.length, body + size));
+      // The payload is the rest of the file for anything the mixer writes, and
+      // reading past it buys nothing: `fmt ` precedes `data` in every WAV these
+      // steps produce, and the alternative is walking a several-hundred-megabyte
+      // tail chunk by chunk.
       break;
     }
-    offset += 8 + size + (size % 2);
   }
   return { ...head, data };
 }

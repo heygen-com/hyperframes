@@ -19,6 +19,7 @@ import { readFileSync, renameSync, writeFileSync } from "fs";
 import { randomBytes } from "crypto";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
+import { riffChunks } from "./wavChunks.js";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
 const SUPPORTED_BITS = 16;
@@ -42,26 +43,20 @@ function parseWavLayout(buffer: Buffer): WavLayout | null {
   if (buffer.length < 12 || buffer.toString("ascii", 0, 4) !== "RIFF") return null;
   if (buffer.toString("ascii", 8, 12) !== "WAVE") return null;
 
-  let offset = 12;
   let fmt: { numChannels: number; sampleRate: number; bitsPerSample: number } | null = null;
   let data: { offset: number; size: number } | null = null;
 
-  while (offset + 8 <= buffer.length) {
-    const chunkId = buffer.toString("ascii", offset, offset + 4);
-    const chunkSize = buffer.readUInt32LE(offset + 4);
-    const body = offset + 8;
-    if (chunkId === "fmt " && body + 16 <= buffer.length) {
+  for (const { id, body, size } of riffChunks(buffer)) {
+    if (id === "fmt " && body + 16 <= buffer.length) {
       if (buffer.readUInt16LE(body) !== PCM_FORMAT) return null;
       fmt = {
         numChannels: buffer.readUInt16LE(body + 2),
         sampleRate: buffer.readUInt32LE(body + 4),
         bitsPerSample: buffer.readUInt16LE(body + 14),
       };
-    } else if (chunkId === "data") {
-      data = { offset: body, size: Math.min(chunkSize, buffer.length - body) };
+    } else if (id === "data") {
+      data = { offset: body, size: Math.min(size, buffer.length - body) };
     }
-    // Chunks are word-aligned: an odd size carries a trailing pad byte.
-    offset = body + chunkSize + (chunkSize % 2);
   }
 
   if (!fmt || !data) return null;
