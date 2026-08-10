@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.104"
+  description="Released - 2026-08-10"
+  tags={["Release", "Studio"]}
+>
+Selecting and moving elements in Studio's canvas now behaves the way it looks. Multi-selection sticks, a dragged group lands where you dropped it, a resized element keeps its size, and editing no longer flashes the preview.
+
+## Fixes
+
+- **Studio:** Canvas selection, drag and resize correctness ([17ac986bf](https://github.com/heygen-com/hyperframes/commit/17ac986bfe0fffbbc8aac2a68b9e9814f561b562), [#3146](https://github.com/heygen-com/hyperframes/pull/3146)).
+- **Studio:** Stop a Studio edit from reloading the preview ([bea32b8aa](https://github.com/heygen-com/hyperframes/commit/bea32b8aae5bd9008c5fbe453a17a8a4588365ba), [#3137](https://github.com/heygen-com/hyperframes/pull/3137)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.103...v0.7.104).
+</Update>
+
+<Update
   label="HyperFrames v0.7.103"
   description="Released - 2026-08-09"
   tags={["Release", "Core", "Core,cli"]}
