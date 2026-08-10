@@ -1,0 +1,24 @@
+---
+title: "Probe G"
+description: "player mounted inside an iframe srcDoc, composition fetched from json"
+---
+
+<iframe
+  srcDoc={`<!doctype html><html><head>
+<style>html,body{margin:0;height:100%;background:#000}hyperframes-player{width:100%;height:100%;display:block}</style>
+<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7.105/dist/hyperframes-player.global.js"><\/script>
+</head><body>
+<script>
+fetch('/public/probe2/comp2.json')
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    var p = document.createElement('hyperframes-player');
+    p.setAttribute('srcdoc', d.html);
+    p.setAttribute('controls', '');
+    document.body.appendChild(p);
+  })
+  .catch(function(e){ document.body.innerHTML = '<pre style="color:#f66;font:16px monospace">G FAILED: ' + e + '</pre>'; });
+<\/script>
+</body></html>`}
+  style={{ width: "100%", aspectRatio: "16 / 9", border: "0", borderRadius: "8px" }}
+/>
