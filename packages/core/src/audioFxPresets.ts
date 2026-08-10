@@ -292,6 +292,22 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
     { type: "peaking", label: "Panel Honk", params: { frequency: 2000, gain: 6, q: 2 } },
     { type: "bitcrush", label: "Crunch", params: { bits: 11, samples: 1, mix: 0.3 } },
   ]),
+  // The chorus with its wobble dialled up until it stops being width and starts
+  // being the effect: fast (10 Hz, the top of the range) and fully wet, so none
+  // of the straight signal is left to anchor the pitch.
+  preset(
+    "doofus-worble",
+    "character",
+    "Doofus Worble",
+    "Seasick and wobbling — no straight signal left.",
+    [
+      {
+        type: "chorus",
+        label: "Worble",
+        params: { delay: 14.6, depth: 2.57, speed: 10, mix: 1 },
+      },
+    ],
+  ),
 
   // ---------------------------------------------------------------- space --
   preset("room-tight", "space", "Tight Room", "A small hard room — presence without wash.", [

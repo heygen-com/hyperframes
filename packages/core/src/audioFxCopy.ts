@@ -327,6 +327,7 @@ export const PRESET_PROBLEM: Record<string, string> = {
   "lofi-tape": "Make it sound like an old tape",
   "pa-system": "Make it sound like a station announcement",
   intercom: "Make it sound like a door intercom",
+  "doofus-worble": "Make it wobble like it is seasick",
   "room-tight": "It sounds dry and stuck to the speaker",
   "room-natural": "It should sound like a real place",
   hall: "It should sound far away and big",
