@@ -786,16 +786,27 @@ function writePlayerPreview(
   // that moves nothing.
   const drivable = variables.length > 0 && (demoMountsItself || hasRenderableMarkup(ownHtml));
 
-  for (const file of readdirSync(itemDir)) {
-    if (file === "registry-item.json") continue;
-    const from = join(itemDir, file);
-    if (!statSync(from).isFile()) continue;
-    const copy =
-      drivable && file === entry
-        ? Buffer.from(appendToBody(entryHtml, variableBootstrap(ownFile)))
-        : readFileSync(from);
-    writeFileSync(join(destDir, file), copy);
-  }
+  // Recursive, because 38 items keep their assets in a subdirectory — models/,
+  // lib/, assets/ — and reference them relatively. Copying only the top level
+  // left every one of those 404ing in the docs preview: the composition still
+  // renders, so nothing failed, it just quietly drew without its model.
+  const copyItemTree = (fromDir: string, toDir: string): void => {
+    mkdirSync(toDir, { recursive: true });
+    for (const entryName of readdirSync(fromDir)) {
+      if (entryName === "registry-item.json") continue;
+      const from = join(fromDir, entryName);
+      if (!statSync(from).isFile()) {
+        copyItemTree(from, join(toDir, entryName));
+        continue;
+      }
+      const copy =
+        drivable && fromDir === itemDir && entryName === entry
+          ? Buffer.from(appendToBody(entryHtml, variableBootstrap(ownFile)))
+          : readFileSync(from);
+      writeFileSync(join(toDir, entryName), copy);
+    }
+  };
+  copyItemTree(itemDir, destDir);
 
   // A demo that hard-codes the piece cannot answer the panel however the
   // values are delivered, so the preview mounts the item's own file instead —
@@ -1301,11 +1312,14 @@ function generateItemMdx(
   // Prerequisite where it bites: you need the flag to preview what you just installed.
   if (tags.includes("html-in-canvas")) {
     lines.push(
-      "<Warning>",
+      // Danger, not Warning: without the flag the preview on this page is a
+      // black rectangle, so this is a prerequisite for seeing anything rather
+      // than a caveat about the result.
+      "<Danger>",
       "  Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.",
-      "  Rendering from the CLI switches it on for you. [How it",
-      "  works](/guides/html-in-canvas)",
-      "</Warning>",
+      "  Without it this item's screen renders black. Rendering from the CLI switches",
+      "  it on for you. [How it works](/guides/html-in-canvas)",
+      "</Danger>",
       "",
     );
   }
