@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,10 @@ import { cachedLocalVectorRevision, fetchLocalVectors } from "./localSemantic.js
 import { LOCAL_MODEL_DIMENSIONS } from "./localModel.js";
 
 describe("fetchLocalVectors", () => {
-  const dir = join(tmpdir(), `hf-vec-${process.pid}`);
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-vec-"));
+  });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
     vi.unstubAllGlobals();
