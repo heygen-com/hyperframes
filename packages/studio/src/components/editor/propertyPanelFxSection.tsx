@@ -662,8 +662,15 @@ export function FxSection({
                 <div className="hf-fx-preset-run-head flex min-h-6 items-center gap-1 px-0.5">
                   <button
                     type="button"
-                    className={`hf-fx-preset-run-label min-w-0 flex-1 truncate text-left text-[10px] hover:opacity-80 ${style.type}`}
-                    style={{ color: style.color }}
+                    className={`hf-fx-preset-run-label min-w-0 flex-1 truncate text-left leading-tight hover:opacity-80 ${style.type}`}
+                    // The face and the colour are data, not classes: a Tailwind
+                    // class cannot name a font stack the config does not know,
+                    // and adding eight to the config to style one panel would
+                    // put them in every autocomplete in the studio.
+                    style={{
+                      color: style.color,
+                      ...(style.family ? { fontFamily: style.family } : {}),
+                    }}
                     aria-expanded={!collapsed}
                     title={
                       collapsed

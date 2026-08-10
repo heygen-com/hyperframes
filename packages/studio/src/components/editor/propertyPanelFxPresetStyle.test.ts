@@ -25,8 +25,37 @@ describe("per-preset title treatments", () => {
     // The whole point: a preset is a character, and Telephone should not look
     // like Megaphone. The corrective families may legitimately share a look.
     const character = HF_AUDIO_FX_PRESETS.filter((p) => p.family === "character");
-    const looks = new Set(character.map((p) => `${fxPresetStyle(p.id).type}`));
+    const looks = new Set(
+      character.map((p) => `${fxPresetStyle(p.id).type}|${fxPresetStyle(p.id).family}`),
+    );
     expect(looks.size).toBe(character.length);
+  });
+
+  it("names a real font stack, ending in a generic the browser always has", () => {
+    // The studio has no webfont pipeline, so these are system faces — and a
+    // machine without the named one has to land somewhere deliberate rather
+    // than on the browser's default serif.
+    const generic = /(sans-serif|serif|monospace|fantasy|cursive|ui-monospace)\s*$/;
+    for (const [id, style] of Object.entries(FX_PRESET_STYLE)) {
+      expect(style.family, `${id} names no face`).toBeTruthy();
+      expect(style.family, `${id} has no generic fallback`).toMatch(generic);
+      // More than one option, or it is a single point of failure.
+      expect((style.family ?? "").split(",").length, `${id} has no fallback chain`).toBeGreaterThan(
+        2,
+      );
+    }
+  });
+
+  it("sets a title size on every preset, and keeps it legible", () => {
+    // The panel's own rows are 10px; a title at that size is not a title. The
+    // ceiling is what still fits the bracket without wrapping.
+    for (const [id, style] of Object.entries(FX_PRESET_STYLE)) {
+      const size = /text-\[(\d+)px\]/.exec(style.type);
+      expect(size, `${id} sets no title size`).toBeTruthy();
+      const px = Number(size?.[1]);
+      expect(px, `${id} is too small to read as a title`).toBeGreaterThanOrEqual(12);
+      expect(px, `${id} is too large for the bracket`).toBeLessThanOrEqual(18);
+    }
   });
 
   it("keeps every colour in one narrow lightness band", () => {
