@@ -132,8 +132,12 @@ git checkout -b feat/registry-{name}
 # 2. Format HTML
 npx oxfmt registry/{kind}/{name}/*.html
 
-# 3. Update registry/registry.json — add entry to the "items" array:
-#    { "name": "{name}", "type": "hyperframes:block" }  (or "hyperframes:component")
+# 3. Regenerate registry/registry.json from the item directories.
+#    Do not hand-edit it: an entry added by hand survives until the next
+#    regeneration and then vanishes, and one left behind for a directory that
+#    no longer exists is worse, because `hyperframes add <name>` resolves the
+#    name and then fails on missing files.
+npx tsx scripts/generate-registry-items.ts
 
 # 4. Generate catalog docs page
 npx tsx scripts/generate-catalog-pages.ts
