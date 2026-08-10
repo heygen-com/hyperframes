@@ -77,8 +77,7 @@ export function composeElementTransform<M>(
     const style = getStyle(node);
     if (!style) return null;
     const transform = style.transform;
-    let own =
-      transform && transform !== "none" ? ops.fromTransform(transform) : ops.identity();
+    let own = transform && transform !== "none" ? ops.fromTransform(transform) : ops.identity();
     if (!own) return null;
     const spin = individualRotateDegrees(style.rotate);
     if (spin !== 0) own = ops.compose(ops.fromRotate(spin), own);
