@@ -469,3 +469,92 @@ body {
     animation: none;
   }
 }
+
+/* Preset shelf: the hovered row, and the wave that says it is being heard.
+ *
+ * Hovering a preset auditions it on the running audio, which is invisible — the
+ * panel looks identical whether the audition is playing or the pointer just
+ * happens to be resting there. The bars are that feedback: they run only while a
+ * preset is actually sounding, so they are a readout of the audio rather than a
+ * hover decoration. */
+.hf-fx-preset-item {
+  position: relative;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hf-fx-preset-item {
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+}
+
+.hf-fx-preset-item:hover,
+.hf-fx-preset-item:focus-visible {
+  /* The accent at low alpha rather than a grey: the row is lit by the thing that
+     is playing, and it should read as the same event as the bars. */
+  background-color: rgba(60, 230, 172, 0.12);
+}
+
+.hf-fx-preset-wave {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 0.75rem;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.hf-fx-preset-item:hover .hf-fx-preset-wave,
+.hf-fx-preset-item:focus-visible .hf-fx-preset-wave {
+  opacity: 1;
+}
+
+.hf-fx-preset-wave span {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: #3ce6ac;
+  transform: scaleY(0.25);
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hf-fx-preset-wave span {
+    animation: hf-fx-preset-wave 900ms ease-in-out infinite;
+  }
+  /* Staggered so it reads as a waveform travelling rather than four bars
+     pumping in unison, which reads as a loading spinner. */
+  .hf-fx-preset-wave span:nth-child(2) {
+    animation-delay: 150ms;
+  }
+  .hf-fx-preset-wave span:nth-child(3) {
+    animation-delay: 300ms;
+  }
+  .hf-fx-preset-wave span:nth-child(4) {
+    animation-delay: 450ms;
+  }
+}
+
+/* Still visible without motion — it is telling the author something is
+   playing, and that fact does not go away because the bars hold still. */
+@media (prefers-reduced-motion: reduce) {
+  .hf-fx-preset-wave span {
+    transform: scaleY(0.7);
+  }
+}
+
+@keyframes hf-fx-preset-wave {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

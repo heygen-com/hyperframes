@@ -695,6 +695,29 @@ describe("FxSection chain", () => {
     expect(item?.querySelector(".hf-fx-preset-name")?.textContent).toBe("Telephone");
   });
 
+  it("shows a wave on a preset only when hovering it can be heard", () => {
+    // Hovering plays the preset, and playing is otherwise invisible — the panel
+    // looks identical whether the audition is sounding or the pointer is just
+    // resting there. Without an audition channel there is no audio to claim.
+    const { host } = mount({ chain: { version: 1, nodes: [] } });
+    click(byText(host, "button", "Presets"));
+    expect(presetButton(host, "telephone")?.querySelector(".hf-fx-preset-wave")).toBeTruthy();
+
+    // Rendered directly rather than through `mount`, which supplies a preview
+    // handler by default — the case being covered is a section that has none.
+    const { host: dry } = renderInto(
+      <FxSection
+        chain={{ version: 1, nodes: [] }}
+        onChainChange={vi.fn()}
+        carve={null}
+        onCarveChange={vi.fn()}
+        sourceOptions={[]}
+      />,
+    );
+    click(byText(dry, "button", "Presets"));
+    expect(presetButton(dry, "telephone")?.querySelector(".hf-fx-preset-wave")).toBeNull();
+  });
+
   describe("hover-audition", () => {
     /** Focus is the keyboard's hover, and both go through the same handler. */
     const enter = (el: Element | null | undefined) => {

@@ -68,7 +68,8 @@ export function FxPresetMenu({ onPick, onAudition }: FxPresetMenuProps) {
             <button
               key={preset.id}
               type="button"
-              className="hf-fx-preset-item block w-full rounded-[3px] bg-panel-surface px-1.5 py-1 text-left text-panel-text-1 hover:text-panel-text-0"
+              // `pr-8` so a long complaint does not run under the wave.
+              className="hf-fx-preset-item block w-full rounded-[3px] bg-panel-surface py-1 pl-1.5 pr-8 text-left text-panel-text-1 hover:text-panel-text-0"
               // The description says what it does; the count is doing real work
               // — it tells the author a preset IS a chain they can open and
               // edit, rather than an opaque setting they cannot follow.
@@ -87,6 +88,20 @@ export function FxPresetMenu({ onPick, onAudition }: FxPresetMenuProps) {
               <span className="hf-fx-preset-name block truncate font-mono text-[9px] text-panel-text-4">
                 {preset.label}
               </span>
+              {/* Hovering a preset plays it, and playing is otherwise invisible:
+                  the panel looks identical whether the audition is sounding or
+                  the pointer is just resting there. Only rendered when there IS
+                  an audition channel, so it never claims audio that is not
+                  happening. Four bars because that reads as a level meter at
+                  this size; three reads as an ellipsis. */}
+              {onAudition ? (
+                <span className="hf-fx-preset-wave" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
