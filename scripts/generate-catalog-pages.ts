@@ -808,6 +808,56 @@ function generateSource(kind: ItemKind, manifest: RegistryItem): string[] {
   ];
 }
 
+function itemVariables(manifest: RegistryItem): ItemVariable[] {
+  const raw = (manifest as RegistryItem & { variables?: ItemVariable[] }).variables;
+  return Array.isArray(raw) ? raw : [];
+}
+
+/**
+ * Preview, paste-ready snippet and every control over both, as one component.
+ *
+ * This is what the static `## Variables` table and the `data-variable-values`
+ * block below it used to be. The table could say `glow` accepts `none |
+ * standard | strong` and could not show what any of them looked like; a reader
+ * had to install the item to find out. Descriptions survive the move — they
+ * sit under their own control instead of in a column.
+ */
+function generateVariablesExplorer(
+  kind: ItemKind,
+  manifest: RegistryItem,
+  variables: ItemVariable[],
+  target: string,
+): string[] {
+  const open = [
+    "<VariablesExplorer",
+    `  previewSrc="/public/catalog/${typeDir(kind)}/${manifest.name}.json"`,
+    `  compositionId="${manifest.name}"`,
+    `  compositionSrc="${target}"`,
+    `  variables={${JSON.stringify(variables)}}`,
+  ];
+
+  // The source, as a real fence inside the component. It is static — a reader
+  // dragging a knob changes the mount snippet, never this — so it can be
+  // highlighted at build time by the same shiki pass that colours every other
+  // fence on the site, instead of being coloured by hand in the browser. MDX
+  // parses a fenced block in JSX children as markdown, provided it is set off
+  // by blank lines, and hands the compiled block down as `children`.
+  const file = primarySource(kind, manifest);
+  if (!file) return [...open, "/>", ""];
+
+  return [
+    ...open,
+    ">",
+    "",
+    "```html " + file.path,
+    file.source,
+    "```",
+    "",
+    "</VariablesExplorer>",
+    "",
+  ];
+}
+
 /** The one thing above the fold: a live player, a texture sheet or a recorded video. */
 function previewSection(
   kind: ItemKind,
@@ -824,6 +874,15 @@ function previewSection(
   // its whole job was writing preview documents the docs host discards, and it
   // is recoverable from 3b53bfd2f when the explorer is rebuilt on payloads.
   if (hasPayload(kind, manifest.name)) {
+    // An item that declares variables gets the panel, which mounts the same
+    // payload and re-mounts it as values change. Everything else gets the
+    // plain player.
+    const variables = itemVariables(manifest);
+    if (variables.length > 0) {
+      const primaryTarget =
+        primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
+      return generateVariablesExplorer(kind, manifest, variables, primaryTarget);
+    }
     return [playerEmbed(kind, manifest.name, catalogPreviewFor(kind, manifest)), ""];
   }
   // No demo.html to play, so fall back to the recorded video. Blocks are the
@@ -957,6 +1016,9 @@ function generateItemMdx(
     "---",
     "",
     'import { InstallCommand } from "/snippets/install-command.jsx";',
+    ...(itemVariables(manifest).length > 0 && hasPayload(kind, manifest.name)
+      ? ['import { VariablesExplorer } from "/snippets/variables-explorer.jsx";']
+      : []),
     "",
   ];
 

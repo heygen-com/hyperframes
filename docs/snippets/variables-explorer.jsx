@@ -55,6 +55,8 @@
  * other edit, so it reaches the preview by the same debounced post as the rest.
  */
 
+const PLAYER_RANGE = "0.7";
+
 export const VariablesExplorer = ({
   previewSrc,
   compositionId,
@@ -1511,10 +1513,74 @@ export const VariablesExplorer = ({
   const [tab, setTab] = useState("preview");
   const frame = useRef(null);
 
-  // The first load carries the defaults in its own URL, so the frame never
-  // waits on a message to show the right thing. Recomputed every render, but it
-  // is the same string every time, so React never touches the iframe again.
+  // The frame is a document we write, not a file we fetch.
+  //
+  // The preview used to be an `.html` sitting in `docs/public`, which the docs
+  // host does not publish — it 404'd in production and showed an empty panel.
+  // The composition now arrives as JSON and is mounted here, so the only thing
+  // that has to survive the deploy is the payload, which is a servable type.
+  //
+  // Values are injected as `window.__hfVariables` into the composition's own
+  // head before any of its scripts run. That is where the runtime reads render
+  // overrides from, and doing it in the markup rather than after load is what
+  // guarantees the composition never initialises with the wrong values first.
   const initialSrc = `${previewSrc}?hfv=${encodeURIComponent(JSON.stringify(defaults))}`;
+  const bootstrap = [
+    "<!doctype html><html><head><meta charset='utf-8'>",
+    "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}",
+    "hyperframes-player{display:block;width:100%;height:100%}</style>",
+    `<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@${PLAYER_RANGE}/dist/hyperframes-player.global.js"><\/script>`,
+    "</head><body><script>",
+    "(function(){",
+    `  var PAYLOAD = ${JSON.stringify(previewSrc)};`,
+    `  var INITIAL = ${JSON.stringify(defaults)};`,
+    "  var html = null, player = null, poll = null;",
+    "  function withValues(source, values) {",
+    "    var tag = '<' + 'script>window.__hfVariables=' + JSON.stringify(values) + ';<' + '/script>';",
+    "    return /<head[^>]*>/i.test(source)",
+    "      ? source.replace(/<head([^>]*)>/i, '<head$1>' + tag)",
+    "      : tag + source;",
+    "  }",
+    // The composition reads its variables once, at init, so a new value can
+    // only arrive by mounting it again. The playhead is carried across so a
+    // change mid-shot does not throw the reader back to frame zero.
+    "  function arm(resumeAt) {",
+    "    clearInterval(poll);",
+    "    var last = -1, tries = 0, seeked = false;",
+    "    poll = setInterval(function () {",
+    "      if (player.ready) {",
+    "        if (!seeked) { seeked = true; if (resumeAt > 0) player.seek(resumeAt); }",
+    "        player.play();",
+    "      }",
+    "      if (seeked && player.currentTime > 0 && player.currentTime !== last) {",
+    "        clearInterval(poll); return;",
+    "      }",
+    "      last = player.currentTime;",
+    "      if (++tries > 150) clearInterval(poll);",
+    "    }, 100);",
+    "  }",
+    "  function mount(values, resumeAt) {",
+    "    if (html === null) return;",
+    "    player.setAttribute('srcdoc', withValues(html, values));",
+    "    arm(resumeAt || 0);",
+    "  }",
+    "  player = document.createElement('hyperframes-player');",
+    "  player.setAttribute('controls', ''); player.setAttribute('muted', '');",
+    "  document.body.appendChild(player);",
+    "  player.addEventListener('ended', function () { player.seek(0); player.play(); });",
+    "  fetch(PAYLOAD).then(function (r) { return r.json(); }).then(function (d) {",
+    "    html = d.html; mount(INITIAL, 0);",
+    "  }).catch(function (e) {",
+    "    document.body.innerHTML = '<pre style=\"color:#f66;font:12px monospace;padding:12px\">preview unavailable: ' + e + '</pre>';",
+    "  });",
+    "  addEventListener('message', function (event) {",
+    "    var values = event.data && event.data.hfVariables;",
+    "    if (!values) return;",
+    "    mount(values, player.currentTime || 0);",
+    "  });",
+    "})();",
+    "<\/script></body></html>",
+  ].join("");
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1589,7 +1655,7 @@ export const VariablesExplorer = ({
         <div className="hf-ve-cell" data-on={tab === "preview"}>
           <iframe
             ref={frame}
-            src={initialSrc}
+            srcDoc={bootstrap}
             className="hf-ve-preview block aspect-video w-full"
             title={`${compositionId} preview`}
           />
