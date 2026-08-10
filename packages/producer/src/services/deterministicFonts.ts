@@ -461,14 +461,29 @@ function buildFontFaceRule(
  * Google serves several canonical families as a variable font: every static
  * weight resolves to the same woff2. Faces sharing a source can be emitted as
  * one weight-range rule instead of embedding that blob once per weight.
+ *
+ * Without `text=` the response is ordered weight-major, subset-minor, so those
+ * faces are not adjacent — group by source rather than scanning neighbours.
+ * Insertion order keeps the emitted CSS deterministic.
  */
-function sharesSource(face: GoogleFontFace, next: GoogleFontFace | undefined): boolean {
-  return (
-    next !== undefined &&
-    next.dataUri === face.dataUri &&
-    next.style === face.style &&
-    next.unicodeRange === face.unicodeRange
-  );
+function normalizeWeightKey(weight: string): string {
+  const numeric = Number(weight);
+  return Number.isFinite(numeric) ? String(numeric) : weight.trim().toLowerCase();
+}
+
+function coverageKey(weight: string, style: string): string {
+  return `${normalizeWeightKey(weight)}:${style}`;
+}
+
+function groupFacesBySource(faces: readonly GoogleFontFace[]): GoogleFontFace[][] {
+  const groups = new Map<string, GoogleFontFace[]>();
+  for (const face of faces) {
+    const key = [face.dataUri, face.style, face.unicodeRange ?? ""].join("\u0000");
+    const existing = groups.get(key);
+    if (existing) existing.push(face);
+    else groups.set(key, [face]);
+  }
+  return [...groups.values()];
 }
 
 /**
@@ -480,9 +495,11 @@ function spansCoveredWeight(
   to: GoogleFontFace,
   coveredWeights: ReadonlySet<string>,
 ): boolean {
-  const low = Number(from.weight);
-  const high = Number(to.weight);
-  if (!Number.isFinite(low) || !Number.isFinite(high)) return true;
+  const start = Number(from.weight);
+  const end = Number(to.weight);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return true;
+  const low = Math.min(start, end);
+  const high = Math.max(start, end);
   for (const covered of coveredWeights) {
     const [weight, style] = covered.split(":");
     if (style !== from.style) continue;
@@ -490,6 +507,34 @@ function spansCoveredWeight(
     if (Number.isFinite(value) && value > low && value < high) return true;
   }
   return false;
+}
+
+/**
+ * Split one source group into ascending runs, breaking wherever the embedded
+ * bundle already covers a weight inside the span. A weight that is not a plain
+ * number (a variable `100 900` range, say) cannot be ordered, so it stays on
+ * its own.
+ */
+function partitionWeightRuns(
+  faces: readonly GoogleFontFace[],
+  coveredWeights: ReadonlySet<string>,
+): GoogleFontFace[][] {
+  const runs: GoogleFontFace[][] = [];
+  const sortable = faces.filter((face) => Number.isFinite(Number(face.weight)));
+  const unsortable = faces.filter((face) => !Number.isFinite(Number(face.weight)));
+
+  let current: GoogleFontFace[] = [];
+  for (const face of [...sortable].sort((a, b) => Number(a.weight) - Number(b.weight))) {
+    const previous = current[current.length - 1];
+    if (previous && spansCoveredWeight(previous, face, coveredWeights)) {
+      runs.push(current);
+      current = [];
+    }
+    current.push(face);
+  }
+  if (current.length > 0) runs.push(current);
+  for (const face of unsortable) runs.push([face]);
+  return runs;
 }
 
 async function buildFontFaceCss(
@@ -516,7 +561,7 @@ async function buildFontFaceCss(
         const style = face.style || "normal";
         const src = fontDataUri(canonical.packageName, face.weight, style);
         rules.push(buildFontFaceRule(originalCaseFamily, src, face.weight, style));
-        coveredWeights.add(`${face.weight}:${style}`);
+        coveredWeights.add(coverageKey(face.weight, style));
       }
 
       // Fetch all weights from Google Fonts and add any that aren't
@@ -537,44 +582,30 @@ async function buildFontFaceCss(
       // skip it. For weights the bundle lacks, keep EVERY subset face (a
       // weight has one face per unicode-range subset), not just the first.
       const supplementary = googleFaces.filter(
-        (face) => !coveredWeights.has(`${face.weight}:${face.style}`),
+        (face) => !coveredWeights.has(coverageKey(face.weight, face.style)),
       );
-      for (let index = 0; index < supplementary.length; index += 1) {
-        const face = supplementary[index];
-        if (!face) continue;
-        // Collapse a consecutive run sharing one source into a single
-        // weight-range rule, so a variable font is embedded once rather than
-        // once per weight.
-        let end = index;
-        let next = supplementary[end + 1];
-        while (
-          sharesSource(face, next) &&
-          next &&
-          !spansCoveredWeight(face, next, coveredWeights)
-        ) {
-          end += 1;
-          next = supplementary[end + 1];
-        }
-        const lastFace = supplementary[end];
-        // A weight range is written low-to-high; Google's ordering is not
-        // guaranteed, so sort the pair rather than trusting it.
-        const weight =
-          end > index && lastFace
-            ? [face.weight, lastFace.weight]
-                .map(Number)
-                .sort((a, b) => a - b)
-                .join(" ")
-            : face.weight;
+      const runs = groupFacesBySource(supplementary).flatMap((group) =>
+        partitionWeightRuns(group, coveredWeights),
+      );
+      // Overlapping `unicode-range` rules resolve last-defined-first, so a run
+      // is emitted where its first face appeared in the response rather than
+      // grouped by source. Collapsing must not reorder the faces.
+      const firstAppearance = (run: readonly GoogleFontFace[]): number =>
+        Math.min(...run.map((face) => supplementary.indexOf(face)));
+      for (const run of [...runs].sort((a, b) => firstAppearance(a) - firstAppearance(b))) {
+        const first = run[0];
+        const last = run[run.length - 1];
+        if (!first || !last) continue;
+        const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
         rules.push(
           buildFontFaceRule(
             originalCaseFamily,
-            face.dataUri,
+            first.dataUri,
             weight,
-            face.style,
-            face.unicodeRange,
+            first.style,
+            first.unicodeRange,
           ),
         );
-        index = end;
       }
       continue;
     }
