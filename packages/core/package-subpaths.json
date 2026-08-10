@@ -98,6 +98,12 @@
       "types": "./dist/audioFxCopy.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-fx-jobs": {
+      "source": "./src/audioFxJobs.ts",
+      "runtime": "./dist/audioFxJobs.js",
+      "types": "./dist/audioFxJobs.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-fx-eq": {
       "source": "./src/audioFxEq.ts",
       "runtime": "./dist/audioFxEq.js",

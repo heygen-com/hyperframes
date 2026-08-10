@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultAudioFxParams,
+  getAudioFxDef,
   HF_AUDIO_FX,
   mintAudioFxNodeId,
   type HfAudioFxChain,
@@ -25,6 +26,12 @@ import {
   setAudioEqBandGain,
 } from "@hyperframes/core/audio-fx-eq";
 import { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
+import {
+  audioFxJobNode,
+  HF_AUDIO_FX_JOBS,
+  HF_AUDIO_FX_JOB_TYPES,
+  type HfAudioFxJob,
+} from "@hyperframes/core/audio-fx-jobs";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -133,8 +140,20 @@ export function FxSection({
   const [picking, setPicking] = useState(false);
   const [openNode, setOpenNode] = useState<number | null>(0);
 
+  /**
+   * The add menu, with the jobs standing in for the effect they are made of.
+   *
+   * `peaking` is not offered as itself: picking it is picking a machine and
+   * leaving the real decision — which range — for afterwards. The jobs are that
+   * decision, already made. See `audioFxJobs.ts`.
+   */
   const grouped = useMemo(
-    () => GROUP_ORDER.map((g) => ({ group: g, defs: HF_AUDIO_FX.filter((d) => d.group === g) })),
+    () =>
+      GROUP_ORDER.map((g) => ({
+        group: g,
+        defs: HF_AUDIO_FX.filter((d) => d.group === g && !HF_AUDIO_FX_JOB_TYPES.has(d.id)),
+        jobs: HF_AUDIO_FX_JOBS.filter((job) => getAudioFxDef(job.type)?.group === g),
+      })),
     [],
   );
 
@@ -240,6 +259,25 @@ export function FxSection({
       ],
     }),
     [],
+  );
+
+  /** The same, for a job — an ordinary node that arrives already named and aimed. */
+  const withJob = useCallback(
+    (base: HfAudioFxChain, job: HfAudioFxJob): HfAudioFxChain => ({
+      ...base,
+      nodes: [...base.nodes, audioFxJobNode(job, base)],
+    }),
+    [],
+  );
+
+  const addJob = useCallback(
+    (job: HfAudioFxJob) => {
+      auditionBase.current = null;
+      mutate(withJob(chain, job).nodes);
+      setOpenNode(chain.nodes.length);
+      setAdding(false);
+    },
+    [chain, mutate, withJob],
   );
 
   const addEffect = useCallback(
@@ -475,11 +513,30 @@ export function FxSection({
               Tone (EQ)
             </button>
           </div>
-          {grouped.map(({ group, defs }) => (
+          {grouped.map(({ group, defs, jobs }) => (
             <div key={group} className="hf-fx-add-group flex flex-wrap items-center gap-1">
               <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
                 {GROUP_LABEL[group]}
               </span>
+              {jobs.map((job) => (
+                <button
+                  key={job.id}
+                  type="button"
+                  // Same class as any other entry: a job IS an effect, and one
+                  // that looked special would read as a preset rather than as
+                  // the thing the author is about to add.
+                  className="hf-fx-add-item rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
+                  title={job.does}
+                  onClick={() => addJob(job)}
+                  onMouseEnter={() => {
+                    onAuditionLevel?.(false);
+                    audition((base) => withJob(base, job));
+                  }}
+                  onFocus={() => audition((base) => withJob(base, job))}
+                >
+                  {job.label}
+                </button>
+              ))}
               {defs.map((d) => (
                 <button
                   key={d.id}

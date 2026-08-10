@@ -9,6 +9,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import { DEFAULT_CARVE } from "@hyperframes/core/audio-carve";
 import { EFFECT_COPY, PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
+import { HF_AUDIO_FX_JOBS, HF_AUDIO_FX_JOB_TYPES } from "@hyperframes/core/audio-fx-jobs";
 import { getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 
 /**
@@ -150,11 +151,59 @@ describe("FxSection chain", () => {
     const items = Array.from(host.querySelectorAll(".hf-fx-add-item")).map((e) =>
       e.textContent?.trim(),
     );
-    expect(items).toHaveLength(HF_AUDIO_FX.length);
-    // By the name the RACK will use, not the registry's — picking "High-pass"
-    // and getting a module called "Remove Rumble" is the inconsistency this
-    // whole layer exists to remove.
-    for (const def of HF_AUDIO_FX) expect(items).toContain(EFFECT_COPY[def.id]?.title);
+    // Every effect is reachable, but not every one under its own name: the jobs
+    // stand in for the effect they are made of, because picking `peaking` is
+    // picking a machine and leaving the real decision for afterwards.
+    const standIns = HF_AUDIO_FX.filter((d) => HF_AUDIO_FX_JOB_TYPES.has(d.id));
+    expect(items).toHaveLength(HF_AUDIO_FX.length - standIns.length + HF_AUDIO_FX_JOBS.length);
+    for (const def of HF_AUDIO_FX) {
+      if (HF_AUDIO_FX_JOB_TYPES.has(def.id)) {
+        // Not offered as itself, and it must not be — two doors to the same
+        // effect, one of them the incoherent one, is worse than either alone.
+        expect(items).not.toContain(EFFECT_COPY[def.id]?.title);
+        continue;
+      }
+      // By the name the RACK will use, not the registry's — picking "High-pass"
+      // and getting a module called "Remove Rumble" is the inconsistency this
+      // whole layer exists to remove.
+      expect(items).toContain(EFFECT_COPY[def.id]?.title);
+    }
+    for (const job of HF_AUDIO_FX_JOBS) expect(items).toContain(job.label);
+  });
+
+  it("adds a job as an ordinary effect, already named and already aimed", () => {
+    // The range IS the module: one knob is honest here because the decision the
+    // knob depends on has already been made.
+    const { host, onChainChange } = mount({ chain: { version: 1, nodes: [] } });
+    click(host.querySelector(".hf-fx-add"));
+    click(byText(host, ".hf-fx-add-item", "Reduce Mud"));
+
+    const next = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain;
+    expect(next.nodes).toHaveLength(1);
+    expect(next.nodes[0]?.type).toBe("peaking");
+    expect(next.nodes[0]?.label).toBe("Reduce Mud");
+    expect(next.nodes[0]?.params?.frequency).toBe(250);
+  });
+
+  it("shows two jobs over the same effect as the different things they are", () => {
+    // The whole point. Read down the rack, "Shape One Range" twice was two rows
+    // an author could not tell apart — and one of them was cutting while the
+    // other was boosting.
+    const { host } = mount({
+      chain: {
+        version: 1,
+        nodes: [
+          { type: "peaking", label: "Reduce Mud", params: { frequency: 250, gain: -3, q: 1.2 } },
+          { type: "peaking", label: "Add Clarity", params: { frequency: 3000, gain: 2.5, q: 1 } },
+        ],
+      } as unknown as HfAudioFxChain,
+    });
+    const names = Array.from(host.querySelectorAll(".hf-fx-node-name")).map((e) =>
+      e.textContent?.trim(),
+    );
+    expect(names).toContain("Reduce Mud");
+    expect(names).toContain("Add Clarity");
+    expect(names).not.toContain(EFFECT_COPY.peaking?.title);
   });
 
   it("adds an effect seeded with its declared defaults", () => {
