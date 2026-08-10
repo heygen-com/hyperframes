@@ -90,6 +90,7 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       onRemoveNodeAutomation={overrides.onRemoveNodeAutomation}
       onAutomatePreset={overrides.onAutomatePreset}
       onRemovePresetAutomation={overrides.onRemovePresetAutomation}
+      onAuditionTransport={overrides.onAuditionTransport}
       automatedPresets={overrides.automatedPresets}
       onLevel={overrides.onLevel}
       onRemoveLevel={overrides.onRemoveLevel}
@@ -693,6 +694,52 @@ describe("FxSection chain", () => {
     );
     // The name is still there, under it — which is how it gets learned.
     expect(item?.querySelector(".hf-fx-preset-name")?.textContent).toBe("Telephone");
+  });
+
+  describe("auditioning while the transport is paused", () => {
+    it("starts playback so a paused author can hear the preset at all", () => {
+      // The audition is written to the running graph, which is silent while the
+      // transport is paused — so without this, hovering a preset did nothing
+      // whatsoever unless the author happened to be mid-playback.
+      const onAuditionTransport = vi.fn();
+      const { host } = mount({ chain: chainOf("peaking"), onAuditionTransport });
+      click(byText(host, "button", "Presets"));
+      act(() => (presetButton(host, "telephone") as HTMLElement | null)?.focus());
+      expect(onAuditionTransport).toHaveBeenLastCalledWith(true);
+    });
+
+    it("stops it again on the way out", () => {
+      const onAuditionTransport = vi.fn();
+      const { host } = mount({ chain: chainOf("peaking"), onAuditionTransport });
+      click(byText(host, "button", "Presets"));
+      act(() => (presetButton(host, "telephone") as HTMLElement | null)?.focus());
+      act(() => {
+        host
+          .querySelector(".hf-fx-preset-menu")
+          ?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      expect(onAuditionTransport).toHaveBeenLastCalledWith(false);
+    });
+
+    it("stops it when the preset is applied, rather than playing on", () => {
+      // The click means "keep this", not "and carry on playing from wherever
+      // the audition reached".
+      const onAuditionTransport = vi.fn();
+      const { host } = mount({ chain: { version: 1, nodes: [] }, onAuditionTransport });
+      click(byText(host, "button", "Presets"));
+      act(() => (presetButton(host, "telephone") as HTMLElement | null)?.focus());
+      click(presetButton(host, "telephone"));
+      expect(onAuditionTransport).toHaveBeenLastCalledWith(false);
+    });
+
+    it("stops it if the panel goes away mid-audition", () => {
+      const onAuditionTransport = vi.fn();
+      const { host, root } = mount({ chain: chainOf("peaking"), onAuditionTransport });
+      click(byText(host, "button", "Presets"));
+      act(() => (presetButton(host, "telephone") as HTMLElement | null)?.focus());
+      act(() => root.unmount());
+      expect(onAuditionTransport).toHaveBeenLastCalledWith(false);
+    });
   });
 
   describe("getting back out of a menu", () => {

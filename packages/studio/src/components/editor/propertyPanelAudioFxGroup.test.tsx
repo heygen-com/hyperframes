@@ -435,6 +435,45 @@ describe("AudioFxGroup dynamic carve", () => {
    * nobody asked to level, through a channel that does not persist: audible,
    * absent from the document, and gone on the next reload.
    */
+  describe("auditioning starts the transport when it has to", () => {
+    const store = () => usePlayerStore.getState();
+
+    const hoverPreset = (host: HTMLElement) => {
+      act(() => byTextButton(host, "Presets")?.click());
+      act(() => host.querySelector<HTMLElement>(".hf-fx-preset-item")?.focus());
+    };
+    const leaveShelf = (host: HTMLElement) =>
+      act(() => {
+        host
+          .querySelector(".hf-fx-preset-menu")
+          ?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+
+    it("plays from the playhead, then puts it back exactly where it was", () => {
+      // Browsing the shelf must not cost the author their place: hovering is not
+      // an edit, so the playhead it borrows has to be returned.
+      act(() => usePlayerStore.setState({ isPlaying: false, currentTime: 42 }));
+      const { host } = mount({ "fx-chain": CHAIN });
+      hoverPreset(host);
+      expect(store().playbackRequest?.playing).toBe(true);
+
+      leaveShelf(host);
+      expect(store().playbackRequest?.playing).toBe(false);
+      expect(store().playbackRequest?.returnTo).toBe(42);
+    });
+
+    it("leaves a transport the author started alone", () => {
+      // Stopping their playback because they passed over a preset would be the
+      // panel taking a decision nobody offered it.
+      act(() => usePlayerStore.setState({ isPlaying: true, currentTime: 12 }));
+      const { host } = mount({ "fx-chain": CHAIN });
+      const before = store().playbackRequest?.nonce ?? 0;
+      hoverPreset(host);
+      leaveShelf(host);
+      expect(store().playbackRequest?.nonce ?? 0).toBe(before);
+    });
+  });
+
   it("drops a levelling measurement that lands after the pointer has gone", async () => {
     const { release, decoded } = stubGatedDecode();
     const { host, onSetAttributeLive } = mount({ "fx-chain": CHAIN });

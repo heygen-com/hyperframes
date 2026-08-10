@@ -111,6 +111,14 @@ export interface FxSectionProps {
   onAuditionLevel?(on: boolean): void;
   /** Whether that measurement is running, so the button can say so. */
   auditioningLevel?: boolean;
+  /**
+   * Start the transport for an audition, and stop it on the way out.
+   *
+   * An audition is written to the running graph, which is silent while the
+   * transport is paused — so without this, hovering a preset does nothing at all
+   * for a paused author.
+   */
+  onAuditionTransport?(on: boolean): void;
   /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
   /** Continuous updates while a control is being dragged. */
@@ -156,6 +164,7 @@ export function FxSection({
   onAutomatePreset,
   onRemovePresetAutomation,
   automatedPresets,
+  onAuditionTransport,
 }: FxSectionProps) {
   const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
@@ -228,12 +237,18 @@ export function FxSection({
       if (make) {
         auditionBase.current ??= chain;
         onChainPreview(make(auditionBase.current));
+        // After the chain is in the graph, not before: starting the transport
+        // first plays a moment of the un-auditioned mix.
+        onAuditionTransport?.(true);
       } else if (auditionBase.current) {
+        // Stop before reverting, for the mirror of that reason — the last thing
+        // heard should be the preset, not a frame of the chain coming back.
+        onAuditionTransport?.(false);
         onChainPreview(auditionBase.current);
         auditionBase.current = null;
       }
     },
-    [chain, onChainPreview],
+    [chain, onChainPreview, onAuditionTransport],
   );
 
   /**
@@ -253,9 +268,14 @@ export function FxSection({
   // Leaving by any route other than the pointer — the element deselected, the
   // panel closed — would otherwise leave the audition playing over a chain the
   // document does not have.
+  const transportRef = useRef(onAuditionTransport);
+  transportRef.current = onAuditionTransport;
   useEffect(
     () => () => {
-      if (auditionBase.current) previewRef.current?.(auditionBase.current);
+      if (auditionBase.current) {
+        transportRef.current?.(false);
+        previewRef.current?.(auditionBase.current);
+      }
     },
     [],
   );
@@ -272,13 +292,14 @@ export function FxSection({
       // old chain back over the write that just landed is a race the author
       // hears as the preset arriving and then leaving again.
       auditionBase.current = null;
+      onAuditionTransport?.(false);
       mutate(next.nodes);
       // Land on the first node the preset wrote, so the author can hear what
       // arrived and immediately see what it is made of.
       setOpenNode(next.nodes.findIndex((n) => n.fromPreset === preset.id));
       setPicking(false);
     },
-    [chain, mutate],
+    [chain, mutate, onAuditionTransport],
   );
 
   /**
@@ -322,21 +343,23 @@ export function FxSection({
   const addJob = useCallback(
     (job: HfAudioFxJob) => {
       auditionBase.current = null;
+      onAuditionTransport?.(false);
       mutate(withJob(chain, job).nodes);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain, mutate, withJob],
+    [chain, mutate, withJob, onAuditionTransport],
   );
 
   const addEffect = useCallback(
     (type: string) => {
       auditionBase.current = null;
+      onAuditionTransport?.(false);
       mutate(withEffect(chain, type).nodes);
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
-    [chain, mutate, withEffect],
+    [chain, mutate, withEffect, onAuditionTransport],
   );
 
   const updateNode = useCallback(
@@ -458,11 +481,12 @@ export function FxSection({
 
   const addEq = useCallback(() => {
     auditionBase.current = null;
+    onAuditionTransport?.(false);
     const { chain: next, eqId } = addAudioEq(chain);
     mutate(next.nodes);
     setOpenEq(eqId);
     setAdding(false);
-  }, [chain, mutate]);
+  }, [chain, mutate, onAuditionTransport]);
 
   // Dragging a fader is heard immediately and written once on release, the same
   // split every other control in the rack uses.
