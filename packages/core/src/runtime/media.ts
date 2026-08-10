@@ -273,7 +273,13 @@ export function syncRuntimeMedia(params: {
       if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
         // Keyframes probed from the GSAP timeline — same source as the renderer.
         // Use the interpolated envelope value directly; no need to track GSAP changes.
-        authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, relTime));
+        // Index by elapsed time on the TIMELINE since the clip began, which is what
+        // a normalised envelope is keyed by (and what the renderer's PCM baker uses).
+        // `relTime` is a position inside the media SOURCE — it carries `mediaStart`
+        // and the playback rate — so it only coincides with the envelope's time base
+        // for an untrimmed clip playing at 1x from t=0.
+        const elapsedInClip = params.timeSeconds - clip.start;
+        authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
       } else if (previousRuntimeVolume === undefined) {
         // First tick this clip is active. The transport has already seeked GSAP
         // to the current time (seekTimelineAndAdapters runs before syncRuntimeMedia),
