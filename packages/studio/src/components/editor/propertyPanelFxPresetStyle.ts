@@ -60,7 +60,7 @@ const FACE = {
 /** Plain, and what any preset without its own entry gets. */
 export const FX_PRESET_STYLE_DEFAULT: FxPresetStyle = {
   type: "text-[12px] uppercase tracking-wide",
-  color: "hsl(220, 12%, 68%)",
+  color: "hsl(220, 24%, 72%)",
   family: FACE.terminal,
 };
 
@@ -71,39 +71,39 @@ export const FX_PRESET_STYLE: Record<string, FxPresetStyle> = {
   // face, because "no styling at all" is what every other row in the panel has.
   "voice-clean": {
     type: "text-[13px] font-medium tracking-tight",
-    color: "hsl(155, 34%, 70%)",
+    color: "hsl(202, 82%, 66%)",
     family: FACE.geometric,
   },
   "voice-broadcast": {
     type: "text-[13px] font-bold uppercase tracking-[0.14em]",
-    color: "hsl(155, 34%, 74%)",
+    color: "hsl(214, 84%, 70%)",
     family: FACE.editorial,
   },
   "voice-warm": {
     type: "text-[14px] italic tracking-normal",
-    color: "hsl(28, 40%, 74%)",
+    color: "hsl(32, 88%, 66%)",
     family: FACE.bookish,
   },
 
   // --- repair: workshop labels. Fixed, plain, nothing decorative ------------
   "rumble-cut": {
     type: "text-[12px] uppercase tracking-[0.18em]",
-    color: "hsl(205, 28%, 70%)",
+    color: "hsl(196, 78%, 64%)",
     family: FACE.terminal,
   },
   "room-gate": {
     type: "text-[12px] uppercase tracking-[0.18em]",
-    color: "hsl(205, 28%, 70%)",
+    color: "hsl(196, 78%, 64%)",
     family: FACE.terminal,
   },
   "boom-tame": {
     type: "text-[12px] uppercase tracking-[0.18em]",
-    color: "hsl(205, 28%, 70%)",
+    color: "hsl(196, 78%, 64%)",
     family: FACE.terminal,
   },
   "harsh-tame": {
     type: "text-[12px] uppercase tracking-[0.18em]",
-    color: "hsl(205, 28%, 70%)",
+    color: "hsl(196, 78%, 64%)",
     family: FACE.terminal,
   },
 
@@ -111,75 +111,97 @@ export const FX_PRESET_STYLE: Record<string, FxPresetStyle> = {
   // A phone's band is narrow; so is the tracking, on a face with no warmth.
   telephone: {
     type: "text-[13px] uppercase tracking-[0.3em]",
-    color: "hsl(190, 34%, 70%)",
+    color: "hsl(186, 85%, 62%)",
     family: FACE.terminal,
   },
   // A dial face: high-contrast serif caps, spaced like printed frequencies.
   "radio-am": {
     type: "text-[14px] uppercase tracking-[0.24em]",
-    color: "hsl(38, 40%, 72%)",
+    color: "hsl(42, 92%, 62%)",
     family: FACE.editorial,
   },
   // Shouted through a horn — the heaviest, narrowest thing available, leaning.
   megaphone: {
     type: "text-[17px] font-black italic uppercase tracking-tight",
-    color: "hsl(14, 46%, 70%)",
+    color: "hsl(12, 90%, 64%)",
     family: FACE.condensed,
   },
   // Struck on a machine, played back years later.
   "lofi-tape": {
     type: "text-[13px] tracking-wide",
-    color: "hsl(36, 30%, 68%)",
+    color: "hsl(28, 72%, 62%)",
     family: FACE.typewriter,
   },
   // Bolted to a wall in a station concourse.
   "pa-system": {
     type: "text-[13px] uppercase tracking-[0.26em]",
-    color: "hsl(210, 26%, 72%)",
+    color: "hsl(222, 80%, 70%)",
     family: FACE.engraved,
   },
   // Small, squeezed through a grille, no room for anything but the letters.
   intercom: {
     type: "text-[12px] font-bold uppercase tracking-tighter",
-    color: "hsl(96, 26%, 68%)",
+    color: "hsl(96, 68%, 60%)",
     family: FACE.terminal,
   },
   // The name is a joke and the type is in on it.
   "doofus-worble": {
     type: "text-[16px] tracking-[0.1em]",
-    color: "hsl(286, 38%, 74%)",
+    color: "hsl(288, 85%, 72%)",
     family: FACE.theatrical,
   },
 
   // --- space: rooms. Light and wide, because that is what space looks like ---
   "room-tight": {
     type: "text-[13px] uppercase tracking-[0.2em]",
-    color: "hsl(250, 26%, 72%)",
+    color: "hsl(252, 74%, 72%)",
     family: FACE.geometric,
   },
   "room-natural": {
     type: "text-[13px] uppercase tracking-[0.26em]",
-    color: "hsl(250, 26%, 74%)",
+    color: "hsl(258, 78%, 72%)",
     family: FACE.geometric,
   },
   // The biggest room gets the widest setting — the word itself opens out.
   hall: {
     type: "text-[15px] uppercase tracking-[0.4em]",
-    color: "hsl(250, 28%, 76%)",
+    color: "hsl(246, 84%, 74%)",
     family: FACE.engraved,
   },
   "slap-echo": {
     type: "text-[13px] uppercase tracking-[0.28em]",
-    color: "hsl(268, 30%, 72%)",
+    color: "hsl(274, 76%, 70%)",
     family: FACE.geometric,
   },
   "dub-throw": {
     type: "text-[14px] italic tracking-[0.3em]",
-    color: "hsl(268, 34%, 74%)",
+    color: "hsl(312, 78%, 70%)",
     family: FACE.editorial,
   },
 };
 
 export function fxPresetStyle(presetId: string): FxPresetStyle {
   return FX_PRESET_STYLE[presetId] ?? FX_PRESET_STYLE_DEFAULT;
+}
+
+/**
+ * The wash behind a preset's bracket, derived from its title colour.
+ *
+ * Derived rather than picked: nineteen hand-chosen pairs is nineteen chances
+ * for one to clash with its own title, and a hue rotation cannot. Same hue,
+ * saturation pulled right down and lightness taken to near-black, so the panel
+ * reads as tinted rather than coloured — the rack sits on `#0C0C0E` and
+ * anything with real lightness here would fight every control on top of it.
+ *
+ * Returns a CSS colour, or null when the preset has no character of its own.
+ */
+export function fxPresetBackground(presetId: string): string | null {
+  const style = FX_PRESET_STYLE[presetId];
+  if (!style) return null;
+  const hsl = /hsl\(\s*(\d+),\s*(\d+)%,\s*(\d+)%\s*\)/.exec(style.color);
+  if (!hsl) return null;
+  const hue = hsl[1];
+  // 22% saturation at 11% lightness: present enough to tell two brackets apart
+  // at a glance, dark enough that white body text still clears WCAG AA on it.
+  return `hsl(${hue}, 22%, 11%)`;
 }

@@ -35,7 +35,7 @@ import {
   type HfAudioFxJob,
 } from "@hyperframes/core/audio-fx-jobs";
 import { FxParamRow } from "./propertyPanelFxControls.js";
-import { fxPresetStyle } from "./propertyPanelFxPresetStyle.js";
+import { fxPresetBackground, fxPresetStyle } from "./propertyPanelFxPresetStyle.js";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -649,6 +649,7 @@ export function FxSection({
             const runKey = `${run.preset}-${run.items[0]?.i ?? 0}`;
             const collapsed = collapsedRuns.has(runKey);
             const style = fxPresetStyle(run.preset ?? "");
+            const background = fxPresetBackground(run.preset ?? "");
             return (
               <div
                 key={`preset-${run.preset}-${run.items[0]?.i}`}
@@ -656,8 +657,13 @@ export function FxSection({
                 data-fx-preset={run.preset}
                 data-collapsed={collapsed ? "" : undefined}
                 // The bracket's edge carries the preset's own colour, the way a
-                // module's carries its family's.
-                style={{ borderLeftColor: style.color }}
+                // module's carries its family's — and the wash behind it is the
+                // same hue taken to near-black, so a rack with three presets in
+                // it reads as three regions rather than one long list.
+                style={{
+                  borderLeftColor: style.color,
+                  ...(background ? { backgroundColor: background } : {}),
+                }}
               >
                 <div className="hf-fx-preset-run-head flex min-h-6 items-center gap-1 px-0.5">
                   <button

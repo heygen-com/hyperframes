@@ -4,6 +4,7 @@ import { HF_AUDIO_FX_PRESETS } from "@hyperframes/core/audio-fx-presets";
 import {
   FX_PRESET_STYLE,
   FX_PRESET_STYLE_DEFAULT,
+  fxPresetBackground,
   fxPresetStyle,
 } from "./propertyPanelFxPresetStyle.js";
 
@@ -58,19 +59,55 @@ describe("per-preset title treatments", () => {
     }
   });
 
-  it("keeps every colour in one narrow lightness band", () => {
-    // A per-preset colour free-for-all would read as status. These sit where the
-    // family tints do, and the panel already spends saturation on "automated"
-    // and "bypassed".
+  it("keeps every colour vibrant, and light enough to read on the panel", () => {
+    // The rack sits on #0C0C0E. A title has to carry real colour to be worth
+    // having, and still clear contrast against near-black.
     for (const [id, style] of Object.entries(FX_PRESET_STYLE)) {
-      const match = /hsl\(\s*\d+,\s*(\d+)%,\s*(\d+)%\s*\)/.exec(style.color);
+      const match = /hsl\(\s*(\d+),\s*(\d+)%,\s*(\d+)%\s*\)/.exec(style.color);
       expect(match, `${id} is not a plain hsl() colour`).toBeTruthy();
-      const saturation = Number(match?.[1]);
-      const lightness = Number(match?.[2]);
-      expect(saturation, `${id} is too saturated to be type`).toBeLessThanOrEqual(50);
-      expect(lightness, `${id} is too dark to read on the panel`).toBeGreaterThanOrEqual(66);
-      expect(lightness, `${id} is too light to sit beside the others`).toBeLessThanOrEqual(78);
+      const saturation = Number(match?.[1 + 1]);
+      const lightness = Number(match?.[3]);
+      expect(saturation, `${id} is too washed out to read as a colour`).toBeGreaterThanOrEqual(60);
+      expect(lightness, `${id} is too dark against the panel`).toBeGreaterThanOrEqual(58);
+      expect(lightness, `${id} is so light the hue disappears`).toBeLessThanOrEqual(78);
     }
+  });
+
+  it("keeps the title hues clear of the accent, which means something else", () => {
+    // The panel spends #3CE6AC (hue 160) on "automated" and "playing". A title
+    // sitting on that hue reads as a status the preset does not have.
+    for (const [id, style] of Object.entries(FX_PRESET_STYLE)) {
+      const hue = Number(/hsl\(\s*(\d+),/.exec(style.color)?.[1]);
+      const distance = Math.min(Math.abs(hue - 160), 360 - Math.abs(hue - 160));
+      expect(distance, `${id} sits on the accent's hue`).toBeGreaterThan(20);
+    }
+  });
+
+  it("backs each preset with its own hue, dark enough to sit under the panel", () => {
+    // Derived from the title rather than picked, so a background cannot drift
+    // away from the title it belongs to.
+    const seen = new Set<string>();
+    for (const [id, style] of Object.entries(FX_PRESET_STYLE)) {
+      const bg = fxPresetBackground(id);
+      expect(bg, `${id} has no background`).toBeTruthy();
+      const titleHue = /hsl\(\s*(\d+),/.exec(style.color)?.[1];
+      expect(bg, `${id}'s background is a different hue from its title`).toContain(
+        `hsl(${titleHue},`,
+      );
+      const lightness = Number(/,\s*(\d+)%\s*\)/.exec(bg ?? "")?.[1]);
+      expect(lightness, `${id}'s background would fight the controls on it`).toBeLessThanOrEqual(
+        16,
+      );
+      seen.add(bg ?? "");
+    }
+    // Presets that share a title colour share a background — the repair family
+    // is deliberately uniform — but the character ones must not.
+    const character = HF_AUDIO_FX_PRESETS.filter((p) => p.family === "character");
+    expect(new Set(character.map((p) => fxPresetBackground(p.id))).size).toBe(character.length);
+  });
+
+  it("has no background for a preset it does not know", () => {
+    expect(fxPresetBackground("not-a-preset")).toBeNull();
   });
 
   it("falls back rather than failing for a preset it does not know", () => {
