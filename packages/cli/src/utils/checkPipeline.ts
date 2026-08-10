@@ -21,6 +21,7 @@ import {
   type MotionFrame,
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec } from "./motionSpec.js";
+import type { BundleDiagnostic } from "@hyperframes/core/compiler";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
   parseColorRGBA,
@@ -1097,6 +1098,8 @@ export async function runAuditGrid(
     contrastPassed: contrast.passed,
     screenshots: collected.screenshots,
     timings: { launchSettleMs: 0, seekLoopMs, contrastMs: collected.contrastMs },
+    // The grid never bundles; runBrowserCheck owns bundling and overwrites this.
+    compileDiagnostics: [],
   };
 }
 
@@ -1132,17 +1135,22 @@ export async function runCheckPipeline(
   }
 
   let browser: CheckBrowserResult;
+  // Bundling happens inside runBrowserCheck, so a throw from there (a Chrome
+  // launch failure, a bundler error) leaves the compile pass unobserved rather
+  // than clean. Track that instead of letting an empty section read as a pass.
+  let bundlingReached = true;
   try {
     browser = await dependencies.runBrowserCheck(project, options, motion);
   } catch (error) {
     browser = emptyBrowserResult();
     browser.runtimeFindings.push(runtimeFailure(error));
+    bundlingReached = false;
   }
 
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(options, lint, browser, motion, [], snapshotFiles);
+  const report = buildReport(options, lint, browser, motion, [], snapshotFiles, bundlingReached);
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;
@@ -1322,7 +1330,12 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
+  bundlingReached = false,
 ): CheckReport {
+  const compile = {
+    ...section(browser.compileDiagnostics.map(compileFinding)),
+    reached: bundlingReached,
+  };
   const layout = shapeLayoutSection(browser.layoutIssues, browser, options);
   const shapedMotion = shapeLayoutFindings(browser.motionIssues, options);
   const motionFindings: CheckFinding[] = [...shapedMotion.findings, ...extraMotionFindings];
@@ -1345,6 +1358,7 @@ function buildReport(
     ok: errorCount === 0 && (!options.strict || warningCount === 0),
     strict: options.strict,
     lint,
+    compile,
     runtime,
     layout,
     motion: {
@@ -1468,7 +1482,20 @@ function emptyBrowserResult(): CheckBrowserResult {
     contrastPassed: 0,
     screenshots: [],
     timings: { launchSettleMs: 0, seekLoopMs: 0, contrastMs: 0 },
+    compileDiagnostics: [],
   };
+}
+
+/** A compile diagnostic as a report finding. The bundler has no source
+ * positions at these sites, so it anchors at the composition root like the
+ * lint and motion-spec findings do. */
+function compileFinding(diagnostic: BundleDiagnostic): CheckFinding {
+  return findingAtRoot(
+    diagnostic.code,
+    diagnostic.severity,
+    diagnostic.message,
+    diagnostic.source ?? "index.html",
+  );
 }
 
 function runtimeFailure(error: unknown, code = "check_runtime_failure"): CheckFinding {

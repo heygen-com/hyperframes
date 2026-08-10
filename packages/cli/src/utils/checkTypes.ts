@@ -1,3 +1,4 @@
+import type { BundleDiagnostic } from "@hyperframes/core/compiler";
 import type { ProjectLintResult } from "./lintProject.js";
 import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
@@ -242,6 +243,10 @@ export interface CheckBrowserResult {
   contrastPassed: number;
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
+  /** Compile-time diagnostics collected while bundling the project for the
+   * browser pass. Empty whenever bundling never ran (lint-error short-circuit,
+   * a browser-launch failure) — absence is "not observed", not "clean". */
+  compileDiagnostics: BundleDiagnostic[];
 }
 
 /** The seek-grid audit loop, injected into checkBrowser so it never imports checkPipeline back. */
@@ -263,6 +268,18 @@ export interface CheckReport {
   ok: boolean;
   strict: boolean;
   lint: CheckSection & { filesScanned: number };
+  /**
+   * Compile-time bundler diagnostics, surfaced as findings so agents and
+   * `--json` consumers see them instead of losing them to stdout.
+   *
+   * Deliberately NOT folded into the report's aggregate error/warning counts:
+   * every code here is a warning today, and rolling them into the aggregate
+   * would make `--strict` start failing projects it passes now. Visibility
+   * first; gating is a separate decision. `reached` says whether bundling
+   * actually ran — `runCheckPipeline` short-circuits before the bundler when
+   * lint has any error, so `reached: false` means "unknown", not "none".
+   */
+  compile: CheckSection & { reached: boolean };
   runtime: CheckSection;
   layout: CheckSection<AnchoredLayoutIssue> & {
     duration: number;

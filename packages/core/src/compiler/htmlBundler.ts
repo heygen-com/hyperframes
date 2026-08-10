@@ -320,16 +320,23 @@ function isExternalSvgFragmentUse(el: Element, attr: string, urlValue: string): 
   return pathBeforeFragment.toLowerCase().endsWith(".svg");
 }
 
-function warnColorGradingLutNotInlined(lutSrc: string): void {
+function warnColorGradingLutNotInlined(lutSrc: string, emit: BundleDiagnosticSink): void {
   const trimmed = lutSrc.trim();
   if (!isRelativeUrl(trimmed)) return;
-  console.warn(
-    `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
-  );
+  emit({
+    code: "color_grading_lut_not_inlined",
+    severity: "warning",
+    message: `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+    source: trimmed,
+  });
 }
 
 // fallow-ignore-next-line complexity
-function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: string): string {
+function rewriteColorGradingLutWithInlinedAssets(
+  value: string,
+  projectDir: string,
+  emit: BundleDiagnosticSink,
+): string {
   if (!value.trim().startsWith("{")) return value;
   let parsed: unknown;
   try {
@@ -343,7 +350,7 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   if (typeof lut === "string") {
     const inlined = maybeInlineRelativeAssetUrl(lut, projectDir);
     if (!inlined) {
-      warnColorGradingLutNotInlined(lut);
+      warnColorGradingLutNotInlined(lut, emit);
       return value;
     }
     Reflect.set(parsed, "lut", inlined);
@@ -354,7 +361,7 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   if (typeof lutSrc !== "string") return value;
   const inlined = maybeInlineRelativeAssetUrl(lutSrc, projectDir);
   if (!inlined) {
-    warnColorGradingLutNotInlined(lutSrc);
+    warnColorGradingLutNotInlined(lutSrc, emit);
     return value;
   }
   Reflect.set(lut, "src", inlined);
@@ -673,9 +680,46 @@ function stripJsCommentsParserSafe(source: string): string {
   }
 }
 
+/**
+ * A compile-time diagnostic raised while bundling — the class of problem that
+ * used to reach only `console.warn` and was therefore invisible to any
+ * programmatic consumer (`hyperframes check --json`, studio, CI logs).
+ *
+ * Severity is `"warning"` for every code emitted today: the bundler is
+ * deliberately tolerant here (it skips the broken piece and keeps going) and
+ * nothing about this envelope changes that. Escalating any of these to an
+ * error is a separate, gating decision.
+ */
+export interface BundleDiagnostic {
+  /** Stable machine-readable identifier — safe to match on in tooling. */
+  code: "static_guard_contract" | "color_grading_lut_not_inlined" | "sub_composition_skipped";
+  severity: "warning";
+  /**
+   * Human-readable text. Byte-identical to the `console.warn` line this
+   * replaces, so terminal output is unchanged when no sink is supplied.
+   */
+  message: string;
+  /**
+   * What the diagnostic is about, when the emitter knows: the entry file, the
+   * sub-composition `src`, or the LUT URL. Not a line/column — none of these
+   * sites carry source positions, and inventing one would be a lie.
+   */
+  source?: string;
+}
+
+export type BundleDiagnosticSink = (diagnostic: BundleDiagnostic) => void;
+
 export interface BundleOptions {
   /** Project-relative HTML entry to bundle. Defaults to `index.html`. */
   entryFile?: string;
+  /**
+   * Collect compile-time diagnostics instead of logging them. Follows the same
+   * shape as `inlineSubCompositions`'s `onMissingComposition`: optional, and
+   * when omitted every diagnostic still goes to `console.warn` with exactly the
+   * text it has today. Producer, studio, vite preview and render all rely on
+   * that default.
+   */
+  onDiagnostic?: BundleDiagnosticSink;
   /** Optional media duration prober (e.g., ffprobe). If omitted, media durations are not resolved. */
   probeMediaDuration?: MediaDurationProber;
   /**
@@ -798,14 +842,20 @@ export async function bundleToSingleHtml(
     return isSafePath(projectDir, resolved) ? resolved : null;
   };
 
+  const emit: BundleDiagnosticSink =
+    options?.onDiagnostic ?? ((diagnostic) => console.warn(diagnostic.message));
+
   const rawHtml = readFileSync(indexPath, "utf-8");
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
   const staticGuard = await validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
-    console.warn(
-      `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
-    );
+    emit({
+      code: "static_guard_contract",
+      severity: "warning",
+      message: `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+      source: entryFile,
+    });
   }
 
   const withInterceptor = injectInterceptor(compiled, options?.runtime ?? "inline");
@@ -911,9 +961,12 @@ export async function bundleToSingleHtml(
     buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
     scriptErrorLabel: "[HyperFrames] composition script error:",
     onMissingComposition: (srcPath: string, reason?: string) => {
-      console.warn(
-        `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
-      );
+      emit({
+        code: "sub_composition_skipped",
+        severity: "warning",
+        message: `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        source: srcPath,
+      });
     },
   });
   const compStyleChunks: string[] = [...subCompResult.styles];
@@ -1119,7 +1172,7 @@ export async function bundleToSingleHtml(
       if (value) {
         el.setAttribute(
           HF_COLOR_GRADING_ATTR,
-          rewriteColorGradingLutWithInlinedAssets(value, projectDir),
+          rewriteColorGradingLutWithInlinedAssets(value, projectDir, emit),
         );
       }
     }

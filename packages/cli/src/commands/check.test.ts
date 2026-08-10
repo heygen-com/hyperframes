@@ -32,6 +32,7 @@ import {
 } from "../utils/checkPipeline.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { consumeCommandResult } from "../utils/commandResult.js";
+import type { BundleDiagnostic } from "@hyperframes/core/compiler";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import type {
   LayoutIssue,
@@ -264,6 +265,7 @@ function dependencies(
     runtime?: CheckFinding[];
     writeSnapshot?: CheckDependencies["writeSnapshot"];
     captureFindingCrops?: CheckDependencies["captureFindingCrops"];
+    compile?: BundleDiagnostic[];
   } = {},
 ): { deps: CheckDependencies; runBrowserCheck: ReturnType<typeof vi.fn> } {
   const runBrowserCheck = vi.fn(
@@ -273,7 +275,11 @@ function dependencies(
       motion: MotionSpecResolution,
     ): Promise<CheckBrowserResult> => {
       const result = await runAuditGrid(driver, checkOptions, motion);
-      return { ...result, runtimeFindings: options.runtime ?? [] };
+      return {
+        ...result,
+        runtimeFindings: options.runtime ?? [],
+        compileDiagnostics: options.compile ?? [],
+      };
     },
   );
   const deps: CheckDependencies = {
@@ -304,6 +310,16 @@ async function runScenario(
     deps,
   );
   return { report, deps, browser: runBrowserCheck };
+}
+
+function lutDiagnostic(): BundleDiagnostic {
+  return {
+    code: "color_grading_lut_not_inlined",
+    severity: "warning",
+    message:
+      '[HyperFrames] Could not inline color grading LUT "assets/luts/gone.cube". The rendered bundle may not be self-contained.',
+    source: "assets/luts/gone.cube",
+  };
 }
 
 function runtimeError(): CheckFinding {
@@ -814,6 +830,10 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
     ok: true,
     strict: false,
     lint: { ...emptySection(), filesScanned: 0 },
+    // `reached: true` with no findings is the clean-project shape. The other
+    // value means bundling never ran, which is "unknown" rather than "none",
+    // and no test here is about that case.
+    compile: { ...emptySection(), reached: true },
     runtime: emptySection(),
     layout: {
       ...emptySection(),
@@ -1524,5 +1544,95 @@ describe("dense motion-overlap re-sampling", () => {
     const { report } = await runScenario(driver);
     expect(driver.collectOverlap).toHaveBeenCalled();
     expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
+  });
+});
+
+describe("compile diagnostics section", () => {
+  afterEach(() => {
+    consumeCommandResult();
+    vi.restoreAllMocks();
+  });
+
+  it("surfaces bundler diagnostics as findings and marks the section reached", async () => {
+    const { report } = await runScenario(fakeDriver(), {}, { compile: [lutDiagnostic()] });
+
+    expect(report.compile.reached).toBe(true);
+    expect(report.compile.findings).toHaveLength(1);
+    expect(report.compile.findings[0]).toMatchObject({
+      code: "color_grading_lut_not_inlined",
+      severity: "warning",
+      sourceFile: "assets/luts/gone.cube",
+    });
+    expect(report.compile.warningCount).toBe(1);
+    expect(report.compile.errorCount).toBe(0);
+  });
+
+  it("keeps compile warnings out of the pass/fail gate, even under --strict", async () => {
+    const { report } = await runScenario(
+      fakeDriver(),
+      { strict: true },
+      { compile: [lutDiagnostic()] },
+    );
+
+    expect(report.ok).toBe(true);
+    expect(checkExitCode(report)).toBe(0);
+  });
+
+  it("reports an empty but reached compile section for a clean project", async () => {
+    const { report } = await runScenario(fakeDriver());
+
+    expect(report.compile.reached).toBe(true);
+    expect(report.compile.findings).toEqual([]);
+    expect(report.compile.ok).toBe(true);
+  });
+
+  it("marks compile not-reached when a lint error short-circuits before bundling", async () => {
+    const { report, browser } = await runScenario(
+      fakeDriver(),
+      {},
+      { lint: lintWith("error", "missing_composition_id", "boom"), compile: [lutDiagnostic()] },
+    );
+
+    expect(browser).not.toHaveBeenCalled();
+    expect(report.compile.reached).toBe(false);
+    expect(report.compile.findings).toEqual([]);
+  });
+
+  it("carries the compile section into the --json envelope", async () => {
+    const { report } = await runScenario(fakeDriver(), {}, { compile: [lutDiagnostic()] });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      withMeta: (value) => ({ ...value, _meta: { version: "test" } }),
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    const output = log.mock.calls[0]?.[0];
+    if (typeof output !== "string") throw new Error("expected JSON output");
+    const envelope = JSON.parse(output) as CheckReport;
+    expect(envelope.compile).toMatchObject({
+      ok: true,
+      reached: true,
+      warningCount: 1,
+      findings: [{ code: "color_grading_lut_not_inlined", severity: "warning" }],
+    });
+  });
+
+  it("prints the compile section in the human report", async () => {
+    const { report } = await runScenario(fakeDriver(), {}, { compile: [lutDiagnostic()] });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, { rawArgs: [] });
+
+    const printed = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+    expect(printed).toContain("Compile");
+    expect(printed).toContain("color_grading_lut_not_inlined");
   });
 });

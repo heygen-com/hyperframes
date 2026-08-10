@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
+import type { BundleDiagnostic } from "@hyperframes/core/compiler";
 import {
   AUDIT_SEEK_OPTIONS,
   DENSE_GEOMETRY_SEEK_OPTIONS,
@@ -150,7 +151,13 @@ export async function runBrowserCheck(
   runGrid: RunAuditGrid,
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
-  const html = await bundleWithLocalizedFonts(project.dir);
+  // Compile diagnostics are captured here rather than console.warn-ed, so they
+  // land in the check report. captureFindingCrops re-bundles the same project
+  // and deliberately does NOT collect them again (they would be duplicates).
+  const compileDiagnostics: BundleDiagnostic[] = [];
+  const html = await bundleWithLocalizedFonts(project.dir, undefined, (diagnostic) =>
+    compileDiagnostics.push(diagnostic),
+  );
   await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
   const server = await serveStaticProjectHtml(
     project.dir,
@@ -195,6 +202,7 @@ export async function runBrowserCheck(
       ...result,
       timings: { ...result.timings, launchSettleMs },
       runtimeFindings: drafts.map((draft) => runtimeFinding(draft, rootAnchor)),
+      compileDiagnostics,
     };
   } finally {
     await chromeBrowser?.close().catch(() => undefined);
