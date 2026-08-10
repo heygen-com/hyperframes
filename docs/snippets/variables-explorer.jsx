@@ -1524,12 +1524,11 @@ export const VariablesExplorer = ({
   // head before any of its scripts run. That is where the runtime reads render
   // overrides from, and doing it in the markup rather than after load is what
   // guarantees the composition never initialises with the wrong values first.
-  const initialSrc = `${previewSrc}?hfv=${encodeURIComponent(JSON.stringify(defaults))}`;
   const bootstrap = [
     "<!doctype html><html><head><meta charset='utf-8'>",
     "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}",
     "hyperframes-player{display:block;width:100%;height:100%}</style>",
-    `<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@${PLAYER_RANGE}/dist/hyperframes-player.global.js"><\/script>`,
+    `<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@${PLAYER_RANGE}/dist/hyperframes-player.global.js"></' + 'script>`,
     "</head><body><script>",
     "(function(){",
     `  var PAYLOAD = ${JSON.stringify(previewSrc)};`,
@@ -1579,7 +1578,7 @@ export const VariablesExplorer = ({
     "    mount(values, player.currentTime || 0);",
     "  });",
     "})();",
-    "<\/script></body></html>",
+    "</" + "script></body></html>",
   ].join("");
 
   useEffect(() => {
