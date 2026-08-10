@@ -112,6 +112,12 @@
       "import": "./src/audioFxCopy.ts",
       "types": "./src/audioFxCopy.ts"
     },
+    "./audio-fx-profiles": {
+      "bun": "./src/audioFxProfiles.ts",
+      "node": "./dist/audioFxProfiles.js",
+      "import": "./src/audioFxProfiles.ts",
+      "types": "./src/audioFxProfiles.ts"
+    },
     "./audio-fx-jobs": {
       "bun": "./src/audioFxJobs.ts",
       "node": "./dist/audioFxJobs.js",
@@ -425,6 +431,10 @@
       "./audio-fx-copy": {
         "import": "./dist/audioFxCopy.js",
         "types": "./dist/audioFxCopy.d.ts"
+      },
+      "./audio-fx-profiles": {
+        "import": "./dist/audioFxProfiles.js",
+        "types": "./dist/audioFxProfiles.d.ts"
       },
       "./audio-fx-jobs": {
         "import": "./dist/audioFxJobs.js",

@@ -16,11 +16,17 @@ import {
   getAudioFxDef,
   type HfAudioFxDef,
   type HfAudioFxNode,
+  type HfAudioFxParam,
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
+import {
+  applyAudioFxProfile,
+  audioFxProfileStrength,
+  getAudioFxProfile,
+} from "@hyperframes/core/audio-fx-profiles";
 import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
-import { FxParams } from "./propertyPanelFxControls.js";
+import { FxParams, FxParamRow } from "./propertyPanelFxControls.js";
 import { FxBandRuler } from "./propertyPanelFxBandRuler.js";
 import { FX_FAMILY_TYPE, fxFamilyOf, fxFamilyTint } from "./propertyPanelFxFamily.js";
 
@@ -40,11 +46,35 @@ import { FX_FAMILY_TYPE, fxFamilyOf, fxFamilyTint } from "./propertyPanelFxFamil
  */
 function primaryParamOf(def: HfAudioFxDef): string | null {
   const primary = EFFECT_COPY[def.id]?.primary;
-  // "strength" names no parameter, which is exactly what makes this work: the
-  // day `PROFILES` ships and a derived `strength` knob really is in the
-  // registry, this starts using it without being told.
-  if (!primary) return null;
+  // "strength" names no real parameter, and for the five effects that declare it
+  // that is the point: their one knob is derived, and `profileRow` below builds
+  // it. Anything else has to be a parameter the effect actually has.
+  if (!primary || primary === "strength") return null;
   return def.params.some((p) => p.key === primary) ? primary : null;
+}
+
+/**
+ * The derived knob, as a parameter the existing controls can render.
+ *
+ * A profile is not in the registry — it sets five real parameters and is none of
+ * them — so this fabricates the one row it needs rather than teaching `FxParams`
+ * about a second kind of control. 0..1 in hundredths, the same shape and the
+ * same feel as the carve's Strength.
+ */
+function profileParam(type: string): HfAudioFxParam | null {
+  const profile = getAudioFxProfile(type);
+  if (!profile) return null;
+  return {
+    kind: "number",
+    key: "strength",
+    label: profile.label,
+    unit: "",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.5,
+    hint: `Sets ${profile.derives.length} settings at once. Open Details to see where they land.`,
+  };
 }
 
 /**
@@ -292,6 +322,15 @@ export function FxNodeRow({
   const registryDef = getAudioFxDef(node.type);
   const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
   const primary = registryDef ? primaryParamOf(registryDef) : null;
+  /**
+   * The derived knob, for a module with no real parameter that can be its face.
+   *
+   * It behaves like the primary one everywhere below — one control on the open
+   * face, everything it sets behind Details — so the two are the same shape and
+   * only their source differs.
+   */
+  const profile = getAudioFxProfile(node.type);
+  const derived = useMemo(() => profileParam(node.type), [node.type]);
   /** The same def cut down to the one knob, so the open face reuses every wire. */
   const onlyPrimary = useMemo(
     () => (def && primary ? { ...def, params: def.params.filter((p) => p.key === primary) } : def),
@@ -301,6 +340,7 @@ export function FxNodeRow({
   // the row itself, so it stays with its effect across a reorder.
   const [details, setDetails] = useState(false);
   if (!registryDef || !def || !onlyPrimary) return null;
+  const oneKnob = primary !== null || derived !== null;
   const copy = EFFECT_COPY[node.type];
   const bypassed = node.enabled === false;
   const params = node.params ?? defaultAudioFxParams(node.type);
@@ -349,6 +389,33 @@ export function FxNodeRow({
               {copy.does}
             </p>
           ) : null}
+          {derived && !details ? (
+            <>
+              {/* Not routed through FxNodeParams: this knob is not in the
+                  registry, so it has no AudioParam behind it and nothing to
+                  automate. What automation there is belongs to the parameters it
+                  sets, under Details, where they can be aimed at individually. */}
+              <div className="hf-fx-params space-y-0.5 border-t border-panel-border-input px-1.5 py-1.5">
+                <FxParamRow
+                  param={derived}
+                  value={audioFxProfileStrength(node.type, params)}
+                  disabled={Boolean(disabled) || bypassed}
+                  onChange={(_k, v) =>
+                    onPreview(index, applyAudioFxProfile(node.type, Number(v), params))
+                  }
+                  onCommit={(_k, v) =>
+                    onUpdate(index, { params: applyAudioFxProfile(node.type, Number(v), params) })
+                  }
+                />
+              </div>
+              {profile ? (
+                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-4">
+                  <span className="truncate">{profile.ends.low}</span>
+                  <span className="truncate text-right">{profile.ends.high}</span>
+                </p>
+              ) : null}
+            </>
+          ) : null}
           {primary && !details ? (
             <>
               <FxNodeParams
@@ -382,7 +449,7 @@ export function FxNodeRow({
           ) : null}
           {/* The DSP name lives on the disclosure, so it is read at the moment
               the author asks what this really is — and never before. */}
-          {primary ? (
+          {oneKnob ? (
             <button
               type="button"
               className="hf-fx-node-details flex w-full items-center gap-1 border-t border-panel-border-input px-1.5 py-1 text-left font-mono text-[9px] uppercase tracking-wide text-panel-text-4 hover:text-panel-text-0"
@@ -397,7 +464,7 @@ export function FxNodeRow({
               Details — {registryDef.label}
             </p>
           )}
-          {details || !primary ? (
+          {details || !oneKnob ? (
             <FxNodeParams
               node={node}
               def={def}
