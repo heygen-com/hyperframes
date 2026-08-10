@@ -1081,6 +1081,15 @@ for (const [provider, type, expected] of [
         expected,
         `${provider} must reach the wire as ${expected}`,
       );
+      // The tier is derived from the registry and the auth method from the
+      // credential state; they must not become entangled. A non-heygen provider
+      // carries a tier and no auth method, whatever credentials exist locally.
+      if (!provider.startsWith("heygen."))
+        assert.equal(
+          event.properties.auth_method,
+          undefined,
+          "a non-heygen provider must carry a tier without an auth method",
+        );
     } finally {
       cleanup();
     }
