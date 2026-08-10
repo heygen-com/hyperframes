@@ -456,7 +456,9 @@ describe("AudioFxGroup dynamic carve", () => {
     act(() => byTextButton(host, "Even Out Levels")?.focus());
     // Straight to a neighbour, without ever leaving the shelf.
     act(() =>
-      byTextButton(host, "Reverb")?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })),
+      byTextButton(host, EFFECT_COPY.reverb?.title ?? "")?.dispatchEvent(
+        new MouseEvent("mouseover", { bubbles: true }),
+      ),
     );
     await settleDecode(release, decoded);
 

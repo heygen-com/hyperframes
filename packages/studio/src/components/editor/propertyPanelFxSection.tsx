@@ -24,6 +24,7 @@ import {
   removeAudioEq,
   setAudioEqBandGain,
 } from "@hyperframes/core/audio-fx-eq";
+import { EFFECT_COPY } from "@hyperframes/core/audio-fx-copy";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
@@ -484,7 +485,14 @@ export function FxSection({
                   key={d.id}
                   type="button"
                   className="hf-fx-add-item rounded-[3px] bg-panel-surface px-1.5 py-0.5 text-[10px] text-panel-text-1 hover:text-panel-text-0"
-                  title={d.description}
+                  // The menu that adds it has to call it what the rack will call
+                  // it, or the author picks "High-pass" and a module named
+                  // "Remove Rumble" appears. The registry's own description
+                  // stays as the tooltip beside the plain one: the mechanism is
+                  // taught here rather than withheld.
+                  title={
+                    EFFECT_COPY[d.id] ? `${EFFECT_COPY[d.id]?.does} (${d.label})` : d.description
+                  }
                   onClick={() => addEffect(d.id)}
                   // Cancels the levelling audition as well as starting its own.
                   // The shelf's leave handler only fires on the way OUT of the
@@ -498,7 +506,7 @@ export function FxSection({
                   }}
                   onFocus={() => audition((base) => withEffect(base, d.id))}
                 >
-                  {d.label}
+                  {EFFECT_COPY[d.id]?.title ?? d.label}
                 </button>
               ))}
             </div>

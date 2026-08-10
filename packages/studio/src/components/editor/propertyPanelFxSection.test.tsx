@@ -151,13 +151,16 @@ describe("FxSection chain", () => {
       e.textContent?.trim(),
     );
     expect(items).toHaveLength(HF_AUDIO_FX.length);
-    for (const def of HF_AUDIO_FX) expect(items).toContain(def.label);
+    // By the name the RACK will use, not the registry's — picking "High-pass"
+    // and getting a module called "Remove Rumble" is the inconsistency this
+    // whole layer exists to remove.
+    for (const def of HF_AUDIO_FX) expect(items).toContain(EFFECT_COPY[def.id]?.title);
   });
 
   it("adds an effect seeded with its declared defaults", () => {
     const { host, onChainChange } = mount();
     click(host.querySelector(".hf-fx-add"));
-    click(byText(host, ".hf-fx-add-item", "Compressor"));
+    click(byText(host, ".hf-fx-add-item", EFFECT_COPY.compressor?.title ?? ""));
     expect(onChainChange).toHaveBeenCalledTimes(1);
     const next = onChainChange.mock.calls[0]![0] as HfAudioFxChain;
     expect(next.nodes).toHaveLength(1);
@@ -391,7 +394,7 @@ describe("FxSection chain", () => {
     it("auditions an effect the add menu is offering", () => {
       const { host, onChainPreview, onChainChange } = mount({ chain: chainOf("peaking") });
       click(byText(host, "button", "Add effect"));
-      enter(byText(host, "button", "Reverb"));
+      enter(byText(host, "button", EFFECT_COPY.reverb?.title ?? ""));
 
       const heard = onChainPreview.mock.calls.at(-1)?.[0] as HfAudioFxChain;
       expect(heard.nodes.map((n) => n.type)).toEqual(["peaking", "reverb"]);
@@ -1046,7 +1049,7 @@ describe("automation in the panel", () => {
     const add = host.querySelector(".hf-fx-add") as HTMLButtonElement;
     act(() => add.click());
     const item = Array.from(host.querySelectorAll<HTMLButtonElement>(".hf-fx-add-item")).find(
-      (b) => b.textContent === "Low-pass",
+      (b) => b.textContent === EFFECT_COPY.lowpass?.title,
     )!;
     act(() => item.click());
     expect(onChainChange.mock.calls[0][0].nodes[0].id).toBe("n1");
