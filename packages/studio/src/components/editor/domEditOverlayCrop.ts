@@ -225,16 +225,83 @@ function readTransformAndSpin(element: HTMLElement): { transform: string; spin: 
   }
 }
 
+const IDENTITY = { a: 1, b: 0, c: 0, d: 1 };
+
+/** `outer` applied around `inner`, as an ancestor composes over a child. */
+function composeMatrices(
+  outer: { a: number; b: number; c: number; d: number },
+  inner: { a: number; b: number; c: number; d: number },
+): { a: number; b: number; c: number; d: number } {
+  return {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+  };
+}
+
+/** The `rotate` property's angle as a 2D matrix. */
+function spinMatrix(degrees: number): { a: number; b: number; c: number; d: number } {
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { a: cos, b: sin, c: -sin, d: cos };
+}
+
+/**
+ * The transform the element actually paints under: its own, composed with every
+ * ancestor's up to the composition root.
+ *
+ * Reading the element alone drew the crop outline at the wrong angle for
+ * anything nested — a text layer inside a rotated card carries its own spin,
+ * and the box has to be drawn at the sum of the two, which is what the user
+ * sees. Within each level, CSS applies the individual `rotate` property before
+ * `transform`, and an ancestor applies outside its child.
+ */
+/** One node's own contribution: its `rotate` property applied before its `transform`. */
+function ownPlanarMatrix(node: HTMLElement): { a: number; b: number; c: number; d: number } | null {
+  const read = readTransformAndSpin(node);
+  if (!read) return null;
+  const hasTransform = Boolean(read.transform) && read.transform !== "none";
+  const base = hasTransform ? parseMatrixComponents(read.transform) : IDENTITY;
+  if (!base) return null;
+  return read.spin === 0 ? base : composeMatrices(spinMatrix(read.spin), base);
+}
+
+/** Whether the matrix leaves the box exactly as it found it. */
+function isIdentity(m: { a: number; b: number; c: number; d: number }): boolean {
+  return (
+    Math.abs(m.a - 1) < PERSPECTIVE_EPSILON &&
+    Math.abs(m.b) < PERSPECTIVE_EPSILON &&
+    Math.abs(m.c) < PERSPECTIVE_EPSILON &&
+    Math.abs(m.d - 1) < PERSPECTIVE_EPSILON
+  );
+}
+
+/**
+ * The transform the element actually paints under: its own, composed with every
+ * ancestor's up to the composition root.
+ *
+ * Reading the element alone drew the crop outline at the wrong angle for
+ * anything nested — a text layer inside a rotated card carries its own spin,
+ * and the box has to be drawn at the combination of the two, which is what the
+ * user sees. An ancestor applies outside its child.
+ *
+ * Null when nothing up the chain transforms the element: the caller's
+ * axis-aligned rect already describes it, and that comes from real layout
+ * rather than the element's untransformed box.
+ */
 function readPlanarTransform(
   element: HTMLElement,
-): { a: number; b: number; c: number; d: number; spin: number } | null {
-  const read = readTransformAndSpin(element);
-  if (!read) return null;
-  const { transform, spin } = read;
-  const hasTransform = Boolean(transform) && transform !== "none";
-  if (!hasTransform) return spin === 0 ? null : { a: 1, b: 0, c: 0, d: 1, spin };
-  const parts = parseMatrixComponents(transform);
-  return parts ? { ...parts, spin } : null;
+): { a: number; b: number; c: number; d: number } | null {
+  let acc = IDENTITY;
+  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+    const own = ownPlanarMatrix(node);
+    if (!own) return null;
+    acc = composeMatrices(own, acc);
+    if (node.hasAttribute?.("data-composition-id")) break;
+  }
+  return isIdentity(acc) ? null : acc;
 }
 
 export function readElementCropFrame(
@@ -254,13 +321,13 @@ export function readElementCropFrame(
   };
   const planar = readPlanarTransform(element);
   if (!planar) return aabb;
-  const { a, b, c, d, spin } = planar;
+  const { a, b, c, d } = planar;
   const elScaleX = Math.hypot(a, b);
   const det = a * d - b * c;
   // |det| : a flipped element (negative determinant) still has a real size.
   const elScaleY = elScaleX !== 0 ? Math.abs(det) / elScaleX : 1;
   if (elScaleX <= 0 || elScaleY <= 0) return aabb;
-  const angleDeg = (Math.atan2(b, a) * 180) / Math.PI + spin;
+  const angleDeg = (Math.atan2(b, a) * 180) / Math.PI;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
   const width = element.offsetWidth * scaleX;

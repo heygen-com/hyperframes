@@ -69,10 +69,15 @@ describe("DomEditSelectionChrome crop composition", () => {
       offsetHeight: { value: 100 },
     });
     document.body.append(element);
-    vi.spyOn(window, "getComputedStyle").mockReturnValue({
-      clipPath: "inset(10px)",
-      transform: "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)",
-    } as CSSStyleDeclaration);
+    // Per element, not blanket: the crop frame composes the element's transform
+    // with its ancestors', so answering "rotated 30deg" for every node in the
+    // document would have the frame read the same turn several times over.
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      ((node: Element) =>
+        (node === element
+          ? { clipPath: "inset(10px)", transform: "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)" }
+          : { clipPath: "none", transform: "none" }) as CSSStyleDeclaration) as never,
+    );
     const selection = {
       element,
       id: "clip",

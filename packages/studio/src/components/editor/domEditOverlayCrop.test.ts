@@ -213,14 +213,13 @@ describe("readElementCropFrame", () => {
    * The identity here is a 2D transform written the long way.
    */
   it("reads a planar matrix3d rather than giving up on it", () => {
+    // scale(1.5, 2) written the long way — planar, and not the identity.
     const frame = readElementCropFrame(
-      fakeEl("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"),
+      fakeEl("matrix3d(1.5,0,0,0,0,2,0,0,0,0,1,0,0,0,0,1)"),
       overlayRect,
     );
-    expect(frame.angleDeg).toBe(0);
-    // The element's own box, centred on the overlay rect, not the rect itself.
-    expect(frame.width).toBeCloseTo(200, 6);
-    expect(frame.height).toBeCloseTo(100, 6);
+    expect(frame.scaleX).toBeCloseTo(1.5, 3);
+    expect(frame.scaleY).toBeCloseTo(2, 3);
   });
 
   it("reads a 2D rotation written as matrix3d", () => {
