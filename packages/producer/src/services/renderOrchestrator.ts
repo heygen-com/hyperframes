@@ -80,6 +80,7 @@ import {
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
   applyConcreteGpuScreenshotClamp,
+  explainDrawElementDisabled,
   scaleProtocolTimeoutForComposition,
   classifyCaptureFailure,
   cloneCaptureWarning,
@@ -805,6 +806,34 @@ export function buildMissingFrameRetryBatches(
   }
 
   return batches;
+}
+
+/**
+ * The capture mode this render will REPORT, pre-capture.
+ *
+ * BeginFrame is Linux-only. Both real entry points enforce that —
+ * `frameCapture`'s preMode (`headlessShell && isLinux && !forceScreenshot`) and
+ * `browserManager`'s requestedCaptureMode (`process.platform === "linux"`) —
+ * but the observability field derived the mode from `forceScreenshot` alone,
+ * with no platform test, and nothing corrects it afterwards (it is assigned
+ * exactly once). Every non-Linux render that did not force screenshot
+ * therefore reported `beginframe` for a capture that was really screenshot:
+ * 30,625 Windows renders over 14 days, a fifth of the fast-capture dashboard's
+ * capture-mode data.
+ *
+ * `config.ts` documents this same failure for "darwin + software" and adds a
+ * `forceScreenshot` clamp as defence-in-depth — but that clamp only fires on
+ * software GPU, so Windows-on-hardware slipped straight past it (41,102 of the
+ * mislabelled renders). Mirror the real gates' platform test instead of
+ * relying on a clamp that cannot cover the hardware case.
+ *
+ * Pure; exported for tests.
+ */
+export function resolveObservedCaptureMode(
+  forceScreenshot: boolean,
+  platform: NodeJS.Platform = process.platform,
+): "screenshot" | "beginframe" {
+  return forceScreenshot || platform !== "linux" ? "screenshot" : "beginframe";
 }
 
 export function getNextRetryWorkerCount(currentWorkers: number): number {
@@ -2017,7 +2046,7 @@ async function executeRenderPipeline(input: {
   const chunkedEncodeSize = cfg.chunkSizeFrames;
   const captureObservability: RenderCaptureObservability = {
     forceScreenshot: Boolean(cfg.forceScreenshot),
-    captureMode: cfg.forceScreenshot ? "screenshot" : "beginframe",
+    captureMode: resolveObservedCaptureMode(Boolean(cfg.forceScreenshot)),
     browserGpuMode: cfg.browserGpuMode,
     protocolTimeoutMs: cfg.protocolTimeout,
     pageNavigationTimeoutMs: cfg.pageNavigationTimeout,
@@ -2187,7 +2216,21 @@ async function executeRenderPipeline(input: {
     // drawElement release telemetry: why default DE disengaged (if it did),
     // whether self-verify fell back, and the drain-side counters.
     const deCompileGate = compileResult.deCompileGate;
-    let deClampReason: string | undefined;
+    // Seed with the CONFIG-TIME refusal, if there was one. The clamp further
+    // down only runs `if (cfg.useDrawElement && ...)`, so a render that never
+    // became a drawElement candidate at all could never acquire a reason —
+    // it reached telemetry with every DE field empty and landed in the
+    // dashboard's `other` bucket (56,507 renders / 14d, second-largest bar on
+    // "Why not drawElement", explaining nothing). Re-derived from the same
+    // inputs `resolveConfig` used, so it cannot disagree with the decision.
+    // Later clamps overwrite this: a more specific reason always wins.
+    let deClampReason: string | undefined = cfg.useDrawElement
+      ? undefined
+      : explainDrawElementDisabled({
+          platform: process.platform,
+          browserGpuMode: cfg.browserGpuMode,
+          workerEncode: cfg.enableDrawElementWorkerEncode,
+        });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.
     let deWorkerInversion: "inverted" | "reverted" | undefined;

@@ -53,6 +53,7 @@ export {
   scaleProtocolTimeoutForComposition,
   shouldClampToScreenshotForConcreteGpu,
   applyConcreteGpuScreenshotClamp,
+  explainDrawElementDisabled,
   resolveExtractCacheDir,
   defaultExtractCacheDir,
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,

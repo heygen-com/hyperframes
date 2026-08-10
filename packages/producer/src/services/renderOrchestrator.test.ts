@@ -44,6 +44,7 @@ import {
   shouldPreferSingleWorkerDrawElement,
   shouldStreamParallelCapture,
   shouldUseStreamingEncode,
+  resolveObservedCaptureMode,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -2658,5 +2659,24 @@ describe("closeOrphanedProbeForRetry (probe cleanup before verify-triggered retr
 
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect((log.warn.mock.calls[0][1] as { error: string }).error).toBe("string-only rejection");
+  });
+});
+
+// BeginFrame is Linux-only in both real entry points, but the observability
+// field derived its mode from `forceScreenshot` alone. That mislabelled 30,625
+// Windows renders as `beginframe` over 14 days — a fifth of the fast-capture
+// dashboard's capture-mode data — for captures that were really screenshot.
+describe("resolveObservedCaptureMode", () => {
+  it("only ever reports beginframe on linux", () => {
+    expect(resolveObservedCaptureMode(false, "linux")).toBe("beginframe");
+    expect(resolveObservedCaptureMode(false, "win32")).toBe("screenshot");
+    expect(resolveObservedCaptureMode(false, "darwin")).toBe("screenshot");
+  });
+
+  // The case the old code got right, kept so a future simplification back to
+  // a bare boolean fails here rather than in production telemetry.
+  it("reports screenshot whenever screenshot was forced, linux included", () => {
+    expect(resolveObservedCaptureMode(true, "linux")).toBe("screenshot");
+    expect(resolveObservedCaptureMode(true, "win32")).toBe("screenshot");
   });
 });
