@@ -1609,7 +1609,12 @@ export const VariablesExplorer = ({
     // Comparing first keeps it to an actual change rather than touching the
     // history API on each one.
     const next = url.toString();
-    if (next !== window.location.href) window.history.replaceState(null, "", next);
+    if (next !== window.location.href) {
+      window.history.replaceState(null, "", next);
+      // `replaceState` fires no event, and the install command on the same page
+      // needs to follow these values.
+      window.dispatchEvent(new CustomEvent("hf-vars-changed"));
+    }
   }, [values, defaults, urlKey]);
   // What the SVG import last had to say, per variable. Held here because
   // `control` is a function rather than a component and cannot hold it itself.

@@ -1030,7 +1030,7 @@ function generateItemMdx(
   lines.push(
     "## Install",
     "",
-    `<InstallCommand command="${installCmd}" />`,
+    `<InstallCommand command="${installCmd}" item="${manifest.name}" />`,
     "",
     installOutcome(manifest, primaryTarget),
     "",

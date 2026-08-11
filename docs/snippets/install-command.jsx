@@ -22,20 +22,64 @@
  * local `mint dev` preview these pages are written against. The textarea path
  * below is the fallback, not decoration.
  */
-export const InstallCommand = ({ command }) => {
+export const InstallCommand = ({ command, item }) => {
   const [copied, setCopied] = React.useState(false);
+
+  /**
+   * The values a reader tuned, read from the same query string the variables
+   * panel writes.
+   *
+   * The URL is the shared state rather than a prop, because this line and the
+   * panel are separate components mounted by MDX with no parent between them.
+   * It also means a shared link and this command agree without either knowing
+   * the other exists.
+   *
+   * Read after mount: the first render happens on the server, where there is
+   * no query string to read.
+   */
+  const [tuned, setTuned] = React.useState("");
+
+  React.useEffect(() => {
+    if (!item) return;
+
+    const read = () => {
+      try {
+        const raw = new URLSearchParams(window.location.search).get(`vars-${item}`);
+        if (!raw) return setTuned("");
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return setTuned("");
+        if (Object.keys(parsed).length === 0) return setTuned("");
+        setTuned(` --vars '${JSON.stringify(parsed)}'`);
+      } catch {
+        // A hand-edited link should leave the plain command, not break it.
+        setTuned("");
+      }
+    };
+
+    read();
+    // `replaceState` fires nothing, so the panel says so itself; `popstate`
+    // covers the back button.
+    window.addEventListener("hf-vars-changed", read);
+    window.addEventListener("popstate", read);
+    return () => {
+      window.removeEventListener("hf-vars-changed", read);
+      window.removeEventListener("popstate", read);
+    };
+  }, [item]);
+
+  const fullCommand = `${command}${tuned}`;
 
   const copy = async () => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(command);
+        await navigator.clipboard.writeText(fullCommand);
       } else {
         // The scratch textarea has to take focus to be selected, and removing
         // it drops focus on <body> — so a reader who copied with the keyboard
         // would Tab from the top of the page again. Hand focus back.
         const previous = document.activeElement;
         const scratch = document.createElement("textarea");
-        scratch.value = command;
+        scratch.value = fullCommand;
         scratch.setAttribute("readonly", "");
         scratch.style.position = "fixed";
         scratch.style.opacity = "0";
@@ -56,7 +100,7 @@ export const InstallCommand = ({ command }) => {
   return (
     <div className="hf-install-command not-prose my-4 flex items-stretch overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
       <code className="flex-1 overflow-x-auto whitespace-nowrap border-r border-zinc-200 px-4 py-3 font-mono text-sm text-zinc-800 dark:border-zinc-800 dark:text-zinc-100">
-        {command}
+        {fullCommand}
       </code>
       <button
         type="button"
