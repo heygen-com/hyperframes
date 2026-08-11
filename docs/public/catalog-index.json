@@ -1,5 +1,21 @@
 [
   {
+    "name": "ai-chat-reveal",
+    "type": "block",
+    "title": "AI Chat Reveal",
+    "description": "A question is typed on a rising keyboard, sent, and answered by an AI that streams its reply word by word on a measured token rhythm - thinking dot, uneven bursts, bulleted list - before the app cuts to a branded closing card",
+    "tags": [
+      "video-primitive",
+      "mock-ui",
+      "ai",
+      "chat",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/ai-chat-reveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ai-chat-reveal.png"
+  },
+  {
     "name": "ai-generation-canvas",
     "type": "component",
     "title": "AI Generation Canvas",
@@ -172,6 +188,20 @@
     ],
     "href": "/catalog/components/badge-pop",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge-pop.png"
+  },
+  {
+    "name": "banner-push-in",
+    "type": "component",
+    "title": "Banner Push-In",
+    "description": "A notification banner fades in and rises into place while every banner already on screen slides up one pitch in lockstep, so arrivals stack instead of overlapping",
+    "tags": [
+      "video-primitive",
+      "notification",
+      "overlay",
+      "mock-ui"
+    ],
+    "href": "/catalog/components/banner-push-in",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/banner-push-in.png"
   },
   {
     "name": "bar-chart-race",
@@ -2240,6 +2270,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-by-line-slide.png"
   },
   {
+    "name": "line-reveal-list",
+    "type": "component",
+    "title": "Line Reveal List",
+    "description": "List lines land one after another on a measured writing cadence that slows as the thought gets heavier, and the page makes room with the measured scroll-settle curve instead of a linear glide",
+    "tags": [
+      "video-primitive",
+      "text-effect",
+      "list",
+      "checklist"
+    ],
+    "href": "/catalog/components/line-reveal-list",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-reveal-list.png"
+  },
+  {
     "name": "line-swap",
     "type": "component",
     "title": "Line Swap",
@@ -2658,6 +2702,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mesh-gradient-bg.png"
   },
   {
+    "name": "message-thread-reveal",
+    "type": "block",
+    "title": "Message Thread Reveal",
+    "description": "A full text conversation plays out on a phone - bubbles popping in, typing indicators, a shared link card, emoji, delivered receipts - with the whole thread scrolling up beat by beat until a closing card lands. The complete chat ad-template, measured message by message",
+    "tags": [
+      "video-primitive",
+      "mock-ui",
+      "chat",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/message-thread-reveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/message-thread-reveal.png"
+  },
+  {
     "name": "micro-transitions",
     "type": "component",
     "title": "Micro Transitions",
@@ -2937,6 +2996,37 @@
     ],
     "href": "/catalog/blocks/north-korea-locked-down",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/north-korea-locked-down.png"
+  },
+  {
+    "name": "notes-reveal",
+    "type": "block",
+    "title": "Notes Reveal",
+    "description": "A personal note is typed character by character in a notes app - caret riding every letter, the page scrolling up on measured settle curves as each line lands - then cuts to a hand-lettered paper card with a marker headline and a ticked checklist",
+    "tags": [
+      "video-primitive",
+      "mock-ui",
+      "notes",
+      "typing",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/notes-reveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/notes-reveal.png"
+  },
+  {
+    "name": "notification-cascade",
+    "type": "block",
+    "title": "Notification Cascade",
+    "description": "Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card",
+    "tags": [
+      "video-primitive",
+      "mock-ui",
+      "notification",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/notification-cascade",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/notification-cascade.png"
   },
   {
     "name": "notification-pileup",
@@ -3617,6 +3707,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/settings-toggle-flow.png"
   },
   {
+    "name": "share-sheet-carousel",
+    "type": "block",
+    "title": "Share-Sheet Carousel",
+    "description": "A share sheet springs up from the bottom of the phone and cycles previews inside its card on a fast cut rhythm while the blurred ground swaps behind it, ending on an accept tap",
+    "tags": [
+      "video-primitive",
+      "mock-ui",
+      "share-sheet",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/share-sheet-carousel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/share-sheet-carousel.png"
+  },
+  {
     "name": "shared-axis-y",
     "type": "component",
     "title": "Shared Axis Y",
@@ -3641,6 +3746,21 @@
     ],
     "href": "/catalog/components/shared-axis-z",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-z.png"
+  },
+  {
+    "name": "sheet-spring-up",
+    "type": "component",
+    "title": "Sheet Spring-Up",
+    "description": "A bottom sheet rushes up from below the frame on a real spring sampled frame by frame from reference footage, overshooting its resting place and settling back without an approximated ease",
+    "tags": [
+      "video-primitive",
+      "sheet",
+      "spring",
+      "mock-ui",
+      "overlay"
+    ],
+    "href": "/catalog/components/sheet-spring-up",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sheet-spring-up.png"
   },
   {
     "name": "shimmer-sweep",
@@ -4019,6 +4139,20 @@
     ],
     "href": "/catalog/components/store-badge-lockup",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/store-badge-lockup.png"
+  },
+  {
+    "name": "streaming-text",
+    "type": "component",
+    "title": "Streaming Text",
+    "description": "Words arrive the way an AI answer streams - in uneven bursts on a measured token rhythm, each word landing grey and inking to full colour - rather than the even tick of a typewriter",
+    "tags": [
+      "video-primitive",
+      "text-effect",
+      "ai",
+      "chat"
+    ],
+    "href": "/catalog/components/streaming-text",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/streaming-text.png"
   },
   {
     "name": "strikethrough-replace",
@@ -4658,6 +4792,20 @@
     ],
     "href": "/catalog/components/typewriter",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/typewriter.png"
+  },
+  {
+    "name": "typing-indicator",
+    "type": "component",
+    "title": "Typing Indicator",
+    "description": "The three-dot chat bubble that says someone is writing: it pops in at the thread's edge exactly as messaging apps do, holds while the reply is coming, and vanishes when the message lands",
+    "tags": [
+      "video-primitive",
+      "chat",
+      "mock-ui",
+      "overlay"
+    ],
+    "href": "/catalog/components/typing-indicator",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/typing-indicator.png"
   },
   {
     "name": "ui-3d-reveal",

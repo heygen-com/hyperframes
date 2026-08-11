@@ -574,24 +574,33 @@
               {
                 "group": "Motion Primitives",
                 "pages": [
+                  "catalog/blocks/ai-chat-reveal",
                   "catalog/components/arc-motion-path",
                   "catalog/components/avatar-group-hover",
                   "catalog/components/badge-pop",
+                  "catalog/components/banner-push-in",
                   "catalog/components/blur-in",
                   "catalog/components/card-resize",
                   "catalog/components/chromatic-aberration-wipe",
                   "catalog/components/dynamic-grid",
                   "catalog/components/icon-swap",
+                  "catalog/components/line-reveal-list",
                   "catalog/blocks/lt-neon-border",
                   "catalog/components/menu-morph",
+                  "catalog/blocks/message-thread-reveal",
+                  "catalog/blocks/notes-reveal",
+                  "catalog/blocks/notification-cascade",
                   "catalog/components/number-pop-in",
                   "catalog/components/number-wheel",
                   "catalog/components/page-slide",
                   "catalog/components/separator",
+                  "catalog/blocks/share-sheet-carousel",
+                  "catalog/components/sheet-spring-up",
                   "catalog/components/simulated-cursor",
                   "catalog/components/skeleton-reveal",
                   "catalog/components/slot-machine-roll",
                   "catalog/components/staggered-fade-up",
+                  "catalog/components/streaming-text",
                   "catalog/components/success-check",
                   "catalog/components/svg-line-draw-loader",
                   "catalog/components/text-stagger",
@@ -599,7 +608,8 @@
                   "catalog/components/three-orbiting-cards",
                   "catalog/components/tilt-card",
                   "catalog/components/top-down-letters",
-                  "catalog/components/typewriter"
+                  "catalog/components/typewriter",
+                  "catalog/components/typing-indicator"
                 ]
               },
               {
