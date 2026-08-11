@@ -573,6 +573,19 @@ describe("applyInlineStyle keeps what the design panel tracks", () => {
     expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
     expect(host.innerHTML).toContain('data-hf-text-key="child:1"');
   });
+
+  it("cannot merge identities through delimiter-bearing attribute values", () => {
+    const host = mount(
+      '<span data-hf-text-key="a&amp;data-hf-text-key=b">ab</span>' +
+        '<span data-hf-text-key="b">cd</span>',
+    );
+
+    applyInlineStyle(rangeOver(host, 0, 4), { color: "red" });
+
+    expect(host.querySelectorAll("span")).toHaveLength(2);
+    expect(host.querySelectorAll('[data-hf-text-key="b"]')).toHaveLength(1);
+    expect(host.innerHTML).not.toContain("a&amp;");
+  });
 });
 
 /**
