@@ -18,7 +18,7 @@
 >
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=750, height=1624" />
+    <meta name="viewport" content="width=1080, height=1920" />
     <title>AI Chat Reveal</title>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
@@ -29,25 +29,38 @@
       }
       html,
       body {
-        width: 750px;
-        height: 1624px;
+        width: 1080px;
+        height: 1920px;
         overflow: hidden;
         background: #000;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
       }
-      /* 750x1624 is the reference device capture, kept native so the measured
-         keyboard geometry stays pixel-true; scale the block when embedding */
+      /* The measured 750x1624 device UI is scaled uniformly into a standard
+         1080x1920 portrait canvas so its keyboard geometry stays pixel-true. */
       #acr-root {
         position: relative;
-        width: 750px;
-        height: 1624px;
+        width: 1080px;
+        height: 1920px;
         overflow: hidden;
       }
       .clip {
         position: absolute;
         inset: 0;
+        overflow: hidden;
+      }
+      #acr-chat {
+        background: #fdfdfd;
+      }
+      .acr-stage {
+        position: absolute;
+        left: 96.6502px;
+        top: 0;
+        width: 750px;
+        height: 1624px;
+        transform: scale(1.18226601);
+        transform-origin: top left;
       }
       #acr-chat-bg {
         position: absolute;
@@ -443,227 +456,229 @@
       id="acr-root"
       data-composition-id="ai-chat-reveal"
       data-start="0"
-      data-width="750"
-      data-height="1624"
+      data-width="1080"
+      data-height="1920"
       data-duration="19.3333"
     >
       <section id="acr-chat" class="clip" data-start="0" data-duration="16.9" data-track-index="1">
-        <div id="acr-chat-bg"></div>
+        <div class="acr-stage">
+          <div id="acr-chat-bg"></div>
 
-        <div id="acr-statusbar">
-          <div id="acr-clock">11:42</div>
-          <div id="acr-sicons">
-            <svg width="30" height="20" viewBox="0 0 20 12" fill="#0d0d0d">
-              <rect x="0" y="7" width="3" height="4" rx="1" />
-              <rect x="5" y="5" width="3" height="6" rx="1" />
-              <rect x="10" y="2.6" width="3" height="8.4" rx="1" />
-              <rect x="15" y="0.5" width="3" height="10.5" rx="1" /></svg
-            ><svg
-              width="30"
-              height="21"
-              viewBox="0 0 22 15"
-              fill="none"
-              stroke="#0d0d0d"
-              stroke-width="2.2"
-              stroke-linecap="round"
-            >
-              <path d="M2 5 C7 -0.5 15 -0.5 20 5" fill="none" />
-              <path d="M5.5 8.6 C9 5 13 5 16.5 8.6" />
-              <path d="M9.2 12 C10.4 11 11.6 11 12.8 12" /></svg
-            ><svg width="46" height="22" viewBox="0 0 30 14" fill="none">
-              <rect
-                x="0.8"
-                y="0.8"
-                width="25"
-                height="12.4"
-                rx="3.6"
+          <div id="acr-statusbar">
+            <div id="acr-clock">11:42</div>
+            <div id="acr-sicons">
+              <svg width="30" height="20" viewBox="0 0 20 12" fill="#0d0d0d">
+                <rect x="0" y="7" width="3" height="4" rx="1" />
+                <rect x="5" y="5" width="3" height="6" rx="1" />
+                <rect x="10" y="2.6" width="3" height="8.4" rx="1" />
+                <rect x="15" y="0.5" width="3" height="10.5" rx="1" /></svg
+              ><svg
+                width="30"
+                height="21"
+                viewBox="0 0 22 15"
+                fill="none"
                 stroke="#0d0d0d"
-                stroke-opacity="0.32"
-                stroke-width="1.2"
-              />
-              <rect x="2.4" y="2.4" width="22.4" height="9.2" rx="2.4" fill="#0d0d0d" />
-              <path d="M28 4.6 v4.8 a2.4 2.4 0 0 0 0 -4.8" fill="#0d0d0d" fill-opacity="0.45" />
-            </svg>
+                stroke-width="2.2"
+                stroke-linecap="round"
+              >
+                <path d="M2 5 C7 -0.5 15 -0.5 20 5" fill="none" />
+                <path d="M5.5 8.6 C9 5 13 5 16.5 8.6" />
+                <path d="M9.2 12 C10.4 11 11.6 11 12.8 12" /></svg
+              ><svg width="46" height="22" viewBox="0 0 30 14" fill="none">
+                <rect
+                  x="0.8"
+                  y="0.8"
+                  width="25"
+                  height="12.4"
+                  rx="3.6"
+                  stroke="#0d0d0d"
+                  stroke-opacity="0.32"
+                  stroke-width="1.2"
+                />
+                <rect x="2.4" y="2.4" width="22.4" height="9.2" rx="2.4" fill="#0d0d0d" />
+                <path d="M28 4.6 v4.8 a2.4 2.4 0 0 0 0 -4.8" fill="#0d0d0d" fill-opacity="0.45" />
+              </svg>
+            </div>
           </div>
-        </div>
 
-        <div id="acr-header">
-          <div id="acr-hleft">
-            <svg
-              width="29"
-              height="29"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#0d0d0d"
-              stroke-width="1.9"
-              stroke-linecap="round"
-            >
-              <path d="M4 8 H20 M4 15 H12" />
-            </svg>
-          </div>
-          <div id="acr-htitle">Assistant</div>
-          <div class="acr-hicons" id="acr-hicons-a">
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 26 24"
-              fill="none"
-              stroke="#0d0d0d"
-              stroke-width="1.7"
-              stroke-linecap="round"
-            >
-              <circle cx="10" cy="8" r="4" />
-              <path d="M3 21 C3 16 6.5 14 10 14 C13.5 14 17 16 17 21" />
-              <path d="M20 6 V12 M17 9 H23" /></svg
-            ><svg
-              width="26"
-              height="26"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#0d0d0d"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-dasharray="2.4 3.4"
-            >
-              <circle cx="12" cy="12" r="9" />
-            </svg>
-          </div>
-          <div class="acr-hicons" id="acr-hicons-b">
-            <svg
-              width="23"
-              height="23"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#0d0d0d"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M4 20 L5 15.5 L16.5 4 C17.6 2.9 19.4 2.9 20.5 4 C21.6 5.1 21.6 6.9 20.5 8 L9 19.5 L4 20 Z"
-              /></svg
-            ><svg width="34" height="34" viewBox="0 0 24 24" fill="#0d0d0d">
-              <circle cx="5" cy="12" r="1.7" />
-              <circle cx="12" cy="12" r="1.7" />
-              <circle cx="19" cy="12" r="1.7" />
-            </svg>
-          </div>
-        </div>
-
-        <div id="acr-bubble">How do I turn my HTML into real video?</div>
-
-        <div id="acr-dot"></div>
-        <div id="acr-answer" data-layout-allow-occlusion></div>
-
-        <div id="acr-composer">
-          <div id="acr-pill">
-            <div id="acr-plusi">
+          <div id="acr-header">
+            <div id="acr-hleft">
               <svg
-                width="22"
-                height="22"
+                width="29"
+                height="29"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="#0d0d0d"
                 stroke-width="1.9"
                 stroke-linecap="round"
               >
-                <path d="M12 5 V19 M5 12 H19" />
+                <path d="M4 8 H20 M4 15 H12" />
               </svg>
             </div>
-            <div id="acr-ph" data-layout-allow-overlap data-layout-allow-occlusion>
-              Ask anything
-            </div>
-            <div id="acr-ctextwrap"><span id="acr-ctext"></span><span id="acr-caret"></span></div>
-            <div id="acr-cmic">
+            <div id="acr-htitle">Assistant</div>
+            <div class="acr-hicons" id="acr-hicons-a">
               <svg
-                width="15"
-                height="22"
-                viewBox="0 0 24 34"
+                width="28"
+                height="28"
+                viewBox="0 0 26 24"
                 fill="none"
                 stroke="#0d0d0d"
-                stroke-width="2"
+                stroke-width="1.7"
                 stroke-linecap="round"
               >
-                <rect x="8" y="2" width="8" height="16" rx="4" fill="#0d0d0d" stroke="none" />
-                <path d="M4 14 a8 8 0 0 0 16 0 M12 22 V28 M7 31 H17" stroke-width="2.2" />
-              </svg>
-            </div>
-            <div class="acr-cbtn" id="acr-btn-send-grey">
-              <svg
-                width="26"
-                height="26"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#b6b6b6"
-                stroke-width="2.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M12 19 V6 M6.5 11 L12 5.5 L17.5 11" />
-              </svg>
-            </div>
-            <div class="acr-cbtn" id="acr-btn-send-black">
-              <svg
-                width="26"
-                height="26"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#fff"
-                stroke-width="2.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M12 19 V6 M6.5 11 L12 5.5 L17.5 11" />
-              </svg>
-            </div>
-            <div class="acr-cbtn" id="acr-btn-stop"><div class="acr-sq"></div></div>
-          </div>
-        </div>
-
-        <div id="acr-keyboard">
-          <div id="acr-suggest">
-            <div class="acr-sug">How</div>
-            <div class="acr-sug">Can</div>
-            <div class="acr-sug">My</div>
-          </div>
-          <div id="acr-keys"></div>
-          <div class="acr-kbstrip">
-            <span class="acr-kglobe"
+                <circle cx="10" cy="8" r="4" />
+                <path d="M3 21 C3 16 6.5 14 10 14 C13.5 14 17 16 17 21" />
+                <path d="M20 6 V12 M17 9 H23" /></svg
               ><svg
-                width="30"
-                height="30"
+                width="26"
+                height="26"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#000"
-                stroke-width="2.6"
+                stroke="#0d0d0d"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-dasharray="2.4 3.4"
               >
-                <circle cx="12" cy="12" r="9.6" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            </div>
+            <div class="acr-hicons" id="acr-hicons-b">
+              <svg
+                width="23"
+                height="23"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#0d0d0d"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path
-                  d="M2.4 12 H21.6 M12 2.4 C7.8 6.8 7.8 17.2 12 21.6 C16.2 17.2 16.2 6.8 12 2.4 M4 7 H20 M4 17 H20"
-                  stroke-width="2.2"
-                /></svg></span
-            ><span class="acr-kmic"
-              ><svg
-                width="16"
-                height="25"
-                viewBox="0 0 24 34"
-                preserveAspectRatio="none"
-                fill="none"
-                stroke="#0d0d0d"
-                stroke-width="3.9"
-                stroke-linecap="round"
-              >
-                <rect
-                  x="5.5"
-                  y="1"
-                  width="13"
-                  height="17.5"
-                  rx="6.5"
-                  fill="#0d0d0d"
-                  stroke="none"
-                />
-                <path d="M2.5 14 a9.5 9.5 0 0 0 19 0 M12 23.5 V28.5 M5.5 32 H18.5" /></svg
-            ></span>
+                  d="M4 20 L5 15.5 L16.5 4 C17.6 2.9 19.4 2.9 20.5 4 C21.6 5.1 21.6 6.9 20.5 8 L9 19.5 L4 20 Z"
+                /></svg
+              ><svg width="34" height="34" viewBox="0 0 24 24" fill="#0d0d0d">
+                <circle cx="5" cy="12" r="1.7" />
+                <circle cx="12" cy="12" r="1.7" />
+                <circle cx="19" cy="12" r="1.7" />
+              </svg>
+            </div>
+          </div>
+
+          <div id="acr-bubble">How do I turn my HTML into real video?</div>
+
+          <div id="acr-dot"></div>
+          <div id="acr-answer" data-layout-allow-occlusion></div>
+
+          <div id="acr-composer">
+            <div id="acr-pill">
+              <div id="acr-plusi">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#0d0d0d"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                >
+                  <path d="M12 5 V19 M5 12 H19" />
+                </svg>
+              </div>
+              <div id="acr-ph" data-layout-allow-overlap data-layout-allow-occlusion>
+                Ask anything
+              </div>
+              <div id="acr-ctextwrap"><span id="acr-ctext"></span><span id="acr-caret"></span></div>
+              <div id="acr-cmic">
+                <svg
+                  width="15"
+                  height="22"
+                  viewBox="0 0 24 34"
+                  fill="none"
+                  stroke="#0d0d0d"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <rect x="8" y="2" width="8" height="16" rx="4" fill="#0d0d0d" stroke="none" />
+                  <path d="M4 14 a8 8 0 0 0 16 0 M12 22 V28 M7 31 H17" stroke-width="2.2" />
+                </svg>
+              </div>
+              <div class="acr-cbtn" id="acr-btn-send-grey">
+                <svg
+                  width="26"
+                  height="26"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#b6b6b6"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 19 V6 M6.5 11 L12 5.5 L17.5 11" />
+                </svg>
+              </div>
+              <div class="acr-cbtn" id="acr-btn-send-black">
+                <svg
+                  width="26"
+                  height="26"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 19 V6 M6.5 11 L12 5.5 L17.5 11" />
+                </svg>
+              </div>
+              <div class="acr-cbtn" id="acr-btn-stop"><div class="acr-sq"></div></div>
+            </div>
+          </div>
+
+          <div id="acr-keyboard">
+            <div id="acr-suggest">
+              <div class="acr-sug">How</div>
+              <div class="acr-sug">Can</div>
+              <div class="acr-sug">My</div>
+            </div>
+            <div id="acr-keys"></div>
+            <div class="acr-kbstrip">
+              <span class="acr-kglobe"
+                ><svg
+                  width="30"
+                  height="30"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#000"
+                  stroke-width="2.6"
+                >
+                  <circle cx="12" cy="12" r="9.6" />
+                  <path
+                    d="M2.4 12 H21.6 M12 2.4 C7.8 6.8 7.8 17.2 12 21.6 C16.2 17.2 16.2 6.8 12 2.4 M4 7 H20 M4 17 H20"
+                    stroke-width="2.2"
+                  /></svg></span
+              ><span class="acr-kmic"
+                ><svg
+                  width="16"
+                  height="25"
+                  viewBox="0 0 24 34"
+                  preserveAspectRatio="none"
+                  fill="none"
+                  stroke="#0d0d0d"
+                  stroke-width="3.9"
+                  stroke-linecap="round"
+                >
+                  <rect
+                    x="5.5"
+                    y="1"
+                    width="13"
+                    height="17.5"
+                    rx="6.5"
+                    fill="#0d0d0d"
+                    stroke="none"
+                  />
+                  <path d="M2.5 14 a9.5 9.5 0 0 0 19 0 M12 23.5 V28.5 M5.5 32 H18.5" /></svg
+              ></span>
+            </div>
           </div>
         </div>
       </section>
@@ -676,57 +691,59 @@
         data-track-index="2"
       >
         <div id="acr-endcard-inner">
-          <img id="acr-eclogo" src="assets/hyperframes-logo-white.svg" alt="HyperFrames" />
-          <svg id="acr-ecstar" width="80" height="80" viewBox="0 0 80 80">
-            <g stroke="#2f6b57" stroke-width="8.5" stroke-linecap="round">
-              <line x1="47" y1="40" x2="77" y2="40" />
-              <line x1="46.5" y1="42.7" x2="74.2" y2="54.2" />
-              <line x1="44.9" y1="44.9" x2="66.2" y2="66.2" />
-              <line x1="42.7" y1="46.5" x2="54.2" y2="74.2" />
-              <line x1="40" y1="47" x2="40" y2="77" />
-              <line x1="37.3" y1="46.5" x2="25.8" y2="74.2" />
-              <line x1="35.1" y1="44.9" x2="13.8" y2="66.2" />
-              <line x1="33.5" y1="42.7" x2="5.8" y2="54.2" />
-              <line x1="33" y1="40" x2="3" y2="40" />
-              <line x1="33.5" y1="37.3" x2="5.8" y2="25.8" />
-              <line x1="35.1" y1="35.1" x2="13.8" y2="13.8" />
-              <line x1="37.3" y1="33.5" x2="25.8" y2="5.8" />
-              <line x1="40" y1="33" x2="40" y2="3" />
-              <line x1="42.7" y1="33.5" x2="54.2" y2="5.8" />
-              <line x1="44.9" y1="35.1" x2="66.2" y2="13.8" />
-              <line x1="46.5" y1="37.3" x2="74.2" y2="25.8" />
-            </g>
-          </svg>
-          <div id="acr-ecvideo">
-            <div class="acr-play">
-              <svg width="40" height="46" viewBox="0 0 44 48" fill="none">
-                <path
-                  d="M40.5 20.6 C43.2 22.1 43.2 25.9 40.5 27.4 L6.2 46.6 C3.5 48.1 0.2 46.2 0.2 43.2 L0.2 4.8 C0.2 1.8 3.5 -0.1 6.2 1.4 Z"
-                  fill="#0d0d0d"
-                />
+          <div class="acr-stage">
+            <img id="acr-eclogo" src="assets/hyperframes-logo-white.svg" alt="HyperFrames" />
+            <svg id="acr-ecstar" width="80" height="80" viewBox="0 0 80 80">
+              <g stroke="#2f6b57" stroke-width="8.5" stroke-linecap="round">
+                <line x1="47" y1="40" x2="77" y2="40" />
+                <line x1="46.5" y1="42.7" x2="74.2" y2="54.2" />
+                <line x1="44.9" y1="44.9" x2="66.2" y2="66.2" />
+                <line x1="42.7" y1="46.5" x2="54.2" y2="74.2" />
+                <line x1="40" y1="47" x2="40" y2="77" />
+                <line x1="37.3" y1="46.5" x2="25.8" y2="74.2" />
+                <line x1="35.1" y1="44.9" x2="13.8" y2="66.2" />
+                <line x1="33.5" y1="42.7" x2="5.8" y2="54.2" />
+                <line x1="33" y1="40" x2="3" y2="40" />
+                <line x1="33.5" y1="37.3" x2="5.8" y2="25.8" />
+                <line x1="35.1" y1="35.1" x2="13.8" y2="13.8" />
+                <line x1="37.3" y1="33.5" x2="25.8" y2="5.8" />
+                <line x1="40" y1="33" x2="40" y2="3" />
+                <line x1="42.7" y1="33.5" x2="54.2" y2="5.8" />
+                <line x1="44.9" y1="35.1" x2="66.2" y2="13.8" />
+                <line x1="46.5" y1="37.3" x2="74.2" y2="25.8" />
+              </g>
+            </svg>
+            <div id="acr-ecvideo">
+              <div class="acr-play">
+                <svg width="40" height="46" viewBox="0 0 44 48" fill="none">
+                  <path
+                    d="M40.5 20.6 C43.2 22.1 43.2 25.9 40.5 27.4 L6.2 46.6 C3.5 48.1 0.2 46.2 0.2 43.2 L0.2 4.8 C0.2 1.8 3.5 -0.1 6.2 1.4 Z"
+                    fill="#0d0d0d"
+                  />
+                </svg>
+              </div>
+            </div>
+            <div id="acr-echead">It's not magic.<br />It's HTML.</div>
+            <div id="acr-ecsub">
+              Open-source video rendering — write HTML, ship pixel-perfect video.
+            </div>
+            <div id="acr-eccta">
+              <span class="acr-lbl">Try HyperFrames</span
+              ><svg
+                width="30"
+                height="34"
+                viewBox="0 0 16 24"
+                fill="none"
+                stroke="#0d0d0d"
+                stroke-width="2.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M4 3 L13 12 L4 21" />
               </svg>
             </div>
+            <div id="acr-ecfoot">HYPERFRAMES.HEYGEN.COM</div>
           </div>
-          <div id="acr-echead">It's not magic.<br />It's HTML.</div>
-          <div id="acr-ecsub">
-            Open-source video rendering — write HTML, ship pixel-perfect video.
-          </div>
-          <div id="acr-eccta">
-            <span class="acr-lbl">Try HyperFrames</span
-            ><svg
-              width="30"
-              height="34"
-              viewBox="0 0 16 24"
-              fill="none"
-              stroke="#0d0d0d"
-              stroke-width="2.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M4 3 L13 12 L4 21" />
-            </svg>
-          </div>
-          <div id="acr-ecfoot">HYPERFRAMES.HEYGEN.COM</div>
         </div>
       </section>
     </div>
