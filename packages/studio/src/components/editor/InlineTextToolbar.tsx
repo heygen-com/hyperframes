@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { applyInlineStyle, readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRange";
+import { applyInlineStyle } from "./inlineTextStyleRange";
+import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
 import { parseCssColor, toHexColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 

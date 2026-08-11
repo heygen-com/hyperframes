@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyInlineStyle, readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRange";
+import { applyInlineStyle } from "./inlineTextStyleRange";
+import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
 
 afterEach(() => {
   vi.restoreAllMocks();
