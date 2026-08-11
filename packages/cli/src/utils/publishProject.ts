@@ -557,10 +557,7 @@ async function publishProjectArchiveDirect(
     "file",
     new File([archiveArrayBuffer(archive)], `${title}.zip`, { type: PUBLISH_CONTENT_TYPE }),
   );
-  const headers: Record<string, string> = {
-    ...authHeaders,
-    heygen_route: "canary",
-  };
+  const headers: Record<string, string> = { ...authHeaders };
 
   const response = await fetchForPublish(
     `${apiBaseUrl}/v1/hyperframes/projects/publish`,
@@ -626,7 +623,6 @@ async function publishProjectArchiveStaged(
       headers: {
         ...authHeaders,
         "content-type": "application/json",
-        heygen_route: "canary",
       },
       signal: AbortSignal.timeout(PUBLISH_METADATA_TIMEOUT_MS),
     }),
@@ -660,7 +656,6 @@ async function publishProjectArchiveStaged(
       headers: {
         ...authHeaders,
         "content-type": "application/json",
-        heygen_route: "canary",
       },
       signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
     }),

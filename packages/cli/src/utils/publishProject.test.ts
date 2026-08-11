@@ -551,7 +551,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-const jsonHeaders = { "content-type": "application/json", heygen_route: "canary" };
+const jsonHeaders = { "content-type": "application/json" };
 const signedStagedS3Url =
   "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption";
 
@@ -662,7 +662,7 @@ describe("publishProjectArchive", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expectFetchCall(fetchMock, 2, "https://api2.heygen.com/v1/hyperframes/projects/publish", {
         method: "POST",
-        headers: { heygen_route: "canary" },
+        headers: {},
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
