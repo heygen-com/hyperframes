@@ -376,6 +376,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "message-thread-reveal",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "mk-background",
       "type": "hyperframes:block"
     },
