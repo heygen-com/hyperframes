@@ -131,7 +131,20 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   // A composition whose variables are meant to be changed has to reach the
   // reader uncompiled, or its values are already resolved into the markup.
   const interactive = declaresVariables(item);
-  const projectDir = await prepareProjectDir(item, { compile: !interactive });
+  let projectDir: string;
+  try {
+    projectDir = await prepareProjectDir(item, { compile: !interactive });
+  } catch (err) {
+    // Some items are a stylesheet and a paragraph of prose — a class you add to
+    // your own captions, with no standalone scene to show. That is a shape, not
+    // a breakage, and calling it a failure made every run look wrong. The item
+    // keeps its recorded video, which is the only honest preview it has.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/no <template> or <body> content to render/.test(message)) throw err;
+    console.log(`  – ${item.name}: nothing to render on its own, keeping the recorded video`);
+    dropStalePayload();
+    return "skipped";
+  }
   try {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
 
