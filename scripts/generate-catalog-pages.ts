@@ -786,9 +786,13 @@ interface ItemControl {
   drives: string;
 }
 
-/** Pipe characters break table cells; everything user-authored passes through here. */
+/**
+ * Pipes break table cells; everything user-authored passes through here.
+ * Backslashes are escaped first so an authored `\` can never combine with the
+ * inserted `\|` escapes (or a following character) into an unintended sequence.
+ */
 function tableCell(value: string): string {
-  return value.replace(/\|/g, "\\|");
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 }
 
 /** The allowed inputs for one control, written the way a reader has to type them. */
