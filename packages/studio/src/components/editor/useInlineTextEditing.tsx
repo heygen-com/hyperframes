@@ -28,7 +28,13 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
   /** Open an edit when this press pairs with the last one. */
   startFromPress: (event: { clientX: number; clientY: number }) => boolean;
   /** Handle a key on the canvas. Returns true when it opened an edit. */
-  handleKeyDown: (event: { key: string; shiftKey: boolean }) => boolean;
+  handleKeyDown: (event: {
+    key: string;
+    shiftKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    altKey: boolean;
+  }) => boolean;
   /**
    * The styling controls for the current selection, for the caller to render.
    *
@@ -90,7 +96,8 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
     // and is the dependable way in: a double press has to survive the canvas'
     // gesture machinery, while this is one key on a selection that has settled.
     handleKeyDown: (event) => {
-      if (event.key !== "Enter" || event.shiftKey) return false;
+      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+        return false;
       const target = selectionRef.current;
       if (inlineText.session || !target || !canEditTextInline(target)) return false;
       return inlineText.start(target.element);

@@ -264,6 +264,7 @@ describe("useInlineTextEdit", () => {
   it("outlines the element while it is being edited, and puts it back after", () => {
     const element = heading();
     element.style.outline = "1px dotted red";
+    element.style.outlineOffset = "6px";
     const { controls, root } = mount();
 
     act(() => {
@@ -277,7 +278,7 @@ describe("useInlineTextEdit", () => {
     act(() => controls().cancel());
     expect(element.style.outline).toContain("dotted");
     expect(element.style.outline).toContain("red");
-    expect(element.style.getPropertyValue("outline-offset")).toBe("");
+    expect(element.style.getPropertyValue("outline-offset")).toBe("6px");
     act(() => root.unmount());
   });
 

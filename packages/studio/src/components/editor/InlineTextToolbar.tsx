@@ -18,11 +18,14 @@ const READ_PROPERTIES = ["color", "font-weight", "font-style", "text-decoration-
 
 /** Enough above the text to clear it, without leaving the element behind. */
 const GAP_PX = 10;
+/** h-6 controls + p-1 + the border. Used only to keep an above-toolbar onscreen. */
+const TOOLBAR_HEIGHT_PX = 34;
 const DEFAULT_COLOR = "#ffffff";
 
 interface ToolbarPlacement {
   left: number;
   top: number;
+  placeBelow: boolean;
   styles: Record<string, string>;
 }
 
@@ -67,8 +70,14 @@ export function InlineTextToolbar({
   return (
     <div
       data-inline-text-toolbar="true"
+      role="toolbar"
+      aria-label="Text formatting"
       className="pointer-events-auto fixed z-[200] flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
-      style={{ left: placement.left, top: placement.top, transform: "translate(-50%, -100%)" }}
+      style={{
+        left: placement.left,
+        top: placement.top,
+        transform: `translate(-50%, ${placement.placeBelow ? "0" : "-100%"})`,
+      }}
       // Two different things have to be stopped here, and missing either one
       // loses the edit the toolbar exists to act on.
       //
@@ -191,10 +200,13 @@ function placeOverSelection(
   // the mapping the canvas uses to turn a press into a caret position.
   const box = iframe.getBoundingClientRect();
   const scale = view.innerWidth ? box.width / view.innerWidth : 1;
+  const above = box.top + rect.top * scale - GAP_PX;
+  const placeBelow = above < TOOLBAR_HEIGHT_PX;
 
   return {
     left: box.left + (rect.left + rect.width / 2) * scale,
-    top: box.top + rect.top * scale - GAP_PX,
+    top: placeBelow ? box.top + (rect.top + rect.height) * scale + GAP_PX : above,
+    placeBelow,
     styles: readInlineStyle(range, READ_PROPERTIES),
   };
 }

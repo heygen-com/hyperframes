@@ -11,6 +11,8 @@
  * `isContentEditable` is the property to ask, not the attribute to match: it is
  * true for every editable value and for an element made editable by an
  * ancestor, which an attribute selector on the target alone cannot see.
+ * The wider input gate is deliberate too: checkboxes and readonly fields own
+ * Space and arrow keys even when they do not accept text.
  */
 export function isTypingTarget(target: EventTarget | null): boolean {
   const element = asElement(target);

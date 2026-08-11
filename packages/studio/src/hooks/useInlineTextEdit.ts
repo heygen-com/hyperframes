@@ -40,6 +40,8 @@ export interface InlineTextEditSession {
   original: string;
   /** The element's own outline, to put back when the session ends. */
   outline: string;
+  /** The element's own outline offset, restored with the outline. */
+  outlineOffset: string;
 }
 
 /** The live markup to persist and the session snapshot to restore on failure. */
@@ -93,7 +95,7 @@ export function useInlineTextEdit({
       open.element.removeAttribute("contenteditable");
       // Restored rather than cleared: the composition may have authored one.
       open.element.style.outline = open.outline;
-      open.element.style.removeProperty("outline-offset");
+      open.element.style.outlineOffset = open.outlineOffset;
       open.element.blur();
     }
     return open;
@@ -107,6 +109,7 @@ export function useInlineTextEdit({
         element,
         original: element.innerHTML,
         outline: element.style.outline,
+        outlineOffset: element.style.outlineOffset,
       };
       // Drawn on the element itself, not in Studio's overlay above it. This is
       // the only mark that says the caret is in the TEXT rather than the

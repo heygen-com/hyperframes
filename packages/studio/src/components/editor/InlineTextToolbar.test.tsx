@@ -21,7 +21,12 @@ function scene(html: string) {
   // The composition is drawn scaled, so the toolbar has to map out of it.
   iframe.getBoundingClientRect = () => ({ left: 100, top: 50, width: 400 }) as DOMRect;
   Object.defineProperty(iframe, "contentWindow", { value: window });
-  const session: InlineTextEditSession = { element, original: html, outline: "" };
+  const session: InlineTextEditSession = {
+    element,
+    original: html,
+    outline: "",
+    outlineOffset: "",
+  };
   return { element, iframe, session };
 }
 
@@ -62,7 +67,8 @@ describe("InlineTextToolbar", () => {
 
     selectAll(element);
 
-    expect(toolbarIn(host)).not.toBeNull();
+    expect(toolbarIn(host)?.getAttribute("role")).toBe("toolbar");
+    expect(toolbarIn(host)?.getAttribute("aria-label")).toBe("Text formatting");
   });
 
   it("goes away when the selection collapses again", () => {
@@ -194,5 +200,26 @@ describe("InlineTextToolbar", () => {
     const scale = 400 / window.innerWidth;
     expect(toolbar.style.left).toBe(`${100 + (20 + 50) * scale}px`);
     expect(toolbar.style.top).toBe(`${50 + 40 * scale - 10}px`);
+  });
+
+  it("moves below a selection that leaves no room above the viewport", () => {
+    const { element, session, iframe } = scene("hello world");
+    iframe.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400 }) as DOMRect;
+    const { host } = render(session, iframe);
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.getBoundingClientRect = () =>
+      ({ left: 20, top: 0, width: 100, height: 10 }) as unknown as DOMRect;
+    const selection = document.getSelection()!;
+    act(() => {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const toolbar = toolbarIn(host)!;
+    const scale = 400 / window.innerWidth;
+    expect(toolbar.style.top).toBe(`${10 * scale + 10}px`);
+    expect(toolbar.style.transform).toBe("translate(-50%, 0)");
   });
 });
