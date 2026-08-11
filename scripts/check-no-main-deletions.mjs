@@ -41,6 +41,14 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/components/StudioFeedbackBar.tsx",
     "replaced by components/feedback/StudioFeedbackCard.tsx; too little shared content for git to pair as a rename",
   ],
+  [
+    "skills/embedded-captions/references/test-set.md",
+    "#3219: orphaned in the shipped skill (zero inbound references across all 140 files) and its corpus lives only at ~/Downloads/heygen_relevant_videos/, so it was neither reachable nor runnable on any install",
+  ],
+  [
+    "skills/embedded-captions/themes/PORTING.md",
+    "#3219: same, zero inbound references; a theme-authoring procedure whose inputs (cap_fx3 demos, frame corpora, CONTRACT.md) are not distributed with the skill",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
