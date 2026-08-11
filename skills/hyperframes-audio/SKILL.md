@@ -33,6 +33,8 @@ Three attributes carry everything, all on the audio/video element itself:
 
 Exact JSON for each, and the rules a lane must satisfy: `references/attributes.md`.
 Every effect with its parameters, ranges and units: `references/fx-registry.md`.
+How to work out what is wrong with a file you cannot hear:
+`references/diagnosis.md`.
 **Presets, named jobs and one-knob profiles, plus a symptom-to-fix table:
 `references/presets.md`** — read that before hand-building a chain, because one
 of the presets or named jobs usually already names the problem.
@@ -112,9 +114,34 @@ flowchart LR
 
 A static carve is the same graph with fixed values and no lanes at all.
 
+## First, work out what is wrong
+
+The table below starts from "it sounds boomy" — which presumes somebody already
+listened and said so. Handed a file and "fix this", you have no such sentence
+and you cannot listen, so you have to measure. One rule governs all of it:
+
+> **The absolute spectrum of a single unknown voice cannot be diagnosed.**
+> Formants are ±10 dB, fundamentals run 85–255 Hz, and sentences decline 5–6 dB
+> as they end. Every one of those reads as a defect on its own, and every one of
+> them is the speaker.
+
+So compare, and compare against something **inside the same file**: the clean
+original if it exists, otherwise the pauses — whatever is audible in a gap is
+additive, and the gap's spectrum is the channel rather than the voice. Comparing
+against a published average spectrum or a synthesised control voice does not
+work: two speakers differ by more than most defects, and both wrong answers in
+the evaluation behind this guidance came from exactly that.
+
+When there is no original and no usable silence, a static tonal defect is
+genuinely under-determined. Say so and offer the readings that fit, rather than
+picking one and building a chain on it.
+
+Commands, traps and worked recipes: **`references/diagnosis.md`**. Read it
+before diagnosing a file nobody has described.
+
 ## Start from the symptom
 
-Before choosing an effect, name what is wrong with the audio. Most bad audio is
+Once you know the band and the kind, name what is wrong with the audio. Most bad audio is
 one or two of these, and each has a shipped answer:
 
 | It sounds like | Reach for |
