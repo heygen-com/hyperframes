@@ -19,6 +19,7 @@ import { ErrApi, ErrUnauthenticated, isAuthError } from "./errors.js";
 import type { ResolvedCredential } from "./resolver.js";
 import { scrubCredentials } from "./scrub.js";
 import type { OAuthTokens } from "./store.js";
+import { withHeygenCanaryRoute } from "../utils/heygenRoute.js";
 
 const DEFAULT_BASE_URL = "https://api.heygen.com";
 export const HEYGEN_CLI_SOURCE_HEADER = "X-HeyGen-Source";
@@ -185,17 +186,20 @@ export class AuthClient {
 
 export function buildAuthHeaders(credential: ResolvedCredential): Record<string, string> {
   if (credential.type === "oauth") {
-    return {
+    return withHeygenCanaryRoute({
       authorization: `Bearer ${credential.access_token}`,
       [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
       [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
-    };
+    });
   }
   // API-key traffic keeps the normal billing path; the backend ignores the
   // cli-source header for it, so we don't send it (avoids a contradictory
   // "cli-source claim on an API-key request"). The tool-attribution header IS
   // sent here — an API-key hyperframes call is still hyperframes usage.
-  return { "x-api-key": credential.key, [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE };
+  return withHeygenCanaryRoute({
+    "x-api-key": credential.key,
+    [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
+  });
 }
 
 async function safeText(res: Response): Promise<string> {

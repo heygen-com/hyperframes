@@ -173,8 +173,10 @@ describe("auth/oauth", () => {
     it("posts grant_type=refresh_token and persists the response", async () => {
       process.env["HEYGEN_API_URL"] = "https://api.test.example";
       let capturedBody: string | undefined;
+      let capturedHeaders: HeadersInit | undefined;
       const fetchImpl = (async (_url: string, init?: RequestInit) => {
         capturedBody = init?.body as string;
+        capturedHeaders = init?.headers;
         return new Response(
           JSON.stringify({
             access_token: "new_at",
@@ -192,6 +194,7 @@ describe("auth/oauth", () => {
       expect(tokens.refresh_token).toBe("new_rt");
       expect(capturedBody).toContain("grant_type=refresh_token");
       expect(capturedBody).toContain("refresh_token=old_rt");
+      expect(capturedHeaders).toMatchObject({ heygen_route: "canary" });
 
       // Should have persisted.
       const { credentials } = await readStore();
@@ -295,8 +298,10 @@ describe("auth/oauth", () => {
 
     it("sends token_type_hint when provided", async () => {
       let capturedBody = "";
+      let capturedHeaders: HeadersInit | undefined;
       const fetchImpl = (async (_url: string, init?: RequestInit) => {
         capturedBody = init?.body as string;
+        capturedHeaders = init?.headers;
         return new Response("", { status: 200 });
       }) as unknown as typeof fetch;
       await revokeTokens("tok", {
@@ -304,6 +309,7 @@ describe("auth/oauth", () => {
         token_type_hint: "refresh_token",
       });
       expect(capturedBody).toContain("token_type_hint=refresh_token");
+      expect(capturedHeaders).toMatchObject({ heygen_route: "canary" });
     });
 
     it("returns silently when client_id is unconfigured (no throw)", async () => {
@@ -337,6 +343,21 @@ describe("auth/oauth", () => {
   });
 
   describe("startAuthorizationCodeFlow persistence", () => {
+    it("routes the authorization-code exchange through canary", async () => {
+      let capturedHeaders: HeadersInit | undefined;
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        capturedHeaders = init?.headers;
+        return new Response(JSON.stringify({ access_token: "new_at" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+
+      await startAuthorizationCodeFlow({ fetchImpl });
+
+      expect(capturedHeaders).toMatchObject({ heygen_route: "canary" });
+    });
+
     it("overwrites the OAuth block on fresh login (no inherited refresh_token)", async () => {
       // Pre-seed a prior session whose refresh_token must NOT leak into
       // the new login when the new response omits one.
@@ -450,7 +471,11 @@ describe("auth/oauth", () => {
     });
 
     it("polls pending and slow_down responses without persisting before identity verification", async () => {
-      const requests: Array<{ url: string; body: URLSearchParams }> = [];
+      const requests: Array<{
+        url: string;
+        body: URLSearchParams;
+        headers: HeadersInit | undefined;
+      }> = [];
       const responses = [
         new Response(
           JSON.stringify({
@@ -485,6 +510,7 @@ describe("auth/oauth", () => {
         requests.push({
           url: String(url),
           body: new URLSearchParams(String(init?.body ?? "")),
+          headers: init?.headers,
         });
       });
       const sleeps: number[] = [];
@@ -514,6 +540,12 @@ describe("auth/oauth", () => {
       expect(requests[1]?.body.get("grant_type")).toBe(
         "urn:ietf:params:oauth:grant-type:device_code",
       );
+      expect(requests.map(({ headers }) => headers)).toEqual([
+        expect.objectContaining({ heygen_route: "canary" }),
+        expect.objectContaining({ heygen_route: "canary" }),
+        expect.objectContaining({ heygen_route: "canary" }),
+        expect.objectContaining({ heygen_route: "canary" }),
+      ]);
       expect((await readStore()).source).toBe("absent");
 
       await persistFreshOAuth(tokens);

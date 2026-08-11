@@ -1,5 +1,6 @@
 import { getPublishApiBaseUrl } from "./publishProject.js";
 import { FEEDBACK_RATING_SCALE } from "./feedbackRating.js";
+import { withHeygenCanaryRoute } from "./heygenRoute.js";
 
 // Match the backend DTO caps (HyperframesFeedbackRequest). Truncate here so an
 // over-long field (e.g. a pasted stack trace) is still forwarded truncated,
@@ -30,10 +31,9 @@ export async function submitFeedback(input: {
         cli_version: cap(input.cliVersion, MAX_CLI_VERSION),
         env: cap(input.env, MAX_ENV),
       }),
-      headers: {
+      headers: withHeygenCanaryRoute({
         "content-type": "application/json",
-        heygen_route: "canary",
-      },
+      }),
       signal: AbortSignal.timeout(5000),
     });
   } catch {
