@@ -1575,8 +1575,13 @@ export const VariablesExplorer = ({
     const url = new URL(window.location.href);
     if (Object.keys(changed).length === 0) url.searchParams.delete(urlKey);
     else url.searchParams.set(urlKey, encodeURIComponent(JSON.stringify(changed)));
-    window.history.replaceState(null, "", url.toString());
-  }, [values]);
+
+    // `defaults` is rebuilt every render, so this effect runs every render too.
+    // Comparing first keeps it to an actual change rather than touching the
+    // history API on each one.
+    const next = url.toString();
+    if (next !== window.location.href) window.history.replaceState(null, "", next);
+  }, [values, defaults, urlKey]);
   // What the SVG import last had to say, per variable. Held here because
   // `control` is a function rather than a component and cannot hold it itself.
   const [notes, setNotes] = useState({});
