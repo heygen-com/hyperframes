@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Banner Push-In</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #0a0a0a;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(172deg, #efe9e0 0%, #e2dbcf 100%);
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas::before {
+        content: "";
+        position: absolute;
+        left: 220px;
+        top: -180px;
+        width: 720px;
+        height: 720px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(60, 230, 172, 0.24) 0%, rgba(60, 230, 172, 0) 68%);
+      }
+      .hf-bpi-stack {
+        position: absolute;
+        left: 555px;
+        top: 700px;
+        width: 810px;
+      }
+      .hf-bpi-banner {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 810px;
+        height: 176px;
+        border-radius: 26px;
+        background: rgba(249, 245, 240, 0.82);
+        box-shadow: 0 10px 26px rgba(20, 16, 10, 0.18);
+        color: #1c1c1e;
+      }
+      .hf-bpi-icon {
+        position: absolute;
+        left: 23px;
+        top: 38px;
+        width: 100px;
+        height: 100px;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #5ae458 0%, #1fc83f 100%);
+      }
+      .hf-bpi-icon svg {
+        position: absolute;
+        left: 18px;
+        top: 20px;
+      }
+      .hf-bpi-title {
+        position: absolute;
+        left: 148px;
+        top: 37px;
+        font-size: 35px;
+        font-weight: 700;
+        letter-spacing: 0.25px;
+      }
+      .hf-bpi-subtitle {
+        position: absolute;
+        left: 148px;
+        top: 85px;
+        font-size: 33px;
+        font-weight: 400;
+        color: #464040;
+        letter-spacing: -0.75px;
+      }
+      .hf-bpi-meta {
+        position: absolute;
+        right: 26px;
+        top: 32px;
+        font-size: 22px;
+        color: #6b6562;
+        letter-spacing: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-bpi-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="banner-push-in-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <section class="clip hf-bpi-stack" data-start="0" data-duration="6" data-track-index="1">
+        <div class="hf-bpi-banner" id="hf-bpi-demo-1">
+          <div class="hf-bpi-icon"><svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+            <path d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z" fill="#fff"/>
+          </svg></div>
+          <div class="hf-bpi-title">New render</div>
+          <div class="hf-bpi-subtitle">Launch video is ready.</div>
+          <div class="hf-bpi-meta">NOW</div>
+        </div>
+        <div class="hf-bpi-banner" id="hf-bpi-demo-2">
+          <div class="hf-bpi-icon"><svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+            <path d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z" fill="#fff"/>
+          </svg></div>
+          <div class="hf-bpi-title">New render</div>
+          <div class="hf-bpi-subtitle">All checks passed.</div>
+          <div class="hf-bpi-meta">NOW</div>
+        </div>
+        <div class="hf-bpi-banner" id="hf-bpi-demo-3">
+          <div class="hf-bpi-icon"><svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+            <path d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z" fill="#fff"/>
+          </svg></div>
+          <div class="hf-bpi-title">New render</div>
+          <div class="hf-bpi-subtitle">Published to the catalog.</div>
+          <div class="hf-bpi-meta">NOW</div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var PITCH = 214;
+      var ENTRY = [0.5, 2.0, 3.5];
+      var banners = ["#hf-bpi-demo-1", "#hf-bpi-demo-2", "#hf-bpi-demo-3"];
+
+      tl.set(banners, { autoAlpha: 0 }, 0.001);
+
+      banners.forEach(function (sel, i) {
+        tl.fromTo(sel, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3333, ease: "none" }, ENTRY[i]);
+        tl.fromTo(sel, { y: 22 }, { y: 0, duration: 0.9, ease: "expo.out" }, ENTRY[i]);
+      });
+
+      /* restacks: everything already on screen slides up one pitch in lockstep */
+      tl.to("#hf-bpi-demo-1", { y: -PITCH, duration: 1.0, ease: "expo.out" }, ENTRY[1]);
+      tl.to("#hf-bpi-demo-1", { y: -2 * PITCH, duration: 1.0, ease: "expo.out" }, ENTRY[2]);
+      tl.to("#hf-bpi-demo-2", { y: -PITCH, duration: 1.0, ease: "expo.out" }, ENTRY[2]);
+
+      window.__timelines["banner-push-in-demo"] = tl;
+    </script>
+  </body>
+</html>
