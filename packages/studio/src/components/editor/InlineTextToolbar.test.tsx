@@ -37,9 +37,11 @@ function selectAll(element: HTMLElement) {
   const range = document.createRange();
   range.selectNodeContents(element);
   const selection = document.getSelection()!;
-  selection.removeAllRanges();
-  selection.addRange(range);
-  act(() => void document.dispatchEvent(new Event("selectionchange")));
+  act(() => {
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
 }
 
 function toolbarIn(host: HTMLElement): HTMLElement | null {
@@ -181,9 +183,11 @@ describe("InlineTextToolbar", () => {
     range.getBoundingClientRect = () =>
       ({ left: 20, top: 40, width: 100, height: 10 }) as unknown as DOMRect;
     const selection = document.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    act(() => void document.dispatchEvent(new Event("selectionchange")));
+    act(() => {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
 
     const toolbar = toolbarIn(host)!;
     // Frame at 100,50; scale 400/innerWidth; centre of the range, above it.
