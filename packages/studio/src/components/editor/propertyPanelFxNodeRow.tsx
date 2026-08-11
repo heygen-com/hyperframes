@@ -21,6 +21,11 @@ import {
 } from "@hyperframes/core/audio-fx";
 import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
 import {
+  trackNodeBypassed,
+  trackParamCommitted,
+  trackProfileCommitted,
+} from "./audioFxTelemetry.js";
+import {
   applyAudioFxProfile,
   audioFxProfileStrength,
   getAudioFxProfile,
@@ -118,6 +123,8 @@ interface FxNodeRowProps {
   onMove(index: number, delta: number): void;
   onRemove(index: number): void;
   onPreview(index: number, params: HfAudioFxParamValues): void;
+  /** What the track reads as, carried onto this row own events. */
+  trackKind?: string;
 }
 
 /** Reorder arrow. Disabled at the end of the chain it would move past. */
@@ -258,6 +265,7 @@ function FxNodeParams({
   onPreview,
   onAutomateParam,
   onRemoveParamAutomation,
+  trackKind,
 }: {
   node: HfAudioFxNode;
   def: HfAudioFxDef;
@@ -269,6 +277,7 @@ function FxNodeParams({
   onPreview(index: number, params: HfAudioFxParamValues): void;
   onAutomateParam?(nodeId: string, paramKey: string): void;
   onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
+  trackKind?: string;
 }) {
   const nodeId = node.id;
   // Lanes address a node by id; the controls know their own parameter keys. This
@@ -289,7 +298,18 @@ function FxNodeParams({
       liveValues={liveValues}
       disabled={disabled}
       onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
-      onCommit={(params: HfAudioFxParamValues) => onUpdate(index, { params })}
+      onCommit={(next: HfAudioFxParamValues) => {
+        // Which knob actually moved. `onCommit` hands over the whole parameter
+        // set, so without the diff every commit would report the first key and
+        // the numbers would say authors only ever touch "frequency".
+        const before = node.params ?? defaultAudioFxParams(node.type);
+        for (const [key, value] of Object.entries(next)) {
+          if (before[key] === value) continue;
+          if (typeof value !== "number" && typeof value !== "string") continue;
+          trackParamCommitted(node.type, key, value, "details", { trackKind });
+        }
+        onUpdate(index, { params: next });
+      }}
       automatedKeys={automatedKeysOf(node, def.params, automatedTargets)}
       onAutomate={nodeId && onAutomateParam ? (key) => onAutomateParam(nodeId, key) : undefined}
       onRemoveAutomation={
@@ -318,6 +338,7 @@ export function FxNodeRow({
   onMove,
   onRemove,
   onPreview,
+  trackKind,
 }: FxNodeRowProps) {
   const registryDef = getAudioFxDef(node.type);
   const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
@@ -372,7 +393,10 @@ export function FxNodeRow({
         last={last}
         disabled={disabled}
         onToggleOpen={onToggleOpen}
-        onToggleBypass={() => onUpdate(index, { enabled: bypassed })}
+        onToggleBypass={() => {
+          trackNodeBypassed(node.type, !bypassed, { trackKind });
+          onUpdate(index, { enabled: bypassed });
+        }}
         onMove={(delta) => onMove(index, delta)}
         onRemove={() => onRemove(index)}
       />
@@ -403,9 +427,10 @@ export function FxNodeRow({
                   onChange={(_k, v) =>
                     onPreview(index, applyAudioFxProfile(node.type, Number(v), params))
                   }
-                  onCommit={(_k, v) =>
-                    onUpdate(index, { params: applyAudioFxProfile(node.type, Number(v), params) })
-                  }
+                  onCommit={(_k, v) => {
+                    trackProfileCommitted(node.type, Number(v), { trackKind });
+                    onUpdate(index, { params: applyAudioFxProfile(node.type, Number(v), params) });
+                  }}
                 />
               </div>
               {profile ? (
@@ -429,6 +454,7 @@ export function FxNodeRow({
                 onPreview={onPreview}
                 onAutomateParam={onAutomateParam}
                 onRemoveParamAutomation={onRemoveParamAutomation}
+                trackKind={trackKind}
               />
               {/* What the two ends of that knob sound like. A number tells an
                   author where the control is; this tells them which way to move
@@ -476,6 +502,7 @@ export function FxNodeRow({
               onPreview={onPreview}
               onAutomateParam={onAutomateParam}
               onRemoveParamAutomation={onRemoveParamAutomation}
+              trackKind={trackKind}
             />
           ) : null}
         </>

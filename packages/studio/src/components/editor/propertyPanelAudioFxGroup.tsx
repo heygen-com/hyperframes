@@ -62,6 +62,24 @@ import { usePlayerStore } from "../../player";
  */
 const DECODE_SAMPLE_RATE = 48000;
 import { FxSection, type AudioTrackOption } from "./propertyPanelFxSection.js";
+import { trackCarveChanged, trackChainObserved, trackLeveller } from "./audioFxTelemetry.js";
+
+/**
+ * Which carve setting actually moved, by comparing the two snapshots.
+ *
+ * On/off is checked before the rest: switching a carve off also strands its
+ * sources and strength, and reporting that as a "strength" change would be
+ * describing the wreckage instead of the decision.
+ */
+function carveAction(
+  before: HfCarveSettings | null,
+  after: HfCarveSettings | null,
+): "enabled" | "disabled" | "strength" | "sources" {
+  if (!after?.enabled) return "disabled";
+  if (!before?.enabled) return "enabled";
+  if (before.sources.length !== after.sources.length) return "sources";
+  return "strength";
+}
 
 /** A clip's span, with an unwritten duration left unbounded rather than zero. */
 function spanOf(
@@ -96,7 +114,7 @@ function withoutCarveLanes(automation: HfAutomation, chain: HfAudioFxChain): HfA
  */
 export function AudioFxGroup({
   element,
-  onSetAttributeQuiet,
+  onSetAttributeQuiet: onSetAttributeQuietRaw,
   onSetAttributeLive,
 }: {
   element: DomEditSelection;
@@ -162,6 +180,67 @@ export function AudioFxGroup({
     }
     return values;
   })();
+
+  /**
+   * Report the shape of a chain this panel did not write.
+   *
+   * This is the only way agent-applied effects become visible. An agent asked to
+   * fix a mix does not drive this panel — it edits the composition HTML, or runs
+   * `scripts/carve.mjs`, and the rack simply finds the work already done. Not
+   * one of the panel's own events fires for any of it.
+   *
+   * So: watch the chain's shape, and report it when it changes without a panel
+   * edit behind it. `panelEdits` is the discriminator — this session's own
+   * writes bump it, so a chain that moved while the counter stood still moved
+   * because something outside the studio moved it.
+   *
+   * Keyed on the shape rather than fired once per mount: a soft reload after an
+   * agent edits the file re-mounts this component, and a mount-only event would
+   * either miss the change or double-count every HMR. Comparing the fingerprint
+   * reports real changes and stays quiet through both.
+   */
+  const lastShape = useRef<string | null>(null);
+  const panelEdits = useRef(0);
+  /**
+   * Every persisting write this panel makes, counted.
+   *
+   * Wrapped once here rather than incremented at each of the ten callsites: the
+   * count is only meaningful if it is exhaustive, and a write added later that
+   * forgot to bump it would silently start reporting the author's own edits as
+   * having come from outside.
+   */
+  const onSetAttributeQuiet = (attr: string, value: string | null): void | Promise<void> => {
+    panelEdits.current += 1;
+    return onSetAttributeQuietRaw(attr, value);
+  };
+  useEffect(() => {
+    const shape = JSON.stringify([
+      chain.nodes.map((n) => `${n.type}:${n.fromPreset ?? ""}:${n.fromCarve ? 1 : 0}`),
+      carve?.enabled ?? false,
+      automation.lanes.length,
+    ]);
+    if (lastShape.current === shape) return;
+    const firstSight = lastShape.current === null;
+    lastShape.current = shape;
+    // An empty chain on first sight is the ordinary case — nothing to report.
+    if (firstSight && chain.nodes.length === 0 && !carve) return;
+    trackChainObserved(
+      chain,
+      {
+        firstSight,
+        panelEdits: panelEdits.current,
+        hasCarve: Boolean(carve?.enabled),
+        hasAutomation: automation.lanes.length > 0,
+      },
+      {
+        trackKind: classifyAudioName(element.id, element.element?.getAttribute("src")) ?? undefined,
+      },
+    );
+    // Each observation is measured against the edits made SINCE the last one, so
+    // a session that edits, then receives an outside change, still reports that
+    // second change as unattributed.
+    panelEdits.current = 0;
+  });
 
   // Written through the live path on purpose. It persists to the source just
   // like the refreshing one, but skips the preview reload — and a reload
@@ -232,6 +311,14 @@ export function AudioFxGroup({
    * commit, which does not exist yet.
    */
   const setCarve = async (next: HfCarveSettings | null): Promise<void> => {
+    // Which of the carve's settings moved. One event per change with the action
+    // named, rather than a single "carve touched" — enabling a carve and nudging
+    // its strength are different decisions and the interesting question (do
+    // people leave it at the default?) needs them apart.
+    trackCarveChanged(carveAction(carve, next), {
+      strength: next?.strength,
+      sourceCount: next?.sources.length,
+    });
     // What the carve generated is only justified by the voices it was measured
     // from: switched off, or left naming none — every source deleted, say —
     // there is nothing those filters are making room for. Left behind they keep
@@ -596,6 +683,7 @@ export function AudioFxGroup({
       if (!audio) return;
       const result = levellingResult(chain, clipWindow(audio), audio.sampleRate);
       if (!result) return;
+      trackLeveller("run");
       await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
       // Merged by target, never written wholesale: the script describes its own
       // lane only, and replacing the attribute would take the carve's lanes and
@@ -704,6 +792,7 @@ export function AudioFxGroup({
   };
 
   const removeLeveller = (): void => {
+    trackLeveller("removed");
     const { chain: next, removedTarget } = removeLevelling(chain);
     void onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(next));
     // The lane goes with the node. An orphan keeps driving a parameter that is
