@@ -1709,6 +1709,19 @@ export const VariablesExplorer = ({
 
   const dirty = variables.some((v) => values[v.id] !== defaults[v.id]);
 
+  // Only the values that differ, so an untouched piece offers the same short
+  // command the Install block does, and a tuned one carries exactly what
+  // changed rather than every variable restated.
+  const installCommand = (() => {
+    const base = `npx hyperframes add ${compositionId}`;
+    if (!dirty) return base;
+    const changed = {};
+    for (const v of variables) {
+      if (JSON.stringify(values[v.id]) !== JSON.stringify(defaults[v.id])) changed[v.id] = values[v.id];
+    }
+    return `${base} --vars '${JSON.stringify(changed)}'`;
+  })();
+
   // "Code" is the composition's own source, handed in as a fenced block by the
   // generator and highlighted by shiki at build time — the source never changes
   // as a knob moves, so it needs none of the hand-colouring the snippet does.
@@ -1758,6 +1771,28 @@ export const VariablesExplorer = ({
           </div>
         )}
         <div className="hf-ve-cell hf-ve-snippet" data-on={tab === "snippet"}>
+          {/* The Install block further down the page is generated before anyone
+              touches a knob, so it can only ever offer the plain command. This
+              one is the panel's, and it carries what the reader actually chose:
+              copying it installs the piece already tuned. */}
+          <CodeBlock filename="Terminal">
+            <pre
+              className="shiki shiki-themes github-light-default dark-plus"
+              style={{
+                backgroundColor: "rgb(255, 255, 255)",
+                "--shiki-dark-bg": "#0B0C0E",
+                color: "rgb(31, 35, 40)",
+                "--shiki-dark": "#D4D4D4",
+              }}
+            >
+              <code>
+                <span className="line">
+                  <span style={SHIKI.value}>{installCommand}</span>
+                  {"\n"}
+                </span>
+              </code>
+            </pre>
+          </CodeBlock>
           {/* Each line carries its own trailing newline rather than sitting
               next to a bare one: MDX resolves a dotted JSX tag through the
               page, so `<React.Fragment>` throws where a keyed element does
