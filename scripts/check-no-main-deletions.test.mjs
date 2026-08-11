@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { classify, parseBase } from "./check-no-main-deletions.mjs";
+import { ALLOWED_DELETIONS, classify, parseBase } from "./check-no-main-deletions.mjs";
 
 test("a branch that only adds reports nothing", () => {
   const { deleted, renamed } = classify("A\tpackages/cli/src/new.ts\nM\tpackages/cli/src/old.ts\n");
@@ -39,4 +39,23 @@ test("a --base with no value fails rather than silently defaulting", () => {
   // Silently falling back would diff against the wrong ref and report a pass.
   assert.throws(() => parseBase(["--base"]), /needs a ref/);
   assert.throws(() => parseBase(["--base", "--other"]), /needs a ref/);
+});
+
+test("every agreed deletion names a path and says why", () => {
+  // The guard has no blanket override on purpose: a flag or an env var would
+  // be reached for by the branch deleting something by accident. An entry has
+  // to be written down, so the removal shows up in review.
+  for (const [path, reason] of ALLOWED_DELETIONS) {
+    assert.ok(path.length > 0, "an allowed deletion needs a path");
+    assert.ok(
+      reason && reason.length > 10,
+      `${path} needs a reason, got ${JSON.stringify(reason)}`,
+    );
+  }
+});
+
+test("the allowlist does not silence an unrelated deletion", () => {
+  const { deleted } = classify("D\tpackages/cli/src/something-else.ts\n");
+  assert.deepEqual(deleted, ["packages/cli/src/something-else.ts"]);
+  assert.equal(ALLOWED_DELETIONS.has("packages/cli/src/something-else.ts"), false);
 });
