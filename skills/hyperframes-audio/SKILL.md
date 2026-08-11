@@ -33,6 +33,9 @@ Three attributes carry everything, all on the audio/video element itself:
 
 Exact JSON for each, and the rules a lane must satisfy: `references/attributes.md`.
 Every effect with its parameters, ranges and units: `references/fx-registry.md`.
+**Presets, named jobs and one-knob profiles, plus a symptom-to-fix table:
+`references/presets.md`** — read that before hand-building a chain, because one
+of the 18 presets or 5 jobs usually already names the problem.
 
 ## How it fits together
 
@@ -108,6 +111,32 @@ flowchart LR
 ```
 
 A static carve is the same graph with fixed values and no lanes at all.
+
+## Start from the symptom
+
+Before choosing an effect, name what is wrong with the audio. Most bad audio is
+one or two of these, and each has a shipped answer:
+
+| It sounds like | Reach for |
+| --- | --- |
+| Hum or thump underneath | `rumble-cut`, or a `highpass` at 80 Hz |
+| Boomy, chesty | **Tame Boominess** job (200 Hz) |
+| Muffled, behind cardboard | **Reduce Mud** job (250 Hz) |
+| Words hard to make out | **Add Clarity** job (3 kHz), or carve the bed |
+| Harsh and tiring | **Soften Harshness** job (3.2 kHz) |
+| Some words much louder than others | **Evenness** on a compressor, or Even Out Levels |
+| Room tone between sentences | `room-gate` |
+| Voice and music fighting | **Voiceover carve** — not an EQ on either |
+| Dry, recorded nowhere | `room-tight` or `room-natural` |
+| Just "amateur" | `voice-clean`, which is four of the above in order |
+
+Full catalogue, what each preset contains, the band vocabulary, and what is
+deliberately NOT covered (de-essing, noise removal, tone match):
+`references/presets.md`.
+
+Subtract before you add, level after you filter, relationships after level,
+character and ceiling last. Each step changes what the next one hears — a
+compressor set before a high-pass spends its time chasing rumble.
 
 ## Reach for a family by the problem, not the name
 
