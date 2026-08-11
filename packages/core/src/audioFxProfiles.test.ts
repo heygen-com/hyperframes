@@ -138,3 +138,27 @@ describe("derived one-knob profiles", () => {
     expect(audioFxProfileStrength("not-an-effect", {})).toBe(0.5);
   });
 });
+
+/**
+ * A profile's knob name and its two ends are read on every track that carries
+ * the effect, so they fall under the same rule as the rest of the copy: say what
+ * changes in the sound, not what it does to a voice. See the matching audit in
+ * `audioFxCopy.test.ts`.
+ */
+describe("no profile assumes the track is a voice", () => {
+  const SPEECH =
+    /\b(voice|vocal|speech|spoken|word|words|sentence|syllable|narration|talking|chest)\b/i;
+  it("labels the knob and both ends without assuming speech", () => {
+    const bad: string[] = [];
+    for (const [type, p] of Object.entries(HF_AUDIO_FX_PROFILES)) {
+      for (const [where, text] of [
+        ["label", p.label],
+        ["ends.low", p.ends.low],
+        ["ends.high", p.ends.high],
+      ] as const) {
+        if (SPEECH.test(text)) bad.push(`${type}.${where}: "${text}"`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});

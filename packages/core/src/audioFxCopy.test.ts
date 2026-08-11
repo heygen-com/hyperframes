@@ -103,3 +103,74 @@ describe("audioBandAt", () => {
     expect(audioBandAt(Number.NaN)).toBeUndefined();
   });
 });
+
+/**
+ * Copy that assumes the track is a voice.
+ *
+ * The rack sits on whatever the author selected — a music bed, a sound effect,
+ * a room tone. Every effect, every named job and every profile is offered on
+ * all of them, so a control that reads "Thins the voice out" on a synth pad is
+ * describing something the author cannot hear and does not have. It is the same
+ * rule this file's header already states — describe a control by what changes in
+ * THE SOUND — applied to the words rather than to the mechanism.
+ *
+ * The voice presets are the deliberate exception: they are voice by definition,
+ * and the shelf hides them on a track that classifies as music or as an effect,
+ * so "My voice sounds amateur" is only ever read next to a voice.
+ *
+ * This is a lint on the words, not a judgement about mixing. It exists because
+ * the offending strings were written one at a time over months and read fine in
+ * isolation — nobody notices the assumption until they apply Cut Rumble to a
+ * bass line and the panel tells them it will thin their voice out.
+ */
+describe("no copy assumes the track is a voice", () => {
+  /** Words that only mean something if the material is speech. */
+  const SPEECH =
+    /\b(voice|vocal|voices|speech|spoken|word|words|sentence|sentences|syllable|syllables|narration|narrator|talking|chest)\b/i;
+
+  /** Presets whose whole purpose is a voice, so their copy may say so. */
+  const VOICE_PRESETS = new Set(
+    HF_AUDIO_FX_PRESETS.filter((p) => p.family === "voice").map((p) => p.id),
+  );
+
+  const offenders = (entries: [string, string][]): string[] =>
+    entries.filter(([, text]) => SPEECH.test(text)).map(([where, text]) => `${where}: "${text}"`);
+
+  it("not in an effect's name, blurb, reach-for line or any knob", () => {
+    const entries: [string, string][] = [];
+    for (const [id, copy] of Object.entries(EFFECT_COPY)) {
+      entries.push([`${id}.title`, copy.title], [`${id}.does`, copy.does]);
+      entries.push([`${id}.reachFor`, copy.reachFor]);
+      entries.push([`${id}.primaryEnds.low`, copy.primaryEnds.low]);
+      entries.push([`${id}.primaryEnds.high`, copy.primaryEnds.high]);
+      for (const [key, param] of Object.entries(copy.params)) {
+        entries.push([`${id}.${key}.label`, param.label]);
+        if (param.hint) entries.push([`${id}.${key}.hint`, param.hint]);
+        if (param.ends) {
+          entries.push([`${id}.${key}.ends.low`, param.ends.low]);
+          entries.push([`${id}.${key}.ends.high`, param.ends.high]);
+        }
+      }
+    }
+    expect(offenders(entries)).toEqual([]);
+  });
+
+  it("not in the band vocabulary, which every spectral module shares", () => {
+    // These names get taught once and then reused everywhere, so a voice-only
+    // word here spreads to every filter in the rack.
+    expect(offenders(BANDS.map((b) => [b.name, b.says]))).toEqual([]);
+  });
+
+  it("not in the complaint a non-voice preset answers", () => {
+    const entries = Object.entries(PRESET_PROBLEM).filter(([id]) => !VOICE_PRESETS.has(id));
+    expect(offenders(entries as [string, string][])).toEqual([]);
+  });
+
+  it("still lets the voice presets say what they are for", () => {
+    // The exception has to be real, or the rule above is untested — a catalogue
+    // where nothing said "voice" would pass every assertion here vacuously.
+    const voiced = Object.entries(PRESET_PROBLEM).filter(([id]) => VOICE_PRESETS.has(id));
+    expect(voiced.length).toBeGreaterThan(0);
+    expect(voiced.some(([, text]) => SPEECH.test(text))).toBe(true);
+  });
+});

@@ -81,7 +81,7 @@ export const HF_AUDIO_FX_PROFILES: Record<string, HfAudioFxProfile> = {
 
   gate: {
     label: "Tightness",
-    ends: { low: "Only true silence", high: "Cuts quiet words too" },
+    ends: { low: "Only true silence", high: "Cuts quiet parts too" },
     derives: ["threshold", "range", "release"],
     at(strength) {
       const s = clamp01(strength);

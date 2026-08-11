@@ -66,13 +66,13 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
     does: "Cuts the very bottom — traffic, footsteps, air conditioning, hands on the mic.",
     reachFor: "There's a low hum or thump under everything.",
     primary: "frequency",
-    primaryEnds: { low: "Only the deepest", high: "Thins the voice out" },
+    primaryEnds: { low: "Only the deepest", high: "Thins it out" },
     band: [20, 300],
     params: {
       frequency: {
         label: "Cut below",
         hint: "Everything under this is removed.",
-        ends: { low: "Only the deepest", high: "Thins the voice out" },
+        ends: { low: "Only the deepest", high: "Thins it out" },
       },
       q: { label: "Sharpness", hint: "How abruptly the cut starts." },
       poles: { label: "Steepness", hint: "How fast it falls away below the point." },
@@ -134,7 +134,7 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
   compressor: {
     title: "Even Out Loudness",
     does: "Brings the quiet parts up and holds the loud parts down, so nothing jumps out at the listener.",
-    reachFor: "Some words are much louder than others.",
+    reachFor: "Some parts are much louder than others.",
     primary: "strength",
     primaryEnds: { low: "Barely touched", high: "Very even, quite squashed" },
     params: {
@@ -168,10 +168,10 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
   },
   gate: {
     title: "Silence the Gaps",
-    does: "Mutes the pauses between words. Room tone under speech stays — this closes the silences, it does not remove noise.",
-    reachFor: "You can hear the room breathing between sentences.",
+    does: "Mutes the pauses. Whatever sits underneath stays — this closes the gaps, it does not remove noise.",
+    reachFor: "You can hear the room in the gaps.",
     primary: "strength",
-    primaryEnds: { low: "Only true silence", high: "Cuts quiet words too" },
+    primaryEnds: { low: "Only true silence", high: "Cuts quiet parts too" },
     params: {
       threshold: { label: "Quieter than this is a gap" },
       range: {
@@ -182,7 +182,7 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
       attack: { label: "How fast it opens" },
       release: {
         label: "How fast it closes",
-        ends: { low: "Clips word endings", high: "Leaves tails intact" },
+        ends: { low: "Clips tails short", high: "Leaves tails intact" },
       },
       knee: { label: "How gradual" },
     },
@@ -286,11 +286,11 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
  */
 export const BANDS: { from: number; to: number; name: string; says: string }[] = [
   { from: 20, to: 80, name: "Rumble", says: "traffic, footsteps, handling" },
-  { from: 80, to: 250, name: "Weight", says: "chest, body, warmth" },
+  { from: 80, to: 250, name: "Weight", says: "body, warmth, low end" },
   { from: 250, to: 600, name: "Mud", says: "boxy, muffled, cardboard" },
-  { from: 600, to: 2000, name: "Middle", says: "the body of a voice" },
-  { from: 2000, to: 5000, name: "Presence", says: "consonants, intelligibility" },
-  { from: 5000, to: 10000, name: "Edge", says: "sibilance, harshness" },
+  { from: 600, to: 2000, name: "Middle", says: "the body of the sound" },
+  { from: 2000, to: 5000, name: "Presence", says: "definition, consonants" },
+  { from: 5000, to: 10000, name: "Edge", says: "harshness, sibilance" },
   { from: 10000, to: 20000, name: "Air", says: "sparkle, openness" },
 ];
 
@@ -318,8 +318,8 @@ export const PRESET_PROBLEM: Record<string, string> = {
   "voice-broadcast": "I want it to sound like radio",
   "voice-warm": "I want it intimate and close",
   "rumble-cut": "There's a hum or thump underneath",
-  "room-gate": "I can hear the room between sentences",
-  "boom-tame": "My voice sounds boomy",
+  "room-gate": "I can hear the room in the gaps",
+  "boom-tame": "It sounds boomy",
   "harsh-tame": "It's harsh and tiring to listen to",
   telephone: "Make it sound like a phone call",
   "radio-am": "Make it sound like an old radio",

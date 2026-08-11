@@ -61,3 +61,20 @@ describe("named jobs", () => {
     for (const id of ids) expect(getAudioFxJob(id)?.id).toBe(id);
   });
 });
+
+/**
+ * A job's `does` is the complaint that leads to it, shown in the add menu on
+ * whatever track is selected — so it is under the same rule as the effect copy
+ * in `audioFxCopy.test.ts`: it may not assume the material is speech. Reduce Mud
+ * is as right on a boxy guitar as on a boxy voice, and the menu should say so.
+ */
+describe("no job assumes the track is a voice", () => {
+  const SPEECH =
+    /\b(voice|vocal|speech|spoken|word|words|sentence|syllable|narration|talking|chest)\b/i;
+  it("names the symptom without naming the source", () => {
+    const bad = HF_AUDIO_FX_JOBS.filter((j) => SPEECH.test(`${j.label} ${j.does}`)).map(
+      (j) => `${j.id}: "${j.does}"`,
+    );
+    expect(bad).toEqual([]);
+  });
+});
