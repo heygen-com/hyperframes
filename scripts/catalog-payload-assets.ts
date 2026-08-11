@@ -360,3 +360,36 @@ export function withBaseHref(html: string, href: string): string {
     return html.replace(/<html([^>]*)>/i, `<html$1><head>${tag}</head>`);
   return `${tag}${html}`;
 }
+
+/**
+ * Turn a mounted sub-composition into one the browser can fetch on its own.
+ *
+ * An interactive preview ships uncompiled so its values stay changeable, which
+ * leaves `data-composition-src` pointing at a sibling `.html`. That is the one
+ * type the docs host will not publish, so the file is carried inline as a data
+ * URI instead: the runtime still mounts it at run time, and the values on the
+ * host still govern it.
+ */
+export function inlineMountedComposition(html: string, projectDir: string): string {
+  return html.replace(
+    /data-composition-src=(["'])([^"']+)\1/gi,
+    (whole, quote: string, ref: string) => {
+      if (/^(https?:|data:)/i.test(ref)) return whole;
+      const source = resolve(projectDir, ref.replace(/^\.\//, "").split(/[?#]/)[0] ?? ref);
+      if (!source.startsWith(resolve(projectDir)) || !existsSync(source)) return whole;
+      const encoded = readFileSync(source).toString("base64");
+      return `data-composition-src=${quote}data:text/html;base64,${encoded}${quote}`;
+    },
+  );
+}
+
+/**
+ * Drop the values a demo pinned onto its own mount.
+ *
+ * A demo picks striking values to show itself off, and the runtime layers those
+ * over anything the reader chooses, so every control looked dead. Removing them
+ * leaves the declared defaults, which is the state the panel starts in.
+ */
+export function clearPinnedVariableValues(html: string): string {
+  return html.replace(/\sdata-variable-values=(?:"[^"]*"|'[^']*')/gi, "");
+}

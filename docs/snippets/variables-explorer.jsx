@@ -1564,11 +1564,20 @@ export const VariablesExplorer = ({
     `  var PAYLOAD = ${JSON.stringify(previewSrc)};`,
     `  var INITIAL = ${JSON.stringify(defaults)};`,
     "  var html = null, player = null, poll = null;",
+    // Two ways in, because a composition can be either shape. A top-level one
+    // reads overrides off `window.__hfVariables`; one mounted through
+    // `data-composition-src` is fed from its host's `data-variable-values`,
+    // which the loader reads before the sub-composition runs — so that has to
+    // be in the markup, not assigned afterwards.
     "  function withValues(source, values) {",
-    "    var tag = '<' + 'script>window.__hfVariables=' + JSON.stringify(values) + ';<' + '/script>';",
-    "    return /<head[^>]*>/i.test(source)",
-    "      ? source.replace(/<head([^>]*)>/i, '<head$1>' + tag)",
-    "      : tag + source;",
+    "    var json = JSON.stringify(values);",
+    "    var attr = json.replace(/'/g, '&#39;');",
+    "    var out = source.replace(/\\sdata-variable-values=(?:\"[^\"]*\"|'[^']*')/gi, '');",
+    "    out = out.replace(/(data-composition-src=)/gi, \"data-variable-values='\" + attr + \"' $1\");",
+    "    var tag = '<' + 'script>window.__hfVariables=' + json + ';<' + '/script>';",
+    "    return /<head[^>]*>/i.test(out)",
+    "      ? out.replace(/<head([^>]*)>/i, '<head$1>' + tag)",
+    "      : tag + out;",
     "  }",
     // The composition reads its variables once, at init, so a new value can
     // only arrive by mounting it again. The playhead is carried across so a

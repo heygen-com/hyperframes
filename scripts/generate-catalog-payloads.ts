@@ -30,7 +30,9 @@ import {
   type ItemKind,
 } from "./generate-catalog-previews.js";
 import {
+  clearPinnedVariableValues,
   externalizeDataUris,
+  inlineMountedComposition,
   HOSTED_EXTENSIONS,
   hostItemDirectory,
   processAssets,
@@ -106,6 +108,18 @@ function hostsOwnDirectory(projectDir: string): boolean {
   return false;
 }
 
+/** Does the item expose variables a reader is meant to change? */
+function declaresVariables(item: CatalogItem): boolean {
+  try {
+    const manifest = JSON.parse(
+      readFileSync(join(item.sourceDir, "registry-item.json"), "utf-8"),
+    ) as { variables?: unknown[] };
+    return Array.isArray(manifest.variables) && manifest.variables.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
@@ -114,7 +128,10 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   // run just decided it cannot build.
   const dropStalePayload = () => rmSync(outPath, { force: true });
 
-  const projectDir = await prepareProjectDir(item);
+  // A composition whose variables are meant to be changed has to reach the
+  // reader uncompiled, or its values are already resolved into the markup.
+  const interactive = declaresVariables(item);
+  const projectDir = await prepareProjectDir(item, { compile: !interactive });
   try {
     const html = readFileSync(join(projectDir, "index.html"), "utf-8");
 
@@ -142,10 +159,17 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     // duplicate assets already shared by hash and roughly double what the
     // repository carries, to fix a handful of compositions.
     const itemUrl = `/public/catalog/items/${item.name}`;
-    const baseHref = needsOwnDirectory(item, unresolved)
-      ? hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`)
-      : "";
-    const withBase = withBaseHref(withShared, baseHref);
+    const baseHref =
+      interactive || needsOwnDirectory(item, unresolved)
+        ? hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`)
+        : "";
+    // An interactive preview keeps its mount, so the component travels inline
+    // and the demo's own pinned values come off — the reader's choices are what
+    // should reach it.
+    const withMount = interactive
+      ? clearPinnedVariableValues(inlineMountedComposition(withShared, projectDir))
+      : withShared;
+    const withBase = withBaseHref(withMount, baseHref);
 
     // A reference we could not inline is only fatal when the item's directory is
     // not being served either; with a base URL in place the browser can still

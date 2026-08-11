@@ -152,7 +152,24 @@ function mirrorRegistryTargets(projectDir: string): void {
   }
 }
 
-export async function prepareProjectDir(item: CatalogItem): Promise<string> {
+export interface PrepareOptions {
+  /**
+   * Inline sub-compositions ahead of time. On by default, because a render
+   * needs one self-contained document.
+   *
+   * The interactive preview turns it off: compiling resolves each mounted
+   * component's variables into the markup and CSS, so nothing is left for a
+   * reader to change. Left uncompiled, the mount survives and the runtime
+   * loads it live, which is the only state where `data-variable-values` still
+   * means anything.
+   */
+  compile?: boolean;
+}
+
+export async function prepareProjectDir(
+  item: CatalogItem,
+  options: PrepareOptions = {},
+): Promise<string> {
   const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   cpSync(item.sourceDir, tmpDir, { recursive: true });
@@ -269,7 +286,7 @@ export async function prepareProjectDir(item: CatalogItem): Promise<string> {
 
   const indexPath = join(tmpDir, "index.html");
   const indexHtml = readFileSync(indexPath, "utf-8");
-  if (indexHtml.includes("data-composition-src")) {
+  if (options.compile !== false && indexHtml.includes("data-composition-src")) {
     const compiled = await compileForRender(tmpDir, indexPath, join(tmpDir, "_downloads"));
     writeFileSync(indexPath, compiled.html, "utf-8");
   }
