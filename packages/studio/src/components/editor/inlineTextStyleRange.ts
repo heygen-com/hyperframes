@@ -24,6 +24,7 @@
 
 import {
   isRichTextFormattingAttribute,
+  isRichTextFormattingStyle,
   isRichTextFormattingTag,
 } from "@hyperframes/core/rich-text-sanitize";
 
@@ -229,60 +230,80 @@ function editingHost(node: Node): HTMLElement | null {
 }
 
 /** Read the element as a flat list of runs, in document order. */
+interface RunWalkFrame {
+  node: Node;
+  inherited: Record<string, string>;
+  origin: Element | null;
+}
+
 function readRuns(host: Element): StyledRun[] {
   const runs: StyledRun[] = [];
-  // Text sitting directly in the host belongs to no child, so it has no origin.
-  walk(host, {}, runs, null);
+  const pending: RunWalkFrame[] = Array.from(
+    host.childNodes,
+    (node): RunWalkFrame => ({ node, inherited: {}, origin: null }),
+  ).reverse();
+  for (let frame = pending.pop(); frame; frame = pending.pop()) {
+    pending.push(...visitRunFrame(frame, runs));
+  }
   return runs;
 }
 
-function walk(
-  node: Node,
-  inherited: Record<string, string>,
-  runs: StyledRun[],
-  origin: Element | null,
-): void {
-  for (const child of Array.from(node.childNodes)) {
-    if (child.nodeType === 3) {
-      const text = child.textContent ?? "";
-      if (text) runs.push({ text, style: inherited, origin, identity: identityOf(origin) });
-      continue;
-    }
-    if (child.nodeType !== 1) continue;
-    const element = child as HTMLElement;
-    if (element.tagName === "BR") {
-      runs.push({ text: BREAK, style: inherited, origin, identity: identityOf(origin) });
-      continue;
-    }
-    // The outermost child that carries anything is the one the panel knows as
-    // a layer, so nesting below it keeps pointing at it rather than at its
-    // inner formatting. An element with nothing on it is not an identity and
-    // must not shadow one below it — the wrapper this rebuild adds inside a
-    // flex container is exactly that, and taking it as the origin made the
-    // second edit of an element drop every identity the first one kept.
-    walk(
-      element,
-      { ...inherited, ...TAG_STYLES[element.tagName], ...ownStyle(element) },
-      runs,
-      origin ?? (preservedAttributes(element).size > 0 ? element : null),
-    );
+function visitRunFrame(frame: RunWalkFrame, runs: StyledRun[]): RunWalkFrame[] {
+  const { node, inherited, origin } = frame;
+  if (node.nodeType === 3) {
+    const text = node.textContent ?? "";
+    if (text) runs.push(styledRun(text, inherited, origin));
+    return [];
   }
+  if (!isStyleElement(node)) return [];
+  const element = node;
+  if (element.tagName === "BR") {
+    runs.push(styledRun(BREAK, inherited, origin));
+    return [];
+  }
+  return childRunFrames(element, inherited, origin);
+}
+
+function isStyleElement(node: Node): node is HTMLElement {
+  return node.nodeType === 1 && "style" in node;
+}
+
+function styledRun(text: string, style: Record<string, string>, origin: Element | null): StyledRun {
+  return { text, style, origin, identity: identityOf(origin) };
+}
+
+function childRunFrames(
+  element: HTMLElement,
+  inherited: Record<string, string>,
+  origin: Element | null,
+): RunWalkFrame[] {
+  const formatting = isRichTextFormattingTag(element.tagName);
+  const nextInherited = formatting
+    ? { ...inherited, ...TAG_STYLES[element.tagName], ...ownStyle(element) }
+    : inherited;
+  // The outermost formatting child that carries anything is the one the panel
+  // knows as a layer. Tags the sanitizer unwraps cannot own a layer.
+  const nextOrigin =
+    formatting && !origin && preservedAttributes(element).size > 0 ? element : origin;
+  return Array.from(
+    element.childNodes,
+    (node): RunWalkFrame => ({ node, inherited: nextInherited, origin: nextOrigin }),
+  ).reverse();
 }
 
 /** A child's identity as a comparable string, empty when it has none. */
 function identityOf(element: Element | null): string {
   if (!element) return "";
-  return [...preservedAttributes(element)]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([name, value]) => `${name}=${value}`)
-    .join("&");
+  return JSON.stringify([...preservedAttributes(element)].sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
 function ownStyle(element: HTMLElement): Record<string, string> {
   const style: Record<string, string> = {};
   for (let index = 0; index < element.style.length; index += 1) {
     const property = element.style.item(index);
-    if (property) style[property] = element.style.getPropertyValue(property);
+    if (!property) continue;
+    const value = element.style.getPropertyValue(property);
+    if (isRichTextFormattingStyle(property, value)) style[property] = value;
   }
   return style;
 }
@@ -507,7 +528,13 @@ function charLength(node: Node): number {
 /** The same count for a child and everything inside it, for a position given as
  *  a child index rather than a place in a text node. */
 function subtreeCharLength(node: Node): number {
-  return (node.textContent ?? "").length || (nodeName(node) === "BR" ? 1 : 0);
+  let count = 0;
+  const pending = [node];
+  for (let current = pending.pop(); current; current = pending.pop()) {
+    count += charLength(current);
+    pending.push(...Array.from(current.childNodes));
+  }
+  return count;
 }
 
 function nodeName(node: Node): string {

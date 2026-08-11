@@ -322,6 +322,21 @@ describe("applyInlineStyle edge cases", () => {
     expect(host.querySelectorAll("b")).toHaveLength(0);
   });
 
+  it.each(["a", "sub", "sup", "mark", "s"])(
+    "unwraps unsupported <%s> markup exactly as the persistence sanitizer does",
+    (tag) => {
+      const host = mount(`<${tag} href="https://example.com" style="color: red">abc</${tag}>`);
+      host.contentEditable = "true";
+
+      applyInlineStyle(rangeOver(host, 0, 3), { "font-weight": "700" });
+
+      expect(host.querySelector(tag)).toBeNull();
+      expect(host.innerHTML).not.toContain("href");
+      expect(host.innerHTML).not.toContain("color: red");
+      expect(host.innerHTML).toContain("font-weight: 700");
+    },
+  );
+
   it("does not cut an emoji in half when the boundary lands inside one", () => {
     // A selection offset is counted in UTF-16 units, and an emoji is two of
     // them. Splitting one leaves half a character in each span.
@@ -371,6 +386,37 @@ describe("applyInlineStyle edge cases", () => {
     applyInlineStyle(range, { color: "red" });
 
     expect(section.innerHTML).toBe(before);
+  });
+
+  it("counts a nested line break in a range whose boundaries are child indexes", () => {
+    const host = mount("a<span>b<br>c</span>d");
+    const range = document.createRange();
+    range.setStart(host, 1);
+    range.setEnd(host, 2);
+
+    applyInlineStyle(range, { color: "red" });
+
+    expect(Array.from(host.querySelectorAll("span")).map((span) => span.textContent)).toEqual([
+      "b",
+      "c",
+    ]);
+    expect(host.innerHTML.endsWith("d")).toBe(true);
+  });
+
+  it("walks deeply nested formatting without using the call stack", () => {
+    const host = mount("");
+    let parent = host;
+    for (let depth = 0; depth < 2_000; depth += 1) {
+      const span = document.createElement("span");
+      parent.append(span);
+      parent = span;
+    }
+    parent.textContent = "x";
+
+    applyInlineStyle(rangeOver(host, 0, 1), { color: "red" });
+
+    expect(host.textContent).toBe("x");
+    expect(host.querySelectorAll("span")).toHaveLength(1);
   });
 
   it("keeps a line-clamped element's text as one item", () => {
@@ -497,6 +543,14 @@ describe("applyInlineStyle keeps what the design panel tracks", () => {
     expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
     expect(host.innerHTML).not.toContain("aria-label");
     expect(host.innerHTML).not.toContain("onclick");
+  });
+
+  it("does not carry style properties that the persistence sanitizer will remove", () => {
+    const host = mount('<span style="color: red; text-transform: uppercase">abc</span>');
+
+    applyInlineStyle(rangeOver(host, 0, 3), { "font-weight": "700" });
+
+    expect(host.innerHTML).toBe('<span style="color: red; font-weight: 700">abc</span>');
   });
 
   it("does not edit through a contenteditable=false boundary", () => {
