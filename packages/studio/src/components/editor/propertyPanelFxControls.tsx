@@ -91,7 +91,7 @@ export function AutomationToggle({
         className={`hf-fx-automate w-[16px] flex-shrink-0 rounded-[3px] border font-mono text-[9px] leading-none ${
           automated
             ? "border-panel-accent text-panel-accent"
-            : "border-panel-border-input text-panel-text-4 hover:text-panel-text-0"
+            : "border-panel-border-input text-panel-text-2 hover:text-panel-text-0"
         }`}
         aria-pressed={automated}
         aria-label={automated ? `Remove ${label} automation` : `Automate ${label}`}
@@ -188,7 +188,7 @@ export function FxParamRow({
   if (param.kind === "enum") {
     return (
       <label className="hf-fx-row flex min-h-6 items-center gap-2" title={param.hint}>
-        <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-4">
+        <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2">
           {param.label}
         </span>
         <select
@@ -229,7 +229,7 @@ export function FxParamRow({
     >
       <span
         className={`hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] ${
-          automated ? "text-panel-accent" : "text-panel-text-4"
+          automated ? "text-panel-accent" : "text-panel-text-2"
         }`}
       >
         {param.label}
@@ -279,7 +279,7 @@ export function FxParamRow({
         }}
       />
       {param.unit ? (
-        <span className="hf-fx-unit w-[22px] flex-shrink-0 font-mono text-[9px] text-panel-text-4">
+        <span className="hf-fx-unit w-[22px] flex-shrink-0 font-mono text-[9px] text-panel-text-2">
           {param.unit}
         </span>
       ) : null}

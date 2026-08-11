@@ -17,7 +17,11 @@ import {
   type HfAudioFxParam,
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
-import { DEFAULT_CARVE, type HfCarveSettings } from "@hyperframes/core/audio-carve";
+import {
+  DEFAULT_CARVE,
+  type HfAudioNameKind,
+  type HfCarveSettings,
+} from "@hyperframes/core/audio-carve";
 import { applyAudioFxPreset, getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 import {
   addAudioEq,
@@ -143,6 +147,12 @@ export interface FxSectionProps {
   carvedAgainstBy?: string | null;
   /** Other audio elements that could act as the carve source. */
   sourceOptions: AudioTrackOption[];
+  /**
+   * What this track reads as, from its id and filename. Passed through to the
+   * preset shelf, which hides the Voice family on a track that is plainly music
+   * or an effect. Absent means unknown, and unknown keeps everything.
+   */
+  trackKind?: HfAudioNameKind;
   analysing?: boolean;
   disabled?: boolean;
 }
@@ -162,6 +172,7 @@ export function FxSection({
   onCarveChange,
   onCarvePreview,
   sourceOptions,
+  trackKind,
   analysing,
   disabled,
   onLevel,
@@ -584,7 +595,7 @@ export function FxSection({
         {/* The rack IS the signal path, and saying so costs two lines. Without
             them the order reads as a list, which is the one reading that makes
             "move up" look cosmetic — it is the most consequential control here. */}
-        <p className="hf-fx-term flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+        <p className="hf-fx-term flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
           <span className="hf-fx-term-cap text-panel-text-1">In</span>
           <span>this track</span>
         </p>
@@ -622,7 +633,7 @@ export function FxSection({
           />
         ))}
         {handBuilt.length === 0 && eqIds.length === 0 ? (
-          <p className="hf-fx-empty py-1 text-[11px] text-panel-text-4">
+          <p className="hf-fx-empty py-1 text-[11px] text-panel-text-2">
             {showCarve ? "No other effects on this track." : "No effects on this track."}
           </p>
         ) : (
@@ -730,7 +741,7 @@ export function FxSection({
                       get back out of it. */}
                   <button
                     type="button"
-                    className="hf-fx-preset-run-toggle rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+                    className="hf-fx-preset-run-toggle rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
                     aria-pressed={runOn}
                     title={runOn ? `Switch ${preset.label} off` : `Switch ${preset.label} back on`}
                     disabled={disabled}
@@ -740,7 +751,7 @@ export function FxSection({
                   </button>
                   <button
                     type="button"
-                    className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-4 hover:text-red-400 disabled:opacity-40"
+                    className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
                     title={`Remove ${preset.label}`}
                     disabled={disabled}
                     onClick={() => removeRun(run.items, run.preset)}
@@ -773,7 +784,7 @@ export function FxSection({
             );
           })
         )}
-        <p className="hf-fx-term hf-fx-term-out flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+        <p className="hf-fx-term hf-fx-term-out flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
           <span className="hf-fx-term-cap text-panel-text-1">Out</span>
           <span>to mix</span>
         </p>
@@ -796,7 +807,7 @@ export function FxSection({
           }}
         >
           <div className="hf-fx-add-group flex flex-wrap items-center gap-1">
-            <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+            <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
               Tone
             </span>
             {onLevel ? (
@@ -851,7 +862,7 @@ export function FxSection({
           </div>
           {grouped.map(({ group, defs, jobs }) => (
             <div key={group} className="hf-fx-add-group flex flex-wrap items-center gap-1">
-              <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+              <span className="hf-fx-add-group-label w-full font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
                 {GROUP_LABEL[group]}
               </span>
               {jobs.map((job) => (
@@ -909,6 +920,7 @@ export function FxSection({
 
       {picking ? (
         <FxPresetMenu
+          trackKind={trackKind}
           onPick={applyPreset}
           onAudition={
             onChainPreview
@@ -928,7 +940,7 @@ export function FxSection({
       <div className="flex gap-1">
         <button
           type="button"
-          className="hf-fx-preset w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+          className="hf-fx-preset w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
           aria-expanded={picking}
           disabled={disabled}
           onClick={() => {
@@ -944,7 +956,7 @@ export function FxSection({
         </button>
         <button
           type="button"
-          className="hf-fx-add w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+          className="hf-fx-add w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
           aria-expanded={adding}
           disabled={disabled}
           onClick={() => {

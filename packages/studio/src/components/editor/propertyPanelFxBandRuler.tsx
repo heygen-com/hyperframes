@@ -64,7 +64,7 @@ export function FxBandRuler({ band, at }: FxBandRulerProps) {
           );
         })}
       </div>
-      <p className="hf-fx-ruler-label truncate pt-0.5 text-[9px] text-panel-text-4">
+      <p className="hf-fx-ruler-label truncate pt-0.5 text-[9px] text-panel-text-2">
         <span className="hf-fx-ruler-name text-panel-text-1">{here.name}</span> — {here.says}
       </p>
     </div>

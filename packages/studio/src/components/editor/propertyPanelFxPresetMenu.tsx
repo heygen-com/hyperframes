@@ -13,6 +13,7 @@ import {
   type HfAudioFxPresetFamily,
 } from "@hyperframes/core/audio-fx-presets";
 import { PRESET_PROBLEM } from "@hyperframes/core/audio-fx-copy";
+import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 
 /**
  * Shelf names in the author's language, which is deliberately not the effect
@@ -28,6 +29,17 @@ const FAMILY_LABEL: Record<HfAudioFxPresetFamily, string> = {
 };
 
 export interface FxPresetMenuProps {
+  /**
+   * What the track reads as, from its id and filename.
+   *
+   * Only a confident "music" or "sfx" hides anything. `unknown` keeps the whole
+   * shelf, on the same principle the carve's source picker follows: a name is a
+   * hint, and a shelf that hides what somebody came for is worse than a long
+   * one. Nothing here is irreversible either — the cost of a wrong guess is one
+   * shelf the author has to scroll past, against the cost of "My voice sounds
+   * amateur" sitting on a music bed.
+   */
+  trackKind?: HfAudioNameKind;
   onPick(id: string): void;
   /**
    * Play this preset on the running audio without persisting it, and revert on
@@ -46,7 +58,15 @@ export interface FxPresetMenuProps {
  * in a column is a wall, and they are already the author's grouping rather than
  * the registry's. See `plans/audio-fx-ux/README.md` §Decided.
  */
-export function FxPresetMenu({ onPick, onAudition }: FxPresetMenuProps) {
+export function FxPresetMenu({ trackKind, onPick, onAudition }: FxPresetMenuProps) {
+  // The voice presets all begin by cutting rumble out of a human voice and end
+  // in a compressor set for speech. On a music bed that is not a mild mismatch,
+  // it is the wrong instrument — and the shelf leads with the complaint, so it
+  // would be offering the author a problem they do not have.
+  const families =
+    trackKind === "music" || trackKind === "sfx"
+      ? HF_AUDIO_FX_PRESET_FAMILIES.filter((f) => f !== "voice")
+      : HF_AUDIO_FX_PRESET_FAMILIES;
   return (
     <div
       className="hf-fx-preset-menu space-y-1.5 rounded-[4px] border border-panel-border-input p-1.5"
@@ -59,9 +79,9 @@ export function FxPresetMenu({ onPick, onAudition }: FxPresetMenuProps) {
       // button's focus, so it reverts and re-auditions rather than sticking.
       onBlur={onAudition ? () => onAudition(null) : undefined}
     >
-      {HF_AUDIO_FX_PRESET_FAMILIES.map((family) => (
+      {families.map((family) => (
         <div key={family} className="hf-fx-preset-group space-y-0.5">
-          <span className="hf-fx-preset-group-label block font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+          <span className="hf-fx-preset-group-label block font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
             {FAMILY_LABEL[family]}
           </span>
           {audioFxPresetsByFamily(family).map((preset) => (
@@ -85,7 +105,7 @@ export function FxPresetMenu({ onPick, onAudition }: FxPresetMenuProps) {
               <span className="hf-fx-preset-problem block truncate text-[10px]">
                 {PRESET_PROBLEM[preset.id] ?? preset.description}
               </span>
-              <span className="hf-fx-preset-name block truncate font-mono text-[9px] text-panel-text-4">
+              <span className="hf-fx-preset-name block truncate font-mono text-[9px] text-panel-text-2">
                 {preset.label}
               </span>
               {/* Hovering a preset plays it, and playing is otherwise invisible:

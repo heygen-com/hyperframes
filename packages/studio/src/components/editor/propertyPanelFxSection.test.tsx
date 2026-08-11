@@ -99,6 +99,7 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       levelled={overrides.levelled}
       onAuditionLevel={overrides.onAuditionLevel}
       auditioningLevel={overrides.auditioningLevel}
+      trackKind={overrides.trackKind}
     />,
   );
   return { host, root, onChainChange, onChainPreview, onCarveChange };
@@ -334,6 +335,42 @@ describe("FxSection chain", () => {
     // so the effect arriving in the slot arrives closed like any other.
     openDetails(host);
     expect(openFrequency().value).toBe("1600");
+  });
+
+  /**
+   * The shelf leads with the complaint a preset answers, so offering the voice
+   * family on a music bed offers the author a problem they cannot have. The
+   * hiding is deliberately timid: only a name that plainly reads as music or as
+   * an effect loses anything, because a name is a hint and hiding what somebody
+   * came for costs more than one extra shelf to scroll past.
+   */
+  const shelfFamilies = (host: HTMLElement): string[] =>
+    Array.from(host.querySelectorAll(".hf-fx-preset-group-label")).map((e) =>
+      (e.textContent ?? "").trim(),
+    );
+
+  it("keeps the voice presets on a track whose name says nothing", () => {
+    const { host } = mount({ trackKind: "unknown" });
+    click(byText(host, "button", "Presets"));
+    expect(shelfFamilies(host)).toEqual(["Voice", "Fix", "Character", "Space"]);
+  });
+
+  it("keeps them when nothing classified the track at all", () => {
+    const { host } = mount({});
+    click(byText(host, "button", "Presets"));
+    expect(shelfFamilies(host)).toContain("Voice");
+  });
+
+  it("drops the voice shelf on a music bed, and on an effect", () => {
+    for (const kind of ["music", "sfx"] as const) {
+      const { host } = mount({ trackKind: kind });
+      click(byText(host, "button", "Presets"));
+      expect(shelfFamilies(host)).toEqual(["Fix", "Character", "Space"]);
+      // The rest of the shelf is untouched — this hides one family, it does not
+      // narrow the panel down to "repair".
+      expect(presetButton(host, "telephone")).toBeTruthy();
+      expect(presetButton(host, "voice-clean")).toBeUndefined();
+    }
   });
 
   it("applies a preset as ordinary nodes, tagged with where they came from", () => {

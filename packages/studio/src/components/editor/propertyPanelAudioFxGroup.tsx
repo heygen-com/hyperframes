@@ -895,6 +895,10 @@ export function AudioFxGroup({
       onCarveChange={(next) => void setCarve(next)}
       onCarvePreview={(next) => onSetAttributeLive(HF_AUDIO_CARVE_ATTR, JSON.stringify(next))}
       sourceOptions={sourceOptions}
+      // What this track sounds like, by the same reading that decides which
+      // OTHER tracks a carve may listen to. The shelf uses it to stop offering
+      // "My voice sounds amateur" on a music bed.
+      trackKind={classifyAudioName(element.id, element.element?.getAttribute("src"))}
       onLevel={() => void runLeveller()}
       onRemoveLevel={removeLeveller}
       levelled={chain.nodes.some((n) => n.fromLeveller)}

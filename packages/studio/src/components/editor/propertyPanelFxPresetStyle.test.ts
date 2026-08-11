@@ -6,6 +6,7 @@ import {
   FX_PRESET_STYLE_DEFAULT,
   fxPresetBackground,
   fxPresetStyle,
+  fxTintWash,
 } from "./propertyPanelFxPresetStyle.js";
 
 describe("per-preset title treatments", () => {
@@ -112,5 +113,30 @@ describe("per-preset title treatments", () => {
 
   it("falls back rather than failing for a preset it does not know", () => {
     expect(fxPresetStyle("not-a-preset")).toBe(FX_PRESET_STYLE_DEFAULT);
+  });
+});
+
+/**
+ * The wash is shared with the smart modules, which do not have preset entries
+ * to look up — the carve derives its colour from `fxFamilyTint`, and that one
+ * COMPUTES its lightness, so it emits `62.0%` where every preset colour is a
+ * whole number. An integer-only pattern reads those as no match and returns
+ * null, which renders as no wash at all rather than as an error.
+ */
+describe("the tint wash", () => {
+  it("reads a computed colour, decimals and all", () => {
+    expect(fxTintWash("hsl(95, 32%, 62.0%)")).toBe("hsl(95, 22%, 11%)");
+    expect(fxTintWash("hsl(95, 32.5%, 76%)")).toBe("hsl(95, 22%, 11%)");
+  });
+
+  it("keeps the hue and takes everything else to near-black", () => {
+    // Same hue in, same hue out: the wash cannot clash with the title it sits
+    // behind, because it IS the title's hue.
+    expect(fxTintWash("hsl(288, 85%, 72%)")).toBe("hsl(288, 22%, 11%)");
+  });
+
+  it("declines a colour it cannot read rather than guessing", () => {
+    expect(fxTintWash("#52525B")).toBeNull();
+    expect(fxTintWash("rebeccapurple")).toBeNull();
   });
 });

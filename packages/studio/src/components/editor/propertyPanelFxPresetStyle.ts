@@ -185,23 +185,32 @@ export function fxPresetStyle(presetId: string): FxPresetStyle {
 }
 
 /**
- * The wash behind a preset's bracket, derived from its title colour.
+ * The wash behind a titled module, derived from the colour of its own title.
  *
- * Derived rather than picked: nineteen hand-chosen pairs is nineteen chances
- * for one to clash with its own title, and a hue rotation cannot. Same hue,
+ * Derived rather than picked: twenty hand-chosen pairs is twenty chances for
+ * one to clash with its own title, and a hue rotation cannot. Same hue,
  * saturation pulled right down and lightness taken to near-black, so the panel
  * reads as tinted rather than coloured — the rack sits on `#0C0C0E` and
  * anything with real lightness here would fight every control on top of it.
  *
- * Returns a CSS colour, or null when the preset has no character of its own.
+ * Takes a colour rather than an id so the smart modules can use it too: the
+ * carve has a title worth setting and no preset entry to look up. Returns null
+ * for a colour it cannot read, which is how a caller opts out.
  */
-export function fxPresetBackground(presetId: string): string | null {
-  const style = FX_PRESET_STYLE[presetId];
-  if (!style) return null;
-  const hsl = /hsl\(\s*(\d+),\s*(\d+)%,\s*(\d+)%\s*\)/.exec(style.color);
+export function fxTintWash(color: string): string | null {
+  // Decimals allowed: the preset colours are whole numbers, but `fxFamilyTint`
+  // computes its lightness and emits `62.0%`, which an integer-only pattern
+  // silently declines — the module then renders with no wash at all.
+  const num = String.raw`\d+(?:\.\d+)?`;
+  const hsl = new RegExp(`hsl\\(\\s*(${num}),\\s*${num}%,\\s*${num}%\\s*\\)`).exec(color);
   if (!hsl) return null;
-  const hue = hsl[1];
   // 22% saturation at 11% lightness: present enough to tell two brackets apart
   // at a glance, dark enough that white body text still clears WCAG AA on it.
-  return `hsl(${hue}, 22%, 11%)`;
+  return `hsl(${hsl[1]}, 22%, 11%)`;
+}
+
+/** The wash behind a preset's bracket. Null when the preset has no character. */
+export function fxPresetBackground(presetId: string): string | null {
+  const style = FX_PRESET_STYLE[presetId];
+  return style ? fxTintWash(style.color) : null;
 }

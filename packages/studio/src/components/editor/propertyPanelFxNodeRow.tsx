@@ -135,7 +135,7 @@ function FxMoveButton({
   return (
     <button
       type="button"
-      className="hf-fx-move px-1 font-mono text-[10px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-25"
+      className="hf-fx-move px-1 font-mono text-[10px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-25"
       title={label}
       disabled={disabled}
       onClick={onClick}
@@ -180,7 +180,7 @@ function FxNodeHeader({
           and as a list when they are not — and the difference decides whether an
           author thinks the order matters. It does; it is audible. */}
       {position !== undefined ? (
-        <span className="hf-fx-node-index shrink-0 font-mono text-[9px] tabular-nums text-panel-text-4">
+        <span className="hf-fx-node-index shrink-0 font-mono text-[9px] tabular-nums text-panel-text-2">
           {String(position).padStart(2, "0")}
         </span>
       ) : null}
@@ -194,7 +194,7 @@ function FxNodeHeader({
       </button>
       <button
         type="button"
-        className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-4 hover:text-panel-text-0 disabled:opacity-40"
+        className="hf-fx-bypass rounded-[3px] border border-panel-border-input px-1.5 py-0.5 font-mono text-[9px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
         aria-pressed={bypassed}
         title={bypassed ? "Enable" : "Bypass"}
         disabled={disabled}
@@ -216,7 +216,7 @@ function FxNodeHeader({
       />
       <button
         type="button"
-        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-4 hover:text-red-400 disabled:opacity-40"
+        className="hf-fx-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
         title="Remove"
         disabled={disabled}
         onClick={onRemove}
@@ -377,7 +377,7 @@ export function FxNodeRow({
         onRemove={() => onRemove(index)}
       />
       {summary ? (
-        <p className="hf-fx-node-summary truncate px-1.5 pb-1 text-[10px] text-panel-text-4">
+        <p className="hf-fx-node-summary truncate px-1.5 pb-1 text-[10px] text-panel-text-2">
           {summary}
         </p>
       ) : null}
@@ -385,7 +385,7 @@ export function FxNodeRow({
         <>
           {/* What it is for, before what it is made of. */}
           {copy?.does ? (
-            <p className="hf-fx-node-does border-t border-panel-border-input px-1.5 py-1 text-[10px] text-panel-text-4">
+            <p className="hf-fx-node-does border-t border-panel-border-input px-1.5 py-1 text-[10px] text-panel-text-2">
               {copy.does}
             </p>
           ) : null}
@@ -409,7 +409,7 @@ export function FxNodeRow({
                 />
               </div>
               {profile ? (
-                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-4">
+                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-2">
                   <span className="truncate">{profile.ends.low}</span>
                   <span className="truncate text-right">{profile.ends.high}</span>
                 </p>
@@ -434,7 +434,7 @@ export function FxNodeRow({
                   author where the control is; this tells them which way to move
                   it, which is the question they actually have. */}
               {copy?.primaryEnds ? (
-                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-4">
+                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-2">
                   <span className="truncate">{copy.primaryEnds.low}</span>
                   <span className="truncate text-right">{copy.primaryEnds.high}</span>
                 </p>
@@ -452,7 +452,7 @@ export function FxNodeRow({
           {oneKnob ? (
             <button
               type="button"
-              className="hf-fx-node-details flex w-full items-center gap-1 border-t border-panel-border-input px-1.5 py-1 text-left font-mono text-[9px] uppercase tracking-wide text-panel-text-4 hover:text-panel-text-0"
+              className="hf-fx-node-details flex w-full items-center gap-1 border-t border-panel-border-input px-1.5 py-1 text-left font-mono text-[9px] uppercase tracking-wide text-panel-text-2 hover:text-panel-text-0"
               aria-expanded={details}
               onClick={() => setDetails((was) => !was)}
             >
@@ -460,7 +460,7 @@ export function FxNodeRow({
               Details — {registryDef.label}
             </button>
           ) : (
-            <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-4">
+            <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
               Details — {registryDef.label}
             </p>
           )}

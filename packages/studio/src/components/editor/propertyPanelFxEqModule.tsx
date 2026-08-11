@@ -115,7 +115,7 @@ function Fader({
       </span>
       <span
         className={`hf-fx-eq-value font-mono text-[9px] tabular-nums ${
-          moved ? "text-panel-accent" : "text-panel-text-4"
+          moved ? "text-panel-accent" : "text-panel-text-2"
         }`}
       >
         {moved ? shown(value) : "0"}
@@ -154,10 +154,10 @@ export function FxEqModule({
         >
           Tone
         </button>
-        <span className="font-mono text-[9px] text-panel-text-4">{bands.length}-band</span>
+        <span className="font-mono text-[9px] text-panel-text-2">{bands.length}-band</span>
         <button
           type="button"
-          className="hf-fx-remove px-1 text-[11px] text-panel-text-4 hover:text-panel-danger"
+          className="hf-fx-remove px-1 text-[11px] text-panel-text-2 hover:text-panel-danger"
           aria-label="Remove Tone"
           disabled={disabled}
           onClick={onRemove}
@@ -179,7 +179,7 @@ export function FxEqModule({
               />
             ))}
           </div>
-          <div className="mt-1.5 flex justify-between font-mono text-[8px] tracking-wide text-panel-text-4">
+          <div className="mt-1.5 flex justify-between font-mono text-[8px] tracking-wide text-panel-text-2">
             <span>CUT</span>
             <span>BOOST</span>
           </div>
