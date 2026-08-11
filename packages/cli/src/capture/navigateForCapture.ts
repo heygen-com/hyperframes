@@ -50,7 +50,7 @@ export async function navigateForCapture<TResponse>(
     }
   }
 
-  const fallbackTimeoutMs = Math.max(totalTimeoutMs - networkIdleTimeoutMs, networkIdleTimeoutMs);
+  const fallbackTimeoutMs = totalTimeoutMs - networkIdleTimeoutMs;
   const response = await page.goto(url, {
     waitUntil: "domcontentloaded",
     timeout: fallbackTimeoutMs,

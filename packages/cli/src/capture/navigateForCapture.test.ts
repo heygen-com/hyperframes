@@ -72,6 +72,31 @@ describe("navigateForCapture", () => {
     });
   });
 
+  it.each([
+    { totalTimeoutMs: 31_000, fallbackTimeoutMs: 1_000 },
+    { totalTimeoutMs: 45_000, fallbackTimeoutMs: 15_000 },
+  ])(
+    "uses only the remaining budget for fallback when totalTimeoutMs=$totalTimeoutMs",
+    async ({ totalTimeoutMs, fallbackTimeoutMs }) => {
+      const response = { status: () => 200 };
+      const goto = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Navigation timeout of 30000 ms exceeded"))
+        .mockResolvedValueOnce(response);
+
+      await navigateForCapture({ goto }, "https://www.yahoo.com/", totalTimeoutMs);
+
+      expect(goto).toHaveBeenNthCalledWith(1, "https://www.yahoo.com/", {
+        waitUntil: "networkidle2",
+        timeout: NETWORK_IDLE_ATTEMPT_MS,
+      });
+      expect(goto).toHaveBeenNthCalledWith(2, "https://www.yahoo.com/", {
+        waitUntil: "domcontentloaded",
+        timeout: fallbackTimeoutMs,
+      });
+    },
+  );
+
   it("does not fall back for non-timeout navigation errors", async () => {
     const err = new Error("net::ERR_CONNECTION_REFUSED");
     const goto = vi.fn().mockRejectedValue(err);
