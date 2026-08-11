@@ -68,11 +68,23 @@ external reference, and both were argued rigorously from bad ground:
   shelf. Two speakers differ by more than 7 dB across the top octaves as a matter
   of course, so a cross-voice comparison cannot resolve a defect that size.
 
-If neither the original nor usable pauses exist — continuous speech, no silence,
-no reference — then a static tonal defect is **genuinely under-determined**. Say
-so. Offer the author the two or three readings that fit, and ask which they hear.
-That is a better answer than a chain built on a guess, and much better than one
-built on a published average.
+If neither the original nor usable pauses exist — continuous speech, or gaps that
+are digital silence and so carry no channel — then a static tonal defect is
+**genuinely under-determined**.
+
+Report that. It is a finding, not a failure to find one, and it is the correct
+answer rather than the fallback when the better methods are unavailable. Give
+the author the two or three readings that fit and ask which they hear; they can
+listen, and that one sentence from them collapses the whole problem.
+
+**This is the point where a capable agent goes wrong.** Told a thing is
+under-determined, the instinct is to invent a cleverer measurement and escape
+it — and something will always be found, because a single voice's spectrum is
+full of peaks and valleys that survive any amount of statistical rigour. An
+elaborate novel method reaching a confident conclusion, on a file where the two
+reliable references were both unavailable, is the *signature* of this failure,
+not evidence against it. If you notice yourself building one, stop and report
+the ambiguity instead.
 
 ---
 
@@ -139,11 +151,37 @@ ffmpeg -hide_banner -i voice.wav -af "lowpass=f=400,astats=metadata=1" -f null -
 ```
 
 A voice has no energy below its own fundamental, so a "missing" 100 Hz on a
-speaker whose F0 is 210 Hz is the speaker, not a rolloff. The same fact runs the
-other way and is the harder trap: **a boost at 200 Hz on a voice whose
-fundamental is near 200 Hz is nearly indistinguishable from that voice being
-naturally chesty.** Without a pause reference or the original, name the
-ambiguity rather than resolving it by assertion.
+speaker whose F0 is 210 Hz is the speaker, not a rolloff.
+
+The same fact runs the other way, and that direction is the trap: **a boost near
+the fundamental is indistinguishable from that voice being naturally chesty.**
+Both look like energy at F0, because both are.
+
+So the rule is symmetric, and the dangerous half is the second one:
+
+- Do not call a peak at F0 a defect on its own evidence.
+- **Do not dismiss one either.** "The peak is at 200 Hz, F0 is 185 Hz, therefore
+  it is the fundamental" is not a diagnosis — it is the same observation
+  restated, and it discards the one candidate most likely to be real. Boominess
+  *is* excess energy at the bottom of a voice; that is what the word means.
+
+What you can do is measure how much, against the same file's midrange:
+
+```bash
+third voice.wav 200      # or the nearest 1/3-octave band to F0
+third voice.wav 1000
+```
+
+In an ordinary take these land within a couple of dB of each other. A low band
+sitting **more than about 4 dB above the 1 kHz band** is a strong boom or mud
+candidate. Measured across one voice damaged several ways: undamaged +0.9,
+harsh +0.6, dull +2.0; boomy +6.7, muddy +5.8. Treat the figure as indicative
+rather than a threshold — it is one speaker — but the separation is wide, and a
+reading up at +6 is worth raising even when you cannot explain it.
+
+It still cannot tell you whether a filter did that or the speaker did, so report
+it as a candidate. That is the whole answer here: measure it, name it, hand the
+choice to somebody who can hear it.
 
 ---
 
