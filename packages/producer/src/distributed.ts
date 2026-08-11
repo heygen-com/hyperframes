@@ -154,7 +154,12 @@ export { PlanVideosMetadataError, type DistributedFormat } from "./services/dist
 // extension selects the container, so they must read it from here rather than
 // restate it: a literal that drifts from the writer's is a silently missing
 // audio track, not a loud failure.
-export { PLAN_AUDIO_RELATIVE_PATH } from "./services/distributed/shared.js";
+export {
+  isPlanAudioArtifactPath,
+  PLAN_AUDIO_LEGACY_RELATIVE_PATH,
+  PLAN_AUDIO_RELATIVE_PATH,
+  resolvePlanAudioPath,
+} from "./services/distributed/shared.js";
 
 // ── Plan-time shared types from `freezePlan` ───────────────────────────────
 // Re-exported so adopters that deserialize a planDir's `meta/encoder.json`

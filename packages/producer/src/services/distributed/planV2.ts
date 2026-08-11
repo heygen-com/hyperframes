@@ -47,7 +47,7 @@ import {
 import { PLAN_V2_INTEGRITY_UNRECOVERABLE, PlanV2IntegrityError } from "./planV2Errors.js";
 import { planV2BlobPath } from "./planV2Layout.js";
 import {
-  PLAN_AUDIO_RELATIVE_PATH,
+  isPlanAudioArtifactPath,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type DistributedFormat,
   parsePlanVideosJson as parseSharedPlanVideosJson,
@@ -283,7 +283,7 @@ function artifactTargets(
   path: string,
   videoDependencies: ReadonlyMap<string, readonly number[]> | null,
 ): Pick<PlanV2Artifact, "chunks" | "assembler"> {
-  if (path === PLAN_AUDIO_RELATIVE_PATH) return { chunks: [], assembler: true };
+  if (isPlanAudioArtifactPath(path)) return { chunks: [], assembler: true };
   if (path === "plan.json" || path === "meta/chunks.json" || path === "meta/encoder.json") {
     return { chunks: "all", assembler: true };
   }
@@ -898,6 +898,7 @@ export function materializePlanV2Target(
   }
   const manifest = readPlanV2Manifest(planV2Dir);
   const artifacts = listPlanV2ArtifactsForTarget(manifest, target);
+  const audioArtifact = artifacts.find((artifact) => isPlanAudioArtifactPath(artifact.path));
   const verified = artifacts.map((artifact) => ({
     artifact,
     sourcePath: verifyBlob(planV2Dir, artifact),
@@ -933,10 +934,14 @@ export function materializePlanV2Target(
     sourcePlanV1Hash: getPlanV2ExecutionPlanHash(manifest),
     artifactCount: artifacts.length,
     sizeBytes: artifacts.reduce((sum, artifact) => sum + artifact.sizeBytes, 0),
+    // Join the artifact's OWN name, not the current constant: a plan written
+    // before the container change carries the legacy name, and materializing it
+    // under the new one would point at a file that was never written.
     audioPath:
-      target.role === "assembler" &&
-      artifacts.some((artifact) => artifact.path === PLAN_AUDIO_RELATIVE_PATH)
-        ? join(destinationDir, PLAN_AUDIO_RELATIVE_PATH)
+      target.role === "assembler"
+        ? audioArtifact
+          ? join(destinationDir, audioArtifact.path)
+          : null
         : null,
   };
 }

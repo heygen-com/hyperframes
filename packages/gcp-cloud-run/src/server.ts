@@ -32,7 +32,9 @@ import {
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   plan,
+  isPlanAudioArtifactPath,
   PLAN_AUDIO_RELATIVE_PATH,
+  resolvePlanAudioPath,
   planV2WithPublisher,
   type PlanResult,
   type PlanV2Artifact,
@@ -398,7 +400,7 @@ async function handlePlanV2(
       Width: manifest.width,
       Height: manifest.height,
       Format: manifest.format,
-      HasAudio: manifest.artifacts.some((artifact) => artifact.path === PLAN_AUDIO_RELATIVE_PATH),
+      HasAudio: manifest.artifacts.some((artifact) => isPlanAudioArtifactPath(artifact.path)),
       AudioGcsUri: null,
       FfmpegVersion: manifest.ffmpegVersion,
       ProducerVersion: manifest.producerVersion,
@@ -568,7 +570,7 @@ async function handleAssemble(
     // only for backward compatibility with an older Plan that uploaded it
     // standalone.
     let audioPath: string | null = null;
-    const planAudio = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
+    const planAudio = resolvePlanAudioPath(planDir) ?? join(planDir, PLAN_AUDIO_RELATIVE_PATH);
     if (existsSync(planAudio) && statSync(planAudio).size > 0) {
       audioPath = planAudio;
     } else if (event.AudioGcsUri) {
@@ -620,9 +622,7 @@ async function handleAssembleV2(
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-assemble-v2-"));
   try {
     const planDir = await downloadAndMaterializePlanV2(storage, event, { role: "assembler" }, work);
-    const audioPath = existsSync(join(planDir, PLAN_AUDIO_RELATIVE_PATH))
-      ? join(planDir, PLAN_AUDIO_RELATIVE_PATH)
-      : null;
+    const audioPath = resolvePlanAudioPath(planDir);
     const chunkPaths = await downloadChunkObjects(storage, event.ChunkGcsUris, work, event.Format);
     const finalOutput =
       event.Format === "png-sequence"

@@ -98,7 +98,7 @@ describe("buildPadTrimAudioArgs", () => {
     // portable finite-padding shape used by the main audio mixer.
     const winPlan = buildPadTrimAudioPlan(
       "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio.m4a",
-      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio-padded.aac",
+      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio-padded.m4a",
       4.0,
       5.0,
     );
