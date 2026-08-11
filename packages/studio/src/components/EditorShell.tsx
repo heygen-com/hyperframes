@@ -8,7 +8,6 @@ import {
 } from "./nle/useTimelineEditCallbacks";
 import { NLEProvider, useNLEContext } from "./nle/NLEContext";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
-import { StudioFeedbackBar } from "./StudioFeedbackBar";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
@@ -189,7 +188,6 @@ export function EditorShell({
           />
         </NLEProvider>
       </TimelineEditProvider>
-      <StudioFeedbackBar />
     </div>
   );
 }
