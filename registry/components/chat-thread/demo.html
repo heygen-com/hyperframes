@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Chat Thread</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
+      }
+      .spec-phone {
+        position: absolute;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+        container-type: size;
+      }
+      .spec-paper {
+        position: absolute;
+        left: 330px;
+        top: 90px;
+        width: 640px;
+        height: 900px;
+        container-type: size;
+        background: #ece1d5;
+        background-image: radial-gradient(
+          circle,
+          rgba(178, 150, 138, 0.18) 1.4px,
+          transparent 1.8px
+        );
+        background-size: 26px 26px;
+        border-radius: 10px;
+        box-shadow: 0 34px 80px rgba(0, 0, 0, 0.5);
+      }
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
+        top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
+        display: grid;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      #root {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        container-type: size;
+        isolation: isolate;
+        background: #000;
+        font-family: var(--font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        pointer-events: none;
+      }
+      .cht-header {
+        position: absolute;
+        left: 0;
+        top: 3cqh;
+        width: 100cqw;
+        text-align: center;
+      }
+      .cht-avatar {
+        display: inline-grid;
+        place-items: center;
+        width: 9cqmin;
+        height: 9cqmin;
+        border-radius: 50%;
+        background: #9ce474;
+        color: #12300c;
+        font-size: 4.4cqmin;
+        font-weight: 600;
+      }
+      .cht-name {
+        display: block;
+        margin-top: 0.8cqh;
+        font-size: 2.9cqmin;
+        color: #8e8e93;
+      }
+      .cht-view {
+        position: absolute;
+        left: 0;
+        top: 14cqh;
+        width: 100cqw;
+        bottom: 12cqh;
+        overflow: hidden;
+      }
+      .cht-item {
+        position: absolute;
+        left: 4cqw;
+        width: 92cqw;
+        visibility: hidden;
+      }
+      .cht-item.sent {
+        text-align: right;
+      }
+      .cht-pop {
+        display: inline-block;
+        transform-origin: left bottom;
+      }
+      .cht-item.sent .cht-pop {
+        transform-origin: right bottom;
+      }
+      .cht-bubble {
+        display: inline-block;
+        max-width: 74cqw;
+        padding: 1.4cqh 3.6cqw;
+        border-radius: 5cqmin;
+        font-size: 3.4cqmin;
+        line-height: 1.35;
+        color: #fff;
+        text-align: left;
+      }
+      .cht-bubble.recv {
+        background: #242428;
+      }
+      .cht-bubble.sent {
+        background: #0a80f8;
+      }
+      .cht-media {
+        display: inline-block;
+        width: 52cqw;
+        aspect-ratio: 4 / 3;
+        border-radius: 4cqmin;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+        position: relative;
+      }
+      .cht-media .cht-play {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 11cqmin;
+        height: 11cqmin;
+        border-radius: 50%;
+        background: rgba(253, 253, 253, 0.94);
+      }
+      .cht-media .cht-play::before {
+        content: "";
+        position: absolute;
+        left: 38%;
+        top: 30%;
+        border-left: 3.6cqmin solid #0d0d0d;
+        border-top: 2.2cqmin solid transparent;
+        border-bottom: 2.2cqmin solid transparent;
+      }
+      .cht-dots {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1cqmin;
+        width: 12cqmin;
+        height: 6.5cqmin;
+        background: #242428;
+        border-radius: 3.4cqmin;
+      }
+      .cht-dots span {
+        width: 1.7cqmin;
+        height: 1.7cqmin;
+        border-radius: 50%;
+        background: #8e8e93;
+      }
+      .cht-composer {
+        position: absolute;
+        left: 4cqw;
+        bottom: 3.5cqh;
+        width: 92cqw;
+        height: 5.6cqh;
+        border: 0.35cqmin solid #202022;
+        border-radius: 100cqmin;
+      }
+      .cht-ph {
+        position: absolute;
+        left: 9cqw;
+        bottom: 4.7cqh;
+        color: #8e8e93;
+        font-size: 3.2cqmin;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      class="hf-ui-demo-canvas"
+      data-composition-id="chat-thread-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="12"
+    >
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div id="root" style="position: relative; width: 100%; height: 100%; overflow: hidden">
+              <div class="cht-header">
+                <span class="cht-avatar" id="cht-avatar">R</span
+                ><span class="cht-name" id="cht-name">Rachel</span>
+              </div>
+              <div class="cht-view" id="cht-view"></div>
+              <div class="cht-composer"></div>
+              <div class="cht-ph">iMessage</div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-cap">
+          <div class="name">chat-thread</div>
+          <div class="rule"></div>
+          <div class="desc">
+            A conversation as one scene: bubbles pop in on the measured entry, the thread shifts up
+            in expo lockstep, dots hold the beat before replies.
+          </div>
+          <div class="stats">
+            <div class="stat"><b>measured</b> — pop-in scale .75 / 0.12s</div>
+            <div class="stat"><b>dynamic</b> — heights measured, choreography generated</div>
+            <div class="stat"><b>any thread</b> — messages are one variable</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      (function () {
+        "use strict";
+        var compositionId = "chat-thread-demo";
+        var root = document.getElementById("root");
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+        function text(v, fb, mx) {
+          if (typeof v !== "string") return fb;
+          var t = v.trim();
+          if (!t) return fb;
+          return t.length > mx ? t.slice(0, mx) : t;
+        }
+        function clampNumber(v, min, max, fb) {
+          var n = typeof v === "number" ? v : parseFloat(v);
+          if (!isFinite(n)) return fb;
+          return Math.min(max, Math.max(min, n));
+        }
+        var contact = text(vars.contact, "Rachel", 16);
+        document.getElementById("cht-avatar").textContent = contact.charAt(0).toUpperCase();
+        document.getElementById("cht-name").textContent = contact;
+        var beat = clampNumber(vars.beat, 0.8, 3, 1.7);
+        var dotsOn = vars.dots !== "off";
+
+        var raw = text(
+          vars.messages,
+          "recv:what r u using for the launch video??|sent:wait look \ud83d\udc40|img|recv:OMG IT'S HTML|recv:\ud83e\udd2f\ud83e\udd2f\ud83e\udd2f|sent:renders in 4K. no editor",
+          600,
+        );
+        var entries = raw
+          .split("|")
+          .map(function (token) {
+            return token.trim();
+          })
+          .filter(Boolean)
+          .slice(0, 10);
+        if (entries.length === 0) entries = ["recv:hey"];
+
+        var view = document.getElementById("cht-view");
+        var items = entries.map(function (entry) {
+          var kind = "recv",
+            body = entry;
+          if (entry.indexOf("recv:") === 0) {
+            kind = "recv";
+            body = entry.slice(5);
+          } else if (entry.indexOf("sent:") === 0) {
+            kind = "sent";
+            body = entry.slice(5);
+          } else if (entry === "img") {
+            kind = "img";
+            body = "";
+          }
+          var item = document.createElement("div");
+          item.className = "cht-item " + (kind === "sent" ? "sent" : "recv");
+          item.setAttribute("data-layout-allow-overflow", "");
+          item.setAttribute("data-layout-allow-overlap", "");
+          item.setAttribute("data-layout-allow-occlusion", "");
+          var pop = document.createElement("div");
+          pop.className = "cht-pop";
+          if (kind === "img") {
+            pop.innerHTML = '<span class="cht-media"><span class="cht-play"></span></span>';
+          } else {
+            var bubble = document.createElement("div");
+            bubble.className = "cht-bubble " + kind;
+            bubble.textContent = body.trim();
+            pop.appendChild(bubble);
+          }
+          item.appendChild(pop);
+          view.appendChild(item);
+          return { el: item, pop: pop, kind: kind };
+        });
+        var dotsItem = null;
+        if (dotsOn) {
+          dotsItem = document.createElement("div");
+          dotsItem.className = "cht-item recv";
+          dotsItem.setAttribute("data-layout-allow-overflow", "");
+          dotsItem.setAttribute("data-layout-allow-overlap", "");
+          dotsItem.setAttribute("data-layout-allow-occlusion", "");
+          dotsItem.innerHTML =
+            '<div class="cht-pop"><span class="cht-dots"><span></span><span></span><span></span></span></div>';
+          view.appendChild(dotsItem);
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        function build() {
+          tl.clear();
+          var viewH = view.offsetHeight || 1;
+          var gap = viewH * 0.018;
+          var heights = items.map(function (item) {
+            return item.el.offsetHeight;
+          });
+          var dotsH = dotsItem ? dotsItem.offsetHeight : 0;
+          /* arrival schedule: dots hold the front 55% of the beat before a recv */
+          var starts = [];
+          var t = 0.4;
+          items.forEach(function (item, i) {
+            if (i > 0) t += beat;
+            starts.push(t);
+          });
+          var duration = 12;
+          /* compress if the thread outruns the composition */
+          var last = starts[starts.length - 1];
+          if (last > duration - 1.2) {
+            var k = (duration - 1.6) / last;
+            starts = starts.map(function (s) {
+              return 0.4 + (s - 0.4) * k;
+            });
+          }
+          items.forEach(function (item) {
+            gsap.set(item.el, { autoAlpha: 0, y: 0 });
+          });
+          if (dotsItem) gsap.set(dotsItem, { autoAlpha: 0 });
+          /* at step k every visible item sits stacked up from the bottom */
+          items.forEach(function (item, k) {
+            var at = starts[k];
+            var bottom = viewH;
+            var yK = [];
+            for (var j = k; j >= 0; j -= 1) {
+              bottom -= heights[j];
+              yK[j] = bottom;
+              bottom -= gap;
+            }
+            for (var i = 0; i <= k; i += 1) {
+              if (i === k) {
+                tl.set(item.el, { y: yK[i] }, at);
+                tl.set(item.el, { autoAlpha: 1 }, at);
+                tl.fromTo(
+                  item.pop,
+                  { scale: 0.75, autoAlpha: 0.6 },
+                  { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+                  at,
+                );
+              } else {
+                tl.to(items[i].el, { y: yK[i], duration: 1.0, ease: "expo.out" }, at);
+              }
+            }
+            /* dots hold the beat before a received message */
+            if (dotsItem && item.kind === "recv" && k > 0) {
+              var dAt = Math.max(starts[k - 1] + 0.35, at - beat * 0.55);
+              tl.set(dotsItem, { y: viewH - dotsH }, dAt);
+              tl.set(dotsItem, { autoAlpha: 1 }, dAt);
+              tl.set(dotsItem, { autoAlpha: 0 }, at);
+            }
+          });
+          tl.set({}, {}, duration);
+          tl.seek(0);
+        }
+        build();
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(function () {
+            build();
+            tl.pause(0);
+          });
+        }
+        window.__timelines = window.__timelines || {};
+        window.__timelines[compositionId] = tl;
+      })();
+    </script>
+  </body>
+</html>

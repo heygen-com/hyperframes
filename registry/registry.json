@@ -680,10 +680,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "banner-push-in",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "beat-accent",
       "type": "hyperframes:component"
     },
@@ -805,6 +801,10 @@
     },
     {
       "name": "chart-story",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chat-thread",
       "type": "hyperframes:component"
     },
     {
@@ -996,10 +996,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "line-reveal-list",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "line-swap",
       "type": "hyperframes:component"
     },
@@ -1017,6 +1013,10 @@
     },
     {
       "name": "logo-wall",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "marker-checklist-card",
       "type": "hyperframes:component"
     },
     {
@@ -1077,6 +1077,10 @@
     },
     {
       "name": "native-notification-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "notes-typing",
       "type": "hyperframes:component"
     },
     {
@@ -1261,6 +1265,10 @@
     },
     {
       "name": "slot-machine-roll",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "social-proof-card",
       "type": "hyperframes:component"
     },
     {
@@ -1513,6 +1521,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "c00ffa020d8a7460f0cecb92193250881e6601c18b167f1b474b1e4772d6b94f"
+    "revision": "cdfbd8831045e871017c20f21fe83922e2c9ae4a74d1fdfe140709d445d6aa41"
   }
 }
