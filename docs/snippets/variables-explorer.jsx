@@ -478,18 +478,49 @@ export const VariablesExplorer = ({
   display: grid;
   gap: 8px;
 }
-.hf-ve-drop[data-over="true"] .hf-ve-field {
+.hf-ve-drop[data-over="true"] .hf-ve-dropzone {
   border-color: var(--ve-on-bg);
+  border-style: solid;
 }
-.hf-ve-import {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+
+/* The import is the action almost everyone wants: a reader arrives with a
+   shape, not with path data. A dashed target reads as "put a file here" on
+   sight, where a button beneath a field of coordinates read as an afterthought
+   to the coordinates. */
+.hf-ve-dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 18px 12px;
+  border: 1px dashed var(--ve-line);
+  border-radius: 10px;
+  background: var(--ve-surface);
+  text-align: center;
 }
-.hf-ve-import .hf-ve-btn {
-  flex: 0 0 auto;
+.hf-ve-dropzone .hf-ve-btn {
+  padding: 7px 16px;
+  font-size: 13px;
+  color: var(--ve-fg);
   border-color: var(--ve-line);
+  background: var(--ve-bg);
 }
+.hf-ve-dropzone .hf-ve-btn:hover:not(:disabled) { background: var(--ve-hover); }
+
+/* Path data stays reachable, but a reader has to ask for it. A native details
+   element rather than our own toggle, so it opens with the keyboard and is
+   announced as expandable without any wiring. */
+.hf-ve-advanced > summary {
+  font-size: 12px;
+  color: var(--ve-muted);
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+.hf-ve-advanced > summary::-webkit-details-marker { display: none; }
+.hf-ve-advanced > summary::before { content: "▸ "; }
+.hf-ve-advanced[open] > summary::before { content: "▾ "; }
+.hf-ve-advanced > summary:hover { color: var(--ve-fg); }
+.hf-ve-advanced .hf-ve-field { margin-top: 6px; }
 .hf-ve-file {
   position: absolute;
   width: 1px;
@@ -1446,18 +1477,10 @@ export const VariablesExplorer = ({
             receive(event.dataTransfer.files[0]);
           }}
         >
-          <input
-            type="text"
-            className="hf-ve-field hf-ve-mono hf-ve-tint"
-            value={value}
-            aria-label={variable.label ?? variable.id}
-            aria-describedby={noteId}
-            onChange={(e) => onChange(e.target.value)}
-          />
-          <div className="hf-ve-import">
-            {/* The button is the trigger, so the picker is reachable by tab and
-                Enter and carries the focus ring every other control here has.
-                Dropping a file does the same thing and is never the only way. */}
+          {/* The button is the trigger, so the picker is reachable by tab and
+              Enter and carries the focus ring every other control here has.
+              Dropping a file does the same thing and is never the only way. */}
+          <div className="hf-ve-dropzone">
             <button
               type="button"
               className="hf-ve-btn hf-ve-tint"
@@ -1478,14 +1501,22 @@ export const VariablesExplorer = ({
                 event.target.value = "";
               }}
             />
+            {/* Always present, so the region is one a screen reader is
+                already watching when a message arrives. */}
+            <p id={noteId} role="status" className="hf-ve-note" data-tone={note ? note.tone : ""}>
+              {note ? note.message : "Or drop one here. Scaled to fit and centred."}
+            </p>
           </div>
-          {/* Its own row rather than a column beside the button: the panel is
-              two columns wide at docs width, and a sentence sharing that with a
-              button breaks to five lines. Always present, so the region is one
-              a screen reader is already watching when a message arrives. */}
-          <p id={noteId} role="status" className="hf-ve-note" data-tone={note ? note.tone : ""}>
-            {note ? note.message : "Or drop one here. Scaled to fit and centred."}
-          </p>
+          <details className="hf-ve-advanced">
+            <summary>Path data</summary>
+            <input
+              type="text"
+              className="hf-ve-field hf-ve-mono hf-ve-tint"
+              value={value}
+              aria-label={variable.label ?? variable.id}
+              onChange={(e) => onChange(e.target.value)}
+            />
+          </details>
         </div>
       );
     }
