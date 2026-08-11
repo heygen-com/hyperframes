@@ -1637,7 +1637,11 @@ export const VariablesExplorer = ({
     "</head><body><script>",
     "(function(){",
     `  var PAYLOAD = ${JSON.stringify(previewSrc)};`,
-    `  var INITIAL = ${JSON.stringify(defaults)};`,
+    // The frame mounts with whatever a shared link asked for, not the bare
+    // defaults. Posting the values afterwards is too late for anything the
+    // composition reads once at init — a path arrives, the mark is already
+    // drawn from the default one, and only a later edit corrects it.
+    `  var INITIAL = ${JSON.stringify({ ...defaults, ...readFromUrl() })};`,
     "  var html = null, player = null, poll = null;",
     // Two ways in, because a composition can be either shape. A top-level one
     // reads overrides off `window.__hfVariables`; one mounted through
