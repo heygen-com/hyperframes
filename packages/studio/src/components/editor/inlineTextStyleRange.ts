@@ -22,7 +22,10 @@
  * a sentence, so reading and rebuilding one is not a cost worth avoiding.
  */
 
-import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
+import {
+  isRichTextFormattingAttribute,
+  isRichTextFormattingTag,
+} from "@hyperframes/core/rich-text-sanitize";
 
 /** One stretch of characters that are all styled the same way. */
 interface StyledRun {
@@ -86,7 +89,7 @@ export function applyInlineStyle(range: Range, style: InlineStyleDelta): void {
   if (!host || !holdsBothEnds(host, range)) return;
 
   const runs = readRuns(host);
-  const span = codePointBounds(
+  const span = graphemeBounds(
     runs,
     offsetOf(host, range.startContainer, range.startOffset),
     offsetOf(host, range.endContainer, range.endOffset),
@@ -95,9 +98,7 @@ export function applyInlineStyle(range: Range, style: InlineStyleDelta): void {
 
   const next = restyle(runs, span.start, span.end, style);
   render(host, next);
-  // A colour that does not paint is the same to the user as a colour that did
-  // not save, so check rather than assume. See `mirrorFillColor`.
-  if (colourIsOverpainted(host)) render(host, next.map(mirrorFillColor));
+  reconcileFillColors(host);
   selectRange(host, span.start, span.end);
 }
 
@@ -116,58 +117,68 @@ export function applyInlineStyle(range: Range, style: InlineStyleDelta): void {
  * come from the same computed style, so neither notation nor inheritance has to
  * be untangled by hand.
  */
-function colourIsOverpainted(host: Element): boolean {
+function reconcileFillColors(host: Element): void {
   const view = host.ownerDocument.defaultView;
-  if (!view?.getComputedStyle) return false;
-  for (const span of host.querySelectorAll<HTMLElement>("span[style*='color']")) {
+  if (!view?.getComputedStyle) return;
+  for (const span of host.querySelectorAll<HTMLElement>("span")) {
     if (!span.style.color) continue;
+    // A generated mirror repeats the run's colour. Remove that before asking
+    // what would paint the run without it; an authored, different fill stays
+    // in place long enough to be detected as the overpaint it is.
+    const existingFill = span.style.getPropertyValue("-webkit-text-fill-color");
+    if (existingFill === span.style.color) {
+      span.style.removeProperty("-webkit-text-fill-color");
+    }
     const computed = view.getComputedStyle(span) as CSSStyleDeclaration & {
       webkitTextFillColor?: string;
     };
     const fill = computed.webkitTextFillColor;
     if (!fill || !computed.color) continue;
-    if (fill !== computed.color) return true;
+    if (fill !== computed.color) {
+      span.style.setProperty("-webkit-text-fill-color", span.style.color);
+    }
   }
-  return false;
-}
-
-/** The same run, with its colour also stated as the fill that actually paints. */
-function mirrorFillColor(run: StyledRun): StyledRun {
-  const colour = run.style.color;
-  if (!colour) return run;
-  return { ...run, style: { ...run.style, "-webkit-text-fill-color": colour } };
 }
 
 /**
  * The offsets to style, widened so they never fall inside a character.
  *
- * A selection offset counts UTF-16 units and an emoji is two of them, so a
- * boundary can land between the halves of one. Styling from there puts half the
- * character in one span and half in the next, and both render as a question
- * mark in a box.
+ * Selection offsets count UTF-16 units, while one visible character can be a
+ * surrogate pair, combining sequence, flag, modifier sequence, or a family
+ * joined by zero-width joiners. Splitting any of those across spans corrupts
+ * what the user selected even when every individual code point remains valid.
  */
-function codePointBounds(
+function graphemeBounds(
   runs: StyledRun[],
   start: number | null,
   end: number | null,
 ): { start: number; end: number } | null {
   if (start === null || end === null || start >= end) return null;
   const text = runs.map((run) => run.text).join("");
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  const boundaries = [0, ...Array.from(segmenter.segment(text), atEndOfSegment)];
   return {
-    start: isTrailingHalf(text, start) ? start - 1 : start,
-    end: isTrailingHalf(text, end) ? end + 1 : end,
+    start: boundaryAtOrBefore(boundaries, start),
+    end: boundaries.find((boundary) => boundary >= end) ?? end,
   };
+}
+
+function atEndOfSegment({ index, segment }: Intl.SegmentData): number {
+  return index + segment.length;
+}
+
+function boundaryAtOrBefore(boundaries: number[], offset: number): number {
+  let previous = offset;
+  for (const boundary of boundaries) {
+    if (boundary > offset) return previous;
+    previous = boundary;
+  }
+  return previous;
 }
 
 /** Whether the whole selection lives inside this element. */
 function holdsBothEnds(host: Element, range: Range): boolean {
   return host.contains(range.startContainer) && host.contains(range.endContainer);
-}
-
-/** Whether this offset sits on the second half of a character, mid-pair. */
-function isTrailingHalf(text: string, offset: number): boolean {
-  const code = text.charCodeAt(offset);
-  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 /**
@@ -182,8 +193,9 @@ export function readInlineStyle(range: Range, properties: string[]): Record<stri
   const end = offsetOf(host, range.endContainer, range.endOffset);
   if (start === null || end === null) return {};
 
+  const collapsed = start === end;
   const covered = charRuns(readRuns(host))
-    .slice(start, Math.max(end, start + 1))
+    .slice(collapsed ? Math.max(0, start - 1) : start, collapsed ? Math.max(1, start) : end)
     .map((entry) => entry.style);
   if (covered.length === 0) return {};
 
@@ -206,7 +218,9 @@ export function readInlineStyle(range: Range, properties: string[]): Record<stri
 function editingHost(node: Node): HTMLElement | null {
   let element = (node.nodeType === 1 ? node : node.parentElement) as HTMLElement | null;
   const editable = element?.closest<HTMLElement>("[contenteditable]");
-  if (editable) return editable;
+  if (editable) {
+    return editable.getAttribute("contenteditable")?.toLowerCase() === "false" ? null : editable;
+  }
   // No open edit, so climb out of the formatting to the element that owns it.
   while (element?.parentElement && isRichTextFormattingTag(element.tagName)) {
     element = element.parentElement;
@@ -438,7 +452,8 @@ function preservedAttributes(element: Element): Map<string, string> {
   const kept = new Map<string, string>();
   for (const name of element.getAttributeNames()) {
     if (name === "style" || name === DERIVED_ATTR) continue;
-    kept.set(name, element.getAttribute(name) ?? "");
+    const value = element.getAttribute(name) ?? "";
+    if (isRichTextFormattingAttribute(name, value)) kept.set(name, value);
   }
   return kept;
 }

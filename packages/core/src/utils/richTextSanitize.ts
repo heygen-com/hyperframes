@@ -98,6 +98,11 @@ export function isRichTextFormattingTag(tagName: string): boolean {
   return FORMATTING_TAGS.has(tagName.toUpperCase());
 }
 
+/** Whether an attribute survives the rich-text persistence boundary. */
+export function isRichTextFormattingAttribute(name: string, value: string): boolean {
+  return FORMATTING_ATTRS.has(name.toLowerCase()) && SAFE_ATTR_VALUE.test(value);
+}
+
 function isElementNode(node: Node): node is Element {
   return node.nodeType === ELEMENT_NODE;
 }
@@ -165,7 +170,7 @@ function stripAttributes(element: Element): void {
   const style = element.getAttribute("style");
   for (const name of Array.from(element.getAttributeNames())) {
     const value = element.getAttribute(name) ?? "";
-    if (FORMATTING_ATTRS.has(name.toLowerCase()) && SAFE_ATTR_VALUE.test(value)) continue;
+    if (isRichTextFormattingAttribute(name, value)) continue;
     element.removeAttribute(name);
   }
   if (style === null) return;

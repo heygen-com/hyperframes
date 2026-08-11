@@ -279,6 +279,14 @@ describe("readInlineStyle", () => {
 
     expect(styles["background-color"]).toBeUndefined();
   });
+
+  it("reports the character before a collapsed caret at a style boundary", () => {
+    const host = mount('<span style="color: red">ab</span>cd');
+
+    const styles = readInlineStyle(rangeOver(host, 2, 2), ["color"]);
+
+    expect(styles.color).toBe("red");
+  });
 });
 
 // Edge cases found by asking what a real composition contains that the happy
@@ -334,6 +342,20 @@ describe("applyInlineStyle edge cases", () => {
 
     expect(host.textContent).toBe("ab👍cd");
     expect(elementsWithHalfACharacter(host)).toEqual([]);
+  });
+
+  it.each([
+    ["a zero-width-joiner family", "👨‍👩‍👧"],
+    ["a regional-indicator flag", "🇺🇸"],
+    ["an emoji with a skin-tone modifier", "👍🏽"],
+    ["a combining-mark character", "e\u0301"],
+  ])("keeps %s together", (_name, grapheme) => {
+    const host = mount(`a${grapheme}b`);
+    // Both boundaries are expressed in UTF-16 units and at least one lands
+    // inside the grapheme rather than at one of its edges.
+    applyInlineStyle(rangeOver(host, 2, Math.max(3, grapheme.length)), { color: "red" });
+
+    expect(host.innerHTML).toBe(`a<span style="color: red">${grapheme}</span>b`);
   });
 
   it("leaves the element alone when the selection reaches outside it", () => {
@@ -465,6 +487,28 @@ describe("applyInlineStyle keeps what the design panel tracks", () => {
     expect(host.innerHTML).not.toContain("hf-wrap");
   });
 
+  it("does not carry attributes that the persistence sanitizer will remove", () => {
+    const host = mount(
+      '<span data-hf-text-key="child:0" aria-label="stale" onclick="alert(1)">abc</span>',
+    );
+
+    applyInlineStyle(rangeOver(host, 0, 3), { color: "red" });
+
+    expect(host.innerHTML).toContain('data-hf-text-key="child:0"');
+    expect(host.innerHTML).not.toContain("aria-label");
+    expect(host.innerHTML).not.toContain("onclick");
+  });
+
+  it("does not edit through a contenteditable=false boundary", () => {
+    document.body.innerHTML =
+      '<div contenteditable="true"><span contenteditable="false">locked</span></div>';
+    const locked = document.body.querySelector("span") as HTMLElement;
+
+    applyInlineStyle(rangeOver(locked, 0, 6), { color: "red" });
+
+    expect(locked.innerHTML).toBe("locked");
+  });
+
   it("does not merge two tracked layers that end up looking alike", () => {
     const host = mount(
       '<span data-hf-text-key="child:0" style="color: red">ab</span>' +
@@ -515,13 +559,14 @@ describe("applyInlineStyle survives a control that fires repeatedly", () => {
  * which reads as the colour picker being broken.
  */
 describe("applyInlineStyle when something else is painting the glyphs", () => {
-  function stubFill(fill: string | null) {
+  function stubFill(fill: string | null | ((element: HTMLElement) => string | null)) {
     const real = window.getComputedStyle.bind(window);
     vi.spyOn(window, "getComputedStyle").mockImplementation(((element: Element) => {
       const computed = real(element as HTMLElement);
+      const resolvedFill = typeof fill === "function" ? fill(element as HTMLElement) : fill;
       return new Proxy(computed, {
         get: (target, key) => {
-          if (key === "webkitTextFillColor") return fill ?? undefined;
+          if (key === "webkitTextFillColor") return resolvedFill ?? undefined;
           if (key === "color") return (element as HTMLElement).style.color || "rgb(0, 0, 0)";
           return Reflect.get(target, key);
         },
@@ -551,6 +596,36 @@ describe("applyInlineStyle when something else is painting the glyphs", () => {
     const host = mount("Hello world");
     stubFill("rgb(255, 255, 255)");
     applyInlineStyle(rangeOver(host, 6, 11), { "font-weight": "700" });
+
+    expect(host.innerHTML).not.toContain("-webkit-text-fill-color");
+  });
+
+  it("mirrors only the run whose own ancestor path is overpainting", () => {
+    const host = mount(
+      '<span data-hf-text-key="child:0" style="color: blue">left</span>' +
+        '<span data-hf-text-key="child:1" style="color: green">right</span>',
+    );
+    stubFill((element) =>
+      element.textContent === "left" ? "rgb(255, 255, 255)" : element.style.color,
+    );
+
+    applyInlineStyle(rangeOver(host, 4, 9), { color: "red" });
+
+    const [left, right] = Array.from(host.querySelectorAll<HTMLElement>("span"));
+    expect(left?.style.getPropertyValue("-webkit-text-fill-color")).toBe("blue");
+    expect(right?.style.getPropertyValue("-webkit-text-fill-color")).toBe("");
+  });
+
+  it("drops a generated mirror when the ancestor stops overpainting", () => {
+    const host = mount("Hello world");
+    let overpainted = true;
+    stubFill((element) => (overpainted ? "rgb(255, 255, 255)" : element.style.color));
+    applyInlineStyle(rangeOver(host, 6, 11), { color: "red" });
+    expect(host.innerHTML).toContain("-webkit-text-fill-color");
+
+    overpainted = false;
+    const live = document.getSelection()?.getRangeAt(0);
+    if (live) applyInlineStyle(live, { "font-weight": "700" });
 
     expect(host.innerHTML).not.toContain("-webkit-text-fill-color");
   });
