@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
 export const MIME_TYPES: Record<string, string> = {
@@ -245,4 +245,118 @@ export function externalizeDataUris(
     },
   );
   return { html: out, externalized };
+}
+
+/** Copy a directory's publishable files into `destDir`, flattening one level. */
+function walkInto(from: string, rel: string, destDir: string, onCopy: () => void): void {
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+    const childFrom = join(from, entry.name);
+    if (entry.isDirectory()) {
+      walkInto(childFrom, childRel, destDir, onCopy);
+      continue;
+    }
+    if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
+    const to = join(destDir, childRel);
+    mkdirSync(join(to, ".."), { recursive: true });
+    writeFileSync(to, readFileSync(childFrom));
+    onCopy();
+  }
+}
+
+/**
+ * Publish the item's own directory and hand back a base URL for it.
+ *
+ * Some compositions build their paths at run time —
+ * `"compositions/components/" + texture + ".png"` for the texture masks, a
+ * downloaded font under `_remote_media/` — and no amount of scanning the markup
+ * can see a string that does not exist until a script concatenates it. Serving
+ * the directory and pointing `<base>` at it makes every relative path the
+ * composition can invent resolve, whether we predicted it or not.
+ *
+ * Only publishable types are copied; a composition needing something the host
+ * drops still falls back to inlining, which is handled by the caller.
+ */
+/** Publishable bytes an item would add, counted before anything is written. */
+function directoryBytes(dir: string): number {
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const child = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += directoryBytes(child);
+      continue;
+    }
+    if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
+    total += statSync(child).size;
+  }
+  return total;
+}
+
+/**
+ * What an item may add by publishing its own directory.
+ *
+ * The texture sheets are the reason: one ships 66 masks, twice over, for 12 MB
+ * — against a whole catalog that is otherwise around 30 MB. An item over budget
+ * keeps the recorded video it already had, which is no worse than before.
+ */
+export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
+
+export function hostItemDirectory(projectDir: string, destDir: string, urlBase: string): string {
+  if (directoryBytes(projectDir) > MAX_HOSTED_DIRECTORY_BYTES) return "";
+  let copied = 0;
+
+  const walk = (from: string, rel: string): void => {
+    for (const entry of readdirSync(from, { withFileTypes: true })) {
+      // Nothing here should ever leave the prepared copy, and a symlink is the
+      // one entry that could point back out of it.
+      if (entry.isSymbolicLink()) continue;
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      const childFrom = join(from, entry.name);
+      if (entry.isDirectory()) {
+        walk(childFrom, childRel);
+        continue;
+      }
+      if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
+      const to = join(destDir, childRel);
+      mkdirSync(join(to, ".."), { recursive: true });
+      writeFileSync(to, readFileSync(childFrom));
+      copied += 1;
+    }
+  };
+
+  // Both layouts are published. The prepared copy holds each asset twice, once
+  // as the registry stores it and once at its install path, and which one a
+  // composition asks for differs per item: the texture masks use the registry
+  // spelling, the caption textures the install one. Guessing wrong is a 404 at
+  // run time, so the budget below is what keeps the cost in check instead.
+  walk(projectDir, "");
+
+  // The compiler pulls remote media into `_downloads/` but rewrites references
+  // as if the document sat inside it, so `_remote_media/x.woff2` has to resolve
+  // from the item root too. Mirroring rather than moving keeps both spellings
+  // working, and the files are content-identical either way.
+  const downloads = join(projectDir, "_downloads");
+  if (existsSync(downloads) && statSync(downloads).isDirectory()) {
+    walkInto(downloads, "", destDir, () => (copied += 1));
+  }
+
+  return copied > 0 ? urlBase : "";
+}
+
+/**
+ * Point the document at that base, ahead of anything that could resolve a URL.
+ *
+ * A `srcdoc` document has no base of its own, so relative paths resolve against
+ * the docs page and 404. The tag has to be the first thing in the head: a
+ * `<base>` only governs what follows it.
+ */
+export function withBaseHref(html: string, href: string): string {
+  if (!href) return html;
+  const tag = `<base href="${href}">`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${tag}`);
+  if (/<html[^>]*>/i.test(html))
+    return html.replace(/<html([^>]*)>/i, `<html$1><head>${tag}</head>`);
+  return `${tag}${html}`;
 }

@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
   externalizeDataUris,
+  hostItemDirectory,
   localReferences,
   probableReferences,
   processAssets,
+  withBaseHref,
 } from "./catalog-payload-assets.ts";
 
 function project(files: Record<string, string | Buffer>): string {
@@ -239,5 +241,51 @@ describe("processAssets with script-loaded files", () => {
     const result = processAssets(`<img src="gone.png">`, project({}), target());
 
     assert.deepEqual(result.unresolved, ["gone.png"]);
+  });
+});
+
+describe("hostItemDirectory", () => {
+  it("publishes the item's files at the paths it will ask for", () => {
+    // The texture blocks build `compositions/components/<name>.png` at run
+    // time, so the layout has to survive, not just the files.
+    const dir = project({ "compositions/components/lava.png": Buffer.from([1]), "demo.html": "x" });
+    const out = target();
+    const base = hostItemDirectory(dir, out.dir, "/public/catalog/items/x/");
+
+    assert.equal(base, "/public/catalog/items/x/");
+    assert.ok(existsSync(join(out.dir, "compositions/components/lava.png")));
+  });
+
+  it("mirrors _downloads to the root, where the compiler's references point", () => {
+    const dir = project({ "_downloads/_remote_media/f.woff2": Buffer.from([2]) });
+    const out = target();
+    hostItemDirectory(dir, out.dir, "/base/");
+
+    assert.ok(existsSync(join(out.dir, "_remote_media/f.woff2")));
+  });
+
+  it("skips a type the host will not publish", () => {
+    const dir = project({ "scene.glb": Buffer.from([3]) });
+    const out = target();
+
+    assert.equal(hostItemDirectory(dir, out.dir, "/base/"), "");
+  });
+});
+
+describe("withBaseHref", () => {
+  it("puts the base first in the head, ahead of anything that resolves a URL", () => {
+    const html = withBaseHref("<html><head><link href='a.css'></head><body></body></html>", "/b/");
+    assert.ok(html.indexOf('<base href="/b/">') < html.indexOf("<link"));
+  });
+
+  it("gives a headless document a head to put it in", () => {
+    assert.ok(
+      withBaseHref("<html><body>x</body></html>", "/b/").includes('<head><base href="/b/"></head>'),
+    );
+  });
+
+  it("changes nothing when there is nothing to serve", () => {
+    const html = "<html><head></head></html>";
+    assert.equal(withBaseHref(html, ""), html);
   });
 });

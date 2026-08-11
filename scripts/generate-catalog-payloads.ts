@@ -19,8 +19,8 @@
  *   npx tsx scripts/generate-catalog-payloads.ts --type block       # blocks only
  */
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { join, resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -29,7 +29,13 @@ import {
   type CatalogItem,
   type ItemKind,
 } from "./generate-catalog-previews.js";
-import { externalizeDataUris, processAssets } from "./catalog-payload-assets.ts";
+import {
+  externalizeDataUris,
+  HOSTED_EXTENSIONS,
+  hostItemDirectory,
+  processAssets,
+  withBaseHref,
+} from "./catalog-payload-assets.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -63,6 +69,43 @@ function typeDir(kind: ItemKind): string {
   return kind === "block" ? "blocks" : "components";
 }
 
+/**
+ * Does this item build paths we cannot see?
+ *
+ * Two tells. A reference the scan found but could not resolve is one, and a
+ * manifest that declares assets the scan never matched is the other: the
+ * texture blocks name their masks in the manifest and then assemble the URL in
+ * a script, so the files are declared but never written down as a path.
+ */
+function needsOwnDirectory(item: CatalogItem, unresolved: string[]): boolean {
+  if (unresolved.length > 0) return true;
+  try {
+    const manifest = JSON.parse(
+      readFileSync(join(item.sourceDir, "registry-item.json"), "utf-8"),
+    ) as { files?: { type?: string }[] };
+    return (manifest.files ?? []).some((f) => f.type === "hyperframes:asset");
+  } catch {
+    return false;
+  }
+}
+
+/** Does the item ship anything the host can serve beside the payload? */
+function hostsOwnDirectory(projectDir: string): boolean {
+  const stack = [projectDir];
+  while (stack.length > 0) {
+    const dir = stack.pop() as string;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        stack.push(join(dir, entry.name));
+        continue;
+      }
+      if (HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) return true;
+    }
+  }
+  return false;
+}
+
 async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
@@ -92,14 +135,27 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     // what never looked like a reference in the first place.
     const { html: withShared, externalized } = externalizeDataUris(withAssets, assetTarget);
 
-    // A reference we could not inline would 404 inside the player, so the item
-    // keeps the MP4 rather than shipping a preview with holes in it.
-    if (unresolved.length > 0) {
+    // Publishing the item's own directory and pointing `<base>` at it is what
+    // rescues paths a script builds at run time, which no scan can predict.
+    //
+    // Only for the items that need it. Serving every item's directory would
+    // duplicate assets already shared by hash and roughly double what the
+    // repository carries, to fix a handful of compositions.
+    const itemUrl = `/public/catalog/items/${item.name}`;
+    const baseHref = needsOwnDirectory(item, unresolved)
+      ? hostItemDirectory(projectDir, join(payloadRoot, "items", item.name), `${itemUrl}/`)
+      : "";
+    const withBase = withBaseHref(withShared, baseHref);
+
+    // A reference we could not inline is only fatal when the item's directory is
+    // not being served either; with a base URL in place the browser can still
+    // fetch it by its own relative path.
+    if (unresolved.length > 0 && !hostsOwnDirectory(projectDir)) {
       console.log(`  – ${item.name}: cannot inline ${unresolved.slice(0, 3).join(", ")}`);
       dropStalePayload();
       return "skipped";
     }
-    const bytes = Buffer.byteLength(withShared, "utf-8");
+    const bytes = Buffer.byteLength(withBase, "utf-8");
     if (bytes > MAX_PAYLOAD_BYTES) {
       console.log(`  – ${item.name}: ${(bytes / 1e6).toFixed(1)} MB payload, over budget`);
       dropStalePayload();
@@ -107,7 +163,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     }
 
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify({ html: withShared }), "utf-8");
+    writeFileSync(outPath, JSON.stringify({ html: withBase }), "utf-8");
 
     const counts = [
       hosted + externalized > 0 ? `${hosted + externalized} hosted` : "",
