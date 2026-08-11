@@ -9,6 +9,33 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.107"
+  description="Released - 2026-08-11"
+  tags={["Release", "Skills", "Capture", "Studio"]}
+>
+Studio can now edit and style rich text directly in the preview, including mixed selections and partial character ranges. Feedback prompts now appear after renders, while playback, capture, and editing fixes improve reliability.
+
+## Features
+
+- **Studio:** Show every colour of a mixed selection in the swatch ([896bc336a](https://github.com/heygen-com/hyperframes/commit/896bc336a2eb058fa7cd21e6686b3c6a23879d28), [#3144](https://github.com/heygen-com/hyperframes/pull/3144)).
+- **Studio:** Edit and style text in the preview ([4cc46f5f9](https://github.com/heygen-com/hyperframes/commit/4cc46f5f9f6ba063bcebcc663a9b04c008f119d4), [#3143](https://github.com/heygen-com/hyperframes/pull/3143)).
+- **Studio:** Apply a style to a run of characters ([cb73c8dc2](https://github.com/heygen-com/hyperframes/commit/cb73c8dc2e0d9c6b911044de0e0d7fb5fbb49752), [#3142](https://github.com/heygen-com/hyperframes/pull/3142)).
+- **Core:** Sanitize rich text on the way into a composition ([636dc042a](https://github.com/heygen-com/hyperframes/commit/636dc042a7b773d9038b6bea589b4118051764c5), [#3141](https://github.com/heygen-com/hyperframes/pull/3141)).
+- **Studio:** Ask for feedback when a render ends, not on a session counter ([20d915938](https://github.com/heygen-com/hyperframes/commit/20d915938b33301d78402407d167841f8da3e9a5), [#3205](https://github.com/heygen-com/hyperframes/pull/3205)).
+
+## Fixes
+
+- **Skills:** Stop embedded-captions shipping author-only paths; dedupe slideshow ([d3a4e9037](https://github.com/heygen-com/hyperframes/commit/d3a4e9037096c0234c58b44fcbcc7df87ba8958b), [#3225](https://github.com/heygen-com/hyperframes/pull/3225)).
+- **Capture:** Fall back from networkidle2 to domcontentloaded on nav timeout ([7860d1943](https://github.com/heygen-com/hyperframes/commit/7860d19433e45507c9544f6e6b542e7e572e47c9), [#3224](https://github.com/heygen-com/hyperframes/pull/3224)).
+- **Studio:** Match the write receipt in dev, so an edit stops reloading the preview ([fceb37655](https://github.com/heygen-com/hyperframes/commit/fceb376551093be69e918786532d88eb63a2d07c), [#3206](https://github.com/heygen-com/hyperframes/pull/3206)).
+- **Producer:** Mix audio into a container that can record encoder delay ([dc4383113](https://github.com/heygen-com/hyperframes/commit/dc4383113cfad3677d016b457cce8b4d41ff7b9c), [#3200](https://github.com/heygen-com/hyperframes/pull/3200)).
+- **Core:** Key the preview volume envelope to the clip, not the timeline ([eee9b26fb](https://github.com/heygen-com/hyperframes/commit/eee9b26fb78a6bf3a80e81d6077f7fd93aeca150), [#3198](https://github.com/heygen-com/hyperframes/pull/3198)).
+- **Core:** Stop a graded plate painting through an inactive clip ([91f14958c](https://github.com/heygen-com/hyperframes/commit/91f14958cc449f95a412993373077a6f53fabc1a), [#3196](https://github.com/heygen-com/hyperframes/pull/3196)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.106...v0.7.107).
+</Update>
+
+<Update
   label="HyperFrames v0.7.106"
   description="Released - 2026-08-11"
   tags={["Release", "Catalog", "CLI", "Registry"]}
