@@ -154,6 +154,14 @@ export const FILE_TYPES = [
 ] as const satisfies readonly FileType[];
 
 /**
+ * The declared-control types in a registry item's `controls` field: toggle
+ * (boolean between two authored states), variant (enum over N authored poses),
+ * scalar (bounded number interpolating authored anchor states through a
+ * mapping). Kept in sync with the `controls` enum in registry-item.json.
+ */
+export const CONTROL_TYPES = ["toggle", "variant", "scalar"] as const;
+
+/**
  * Directory segment where each item type lives under a registry root — both
  * on disk (`registry/examples/…`) and in URL construction
  * (`<baseUrl>/examples/<name>/registry-item.json`). Shared so CLIs, docs

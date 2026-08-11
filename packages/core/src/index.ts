@@ -352,6 +352,7 @@ export type {
 export {
   ITEM_TYPES,
   FILE_TYPES,
+  CONTROL_TYPES,
   ITEM_TYPE_DIRS,
   isExampleItem,
   isBlockItem,
