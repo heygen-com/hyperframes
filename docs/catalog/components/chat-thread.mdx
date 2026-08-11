@@ -1,0 +1,772 @@
+---
+title: "Chat Thread"
+description: "A conversation plays out as a mountable scene: bubbles pop in on the measured entry, the thread shifts up in expo lockstep, typing dots hold the beat before replies, and a media placeholder stands in for a shared image. Messages are a variable - heights are measured at mount and the choreography is generated to fit"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/components/chat-thread.json"
+  compositionId="chat-thread"
+  compositionSrc="compositions/components/chat-thread.html"
+  variables={[{"id":"contact","type":"string","role":"content","label":"Contact","description":"Name in the thread header; the avatar shows its first letter.","default":"Rachel"},{"id":"messages","type":"string","role":"content","label":"Messages","description":"Pipe-separated thread. Prefix each entry with recv:, sent: or img (a media placeholder). Example: recv:hey|sent:look 👀|img|recv:amazing","default":"recv:what r u using for the launch video??|sent:wait look 👀|img|recv:OMG IT&#39;S HTML|recv:🤯🤯🤯|sent:renders in 4K. no editor"},{"id":"beat","type":"number","role":"timing","label":"Beat","description":"Seconds between message arrivals.","default":1.7,"min":0.8,"max":3,"step":0.1},{"id":"dots","type":"enum","role":"timing","label":"Typing dots","description":"Show the three-dot indicator before received messages.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
+>
+
+```html chat-thread.html
+<!doctype html>
+<!--
+  chat-thread: HyperFrames motion primitive (scene)
+
+  A conversation plays out: bubbles pop in on the measured entry (scale 0.75,
+  0.12s power2.out), the thread shifts up in expo lockstep as each message
+  lands, optional typing dots hold the beat before received messages, and a
+  media placeholder stands in for a shared image. Message content is a
+  variable: heights are measured at mount and the scroll choreography is
+  generated from them, so any thread fits.
+
+  Relates to thread-message-stack (#3046): that item is a caller-payload
+  message stack; this is the conversation as a mountable scene.
+
+  #root only, container-type: size, one paused timeline registered under the
+  literal "chat-thread" key. Deterministic: layout is measured once at mount.
+-->
+<html
+  lang="en"
+  data-composition-id="chat-thread"
+  data-composition-duration="12"
+  data-composition-variables='[{"id": "contact", "type": "string", "role": "content", "label": "Contact", "description": "Name in the thread header; the avatar shows its first letter.", "default": "Rachel"}, {"id": "messages", "type": "string", "role": "content", "label": "Messages", "description": "Pipe-separated thread. Prefix each entry with recv:, sent: or img (a media placeholder). Example: recv:hey|sent:look 👀|img|recv:amazing", "default": "recv:what r u using for the launch video??|sent:wait look 👀|img|recv:OMG IT&#39;S HTML|recv:🤯🤯🤯|sent:renders in 4K. no editor"}, {"id": "beat", "type": "number", "role": "timing", "label": "Beat", "description": "Seconds between message arrivals.", "default": 1.7, "min": 0.8, "max": 3, "step": 0.1}, {"id": "dots", "type": "enum", "role": "timing", "label": "Typing dots", "description": "Show the three-dot indicator before received messages.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Thread</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chat-thread" data-duration="12" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #000;
+            font-family: var(
+              --font-body,
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              sans-serif
+            );
+            pointer-events: none;
+          }
+          .cht-header {
+            position: absolute;
+            left: 0;
+            top: 3cqh;
+            width: 100cqw;
+            text-align: center;
+          }
+          .cht-avatar {
+            display: inline-grid;
+            place-items: center;
+            width: 9cqmin;
+            height: 9cqmin;
+            border-radius: 50%;
+            background: #9ce474;
+            color: #12300c;
+            font-size: 4.4cqmin;
+            font-weight: 600;
+          }
+          .cht-name {
+            display: block;
+            margin-top: 0.8cqh;
+            font-size: 2.9cqmin;
+            color: #8e8e93;
+          }
+          .cht-view {
+            position: absolute;
+            left: 0;
+            top: 14cqh;
+            width: 100cqw;
+            bottom: 12cqh;
+            overflow: hidden;
+          }
+          .cht-item {
+            position: absolute;
+            left: 4cqw;
+            width: 92cqw;
+            visibility: hidden;
+          }
+          .cht-item.sent {
+            text-align: right;
+          }
+          .cht-pop {
+            display: inline-block;
+            transform-origin: left bottom;
+          }
+          .cht-item.sent .cht-pop {
+            transform-origin: right bottom;
+          }
+          .cht-bubble {
+            display: inline-block;
+            max-width: 74cqw;
+            padding: 1.4cqh 3.6cqw;
+            border-radius: 5cqmin;
+            font-size: 3.4cqmin;
+            line-height: 1.35;
+            color: #fff;
+            text-align: left;
+          }
+          .cht-bubble.recv {
+            background: #242428;
+          }
+          .cht-bubble.sent {
+            background: #0a80f8;
+          }
+          .cht-media {
+            display: inline-block;
+            width: 52cqw;
+            aspect-ratio: 4 / 3;
+            border-radius: 4cqmin;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+            position: relative;
+          }
+          .cht-media .cht-play {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 11cqmin;
+            height: 11cqmin;
+            border-radius: 50%;
+            background: rgba(253, 253, 253, 0.94);
+          }
+          .cht-media .cht-play::before {
+            content: "";
+            position: absolute;
+            left: 38%;
+            top: 30%;
+            border-left: 3.6cqmin solid #0d0d0d;
+            border-top: 2.2cqmin solid transparent;
+            border-bottom: 2.2cqmin solid transparent;
+          }
+          .cht-dots {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1cqmin;
+            width: 12cqmin;
+            height: 6.5cqmin;
+            background: #242428;
+            border-radius: 3.4cqmin;
+          }
+          .cht-dots span {
+            width: 1.7cqmin;
+            height: 1.7cqmin;
+            border-radius: 50%;
+            background: #8e8e93;
+          }
+          .cht-composer {
+            position: absolute;
+            left: 4cqw;
+            bottom: 3.5cqh;
+            width: 92cqw;
+            height: 5.6cqh;
+            border: 0.35cqmin solid #202022;
+            border-radius: 100cqmin;
+          }
+          .cht-ph {
+            position: absolute;
+            left: 9cqw;
+            bottom: 4.7cqh;
+            color: #8e8e93;
+            font-size: 3.2cqmin;
+          }
+        </style>
+        <div class="cht-header">
+          <span class="cht-avatar" id="cht-avatar">R</span
+          ><span class="cht-name" id="cht-name">Rachel</span>
+        </div>
+        <div class="cht-view" id="cht-view"></div>
+        <div class="cht-composer"></div>
+        <div class="cht-ph">iMessage</div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "chat-thread";
+            var root = document.getElementById("root");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            function clampNumber(v, min, max, fb) {
+              var n = typeof v === "number" ? v : parseFloat(v);
+              if (!isFinite(n)) return fb;
+              return Math.min(max, Math.max(min, n));
+            }
+            var contact = text(vars.contact, "Rachel", 16);
+            document.getElementById("cht-avatar").textContent = contact.charAt(0).toUpperCase();
+            document.getElementById("cht-name").textContent = contact;
+            var beat = clampNumber(vars.beat, 0.8, 3, 1.7);
+            var dotsOn = vars.dots !== "off";
+
+            var raw = text(
+              vars.messages,
+              "recv:what r u using for the launch video??|sent:wait look \ud83d\udc40|img|recv:OMG IT'S HTML|recv:\ud83e\udd2f\ud83e\udd2f\ud83e\udd2f|sent:renders in 4K. no editor",
+              600,
+            );
+            var entries = raw
+              .split("|")
+              .map(function (token) {
+                return token.trim();
+              })
+              .filter(Boolean)
+              .slice(0, 10);
+            if (entries.length === 0) entries = ["recv:hey"];
+
+            var view = document.getElementById("cht-view");
+            var items = entries.map(function (entry) {
+              var kind = "recv",
+                body = entry;
+              if (entry.indexOf("recv:") === 0) {
+                kind = "recv";
+                body = entry.slice(5);
+              } else if (entry.indexOf("sent:") === 0) {
+                kind = "sent";
+                body = entry.slice(5);
+              } else if (entry === "img") {
+                kind = "img";
+                body = "";
+              }
+              var item = document.createElement("div");
+              item.className = "cht-item " + (kind === "sent" ? "sent" : "recv");
+              item.setAttribute("data-layout-allow-overflow", "");
+              item.setAttribute("data-layout-allow-overlap", "");
+              item.setAttribute("data-layout-allow-occlusion", "");
+              var pop = document.createElement("div");
+              pop.className = "cht-pop";
+              if (kind === "img") {
+                pop.innerHTML = '<span class="cht-media"><span class="cht-play"></span></span>';
+              } else {
+                var bubble = document.createElement("div");
+                bubble.className = "cht-bubble " + kind;
+                bubble.textContent = body.trim();
+                pop.appendChild(bubble);
+              }
+              item.appendChild(pop);
+              view.appendChild(item);
+              return { el: item, pop: pop, kind: kind };
+            });
+            var dotsItem = null;
+            if (dotsOn) {
+              dotsItem = document.createElement("div");
+              dotsItem.className = "cht-item recv";
+              dotsItem.setAttribute("data-layout-allow-overflow", "");
+              dotsItem.setAttribute("data-layout-allow-overlap", "");
+              dotsItem.setAttribute("data-layout-allow-occlusion", "");
+              dotsItem.innerHTML =
+                '<div class="cht-pop"><span class="cht-dots"><span></span><span></span><span></span></span></div>';
+              view.appendChild(dotsItem);
+            }
+
+            var tl = gsap.timeline({ paused: true });
+            function build() {
+              tl.clear();
+              var viewH = view.offsetHeight || 1;
+              var gap = viewH * 0.018;
+              var heights = items.map(function (item) {
+                return item.el.offsetHeight;
+              });
+              var dotsH = dotsItem ? dotsItem.offsetHeight : 0;
+              /* arrival schedule: dots hold the front 55% of the beat before a recv */
+              var starts = [];
+              var t = 0.4;
+              items.forEach(function (item, i) {
+                if (i > 0) t += beat;
+                starts.push(t);
+              });
+              var duration = 12;
+              /* compress if the thread outruns the composition */
+              var last = starts[starts.length - 1];
+              if (last > duration - 1.2) {
+                var k = (duration - 1.6) / last;
+                starts = starts.map(function (s) {
+                  return 0.4 + (s - 0.4) * k;
+                });
+              }
+              items.forEach(function (item) {
+                gsap.set(item.el, { autoAlpha: 0, y: 0 });
+              });
+              if (dotsItem) gsap.set(dotsItem, { autoAlpha: 0 });
+              /* at step k every visible item sits stacked up from the bottom */
+              items.forEach(function (item, k) {
+                var at = starts[k];
+                var bottom = viewH;
+                var yK = [];
+                for (var j = k; j >= 0; j -= 1) {
+                  bottom -= heights[j];
+                  yK[j] = bottom;
+                  bottom -= gap;
+                }
+                for (var i = 0; i <= k; i += 1) {
+                  if (i === k) {
+                    tl.set(item.el, { y: yK[i] }, at);
+                    tl.set(item.el, { autoAlpha: 1 }, at);
+                    tl.fromTo(
+                      item.pop,
+                      { scale: 0.75, autoAlpha: 0.6 },
+                      { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+                      at,
+                    );
+                  } else {
+                    tl.to(items[i].el, { y: yK[i], duration: 1.0, ease: "expo.out" }, at);
+                  }
+                }
+                /* dots hold the beat before a received message */
+                if (dotsItem && item.kind === "recv" && k > 0) {
+                  var dAt = Math.max(starts[k - 1] + 0.35, at - beat * 0.55);
+                  tl.set(dotsItem, { y: viewH - dotsH }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 1 }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 0 }, at);
+                }
+              });
+              tl.set({}, {}, duration);
+              tl.seek(0);
+            }
+            build();
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function () {
+                build();
+                tl.pause(0);
+              });
+            }
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add chat-thread" item="chat-thread" />
+
+That writes one file: `compositions/components/chat-thread.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/chat-thread.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `contact` | `Rachel` | string | Name in the thread header; the avatar shows its first letter. |
+| `messages` | `recv:what r u using for the launch video??|sent:wait look 👀|img|recv:OMG IT&#39;S HTML|recv:🤯🤯🤯|sent:renders in 4K. no editor` | string | Pipe-separated thread. Prefix each entry with recv:, sent: or img (a media placeholder). Example: recv:hey|sent:look 👀|img|recv:amazing |
+| `beat` | `1.7` | 0.8 to 3, step 0.1 | Seconds between message arrivals. |
+| `dots` | `on` | `on`, `off` | Show the three-dot indicator before received messages. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="chat-thread"
+  data-composition-src="compositions/components/chat-thread.html"
+  data-variable-values='{"contact":"Rachel","messages":"recv:what r u using for the launch video??|sent:wait look 👀|img|recv:OMG IT&#39;S HTML|recv:🤯🤯🤯|sent:renders in 4K. no editor","beat":1.7,"dots":"on"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`chat-thread.html`}>
+
+```html
+<!doctype html>
+<!--
+  chat-thread: HyperFrames motion primitive (scene)
+
+  A conversation plays out: bubbles pop in on the measured entry (scale 0.75,
+  0.12s power2.out), the thread shifts up in expo lockstep as each message
+  lands, optional typing dots hold the beat before received messages, and a
+  media placeholder stands in for a shared image. Message content is a
+  variable: heights are measured at mount and the scroll choreography is
+  generated from them, so any thread fits.
+
+  Relates to thread-message-stack (#3046): that item is a caller-payload
+  message stack; this is the conversation as a mountable scene.
+
+  #root only, container-type: size, one paused timeline registered under the
+  literal "chat-thread" key. Deterministic: layout is measured once at mount.
+-->
+<html
+  lang="en"
+  data-composition-id="chat-thread"
+  data-composition-duration="12"
+  data-composition-variables='[{"id": "contact", "type": "string", "role": "content", "label": "Contact", "description": "Name in the thread header; the avatar shows its first letter.", "default": "Rachel"}, {"id": "messages", "type": "string", "role": "content", "label": "Messages", "description": "Pipe-separated thread. Prefix each entry with recv:, sent: or img (a media placeholder). Example: recv:hey|sent:look 👀|img|recv:amazing", "default": "recv:what r u using for the launch video??|sent:wait look 👀|img|recv:OMG IT&#39;S HTML|recv:🤯🤯🤯|sent:renders in 4K. no editor"}, {"id": "beat", "type": "number", "role": "timing", "label": "Beat", "description": "Seconds between message arrivals.", "default": 1.7, "min": 0.8, "max": 3, "step": 0.1}, {"id": "dots", "type": "enum", "role": "timing", "label": "Typing dots", "description": "Show the three-dot indicator before received messages.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Thread</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chat-thread" data-duration="12" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #000;
+            font-family: var(
+              --font-body,
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              sans-serif
+            );
+            pointer-events: none;
+          }
+          .cht-header {
+            position: absolute;
+            left: 0;
+            top: 3cqh;
+            width: 100cqw;
+            text-align: center;
+          }
+          .cht-avatar {
+            display: inline-grid;
+            place-items: center;
+            width: 9cqmin;
+            height: 9cqmin;
+            border-radius: 50%;
+            background: #9ce474;
+            color: #12300c;
+            font-size: 4.4cqmin;
+            font-weight: 600;
+          }
+          .cht-name {
+            display: block;
+            margin-top: 0.8cqh;
+            font-size: 2.9cqmin;
+            color: #8e8e93;
+          }
+          .cht-view {
+            position: absolute;
+            left: 0;
+            top: 14cqh;
+            width: 100cqw;
+            bottom: 12cqh;
+            overflow: hidden;
+          }
+          .cht-item {
+            position: absolute;
+            left: 4cqw;
+            width: 92cqw;
+            visibility: hidden;
+          }
+          .cht-item.sent {
+            text-align: right;
+          }
+          .cht-pop {
+            display: inline-block;
+            transform-origin: left bottom;
+          }
+          .cht-item.sent .cht-pop {
+            transform-origin: right bottom;
+          }
+          .cht-bubble {
+            display: inline-block;
+            max-width: 74cqw;
+            padding: 1.4cqh 3.6cqw;
+            border-radius: 5cqmin;
+            font-size: 3.4cqmin;
+            line-height: 1.35;
+            color: #fff;
+            text-align: left;
+          }
+          .cht-bubble.recv {
+            background: #242428;
+          }
+          .cht-bubble.sent {
+            background: #0a80f8;
+          }
+          .cht-media {
+            display: inline-block;
+            width: 52cqw;
+            aspect-ratio: 4 / 3;
+            border-radius: 4cqmin;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+            position: relative;
+          }
+          .cht-media .cht-play {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 11cqmin;
+            height: 11cqmin;
+            border-radius: 50%;
+            background: rgba(253, 253, 253, 0.94);
+          }
+          .cht-media .cht-play::before {
+            content: "";
+            position: absolute;
+            left: 38%;
+            top: 30%;
+            border-left: 3.6cqmin solid #0d0d0d;
+            border-top: 2.2cqmin solid transparent;
+            border-bottom: 2.2cqmin solid transparent;
+          }
+          .cht-dots {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1cqmin;
+            width: 12cqmin;
+            height: 6.5cqmin;
+            background: #242428;
+            border-radius: 3.4cqmin;
+          }
+          .cht-dots span {
+            width: 1.7cqmin;
+            height: 1.7cqmin;
+            border-radius: 50%;
+            background: #8e8e93;
+          }
+          .cht-composer {
+            position: absolute;
+            left: 4cqw;
+            bottom: 3.5cqh;
+            width: 92cqw;
+            height: 5.6cqh;
+            border: 0.35cqmin solid #202022;
+            border-radius: 100cqmin;
+          }
+          .cht-ph {
+            position: absolute;
+            left: 9cqw;
+            bottom: 4.7cqh;
+            color: #8e8e93;
+            font-size: 3.2cqmin;
+          }
+        </style>
+        <div class="cht-header">
+          <span class="cht-avatar" id="cht-avatar">R</span
+          ><span class="cht-name" id="cht-name">Rachel</span>
+        </div>
+        <div class="cht-view" id="cht-view"></div>
+        <div class="cht-composer"></div>
+        <div class="cht-ph">iMessage</div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "chat-thread";
+            var root = document.getElementById("root");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            function clampNumber(v, min, max, fb) {
+              var n = typeof v === "number" ? v : parseFloat(v);
+              if (!isFinite(n)) return fb;
+              return Math.min(max, Math.max(min, n));
+            }
+            var contact = text(vars.contact, "Rachel", 16);
+            document.getElementById("cht-avatar").textContent = contact.charAt(0).toUpperCase();
+            document.getElementById("cht-name").textContent = contact;
+            var beat = clampNumber(vars.beat, 0.8, 3, 1.7);
+            var dotsOn = vars.dots !== "off";
+
+            var raw = text(
+              vars.messages,
+              "recv:what r u using for the launch video??|sent:wait look \ud83d\udc40|img|recv:OMG IT'S HTML|recv:\ud83e\udd2f\ud83e\udd2f\ud83e\udd2f|sent:renders in 4K. no editor",
+              600,
+            );
+            var entries = raw
+              .split("|")
+              .map(function (token) {
+                return token.trim();
+              })
+              .filter(Boolean)
+              .slice(0, 10);
+            if (entries.length === 0) entries = ["recv:hey"];
+
+            var view = document.getElementById("cht-view");
+            var items = entries.map(function (entry) {
+              var kind = "recv",
+                body = entry;
+              if (entry.indexOf("recv:") === 0) {
+                kind = "recv";
+                body = entry.slice(5);
+              } else if (entry.indexOf("sent:") === 0) {
+                kind = "sent";
+                body = entry.slice(5);
+              } else if (entry === "img") {
+                kind = "img";
+                body = "";
+              }
+              var item = document.createElement("div");
+              item.className = "cht-item " + (kind === "sent" ? "sent" : "recv");
+              item.setAttribute("data-layout-allow-overflow", "");
+              item.setAttribute("data-layout-allow-overlap", "");
+              item.setAttribute("data-layout-allow-occlusion", "");
+              var pop = document.createElement("div");
+              pop.className = "cht-pop";
+              if (kind === "img") {
+                pop.innerHTML = '<span class="cht-media"><span class="cht-play"></span></span>';
+              } else {
+                var bubble = document.createElement("div");
+                bubble.className = "cht-bubble " + kind;
+                bubble.textContent = body.trim();
+                pop.appendChild(bubble);
+              }
+              item.appendChild(pop);
+              view.appendChild(item);
+              return { el: item, pop: pop, kind: kind };
+            });
+            var dotsItem = null;
+            if (dotsOn) {
+              dotsItem = document.createElement("div");
+              dotsItem.className = "cht-item recv";
+              dotsItem.setAttribute("data-layout-allow-overflow", "");
+              dotsItem.setAttribute("data-layout-allow-overlap", "");
+              dotsItem.setAttribute("data-layout-allow-occlusion", "");
+              dotsItem.innerHTML =
+                '<div class="cht-pop"><span class="cht-dots"><span></span><span></span><span></span></span></div>';
+              view.appendChild(dotsItem);
+            }
+
+            var tl = gsap.timeline({ paused: true });
+            function build() {
+              tl.clear();
+              var viewH = view.offsetHeight || 1;
+              var gap = viewH * 0.018;
+              var heights = items.map(function (item) {
+                return item.el.offsetHeight;
+              });
+              var dotsH = dotsItem ? dotsItem.offsetHeight : 0;
+              /* arrival schedule: dots hold the front 55% of the beat before a recv */
+              var starts = [];
+              var t = 0.4;
+              items.forEach(function (item, i) {
+                if (i > 0) t += beat;
+                starts.push(t);
+              });
+              var duration = 12;
+              /* compress if the thread outruns the composition */
+              var last = starts[starts.length - 1];
+              if (last > duration - 1.2) {
+                var k = (duration - 1.6) / last;
+                starts = starts.map(function (s) {
+                  return 0.4 + (s - 0.4) * k;
+                });
+              }
+              items.forEach(function (item) {
+                gsap.set(item.el, { autoAlpha: 0, y: 0 });
+              });
+              if (dotsItem) gsap.set(dotsItem, { autoAlpha: 0 });
+              /* at step k every visible item sits stacked up from the bottom */
+              items.forEach(function (item, k) {
+                var at = starts[k];
+                var bottom = viewH;
+                var yK = [];
+                for (var j = k; j >= 0; j -= 1) {
+                  bottom -= heights[j];
+                  yK[j] = bottom;
+                  bottom -= gap;
+                }
+                for (var i = 0; i <= k; i += 1) {
+                  if (i === k) {
+                    tl.set(item.el, { y: yK[i] }, at);
+                    tl.set(item.el, { autoAlpha: 1 }, at);
+                    tl.fromTo(
+                      item.pop,
+                      { scale: 0.75, autoAlpha: 0.6 },
+                      { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+                      at,
+                    );
+                  } else {
+                    tl.to(items[i].el, { y: yK[i], duration: 1.0, ease: "expo.out" }, at);
+                  }
+                }
+                /* dots hold the beat before a received message */
+                if (dotsItem && item.kind === "recv" && k > 0) {
+                  var dAt = Math.max(starts[k - 1] + 0.35, at - beat * 0.55);
+                  tl.set(dotsItem, { y: viewH - dotsH }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 1 }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 0 }, at);
+                }
+              });
+              tl.set({}, {}, duration);
+              tl.seek(0);
+            }
+            build();
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function () {
+                build();
+                tl.pause(0);
+              });
+            }
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `chat` `mock-ui` `conversation` `vertical`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -5,7 +5,7 @@
     "title": "AI Chat Reveal",
     "description": "A question is typed on a rising keyboard, sent, and answered by an AI that streams its reply word by word on a measured token rhythm - thinking dot, uneven bursts, bulleted list - before the app cuts to a branded closing card",
     "tags": [
-      "video-primitive",
+      "showcase",
       "mock-ui",
       "ai",
       "chat",
@@ -188,20 +188,6 @@
     ],
     "href": "/catalog/components/badge-pop",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge-pop.png"
-  },
-  {
-    "name": "banner-push-in",
-    "type": "component",
-    "title": "Banner Push-In",
-    "description": "A notification banner fades in and rises into place while every banner already on screen slides up one pitch in lockstep, so arrivals stack instead of overlapping",
-    "tags": [
-      "video-primitive",
-      "notification",
-      "overlay",
-      "mock-ui"
-    ],
-    "href": "/catalog/components/banner-push-in",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/banner-push-in.png"
   },
   {
     "name": "bar-chart-race",
@@ -744,6 +730,21 @@
     ],
     "href": "/catalog/components/chart-story",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chart-story.png"
+  },
+  {
+    "name": "chat-thread",
+    "type": "component",
+    "title": "Chat Thread",
+    "description": "A conversation plays out as a mountable scene: bubbles pop in on the measured entry, the thread shifts up in expo lockstep, typing dots hold the beat before replies, and a media placeholder stands in for a shared image. Messages are a variable - heights are measured at mount and the choreography is generated to fit",
+    "tags": [
+      "motion-primitive",
+      "chat",
+      "mock-ui",
+      "conversation",
+      "vertical"
+    ],
+    "href": "/catalog/components/chat-thread",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chat-thread.png"
   },
   {
     "name": "checkout-flow",
@@ -2270,20 +2271,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-by-line-slide.png"
   },
   {
-    "name": "line-reveal-list",
-    "type": "component",
-    "title": "Line Reveal List",
-    "description": "List lines land one after another on a measured writing cadence that slows as the thought gets heavier, and the page makes room with the measured scroll-settle curve instead of a linear glide",
-    "tags": [
-      "video-primitive",
-      "text-effect",
-      "list",
-      "checklist"
-    ],
-    "href": "/catalog/components/line-reveal-list",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-reveal-list.png"
-  },
-  {
     "name": "line-swap",
     "type": "component",
     "title": "Line Swap",
@@ -2632,6 +2619,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
   },
   {
+    "name": "marker-checklist-card",
+    "type": "component",
+    "title": "Marker Checklist Card",
+    "description": "A hand-lettered paper card: marker headline with an underline and a drawn ellipse around one word, then three checklist rows whose checks draw themselves on - typewriter labels, marker values. The paper-and-marker sibling of mk-specs-list's clean professional rows",
+    "tags": [
+      "motion-primitive",
+      "handwritten",
+      "checklist",
+      "paper",
+      "marker"
+    ],
+    "href": "/catalog/components/marker-checklist-card",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/marker-checklist-card.png"
+  },
+  {
     "name": "marker-highlight",
     "type": "component",
     "title": "Marker Highlight",
@@ -2707,7 +2709,7 @@
     "title": "Message Thread Reveal",
     "description": "A full text conversation plays out on a phone - bubbles popping in, typing indicators, a shared link card, emoji, delivered receipts - with the whole thread scrolling up beat by beat until a closing card lands. The complete chat ad-template, measured message by message",
     "tags": [
-      "video-primitive",
+      "showcase",
       "mock-ui",
       "chat",
       "vertical",
@@ -3003,7 +3005,7 @@
     "title": "Notes Reveal",
     "description": "A personal note is typed character by character in a notes app - caret riding every letter, the page scrolling up on measured settle curves as each line lands - then cuts to a hand-lettered paper card with a marker headline and a ticked checklist",
     "tags": [
-      "video-primitive",
+      "showcase",
       "mock-ui",
       "notes",
       "typing",
@@ -3014,12 +3016,27 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/notes-reveal.png"
   },
   {
+    "name": "notes-typing",
+    "type": "component",
+    "title": "Notes Typing",
+    "description": "The notes-app confession as a mountable scene: a bold title, then body lines typed character by character on the measured human keystroke rhythm, the caret riding every landed character and jumping down at each paragraph. For a bare prompt line use typed-prompt; for an even mechanical reveal use typewriter",
+    "tags": [
+      "motion-primitive",
+      "notes",
+      "typing",
+      "mock-ui",
+      "vertical"
+    ],
+    "href": "/catalog/components/notes-typing",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/notes-typing.png"
+  },
+  {
     "name": "notification-cascade",
     "type": "block",
     "title": "Notification Cascade",
     "description": "Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card",
     "tags": [
-      "video-primitive",
+      "showcase",
       "mock-ui",
       "notification",
       "vertical",
@@ -3712,7 +3729,7 @@
     "title": "Share-Sheet Carousel",
     "description": "A share sheet springs up from the bottom of the phone and cycles previews inside its card on a fast cut rhythm while the blurred ground swaps behind it, ending on an accept tap",
     "tags": [
-      "video-primitive",
+      "showcase",
       "mock-ui",
       "share-sheet",
       "vertical",
@@ -3849,6 +3866,21 @@
     ],
     "href": "/catalog/components/slot-machine-roll",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slot-machine-roll.png"
+  },
+  {
+    "name": "social-proof-card",
+    "type": "component",
+    "title": "Social Proof Card",
+    "description": "The app-store close as one mountable scene: wordmark, five stars, a proof line, three feature icons and a CTA capsule build in a quiet stagger and hold - measured from reference ad footage. For an animated star sweep use star-rating-fill; for a quote card use testimonial-proof-card; for a bare lockup use cta-lockup",
+    "tags": [
+      "motion-primitive",
+      "social-proof",
+      "end-card",
+      "cta",
+      "vertical"
+    ],
+    "href": "/catalog/components/social-proof-card",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/social-proof-card.png"
   },
   {
     "name": "soft-blob-touch",
