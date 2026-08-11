@@ -43,6 +43,8 @@ import type { VisionCaptionOutcome } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
 import { detectBlockedPage } from "./pageBlockDetection.js";
 import { navigateForCapture } from "./navigateForCapture.js";
+import { captureProtocolTimeoutMs, isProtocolEvaluateTimeoutError } from "./captureTimeout.js";
+import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
@@ -123,6 +125,7 @@ export async function captureWebsite(
   const chromeBrowser = await puppeteer.default.launch({
     headless: true,
     executablePath: browser.executablePath,
+    protocolTimeout: captureProtocolTimeoutMs(timeout, budgetMs),
     args: [
       "--no-sandbox",
       "--disable-dev-shm-usage",
@@ -253,37 +256,62 @@ export async function captureWebsite(
     postNavigationDeadline = Date.now() + budgetMs;
     await new Promise((r) => setTimeout(r, settleTime));
 
-    // Check if the page loaded real content or an anti-bot challenge
-    // Combine structural evidence with the main response status/title. Low text
-    // alone stays non-fatal so image-led sites are not rejected.
-    const pageContentCheck = (await page1.evaluate(`(() => {
-      var text = (document.body.innerText || "").trim();
-      var title = document.title || "";
-      // Structural: Cloudflare Turnstile widget or challenge iframe
-      var hasCfTurnstile = !!document.querySelector('.cf-turnstile, [data-sitekey], iframe[src*="challenges.cloudflare.com"], #challenge-running, #challenge-form');
-      // Structural: page is almost empty (challenge pages have minimal DOM)
-      var bodyChildCount = document.body.children.length;
-      return { textLength: text.length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
-    })()`)) as {
+    let pageContentCheck: {
       textLength: number;
       title: string;
       hasChallengeElement: boolean;
       bodyChildCount: number;
+    } = {
+      textLength: 0,
+      title: "",
+      hasChallengeElement: false,
+      bodyChildCount: Number.POSITIVE_INFINITY,
     };
+    let contentCheckTimedOut = false;
+    try {
+      pageContentCheck = (await page1.evaluate(`(() => {
+      var title = document.title || "";
+      var body = document.body;
+      var bodyChildCount = body ? body.children.length : 0;
+      var text = "";
+      if (body) {
+        var walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null);
+        var node;
+        var guard = 0;
+        while ((node = walk.nextNode()) && text.length < 800 && guard < 300) {
+          guard++;
+          text += node.nodeValue || "";
+        }
+      }
+      var hasCfTurnstile = !!document.querySelector('.cf-turnstile, [data-sitekey], iframe[src*="challenges.cloudflare.com"], #challenge-running, #challenge-form');
+      return { textLength: text.trim().length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
+    })()`)) as typeof pageContentCheck;
+    } catch (err) {
+      if (!isProtocolEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      contentCheckTimedOut = true;
+      const message =
+        "post-navigation content check timed out; skipping blocked-page detection and continuing";
+      warnings.push(message);
+      progress("warn", message);
+    }
 
-    const blockedReason = detectBlockedPage({
-      httpStatus: navigationResponse?.status() ?? null,
-      ...pageContentCheck,
-    });
-    if (blockedReason) {
-      phase("navigation", "degraded", "blocked");
-      throw new Error(blockedReason);
+    if (!contentCheckTimedOut) {
+      const blockedReason = detectBlockedPage({
+        httpStatus: navigationResponse?.status() ?? null,
+        ...pageContentCheck,
+      });
+      if (blockedReason) {
+        phase("navigation", "degraded", "blocked");
+        throw new Error(blockedReason);
+      }
     }
 
     phase("navigation", "completed");
     phase("core-extraction", "started");
 
-    if (pageContentCheck.textLength < 100) {
+    if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
       const reason =
         "Page has very little text content (" +
         pageContentCheck.textLength +
@@ -292,42 +320,18 @@ export async function captureWebsite(
       progress("warn", reason);
     }
 
-    // Scroll through page to trigger lazy-loaded images and Lottie animations
-    // Framer and other modern sites use IntersectionObserver — images only load
-    // when scrolled into view. We scroll the full page, then wait for all images
-    // to finish loading before proceeding.
     const lazyLoadBudgetMs = Math.min(15_000, remainingMs());
-    if (lazyLoadBudgetMs > 0) {
-      await page1.evaluate(`(async () => {
-      var lazyLoadDeadline = Date.now() + ${lazyLoadBudgetMs};
-      var h = document.body.scrollHeight;
-      for (var y = 0; y < h; y += window.innerHeight * 0.7) {
-        if (Date.now() >= lazyLoadDeadline) break;
-        window.scrollTo(0, y);
-        await new Promise(function(r) { setTimeout(r, 400); });
-      }
-      // Scroll to very bottom to catch footer lazy-loads
-      if (Date.now() < lazyLoadDeadline) {
-        window.scrollTo(0, document.body.scrollHeight);
-        await new Promise(function(r) { setTimeout(r, Math.min(800, Math.max(0, lazyLoadDeadline - Date.now()))); });
-      }
-      // Wait for all images to finish loading
-      var imgs = Array.from(document.querySelectorAll('img'));
-      var pending = imgs.filter(function(img) { return !img.complete; });
-      var imageWaitMs = Math.min(5000, Math.max(0, lazyLoadDeadline - Date.now()));
-      if (pending.length > 0 && imageWaitMs > 0) {
-        await Promise.race([
-          Promise.all(pending.map(function(img) {
-            return new Promise(function(r) { img.onload = r; img.onerror = r; });
-          })),
-          new Promise(function(r) { setTimeout(r, imageWaitMs); })
-        ]);
-      }
-      window.scrollTo(0, 0);
-    })()`);
+    const lazyScroll = await lazyScrollForCapture(page1, lazyLoadBudgetMs, {
+      onWarning: (message) => {
+        warnings.push(message);
+        progress("warn", message);
+      },
+    });
+    if (lazyScroll.timedOut && !lazyScroll.degraded) {
+      const message = `lazy-scroll stopped after ${lazyScroll.steps} steps (budget ${lazyLoadBudgetMs}ms)`;
+      warnings.push(message);
+      progress("warn", message);
     }
-
-    await page1.evaluate(`window.scrollTo(0, 0)`);
     await new Promise((r) => setTimeout(r, 300));
 
     // Save discovered Lottie animations
@@ -434,15 +438,39 @@ export async function captureWebsite(
       warnings.push(`Design style extraction failed: ${errMsg}`);
     }
 
-    // Collect animation catalog
     progress("animations", "Cataloging animations...");
-    animationCatalog = await collectAnimationCatalog(page1, cdpAnims, cdp);
+    try {
+      animationCatalog = await collectAnimationCatalog(page1, cdpAnims, cdp, {
+        scrollBudgetMs: Math.min(8_000, remainingMs()),
+      });
+    } catch (err) {
+      if (!isProtocolEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      const message = "animation catalog evaluate timed out; continuing without animation catalog";
+      warnings.push(message);
+      progress("warn", message);
+      try {
+        await cdp.send("Animation.disable");
+      } catch {
+        /* ignore */
+      }
+    }
 
-    // Capture scroll-position viewport screenshots
     progress("screenshots", "Capturing scroll screenshots...");
     const { captureScrollScreenshots } = await import("./screenshotCapture.js");
-    const screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
-    progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+    let screenshots: string[] = [];
+    try {
+      screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
+      progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+    } catch (err) {
+      if (!isProtocolEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      const message = "scroll screenshots timed out; continuing without screenshots";
+      warnings.push(message);
+      progress("warn", message);
+    }
 
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");

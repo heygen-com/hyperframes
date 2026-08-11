@@ -16,6 +16,8 @@
  */
 
 import type { Page, CDPSession } from "puppeteer-core";
+import { isProtocolEvaluateTimeoutError } from "./captureTimeout.js";
+import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 
 export interface AnimationCatalog {
   /** Active animations via document.getAnimations() — includes keyframes */
@@ -127,32 +129,28 @@ export async function startCdpAnimationCapture(
   return { cdp, animations };
 }
 
-/**
- * Collect the full animation catalog after page has loaded and settled.
- * Should be called after scrolling through the page to trigger all animations.
- */
+const EMPTY_ANIMATION_SCAN = {
+  webAnimations: [] as WebAnimationEntry[],
+  cssDeclarations: [] as CssAnimationEntry[],
+  scrollTargets: [] as ScrollTarget[],
+  canvasCount: 0,
+};
+
 export async function collectAnimationCatalog(
   page: Page,
   cdpAnimations: CdpAnimationEntry[],
   cdp: CDPSession,
+  opts: { scrollBudgetMs?: number } = {},
 ): Promise<AnimationCatalog> {
-  // Scroll through page to trigger scroll-based animations
-  await page.evaluate(`(async () => {
-    var height = document.body.scrollHeight;
-    for (var y = 0; y < height; y += window.innerHeight * 0.5) {
-      window.scrollTo(0, y);
-      await new Promise(function(r) { setTimeout(r, 400); });
-    }
-    window.scrollTo(0, 0);
-    await new Promise(function(r) { setTimeout(r, 1000); });
-  })()`);
+  const scrollBudgetMs = opts.scrollBudgetMs ?? 8_000;
+  await lazyScrollForCapture(page, scrollBudgetMs);
 
-  // Collect from Web Animations API + computed styles + IO targets
-  const result = (await page.evaluate(`(() => {
+  let result = EMPTY_ANIMATION_SCAN;
+  try {
+    result = (await page.evaluate(`(() => {
     var webAnimations = [];
     var cssDeclarations = [];
 
-    // 1. Web Animations API
     try {
       var anims = document.getAnimations();
       webAnimations = anims.map(function(anim) {
@@ -180,7 +178,6 @@ export async function collectAnimationCatalog(
       });
     } catch(e) {}
 
-    // 2. CSS animation/transition scan
     var allEls = document.querySelectorAll('*');
     for (var i = 0; i < allEls.length && i < 5000; i++) {
       var el = allEls[i];
@@ -202,19 +199,25 @@ export async function collectAnimationCatalog(
       } catch(e) {}
     }
 
-    // 3. IO targets (collected by monkey-patch)
     var scrollTargets = (window.__hf_io_targets || []).map(function(t) {
       return { selector: t.selector, rect: t.rect };
     });
 
-    // 4. Canvas summary
     var canvasCount = document.querySelectorAll('canvas').length;
 
     return { webAnimations: webAnimations, cssDeclarations: cssDeclarations, scrollTargets: scrollTargets, canvasCount: canvasCount };
-  })()`)) as any;
+  })()`)) as typeof EMPTY_ANIMATION_SCAN;
+  } catch (err) {
+    if (!isProtocolEvaluateTimeoutError(err)) {
+      throw err;
+    }
+  }
 
-  // Stop CDP listener
-  await cdp.send("Animation.disable");
+  try {
+    await cdp.send("Animation.disable");
+  } catch {
+    /* session may already be closed */
+  }
 
   return {
     webAnimations: result.webAnimations,
