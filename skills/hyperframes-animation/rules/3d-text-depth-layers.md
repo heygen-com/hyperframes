@@ -125,4 +125,5 @@ tl.to(
 
 ## See also
 
-`counting-dynamic-scale` (counter rendered with depth layers) · `sine-wave-loop` (idle breathing on the front layer post-reveal) · `center-outward-expansion` (depth-stacked wordmark after the burst lands).
+`counting-dynamic-scale` (counter rendered with depth layers) · `sine-wave-loop` (idle breathing on the front layer post-reveal) · `center-outward-expansion` (depth-stacked wordmark after the burst lands) ·
+`3d-text-true-extrude` (real ExtrudeGeometry when the camera must move around the text — the DOM stack here is a fixed-viewpoint illusion).
