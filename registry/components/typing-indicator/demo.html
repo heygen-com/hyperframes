@@ -76,7 +76,13 @@
       data-height="1080"
       data-duration="4"
     >
-      <section class="clip" data-start="0" data-duration="4" data-track-index="1" style="position: absolute; inset: 0">
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
         <div class="hf-ti-wrap" id="hf-ti-demo-1">
           <div class="hf-ti-bubble">
             <span class="hf-ti-dot"></span>
@@ -99,11 +105,15 @@
         "#hf-ti-demo-1",
         { scale: 0.6, autoAlpha: 0.4 },
         { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
-        0.4
+        0.4,
       );
       /* bounded dot wave */
       gsap.utils.toArray("#hf-ti-demo-1 .hf-ti-dot").forEach(function (dot, i) {
-        tl.to(dot, { y: -10, duration: 0.28, ease: "sine.inOut", yoyo: true, repeat: 9 }, 0.55 + i * 0.14);
+        tl.to(
+          dot,
+          { y: -10, duration: 0.28, ease: "sine.inOut", yoyo: true, repeat: 9 },
+          0.55 + i * 0.14,
+        );
       });
       tl.set("#hf-ti-demo-1", { autoAlpha: 0 }, 3.7);
       tl.set({}, {}, 4);

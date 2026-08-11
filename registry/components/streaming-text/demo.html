@@ -55,14 +55,21 @@
       data-height="1080"
       data-duration="5"
     >
-      <section class="clip" data-start="0" data-duration="5" data-track-index="1" style="position: absolute; inset: 0">
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
         <p class="hf-st-p" id="hf-st-demo-p">
           <span class="w">You</span> <span class="w">don't</span> <span class="w">need</span>
           <span class="w">a</span> <span class="w">video</span> <span class="w">editor.</span>
-          <span class="w">HyperFrames</span> <span class="w">renders</span> <span class="w">the</span>
-          <span class="w">HTML</span> <span class="w">you</span> <span class="w">already</span>
-          <span class="w">write</span> <span class="w">into</span> <span class="w">pixel-perfect,</span>
-          <span class="w">deterministic</span> <span class="w">video.</span>
+          <span class="w">HyperFrames</span> <span class="w">renders</span>
+          <span class="w">the</span> <span class="w">HTML</span> <span class="w">you</span>
+          <span class="w">already</span> <span class="w">write</span> <span class="w">into</span>
+          <span class="w">pixel-perfect,</span> <span class="w">deterministic</span>
+          <span class="w">video.</span>
         </p>
       </section>
     </div>
@@ -73,9 +80,8 @@
 
       /* the measured token rhythm, cycled */
       var GAPS = [
-        0.167, 0.1, 0.0, 0.367, 0.0, 0.167, 0.133, 0.1, 0.1, 0.133,
-        0.167, 0.133, 0.0, 0.233, 0.167, 0.1, 0.0, 0.133, 0.133, 0.1,
-        0.167, 0.133, 0.1, 0.133, 0.167, 0.1, 0.133, 0.1, 0.133,
+        0.167, 0.1, 0.0, 0.367, 0.0, 0.167, 0.133, 0.1, 0.1, 0.133, 0.167, 0.133, 0.0, 0.233, 0.167,
+        0.1, 0.0, 0.133, 0.133, 0.1, 0.167, 0.133, 0.1, 0.133, 0.167, 0.1, 0.133, 0.1, 0.133,
       ];
       var t = 0.6;
       gsap.utils.toArray("#hf-st-demo-p .w").forEach(function (w, i) {

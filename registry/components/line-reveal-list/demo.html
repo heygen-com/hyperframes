@@ -61,11 +61,23 @@
       data-height="1080"
       data-duration="9"
     >
-      <section class="clip" data-start="0" data-duration="9" data-track-index="1" style="position: absolute; inset: 0">
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="9"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
         <div class="hf-lrl-list" id="hf-lrl-demo-list">
-          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>write the scene in plain HTML</div>
-          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>hyperframes check catches the misses</div>
-          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>render lands the same, every time</div>
+          <div class="hf-lrl-line">
+            <span class="hf-lrl-mark">&#10003;</span>write the scene in plain HTML
+          </div>
+          <div class="hf-lrl-line">
+            <span class="hf-lrl-mark">&#10003;</span>hyperframes check catches the misses
+          </div>
+          <div class="hf-lrl-line">
+            <span class="hf-lrl-mark">&#10003;</span>render lands the same, every time
+          </div>
           <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>ship it</div>
         </div>
       </section>
@@ -80,7 +92,12 @@
       var t = 0.5;
       gsap.utils.toArray("#hf-lrl-demo-list .hf-lrl-line").forEach(function (line, i) {
         if (i > 0) t += CADENCE[(i - 1) % CADENCE.length];
-        tl.fromTo(line, { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: 0.23, ease: "power2.out" }, t);
+        tl.fromTo(
+          line,
+          { autoAlpha: 0, y: 14 },
+          { autoAlpha: 1, y: 0, duration: 0.23, ease: "power2.out" },
+          t,
+        );
       });
 
       /* one measured scroll-settle after the third line */

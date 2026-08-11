@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html
   lang="en"
   data-composition-variables='[
@@ -13,311 +13,1440 @@
     { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" }
   ]'
 >
-<head>
-<meta charset="utf-8">
-<title>Notes Reveal</title>
-<style>
-  @font-face { font-family:'Permanent Marker'; src:url('assets/permanent-marker-400.woff2') format('woff2'); }
-  @font-face { font-family:'Courier Prime'; src:url('assets/courier-prime-400.woff2') format('woff2'); }
-  @font-face { font-family:'Courier Prime'; font-weight:700; src:url('assets/courier-prime-700.woff2') format('woff2'); }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  #root { position:relative; width:1080px; height:1920px; overflow:hidden; background:#000; }
-  .clip { position:absolute; inset:0; }
-  .ui { font-family:-apple-system, BlinkMacSystemFont, sans-serif; }
+  <head>
+    <meta charset="utf-8" />
+    <title>Notes Reveal</title>
+    <style>
+      @font-face {
+        font-family: "Permanent Marker";
+        src: url("assets/permanent-marker-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Courier Prime";
+        src: url("assets/courier-prime-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Courier Prime";
+        font-weight: 700;
+        src: url("assets/courier-prime-700.woff2") format("woff2");
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      #root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .ui {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
 
-  /* ---------- scene: card (under) ---------- */
-  #card-scene { position:absolute; inset:0; background:#ece1d5; }
-  #card-dots { position:absolute; inset:0;
-     background-image: radial-gradient(circle, rgba(178,150,138,0.18) 2px, transparent 2.6px);
-     background-size: 36px 36px; background-position: 8px 6px; }
-  #card { position:absolute; left:119px; top:210px; width:840px; height:1498px;
-     background:#fcfcfc; transform: rotate(-3.03deg);
-     box-shadow: 0 12px 30px rgba(90,60,40,0.12); }
-  .mk { font-family:'Permanent Marker', cursive; color:#602640; position:absolute; white-space:nowrap; }
-  #hl1 { font-size:110px; letter-spacing:2px; }
-  #hl2 { font-size:100px; }
-  #hl3 { font-size:110px; }
-  #hl-ul { position:absolute; width:415px; height:8px; background:#602640; border-radius:4px; }
-  #hl-circle { position:absolute; }
-  .cl-label { font-family:'Courier Prime', monospace; font-weight:700; font-size:44px;
-     letter-spacing:0; color:#602640; position:absolute;
-     transform:scaleX(0.86); transform-origin:left top; }
-  .cl-value { font-family:'Permanent Marker', cursive; font-size:50px; letter-spacing:0;
-     color:#602640; position:absolute; }
-  .cl-check { position:absolute; }
-  .cl-rule { position:absolute; width:695px; height:2.5px; background:#602640; opacity:0.92; }
-  #nrv-video { position:absolute; left:380px; top:740px; width:320px; height:480px; border-radius:40px;
-     background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
-     box-shadow: 0 20px 48px rgba(90,60,40,0.28); transform: rotate(-3.03deg); }
-  #nrv-play { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:120px; height:120px;
-     border-radius:50%; background:rgba(253,253,253,0.94); display:grid; place-items:center; }
+      /* ---------- scene: card (under) ---------- */
+      #card-scene {
+        position: absolute;
+        inset: 0;
+        background: #ece1d5;
+      }
+      #card-dots {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle, rgba(178, 150, 138, 0.18) 2px, transparent 2.6px);
+        background-size: 36px 36px;
+        background-position: 8px 6px;
+      }
+      #card {
+        position: absolute;
+        left: 119px;
+        top: 210px;
+        width: 840px;
+        height: 1498px;
+        background: #fcfcfc;
+        transform: rotate(-3.03deg);
+        box-shadow: 0 12px 30px rgba(90, 60, 40, 0.12);
+      }
+      .mk {
+        font-family: "Permanent Marker", cursive;
+        color: #602640;
+        position: absolute;
+        white-space: nowrap;
+      }
+      #hl1 {
+        font-size: 110px;
+        letter-spacing: 2px;
+      }
+      #hl2 {
+        font-size: 100px;
+      }
+      #hl3 {
+        font-size: 110px;
+      }
+      #hl-ul {
+        position: absolute;
+        width: 415px;
+        height: 8px;
+        background: #602640;
+        border-radius: 4px;
+      }
+      #hl-circle {
+        position: absolute;
+      }
+      .cl-label {
+        font-family: "Courier Prime", monospace;
+        font-weight: 700;
+        font-size: 44px;
+        letter-spacing: 0;
+        color: #602640;
+        position: absolute;
+        transform: scaleX(0.86);
+        transform-origin: left top;
+      }
+      .cl-value {
+        font-family: "Permanent Marker", cursive;
+        font-size: 50px;
+        letter-spacing: 0;
+        color: #602640;
+        position: absolute;
+      }
+      .cl-check {
+        position: absolute;
+      }
+      .cl-rule {
+        position: absolute;
+        width: 695px;
+        height: 2.5px;
+        background: #602640;
+        opacity: 0.92;
+      }
+      #nrv-video {
+        position: absolute;
+        left: 380px;
+        top: 740px;
+        width: 320px;
+        height: 480px;
+        border-radius: 40px;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+        box-shadow: 0 20px 48px rgba(90, 60, 40, 0.28);
+        transform: rotate(-3.03deg);
+      }
+      #nrv-play {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: rgba(253, 253, 253, 0.94);
+        display: grid;
+        place-items: center;
+      }
 
-  /* ---------- scene: notes (over) ---------- */
-  #notes-fade { position:absolute; inset:0; background:#fefefe; }
-  .sb { position:absolute; color:#111; }
-  #sb-time { left:63px; top:48px; font-size:38px; font-weight:600; letter-spacing:0.5px; }
-  .pill { position:absolute; background:#ffffff; border-radius:70px;
-     box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
-  #nav-back { left:38px; top:130px; width:110px; height:110px; }
-  #nav-mid { left:540px; top:130px; width:380px; height:110px; }
-  #nav-check { position:absolute; left:932px; top:136px; width:110px; height:110px;
-     border-radius:55px; background:#fec909; }
-  .navicon { position:absolute; }
-  #note-viewport { position:absolute; left:0; top:272px; width:1080px; height:593px; overflow:hidden; }
-  #note-body { position:absolute; left:0; top:0; width:1080px; height:2400px; }
-  #title-l1, #title-l2 { position:absolute; left:62px; font-size:92px; font-weight:700;
-     letter-spacing:-0.005em; color:#191919; white-space:nowrap; }
-  #title-l1 { top:52px; }
-  #title-l2 { top:152px; }
-  .bodyline { position:absolute; left:62px; font-size:52.5px; font-weight:400;
-     letter-spacing:0em; color:#191919; white-space:pre; }
-  #caret { position:absolute; left:0; top:0; width:4.5px; height:54px; background:#ffca00; border-radius:2px; }
-  #fmtbar { position:absolute; left:35px; top:878px; width:1010px; height:118px; background:#fdfdfd;
-     border-radius:59px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); }
-  .fmticon { position:absolute; }
-  .fmtaa { position:absolute; height:118px; display:flex; align-items:center; justify-content:center; }
-  #keyboard { position:absolute; left:0; top:1033px; width:1080px; height:887px; background:#cfd3da; }
-  .sug { position:absolute; top:40px; font-size:40px; color:#1b1b1b; }
-  .sugsep { position:absolute; top:44px; width:2px; height:44px; background:#b9bdc4; }
-  .key { position:absolute; background:#fdfdfe; border-radius:12px;
-     box-shadow: 0 3px 0 rgba(120,125,135,0.55); color:#111; font-size:48px;
-     display:flex; align-items:center; justify-content:center; }
-  .gkey { background:#a9aeb5; }
-  svg.icon { display:block; }
-</style>
-</head>
-<body>
-<div id="root" data-composition-id="notes-reveal" data-width="1080" data-height="1920"
-     data-duration="24.85" data-fps="30" data-start="0">
+      /* ---------- scene: notes (over) ---------- */
+      #notes-fade {
+        position: absolute;
+        inset: 0;
+        background: #fefefe;
+      }
+      .sb {
+        position: absolute;
+        color: #111;
+      }
+      #sb-time {
+        left: 63px;
+        top: 48px;
+        font-size: 38px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      .pill {
+        position: absolute;
+        background: #ffffff;
+        border-radius: 70px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+      }
+      #nav-back {
+        left: 38px;
+        top: 130px;
+        width: 110px;
+        height: 110px;
+      }
+      #nav-mid {
+        left: 540px;
+        top: 130px;
+        width: 380px;
+        height: 110px;
+      }
+      #nav-check {
+        position: absolute;
+        left: 932px;
+        top: 136px;
+        width: 110px;
+        height: 110px;
+        border-radius: 55px;
+        background: #fec909;
+      }
+      .navicon {
+        position: absolute;
+      }
+      #note-viewport {
+        position: absolute;
+        left: 0;
+        top: 272px;
+        width: 1080px;
+        height: 593px;
+        overflow: hidden;
+      }
+      #note-body {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 2400px;
+      }
+      #title-l1,
+      #title-l2 {
+        position: absolute;
+        left: 62px;
+        font-size: 92px;
+        font-weight: 700;
+        letter-spacing: -0.005em;
+        color: #191919;
+        white-space: nowrap;
+      }
+      #title-l1 {
+        top: 52px;
+      }
+      #title-l2 {
+        top: 152px;
+      }
+      .bodyline {
+        position: absolute;
+        left: 62px;
+        font-size: 52.5px;
+        font-weight: 400;
+        letter-spacing: 0em;
+        color: #191919;
+        white-space: pre;
+      }
+      #caret {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 4.5px;
+        height: 54px;
+        background: #ffca00;
+        border-radius: 2px;
+      }
+      #fmtbar {
+        position: absolute;
+        left: 35px;
+        top: 878px;
+        width: 1010px;
+        height: 118px;
+        background: #fdfdfd;
+        border-radius: 59px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+      }
+      .fmticon {
+        position: absolute;
+      }
+      .fmtaa {
+        position: absolute;
+        height: 118px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #keyboard {
+        position: absolute;
+        left: 0;
+        top: 1033px;
+        width: 1080px;
+        height: 887px;
+        background: #cfd3da;
+      }
+      .sug {
+        position: absolute;
+        top: 40px;
+        font-size: 40px;
+        color: #1b1b1b;
+      }
+      .sugsep {
+        position: absolute;
+        top: 44px;
+        width: 2px;
+        height: 44px;
+        background: #b9bdc4;
+      }
+      .key {
+        position: absolute;
+        background: #fdfdfe;
+        border-radius: 12px;
+        box-shadow: 0 3px 0 rgba(120, 125, 135, 0.55);
+        color: #111;
+        font-size: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .gkey {
+        background: #a9aeb5;
+      }
+      svg.icon {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="notes-reveal"
+      data-width="1080"
+      data-height="1920"
+      data-duration="24.85"
+      data-fps="30"
+      data-start="0"
+    >
+      <!-- ============ CARD SCENE (track 0, under) ============ -->
+      <div
+        class="clip"
+        data-start="21.3567"
+        data-duration="3.53"
+        data-track-index="0"
+        id="card-clip"
+      >
+        <div id="card-scene">
+          <div id="card-dots"></div>
+          <div id="card">
+            <div
+              class="mk"
+              id="hl1"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+              style="left: 116px; top: 72px"
+            >
+              THE POWER
+            </div>
+            <div id="hl-ul" style="left: 333px; top: 196px"></div>
+            <div
+              class="mk"
+              id="hl2"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+              style="left: 356px; top: 181px"
+            >
+              OF
+            </div>
+            <div
+              class="mk"
+              id="hl3"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+              style="left: 155px; top: 329px"
+            >
+              <svg
+                id="hl-circle"
+                style="left: -20px; top: -8px"
+                width="220"
+                height="150"
+                viewBox="0 0 220 150"
+              >
+                <ellipse
+                  cx="105"
+                  cy="72"
+                  rx="102"
+                  ry="61"
+                  fill="none"
+                  stroke="#602640"
+                  stroke-width="8"
+                /></svg
+              ><span style="padding-left: 24px">ONE</span
+              ><span style="padding-left: 52px">FILE</span>
+            </div>
 
-  <!-- ============ CARD SCENE (track 0, under) ============ -->
-  <div class="clip" data-start="21.3567" data-duration="3.53" data-track-index="0" id="card-clip">
-    <div id="card-scene">
-      <div id="card-dots"></div>
-      <div id="card">
-        <div class="mk" id="hl1" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="left:116px; top:72px">THE POWER</div>
-        <div id="hl-ul" style="left:333px; top:196px"></div>
-        <div class="mk" id="hl2" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="left:356px; top:181px">OF</div>
-        <div class="mk" id="hl3" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="left:155px; top:329px"><svg id="hl-circle" style="left:-20px; top:-8px" width="220" height="150" viewBox="0 0 220 150"><ellipse cx="105" cy="72" rx="102" ry="61" fill="none" stroke="#602640" stroke-width="8"/></svg><span style="padding-left:24px">ONE</span><span style="padding-left:52px">FILE</span></div>
-        
-    <div class="cl-label" style="left:74px; top:1073px">WRITE</div>
-    <div class="cl-value" style="left:389px; top:1051px">HTML</div>
-    <svg class="cl-check" style="left:715px; top:1059px" width="50" height="46" viewBox="0 0 86 80">
-      <path d="M6 46 L30 72 L80 8" fill="none" stroke="#602640" stroke-width="6" stroke-linecap="round"/>
-    </svg>
-    <div class="cl-rule" style="left:72px; top:1139px"></div>
-    <div class="cl-label" style="left:72px; top:1212px">RENDER</div>
-    <div class="cl-value" style="left:390px; top:1188px">IN 4K</div>
-    <svg class="cl-check" style="left:715px; top:1196px" width="50" height="46" viewBox="0 0 86 80">
-      <path d="M6 46 L30 72 L80 8" fill="none" stroke="#602640" stroke-width="6" stroke-linecap="round"/>
-    </svg>
-    <div class="cl-rule" style="left:65px; top:1276px"></div>
-    <div class="cl-label" style="left:72px; top:1347px">SHIP</div>
-    <div class="cl-value" style="left:389px; top:1324px">TODAY</div>
-    <svg class="cl-check" style="left:715px; top:1334px" width="50" height="46" viewBox="0 0 86 80">
-      <path d="M6 46 L30 72 L80 8" fill="none" stroke="#602640" stroke-width="6" stroke-linecap="round"/>
-    </svg>
-    <div class="cl-rule" style="left:58px; top:1412px"></div>
-      </div>
-      <div id="nrv-video"><div id="nrv-play"><svg width="52" height="58" viewBox="0 0 44 48" fill="none"><path d="M40.5 20.6 C43.2 22.1 43.2 25.9 40.5 27.4 L6.2 46.6 C3.5 48.1 0.2 46.2 0.2 43.2 L0.2 4.8 C0.2 1.8 3.5 -0.1 6.2 1.4 Z" fill="#0d0d0d"/></svg></div></div>
-    </div>
-  </div>
-
-  <!-- ============ NOTES SCENE (track 1, over) ============ -->
-  <div class="clip" data-start="0" data-duration="21.687" data-track-index="1" id="notes-clip">
-    <div id="notes-fade" class="ui">
-      <!-- status bar -->
-      <div class="sb" id="sb-time">9:41</div>
-      <svg class="navicon" style="left:822px; top:52px" width="220" height="40" viewBox="0 0 220 40">
-        <!-- signal bars -->
-        <rect x="0" y="22" width="7" height="12" rx="2" fill="#111"/>
-        <rect x="11" y="16" width="7" height="18" rx="2" fill="#111"/>
-        <rect x="22" y="10" width="7" height="24" rx="2" fill="#111"/>
-        <rect x="33" y="4"  width="7" height="30" rx="2" fill="#111"/>
-        <!-- wifi -->
-        <path d="M78 15 a26 26 0 0 1 34 0" fill="none" stroke="#111" stroke-width="6" stroke-linecap="round"/>
-        <path d="M84 23 a17 17 0 0 1 22 0" fill="none" stroke="#111" stroke-width="6" stroke-linecap="round"/>
-        <circle cx="95" cy="31" r="5" fill="#111"/>
-        <!-- battery -->
-        <rect x="140" y="6" width="52" height="28" rx="9" fill="none" stroke="#111" stroke-width="3" opacity="0.5"/>
-        <rect x="144" y="10" width="34" height="20" rx="5" fill="#111"/>
-        <path d="M196 14 v12 a7 7 0 0 0 0 -12" fill="#111" opacity="0.5"/>
-      </svg>
-      <!-- nav pills -->
-      <div class="pill" id="nav-back"></div>
-      <svg class="navicon" style="left:74px; top:166px" width="40" height="40" viewBox="0 0 40 40">
-        <path d="M26 4 L10 20 L26 36" fill="none" stroke="#111" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <div class="pill" id="nav-mid"></div>
-      <svg class="navicon" style="left:588px; top:168px" width="44" height="40" viewBox="0 0 44 40">
-        <path d="M8 12 a 14 14 0 1 1 -3 14" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round"/>
-        <path d="M8 2 v11 h11" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <svg class="navicon" style="left:702px; top:162px" width="44" height="48" viewBox="0 0 44 48">
-        <path d="M22 4 v26 M12 12 l10 -9 10 9" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M8 22 h-2 v22 h32 v-22 h-2" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round"/>
-      </svg>
-      <svg class="navicon" style="left:806px; top:186px" width="66" height="12" viewBox="0 0 66 12">
-        <circle cx="6" cy="6" r="5.5" fill="#111"/><circle cx="33" cy="6" r="5.5" fill="#111"/><circle cx="60" cy="6" r="5.5" fill="#111"/>
-      </svg>
-      <div id="nav-check"></div>
-      <svg class="navicon" style="left:958px; top:168px" width="56" height="46" viewBox="0 0 56 46">
-        <path d="M6 24 L21 38 L50 6" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-
-      <!-- note text -->
-      <div id="note-viewport">
-        <div id="note-body">
-          <div id="title-l1" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion>Things nobody told me</div>
-          <div id="title-l2" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion>about video.</div>
-          <div class="bodyline" id="line-0" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:283px"><span class="ch" id="ch-0-0">m</span><span class="ch" id="ch-0-1">y</span><span class="ch" id="ch-0-2"> </span><span class="ch" id="ch-0-3">v</span><span class="ch" id="ch-0-4">i</span><span class="ch" id="ch-0-5">d</span><span class="ch" id="ch-0-6">e</span><span class="ch" id="ch-0-7">o</span><span class="ch" id="ch-0-8">s</span><span class="ch" id="ch-0-9"> </span><span class="ch" id="ch-0-10">s</span><span class="ch" id="ch-0-11">u</span><span class="ch" id="ch-0-12">c</span><span class="ch" id="ch-0-13">k</span><span class="ch" id="ch-0-14">e</span><span class="ch" id="ch-0-15">d</span></div><div class="bodyline" id="line-1" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:433px"><span class="ch" id="ch-1-0">m</span><span class="ch" id="ch-1-1">y</span><span class="ch" id="ch-1-2"> </span><span class="ch" id="ch-1-3">t</span><span class="ch" id="ch-1-4">o</span><span class="ch" id="ch-1-5">o</span><span class="ch" id="ch-1-6">l</span><span class="ch" id="ch-1-7">s</span><span class="ch" id="ch-1-8"> </span><span class="ch" id="ch-1-9">c</span><span class="ch" id="ch-1-10">o</span><span class="ch" id="ch-1-11">s</span><span class="ch" id="ch-1-12">t</span><span class="ch" id="ch-1-13"> </span><span class="ch" id="ch-1-14">$</span><span class="ch" id="ch-1-15">$</span><span class="ch" id="ch-1-16">$</span></div><div class="bodyline" id="line-2" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:583px"><span class="ch" id="ch-2-0">a</span><span class="ch" id="ch-2-1">n</span><span class="ch" id="ch-2-2">d</span><span class="ch" id="ch-2-3"> </span><span class="ch" id="ch-2-4">r</span><span class="ch" id="ch-2-5">e</span><span class="ch" id="ch-2-6">-</span><span class="ch" id="ch-2-7">e</span><span class="ch" id="ch-2-8">d</span><span class="ch" id="ch-2-9">i</span><span class="ch" id="ch-2-10">t</span><span class="ch" id="ch-2-11">s</span><span class="ch" id="ch-2-12"> </span><span class="ch" id="ch-2-13">n</span><span class="ch" id="ch-2-14">e</span><span class="ch" id="ch-2-15">v</span><span class="ch" id="ch-2-16">e</span><span class="ch" id="ch-2-17">r</span><span class="ch" id="ch-2-18"> </span><span class="ch" id="ch-2-19">e</span><span class="ch" id="ch-2-20">n</span><span class="ch" id="ch-2-21">d</span><span class="ch" id="ch-2-22">.</span></div><div class="bodyline" id="line-3" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:733px"><span class="ch" id="ch-3-0">t</span><span class="ch" id="ch-3-1">h</span><span class="ch" id="ch-3-2">e</span><span class="ch" id="ch-3-3">n</span><span class="ch" id="ch-3-4"> </span><span class="ch" id="ch-3-5">i</span><span class="ch" id="ch-3-6"> </span><span class="ch" id="ch-3-7">t</span><span class="ch" id="ch-3-8">r</span><span class="ch" id="ch-3-9">i</span><span class="ch" id="ch-3-10">e</span><span class="ch" id="ch-3-11">d</span><span class="ch" id="ch-3-12"> </span><span class="ch" id="ch-3-13">w</span><span class="ch" id="ch-3-14">r</span><span class="ch" id="ch-3-15">i</span><span class="ch" id="ch-3-16">t</span><span class="ch" id="ch-3-17">i</span><span class="ch" id="ch-3-18">n</span><span class="ch" id="ch-3-19">g</span><span class="ch" id="ch-3-20"> </span><span class="ch" id="ch-3-21">h</span><span class="ch" id="ch-3-22">t</span><span class="ch" id="ch-3-23">m</span><span class="ch" id="ch-3-24">l</span><span class="ch" id="ch-3-25"> </span><span class="ch" id="ch-3-26">o</span><span class="ch" id="ch-3-27">n</span><span class="ch" id="ch-3-28">l</span><span class="ch" id="ch-3-29">y</span></div><div class="bodyline" id="line-4" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:883px"><span class="ch" id="ch-4-0">s</span><span class="ch" id="ch-4-1">t</span><span class="ch" id="ch-4-2">a</span><span class="ch" id="ch-4-3">r</span><span class="ch" id="ch-4-4">t</span><span class="ch" id="ch-4-5">e</span><span class="ch" id="ch-4-6">d</span><span class="ch" id="ch-4-7"> </span><span class="ch" id="ch-4-8">H</span><span class="ch" id="ch-4-9">y</span><span class="ch" id="ch-4-10">p</span><span class="ch" id="ch-4-11">e</span><span class="ch" id="ch-4-12">r</span><span class="ch" id="ch-4-13">F</span><span class="ch" id="ch-4-14">r</span><span class="ch" id="ch-4-15">a</span><span class="ch" id="ch-4-16">m</span><span class="ch" id="ch-4-17">e</span><span class="ch" id="ch-4-18">s</span><span class="ch" id="ch-4-19"> </span><span class="ch" id="ch-4-20">t</span><span class="ch" id="ch-4-21">h</span><span class="ch" id="ch-4-22">r</span><span class="ch" id="ch-4-23">e</span><span class="ch" id="ch-4-24">e</span><span class="ch" id="ch-4-25"> </span><span class="ch" id="ch-4-26">w</span><span class="ch" id="ch-4-27">e</span><span class="ch" id="ch-4-28">e</span><span class="ch" id="ch-4-29">k</span><span class="ch" id="ch-4-30">s</span><span class="ch" id="ch-4-31"> </span><span class="ch" id="ch-4-32">a</span><span class="ch" id="ch-4-33">g</span><span class="ch" id="ch-4-34">o</span></div><div class="bodyline" id="line-5" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:1033px"><span class="ch" id="ch-5-0">t</span><span class="ch" id="ch-5-1">h</span><span class="ch" id="ch-5-2">e</span><span class="ch" id="ch-5-3"> </span><span class="ch" id="ch-5-4">g</span><span class="ch" id="ch-5-5">r</span><span class="ch" id="ch-5-6">i</span><span class="ch" id="ch-5-7">n</span><span class="ch" id="ch-5-8">d</span><span class="ch" id="ch-5-9"> </span><span class="ch" id="ch-5-10">i</span><span class="ch" id="ch-5-11">s</span><span class="ch" id="ch-5-12"> </span><span class="ch" id="ch-5-13">g</span><span class="ch" id="ch-5-14">o</span><span class="ch" id="ch-5-15">n</span><span class="ch" id="ch-5-16">e</span><span class="ch" id="ch-5-17">,</span><span class="ch" id="ch-5-18"> </span><span class="ch" id="ch-5-19">b</span><span class="ch" id="ch-5-20">u</span><span class="ch" id="ch-5-21">t</span><span class="ch" id="ch-5-22"> </span><span class="ch" id="ch-5-23">m</span><span class="ch" id="ch-5-24">o</span><span class="ch" id="ch-5-25">r</span><span class="ch" id="ch-5-26">e</span><span class="ch" id="ch-5-27"> </span><span class="ch" id="ch-5-28">t</span><span class="ch" id="ch-5-29">h</span><span class="ch" id="ch-5-30">a</span><span class="ch" id="ch-5-31">n</span><span class="ch" id="ch-5-32"> </span><span class="ch" id="ch-5-33">t</span><span class="ch" id="ch-5-34">h</span><span class="ch" id="ch-5-35">a</span><span class="ch" id="ch-5-36">t</span><span class="ch" id="ch-5-37"> </span><span class="ch" id="ch-5-38">—</span></div><div class="bodyline" id="line-6" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion style="top:1183px"><span class="ch" id="ch-6-0">I</span><span class="ch" id="ch-6-1"> </span><span class="ch" id="ch-6-2">s</span><span class="ch" id="ch-6-3">h</span><span class="ch" id="ch-6-4">i</span><span class="ch" id="ch-6-5">p</span><span class="ch" id="ch-6-6"> </span><span class="ch" id="ch-6-7">v</span><span class="ch" id="ch-6-8">i</span><span class="ch" id="ch-6-9">d</span><span class="ch" id="ch-6-10">e</span><span class="ch" id="ch-6-11">o</span><span class="ch" id="ch-6-12">s</span><span class="ch" id="ch-6-13"> </span><span class="ch" id="ch-6-14">w</span><span class="ch" id="ch-6-15">e</span><span class="ch" id="ch-6-16">e</span><span class="ch" id="ch-6-17">k</span><span class="ch" id="ch-6-18">l</span><span class="ch" id="ch-6-19">y</span><span class="ch" id="ch-6-20">.</span></div>
-          <div id="caret"></div>
+            <div class="cl-label" style="left: 74px; top: 1073px">WRITE</div>
+            <div class="cl-value" style="left: 389px; top: 1051px">HTML</div>
+            <svg
+              class="cl-check"
+              style="left: 715px; top: 1059px"
+              width="50"
+              height="46"
+              viewBox="0 0 86 80"
+            >
+              <path
+                d="M6 46 L30 72 L80 8"
+                fill="none"
+                stroke="#602640"
+                stroke-width="6"
+                stroke-linecap="round"
+              />
+            </svg>
+            <div class="cl-rule" style="left: 72px; top: 1139px"></div>
+            <div class="cl-label" style="left: 72px; top: 1212px">RENDER</div>
+            <div class="cl-value" style="left: 390px; top: 1188px">IN 4K</div>
+            <svg
+              class="cl-check"
+              style="left: 715px; top: 1196px"
+              width="50"
+              height="46"
+              viewBox="0 0 86 80"
+            >
+              <path
+                d="M6 46 L30 72 L80 8"
+                fill="none"
+                stroke="#602640"
+                stroke-width="6"
+                stroke-linecap="round"
+              />
+            </svg>
+            <div class="cl-rule" style="left: 65px; top: 1276px"></div>
+            <div class="cl-label" style="left: 72px; top: 1347px">SHIP</div>
+            <div class="cl-value" style="left: 389px; top: 1324px">TODAY</div>
+            <svg
+              class="cl-check"
+              style="left: 715px; top: 1334px"
+              width="50"
+              height="46"
+              viewBox="0 0 86 80"
+            >
+              <path
+                d="M6 46 L30 72 L80 8"
+                fill="none"
+                stroke="#602640"
+                stroke-width="6"
+                stroke-linecap="round"
+              />
+            </svg>
+            <div class="cl-rule" style="left: 58px; top: 1412px"></div>
+          </div>
+          <div id="nrv-video">
+            <div id="nrv-play">
+              <svg width="52" height="58" viewBox="0 0 44 48" fill="none">
+                <path
+                  d="M40.5 20.6 C43.2 22.1 43.2 25.9 40.5 27.4 L6.2 46.6 C3.5 48.1 0.2 46.2 0.2 43.2 L0.2 4.8 C0.2 1.8 3.5 -0.1 6.2 1.4 Z"
+                  fill="#0d0d0d"
+                />
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- format bar -->
-      <div id="fmtbar"></div>
-      <div class="fmtaa ui" style="left:52px; width:100px; top:878px; font-size:54px; font-weight:700; color:#111">A<span style="font-size:36px; font-weight:400; align-self:center; margin-top:12px">a</span></div>
-      <svg class="fmticon icon" style="left:252px; top:910px" width="64" height="54" viewBox="0 0 64 54">
-        <circle cx="10" cy="12" r="9" fill="none" stroke="#111" stroke-width="4"/>
-        <path d="M6 12 l3 3 6 -7" fill="none" stroke="#111" stroke-width="3" stroke-linecap="round"/>
-        <line x1="28" y1="12" x2="60" y2="12" stroke="#111" stroke-width="4" stroke-linecap="round"/>
-        <circle cx="10" cy="42" r="9" fill="none" stroke="#111" stroke-width="4"/>
-        <line x1="28" y1="42" x2="52" y2="42" stroke="#111" stroke-width="4" stroke-linecap="round"/>
-      </svg>
-      <svg class="fmticon icon" style="left:432px; top:906px" width="62" height="62" viewBox="0 0 62 62">
-        <rect x="3" y="3" width="56" height="56" rx="8" fill="none" stroke="#111" stroke-width="4"/>
-        <line x1="3" y1="22" x2="59" y2="22" stroke="#111" stroke-width="4"/>
-        <line x1="3" y1="40" x2="59" y2="40" stroke="#111" stroke-width="4"/>
-        <line x1="22" y1="3" x2="22" y2="59" stroke="#111" stroke-width="4"/>
-        <line x1="40" y1="3" x2="40" y2="59" stroke="#111" stroke-width="4"/>
-      </svg>
-      <svg class="fmticon icon" style="left:612px; top:902px" width="46" height="70" viewBox="0 0 46 70">
-        <path d="M33 14 v34 a11 11 0 0 1 -22 0 V16 a8 8 0 0 1 16 0 v30 a4 4 0 0 1 -8 0 V20" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round"/>
-      </svg>
-      <svg class="fmticon icon" style="left:774px; top:906px" width="62" height="62" viewBox="0 0 62 62">
-        <circle cx="31" cy="31" r="27" fill="none" stroke="#111" stroke-width="4"/>
-        <path d="M22 40 L36 18 a5 5 0 0 1 8 6 L30 46 l-10 4 z" fill="#111"/>
-      </svg>
-      <svg class="fmticon icon" style="left:944px; top:906px" width="64" height="62" viewBox="0 0 64 62">
-        <ellipse cx="32" cy="31" rx="28" ry="12" fill="none" stroke="#111" stroke-width="3.5" transform="rotate(25 32 31)"/>
-        <ellipse cx="32" cy="31" rx="28" ry="12" fill="none" stroke="#111" stroke-width="3.5" transform="rotate(-25 32 31)"/>
-        <ellipse cx="32" cy="31" rx="28" ry="12" fill="none" stroke="#111" stroke-width="3.5" transform="rotate(90 32 31)"/>
-      </svg>
+      <!-- ============ NOTES SCENE (track 1, over) ============ -->
+      <div class="clip" data-start="0" data-duration="21.687" data-track-index="1" id="notes-clip">
+        <div id="notes-fade" class="ui">
+          <!-- status bar -->
+          <div class="sb" id="sb-time">9:41</div>
+          <svg
+            class="navicon"
+            style="left: 822px; top: 52px"
+            width="220"
+            height="40"
+            viewBox="0 0 220 40"
+          >
+            <!-- signal bars -->
+            <rect x="0" y="22" width="7" height="12" rx="2" fill="#111" />
+            <rect x="11" y="16" width="7" height="18" rx="2" fill="#111" />
+            <rect x="22" y="10" width="7" height="24" rx="2" fill="#111" />
+            <rect x="33" y="4" width="7" height="30" rx="2" fill="#111" />
+            <!-- wifi -->
+            <path
+              d="M78 15 a26 26 0 0 1 34 0"
+              fill="none"
+              stroke="#111"
+              stroke-width="6"
+              stroke-linecap="round"
+            />
+            <path
+              d="M84 23 a17 17 0 0 1 22 0"
+              fill="none"
+              stroke="#111"
+              stroke-width="6"
+              stroke-linecap="round"
+            />
+            <circle cx="95" cy="31" r="5" fill="#111" />
+            <!-- battery -->
+            <rect
+              x="140"
+              y="6"
+              width="52"
+              height="28"
+              rx="9"
+              fill="none"
+              stroke="#111"
+              stroke-width="3"
+              opacity="0.5"
+            />
+            <rect x="144" y="10" width="34" height="20" rx="5" fill="#111" />
+            <path d="M196 14 v12 a7 7 0 0 0 0 -12" fill="#111" opacity="0.5" />
+          </svg>
+          <!-- nav pills -->
+          <div class="pill" id="nav-back"></div>
+          <svg
+            class="navicon"
+            style="left: 74px; top: 166px"
+            width="40"
+            height="40"
+            viewBox="0 0 40 40"
+          >
+            <path
+              d="M26 4 L10 20 L26 36"
+              fill="none"
+              stroke="#111"
+              stroke-width="4.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <div class="pill" id="nav-mid"></div>
+          <svg
+            class="navicon"
+            style="left: 588px; top: 168px"
+            width="44"
+            height="40"
+            viewBox="0 0 44 40"
+          >
+            <path
+              d="M8 12 a 14 14 0 1 1 -3 14"
+              fill="none"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+            />
+            <path
+              d="M8 2 v11 h11"
+              fill="none"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <svg
+            class="navicon"
+            style="left: 702px; top: 162px"
+            width="44"
+            height="48"
+            viewBox="0 0 44 48"
+          >
+            <path
+              d="M22 4 v26 M12 12 l10 -9 10 9"
+              fill="none"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M8 22 h-2 v22 h32 v-22 h-2"
+              fill="none"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+            />
+          </svg>
+          <svg
+            class="navicon"
+            style="left: 806px; top: 186px"
+            width="66"
+            height="12"
+            viewBox="0 0 66 12"
+          >
+            <circle cx="6" cy="6" r="5.5" fill="#111" />
+            <circle cx="33" cy="6" r="5.5" fill="#111" />
+            <circle cx="60" cy="6" r="5.5" fill="#111" />
+          </svg>
+          <div id="nav-check"></div>
+          <svg
+            class="navicon"
+            style="left: 958px; top: 168px"
+            width="56"
+            height="46"
+            viewBox="0 0 56 46"
+          >
+            <path
+              d="M6 24 L21 38 L50 6"
+              fill="none"
+              stroke="#fff"
+              stroke-width="7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
 
-      <!-- keyboard -->
-      <div id="keyboard">
-        <div class="sug" style="left:155px">The</div>
-        <div class="sug" style="left:513px">My</div>
-        <div class="sug" style="left:886px">I</div>
-        <div class="sugsep" style="left:360px"></div>
-        <div class="sugsep" style="left:717px"></div>
-        <div class="key" style="left:18px; top:99px; width:87px; height:106px;">q</div><div class="key" style="left:124px; top:99px; width:87px; height:106px;">w</div><div class="key" style="left:231px; top:99px; width:87px; height:106px;">e</div><div class="key" style="left:337px; top:99px; width:87px; height:106px;">r</div><div class="key" style="left:444px; top:99px; width:87px; height:106px;">t</div><div class="key" style="left:550px; top:99px; width:87px; height:106px;">y</div><div class="key" style="left:656px; top:99px; width:87px; height:106px;">u</div><div class="key" style="left:763px; top:99px; width:87px; height:106px;">i</div><div class="key" style="left:869px; top:99px; width:87px; height:106px;">o</div><div class="key" style="left:976px; top:99px; width:87px; height:106px;">p</div><div class="key" style="left:72px; top:230px; width:87px; height:106px;">a</div><div class="key" style="left:178px; top:230px; width:87px; height:106px;">s</div><div class="key" style="left:285px; top:230px; width:87px; height:106px;">d</div><div class="key" style="left:391px; top:230px; width:87px; height:106px;">f</div><div class="key" style="left:498px; top:230px; width:87px; height:106px;">g</div><div class="key" style="left:604px; top:230px; width:87px; height:106px;">h</div><div class="key" style="left:710px; top:230px; width:87px; height:106px;">j</div><div class="key" style="left:817px; top:230px; width:87px; height:106px;">k</div><div class="key" style="left:923px; top:230px; width:87px; height:106px;">l</div><div class="key" style="left:178px; top:359px; width:87px; height:106px;">z</div><div class="key" style="left:284px; top:359px; width:87px; height:106px;">x</div><div class="key" style="left:391px; top:359px; width:87px; height:106px;">c</div><div class="key" style="left:497px; top:359px; width:87px; height:106px;">v</div><div class="key" style="left:604px; top:359px; width:87px; height:106px;">b</div><div class="key" style="left:710px; top:359px; width:87px; height:106px;">n</div><div class="key" style="left:816px; top:359px; width:87px; height:106px;">m</div><div class="key gkey" style="left:16px; top:359px; width:144px; height:106px;"><svg width="44" height="44" viewBox="0 0 44 44"><path d="M22 6 L38 22 H30 V38 H14 V22 H6 Z" fill="none" stroke="#111" stroke-width="3" stroke-linejoin="round"/></svg></div><div class="key gkey" style="left:920px; top:359px; width:143px; height:106px;"><svg width="52" height="38" viewBox="0 0 52 38"><path d="M16 2 H48 V36 H16 L2 19 Z" fill="none" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M25 12 l14 14 M39 12 l-14 14" stroke="#111" stroke-width="3" stroke-linecap="round"/></svg></div><div class="key gkey" style="left:17px; top:489px; width:135px; height:106px; font-size:38px;">123</div><div class="key" style="left:172px; top:489px; width:119px; height:106px;"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="none" stroke="#111" stroke-width="3"/><circle cx="15" cy="17" r="2.6" fill="#111"/><circle cx="29" cy="17" r="2.6" fill="#111"/><path d="M13 27 a10 10 0 0 0 18 0 z" fill="#111"/></svg></div><div class="key" style="left:314px; top:489px; width:554px; height:106px; font-size:40px;">space</div><div class="key gkey" style="left:889px; top:489px; width:173px; height:106px;"><svg width="44" height="36" viewBox="0 0 44 36"><path d="M40 4 v14 H10 M18 8 l-10 10 10 10" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <svg class="icon" style="position:absolute; left:64px; top:640px" width="48" height="48" viewBox="0 0 48 48">
-          <circle cx="24" cy="24" r="20" fill="none" stroke="#333" stroke-width="3"/>
-          <ellipse cx="24" cy="24" rx="9" ry="20" fill="none" stroke="#333" stroke-width="3"/>
-          <line x1="4" y1="24" x2="44" y2="24" stroke="#333" stroke-width="3"/>
-        </svg>
-        <svg class="icon" style="position:absolute; left:972px; top:634px" width="44" height="58" viewBox="0 0 44 58">
-          <rect x="14" y="2" width="16" height="30" rx="8" fill="none" stroke="#333" stroke-width="3.5"/>
-          <path d="M6 26 a16 16 0 0 0 32 0 M22 44 v10 M12 54 h20" fill="none" stroke="#333" stroke-width="3.5" stroke-linecap="round"/>
-        </svg>
+          <!-- note text -->
+          <div id="note-viewport">
+            <div id="note-body">
+              <div
+                id="title-l1"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+              >
+                Things nobody told me
+              </div>
+              <div
+                id="title-l2"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+              >
+                about video.
+              </div>
+              <div
+                class="bodyline"
+                id="line-0"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 283px"
+              >
+                <span class="ch" id="ch-0-0">m</span><span class="ch" id="ch-0-1">y</span
+                ><span class="ch" id="ch-0-2"> </span><span class="ch" id="ch-0-3">v</span
+                ><span class="ch" id="ch-0-4">i</span><span class="ch" id="ch-0-5">d</span
+                ><span class="ch" id="ch-0-6">e</span><span class="ch" id="ch-0-7">o</span
+                ><span class="ch" id="ch-0-8">s</span><span class="ch" id="ch-0-9"> </span
+                ><span class="ch" id="ch-0-10">s</span><span class="ch" id="ch-0-11">u</span
+                ><span class="ch" id="ch-0-12">c</span><span class="ch" id="ch-0-13">k</span
+                ><span class="ch" id="ch-0-14">e</span><span class="ch" id="ch-0-15">d</span>
+              </div>
+              <div
+                class="bodyline"
+                id="line-1"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 433px"
+              >
+                <span class="ch" id="ch-1-0">m</span><span class="ch" id="ch-1-1">y</span
+                ><span class="ch" id="ch-1-2"> </span><span class="ch" id="ch-1-3">t</span
+                ><span class="ch" id="ch-1-4">o</span><span class="ch" id="ch-1-5">o</span
+                ><span class="ch" id="ch-1-6">l</span><span class="ch" id="ch-1-7">s</span
+                ><span class="ch" id="ch-1-8"> </span><span class="ch" id="ch-1-9">c</span
+                ><span class="ch" id="ch-1-10">o</span><span class="ch" id="ch-1-11">s</span
+                ><span class="ch" id="ch-1-12">t</span><span class="ch" id="ch-1-13"> </span
+                ><span class="ch" id="ch-1-14">$</span><span class="ch" id="ch-1-15">$</span
+                ><span class="ch" id="ch-1-16">$</span>
+              </div>
+              <div
+                class="bodyline"
+                id="line-2"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 583px"
+              >
+                <span class="ch" id="ch-2-0">a</span><span class="ch" id="ch-2-1">n</span
+                ><span class="ch" id="ch-2-2">d</span><span class="ch" id="ch-2-3"> </span
+                ><span class="ch" id="ch-2-4">r</span><span class="ch" id="ch-2-5">e</span
+                ><span class="ch" id="ch-2-6">-</span><span class="ch" id="ch-2-7">e</span
+                ><span class="ch" id="ch-2-8">d</span><span class="ch" id="ch-2-9">i</span
+                ><span class="ch" id="ch-2-10">t</span><span class="ch" id="ch-2-11">s</span
+                ><span class="ch" id="ch-2-12"> </span><span class="ch" id="ch-2-13">n</span
+                ><span class="ch" id="ch-2-14">e</span><span class="ch" id="ch-2-15">v</span
+                ><span class="ch" id="ch-2-16">e</span><span class="ch" id="ch-2-17">r</span
+                ><span class="ch" id="ch-2-18"> </span><span class="ch" id="ch-2-19">e</span
+                ><span class="ch" id="ch-2-20">n</span><span class="ch" id="ch-2-21">d</span
+                ><span class="ch" id="ch-2-22">.</span>
+              </div>
+              <div
+                class="bodyline"
+                id="line-3"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 733px"
+              >
+                <span class="ch" id="ch-3-0">t</span><span class="ch" id="ch-3-1">h</span
+                ><span class="ch" id="ch-3-2">e</span><span class="ch" id="ch-3-3">n</span
+                ><span class="ch" id="ch-3-4"> </span><span class="ch" id="ch-3-5">i</span
+                ><span class="ch" id="ch-3-6"> </span><span class="ch" id="ch-3-7">t</span
+                ><span class="ch" id="ch-3-8">r</span><span class="ch" id="ch-3-9">i</span
+                ><span class="ch" id="ch-3-10">e</span><span class="ch" id="ch-3-11">d</span
+                ><span class="ch" id="ch-3-12"> </span><span class="ch" id="ch-3-13">w</span
+                ><span class="ch" id="ch-3-14">r</span><span class="ch" id="ch-3-15">i</span
+                ><span class="ch" id="ch-3-16">t</span><span class="ch" id="ch-3-17">i</span
+                ><span class="ch" id="ch-3-18">n</span><span class="ch" id="ch-3-19">g</span
+                ><span class="ch" id="ch-3-20"> </span><span class="ch" id="ch-3-21">h</span
+                ><span class="ch" id="ch-3-22">t</span><span class="ch" id="ch-3-23">m</span
+                ><span class="ch" id="ch-3-24">l</span><span class="ch" id="ch-3-25"> </span
+                ><span class="ch" id="ch-3-26">o</span><span class="ch" id="ch-3-27">n</span
+                ><span class="ch" id="ch-3-28">l</span><span class="ch" id="ch-3-29">y</span>
+              </div>
+              <div
+                class="bodyline"
+                id="line-4"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 883px"
+              >
+                <span class="ch" id="ch-4-0">s</span><span class="ch" id="ch-4-1">t</span
+                ><span class="ch" id="ch-4-2">a</span><span class="ch" id="ch-4-3">r</span
+                ><span class="ch" id="ch-4-4">t</span><span class="ch" id="ch-4-5">e</span
+                ><span class="ch" id="ch-4-6">d</span><span class="ch" id="ch-4-7"> </span
+                ><span class="ch" id="ch-4-8">H</span><span class="ch" id="ch-4-9">y</span
+                ><span class="ch" id="ch-4-10">p</span><span class="ch" id="ch-4-11">e</span
+                ><span class="ch" id="ch-4-12">r</span><span class="ch" id="ch-4-13">F</span
+                ><span class="ch" id="ch-4-14">r</span><span class="ch" id="ch-4-15">a</span
+                ><span class="ch" id="ch-4-16">m</span><span class="ch" id="ch-4-17">e</span
+                ><span class="ch" id="ch-4-18">s</span><span class="ch" id="ch-4-19"> </span
+                ><span class="ch" id="ch-4-20">t</span><span class="ch" id="ch-4-21">h</span
+                ><span class="ch" id="ch-4-22">r</span><span class="ch" id="ch-4-23">e</span
+                ><span class="ch" id="ch-4-24">e</span><span class="ch" id="ch-4-25"> </span
+                ><span class="ch" id="ch-4-26">w</span><span class="ch" id="ch-4-27">e</span
+                ><span class="ch" id="ch-4-28">e</span><span class="ch" id="ch-4-29">k</span
+                ><span class="ch" id="ch-4-30">s</span><span class="ch" id="ch-4-31"> </span
+                ><span class="ch" id="ch-4-32">a</span><span class="ch" id="ch-4-33">g</span
+                ><span class="ch" id="ch-4-34">o</span>
+              </div>
+              <div
+                class="bodyline"
+                id="line-5"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 1033px"
+              >
+                <span class="ch" id="ch-5-0">t</span><span class="ch" id="ch-5-1">h</span
+                ><span class="ch" id="ch-5-2">e</span><span class="ch" id="ch-5-3"> </span
+                ><span class="ch" id="ch-5-4">g</span><span class="ch" id="ch-5-5">r</span
+                ><span class="ch" id="ch-5-6">i</span><span class="ch" id="ch-5-7">n</span
+                ><span class="ch" id="ch-5-8">d</span><span class="ch" id="ch-5-9"> </span
+                ><span class="ch" id="ch-5-10">i</span><span class="ch" id="ch-5-11">s</span
+                ><span class="ch" id="ch-5-12"> </span><span class="ch" id="ch-5-13">g</span
+                ><span class="ch" id="ch-5-14">o</span><span class="ch" id="ch-5-15">n</span
+                ><span class="ch" id="ch-5-16">e</span><span class="ch" id="ch-5-17">,</span
+                ><span class="ch" id="ch-5-18"> </span><span class="ch" id="ch-5-19">b</span
+                ><span class="ch" id="ch-5-20">u</span><span class="ch" id="ch-5-21">t</span
+                ><span class="ch" id="ch-5-22"> </span><span class="ch" id="ch-5-23">m</span
+                ><span class="ch" id="ch-5-24">o</span><span class="ch" id="ch-5-25">r</span
+                ><span class="ch" id="ch-5-26">e</span><span class="ch" id="ch-5-27"> </span
+                ><span class="ch" id="ch-5-28">t</span><span class="ch" id="ch-5-29">h</span
+                ><span class="ch" id="ch-5-30">a</span><span class="ch" id="ch-5-31">n</span
+                ><span class="ch" id="ch-5-32"> </span><span class="ch" id="ch-5-33">t</span
+                ><span class="ch" id="ch-5-34">h</span><span class="ch" id="ch-5-35">a</span
+                ><span class="ch" id="ch-5-36">t</span><span class="ch" id="ch-5-37"> </span
+                ><span class="ch" id="ch-5-38">—</span>
+              </div>
+              <div
+                class="bodyline"
+                id="line-6"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="top: 1183px"
+              >
+                <span class="ch" id="ch-6-0">I</span><span class="ch" id="ch-6-1"> </span
+                ><span class="ch" id="ch-6-2">s</span><span class="ch" id="ch-6-3">h</span
+                ><span class="ch" id="ch-6-4">i</span><span class="ch" id="ch-6-5">p</span
+                ><span class="ch" id="ch-6-6"> </span><span class="ch" id="ch-6-7">v</span
+                ><span class="ch" id="ch-6-8">i</span><span class="ch" id="ch-6-9">d</span
+                ><span class="ch" id="ch-6-10">e</span><span class="ch" id="ch-6-11">o</span
+                ><span class="ch" id="ch-6-12">s</span><span class="ch" id="ch-6-13"> </span
+                ><span class="ch" id="ch-6-14">w</span><span class="ch" id="ch-6-15">e</span
+                ><span class="ch" id="ch-6-16">e</span><span class="ch" id="ch-6-17">k</span
+                ><span class="ch" id="ch-6-18">l</span><span class="ch" id="ch-6-19">y</span
+                ><span class="ch" id="ch-6-20">.</span>
+              </div>
+              <div id="caret"></div>
+            </div>
+          </div>
+
+          <!-- format bar -->
+          <div id="fmtbar"></div>
+          <div
+            class="fmtaa ui"
+            style="
+              left: 52px;
+              width: 100px;
+              top: 878px;
+              font-size: 54px;
+              font-weight: 700;
+              color: #111;
+            "
+          >
+            A<span style="font-size: 36px; font-weight: 400; align-self: center; margin-top: 12px"
+              >a</span
+            >
+          </div>
+          <svg
+            class="fmticon icon"
+            style="left: 252px; top: 910px"
+            width="64"
+            height="54"
+            viewBox="0 0 64 54"
+          >
+            <circle cx="10" cy="12" r="9" fill="none" stroke="#111" stroke-width="4" />
+            <path
+              d="M6 12 l3 3 6 -7"
+              fill="none"
+              stroke="#111"
+              stroke-width="3"
+              stroke-linecap="round"
+            />
+            <line
+              x1="28"
+              y1="12"
+              x2="60"
+              y2="12"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+            />
+            <circle cx="10" cy="42" r="9" fill="none" stroke="#111" stroke-width="4" />
+            <line
+              x1="28"
+              y1="42"
+              x2="52"
+              y2="42"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+            />
+          </svg>
+          <svg
+            class="fmticon icon"
+            style="left: 432px; top: 906px"
+            width="62"
+            height="62"
+            viewBox="0 0 62 62"
+          >
+            <rect
+              x="3"
+              y="3"
+              width="56"
+              height="56"
+              rx="8"
+              fill="none"
+              stroke="#111"
+              stroke-width="4"
+            />
+            <line x1="3" y1="22" x2="59" y2="22" stroke="#111" stroke-width="4" />
+            <line x1="3" y1="40" x2="59" y2="40" stroke="#111" stroke-width="4" />
+            <line x1="22" y1="3" x2="22" y2="59" stroke="#111" stroke-width="4" />
+            <line x1="40" y1="3" x2="40" y2="59" stroke="#111" stroke-width="4" />
+          </svg>
+          <svg
+            class="fmticon icon"
+            style="left: 612px; top: 902px"
+            width="46"
+            height="70"
+            viewBox="0 0 46 70"
+          >
+            <path
+              d="M33 14 v34 a11 11 0 0 1 -22 0 V16 a8 8 0 0 1 16 0 v30 a4 4 0 0 1 -8 0 V20"
+              fill="none"
+              stroke="#111"
+              stroke-width="4"
+              stroke-linecap="round"
+            />
+          </svg>
+          <svg
+            class="fmticon icon"
+            style="left: 774px; top: 906px"
+            width="62"
+            height="62"
+            viewBox="0 0 62 62"
+          >
+            <circle cx="31" cy="31" r="27" fill="none" stroke="#111" stroke-width="4" />
+            <path d="M22 40 L36 18 a5 5 0 0 1 8 6 L30 46 l-10 4 z" fill="#111" />
+          </svg>
+          <svg
+            class="fmticon icon"
+            style="left: 944px; top: 906px"
+            width="64"
+            height="62"
+            viewBox="0 0 64 62"
+          >
+            <ellipse
+              cx="32"
+              cy="31"
+              rx="28"
+              ry="12"
+              fill="none"
+              stroke="#111"
+              stroke-width="3.5"
+              transform="rotate(25 32 31)"
+            />
+            <ellipse
+              cx="32"
+              cy="31"
+              rx="28"
+              ry="12"
+              fill="none"
+              stroke="#111"
+              stroke-width="3.5"
+              transform="rotate(-25 32 31)"
+            />
+            <ellipse
+              cx="32"
+              cy="31"
+              rx="28"
+              ry="12"
+              fill="none"
+              stroke="#111"
+              stroke-width="3.5"
+              transform="rotate(90 32 31)"
+            />
+          </svg>
+
+          <!-- keyboard -->
+          <div id="keyboard">
+            <div class="sug" style="left: 155px">The</div>
+            <div class="sug" style="left: 513px">My</div>
+            <div class="sug" style="left: 886px">I</div>
+            <div class="sugsep" style="left: 360px"></div>
+            <div class="sugsep" style="left: 717px"></div>
+            <div class="key" style="left: 18px; top: 99px; width: 87px; height: 106px">q</div>
+            <div class="key" style="left: 124px; top: 99px; width: 87px; height: 106px">w</div>
+            <div class="key" style="left: 231px; top: 99px; width: 87px; height: 106px">e</div>
+            <div class="key" style="left: 337px; top: 99px; width: 87px; height: 106px">r</div>
+            <div class="key" style="left: 444px; top: 99px; width: 87px; height: 106px">t</div>
+            <div class="key" style="left: 550px; top: 99px; width: 87px; height: 106px">y</div>
+            <div class="key" style="left: 656px; top: 99px; width: 87px; height: 106px">u</div>
+            <div class="key" style="left: 763px; top: 99px; width: 87px; height: 106px">i</div>
+            <div class="key" style="left: 869px; top: 99px; width: 87px; height: 106px">o</div>
+            <div class="key" style="left: 976px; top: 99px; width: 87px; height: 106px">p</div>
+            <div class="key" style="left: 72px; top: 230px; width: 87px; height: 106px">a</div>
+            <div class="key" style="left: 178px; top: 230px; width: 87px; height: 106px">s</div>
+            <div class="key" style="left: 285px; top: 230px; width: 87px; height: 106px">d</div>
+            <div class="key" style="left: 391px; top: 230px; width: 87px; height: 106px">f</div>
+            <div class="key" style="left: 498px; top: 230px; width: 87px; height: 106px">g</div>
+            <div class="key" style="left: 604px; top: 230px; width: 87px; height: 106px">h</div>
+            <div class="key" style="left: 710px; top: 230px; width: 87px; height: 106px">j</div>
+            <div class="key" style="left: 817px; top: 230px; width: 87px; height: 106px">k</div>
+            <div class="key" style="left: 923px; top: 230px; width: 87px; height: 106px">l</div>
+            <div class="key" style="left: 178px; top: 359px; width: 87px; height: 106px">z</div>
+            <div class="key" style="left: 284px; top: 359px; width: 87px; height: 106px">x</div>
+            <div class="key" style="left: 391px; top: 359px; width: 87px; height: 106px">c</div>
+            <div class="key" style="left: 497px; top: 359px; width: 87px; height: 106px">v</div>
+            <div class="key" style="left: 604px; top: 359px; width: 87px; height: 106px">b</div>
+            <div class="key" style="left: 710px; top: 359px; width: 87px; height: 106px">n</div>
+            <div class="key" style="left: 816px; top: 359px; width: 87px; height: 106px">m</div>
+            <div class="key gkey" style="left: 16px; top: 359px; width: 144px; height: 106px">
+              <svg width="44" height="44" viewBox="0 0 44 44">
+                <path
+                  d="M22 6 L38 22 H30 V38 H14 V22 H6 Z"
+                  fill="none"
+                  stroke="#111"
+                  stroke-width="3"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+            <div class="key gkey" style="left: 920px; top: 359px; width: 143px; height: 106px">
+              <svg width="52" height="38" viewBox="0 0 52 38">
+                <path
+                  d="M16 2 H48 V36 H16 L2 19 Z"
+                  fill="none"
+                  stroke="#111"
+                  stroke-width="3"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M25 12 l14 14 M39 12 l-14 14"
+                  stroke="#111"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </div>
+            <div
+              class="key gkey"
+              style="left: 17px; top: 489px; width: 135px; height: 106px; font-size: 38px"
+            >
+              123
+            </div>
+            <div class="key" style="left: 172px; top: 489px; width: 119px; height: 106px">
+              <svg width="44" height="44" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="19" fill="none" stroke="#111" stroke-width="3" />
+                <circle cx="15" cy="17" r="2.6" fill="#111" />
+                <circle cx="29" cy="17" r="2.6" fill="#111" />
+                <path d="M13 27 a10 10 0 0 0 18 0 z" fill="#111" />
+              </svg>
+            </div>
+            <div
+              class="key"
+              style="left: 314px; top: 489px; width: 554px; height: 106px; font-size: 40px"
+            >
+              space
+            </div>
+            <div class="key gkey" style="left: 889px; top: 489px; width: 173px; height: 106px">
+              <svg width="44" height="36" viewBox="0 0 44 36">
+                <path
+                  d="M40 4 v14 H10 M18 8 l-10 10 10 10"
+                  fill="none"
+                  stroke="#111"
+                  stroke-width="3.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+            <svg
+              class="icon"
+              style="position: absolute; left: 64px; top: 640px"
+              width="48"
+              height="48"
+              viewBox="0 0 48 48"
+            >
+              <circle cx="24" cy="24" r="20" fill="none" stroke="#333" stroke-width="3" />
+              <ellipse cx="24" cy="24" rx="9" ry="20" fill="none" stroke="#333" stroke-width="3" />
+              <line x1="4" y1="24" x2="44" y2="24" stroke="#333" stroke-width="3" />
+            </svg>
+            <svg
+              class="icon"
+              style="position: absolute; left: 972px; top: 634px"
+              width="44"
+              height="58"
+              viewBox="0 0 44 58"
+            >
+              <rect
+                x="14"
+                y="2"
+                width="16"
+                height="30"
+                rx="8"
+                fill="none"
+                stroke="#333"
+                stroke-width="3.5"
+              />
+              <path
+                d="M6 26 a16 16 0 0 0 32 0 M22 44 v10 M12 54 h20"
+                fill="none"
+                stroke="#333"
+                stroke-width="3.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-<script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script>
+      // variables: every override falls back to its declared default
+      (function () {
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+        function t(v, fb, mx) {
+          if (typeof v !== "string") return fb;
+          var s = v.trim();
+          if (!s) return fb;
+          return s.length > mx ? s.slice(0, mx) : s;
+        }
+        document.getElementById("title-l1").textContent = t(
+          vars.titleL1,
+          "Things nobody told me",
+          26,
+        );
+        document.getElementById("title-l2").textContent = t(vars.titleL2, "about video.", 26);
+        document.getElementById("hl1").textContent = t(vars.cardTop, "THE POWER", 12);
+        var labels = document.querySelectorAll(".cl-label");
+        var values = document.querySelectorAll(".cl-value");
+        labels[0].textContent = t(vars.check1Label, "WRITE", 8);
+        values[0].textContent = t(vars.check1Value, "HTML", 8);
+        labels[1].textContent = t(vars.check2Label, "RENDER", 8);
+        values[1].textContent = t(vars.check2Value, "IN 4K", 8);
+        labels[2].textContent = t(vars.check3Label, "SHIP", 8);
+        values[2].textContent = t(vars.check3Value, "TODAY", 8);
+      })();
+      const FPS = 30;
+      const EV = [
+        [0, 0, 40],
+        [0, 1, 42],
+        [0, 2, 46],
+        [0, 3, 48],
+        [0, 4, 50],
+        [0, 5, 53],
+        [0, 6, 56],
+        [0, 7, 59],
+        [0, 8, 60],
+        [0, 9, 62],
+        [0, 10, 66],
+        [0, 11, 68],
+        [0, 12, 72],
+        [0, 13, 74],
+        [0, 14, 77],
+        [0, 15, 80],
+        [1, 0, 106],
+        [1, 1, 108],
+        [1, 2, 110],
+        [1, 3, 114],
+        [1, 4, 116],
+        [1, 5, 119],
+        [1, 6, 120],
+        [1, 7, 122],
+        [1, 8, 125],
+        [1, 9, 127],
+        [1, 10, 131],
+        [1, 11, 132],
+        [1, 12, 134],
+        [1, 13, 137],
+        [1, 14, 139],
+        [1, 15, 142],
+        [1, 16, 144],
+        [2, 0, 167],
+        [2, 1, 170],
+        [2, 2, 172],
+        [2, 3, 174],
+        [2, 4, 176],
+        [2, 5, 180],
+        [2, 6, 182],
+        [2, 7, 185],
+        [2, 8, 187],
+        [2, 9, 190],
+        [2, 10, 192],
+        [2, 11, 194],
+        [2, 12, 196],
+        [2, 13, 198],
+        [2, 14, 200],
+        [2, 15, 203],
+        [2, 16, 205],
+        [2, 17, 208],
+        [2, 18, 210],
+        [2, 19, 212],
+        [2, 20, 216],
+        [2, 21, 218],
+        [2, 22, 221],
+        [3, 0, 256],
+        [3, 1, 258],
+        [3, 2, 262],
+        [3, 3, 264],
+        [3, 4, 266],
+        [3, 5, 269],
+        [3, 6, 271],
+        [3, 7, 274],
+        [3, 8, 275],
+        [3, 9, 277],
+        [3, 10, 280],
+        [3, 11, 281],
+        [3, 12, 282],
+        [3, 13, 284],
+        [3, 14, 287],
+        [3, 15, 288],
+        [3, 16, 290],
+        [3, 17, 293],
+        [3, 18, 295],
+        [3, 19, 298],
+        [3, 20, 299],
+        [3, 21, 301],
+        [3, 22, 304],
+        [3, 23, 306],
+        [3, 24, 310],
+        [3, 25, 311],
+        [3, 26, 313],
+        [3, 27, 316],
+        [3, 28, 318],
+        [3, 29, 320],
+        [4, 0, 349],
+        [4, 1, 352],
+        [4, 2, 354],
+        [4, 3, 356],
+        [4, 4, 359],
+        [4, 5, 361],
+        [4, 6, 364],
+        [4, 7, 366],
+        [4, 8, 368],
+        [4, 9, 371],
+        [4, 10, 372],
+        [4, 11, 374],
+        [4, 12, 378],
+        [4, 13, 380],
+        [4, 14, 382],
+        [4, 15, 385],
+        [4, 16, 388],
+        [4, 17, 389],
+        [4, 18, 390],
+        [4, 19, 394],
+        [4, 20, 395],
+        [4, 21, 397],
+        [4, 22, 400],
+        [4, 23, 401],
+        [4, 24, 403],
+        [4, 25, 406],
+        [4, 26, 408],
+        [4, 27, 410],
+        [4, 28, 412],
+        [4, 29, 414],
+        [4, 30, 416],
+        [4, 31, 419],
+        [4, 32, 421],
+        [4, 33, 424],
+        [4, 34, 425],
+        [5, 0, 449],
+        [5, 1, 450],
+        [5, 2, 452],
+        [5, 3, 455],
+        [5, 4, 457],
+        [5, 5, 460],
+        [5, 6, 462],
+        [5, 7, 466],
+        [5, 8, 468],
+        [5, 9, 469],
+        [5, 10, 472],
+        [5, 11, 474],
+        [5, 12, 476],
+        [5, 13, 479],
+        [5, 14, 481],
+        [5, 15, 482],
+        [5, 16, 485],
+        [5, 17, 487],
+        [5, 18, 490],
+        [5, 19, 492],
+        [5, 20, 493],
+        [5, 21, 496],
+        [5, 22, 497],
+        [5, 23, 499],
+        [5, 24, 502],
+        [5, 25, 504],
+        [5, 26, 506],
+        [5, 27, 509],
+        [5, 28, 510],
+        [5, 29, 512],
+        [5, 30, 515],
+        [5, 31, 517],
+        [5, 32, 520],
+        [5, 33, 522],
+        [5, 34, 523],
+        [5, 35, 526],
+        [5, 36, 528],
+        [5, 37, 530],
+        [5, 38, 532],
+        [6, 0, 558],
+        [6, 1, 560],
+        [6, 2, 563],
+        [6, 3, 565],
+        [6, 4, 568],
+        [6, 5, 571],
+        [6, 6, 574],
+        [6, 7, 575],
+        [6, 8, 577],
+        [6, 9, 580],
+        [6, 10, 581],
+        [6, 11, 584],
+        [6, 12, 587],
+        [6, 13, 589],
+        [6, 14, 592],
+        [6, 15, 593],
+        [6, 16, 595],
+        [6, 17, 599],
+        [6, 18, 602],
+        [6, 19, 604],
+        [6, 20, 606],
+      ]; // [line, revealIdx, frame]
+      const JUMPS = [
+        [86, 1],
+        [149, 2],
+        [226, 3],
+        [325, 4],
+        [430, 5],
+        [537, 6],
+      ]; // [frame, targetLine]
+      const LINE_TOPS = [296, 446, 596, 746, 896, 1046, 1196]; // body-space ink tops
+      const SCROLLS = [
+        {
+          f0: 149,
+          px: 120,
+          pts: [
+            [150, 21.74],
+            [151, 53.93],
+            [152, 77.33],
+            [153, 77.33],
+            [154, 94.06],
+            [155, 102.95],
+            [156, 111.73],
+            [157, 115.18],
+            [158, 118.01],
+            [159, 118.01],
+            [160, 119.35],
+            [161, 119.87],
+            [162, 119.87],
+            [163, 119.87],
+            [164, 119.87],
+            [165, 119.87],
+            [166, 120],
+          ],
+        },
+        {
+          f0: 226,
+          px: 150,
+          pts: [
+            [227, 9.29],
+            [228, 44.61],
+            [229, 74.77],
+            [230, 102.53],
+            [231, 102.53],
+            [232, 117.91],
+            [233, 133.34],
+            [234, 140.03],
+            [235, 145.24],
+            [236, 148.87],
+            [237, 148.87],
+            [238, 149.85],
+            [239, 149.95],
+            [240, 149.95],
+            [241, 149.95],
+            [242, 149.95],
+            [243, 149.95],
+            [244, 150],
+          ],
+        },
+        {
+          f0: 325,
+          px: 150,
+          pts: [
+            [326, 9.11],
+            [327, 9.11],
+            [328, 31.8],
+            [329, 73.0],
+            [330, 100.53],
+            [331, 118.84],
+            [332, 131.65],
+            [333, 131.65],
+            [334, 140.05],
+            [335, 144.79],
+            [336, 148.7],
+            [337, 149.91],
+            [338, 149.95],
+            [339, 149.95],
+            [340, 149.95],
+            [341, 149.95],
+            [342, 150],
+          ],
+        },
+        {
+          f0: 430,
+          px: 150,
+          pts: [
+            [431, 28.09],
+            [432, 60.69],
+            [433, 92.33],
+            [434, 113.98],
+            [435, 113.98],
+            [436, 125.5],
+            [437, 136.13],
+            [438, 143.99],
+            [439, 147.13],
+            [440, 149.17],
+            [441, 149.17],
+            [442, 149.97],
+            [443, 149.97],
+            [444, 149.97],
+            [445, 149.97],
+            [446, 149.97],
+            [447, 150],
+          ],
+        },
+        {
+          f0: 537,
+          px: 150,
+          pts: [
+            [538, 25.26],
+            [539, 61.96],
+            [540, 93.98],
+            [541, 105.0],
+            [542, 122.63],
+            [543, 122.63],
+            [544, 138.9],
+            [545, 144.2],
+            [546, 147.27],
+            [547, 149.63],
+            [548, 149.95],
+            [549, 149.95],
+            [550, 149.95],
+            [551, 149.95],
+            [552, 149.95],
+            [553, 149.95],
+            [554, 150],
+          ],
+        },
+      ];
+      const EASE = [0.0, 0.062, 0.297, 0.498, 0.684, 0.786, 0.889, 0.934, 0.968, 0.992, 0.999, 1.0];
+      const CARET_H = 54,
+        CARET_GAP = 2;
+      const TEXT_X = 62,
+        VIEW_TOP = 272;
 
-// variables: every override falls back to its declared default
-(function () {
-  var vars = window.__hyperframes && typeof window.__hyperframes.getVariables === 'function'
-    ? window.__hyperframes.getVariables() : {};
-  function t(v, fb, mx) {
-    if (typeof v !== 'string') return fb;
-    var s = v.trim();
-    if (!s) return fb;
-    return s.length > mx ? s.slice(0, mx) : s;
-  }
-  document.getElementById('title-l1').textContent = t(vars.titleL1, 'Things nobody told me', 26);
-  document.getElementById('title-l2').textContent = t(vars.titleL2, 'about video.', 26);
-  document.getElementById('hl1').textContent = t(vars.cardTop, 'THE POWER', 12);
-  var labels = document.querySelectorAll('.cl-label');
-  var values = document.querySelectorAll('.cl-value');
-  labels[0].textContent = t(vars.check1Label, 'WRITE', 8);
-  values[0].textContent = t(vars.check1Value, 'HTML', 8);
-  labels[1].textContent = t(vars.check2Label, 'RENDER', 8);
-  values[1].textContent = t(vars.check2Value, 'IN 4K', 8);
-  labels[2].textContent = t(vars.check3Label, 'SHIP', 8);
-  values[2].textContent = t(vars.check3Value, 'TODAY', 8);
-})();
-const FPS = 30;
-const EV = [[0, 0, 40], [0, 1, 42], [0, 2, 46], [0, 3, 48], [0, 4, 50], [0, 5, 53], [0, 6, 56], [0, 7, 59], [0, 8, 60], [0, 9, 62], [0, 10, 66], [0, 11, 68], [0, 12, 72], [0, 13, 74], [0, 14, 77], [0, 15, 80], [1, 0, 106], [1, 1, 108], [1, 2, 110], [1, 3, 114], [1, 4, 116], [1, 5, 119], [1, 6, 120], [1, 7, 122], [1, 8, 125], [1, 9, 127], [1, 10, 131], [1, 11, 132], [1, 12, 134], [1, 13, 137], [1, 14, 139], [1, 15, 142], [1, 16, 144], [2, 0, 167], [2, 1, 170], [2, 2, 172], [2, 3, 174], [2, 4, 176], [2, 5, 180], [2, 6, 182], [2, 7, 185], [2, 8, 187], [2, 9, 190], [2, 10, 192], [2, 11, 194], [2, 12, 196], [2, 13, 198], [2, 14, 200], [2, 15, 203], [2, 16, 205], [2, 17, 208], [2, 18, 210], [2, 19, 212], [2, 20, 216], [2, 21, 218], [2, 22, 221], [3, 0, 256], [3, 1, 258], [3, 2, 262], [3, 3, 264], [3, 4, 266], [3, 5, 269], [3, 6, 271], [3, 7, 274], [3, 8, 275], [3, 9, 277], [3, 10, 280], [3, 11, 281], [3, 12, 282], [3, 13, 284], [3, 14, 287], [3, 15, 288], [3, 16, 290], [3, 17, 293], [3, 18, 295], [3, 19, 298], [3, 20, 299], [3, 21, 301], [3, 22, 304], [3, 23, 306], [3, 24, 310], [3, 25, 311], [3, 26, 313], [3, 27, 316], [3, 28, 318], [3, 29, 320], [4, 0, 349], [4, 1, 352], [4, 2, 354], [4, 3, 356], [4, 4, 359], [4, 5, 361], [4, 6, 364], [4, 7, 366], [4, 8, 368], [4, 9, 371], [4, 10, 372], [4, 11, 374], [4, 12, 378], [4, 13, 380], [4, 14, 382], [4, 15, 385], [4, 16, 388], [4, 17, 389], [4, 18, 390], [4, 19, 394], [4, 20, 395], [4, 21, 397], [4, 22, 400], [4, 23, 401], [4, 24, 403], [4, 25, 406], [4, 26, 408], [4, 27, 410], [4, 28, 412], [4, 29, 414], [4, 30, 416], [4, 31, 419], [4, 32, 421], [4, 33, 424], [4, 34, 425], [5, 0, 449], [5, 1, 450], [5, 2, 452], [5, 3, 455], [5, 4, 457], [5, 5, 460], [5, 6, 462], [5, 7, 466], [5, 8, 468], [5, 9, 469], [5, 10, 472], [5, 11, 474], [5, 12, 476], [5, 13, 479], [5, 14, 481], [5, 15, 482], [5, 16, 485], [5, 17, 487], [5, 18, 490], [5, 19, 492], [5, 20, 493], [5, 21, 496], [5, 22, 497], [5, 23, 499], [5, 24, 502], [5, 25, 504], [5, 26, 506], [5, 27, 509], [5, 28, 510], [5, 29, 512], [5, 30, 515], [5, 31, 517], [5, 32, 520], [5, 33, 522], [5, 34, 523], [5, 35, 526], [5, 36, 528], [5, 37, 530], [5, 38, 532], [6, 0, 558], [6, 1, 560], [6, 2, 563], [6, 3, 565], [6, 4, 568], [6, 5, 571], [6, 6, 574], [6, 7, 575], [6, 8, 577], [6, 9, 580], [6, 10, 581], [6, 11, 584], [6, 12, 587], [6, 13, 589], [6, 14, 592], [6, 15, 593], [6, 16, 595], [6, 17, 599], [6, 18, 602], [6, 19, 604], [6, 20, 606]];            // [line, revealIdx, frame]
-const JUMPS = [[86, 1], [149, 2], [226, 3], [325, 4], [430, 5], [537, 6]];          // [frame, targetLine]
-const LINE_TOPS = [296, 446, 596, 746, 896, 1046, 1196]; // body-space ink tops
-const SCROLLS = [{"f0": 149, "px": 120, "pts": [[150, 21.74], [151, 53.93], [152, 77.33], [153, 77.33], [154, 94.06], [155, 102.95], [156, 111.73], [157, 115.18], [158, 118.01], [159, 118.01], [160, 119.35], [161, 119.87], [162, 119.87], [163, 119.87], [164, 119.87], [165, 119.87], [166, 120]]}, {"f0": 226, "px": 150, "pts": [[227, 9.29], [228, 44.61], [229, 74.77], [230, 102.53], [231, 102.53], [232, 117.91], [233, 133.34], [234, 140.03], [235, 145.24], [236, 148.87], [237, 148.87], [238, 149.85], [239, 149.95], [240, 149.95], [241, 149.95], [242, 149.95], [243, 149.95], [244, 150]]}, {"f0": 325, "px": 150, "pts": [[326, 9.11], [327, 9.11], [328, 31.8], [329, 73.0], [330, 100.53], [331, 118.84], [332, 131.65], [333, 131.65], [334, 140.05], [335, 144.79], [336, 148.7], [337, 149.91], [338, 149.95], [339, 149.95], [340, 149.95], [341, 149.95], [342, 150]]}, {"f0": 430, "px": 150, "pts": [[431, 28.09], [432, 60.69], [433, 92.33], [434, 113.98], [435, 113.98], [436, 125.5], [437, 136.13], [438, 143.99], [439, 147.13], [440, 149.17], [441, 149.17], [442, 149.97], [443, 149.97], [444, 149.97], [445, 149.97], [446, 149.97], [447, 150]]}, {"f0": 537, "px": 150, "pts": [[538, 25.26], [539, 61.96], [540, 93.98], [541, 105.0], [542, 122.63], [543, 122.63], [544, 138.9], [545, 144.2], [546, 147.27], [547, 149.63], [548, 149.95], [549, 149.95], [550, 149.95], [551, 149.95], [552, 149.95], [553, 149.95], [554, 150]]}];
-const EASE = [0.0, 0.062, 0.297, 0.498, 0.684, 0.786, 0.889, 0.934, 0.968, 0.992, 0.999, 1.0];
-const CARET_H = 54, CARET_GAP = 2;
-const TEXT_X = 62, VIEW_TOP = 272;
+      const tl = gsap.timeline({ paused: true });
+      const body = document.getElementById("note-body");
+      const caret = document.getElementById("caret");
+      const t_at = (f) => (f - 0.25) / FPS;
 
-const tl = gsap.timeline({ paused: true });
-const body = document.getElementById('note-body');
-const caret = document.getElementById('caret');
-const t_at = f => (f - 0.25) / FPS;
+      // REFINE ROUND 2 (judge defect #1: caret sat 49-56px inside every line end).
+      // Root cause: caret x was baked from getBoundingClientRect at script-exec time, when
+      // the UI font had not settled to the capture-time font -> stale/narrow text widths.
+      // Fix: (a) UI font pinned via local @font-face, (b) timeline is fully rebuilt after
+      // document.fonts.ready so caret rides the FINAL font metrics, (c) rect deltas are
+      // gate-scale corrected (bodyRect.width / 1080) per renderer-traps.
+      function build() {
+        tl.clear();
+        const bodyRect = body.getBoundingClientRect();
+        const scale = bodyRect.width / 1080;
 
-// REFINE ROUND 2 (judge defect #1: caret sat 49-56px inside every line end).
-// Root cause: caret x was baked from getBoundingClientRect at script-exec time, when
-// the UI font had not settled to the capture-time font -> stale/narrow text widths.
-// Fix: (a) UI font pinned via local @font-face, (b) timeline is fully rebuilt after
-// document.fonts.ready so caret rides the FINAL font metrics, (c) rect deltas are
-// gate-scale corrected (bodyRect.width / 1080) per renderer-traps.
-function build() {
-  tl.clear();
-  const bodyRect = body.getBoundingClientRect();
-  const scale = bodyRect.width / 1080;
+        // baseline: all chars hidden, caret at line-0 start
+        tl.set(caret, { x: TEXT_X, y: LINE_TOPS[0] - 8 }, 0);
+        document.querySelectorAll(".ch").forEach((el) => tl.set(el, { autoAlpha: 0 }, 0));
 
-  // baseline: all chars hidden, caret at line-0 start
-  tl.set(caret, { x: TEXT_X, y: LINE_TOPS[0] - 8 }, 0);
-  document.querySelectorAll('.ch').forEach(el => tl.set(el, { autoAlpha: 0 }, 0));
+        // typing reveals + caret rides the revealed span's right edge
+        EV.forEach(([li, ri, f]) => {
+          const el = document.getElementById(`ch-${li}-${ri}`);
+          const r = el.getBoundingClientRect();
+          const cx = (r.right - bodyRect.left) / scale + CARET_GAP;
+          const cy = LINE_TOPS[li] - 8;
+          tl.set(el, { autoAlpha: 1 }, t_at(f));
+          tl.set(caret, { x: cx, y: cy }, t_at(f));
+        });
 
-  // typing reveals + caret rides the revealed span's right edge
-  EV.forEach(([li, ri, f]) => {
-    const el = document.getElementById(`ch-${li}-${ri}`);
-    const r = el.getBoundingClientRect();
-    const cx = (r.right - bodyRect.left) / scale + CARET_GAP;
-    const cy = LINE_TOPS[li] - 8;
-    tl.set(el, { autoAlpha: 1 }, t_at(f));
-    tl.set(caret, { x: cx, y: cy }, t_at(f));
-  });
+        // caret paragraph jumps
+        JUMPS.forEach(([f, li]) => {
+          tl.set(caret, { x: TEXT_X, y: LINE_TOPS[li] - 8 }, t_at(f) - 0.0005);
+        });
 
-  // caret paragraph jumps
-  JUMPS.forEach(([f, li]) => {
-    tl.set(caret, { x: TEXT_X, y: LINE_TOPS[li] - 8 }, t_at(f) - 0.0005);
-  });
+        // scrolls: each scroll's own measured per-frame curve, cumulative
+        let cum = 0;
+        SCROLLS.forEach((s) => {
+          s.pts.forEach(([f, dy]) => tl.set(body, { y: -(cum + dy) }, t_at(f)));
+          // hard settle one frame after the last measured point
+          const lastF = s.pts[s.pts.length - 1][0];
+          tl.set(body, { y: -(cum + s.px) }, t_at(lastF + 1));
+          cum += s.px;
+        });
 
-  // scrolls: each scroll's own measured per-frame curve, cumulative
-  let cum = 0;
-  SCROLLS.forEach(s => {
-    s.pts.forEach(([f, dy]) => tl.set(body, { y: -(cum + dy) }, t_at(f)));
-    // hard settle one frame after the last measured point
-    const lastF = s.pts[s.pts.length - 1][0];
-    tl.set(body, { y: -(cum + s.px) }, t_at(lastF + 1));
-    cum += s.px;
-  });
+        // crossfade: notes layer opacity 1 -> 0, linear, f641.25 -> f649.75
+        tl.fromTo(
+          "#notes-fade",
+          { opacity: 1 },
+          { opacity: 0, duration: 0.2833, ease: "none" },
+          21.375,
+        );
+      }
 
-  // crossfade: notes layer opacity 1 -> 0, linear, f641.25 -> f649.75
-  tl.fromTo('#notes-fade', { opacity: 1 }, { opacity: 0, duration: 0.2833, ease: 'none' }, 21.375);
-}
+      build(); // timeline exists immediately for the renderer
+      document.fonts.ready.then(() => {
+        // re-measure once the pinned fonts are live
+        build();
+        tl.pause(0);
+      });
 
-build();                                   // timeline exists immediately for the renderer
-document.fonts.ready.then(() => {         // re-measure once the pinned fonts are live
-  build();
-  tl.pause(0);
-});
-
-window.__timelines = window.__timelines || {};
-window.__timelines['notes-reveal'] = tl;
-</script>
-</body>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["notes-reveal"] = tl;
+    </script>
+  </body>
 </html>

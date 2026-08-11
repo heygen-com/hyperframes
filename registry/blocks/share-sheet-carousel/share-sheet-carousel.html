@@ -195,7 +195,13 @@
       data-duration="7.2333"
       data-fps="30"
     >
-      <section id="ssc-scene" class="clip" data-start="0" data-duration="7.2333" data-track-index="1">
+      <section
+        id="ssc-scene"
+        class="clip"
+        data-start="0"
+        data-duration="7.2333"
+        data-track-index="1"
+      >
         <img class="ssc-bg" id="ssc-bg-1" src="assets/slide-01.jpg" alt="" style="opacity: 1" />
         <img class="ssc-bg" id="ssc-bg-2" src="assets/slide-02.jpg" alt="" style="opacity: 0" />
         <img class="ssc-bg" id="ssc-bg-3" src="assets/slide-03.jpg" alt="" style="opacity: 0" />
@@ -205,10 +211,34 @@
             <div id="ssc-title">Share</div>
             <div id="ssc-subtitle"><b>HyperFrames</b>&nbsp;would like to share a video</div>
             <div id="ssc-imagebox">
-              <img class="ssc-slide" id="ssc-slide-1" src="assets/slide-01.jpg" alt="" style="opacity: 1" />
-              <img class="ssc-slide" id="ssc-slide-2" src="assets/slide-02.jpg" alt="" style="opacity: 0" />
-              <img class="ssc-slide" id="ssc-slide-3" src="assets/slide-03.jpg" alt="" style="opacity: 0" />
-              <img class="ssc-slide" id="ssc-slide-4" src="assets/slide-04.jpg" alt="" style="opacity: 0" />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-1"
+                src="assets/slide-01.jpg"
+                alt=""
+                style="opacity: 1"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-2"
+                src="assets/slide-02.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-3"
+                src="assets/slide-03.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-4"
+                src="assets/slide-04.jpg"
+                alt=""
+                style="opacity: 0"
+              />
               <div id="ssc-strip">
                 <img src="assets/hyperframes-logo-black.svg" alt="HyperFrames" />
                 <div id="ssc-strip-text">OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML</div>
@@ -247,11 +277,11 @@
         sender.textContent = text(vars.senderName, "HyperFrames");
         subtitle.appendChild(sender);
         subtitle.appendChild(
-          document.createTextNode(" would like to share " + text(vars.itemLabel, "a video"))
+          document.createTextNode(" would like to share " + text(vars.itemLabel, "a video")),
         );
         document.getElementById("ssc-strip-text").textContent = text(
           vars.stripText,
-          "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML"
+          "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML",
         );
         document.getElementById("ssc-decline").textContent = text(vars.declineLabel, "Decline");
         document.getElementById("ssc-accept").textContent = text(vars.acceptLabel, "Accept");
@@ -265,13 +295,27 @@
 
         /* sheet spring-up: frame-sampled from the reference, kept verbatim */
         var SPRING = [
-          [0.056667, 1198, 0.13], [0.09, 903, 0.21], [0.123333, 648, 0.36],
-          [0.156667, 437, 0.43], [0.19, 262, 0.5], [0.223333, 120, 0.62],
-          [0.256667, 8, 0.78], [0.29, -76, 0.89], [0.323333, -138, 1.0],
-          [0.356667, -175, null], [0.39, -191, null], [0.423333, -192, null],
-          [0.456667, -181, null], [0.49, -159, null], [0.523333, -131, null],
-          [0.556667, -100, null], [0.59, -68, null], [0.623333, -41, null],
-          [0.656667, -18, null], [0.69, -5, null], [0.723333, 0, null],
+          [0.056667, 1198, 0.13],
+          [0.09, 903, 0.21],
+          [0.123333, 648, 0.36],
+          [0.156667, 437, 0.43],
+          [0.19, 262, 0.5],
+          [0.223333, 120, 0.62],
+          [0.256667, 8, 0.78],
+          [0.29, -76, 0.89],
+          [0.323333, -138, 1.0],
+          [0.356667, -175, null],
+          [0.39, -191, null],
+          [0.423333, -192, null],
+          [0.456667, -181, null],
+          [0.49, -159, null],
+          [0.523333, -131, null],
+          [0.556667, -100, null],
+          [0.59, -68, null],
+          [0.623333, -41, null],
+          [0.656667, -18, null],
+          [0.69, -5, null],
+          [0.723333, 0, null],
         ];
         SPRING.forEach(function (step) {
           var props = { y: step[1] };
@@ -282,8 +326,8 @@
         /* cut rhythm: fourteen swaps, cycling the four stills */
         var SLIDE_COUNT = 4;
         var CUTS = [
-          0.99, 1.356667, 1.69, 2.023333, 2.356667, 2.69, 3.09,
-          3.456667, 3.79, 4.123333, 4.456667, 4.79, 5.156667,
+          0.99, 1.356667, 1.69, 2.023333, 2.356667, 2.69, 3.09, 3.456667, 3.79, 4.123333, 4.456667,
+          4.79, 5.156667,
         ];
         var current = 0;
         CUTS.forEach(function (t, i) {
