@@ -64,7 +64,7 @@ Diagnose in this order, because each step changes what the next one hears:
 
 ## Presets
 
-18, in four families. Apply one and it **appends** — stacking a character preset
+Four families, listed in full below. Apply one and it **appends** — stacking a character preset
 onto an already-cleaned voice is a real thing to want. Re-applying one that is
 already present replaces its own nodes in place, because position in the chain
 is signal order.
@@ -135,6 +135,20 @@ Each is an ordinary `peaking` node underneath — the frequency is a starting
 point, not a cage. Prefer a job to a bare `peaking` when one matches: it arrives
 already aimed, and the rack names it for the work rather than the mechanism.
 
+Writing one by hand, **carry the name in `label`** — `{"type":"peaking","id":"n2",
+"label":"Reduce Mud","params":{"frequency":250,"gain":-3,"q":1.2}}`. The
+parameters alone are not the job. A chain with three unlabelled `peaking` nodes
+shows the author three identical rows, which is the exact problem jobs exist to
+dissolve.
+
+**Every job also ships inside a preset, at identical settings** — that is where
+the five came from. `boom-tame` *is* Tame Boominess; `harsh-tame` *is* Soften
+Harshness; `voice-clean` contains Reduce Mud and Add Clarity; `voice-broadcast`
+contains Reduce Boxiness. So check what a preset already contains before adding
+a job on top of it, or the cut lands twice — `voice-clean` plus a Reduce Mud job
+is −6 dB at 250 Hz where −3 was meant. The rack shows the contained nodes by
+name once the preset is expanded, which is the fastest way to see it.
+
 ---
 
 ## One-knob profiles
@@ -184,11 +198,19 @@ Two things measure the audio before they act, so they cannot be a fixed chain:
 
 ## Not covered by anything shipped
 
-Say so rather than reaching for the nearest preset:
+Name the gap rather than reaching for the nearest preset and calling it the
+thing — but then **ship the honest fallback anyway**, with its cost stated. An
+author who asked for a fix and got only an explanation has been told something
+true and handed nothing. Say what it is, say what it costs, apply it.
 
-- **De-essing.** `harsh-tame` is a broad always-on cut, not a de-esser. A real
-  one needs a detector faster than the analysis hop available here.
-- **Tone matching** one track to another. The Tone EQ does the job predictably
-  by hand instead.
+- **De-essing.** `harsh-tame` is a broad always-on cut centred a band too low,
+  not a de-esser. A real one needs a detector faster than the analysis hop
+  available here. *Fallback:* a narrow `peaking` cut in the Edge band — sweep
+  5–9 kHz to find where this voice actually spits, Q 3–4, −3 to −5 dB. It is
+  always on, so it costs a little air on every word; that trade is usually worth
+  it and is the author's to reject.
+- **Tone matching** one track to another. *Fallback:* the Tone EQ by hand, which
+  is predictable in a way a match curve derived from two takes would not be.
 - **Noise removal.** `room-gate` closes the gaps; the noise under speech is
-  untouched. A source with audible hiss under the voice needs a better source.
+  untouched. There is no fallback for hiss beneath the words — a source with
+  audible hiss needs a better source, and saying so is the whole answer.

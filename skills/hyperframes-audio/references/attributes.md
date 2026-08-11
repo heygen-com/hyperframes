@@ -12,12 +12,19 @@ that sounds plausible and is wrong.
 {
   "version": 1,
   "nodes": [
-    { "type": "highpass", "id": "n1", "params": { "frequency": 120, "q": 0.707, "poles": "2" } },
+    { "type": "highpass", "id": "n1", "label": "Remove Rumble", "params": { "frequency": 120, "q": 0.707, "poles": "2" } },
     { "type": "peaking", "id": "n2", "fromCarve": true, "params": { "frequency": 1600, "gain": -6, "q": 1.4 } },
     { "type": "limiter", "id": "n3", "enabled": false, "params": { "limit": -1, "attack": 5, "release": 50, "level_out": 0 } }
   ]
 }
 ```
+
+**Write these attributes double-quoted, with the JSON's own quotes as `&quot;`.**
+The browser reads them through `getAttribute` and does not care, but
+`scripts/carve.mjs` finds them with a `name="..."` regex, so a single-quoted
+attribute is invisible to it — the carve reports no existing chain and quietly
+overwrites work it could not see. `&` becomes `&amp;`; nothing else needs
+escaping.
 
 - **Order is signal order.** Each node processes what the one before produced.
 - `type` is an effect id from the registry. `params` are in the units a person
@@ -28,6 +35,11 @@ that sounds plausible and is wrong.
   with no id loads fine but cannot be automated. Writing a chain by hand, any
   unique string works; Studio hands out the first free `n1`, `n2`, … so matching
   that convention keeps a hand-written chain and an edited one looking alike.
+- `label` is what the rack calls this node, replacing the effect's own name.
+  Write one whenever the node is doing a named job — a chain with two `peaking`
+  nodes otherwise shows the same row twice and the author cannot tell which is
+  the mud cut and which is the clarity lift. Presets and jobs always set it; a
+  hand-written node should too. See `presets.md` for the names they use.
 - `enabled: false` is bypass — the node stays in the chain, out of the signal
   path. Absent means enabled.
 - `fromCarve: true` marks a node the carve analysis generated. Re-running the

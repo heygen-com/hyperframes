@@ -35,7 +35,7 @@ Exact JSON for each, and the rules a lane must satisfy: `references/attributes.m
 Every effect with its parameters, ranges and units: `references/fx-registry.md`.
 **Presets, named jobs and one-knob profiles, plus a symptom-to-fix table:
 `references/presets.md`** — read that before hand-building a chain, because one
-of the 18 presets or 5 jobs usually already names the problem.
+of the presets or named jobs usually already names the problem.
 
 ## How it fits together
 
