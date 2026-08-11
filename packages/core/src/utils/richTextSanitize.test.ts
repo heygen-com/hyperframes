@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { isRichTextFormattingTag, sanitizeRichTextChildren } from "./richTextSanitize";
 
-// Both parsers, every case. The browser runs this against a live element and
-// the server runs it against linkedom, and the whole point of one shared module
-// is that the two cannot disagree about what may be written to a file.
+// Both DOM implementations, every case. The contract must not depend on which
+// parser constructs the inert tree at a trust boundary.
 const PARSERS: Array<[string, (html: string) => Element]> = [
   [
     "jsdom",
@@ -150,6 +149,29 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(out).toContain("color: red");
   });
 
+  it.each([
+    ["an image event handler", "<img src=x onerror=alert(1)>safe", "safe"],
+    ["a script URL", '<a href="javascript:alert(1)">safe</a>', "safe"],
+    ["an SVG script", "<svg><script>alert(1)</script></svg>safe", "safe"],
+    [
+      "a legacy CSS expression",
+      '<span style="color: expression(alert(1))">safe</span>',
+      "<span>safe</span>",
+    ],
+    [
+      "an entity-encoded script scheme",
+      '<span style="color: &#106;avascript:alert(1)">safe</span>',
+      "<span>safe</span>",
+    ],
+    [
+      "a case-folded script scheme",
+      '<span style="color: JAVASCRIPT:alert(1)">safe</span>',
+      "<span>safe</span>",
+    ],
+  ])("rejects %s", (_case, html, expected) => {
+    expect(clean(html, parse)).toBe(expected);
+  });
+
   it("drops the style attribute entirely when nothing in it survives", () => {
     expect(clean('<span style="position: fixed">x</span>', parse)).toBe("<span>x</span>");
   });
@@ -158,6 +180,12 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     const out = clean('<span style="color: rgb(1, 2, 3); font-style: italic">x</span>', parse);
     expect(out).toContain("rgb(1, 2, 3)");
     expect(out).toContain("font-style: italic");
+  });
+
+  it("keeps a quoted semicolon inside a style value", () => {
+    const out = clean(`<span style='font-family: "Roboto Mono; a"; color: red'>x</span>`, parse);
+    expect(out).toContain("Roboto Mono; a");
+    expect(out).toContain("color: red");
   });
 
   it("removes a comment, which is neither text nor formatting", () => {

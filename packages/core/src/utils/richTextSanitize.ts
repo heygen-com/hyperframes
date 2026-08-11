@@ -3,17 +3,14 @@
  *
  * Editing text in the Studio preview can style a run of characters, which means
  * markup now travels from a contenteditable element into a file on disk. This
- * module is the only thing deciding what may make that trip, and it runs on
- * both ends of it: in the browser so the preview shows what will be saved, and
- * on the server because that is where the file is written and a client is not
- * a thing to trust.
+ * module is the only thing deciding what may make that trip. The server write
+ * boundary applies it unconditionally before returning composition bytes.
  *
  * One module rather than two implementations. Two would drift, and the drift
  * would be a security bug rather than an inconsistency.
  *
- * It works on an element's subtree in place, which is what both callers already
- * have: the browser holds a live element, the server holds a parsed one. Nobody
- * has to re-parse untrusted markup into a live document to clean it.
+ * It works on an element's subtree in place. Untrusted markup must be parsed in
+ * an inert document before this function receives it.
  */
 
 /** Tags an inline text edit may contain. Everything else is not text styling. */
@@ -48,6 +45,10 @@ const FORMATTING_STYLE_PROPS = new Set([
   "-webkit-text-fill-color",
 ]);
 
+// Keep this list limited to properties whose grammar cannot fetch a resource.
+// Adding a URL-consuming property also requires decoding CSS escapes before
+// UNSAFE_VALUE can be a sufficient guard.
+
 /**
  * Attributes a formatting tag may carry.
  *
@@ -57,7 +58,11 @@ const FORMATTING_STYLE_PROPS = new Set([
  */
 const FORMATTING_ATTRS = new Set(["data-hf-text-key", "data-hf-id"]);
 
-/** What those attributes are allowed to look like: a bare token, nothing else. */
+/**
+ * What those attributes are allowed to look like: a bare token, nothing else.
+ * `:` is deliberate because text keys use selector-like tokens such as
+ * `child:1`; neither allowed attribute is interpreted as a URL.
+ */
 const SAFE_ATTR_VALUE = /^[A-Za-z0-9_:-]+$/;
 
 /**
@@ -94,6 +99,11 @@ export function isRichTextFormattingTag(tagName: string): boolean {
  *
  * The element itself is never touched, only what is inside it. Callers own the
  * element, and it is the composition's, not the editor's, to rewrite.
+ *
+ * When the children came from untrusted markup, callers must parse that markup
+ * into an inert document (for example linkedom or a detached DOMParser document)
+ * first. Never assign untrusted HTML to a live DOM element and then call this
+ * function: active content can run before sanitization begins.
  */
 export function sanitizeRichTextChildren(parent: Element): void {
   // A snapshot, because the loop moves and removes the very nodes it walks.
@@ -165,6 +175,20 @@ function filterStyle(style: string): string {
     .join("; ");
 }
 
+function isQuoteDelimiter(char: string): char is "'" | '"' {
+  return char === "'" || char === '"';
+}
+
+function nextParenthesisDepth(depth: number, char: string): number {
+  if (char === "(") return depth + 1;
+  if (char === ")") return Math.max(0, depth - 1);
+  return depth;
+}
+
+function isDeclarationSeparator(char: string, depth: number, quote: "'" | '"' | null): boolean {
+  return char === ";" && depth === 0 && quote === null;
+}
+
 /**
  * Split on the semicolons that separate declarations, not the ones inside a
  * value. `color: rgb(1, 2, 3)` is one declaration however many separators its
@@ -174,13 +198,16 @@ function splitDeclarations(style: string): string[] {
   const declarations: string[] = [];
   let current = "";
   let depth = 0;
+  let quote: "'" | '"' | null = null;
   for (const char of style) {
-    if (char === "(") depth += 1;
-    else if (char === ")") depth = Math.max(0, depth - 1);
-    else if (char === ";" && depth === 0) {
+    if (char === quote) quote = null;
+    else if (quote === null && isQuoteDelimiter(char)) quote = char;
+    else if (isDeclarationSeparator(char, depth, quote)) {
       declarations.push(current);
       current = "";
       continue;
+    } else if (quote === null) {
+      depth = nextParenthesisDepth(depth, char);
     }
     current += char;
   }
