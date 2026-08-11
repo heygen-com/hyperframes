@@ -35,15 +35,60 @@ anything else.
 The strongest reference that lives inside a single file. Speech stops; whatever
 is still there in the gap is not the voice.
 
-- **Anything audible in the pauses is additive** — hum, rumble, hiss, room tone.
-  It was laid on top, so it can be subtracted.
-- **The pause spectrum is the file's own transfer function.** Silence carries no
-  consonants, so a hump in the noise floor at 7 kHz is the channel, not
-  sibilance. This is the measurement that separates "an EQ was applied" from
-  "this speaker is just bright" — and it is the one that cannot be faked by
-  reasoning about the voice.
+**What it answers: "was something added?"**
 
-### 3. The file against itself over time
+Anything audible in the pauses is additive — hum, rumble, hiss, room tone. It was
+laid on top, so it can be subtracted, and this is a reliable positive finding.
+
+**What it does NOT answer: "was something filtered?"** — and getting this
+backwards is how the method produces a confident wrong answer.
+
+A filter multiplies. Applied to a file whose gaps already sit at the
+quantisation floor, it leaves them at the quantisation floor: near-silence times
+anything is still near-silence. So the pause carries no trace of it. Measured on
+one take with a −9 dB shelf above 2.5 kHz applied to the whole file:
+
+| | 1 kHz | 5 kHz | tilt |
+| --- | --- | --- | --- |
+| pause, undamaged | −91.0 | −91.0 | +0.0 |
+| pause, shelved | −91.0 | −91.0 | **+0.0** |
+| speech, undamaged | −34.7 | −42.8 | −8.1 |
+| speech, shelved | −35.4 | −48.5 | **−13.1** |
+
+The defect is a clear 5 dB in the speech and **exactly zero** in the pause.
+
+So: **never use a null result from the pause spectrum to rule out EQ.** A run
+that did exactly that — measured the pause, found it smooth, and concluded
+"static EQ of any type or Q is ruled out" — went on to treat an inaudible
+−72 dBFS rumble as the defect and shipped a high-pass for a file whose actual
+problem was that it had no top end.
+
+The pause spectrum *is* a transfer function only when the gaps carry a real
+recorded noise floor that passed through the same filter. A room-tone bed does;
+a digitally clean take does not. Check which you have before trusting it: if the
+gaps are within a few dB of the quantisation floor, this reference can find
+additive content and nothing else.
+
+### 3. The speech's own tilt, for a suspected filter
+
+When the pause cannot see a filter (above), the only thing left carrying it is
+the speech. Read the tilt across a few 1/3-octave bands rather than any single
+one — `1k / 3.2k / 5k / 7k` is enough to see a shelf:
+
+```bash
+for f in 1000 3200 5000 7000; do third voice.wav $f; done
+```
+
+Speech falls away steadily above about 1 kHz, so a downward slope is expected;
+what you are looking for is a slope that keeps steepening, or a step. In the
+table above, −8.1 dB from 1 k to 5 k is an ordinary voice and −13.1 dB is the
+same voice with 9 dB taken off the top.
+
+**This is a candidate, not a verdict.** Where the ordinary slope ends and a
+defect begins is speaker-dependent, and you have no baseline for this speaker.
+Say what you measured and what it would mean, and let somebody hear it.
+
+### 4. The file against itself over time
 
 For anything level-related, compare each passage to the track's own median rather
 than to a target. That is what `levellingResult` does, and it is why an already
