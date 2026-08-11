@@ -14,40 +14,152 @@
         overflow: hidden;
       }
       body {
-        background: #ece1d5;
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
       }
       .hf-ui-demo-canvas {
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #ece1d5;
-        background-image: radial-gradient(circle, rgba(178, 150, 138, 0.18) 2px, transparent 2.6px);
-        background-size: 36px 36px;
-        font-family:
-          ui-sans-serif,
-          -apple-system,
-          BlinkMacSystemFont,
-          "Segoe UI",
-          sans-serif;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
       }
-      .hf-lrl-list {
+      /* the device */
+      .spec-phone {
         position: absolute;
-        left: 560px;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+      }
+      /* interior is authored at 1080x1920 and scaled into the screen */
+      .spec-int {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        transform: scale(0.3796);
+        transform-origin: 0 0;
+      }
+      /* the caption column */
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
         top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
         display: grid;
-        gap: 30px;
-        font-size: 56px;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+
+      .lrl-screen {
+        position: absolute;
+        inset: 0;
+        background: #fefefe;
+      }
+      .lrl-check {
+        position: absolute;
+        right: 60px;
+        top: 90px;
+        width: 110px;
+        height: 110px;
+        border-radius: 55px;
+        background: #fec909;
+      }
+      .lrl-check svg {
+        position: absolute;
+        left: 27px;
+        top: 32px;
+      }
+      .lrl-title {
+        position: absolute;
+        left: 62px;
+        top: 220px;
+        font-size: 88px;
+        font-weight: 700;
         color: #191919;
-        line-height: 1.25;
+        letter-spacing: -0.005em;
       }
-      .hf-lrl-line {
+      .lrl-body {
+        position: absolute;
+        left: 62px;
+        top: 420px;
+        width: 956px;
+      }
+      .lrl-line {
+        font-size: 50px;
+        line-height: 2.6;
+        color: #191919;
         opacity: 0;
+        white-space: nowrap;
       }
-      .hf-lrl-mark {
+      .lrl-line .mk {
         display: inline-block;
-        width: 1.1em;
-        color: #0a6e5c;
+        width: 1.2em;
+        color: #0a7a57;
       }
     </style>
   </head>
@@ -68,17 +180,51 @@
         data-track-index="1"
         style="position: absolute; inset: 0"
       >
-        <div class="hf-lrl-list" id="hf-lrl-demo-list">
-          <div class="hf-lrl-line">
-            <span class="hf-lrl-mark">&#10003;</span>write the scene in plain HTML
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div class="spec-int">
+              <div class="lrl-screen"></div>
+              <div class="lrl-check">
+                <svg width="56" height="46" viewBox="0 0 56 46">
+                  <path
+                    d="M6 24 L21 38 L50 6"
+                    fill="none"
+                    stroke="#fff"
+                    stroke-width="7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </div>
+              <div class="lrl-title">Launch checklist</div>
+              <div class="lrl-body" id="lrl-body">
+                <div class="lrl-line">
+                  <span class="mk">&#10003;</span>write the scene in plain HTML
+                </div>
+                <div class="lrl-line">
+                  <span class="mk">&#10003;</span>hyperframes check catches the misses
+                </div>
+                <div class="lrl-line">
+                  <span class="mk">&#10003;</span>render lands the same, every time
+                </div>
+                <div class="lrl-line"><span class="mk">&#10003;</span>ship it</div>
+              </div>
+            </div>
           </div>
-          <div class="hf-lrl-line">
-            <span class="hf-lrl-mark">&#10003;</span>hyperframes check catches the misses
+        </div>
+        <div class="spec-cap">
+          <div class="name">line-reveal-list</div>
+          <div class="rule"></div>
+          <div class="desc">
+            List lines land on the measured writing cadence — 2.20s, 2.03s, 2.97s, slowing as the
+            thought gets heavier — and the page makes room on the measured scroll-settle, not a
+            linear glide.
           </div>
-          <div class="hf-lrl-line">
-            <span class="hf-lrl-mark">&#10003;</span>render lands the same, every time
+          <div class="stats">
+            <div class="stat"><b>2.20 → 3.63s</b> — the slowing cadence, measured</div>
+            <div class="stat"><b>11 steps</b> — the scroll-settle table</div>
+            <div class="stat"><b>0.55s</b> — launch to settle</div>
           </div>
-          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>ship it</div>
         </div>
       </section>
     </div>
@@ -86,11 +232,10 @@
     <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
-
-      /* the measured writing cadence, compressed 2x for the demo */
-      var CADENCE = [1.1, 1.015, 1.485, 1.55];
-      var t = 0.5;
-      gsap.utils.toArray("#hf-lrl-demo-list .hf-lrl-line").forEach(function (line, i) {
+      /* the measured writing cadence */
+      var CADENCE = [2.2, 2.03, 2.97];
+      var t = 0.7;
+      gsap.utils.toArray("#lrl-body .lrl-line").forEach(function (line, i) {
         if (i > 0) t += CADENCE[(i - 1) % CADENCE.length];
         tl.fromTo(
           line,
@@ -99,14 +244,12 @@
           t,
         );
       });
-
-      /* one measured scroll-settle after the third line */
+      /* the page makes room on the measured settle */
       var EASE = [0.0, 0.062, 0.297, 0.498, 0.684, 0.786, 0.889, 0.934, 0.968, 0.992, 1.0];
       EASE.forEach(function (p, k) {
-        tl.set("#hf-lrl-demo-list", { y: -100 * p }, 3.9 + k * 0.055);
+        tl.set("#lrl-body", { y: -130 * p }, 5.6 + k * 0.055);
       });
       tl.set({}, {}, 9);
-
       window.__timelines["line-reveal-list-demo"] = tl;
     </script>
   </body>
