@@ -1221,7 +1221,7 @@ export const VariablesExplorer = ({
    * state of its own: `useState` here would be a hook called outside a
    * component, and the panel keeps one note per variable instead.
    */
-  const control = (variable, value, onChange, note, onNote) => {
+  const control = (variable, value, onChange, note, onNote, onTyping) => {
     const options = variable.options ?? [];
 
     // Up to four options fit a segmented row at docs width. Past that the
@@ -1436,6 +1436,11 @@ export const VariablesExplorer = ({
             className="hf-ve-field hf-ve-mono hf-ve-tint"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onFocus={() => onTyping(variable.id)}
+            onBlur={() => onTyping(null)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
           />
         </div>
       );
@@ -1515,6 +1520,11 @@ export const VariablesExplorer = ({
               value={value}
               aria-label={variable.label ?? variable.id}
               onChange={(e) => onChange(e.target.value)}
+              onFocus={() => onTyping(variable.id)}
+              onBlur={() => onTyping(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
             />
           </details>
         </div>
@@ -1528,6 +1538,11 @@ export const VariablesExplorer = ({
         value={value}
         aria-label={variable.label ?? variable.id}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={() => onTyping(variable.id)}
+        onBlur={() => onTyping(null)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
       />
     );
   };
@@ -1619,6 +1634,23 @@ export const VariablesExplorer = ({
   // What the SVG import last had to say, per variable. Held here because
   // `control` is a function rather than a component and cannot hold it itself.
   const [notes, setNotes] = useState({});
+
+  /**
+   * The id of the text field being typed into, if any.
+   *
+   * Every other control reports a whole value on every event: a slider at any
+   * position is a position, a swatch is a colour. A text field is not. While
+   * someone types `v3`, `v` is a prefix, and the preview remounted on it and
+   * showed them a composition built from half a word.
+   *
+   * So the post below waits while a text field has focus, and goes out when the
+   * edit is committed — Enter, or clicking away. The field itself never lags;
+   * only the mount waits, and it never sees a state nobody asked for.
+   */
+  const [typing, setTyping] = useState(null);
+
+  /** What was last posted, so ending an edit that changed nothing is free. */
+  const posted = useRef(null);
   const [tab, setTab] = useState("preview");
   const frame = useRef(null);
 
@@ -1705,12 +1737,19 @@ export const VariablesExplorer = ({
   ].join("");
 
   useEffect(() => {
+    if (typing !== null) return;
+    const payload = JSON.stringify(values);
+    // Focusing a field and leaving it alone still ends an edit, and remounting
+    // on that would restart the composition for nothing.
+    if (payload === posted.current) return;
     const timer = setTimeout(() => {
       const target = frame.current && frame.current.contentWindow;
-      if (target) target.postMessage({ hfVariables: values }, window.location.origin);
+      if (!target) return;
+      posted.current = payload;
+      target.postMessage({ hfVariables: values }, window.location.origin);
     }, 150);
     return () => clearTimeout(timer);
-  }, [values]);
+  }, [values, typing]);
 
   // The mount element, as coloured tokens.
   //
@@ -1882,6 +1921,7 @@ export const VariablesExplorer = ({
                 (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
                 notes[v.id],
                 (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
+                setTyping,
               )}
               {v.description && <p className="hf-ve-desc">{v.description}</p>}
             </div>
