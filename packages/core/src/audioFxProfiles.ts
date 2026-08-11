@@ -202,8 +202,28 @@ export function audioFxProfileStrength(type: string, params: HfAudioFxParamValue
   if (key === undefined) return 0.5;
   const value = params[key];
   if (typeof value !== "number") return 0.5;
-  const low = profile.at(0)[key];
-  const high = profile.at(1)[key];
-  if (typeof low !== "number" || typeof high !== "number" || low === high) return 0.5;
-  return to2(Math.min(1, Math.max(0, (value - low) / (high - low))));
+  // Searched, not inverted algebraically: a curve is free to be piecewise — the
+  // reverb's `size` is, because the design's three anchors are not evenly
+  // spaced — and a straight line between the endpoints reads such a curve back
+  // at the wrong place. Setting Space to 0.5 wrote size 0.55 and reopening the
+  // project drew the knob at 0.46, so every reopen nudged the sound.
+  //
+  // The grid IS the knob's own resolution (0.01), not something finer: a finer
+  // grid lands between two settable positions and rounds to a neighbour, which
+  // is how a search can be off by a step even where the curve is exact.
+  // Searching only reachable values makes the round trip exact.
+  const STEPS = 100;
+  let best = 0.5;
+  let bestErr = Infinity;
+  for (let i = 0; i <= STEPS; i += 1) {
+    const s = to2(i / STEPS);
+    const at = profile.at(s)[key];
+    if (typeof at !== "number") continue;
+    const err = Math.abs(at - value);
+    if (err < bestErr) {
+      bestErr = err;
+      best = s;
+    }
+  }
+  return bestErr === Infinity ? 0.5 : to2(best);
 }

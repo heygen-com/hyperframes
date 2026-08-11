@@ -277,13 +277,29 @@ export function AudioFxGroup({
   };
 
   /** Every lane belonging to a node that is going away. */
-  const removeNodeAutomation = (nodeId: string): void => {
-    const prefix = `fx.${nodeId}.`;
-    const kept = automation.lanes.filter((lane) => !lane.target.startsWith(prefix));
+  /**
+   * Drop every lane belonging to these nodes, and optionally a whole-preset one.
+   *
+   * Takes a LIST rather than one id, because each call recomputes from the same
+   * render-time `automation` snapshot and writes the whole attribute: calling it
+   * per node in a loop meant every write but the last was discarded, and only
+   * the final node's lanes were actually removed. The rest survived as orphans,
+   * and with ids minted lowest-free the next effect added inherited one —
+   * arriving "Automated" with an envelope nobody drew, baked into the render.
+   */
+  const removeNodesAutomation = (nodeIds: readonly string[], presetId?: string): void => {
+    const prefixes = nodeIds.map((id) => `fx.${id}.`);
+    const kept = automation.lanes.filter(
+      (lane) =>
+        !prefixes.some((p) => lane.target.startsWith(p)) &&
+        !(presetId !== undefined && lane.target === presetAutomationTarget(presetId)),
+    );
     if (kept.length !== automation.lanes.length) {
       writeAutomation({ version: 1, lanes: kept });
     }
   };
+
+  const removeNodeAutomation = (nodeId: string): void => removeNodesAutomation([nodeId]);
 
   const carve = ((): HfCarveSettings | null => {
     const raw = element.dataAttributes?.["fx-carve"];
@@ -548,12 +564,37 @@ export function AudioFxGroup({
     return next;
   };
 
+  /**
+   * The part of the decoded file this clip actually plays.
+   *
+   * A lane's `t` is seconds from the start of the CLIP, but the decode is the
+   * whole file from its first sample — so measuring a trimmed clip produced an
+   * envelope offset by the trim, and every correction landed early by exactly
+   * `media-start`. Slicing here is what puts the two clocks back on the same
+   * zero.
+   */
+  const clipWindow = (audio: { samples: Float32Array; sampleRate: number }) => {
+    const mediaStart = Number(element.dataAttributes?.["media-start"] ?? 0);
+    const duration = Number(element.dataAttributes?.["duration"] ?? Number.NaN);
+    const from =
+      Number.isFinite(mediaStart) && mediaStart > 0
+        ? Math.min(audio.samples.length, Math.floor(mediaStart * audio.sampleRate))
+        : 0;
+    const to =
+      Number.isFinite(duration) && duration > 0
+        ? Math.min(audio.samples.length, from + Math.ceil(duration * audio.sampleRate))
+        : audio.samples.length;
+    return from === 0 && to === audio.samples.length
+      ? audio.samples
+      : audio.samples.subarray(from, to);
+  };
+
   const runLeveller = async (): Promise<void> => {
     setAnalysing(true);
     try {
       const audio = await decodeTrack();
       if (!audio) return;
-      const result = levellingResult(chain, audio.samples, audio.sampleRate);
+      const result = levellingResult(chain, clipWindow(audio), audio.sampleRate);
       if (!result) return;
       await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
       // Merged by target, never written wholesale: the script describes its own
@@ -644,7 +685,7 @@ export function AudioFxGroup({
       const audio = await decodeTrack();
       // Gone, or superseded by a later hover. Either way this result is stale.
       if (!audio || run !== auditionRun.current) return;
-      const result = levellingResult(chain, audio.samples, audio.sampleRate);
+      const result = levellingResult(chain, clipWindow(audio), audio.sampleRate);
       if (!result || run !== auditionRun.current) return;
       void onSetAttributeLive(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
       const lane = result.automation.lanes[0];
@@ -833,6 +874,7 @@ export function AudioFxGroup({
       onAutomateParam={automateParam}
       onRemoveParamAutomation={removeParamAutomation}
       onRemoveNodeAutomation={removeNodeAutomation}
+      onRemoveNodesAutomation={removeNodesAutomation}
       onChainChange={(next) =>
         // Live for the same reason as automation above: adding, removing or
         // bypassing an effect is applied to the running graph, so a reload would

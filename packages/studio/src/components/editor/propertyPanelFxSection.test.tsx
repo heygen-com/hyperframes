@@ -89,6 +89,7 @@ function mount(overrides: Partial<Parameters<typeof FxSection>[0]> = {}) {
       onAutomateParam={overrides.onAutomateParam}
       onRemoveParamAutomation={overrides.onRemoveParamAutomation}
       onRemoveNodeAutomation={overrides.onRemoveNodeAutomation}
+      onRemoveNodesAutomation={overrides.onRemoveNodesAutomation}
       onAutomatePreset={overrides.onAutomatePreset}
       onRemovePresetAutomation={overrides.onRemovePresetAutomation}
       onAuditionTransport={overrides.onAuditionTransport}
@@ -548,8 +549,8 @@ describe("FxSection chain", () => {
     });
 
     it("takes the preset back out whole, with its lanes", () => {
-      const onRemoveNodeAutomation = vi.fn();
-      const { host, onChainChange } = mount({ chain: applied(), onRemoveNodeAutomation });
+      const onRemoveNodesAutomation = vi.fn();
+      const { host, onChainChange } = mount({ chain: applied(), onRemoveNodesAutomation });
       click(
         host
           .querySelector("[data-fx-preset='telephone']")
@@ -559,9 +560,16 @@ describe("FxSection chain", () => {
       const next = onChainChange.mock.calls[0]?.[0] as HfAudioFxChain;
       expect(next.nodes.filter((n) => n.fromPreset === "telephone")).toEqual([]);
       expect(next.nodes.map((n) => n.id)).toEqual(["own"]);
-      // An orphaned lane keeps driving a parameter that is no longer in the
-      // graph, and the next effect added inherits it with the id.
-      expect(onRemoveNodeAutomation).toHaveBeenCalled();
+      // ONE call carrying every node id, not one call per node: each write is
+      // computed from the same snapshot and replaces the whole attribute, so a
+      // loop kept only its last write and left the rest as orphans — which the
+      // next effect added would inherit along with the id.
+      expect(onRemoveNodesAutomation).toHaveBeenCalledTimes(1);
+      const [ids, presetId] = onRemoveNodesAutomation.mock.calls[0] ?? [];
+      expect((ids as string[]).length).toBeGreaterThan(1);
+      // And the whole-preset amount lane, which belongs to no node and would
+      // otherwise survive to be resurrected by re-applying the preset.
+      expect(presetId).toBe("telephone");
     });
   });
 

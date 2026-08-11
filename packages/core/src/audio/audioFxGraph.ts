@@ -595,7 +595,16 @@ function shapeOf(chain: HfAudioFxChain): string {
       // same reason: pushed into the running graph it would be a no-op, and
       // preview would keep sweeping on a triangle while the render used a sine.
       const wave = node.type === "phaser" ? `~${p.type}` : "";
-      return `${node.type}${poles}${fixedFreq}${wave}`;
+      // Which preset run this node belongs to, for the same reason again: the
+      // wet/dry wrap is WIRED around a run at construction, so moving a node
+      // across a preset boundary changes the graph's shape even when the type
+      // sequence is identical. Without this, reordering a hand-added peaking
+      // filter past a preset's peaking filter kept the in-place update path and
+      // left the wrap bracketing the wrong effect — preview blending out the
+      // author's own node while the render, which rebuilds, blended out the
+      // preset's.
+      const run = node.fromPreset ? `%${node.fromPreset}` : "";
+      return `${node.type}${poles}${fixedFreq}${wave}${run}`;
     })
     .join("|");
 }
@@ -670,8 +679,14 @@ export function buildFxChain(
 
   const shape = shapeOf(chain);
 
+  // Accumulated, not assigned. A preset pulled apart by a reorder occupies more
+  // than one run, and each run gets its own wrap — keying by id and assigning
+  // dropped every wrap but the last, so a whole-preset lane drove one fragment
+  // and left the rest at full strength while the switch read "Off".
   const presetTargets: Record<string, FxParamTarget[]> = {};
-  for (const p of presets) presetTargets[p.id] = mixTargets(p.wet.gain, p.dry.gain);
+  for (const p of presets) {
+    (presetTargets[p.id] ??= []).push(...mixTargets(p.wet.gain, p.dry.gain));
+  }
 
   return {
     input,
@@ -696,10 +711,14 @@ export function buildFxChain(
       // The blend is a value like any other: switching a preset off writes
       // `presetAmount`, and pushing it into the running graph is what keeps that
       // from being a rebuild — and from restarting the audio underneath it.
+      // Walked in step with the build, not looked up by id: `find` returned the
+      // first wrap for every run sharing a preset id, so a split preset wrote
+      // one wrap twice and never touched the other.
+      let wrapIndex = 0;
       for (const run of presetRuns(enabledAudioFxNodes(next))) {
         if (!run.preset) continue;
-        const wrap = presets.find((p) => p.id === run.preset);
-        if (!wrap) continue;
+        const wrap = presets[wrapIndex++];
+        if (!wrap || wrap.id !== run.preset) continue;
         wrap.wet.gain.value = run.amount;
         wrap.dry.gain.value = 1 - run.amount;
       }

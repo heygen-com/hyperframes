@@ -89,6 +89,12 @@ export interface FxSectionProps {
   onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
   /** Delete every lane belonging to a node that is being removed. */
   onRemoveNodeAutomation?(nodeId: string): void;
+  /**
+   * Delete the lanes of SEVERAL nodes at once, plus the whole-preset lane when
+   * a preset id is given. One call, because each write is computed from the same
+   * snapshot and replaces the whole attribute — a loop keeps only its last write.
+   */
+  onRemoveNodesAutomation?(nodeIds: readonly string[], presetId?: string): void;
   /** Add a lane for a whole preset's amount, seeded where it sits now. */
   onAutomatePreset?(presetId: string, amount: number): void;
   /** Delete that lane. */
@@ -148,6 +154,7 @@ export function FxSection({
   onAutomateParam,
   onRemoveParamAutomation,
   onRemoveNodeAutomation,
+  onRemoveNodesAutomation,
   onChainChange,
   onChainPreview,
   carve,
@@ -402,15 +409,20 @@ export function FxSection({
    * the next effect added inherits it.
    */
   const removeRun = useCallback(
-    (items: { node: HfAudioFxNode; i: number }[]) => {
-      for (const { node } of items) {
-        if (node.id) onRemoveNodeAutomation?.(node.id);
-      }
+    (items: { node: HfAudioFxNode; i: number }[], presetId?: string) => {
+      // One call, not a loop: every write is computed from the same snapshot and
+      // replaces the whole attribute, so a loop kept only its last write and left
+      // the other nodes' lanes behind as orphans. The preset id goes with it —
+      // the `fx.preset.<id>` amount lane belongs to the preset, not to any node,
+      // so nothing else would ever collect it, and re-applying the preset later
+      // resurrected the old ramp.
+      const ids = items.map(({ node }) => node.id).filter((id): id is string => Boolean(id));
+      if (ids.length > 0 || presetId) onRemoveNodesAutomation?.(ids, presetId);
       const slots = new Set(items.map((item) => item.i));
       mutate(chain.nodes.filter((_, i) => !slots.has(i)));
       setOpenNode(null);
     },
-    [chain.nodes, mutate, onRemoveNodeAutomation],
+    [chain.nodes, mutate, onRemoveNodesAutomation],
   );
 
   const removeNode = useCallback(
@@ -514,12 +526,17 @@ export function FxSection({
   );
   const removeEq = useCallback(
     (eqId: string) => {
-      for (const node of chain.nodes) {
-        if (node.fromEq === eqId && node.id) onRemoveNodeAutomation?.(node.id);
-      }
+      // Batched for the same reason as `removeRun` — this loop had the identical
+      // last-write-wins bug and was only unreachable because an EQ band row
+      // offers no automation toggle today.
+      const ids = chain.nodes
+        .filter((node) => node.fromEq === eqId)
+        .map((node) => node.id)
+        .filter((id): id is string => Boolean(id));
+      if (ids.length > 0) onRemoveNodesAutomation?.(ids);
       mutate(removeAudioEq(chain, eqId).nodes);
     },
-    [chain, mutate, onRemoveNodeAutomation],
+    [chain, mutate, onRemoveNodesAutomation],
   );
 
   const moveNode = useCallback(
@@ -726,7 +743,7 @@ export function FxSection({
                     className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-4 hover:text-red-400 disabled:opacity-40"
                     title={`Remove ${preset.label}`}
                     disabled={disabled}
-                    onClick={() => removeRun(run.items)}
+                    onClick={() => removeRun(run.items, run.preset)}
                   >
                     &times;
                   </button>

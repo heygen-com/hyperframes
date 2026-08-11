@@ -435,6 +435,109 @@ describe("AudioFxGroup dynamic carve", () => {
    * nobody asked to level, through a channel that does not persist: audible,
    * absent from the document, and gone on the next reload.
    */
+  it("levels the part of the file the clip plays, not the file from its start", async () => {
+    // A lane's `t` is seconds from the start of the CLIP, but the decode is the
+    // whole file — so a trimmed clip got an envelope offset by exactly
+    // `media-start`, and every correction landed early.
+    //
+    // The file is loud 0-2s, quiet 2-5s, loud again 5-8s, and the clip trims the
+    // first 2s. Measured from the clip's own zero, t=0.5 sits in the quiet
+    // passage and wants a real lift; measured from the file's zero it sits in
+    // the loud head and wants none. That gap is the bug.
+    const sampleRate = 48000;
+    const data = new Float32Array(sampleRate * 8);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sampleRate;
+      const amp = t < 2 ? 0.5 : t < 5 ? 0.05 : 0.5;
+      data[i] = amp * Math.sin(2 * Math.PI * 300 * t);
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
+    );
+    vi.stubGlobal(
+      "OfflineAudioContext",
+      class {
+        decodeAudioData = async () => ({ sampleRate, getChannelData: () => data });
+      },
+    );
+
+    const { host, onSetAttributeQuiet } = mount({
+      "fx-chain": CHAIN,
+      "media-start": "2",
+      duration: "6",
+    });
+    document.getElementById("bed")?.setAttribute("src", "bed.wav");
+    act(() => byTextButton(host, "Audio FX")?.click());
+    act(() => byTextButton(host, "Add effect")?.click());
+    await act(async () => {
+      byTextButton(host, "Even Out Levels")?.click();
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const write = onSetAttributeQuiet.mock.calls.filter((c) => c[0] === "data-automation").at(-1);
+    if (!write) throw new Error("no levelling lane written");
+    const lane = (
+      JSON.parse(String(write[1])).lanes as { target: string; points: { t: number; v: number }[] }[]
+    ).find((l) => l.target.startsWith("fx."));
+    if (!lane) throw new Error("no fx lane");
+    const near = (t: number) =>
+      lane.points.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best));
+    // The quiet passage, from the clip's zero, gets its lift.
+    expect(near(0.5).v).toBeGreaterThan(4);
+  });
+
+  it("removes every lane a preset owned, not just the last node's", () => {
+    // Each write is computed from the same render-time snapshot and replaces the
+    // whole attribute, so removing lanes one node at a time kept only the final
+    // write — the earlier nodes' lanes survived as orphans, and with ids minted
+    // lowest-free the next effect added inherited one, arriving "Automated" with
+    // an envelope nobody drew and baked into the render.
+    const chain = {
+      version: 1,
+      nodes: [
+        {
+          type: "highpass",
+          id: "n1",
+          fromPreset: "telephone",
+          params: { frequency: 300, q: 0.707, poles: "2" },
+        },
+        {
+          type: "peaking",
+          id: "n2",
+          fromPreset: "telephone",
+          params: { frequency: 1200, gain: 6, q: 1.2 },
+        },
+      ],
+    };
+    const automation = {
+      version: 1,
+      lanes: [
+        { target: "fx.n1.frequency", points: [{ t: 0, v: 300 }] },
+        { target: "fx.n2.gain", points: [{ t: 0, v: 6 }] },
+        { target: "fx.preset.telephone", points: [{ t: 0, v: 1 }] },
+        { target: "volume", points: [{ t: 0, v: 0.5 }] },
+      ],
+    };
+    const { host, onSetAttributeQuiet } = mount({
+      "fx-chain": JSON.stringify(chain),
+      automation: JSON.stringify(automation),
+    });
+    act(() => byTextButton(host, "Audio FX")?.click());
+    act(() => host.querySelector<HTMLElement>(".hf-fx-preset-run-remove")?.click());
+
+    const write = onSetAttributeQuiet.mock.calls.filter((c) => c[0] === "data-automation").at(-1);
+    const lanes = JSON.parse(String(write?.[1] ?? '{"lanes":[]}')).lanes as { target: string }[];
+    const targets = lanes.map((l) => l.target);
+    // Both nodes gone, and the whole-preset lane with them.
+    expect(targets).not.toContain("fx.n1.frequency");
+    expect(targets).not.toContain("fx.n2.gain");
+    expect(targets).not.toContain("fx.preset.telephone");
+    // The track's own volume lane is untouched.
+    expect(targets).toContain("volume");
+  });
+
   describe("auditioning starts the transport when it has to", () => {
     const store = () => usePlayerStore.getState();
 

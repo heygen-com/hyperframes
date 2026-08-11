@@ -457,6 +457,18 @@ describe("audio_volume_double_automation", () => {
     }
   });
 
+  it("still warns when another value in the same call is a function result", async () => {
+    // Bounding the scan at the first `)` to fix the chained-timeline case
+    // silenced the rule for the ordinary shape of a tween whose object holds a
+    // call — the paren closing `fadeTime(2)` ended the match before `volume`.
+    // The lane and the tween still both drive volume, and the author still gets
+    // no warning about it.
+    const res = await lintHyperframeHtml(
+      withScript(LANE, `tl.to("#bgm", { duration: fadeTime(2), volume: 0.2 });`),
+    );
+    expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(true);
+  });
+
   it("does not blame the wrong element in a chained timeline", async () => {
     // A chain has no semicolon until its very end, so a run that could cross `)`
     // reached the `volume` in a LATER call and reported the element from an

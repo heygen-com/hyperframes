@@ -698,3 +698,66 @@ describe("a preset's run is wrapped in a wet/dry blend", () => {
     expect(live).toEqual([]);
   });
 });
+
+describe("a preset's wrap stays with the nodes it belongs to", () => {
+  const peak = (over: Partial<HfAudioFxNode>): HfAudioFxNode =>
+    ({
+      type: "peaking",
+      enabled: true,
+      params: defaultAudioFxParams("peaking"),
+      ...over,
+    }) as HfAudioFxNode;
+
+  it("rebuilds when a reorder moves a node across a preset boundary", () => {
+    // The type sequence is identical either way, so without preset identity in
+    // the shape the chain updated in place and left the wet/dry wrap bracketing
+    // the hand-added effect instead of the preset's — preview blending out the
+    // author's own node while the render, which rebuilds, blended out the
+    // preset's.
+    const before: HfAudioFxChain = {
+      version: 1,
+      nodes: [peak({ id: "p1", fromPreset: "boom-tame" }), peak({ id: "own" })],
+    };
+    const after: HfAudioFxChain = {
+      version: 1,
+      nodes: [peak({ id: "own" }), peak({ id: "p1", fromPreset: "boom-tame" })],
+    };
+    expect(buildFxChain(asCtx(ctx()), before).update(after)).toBe(false);
+  });
+
+  it("gives every run of one preset its own blend", () => {
+    // A preset pulled apart by a reorder occupies two runs. Keyed by id and
+    // assigned, the second wrap overwrote the first, so a whole-preset lane
+    // reached one fragment and the switch silently left the rest applied.
+    const split: HfAudioFxChain = {
+      version: 1,
+      nodes: [
+        peak({ id: "t1", fromPreset: "telephone" }),
+        { type: "reverb", id: "own", enabled: true, params: defaultAudioFxParams("reverb") },
+        peak({ id: "t2", fromPreset: "telephone" }),
+      ],
+    };
+    const built = buildFxChain(asCtx(ctx()), split);
+    // Two wraps, so two wet/dry pairs — four params under the one id.
+    expect(built.presets.telephone).toHaveLength(4);
+  });
+
+  it("pushes an amount into each run of a split preset, not one of them twice", () => {
+    const at = (amount: number): HfAudioFxChain => ({
+      version: 1,
+      nodes: [
+        peak({ id: "t1", fromPreset: "telephone", presetAmount: amount }),
+        { type: "reverb", id: "own", enabled: true, params: defaultAudioFxParams("reverb") },
+        peak({ id: "t2", fromPreset: "telephone", presetAmount: amount }),
+      ],
+    });
+    const built = buildFxChain(asCtx(ctx()), at(1));
+    expect(built.update(at(0))).toBe(true);
+    // Every wet leg off and every dry leg fully open: switching the preset off
+    // has to silence all of it, not the last fragment only.
+    const wets = (built.presets.telephone ?? []).filter((_, i) => i % 2 === 0);
+    const drys = (built.presets.telephone ?? []).filter((_, i) => i % 2 === 1);
+    for (const t of wets) expect(t.param.value).toBe(0);
+    for (const t of drys) expect(t.param.value).toBe(1);
+  });
+});

@@ -87,12 +87,30 @@ describe("derived one-knob profiles", () => {
     // so it has to be authoritative. Reopening a project has to put the knob
     // back where it was.
     for (const [id, profile] of Object.entries(HF_AUDIO_FX_PROFILES)) {
+      // Tight, because the failure this guards against is small and cumulative:
+      // a piecewise curve read back with a straight line put the reverb's Space
+      // knob at 0.46 when the author set 0.5, and every reopen moved it again.
+      // One knob step is 0.01, so anything beyond that is a value the author
+      // did not choose.
       for (const s of [0, 0.25, 0.5, 0.75, 1]) {
         const params = applyAudioFxProfile(id, s, defaultAudioFxParams(id));
-        expect(audioFxProfileStrength(id, params), `${id} at ${s}`).toBeCloseTo(s, 1);
+        expect(
+          Math.abs(audioFxProfileStrength(id, params) - s),
+          `${id} at ${s} read back as ${audioFxProfileStrength(id, params)}`,
+        ).toBeLessThanOrEqual(0.01);
       }
       void profile;
     }
+  });
+
+  it("reads a piecewise curve back at the value that produced it", () => {
+    // The reverb's `size` is piecewise — the design's anchors 0.25/0.55/0.90 are
+    // not evenly spaced — so a linear inverse is wrong by construction, and it
+    // was: 0.5 in, 0.46 out. This is the case the general round-trip above
+    // cannot isolate.
+    const params = applyAudioFxProfile("reverb", 0.5, defaultAudioFxParams("reverb"));
+    expect(params.size).toBe(0.55);
+    expect(audioFxProfileStrength("reverb", params)).toBe(0.5);
   });
 
   it("passes through the figures the design proposed", () => {

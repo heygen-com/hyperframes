@@ -2,6 +2,35 @@ import type { LintContext, HyperframeLintFinding } from "../context";
 import { readAttr, readDecodedAttr, stripJsComments, truncateSnippet, isMediaTag } from "../utils";
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
 
+/**
+ * Does the GSAP call that names `#id` also set `volume` in the same call?
+ *
+ * Depth-counted rather than regex-bounded: the selector opens somewhere inside a
+ * call, and the interesting region ends when THAT call closes — a nested
+ * `fadeTime(2)` opens and closes on the way and must not end the scan. A regex
+ * cannot count parens, and both fixed bounds were wrong in opposite directions:
+ * unbounded blamed a later element, first-paren missed a whole ordinary shape.
+ */
+function tweensVolumeInSameCall(script: string, id: string): boolean {
+  const selector = new RegExp(`#${escapeRegExp(id)}(?![\\w-])`, "g");
+  for (let hit = selector.exec(script); hit; hit = selector.exec(script)) {
+    let depth = 0;
+    // Cap the scan so a malformed script cannot walk the whole file.
+    const limit = Math.min(script.length, hit.index + 2000);
+    for (let i = hit.index; i < limit; i += 1) {
+      const ch = script[i];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") {
+        // Past the end of the call the selector sits in.
+        if (depth === 0) break;
+        depth -= 1;
+      } else if (ch === ";" && depth === 0) break;
+      else if (ch === "v" && /^volume\s*:/.test(script.slice(i))) return true;
+    }
+  }
+  return false;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -624,15 +653,15 @@ function findVolumeDoubleAutomationFindings(ctx: LintContext): HyperframeLintFin
     // the element's own selector, rather than by parsing the timeline. It reads
     // the same call the runtime's own probe would pick up, and the rule only
     // warns, so a miss costs nothing.
-    const escaped = escapeRegExp(id);
-    // `[^;)]`, not `[^;]`: a chained timeline has no semicolon until the end of
-    // the whole chain, so a run that could cross `)` matched `volume` in a LATER
-    // `.to()` call and named the wrong element — and this rule's fixHint tells
-    // the author to delete their lane. Refusing to cross the closing paren keeps
-    // the match inside the call the selector belongs to. It costs a false
-    // negative when some other value in the same object is a call result, which
-    // is the safe direction for a warning that already only guesses.
-    const tweened = new RegExp(`#${escaped}(?![\\w-])[^;)]{0,200}?\\bvolume\\s*:`).test(script);
+    // Scan to the end of the call the selector opened, rather than to the first
+    // `)`. A chained timeline has no semicolon until the end of the whole chain,
+    // so an unbounded run matched `volume` in a LATER `.to()` and named the
+    // wrong element — but stopping at the first `)` instead silenced the rule
+    // for any object holding a call, e.g.
+    // `gsap.to("#bgm", { duration: fadeTime(2), volume: 0.2 })`, which is the
+    // ordinary case rather than an exotic one. Counting depth keeps the match
+    // inside the selector's own call AND lets it cross a nested one.
+    const tweened = tweensVolumeInSameCall(script, id);
     if (!tweened) continue;
     findings.push({
       code: "audio_volume_double_automation",
