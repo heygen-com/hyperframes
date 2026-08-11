@@ -3,7 +3,12 @@ import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
-import { EXCLUDED_TAGS, ensureHfIds, mintHfId } from "@hyperframes/parsers/hf-ids";
+import {
+  EXCLUDED_TAGS,
+  ensureHfIds,
+  mintHfId,
+  walkCompositionDescendants,
+} from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
@@ -178,10 +183,10 @@ function resolveOperationTarget(parent: HTMLElement, op: PatchOperation): HTMLEl
 function stampNewChildIds(parent: Element): void {
   const assigned = new Set<string>();
   const root = parent.ownerDocument?.body ?? parent;
-  for (const el of root.querySelectorAll("[data-hf-id]")) {
+  walkCompositionDescendants(root, (el) => {
     const id = el.getAttribute("data-hf-id");
     if (id) assigned.add(id);
-  }
+  });
   for (const el of parent.querySelectorAll("*")) {
     if (el.getAttribute("data-hf-id")) continue;
     if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;

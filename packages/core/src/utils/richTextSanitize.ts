@@ -90,8 +90,16 @@ const UNSAFE_VALUE = /url\(|expression\(|javascript:|vbscript:|@import|<\//i;
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 
+type SanitizerFrame =
+  | { phase: "visit"; node: Node }
+  | { phase: "sanitize"; element: Element; tag: string };
+
 export function isRichTextFormattingTag(tagName: string): boolean {
   return FORMATTING_TAGS.has(tagName.toUpperCase());
+}
+
+function isElementNode(node: Node): node is Element {
+  return node.nodeType === ELEMENT_NODE;
 }
 
 /**
@@ -106,17 +114,30 @@ export function isRichTextFormattingTag(tagName: string): boolean {
  * function: active content can run before sanitization begins.
  */
 export function sanitizeRichTextChildren(parent: Element): void {
-  // A snapshot, because the loop moves and removes the very nodes it walks.
-  for (const child of Array.from(parent.childNodes)) {
+  const pending: SanitizerFrame[] = Array.from(
+    parent.childNodes,
+    (node): SanitizerFrame => ({ phase: "visit", node }),
+  ).reverse();
+
+  // Post-order without recursion: adversarially deep pasted markup must not
+  // exhaust either the server or browser call stack.
+  for (let frame = pending.pop(); frame; frame = pending.pop()) {
+    if (frame.phase === "sanitize") {
+      if (!FORMATTING_TAGS.has(frame.tag)) unwrap(frame.element);
+      else stripAttributes(frame.element);
+      continue;
+    }
+
+    const child = frame.node;
     if (child.nodeType === TEXT_NODE) continue;
 
-    if (child.nodeType !== ELEMENT_NODE) {
+    if (!isElementNode(child)) {
       // Comments and processing instructions are neither words nor formatting.
       child.parentNode?.removeChild(child);
       continue;
     }
 
-    const element = child as Element;
+    const element = child;
     const tag = element.tagName.toUpperCase();
 
     if (OPAQUE_TAGS.has(tag)) {
@@ -124,16 +145,10 @@ export function sanitizeRichTextChildren(parent: Element): void {
       continue;
     }
 
-    // Clean the inside before deciding what to do with the outside, so an
-    // unwrap promotes children that have already been through this.
-    sanitizeRichTextChildren(element);
-
-    if (!FORMATTING_TAGS.has(tag)) {
-      unwrap(element);
-      continue;
+    pending.push({ phase: "sanitize", element, tag });
+    for (const descendant of Array.from(element.childNodes).reverse()) {
+      pending.push({ phase: "visit", node: descendant });
     }
-
-    stripAttributes(element);
   }
 }
 

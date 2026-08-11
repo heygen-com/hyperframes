@@ -572,4 +572,16 @@ describe("patchElementInHtml stamps the ids a rich-text patch introduces", () =>
 
     expect(html).toContain('data-hf-id="hf-keep"');
   });
+
+  it("does not collide with an id inside a composition template", () => {
+    const source = `<!doctype html><html><body><template data-composition-id="nested"><p data-hf-id="hf-3x72">nested</p></template><h1 id="title">plain</h1></body></html>`;
+    const { html } = patchElementInHtml(source, { id: "title" }, [
+      { type: "rich-text", property: "", value: '<span style="color: red">b</span>' },
+    ]);
+
+    expect(html.match(/data-hf-id="hf-3x72"/g)).toHaveLength(1);
+    const introducedId = /<span[^>]*data-hf-id="([^"]+)"/.exec(html)?.[1];
+    expect(introducedId).toBeDefined();
+    expect(introducedId).not.toBe("hf-3x72");
+  });
 });

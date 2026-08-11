@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { isRichTextFormattingTag, sanitizeRichTextChildren } from "./richTextSanitize";
 
+function parseWithLinkedom(html: string): Element {
+  const { document: doc } = parseHTML(
+    `<!DOCTYPE html><html><body><div id="test-host">${html}</div></body></html>`,
+  );
+  const host = doc.getElementById("test-host");
+  if (!host) throw new Error("test host was not parsed");
+  return host as unknown as Element;
+}
+
 // Both DOM implementations, every case. The contract must not depend on which
 // parser constructs the inert tree at a trust boundary.
 const PARSERS: Array<[string, (html: string) => Element]> = [
@@ -13,15 +22,7 @@ const PARSERS: Array<[string, (html: string) => Element]> = [
       return host;
     },
   ],
-  [
-    "linkedom",
-    (html) => {
-      const { document: doc } = parseHTML(`<!DOCTYPE html><html><body></body></html>`);
-      const host = doc.createElement("div");
-      host.innerHTML = html;
-      return host as unknown as Element;
-    },
-  ],
+  ["linkedom", parseWithLinkedom],
 ];
 
 function clean(html: string, parse: (html: string) => Element): string {
@@ -200,6 +201,21 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     const out = clean('<span style="color: red">open', parse);
     expect(out).toBe('<span style="color: red">open</span>');
   });
+
+  it("is a fixed point", () => {
+    const host = parse('<div><span onclick="steal()" style="color: red">x</span></div>');
+    sanitizeRichTextChildren(host);
+    const once = host.innerHTML;
+    sanitizeRichTextChildren(host);
+    expect(host.innerHTML).toBe(once);
+  });
+});
+
+it("sanitizes adversarially deep markup without recursive stack growth", () => {
+  const depth = 15_000;
+  const host = parseWithLinkedom(`${"<b>".repeat(depth)}x${"</b>".repeat(depth)}`);
+
+  expect(() => sanitizeRichTextChildren(host)).not.toThrow();
 });
 
 describe("isRichTextFormattingTag", () => {
