@@ -38,17 +38,18 @@ Where `<type-dir>` is `examples`, `blocks`, or `components`.
 
 ## Item manifest fields
 
-| Field                  | Type     | Required | Description                                    |
-| ---------------------- | -------- | -------- | ---------------------------------------------- |
-| `name`                 | string   | yes      | Kebab-case identifier                          |
-| `type`                 | string   | yes      | `hyperframes:block` or `hyperframes:component` |
-| `title`                | string   | yes      | Human-readable title                           |
-| `description`          | string   | yes      | One-line description                           |
-| `tags`                 | string[] | no       | Filter tags (e.g., `["data", "chart"]`)        |
-| `dimensions`           | object   | blocks   | `{ width, height }` — blocks only              |
-| `duration`             | number   | blocks   | Duration in seconds — blocks only              |
-| `files`                | array    | yes      | Files to install (`path`, `target`, `type`)    |
-| `registryDependencies` | string[] | no       | Other registry items this depends on           |
+| Field                  | Type     | Required | Description                                                                                                                                                                                                                                |
+| ---------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                 | string   | yes      | Kebab-case identifier                                                                                                                                                                                                                      |
+| `type`                 | string   | yes      | `hyperframes:block` or `hyperframes:component`                                                                                                                                                                                             |
+| `title`                | string   | yes      | Human-readable title                                                                                                                                                                                                                       |
+| `description`          | string   | yes      | One-line description                                                                                                                                                                                                                       |
+| `tags`                 | string[] | no       | Filter tags (e.g., `["data", "chart"]`)                                                                                                                                                                                                    |
+| `dimensions`           | object   | blocks   | `{ width, height }` — blocks only                                                                                                                                                                                                          |
+| `duration`             | number   | blocks   | Duration in seconds — blocks only                                                                                                                                                                                                          |
+| `files`                | array    | yes      | Files to install (`path`, `target`, `type`)                                                                                                                                                                                                |
+| `registryDependencies` | string[] | no       | Other registry items this depends on                                                                                                                                                                                                       |
+| `controls`             | array    | gate     | Declared control surface — `name`, `type` (toggle/variant/scalar), `values`/`fields`, `min`/`max`, `default`, `drives`. Single authoring source; rendered as the catalog page's controls table. Required at the Quality Gate for new items |
 
 ## Available items
 

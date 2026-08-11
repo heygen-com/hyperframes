@@ -40,23 +40,15 @@ document.querySelectorAll(".shimmer-sweep-target").forEach((el) => {
 });
 ```
 
-**Timeline** — add the sweep:
+**Timeline** — add the sweep at a position; the snippet's CONFIG-reading helper owns
+the sweep's internal duration, ease, and stagger:
 
 ```js
-tl.fromTo(
-  ".shimmer-sweep-target",
-  {
-    "--shimmer-pos": "-20%",
-  },
-  {
-    "--shimmer-pos": "120%",
-    duration: 1.2,
-    ease: "power2.inOut",
-    stagger: 0.15,
-  },
-  1.5,
-);
+tl.add(shimmerSweepBuild(".shimmer-sweep-target"), 1.5);
 ```
+
+The parent composition owns _where_ the sweep sits on the timeline (the position arg);
+the component owns _how_ it moves. Raw tween args never migrate into host code.
 
 ### 4. Lint and preview
 
@@ -67,7 +59,8 @@ hyperframes preview
 
 ### 5. Customize
 
-- `--shimmer-color`: highlight color per element
-- `--shimmer-width`: light band width (default 20%)
-- `--shimmer-angle`: sweep direction (default 120deg)
-- Timeline `duration`, `ease`, `stagger`: control speed and feel
+- `sweep` in the snippet's `CONFIG`: `"subtle" | "standard" | "dramatic"` — drives band
+  width, angle, and the helper's internal duration/ease/stagger
+- `--shimmer-color`: host re-skin token — override per element or at host level
+- Everything else (raw durations, eases, staggers, band geometry) is locked — changing it
+  means editing the component source

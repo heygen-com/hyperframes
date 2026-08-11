@@ -11,7 +11,10 @@ Components are effect snippets — HTML, CSS, and optionally JS that you merge d
    - **HTML elements** — inside your `<div data-composition-id="...">`
    - **CSS styles** — into your composition's `<style>` block
    - **JS setup** — into your composition's `<script>`, before your timeline code
-   - **Timeline calls** — into your GSAP timeline (if the component exposes them)
+   - **Timeline wiring** — call the component's CONFIG-reading helper at a position on
+     your GSAP timeline (e.g. `tl.add(sweepBuild(el), 2.0)`). The helper owns its internal
+     durations, eases, and staggers, mapped from the component's declared controls — raw
+     tween args never migrate into host code
 
 ## Example: grain-overlay (CSS-only, no timeline integration)
 
@@ -35,5 +38,8 @@ See `examples/add-component.md` for the full shimmer-sweep walkthrough (HTML wra
 
 - Components inherit the host composition's dimensions and duration
 - Place component HTML at the appropriate z-index relative to your content
-- Read the comment header in each snippet for customizable values
+- Customize via the component's declared controls in its `CONFIG` block (the comment
+  grammar documents each) and the host token layer (`--*` CSS custom properties);
+  everything else is locked — the host owns _where_ the component sits on the timeline,
+  the component owns _how_ it moves
 - Run `hyperframes lint` after wiring to catch structural issues

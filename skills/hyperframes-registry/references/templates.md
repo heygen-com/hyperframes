@@ -178,6 +178,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
 - Entrance animation → your style's entrance
 - Karaoke highlight → your style's active word treatment
 - Colors → your style's palette
+- Fill the Controls block (≥2 total incl. family base, ≤4 item-specific; typed, commented)
 
 ---
 
@@ -310,6 +311,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
 - State proxy → your animated properties
 - Tweens → your animation timeline
 - renderScene → apply state to your Three.js objects
+- Fill the Controls block (≥2 total incl. family base, ≤4 item-specific; typed, commented)
 
 ---
 
@@ -356,6 +358,27 @@ Copy-paste starter templates for each component type. These embed the proven pat
   ]
 }
 ```
+
+**Controls declaration** — the item's designed control surface, declared once here as the
+single authoring source for control documentation; `scripts/generate-catalog-pages.ts` renders
+it as a controls table on the item's generated catalog page. Optional today, required at the
+Quality Gate:
+
+```json
+"controls": [
+  { "name": "scheme",    "type": "variant", "values": ["light", "dark"],                   "default": "light",   "drives": "which authored token set is active" },
+  { "name": "layout",    "type": "variant", "values": ["2up", "3up", "4up", "3x2", "1+2"], "default": "3up",     "drives": "grid pose + per-cell inside scale" },
+  { "name": "animation", "type": "toggle",  "fields": ["animationIn", "animationOut"],     "default": { "animationIn": true, "animationOut": true }, "drives": "entrance/exit segments (durations derived from DUR)" }
+]
+```
+
+Declaration shape rules: `fields` maps one declared control to N `CONFIG` keys; the gate's
+exact-agreement check compares on the union of `fields`, and `default` is then keyed per
+field. Toggles omit `values` (always `true | false`). Scalars declare `min`/`max` bounds.
+Every combination of a paired toggle is a reachable state — four for a pair — and each must
+be authored. The declaration does not flow into `registry/registry.json` (manifest entries
+are `{name, type}` pairs only); it must agree field-for-field with the CONFIG comment block.
+See the `#### Control surface` rule in [contributing.md](contributing.md).
 
 Tags by category:
 
@@ -414,4 +437,5 @@ Tags by category:
 
 - `COMPNAME` → your component name (e.g., `shimmer-sweep`)
 - Background should be `transparent` so it overlays cleanly
+- Fill the Controls block (≥2 total incl. family base, ≤4 item-specific; typed, commented)
 - No `data-composition-id` or `window.__timelines` — the parent owns timing

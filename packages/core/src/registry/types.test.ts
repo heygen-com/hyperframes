@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import {
+  CONTROL_TYPES,
   FILE_TYPES,
   ITEM_TYPES,
   isBlockItem,
@@ -120,13 +121,15 @@ describe("registry types", () => {
       expect(setEquals(enums[0]!, ITEM_TYPES)).toBe(true);
     });
 
-    it("registry-item.json has exactly two `type` enums: one ITEM_TYPES, one FILE_TYPES", () => {
+    it("registry-item.json has exactly three `type` enums: ITEM_TYPES, FILE_TYPES, CONTROL_TYPES", () => {
       const enums = collectEnums(registryItemSchema, "type");
       const distinct = new Set(enums.map(setKey));
-      // Two semantically distinct enums — the item's `type` and each file's `type`.
-      expect(distinct.size).toBe(2);
+      // Three semantically distinct enums — the item's `type`, each file's
+      // `type`, and each declared control's `type`.
+      expect(distinct.size).toBe(3);
       expect(enums.some((e) => setEquals(e, ITEM_TYPES))).toBe(true);
       expect(enums.some((e) => setEquals(e, FILE_TYPES))).toBe(true);
+      expect(enums.some((e) => setEquals(e, CONTROL_TYPES))).toBe(true);
     });
   });
 
