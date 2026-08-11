@@ -125,6 +125,76 @@
         "poster": { "type": "string" }
       }
     },
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The item's declared control surface — the single authoring source for control documentation. Each entry mirrors one control in the item's top-of-script CONFIG object and is rendered as a controls table on the item's generated catalog page.",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "drives"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9]*$",
+            "description": "Control name as it appears in CONFIG. Intent-named (e.g. \"energy\", \"layout\"), never implementation-named (e.g. \"staggerMs\")."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["toggle", "variant", "scalar"],
+            "description": "toggle = boolean between two authored states; variant = enum over N authored poses; scalar = bounded number interpolating authored anchor states through a mapping."
+          },
+          "values": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "variant only: the authored poses. Toggles omit this (always true | false)."
+          },
+          "fields": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Maps one declared control to N CONFIG keys (e.g. a paired animationIn/animationOut toggle counting as one control). default is then keyed per field."
+          },
+          "min": {
+            "type": "number",
+            "description": "scalar only: lower declared bound (out-of-bounds input clamps here, loudly)."
+          },
+          "max": {
+            "type": "number",
+            "description": "scalar only: upper declared bound (out-of-bounds input clamps here, loudly)."
+          },
+          "default": {
+            "description": "The shipped state: variant = one of values; toggle = boolean (or a per-field object when fields is set); scalar = a number within min..max."
+          },
+          "drives": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the control drives — the designed state group or mapping behind it."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["type"],
+              "properties": { "type": { "const": "variant" } }
+            },
+            "then": { "required": ["values"] },
+            "else": { "not": { "required": ["values"] } }
+          },
+          {
+            "if": {
+              "required": ["type"],
+              "properties": { "type": { "const": "scalar" } }
+            },
+            "then": { "required": ["min", "max"] },
+            "else": {
+              "not": { "anyOf": [{ "required": ["min"] }, { "required": ["max"] }] }
+            }
+          }
+        ]
+      }
+    },
     "relatedSkill": {
       "type": "string",
       "minLength": 1
