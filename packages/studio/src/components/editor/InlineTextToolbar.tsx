@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { applyInlineStyle, readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRange";
+import { parseCssColor, toHexColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 /**
@@ -28,6 +29,7 @@ interface ToolbarPlacement {
   placeBelow: boolean;
   styles: Record<string, string>;
   colours: string[];
+  pickerColour: string;
 }
 
 export function InlineTextToolbar({
@@ -119,7 +121,7 @@ export function InlineTextToolbar({
           type="color"
           aria-label="Text colour"
           className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
-          value={toHexColor(styles.color ?? placement.colours[0])}
+          value={placement.pickerColour}
           onChange={(event) => apply({ color: event.target.value })}
         />
       </label>
@@ -158,12 +160,14 @@ export function InlineTextToolbar({
  * character has to be as visible as one used by thirty or it may as well not be
  * drawn.
  */
-export function swatchBackground(colours: readonly string[], agreed: string | undefined): string {
-  const distinct = [...new Set(colours)];
-  if (distinct.length === 0) return agreed || DEFAULT_COLOR;
-  if (distinct.length === 1) return distinct[0]!;
-  const stops = distinct.map(
-    (colour, index) => `${colour} ${((index / (distinct.length - 1)) * 100).toFixed(2)}%`,
+export function swatchBackground(
+  distinctColours: readonly string[],
+  agreed: string | undefined,
+): string {
+  if (distinctColours.length === 0) return agreed || DEFAULT_COLOR;
+  if (distinctColours.length === 1) return distinctColours[0]!;
+  const stops = distinctColours.map(
+    (colour, index) => `${colour} ${((index / (distinctColours.length - 1)) * 100).toFixed(2)}%`,
   );
   return `linear-gradient(135deg, ${stops.join(", ")})`;
 }
@@ -233,12 +237,15 @@ function placeOverSelection(
   const above = box.top + rect.top * scale - GAP_PX;
   const placeBelow = above < TOOLBAR_HEIGHT_PX;
 
+  const styles = readInlineStyle(range, READ_PROPERTIES);
+  const colours = readInlineStyleSpread(range, "color");
   return {
     left: box.left + (rect.left + rect.width / 2) * scale,
     top: placeBelow ? box.top + (rect.top + rect.height) * scale + GAP_PX : above,
     placeBelow,
-    styles: readInlineStyle(range, READ_PROPERTIES),
-    colours: readInlineStyleSpread(range, "color"),
+    styles,
+    colours,
+    pickerColour: toPickerColour(styles.color ?? colours[0], doc),
   };
 }
 
@@ -248,18 +255,26 @@ function isBold(weight: string | undefined): boolean {
   return Number.parseInt(weight, 10) >= 600;
 }
 
-/**
- * A colour input only accepts `#rrggbb`, and what the page reports is whatever
- * the stylesheet said. An unreadable value opens the picker on white rather
- * than refusing to open.
- */
-function toHexColor(value: string | undefined): string {
+/** A colour input accepts only `#rrggbb`; normalise any valid CSS colour to it. */
+function toPickerColour(value: string | undefined, doc: Document): string {
   if (!value) return DEFAULT_COLOR;
-  if (/^#[0-9a-f]{6}$/i.test(value)) return value;
-  const channels = value.match(/\d+(\.\d+)?/g);
-  if (!channels || channels.length < 3) return DEFAULT_COLOR;
-  return `#${channels
-    .slice(0, 3)
-    .map((channel) => Number(channel).toString(16).padStart(2, "0"))
-    .join("")}`;
+  const parsed = parseCssColor(value);
+  if (parsed) return toHexColor(parsed);
+
+  // Canvas delegates the full CSS colour grammar to the browser, including
+  // named colours that the small serialisation parser intentionally omits.
+  // DOM-only test environments can lack a canvas implementation, in which
+  // case the picker degrades to its explicit default while the swatch remains
+  // truthful because CSS still paints the original value.
+  try {
+    const context = doc.createElement("canvas").getContext("2d");
+    if (!context) return DEFAULT_COLOR;
+    context.fillStyle = DEFAULT_COLOR;
+    context.fillStyle = value;
+    const normalised =
+      typeof context.fillStyle === "string" ? parseCssColor(context.fillStyle) : null;
+    return normalised ? toHexColor(normalised) : DEFAULT_COLOR;
+  } catch {
+    return DEFAULT_COLOR;
+  }
 }

@@ -264,6 +264,15 @@ describe("InlineTextToolbar", () => {
     const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
     expect(swatch.style.backgroundColor).toBe("red");
   });
+
+  it("opens the colour input on a shorthand hex selection", () => {
+    const { element, session, iframe } = scene('<span style="color: #f00">Hello world</span>');
+    const { host } = render(session, iframe);
+
+    selectAll(element);
+
+    expect(host.querySelector<HTMLInputElement>('input[type="color"]')?.value).toBe("#ff0000");
+  });
 });
 
 describe("swatchBackground", () => {
@@ -273,12 +282,6 @@ describe("swatchBackground", () => {
     );
     expect(swatchBackground(["red", "lime", "cyan"], undefined)).toBe(
       "linear-gradient(135deg, red 0.00%, lime 50.00%, cyan 100.00%)",
-    );
-  });
-
-  it("shows a colour once however much text carries it", () => {
-    expect(swatchBackground(["red", "red", "lime"], undefined)).toBe(
-      "linear-gradient(135deg, red 0.00%, lime 100.00%)",
     );
   });
 

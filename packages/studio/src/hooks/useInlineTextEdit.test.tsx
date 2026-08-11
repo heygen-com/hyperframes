@@ -103,6 +103,27 @@ describe("useInlineTextEdit", () => {
     act(() => root.unmount());
   });
 
+  it("drops a selection dragged across the edited element's boundary", () => {
+    const element = heading("Hello world");
+    const outsider = heading("somewhere else");
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    const range = document.createRange();
+    range.setStart(element.firstChild!, 6);
+    range.setEnd(outsider.firstChild!, 4);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    act(() => controls().commit());
+
+    expect(selection.toString()).toBe("");
+    act(() => root.unmount());
+  });
+
   it("makes the element editable, and focuses it once the press has finished", async () => {
     const element = heading();
     const { controls, root, onPause } = mount();

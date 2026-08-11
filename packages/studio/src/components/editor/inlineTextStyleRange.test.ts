@@ -699,7 +699,7 @@ describe("applyInlineStyle when something else is painting the glyphs", () => {
 });
 
 describe("readInlineStyleSpread", () => {
-  it("reports every colour in the selection, in order, with its share", () => {
+  it("reports every distinct colour in the selection, in order", () => {
     const host = mount(
       '<span style="color: red">Hello</span><span style="color: lime">world</span>',
     );

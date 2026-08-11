@@ -76,7 +76,7 @@ function clearSelectionWithin(element: HTMLElement): void {
   const selection = element.ownerDocument.defaultView?.getSelection();
   if (!selection || selection.rangeCount === 0) return;
   const range = selection.getRangeAt(0);
-  if (!element.contains(range.commonAncestorContainer)) return;
+  if (!element.contains(range.startContainer) && !element.contains(range.endContainer)) return;
   selection.removeAllRanges();
 }
 
