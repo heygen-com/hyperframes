@@ -1,5 +1,16 @@
 # PORTING — turning a cap_fx3 demo into a first-class theme DNA
 
+> **Maintainer-only, and not runnable from a skill install.** This procedure
+> authors *new* theme DNAs for this skill. It is not part of using the skill.
+>
+> Its inputs — the `cap_fx3` demo set, the source frame corpora, the prior theme
+> projects, and `CONTRACT.md` — are an authoring corpus that is not distributed
+> with the skill and is not in this repo. The `~/Downloads/...` paths below are
+> the original author's local layout, recorded so the procedure stays readable;
+> substitute your own and treat them as *names for the inputs*, not locations.
+>
+> If you are looking for how to *use* embedded-captions, see `SKILL.md`.
+
 One theme at a time. The demo is the spec; the engine is the law.
 
 ## Inputs
