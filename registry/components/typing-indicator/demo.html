@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Typing Indicator</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #000;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      .hf-ti-wrap {
+        position: absolute;
+        left: 880px;
+        top: 490px;
+        font-size: 160px;
+      }
+      .hf-ti-bubble {
+        width: 1em;
+        height: 0.54em;
+        background: #242428;
+        border-radius: 0.274em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.081em;
+      }
+      .hf-ti-dot {
+        width: 0.137em;
+        height: 0.137em;
+        border-radius: 50%;
+        background: #8e8e93;
+        display: inline-block;
+      }
+      .hf-ti-tail1 {
+        position: absolute;
+        left: -0.016em;
+        bottom: -0.032em;
+        width: 0.145em;
+        height: 0.145em;
+        border-radius: 50%;
+        background: #242428;
+      }
+      .hf-ti-tail2 {
+        position: absolute;
+        left: -0.113em;
+        bottom: -0.113em;
+        width: 0.073em;
+        height: 0.073em;
+        border-radius: 50%;
+        background: #242428;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-ti-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="typing-indicator-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+    >
+      <section class="clip" data-start="0" data-duration="4" data-track-index="1" style="position: absolute; inset: 0">
+        <div class="hf-ti-wrap" id="hf-ti-demo-1">
+          <div class="hf-ti-bubble">
+            <span class="hf-ti-dot"></span>
+            <span class="hf-ti-dot"></span>
+            <span class="hf-ti-dot"></span>
+          </div>
+          <div class="hf-ti-tail1"></div>
+          <div class="hf-ti-tail2"></div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      tl.set("#hf-ti-demo-1", { autoAlpha: 0 }, 0.001);
+      /* pop-in as measured */
+      tl.fromTo(
+        "#hf-ti-demo-1",
+        { scale: 0.6, autoAlpha: 0.4 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        0.4
+      );
+      /* bounded dot wave */
+      gsap.utils.toArray("#hf-ti-demo-1 .hf-ti-dot").forEach(function (dot, i) {
+        tl.to(dot, { y: -10, duration: 0.28, ease: "sine.inOut", yoyo: true, repeat: 9 }, 0.55 + i * 0.14);
+      });
+      tl.set("#hf-ti-demo-1", { autoAlpha: 0 }, 3.7);
+      tl.set({}, {}, 4);
+
+      window.__timelines["typing-indicator-demo"] = tl;
+    </script>
+  </body>
+</html>

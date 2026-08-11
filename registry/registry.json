@@ -408,6 +408,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "notification-cascade",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "nyc-paris-flight",
       "type": "hyperframes:block"
     },
@@ -437,6 +441,10 @@
     },
     {
       "name": "sdf-iris",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "share-sheet-carousel",
       "type": "hyperframes:block"
     },
     {
@@ -657,6 +665,10 @@
     },
     {
       "name": "badge-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "banner-push-in",
       "type": "hyperframes:component"
     },
     {
@@ -1208,6 +1220,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "sheet-spring-up",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "shimmer-sweep",
       "type": "hyperframes:component"
     },
@@ -1289,6 +1305,10 @@
     },
     {
       "name": "store-badge-lockup",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "streaming-text",
       "type": "hyperframes:component"
     },
     {
@@ -1405,6 +1425,10 @@
     },
     {
       "name": "typewriter",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "typing-indicator",
       "type": "hyperframes:component"
     },
     {

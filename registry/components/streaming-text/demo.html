@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Streaming Text</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #fdfdfd;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fdfdfd;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-st-p {
+        position: absolute;
+        left: 420px;
+        top: 400px;
+        width: 1080px;
+        margin: 0;
+        font-size: 54px;
+        line-height: 1.43;
+        letter-spacing: 0.046em;
+        color: #141414;
+      }
+      .hf-st-p .w {
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-st-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="streaming-text-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <section class="clip" data-start="0" data-duration="5" data-track-index="1" style="position: absolute; inset: 0">
+        <p class="hf-st-p" id="hf-st-demo-p">
+          <span class="w">You</span> <span class="w">don't</span> <span class="w">need</span>
+          <span class="w">a</span> <span class="w">video</span> <span class="w">editor.</span>
+          <span class="w">HyperFrames</span> <span class="w">renders</span> <span class="w">the</span>
+          <span class="w">HTML</span> <span class="w">you</span> <span class="w">already</span>
+          <span class="w">write</span> <span class="w">into</span> <span class="w">pixel-perfect,</span>
+          <span class="w">deterministic</span> <span class="w">video.</span>
+        </p>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      /* the measured token rhythm, cycled */
+      var GAPS = [
+        0.167, 0.1, 0.0, 0.367, 0.0, 0.167, 0.133, 0.1, 0.1, 0.133,
+        0.167, 0.133, 0.0, 0.233, 0.167, 0.1, 0.0, 0.133, 0.133, 0.1,
+        0.167, 0.133, 0.1, 0.133, 0.167, 0.1, 0.133, 0.1, 0.133,
+      ];
+      var t = 0.6;
+      gsap.utils.toArray("#hf-st-demo-p .w").forEach(function (w, i) {
+        if (i > 0) t += GAPS[i % GAPS.length];
+        tl.set(w, { opacity: 1 }, t);
+        tl.fromTo(w, { color: "#767676" }, { color: "#141414", duration: 0.2667, ease: "none" }, t);
+      });
+      tl.set({}, {}, 5);
+
+      window.__timelines["streaming-text-demo"] = tl;
+    </script>
+  </body>
+</html>
