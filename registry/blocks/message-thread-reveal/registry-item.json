@@ -4,9 +4,12 @@
   "type": "hyperframes:block",
   "title": "Message Thread Reveal",
   "description": "A full text conversation plays out on a phone - bubbles popping in, typing indicators, a shared link card, emoji, delivered receipts - with the whole thread scrolling up beat by beat until a closing card lands. The complete chat ad-template, measured message by message",
-  "tags": ["video-primitive", "mock-ui", "chat", "vertical", "ad-template"],
+  "tags": ["showcase", "mock-ui", "chat", "vertical", "ad-template"],
   "author": "Miao Yang",
-  "dimensions": { "width": 1080, "height": 1920 },
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
   "duration": 25.7667,
   "variables": [
     {

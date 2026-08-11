@@ -4,9 +4,12 @@
   "type": "hyperframes:block",
   "title": "Notes Reveal",
   "description": "A personal note is typed character by character in a notes app - caret riding every letter, the page scrolling up on measured settle curves as each line lands - then cuts to a hand-lettered paper card with a marker headline and a ticked checklist",
-  "tags": ["video-primitive", "mock-ui", "notes", "typing", "vertical", "ad-template"],
+  "tags": ["showcase", "mock-ui", "notes", "typing", "vertical", "ad-template"],
   "author": "Miao Yang",
-  "dimensions": { "width": 1080, "height": 1920 },
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
   "duration": 24.85,
   "variables": [
     {

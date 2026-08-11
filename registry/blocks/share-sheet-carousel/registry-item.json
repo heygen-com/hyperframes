@@ -4,7 +4,7 @@
   "type": "hyperframes:block",
   "title": "Share-Sheet Carousel",
   "description": "A share sheet springs up from the bottom of the phone and cycles previews inside its card on a fast cut rhythm while the blurred ground swaps behind it, ending on an accept tap",
-  "tags": ["video-primitive", "mock-ui", "share-sheet", "vertical", "ad-template"],
+  "tags": ["showcase", "mock-ui", "share-sheet", "vertical", "ad-template"],
   "author": "Miao Yang",
   "dimensions": {
     "width": 1080,

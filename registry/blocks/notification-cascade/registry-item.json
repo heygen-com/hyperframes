@@ -4,7 +4,7 @@
   "type": "hyperframes:block",
   "title": "Notification Cascade",
   "description": "Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card",
-  "tags": ["video-primitive", "mock-ui", "notification", "vertical", "ad-template"],
+  "tags": ["showcase", "mock-ui", "notification", "vertical", "ad-template"],
   "author": "Miao Yang",
   "dimensions": {
     "width": 1080,
