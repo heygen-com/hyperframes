@@ -735,7 +735,7 @@
     "name": "chat-thread",
     "type": "component",
     "title": "Chat Thread",
-    "description": "A conversation plays out as a mountable scene: bubbles pop in on the measured entry, the thread shifts up in expo lockstep, typing dots hold the beat before replies, and a media placeholder stands in for a shared image. Messages are a variable - heights are measured at mount and the choreography is generated to fit",
+    "description": "The measured conversation as one mountable scene at full fidelity: status bar, back badge, avatar and name pill, bubbles with real iMessage tails, a Delivered receipt, large emoji rows, a media placeholder, a link card, and typing dots holding the beat. Every message picks its type by prefix - recv:/sent: text, emoji: a large row, img media, card:Title~domain a link card - and heights are measured at mount so any thread fits",
     "tags": [
       "motion-primitive",
       "chat",

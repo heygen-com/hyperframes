@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "cdfbd8831045e871017c20f21fe83922e2c9ae4a74d1fdfe140709d445d6aa41",
+  "revision": "152089ec95b90275b4c7fd4aaff1ffe3728a5718917011d1dce801c69b1add94",
   "names": [
     "ai-chat-reveal",
     "ai-generation-canvas",
