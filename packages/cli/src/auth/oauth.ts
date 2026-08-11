@@ -54,7 +54,6 @@ import {
   type StoredUserInfo,
 } from "./store.js";
 import { c } from "../ui/colors.js";
-import { withHeygenCanaryRoute } from "../utils/heygenRoute.js";
 
 const REVOKE_TIMEOUT_MS = 5_000;
 const MIN_EXPIRES_IN_SECONDS = 30;
@@ -256,10 +255,10 @@ async function requestDeviceAuthorization(
     async (signal) => {
       const response = await runtime.fetchImpl(deviceAuthorizationEndpoint(), {
         method: "POST",
-        headers: withHeygenCanaryRoute({
+        headers: {
           "content-type": "application/x-www-form-urlencoded",
           accept: "application/json",
-        }),
+        },
         body: new URLSearchParams({ client_id: runtime.clientId, scope }).toString(),
         signal,
       });
@@ -304,10 +303,10 @@ async function requestDeviceToken(
     async (signal) => {
       const response = await runtime.fetchImpl(tokenEndpoint(), {
         method: "POST",
-        headers: withHeygenCanaryRoute({
+        headers: {
           "content-type": "application/x-www-form-urlencoded",
           accept: "application/json",
-        }),
+        },
         body: new URLSearchParams({
           grant_type: DEVICE_CODE_GRANT_TYPE,
           device_code: deviceCode,
@@ -395,10 +394,10 @@ export async function refreshTokens(
 
   const res = await fetchImpl(tokenEndpoint(), {
     method: "POST",
-    headers: withHeygenCanaryRoute({
+    headers: {
       "content-type": "application/x-www-form-urlencoded",
       accept: "application/json",
-    }),
+    },
     body: body.toString(),
   });
 
@@ -447,9 +446,7 @@ export async function revokeTokens(token: string, opts: RevokeOptions = {}): Pro
   try {
     const res = await fetchImpl(revokeEndpoint(), {
       method: "POST",
-      headers: withHeygenCanaryRoute({
-        "content-type": "application/x-www-form-urlencoded",
-      }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
       body: body.toString(),
       signal: controller.signal,
     });
@@ -510,10 +507,10 @@ async function exchangeCodeForTokens(args: {
   });
   const res = await fetchImpl(tokenEndpoint(), {
     method: "POST",
-    headers: withHeygenCanaryRoute({
+    headers: {
       "content-type": "application/x-www-form-urlencoded",
       accept: "application/json",
-    }),
+    },
     body: body.toString(),
   });
   if (res.status === 400 || res.status === 401) {

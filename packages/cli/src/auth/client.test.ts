@@ -84,7 +84,6 @@ describe("auth/client", () => {
       authorization: "Bearer at_123",
       [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
       [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
-      heygen_route: "canary",
     });
   });
 
@@ -92,7 +91,6 @@ describe("auth/client", () => {
     expect(buildAuthHeaders(apiKeyCred())).toEqual({
       "x-api-key": "hg_x",
       [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
-      heygen_route: "canary",
     });
   });
 
