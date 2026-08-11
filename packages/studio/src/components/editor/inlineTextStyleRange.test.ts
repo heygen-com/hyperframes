@@ -704,18 +704,13 @@ describe("readInlineStyleSpread", () => {
       '<span style="color: red">Hello</span><span style="color: lime">world</span>',
     );
 
-    expect(readInlineStyleSpread(rangeOver(host, 0, 10), "color")).toEqual([
-      { value: "red", chars: 5 },
-      { value: "lime", chars: 5 },
-    ]);
+    expect(readInlineStyleSpread(rangeOver(host, 0, 10), "color")).toEqual(["red", "lime"]);
   });
 
-  it("collapses characters that share a colour into one band", () => {
+  it("reports a colour once, however many characters carry it", () => {
     const host = mount('<span style="color: red">He</span><span style="color: red">llo</span>');
 
-    expect(readInlineStyleSpread(rangeOver(host, 0, 5), "color")).toEqual([
-      { value: "red", chars: 5 },
-    ]);
+    expect(readInlineStyleSpread(rangeOver(host, 0, 5), "color")).toEqual(["red"]);
   });
 
   it("reports only what the selection covers", () => {
@@ -723,9 +718,7 @@ describe("readInlineStyleSpread", () => {
       '<span style="color: red">Hello</span><span style="color: lime">world</span>',
     );
 
-    expect(readInlineStyleSpread(rangeOver(host, 6, 10), "color")).toEqual([
-      { value: "lime", chars: 4 },
-    ]);
+    expect(readInlineStyleSpread(rangeOver(host, 6, 10), "color")).toEqual(["lime"]);
   });
 
   it("ignores whitespace, which shows no colour at all", () => {
@@ -738,10 +731,7 @@ describe("readInlineStyleSpread", () => {
         '<span style="color: lime"> world</span>',
     );
 
-    expect(readInlineStyleSpread(rangeOver(host, 0, 12), "color")).toEqual([
-      { value: "red", chars: 5 },
-      { value: "lime", chars: 5 },
-    ]);
+    expect(readInlineStyleSpread(rangeOver(host, 0, 12), "color")).toEqual(["red", "lime"]);
   });
 
   it("is empty when the characters carry no colour of their own", () => {

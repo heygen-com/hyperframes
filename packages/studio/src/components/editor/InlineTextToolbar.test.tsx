@@ -249,7 +249,7 @@ describe("InlineTextToolbar", () => {
     selectAll(element);
 
     const swatch = toolbarIn(host)!.querySelector<HTMLElement>("span[aria-hidden]")!;
-    expect(swatch.style.backgroundImage).toBe("linear-gradient(90deg, red 25.00%, lime 75.00%)");
+    expect(swatch.style.backgroundImage).toBe("linear-gradient(135deg, red 0.00%, lime 100.00%)");
     // Without this the gradient repeats under the border, painting the end
     // colour along the leading edge and the start colour along the trailing one.
     expect(swatch.style.backgroundOrigin).toBe("border-box");
@@ -267,20 +267,23 @@ describe("InlineTextToolbar", () => {
 });
 
 describe("swatchBackground", () => {
-  it("blends every colour in the selection, weighted by how much text carries it", () => {
-    expect(
-      swatchBackground(
-        [
-          { value: "red", chars: 5 },
-          { value: "lime", chars: 15 },
-        ],
-        undefined,
-      ),
-    ).toBe("linear-gradient(90deg, red 12.50%, lime 62.50%)");
+  it("sweeps through each distinct colour, evenly spaced", () => {
+    expect(swatchBackground(["red", "lime"], undefined)).toBe(
+      "linear-gradient(135deg, red 0.00%, lime 100.00%)",
+    );
+    expect(swatchBackground(["red", "lime", "cyan"], undefined)).toBe(
+      "linear-gradient(135deg, red 0.00%, lime 50.00%, cyan 100.00%)",
+    );
+  });
+
+  it("shows a colour once however much text carries it", () => {
+    expect(swatchBackground(["red", "red", "lime"], undefined)).toBe(
+      "linear-gradient(135deg, red 0.00%, lime 100.00%)",
+    );
   });
 
   it("stays a plain swatch when the selection is one colour", () => {
-    expect(swatchBackground([{ value: "red", chars: 5 }], "red")).toBe("red");
+    expect(swatchBackground(["red"], "red")).toBe("red");
   });
 
   it("falls back to the agreed colour when the characters carry none", () => {

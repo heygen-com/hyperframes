@@ -202,33 +202,29 @@ export function readInlineStyle(range: Range, properties: string[]): Record<stri
 }
 
 /**
- * What one property looks like across the range, in document order, as runs of
- * consecutive characters that share a value: `[{ value: "red", chars: 5 },
- * { value: "lime", chars: 6 }]`.
+ * The distinct values one property takes across the range, in document order:
+ * `["red", "lime"]`.
  *
  * `readInlineStyle` above answers "what is this range" and reports nothing when
  * the range disagrees with itself — right for a toggle, which can only be on or
  * off. A swatch can show more than one value at once, and showing the default
  * instead reads as "this text is white" when none of it is.
  */
-export function readInlineStyleSpread(
-  range: Range,
-  property: string,
-): Array<{ value: string; chars: number }> {
+export function readInlineStyleSpread(range: Range, property: string): string[] {
   const covered = coveredChars(range);
   if (!covered) return [];
-  const spread: Array<{ value: string; chars: number }> = [];
+  const seen = new Set<string>();
+  const spread: string[] = [];
   for (const { char, style } of covered) {
     // A space paints nothing, so the colour it inherits is not a colour anyone
-    // can see. Counting it puts a band of the element's own colour in the swatch
-    // for text that shows none of it — the stray edge on a selection that just
-    // happens to start or end next to a space.
+    // can see. Counting it puts the element's own colour in the swatch for text
+    // that shows none of it — the stray band on a selection that happens to
+    // start or end next to a space.
     if (!char.trim()) continue;
     const value = style[property];
-    if (value === undefined) continue;
-    const last = spread.at(-1);
-    if (last?.value === value) last.chars++;
-    else spread.push({ value, chars: 1 });
+    if (value === undefined || seen.has(value)) continue;
+    seen.add(value);
+    spread.push(value);
   }
   return spread;
 }

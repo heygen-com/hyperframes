@@ -27,7 +27,7 @@ interface ToolbarPlacement {
   top: number;
   placeBelow: boolean;
   styles: Record<string, string>;
-  colours: Array<{ value: string; chars: number }>;
+  colours: string[];
 }
 
 export function InlineTextToolbar({
@@ -95,12 +95,12 @@ export function InlineTextToolbar({
       onClick={(event) => event.stopPropagation()}
     >
       <label
-        className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-white/10"
+        className="group relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-white/10"
         title="Text colour"
       >
         <span
           aria-hidden="true"
-          className="h-3.5 w-3.5 rounded-full border border-white/25"
+          className="h-4 w-4 rounded-full border-2 border-white/25 transition-transform duration-150 group-hover:scale-110 group-active:scale-95"
           // `background` maps a gradient to the PADDING box and then repeats it
           // to fill the border box, so the 1px border shows the strip either
           // side of the tile: the end colour on the left, the start colour on
@@ -119,7 +119,7 @@ export function InlineTextToolbar({
           type="color"
           aria-label="Text colour"
           className="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0"
-          value={toHexColor(styles.color ?? placement.colours[0]?.value)}
+          value={toHexColor(styles.color ?? placement.colours[0])}
           onChange={(event) => apply({ color: event.target.value })}
         />
       </label>
@@ -149,24 +149,23 @@ export function InlineTextToolbar({
 }
 
 /**
- * The selection's colours blended left to right, each sitting at the middle of
- * the share of characters that carry it. A selection with one colour is a plain
- * swatch, as before.
+ * The selection's colours as one swatch: a diagonal sweep through each distinct
+ * colour, evenly spaced. A selection with one colour is a plain swatch.
+ *
+ * Distinct rather than weighted, and evenly spaced rather than proportional,
+ * matching the mixed-colour swatch in the design tool this sits alongside. The
+ * swatch answers "which colours are in here", and at 16px a colour used by one
+ * character has to be as visible as one used by thirty or it may as well not be
+ * drawn.
  */
-export function swatchBackground(
-  colours: Array<{ value: string; chars: number }>,
-  agreed: string | undefined,
-): string {
-  if (colours.length === 0) return agreed || DEFAULT_COLOR;
-  if (colours.length === 1) return colours[0]!.value;
-  const total = colours.reduce((sum, colour) => sum + colour.chars, 0);
-  let offset = 0;
-  const stops = colours.map((colour) => {
-    const middle = ((offset + colour.chars / 2) / total) * 100;
-    offset += colour.chars;
-    return `${colour.value} ${middle.toFixed(2)}%`;
-  });
-  return `linear-gradient(90deg, ${stops.join(", ")})`;
+export function swatchBackground(colours: readonly string[], agreed: string | undefined): string {
+  const distinct = [...new Set(colours)];
+  if (distinct.length === 0) return agreed || DEFAULT_COLOR;
+  if (distinct.length === 1) return distinct[0]!;
+  const stops = distinct.map(
+    (colour, index) => `${colour} ${((index / (distinct.length - 1)) * 100).toFixed(2)}%`,
+  );
+  return `linear-gradient(135deg, ${stops.join(", ")})`;
 }
 
 function swallow(event: { preventDefault: () => void; stopPropagation: () => void }): void {
