@@ -1532,8 +1532,16 @@ export const VariablesExplorer = ({
     );
   };
 
-  const defaults = {};
-  for (const v of variables) if (v.default !== undefined) defaults[v.id] = v.default;
+  // Keyed on the declarations' content, not their identity: MDX hands this
+  // component a fresh `variables` array on every render, so memoising on the
+  // array itself would rebuild the defaults every time and defeat the point.
+  const variablesKey = JSON.stringify(variables);
+  const defaults = useMemo(() => {
+    const built = {};
+    for (const v of variables) if (v.default !== undefined) built[v.id] = v.default;
+    return built;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variablesKey]);
 
   /**
    * Values survive a reload by living in the query string.
