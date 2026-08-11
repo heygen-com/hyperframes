@@ -61,19 +61,57 @@ export function remapTarget(
 // Shown to the user after install so they know how to wire the item into
 // their host composition. Copied to clipboard by default.
 
-export function buildSnippet(item: RegistryItem, relativeTarget: string): string {
+/**
+ * Values tuned on the catalog page, as an attribute on the mount element.
+ *
+ * They ride on the host rather than being written into the installed file,
+ * which keeps two things true: the composition on disk stays byte-identical to
+ * the registry's, so a later reinstall can still tell an edit from an update,
+ * and two mounts of the same block can carry different values.
+ *
+ * Single-quoted because the JSON is full of double quotes, and a value
+ * containing a single quote is escaped rather than allowed to close it early.
+ */
+function variableValuesAttribute(values: Record<string, unknown> | null): string {
+  if (!values || Object.keys(values).length === 0) return "";
+  const json = JSON.stringify(values).replace(/'/g, "&#39;");
+  return ` data-variable-values='${json}'`;
+}
+
+export function buildSnippet(
+  item: RegistryItem,
+  relativeTarget: string,
+  values: Record<string, unknown> | null = null,
+): string {
   if (item.type === "hyperframes:block") {
     // data-start omitted — adjust to your timeline position after pasting.
     const dims =
       "dimensions" in item && item.dimensions
         ? ` data-width="${item.dimensions.width}" data-height="${item.dimensions.height}"`
         : "";
-    return `<div data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}></div>`;
+    const vars = variableValuesAttribute(values);
+    return `<div data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}${vars}></div>`;
   }
   if (item.type === "hyperframes:component") {
     return `<!-- paste from ${relativeTarget} into your composition -->`;
   }
   return "";
+}
+
+/** `--vars` is JSON an agent or the catalog page produced; a malformed one is
+ *  worth a clear error rather than a snippet that silently drops the values. */
+export function parseVariableValues(raw: string | undefined): Record<string, unknown> | null {
+  if (raw === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 // ── Core runner (tested) ────────────────────────────────────────────────────
@@ -82,6 +120,8 @@ export interface RunAddArgs {
   name: string;
   projectDir: string;
   skipClipboard?: boolean;
+  /** Variable values to bake into the printed mount snippet. */
+  vars?: string;
   /** Overwrite files this project has changed since they were installed. */
   force?: boolean;
   /** Current CLI version used for registry metadata compatibility checks. */
@@ -108,6 +148,7 @@ export class AddError extends Error {
     message: string,
     public readonly code:
       | "unknown-item"
+      | "invalid-vars"
       | "wrong-type"
       | "install-failed"
       | "example-type"
@@ -228,7 +269,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
     itemForInstall.files[0];
   const snippetTargetRel = primaryFile?.target ?? "";
-  const snippet = buildSnippet(item, snippetTargetRel);
+  const snippet = buildSnippet(item, snippetTargetRel, parseVariableValues(opts.vars));
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 
   return {
@@ -278,6 +319,11 @@ export default defineCommand({
       type: "boolean",
       description: "Print a machine-readable summary (written files + snippet) to stdout",
     },
+    vars: {
+      type: "string",
+      description:
+        "JSON of variable values to bake into the printed snippet, as copied from a catalog page",
+    },
     force: {
       type: "boolean",
       description:
@@ -302,6 +348,7 @@ export default defineCommand({
         projectDir,
         skipClipboard,
         force: args.force,
+        vars: args.vars,
       });
       const wroteConfig = !hasConfigBefore && existsSync(projectConfigPath(projectDir));
 
@@ -385,6 +432,7 @@ export default defineCommand({
             projectDir,
             skipClipboard: true,
             force: args.force,
+            vars: args.vars,
           });
           results.push(result);
           for (const warning of result.warnings) {

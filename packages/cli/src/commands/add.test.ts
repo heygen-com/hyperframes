@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import { AddError, buildSnippet, remapTarget, runAdd } from "./add.js";
+import { AddError, buildSnippet, parseVariableValues, remapTarget, runAdd } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
@@ -422,5 +422,43 @@ describe("runAdd (integration, mocked registry)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("variable values in the snippet", () => {
+  const block = {
+    name: "split-flap-board",
+    type: "hyperframes:block",
+    duration: 3.5,
+    dimensions: { width: 1920, height: 1080 },
+  } as unknown as RegistryItem;
+
+  it("leaves the snippet alone when no values are passed", () => {
+    const snippet = buildSnippet(block, "compositions/split-flap-board.html");
+    expect(snippet).not.toContain("data-variable-values");
+  });
+
+  it("carries values tuned on the catalog page", () => {
+    const snippet = buildSnippet(block, "compositions/split-flap-board.html", {
+      boardText: "GATE 42",
+      cellCount: 16,
+    });
+    expect(snippet).toContain(`data-variable-values='{"boardText":"GATE 42","cellCount":16}'`);
+  });
+
+  it("escapes a single quote rather than letting it close the attribute", () => {
+    const snippet = buildSnippet(block, "x.html", { boardText: "IT'S BOARDING" });
+    expect(snippet).toContain("&#39;");
+    expect(snippet.match(/data-variable-values='/g)?.length).toBe(1);
+  });
+
+  it("treats an empty object as nothing to say", () => {
+    expect(buildSnippet(block, "x.html", {})).not.toContain("data-variable-values");
+  });
+
+  it("rejects --vars that is not a JSON object", () => {
+    expect(() => parseVariableValues("not json")).toThrow(/JSON object/);
+    expect(() => parseVariableValues("[1,2]")).toThrow(/JSON object/);
+    expect(parseVariableValues(undefined)).toBeNull();
   });
 });
