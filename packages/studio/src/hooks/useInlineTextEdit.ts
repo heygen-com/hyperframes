@@ -42,6 +42,12 @@ export interface InlineTextEditSession {
   outline: string;
 }
 
+/** The live markup to persist and the session snapshot to restore on failure. */
+export interface InlineTextEditCommit {
+  html: string;
+  previousHtml: string;
+}
+
 export interface InlineTextEditControls {
   session: InlineTextEditSession | null;
   /**
@@ -61,7 +67,7 @@ export function useInlineTextEdit({
   onPause,
 }: {
   /** Where the edited text goes. The caller owns persistence. */
-  onCommit: (text: string) => void;
+  onCommit: (commit: InlineTextEditCommit) => void;
   /** Stop playback, so the element is not animating under the caret. */
   onPause?: () => void;
 }): InlineTextEditControls {
@@ -138,7 +144,7 @@ export function useInlineTextEdit({
     teardown();
     // After teardown, so the commit path's own resync does not fight an
     // element that is still editable.
-    onCommit(html);
+    onCommit({ html, previousHtml: open.original });
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {

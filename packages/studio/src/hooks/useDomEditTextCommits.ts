@@ -33,6 +33,7 @@ import {
   runDomEditCommit,
 } from "./domEditCommitRunner";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
+import type { InlineTextEditCommit } from "./useInlineTextEdit";
 
 // ── Types ──
 
@@ -325,7 +326,7 @@ export function useDomEditTextCommits({
    * something to save and something to put back if saving fails.
    */
   const handleDomRichTextCommit = useCallback(
-    async (html: string) => {
+    async ({ html, previousHtml }: InlineTextEditCommit) => {
       if (!domEditSelection) return;
       // The same gate that let the edit open, not the design panel's.
       //
@@ -342,7 +343,6 @@ export function useDomEditTextCommits({
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
       let editedElement: HTMLElement | null = null;
-      let previousInnerHtml: string | null = null;
 
       await runDomEditCommit({
         capture: () => {
@@ -350,7 +350,6 @@ export function useDomEditTextCommits({
           const el = findElementForSelection(doc, domEditSelection, activeCompPath);
           if (!el) return;
           editedElement = el;
-          previousInnerHtml = el.innerHTML;
         },
         apply: () => {
           // Idempotent: the caret put this there. Assigned anyway so a commit
@@ -366,8 +365,7 @@ export function useDomEditTextCommits({
         },
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
-          if (!editedElement || previousInnerHtml === null) return;
-          editedElement.innerHTML = previousInnerHtml;
+          if (editedElement) editedElement.innerHTML = previousHtml;
         },
         onError: (error) =>
           reportDomEditPersistFailure(domEditSelection, operations, error, showToast),

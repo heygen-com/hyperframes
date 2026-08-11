@@ -853,6 +853,39 @@ async function expectPersistedTextStructureEdit(
   }
 }
 
+describe("useDomEditCommits rich-text persist handling", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it("restores the session snapshot when rich-text persistence fails", async () => {
+    stubPatchFetch({ ok: true, changed: false, matched: false });
+    const previousHtml = '<span style="color: red">Before</span>';
+    const html = '<span style="color: blue">After</span>';
+    const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomRichTextCommit({ html, previousHtml });
+      });
+
+      expect(element.innerHTML).toBe(previousHtml);
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Couldn't save "Hero title"/),
+        "error",
+      );
+    } finally {
+      warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+});
+
 describe("useDomEditCommits style persist handling", () => {
   beforeEach(() => {
     ensureCssEscape();

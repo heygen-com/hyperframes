@@ -39,7 +39,7 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
 } {
   const actions = useDomEditActionsContextOptional();
   const inlineText = useInlineTextEdit({
-    onCommit: (html) => void actions?.handleDomRichTextCommit(html),
+    onCommit: (commit) => void actions?.handleDomRichTextCommit(commit),
     onPause: () => usePlayerStore.getState().setIsPlaying(false),
   });
   const lastPressRef = useRef<PressMark | null>(null);
@@ -92,8 +92,8 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
     handleKeyDown: (event) => {
       if (event.key !== "Enter" || event.shiftKey) return false;
       const target = selectionRef.current;
-      if (inlineText.session || !canEditTextInline(target)) return false;
-      return inlineText.start(target!.element);
+      if (inlineText.session || !target || !canEditTextInline(target)) return false;
+      return inlineText.start(target.element);
     },
     startFromPress: (event) => {
       const press = { x: event.clientX, y: event.clientY, at: Date.now() };
@@ -103,10 +103,10 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
       if (!paired || inlineText.session) return false;
 
       const element = elementUnderPress(event);
-      if (!canEditElementTextInline(element)) return false;
+      if (!element || !canEditElementTextInline(element)) return false;
       // The caret opens where the press landed, which means mapping the point
       // out of Studio's coordinates and into the composition's own.
-      return inlineText.start(element!, compositionPoint(event));
+      return inlineText.start(element, compositionPoint(event));
     },
   };
 }

@@ -87,7 +87,9 @@ describe("useInlineTextEdit", () => {
     element.textContent = "Motion Playground Live";
     act(() => controls().commit());
 
-    expect(onCommit.mock.calls).toEqual([["Motion Playground Live"]]);
+    expect(onCommit.mock.calls).toEqual([
+      [{ html: "Motion Playground Live", previousHtml: "Motion Playground" }],
+    ]);
     act(() => root.unmount());
   });
 
@@ -189,7 +191,9 @@ describe("useInlineTextEdit", () => {
       element.textContent = "Renamed";
       press(element, "Enter");
 
-      expect(onCommit.mock.calls).toEqual([["Renamed"]]);
+      expect(onCommit.mock.calls).toEqual([
+        [{ html: "Renamed", previousHtml: "Motion Playground" }],
+      ]);
       expect(controls().session).toBeNull();
       act(() => root.unmount());
     });
@@ -234,7 +238,9 @@ describe("useInlineTextEdit", () => {
       element.textContent = "Clicked away";
       act(() => element.dispatchEvent(new FocusEvent("blur")));
 
-      expect(onCommit.mock.calls).toEqual([["Clicked away"]]);
+      expect(onCommit.mock.calls).toEqual([
+        [{ html: "Clicked away", previousHtml: "Motion Playground" }],
+      ]);
       act(() => root.unmount());
     });
 
@@ -361,7 +367,10 @@ describe("useInlineTextEdit with styled runs", () => {
     element.innerHTML = 'hell<span style="color: red">o</span>';
     act(() => controls().commit());
 
-    expect(onCommit).toHaveBeenCalledWith('hell<span style="color: red">o</span>');
+    expect(onCommit).toHaveBeenCalledWith({
+      html: 'hell<span style="color: red">o</span>',
+      previousHtml: "hello",
+    });
     act(() => root.unmount());
   });
 
@@ -375,7 +384,7 @@ describe("useInlineTextEdit with styled runs", () => {
     element.innerHTML = '<span onclick="steal()" style="position: fixed">hi</span>';
     act(() => controls().commit());
 
-    expect(onCommit).toHaveBeenCalledWith("<span>hi</span>");
+    expect(onCommit).toHaveBeenCalledWith({ html: "<span>hi</span>", previousHtml: "hello" });
     // Cleaned in the element too, not only on the way out.
     expect(element.innerHTML).toBe("<span>hi</span>");
     act(() => root.unmount());
@@ -406,7 +415,7 @@ describe("useInlineTextEdit with styled runs", () => {
     });
     act(() => controls().commit());
 
-    expect(onCommit).toHaveBeenCalledWith("plain words");
+    expect(onCommit).toHaveBeenCalledWith({ html: "plain words", previousHtml: "plain words" });
     act(() => root.unmount());
   });
 
