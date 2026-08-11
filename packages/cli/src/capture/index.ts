@@ -42,6 +42,7 @@ import {
 import type { VisionCaptionOutcome } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
 import { detectBlockedPage } from "./pageBlockDetection.js";
+import { navigateForCapture } from "./navigateForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
@@ -238,10 +239,17 @@ export async function captureWebsite(
       }
     });
 
-    // Use networkidle2 (allows 2 ongoing connections) instead of networkidle0 —
-    // modern SPAs often have persistent WebSocket/analytics connections that
-    // prevent networkidle0 from ever resolving.
-    const navigationResponse = await page1.goto(url, { waitUntil: "networkidle2", timeout });
+    const navigation = await navigateForCapture(page1, url, timeout);
+    const navigationResponse = navigation.response;
+    if (navigation.fellBackFromNetworkIdle) {
+      warnings.push(
+        `networkidle2 timed out after ${navigation.networkIdleTimeoutMs}ms; continued with domcontentloaded`,
+      );
+      progress(
+        "warn",
+        `networkidle2 timed out after ${navigation.networkIdleTimeoutMs}ms; continuing with domcontentloaded`,
+      );
+    }
     postNavigationDeadline = Date.now() + budgetMs;
     await new Promise((r) => setTimeout(r, settleTime));
 
