@@ -32,6 +32,21 @@ import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
+/**
+ * Filename every caller must use for the mixed-audio artifact.
+ *
+ * The extension is load-bearing, not cosmetic: FFmpeg picks the muxer from it,
+ * and the mix is AAC-encoded. A raw ADTS `.aac` stream has nowhere to record
+ * the encoder's priming delay, so those leading samples decode as real silence
+ * and shift the whole track ~1024 samples (21.33 ms at 48 kHz) late against a
+ * frame-accurate video track. An MP4-family container carries the delay as an
+ * edit list, which every decoder then strips, so the mix lands on its authored
+ * start. Keep the choice here rather than at each call site: the same file is
+ * muxed into the video, shipped in a distributed plan, and handed to users as
+ * the PNG-sequence sidecar, and all three have to agree.
+ */
+export const MIXED_AUDIO_FILENAME = "audio.m4a";
+
 function clampVolume(volume: number): number {
   if (!Number.isFinite(volume)) return 1;
   return Math.max(0, Math.min(1, volume));

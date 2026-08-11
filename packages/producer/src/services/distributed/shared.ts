@@ -10,7 +10,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Fps } from "@hyperframes/core";
-import { type VideoElement, type VideoFrameFormat, type VideoMetadata } from "@hyperframes/engine";
+import {
+  MIXED_AUDIO_FILENAME,
+  type VideoElement,
+  type VideoFrameFormat,
+  type VideoMetadata,
+} from "@hyperframes/engine";
 import { type RenderConfig, type RenderJob, createRenderJob } from "../renderOrchestrator.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 
@@ -35,8 +40,13 @@ export const PLAN_VIDEOS_META_RELATIVE_PATH = "meta/videos.json";
  * Relative path of the normalized audio artifact written into a distributed
  * plan. Keep writers and transport readers coupled through this contract
  * rather than duplicating a filename literal.
+ *
+ * Derived from the engine's filename rather than restated, because the
+ * extension selects the muxer: the plan artifact is the mix moved into place,
+ * so if the two ever disagreed the plan would claim a container the file
+ * doesn't have.
  */
-export const PLAN_AUDIO_RELATIVE_PATH = "audio.aac";
+export const PLAN_AUDIO_RELATIVE_PATH = MIXED_AUDIO_FILENAME;
 
 /**
  * On-disk shape of `<planDir>/meta/videos.json`. The engine's

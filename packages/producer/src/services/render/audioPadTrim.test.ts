@@ -97,7 +97,7 @@ describe("buildPadTrimAudioArgs", () => {
     // Bundled Windows FFmpeg builds reject `apad=whole_dur`. Match the
     // portable finite-padding shape used by the main audio mixer.
     const winPlan = buildPadTrimAudioPlan(
-      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio.aac",
+      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio.m4a",
       "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio-padded.aac",
       4.0,
       5.0,
@@ -301,7 +301,7 @@ describe("PadTrimAudioResult.error never carries the input path", () => {
     it(`redacts ${name} raised by the video probe`, async () => {
       const result = await padOrTrimAudioToVideoFrameCount({
         videoPath,
-        audioPath: "/tmp/audio.aac",
+        audioPath: "/tmp/audio.m4a",
         outputPath: "/tmp/out.aac",
         // Reproduces the real thrower: defaultProbeVideoFrameInfo raises
         // `ffprobe found no video stream in ${videoPath}` with the raw path.
@@ -323,12 +323,12 @@ describe("PadTrimAudioResult.error never carries the input path", () => {
   it("redacts raw ffprobe stderr surfaced through the audio probe", async () => {
     const result = await padOrTrimAudioToVideoFrameCount({
       videoPath: "/tmp/v.mp4",
-      audioPath: "/data/acme-secret/audio.aac",
+      audioPath: "/data/acme-secret/audio.m4a",
       outputPath: "/tmp/out.aac",
       probeVideoFrameInfo: () => Promise.resolve({ frameCount: 30, fpsNum: 30, fpsDen: 1 }),
       probeAudioInfo: () =>
         Promise.reject(
-          new Error("/data/acme-secret/audio.aac: Invalid data found when processing input"),
+          new Error("/data/acme-secret/audio.m4a: Invalid data found when processing input"),
         ),
       runFfmpeg: () => Promise.resolve({ success: true }),
     });
@@ -354,7 +354,7 @@ describe("PadTrimAudioResult.error never carries the input path", () => {
       it(`still returns a failed result when the video probe rejects with ${label}`, async () => {
         const result = await padOrTrimAudioToVideoFrameCount({
           videoPath: "/data/acme-secret/video.mp4",
-          audioPath: "/tmp/audio.aac",
+          audioPath: "/tmp/audio.m4a",
           outputPath: "/tmp/out.aac",
           probeVideoFrameInfo: () => Promise.reject(reason),
           probeAudioInfo: () => Promise.resolve({ durationSeconds: 1 }),
@@ -367,7 +367,7 @@ describe("PadTrimAudioResult.error never carries the input path", () => {
       it(`still returns a failed result when the audio probe rejects with ${label}`, async () => {
         const result = await padOrTrimAudioToVideoFrameCount({
           videoPath: "/tmp/v.mp4",
-          audioPath: "/data/acme-secret/audio.aac",
+          audioPath: "/data/acme-secret/audio.m4a",
           outputPath: "/tmp/out.aac",
           probeVideoFrameInfo: () => Promise.resolve({ frameCount: 30, fpsNum: 30, fpsDen: 1 }),
           probeAudioInfo: () => Promise.reject(reason),

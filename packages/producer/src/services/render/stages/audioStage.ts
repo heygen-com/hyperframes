@@ -1,13 +1,15 @@
 /**
- * audioStage — mix the composition's audio tracks into `workDir/audio.aac`.
+ * audioStage — mix the composition's audio tracks into
+ * `workDir/<MIXED_AUDIO_FILENAME>`.
  *
  * Trivial wrapper around `processCompositionAudio`. The stage is skipped
  * (no ffmpeg invocation) when the composition has no audio elements; the
  * timer is still set so the perf summary stays consistent across renders.
  *
  * Hard constraints preserved verbatim:
- *   - `audioOutputPath` is always `join(workDir, "audio.aac")`, regardless
- *     of whether any audio was actually produced.
+ *   - `audioOutputPath` is always `join(workDir, MIXED_AUDIO_FILENAME)`,
+ *     regardless of whether any audio was actually produced. The engine owns
+ *     that filename because its extension selects the muxer (see the constant).
  *   - `hasAudio` reflects `audioResult.success` from
  *     `processCompositionAudio`; it is `false` when there are no audio
  *     elements (skips the call entirely) and also when the call returns
@@ -16,7 +18,11 @@
  */
 
 import { join } from "node:path";
-import { processCompositionAudio, type AudioProcessingFailure } from "@hyperframes/engine";
+import {
+  MIXED_AUDIO_FILENAME,
+  processCompositionAudio,
+  type AudioProcessingFailure,
+} from "@hyperframes/engine";
 import type { CompositionMetadata } from "../shared.js";
 
 export interface AudioStageInput {
@@ -33,7 +39,7 @@ export interface AudioStageInput {
 }
 
 export interface AudioStageResult {
-  /** Always `join(workDir, "audio.aac")`. */
+  /** Always `join(workDir, MIXED_AUDIO_FILENAME)`. */
   audioOutputPath: string;
   /** True iff the audio mix actually produced a file. False when there are no audio elements. */
   hasAudio: boolean;
@@ -54,7 +60,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     input;
 
   const stage3Start = Date.now();
-  const audioOutputPath = join(workDir, "audio.aac");
+  const audioOutputPath = join(workDir, MIXED_AUDIO_FILENAME);
   let hasAudio = false;
   let audioError: string | undefined;
   let audioFailures: AudioProcessingFailure[] | undefined;

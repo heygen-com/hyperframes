@@ -49,7 +49,7 @@ describe("runAudioStage", () => {
   it("surfaces the mixer's error as audioError when the mix fails", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: false,
-      outputPath: "audio.aac",
+      outputPath: "audio.m4a",
       durationMs: 1,
       tracksProcessed: 0,
       error: "Source not found: a1 (narration.wav)",
@@ -77,7 +77,7 @@ describe("runAudioStage", () => {
   it("falls back to a generic message when the mixer fails without an error string", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: false,
-      outputPath: "audio.aac",
+      outputPath: "audio.m4a",
       durationMs: 1,
       tracksProcessed: 0,
     });
@@ -91,7 +91,7 @@ describe("runAudioStage", () => {
   it("does not set audioError when the mix succeeds", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: true,
-      outputPath: "audio.aac",
+      outputPath: "audio.m4a",
       durationMs: 1,
       tracksProcessed: 1,
     });

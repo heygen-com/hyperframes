@@ -296,7 +296,7 @@ export interface RenderConfig {
    *   stream; transparency is binary because GIF has no partial alpha.
    * - `"png-sequence"`: a directory of zero-padded RGBA PNGs
    *   (`frame_000001.png` …). Lossless alpha, largest on disk, no muxed
-   *   audio (an `audio.aac` sidecar is written alongside the PNGs when
+   *   audio (an `audio.m4a` sidecar is written alongside the PNGs when
    *   the composition has audio elements). Use for After Effects / Nuke
    *   / Fusion ingest, or when frames need post-processing before
    *   encoding. `outputPath` is treated as a directory; it is created if
