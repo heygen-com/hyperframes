@@ -1535,7 +1535,48 @@ export const VariablesExplorer = ({
   const defaults = {};
   for (const v of variables) if (v.default !== undefined) defaults[v.id] = v.default;
 
-  const [values, setValues] = useState(defaults);
+  /**
+   * Values survive a reload by living in the query string.
+   *
+   * Scoped by composition id, so two links to different items never read each
+   * other's settings, and only the values that differ from the defaults are
+   * written — a reader who changed one knob gets a short, obvious URL rather
+   * than every variable spelled out.
+   *
+   * Anything unreadable is ignored rather than thrown: a truncated or
+   * hand-edited URL should open the piece at its defaults, not break the page.
+   */
+  const urlKey = `vars-${compositionId}`;
+
+  const readFromUrl = () => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = new URLSearchParams(window.location.search).get(urlKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(decodeURIComponent(raw));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      // Only ids this item declares; a stale link must not inject stray keys.
+      const declared = new Set(variables.map((v) => v.id));
+      return Object.fromEntries(Object.entries(parsed).filter(([id]) => declared.has(id)));
+    } catch {
+      return {};
+    }
+  };
+
+  const [values, setValues] = useState(() => ({ ...defaults, ...readFromUrl() }));
+
+  // `replaceState` rather than `pushState`: dragging a slider should not stack
+  // up history entries the back button has to walk through.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const changed = Object.fromEntries(
+      Object.entries(values).filter(([id, value]) => JSON.stringify(value) !== JSON.stringify(defaults[id])),
+    );
+    const url = new URL(window.location.href);
+    if (Object.keys(changed).length === 0) url.searchParams.delete(urlKey);
+    else url.searchParams.set(urlKey, encodeURIComponent(JSON.stringify(changed)));
+    window.history.replaceState(null, "", url.toString());
+  }, [values]);
   // What the SVG import last had to say, per variable. Held here because
   // `control` is a function rather than a component and cannot hold it itself.
   const [notes, setNotes] = useState({});
