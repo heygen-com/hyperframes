@@ -54,11 +54,14 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
 }
 
 function hasOnlyFormattingChildren(element: HTMLElement): boolean {
+  const HTMLElementClass = element.ownerDocument.defaultView?.HTMLElement;
+  if (!HTMLElementClass) return false;
   for (const child of Array.from(element.children)) {
     if (!isRichTextFormattingTag(child.tagName)) return false;
+    if (!(child instanceof HTMLElementClass)) return false;
     // Formatting nests, and a structural child hidden inside a span is still
     // structural.
-    if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
+    if (!hasOnlyFormattingChildren(child)) return false;
   }
   return true;
 }
@@ -68,6 +71,7 @@ export interface PressMark {
   x: number;
   y: number;
   at: number;
+  element: HTMLElement | null;
 }
 
 /** Long enough to be deliberate, short enough not to catch two separate clicks. */
@@ -86,6 +90,8 @@ const DOUBLE_PRESS_SLOP_PX = 6;
 export function isDoublePress(previous: PressMark | null, next: PressMark): boolean {
   if (!previous) return false;
   return (
+    next.element !== null &&
+    previous.element === next.element &&
     next.at - previous.at <= DOUBLE_PRESS_MS &&
     Math.abs(next.x - previous.x) <= DOUBLE_PRESS_SLOP_PX &&
     Math.abs(next.y - previous.y) <= DOUBLE_PRESS_SLOP_PX

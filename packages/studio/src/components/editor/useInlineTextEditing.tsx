@@ -103,13 +103,13 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
       return inlineText.start(target.element);
     },
     startFromPress: (event) => {
-      const press = { x: event.clientX, y: event.clientY, at: Date.now() };
+      if (inlineText.session) return false;
+      const element = elementUnderPress(event);
+      const press = { x: event.clientX, y: event.clientY, at: Date.now(), element };
       const paired = isDoublePress(lastPressRef.current, press);
       lastPressRef.current = press;
 
-      if (!paired || inlineText.session) return false;
-
-      const element = elementUnderPress(event);
+      if (!paired) return false;
       if (!element || !canEditElementTextInline(element)) return false;
       // The caret opens where the press landed, which means mapping the point
       // out of Studio's coordinates and into the composition's own.

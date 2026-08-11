@@ -56,8 +56,9 @@ export function InlineTextToolbar({
   const apply = useCallback(
     (delta: Record<string, string | null>) => {
       const doc = session?.element.ownerDocument;
-      const range = doc?.defaultView?.getSelection()?.getRangeAt(0);
-      if (!range) return;
+      const selection = doc?.defaultView?.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
       applyInlineStyle(range, delta);
       refresh();
     },

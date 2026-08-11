@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { isTypingTarget } from "./typingTarget";
+import { isEditableTarget } from "./timelineDiscovery";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -13,6 +14,10 @@ function mount(html: string): HTMLElement {
 }
 
 describe("isTypingTarget", () => {
+  it("keeps the legacy import on the same canonical decision", () => {
+    expect(isEditableTarget).toBe(isTypingTarget);
+  });
+
   // The bug this exists for: inline text editing uses plaintext-only, an
   // attribute selector for 'true' missed it, and the playback shortcuts ate
   // every letter typed into the composition.
@@ -32,6 +37,8 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget(mount("<textarea></textarea>"))).toBe(true);
     expect(isTypingTarget(mount("<select></select>"))).toBe(true);
     expect(isTypingTarget(mount('<div role="textbox"></div>'))).toBe(true);
+    expect(isTypingTarget(mount('<div role="searchbox"></div>'))).toBe(true);
+    expect(isTypingTarget(mount('<div role="combobox"></div>'))).toBe(true);
   });
 
   it("leaves the keys alone for anything that is not being typed into", () => {

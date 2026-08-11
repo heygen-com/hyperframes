@@ -62,6 +62,20 @@ interface DomTextCommitPlan {
   operations: PatchOperation[];
 }
 
+function canCommitInlineTextSelection(selection: DomEditSelection, element: HTMLElement): boolean {
+  if (selection.isCompositionHost || selection.isInsideLockedComposition) return false;
+  return canEditElementTextInline(element);
+}
+
+function ownsCurrentPreviewElement(
+  selection: DomEditSelection,
+  element: HTMLElement,
+  document: Document | null | undefined,
+): document is Document {
+  if (!document || !element.isConnected) return false;
+  return element === selection.element && element.ownerDocument === document;
+}
+
 function buildDomStyleCommitOperations(
   property: string,
   value: string,
@@ -326,7 +340,7 @@ export function useDomEditTextCommits({
    * something to save and something to put back if saving fails.
    */
   const handleDomRichTextCommit = useCallback(
-    async ({ html, previousHtml }: InlineTextEditCommit) => {
+    async ({ element, html, previousHtml }: InlineTextEditCommit) => {
       if (!domEditSelection) return;
       // The same gate that let the edit open, not the design panel's.
       //
@@ -337,24 +351,23 @@ export function useDomEditTextCommits({
       // rewrites the element's own markup — so refusing on that rule refused
       // elements the caret had just been opened in, and every colour the user
       // chose was dropped on the way out with nothing said about it.
-      if (!canEditElementTextInline(domEditSelection.element)) return;
-      const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
-      const operations: PatchOperation[] = [{ type: "rich-text", property: "", value: html }];
+      if (!canCommitInlineTextSelection(domEditSelection, element)) return;
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
-      let editedElement: HTMLElement | null = null;
+      // A preview reload replaces the document. Never resolve this commit onto
+      // the replacement node: it did not own the edit or its rollback snapshot.
+      if (!ownsCurrentPreviewElement(domEditSelection, element, doc)) return;
+      const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
+      const operations = [buildDomEditRichTextPatchOperation(html)];
+      let appliedHtml = "";
 
       await runDomEditCommit({
-        capture: () => {
-          if (!doc) return;
-          const el = findElementForSelection(doc, domEditSelection, activeCompPath);
-          if (!el) return;
-          editedElement = el;
-        },
+        capture: () => {},
         apply: () => {
           // Idempotent: the caret put this there. Assigned anyway so a commit
           // raised from anywhere but the element itself still lands.
-          if (editedElement) editedElement.innerHTML = html;
+          element.innerHTML = html;
+          appliedHtml = element.innerHTML;
         },
         persist: async () => {
           await persistDomEditOperations(domEditSelection, operations, {
@@ -365,7 +378,11 @@ export function useDomEditTextCommits({
         },
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
-          if (editedElement) editedElement.innerHTML = previousHtml;
+          // An external actor that changed the live node while the request was
+          // in flight owns its new value; only roll back the value we submitted.
+          if (element.isConnected && element.innerHTML === appliedHtml) {
+            element.innerHTML = previousHtml;
+          }
         },
         onError: (error) =>
           reportDomEditPersistFailure(domEditSelection, operations, error, showToast),

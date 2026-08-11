@@ -871,7 +871,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
 
     try {
       await act(async () => {
-        await rendered.hook.handleDomRichTextCommit({ html, previousHtml });
+        await rendered.hook.handleDomRichTextCommit({ element, html, previousHtml });
       });
 
       expect(element.innerHTML).toBe(previousHtml);
@@ -881,6 +881,33 @@ describe("useDomEditCommits rich-text persist handling", () => {
       );
     } finally {
       warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("does not retarget a commit onto a replacement preview node", async () => {
+    const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const html = '<span style="color: blue">After</span>';
+    const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    const replacement = document.createElement("div");
+    replacement.dataset.hfId = "hf-card";
+    replacement.innerHTML = "Reloaded elsewhere";
+    element.replaceWith(replacement);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomRichTextCommit({
+          element,
+          html,
+          previousHtml: "Before",
+        });
+      });
+
+      expect(replacement.innerHTML).toBe("Reloaded elsewhere");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rendered.showToast).not.toHaveBeenCalled();
+    } finally {
       rendered.cleanup();
     }
   });

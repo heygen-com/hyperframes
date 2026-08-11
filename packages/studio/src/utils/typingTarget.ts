@@ -31,6 +31,8 @@ const TYPING_SELECTOR = [
   "select",
   "[contenteditable]:not([contenteditable='false'])",
   "[role='textbox']",
+  "[role='searchbox']",
+  "[role='combobox']",
   ".cm-editor",
 ].join(",");
 

@@ -8,6 +8,7 @@ import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextE
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
 });
 
@@ -77,6 +78,21 @@ describe("useInlineTextEdit", () => {
     act(() => root.unmount());
   });
 
+  it("cancels a pending focus frame when the editor unmounts", () => {
+    const element = heading();
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(42);
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame");
+    const { controls, root } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    act(() => root.unmount());
+
+    expect(cancelFrame).toHaveBeenCalledWith(42);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
   it("hands the current text over exactly once when it commits", () => {
     const element = heading();
     const { controls, root, onCommit } = mount();
@@ -88,7 +104,7 @@ describe("useInlineTextEdit", () => {
     act(() => controls().commit());
 
     expect(onCommit.mock.calls).toEqual([
-      [{ html: "Motion Playground Live", previousHtml: "Motion Playground" }],
+      [{ element, html: "Motion Playground Live", previousHtml: "Motion Playground" }],
     ]);
     act(() => root.unmount());
   });
@@ -192,7 +208,7 @@ describe("useInlineTextEdit", () => {
       press(element, "Enter");
 
       expect(onCommit.mock.calls).toEqual([
-        [{ html: "Renamed", previousHtml: "Motion Playground" }],
+        [{ element, html: "Renamed", previousHtml: "Motion Playground" }],
       ]);
       expect(controls().session).toBeNull();
       act(() => root.unmount());
@@ -239,7 +255,7 @@ describe("useInlineTextEdit", () => {
       act(() => element.dispatchEvent(new FocusEvent("blur")));
 
       expect(onCommit.mock.calls).toEqual([
-        [{ html: "Clicked away", previousHtml: "Motion Playground" }],
+        [{ element, html: "Clicked away", previousHtml: "Motion Playground" }],
       ]);
       act(() => root.unmount());
     });
@@ -369,6 +385,7 @@ describe("useInlineTextEdit with styled runs", () => {
     act(() => controls().commit());
 
     expect(onCommit).toHaveBeenCalledWith({
+      element,
       html: 'hell<span style="color: red">o</span>',
       previousHtml: "hello",
     });
@@ -385,7 +402,11 @@ describe("useInlineTextEdit with styled runs", () => {
     element.innerHTML = '<span onclick="steal()" style="position: fixed">hi</span>';
     act(() => controls().commit());
 
-    expect(onCommit).toHaveBeenCalledWith({ html: "<span>hi</span>", previousHtml: "hello" });
+    expect(onCommit).toHaveBeenCalledWith({
+      element,
+      html: "<span>hi</span>",
+      previousHtml: "hello",
+    });
     // Cleaned in the element too, not only on the way out.
     expect(element.innerHTML).toBe("<span>hi</span>");
     act(() => root.unmount());
@@ -416,27 +437,49 @@ describe("useInlineTextEdit with styled runs", () => {
     });
     act(() => controls().commit());
 
-    expect(onCommit).toHaveBeenCalledWith({ html: "plain words", previousHtml: "plain words" });
+    expect(onCommit).toHaveBeenCalledWith({
+      element,
+      html: "plain words",
+      previousHtml: "plain words",
+    });
     act(() => root.unmount());
   });
 
-  it("pastes the words, not the page they came from", () => {
+  const plainTextTransfers: Array<{
+    label: string;
+    eventType: "paste" | "drop";
+    transferProperty: "clipboardData" | "dataTransfer";
+  }> = [
+    { label: "pastes", eventType: "paste", transferProperty: "clipboardData" },
+    { label: "drops", eventType: "drop", transferProperty: "dataTransfer" },
+  ];
+
+  it.each(plainTextTransfers)("$label the words without accepting markup", (testCase) => {
     const element = heading("hi");
     const { controls, root } = mount();
     act(() => {
       controls().start(element);
     });
-
     const insertText = vi.fn();
-    (document as Document & { execCommand: unknown }).execCommand = insertText;
-    const paste = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
-    Object.defineProperty(paste, "clipboardData", {
-      value: { getData: (type: string) => (type === "text/plain" ? "pasted" : "<b>pasted</b>") },
-    });
-    act(() => void element.dispatchEvent(paste));
+    Object.defineProperty(document, "execCommand", { configurable: true, value: insertText });
+    const transfer = {
+      getData: (type: string) =>
+        type === "text/plain" ? "plain words" : '<img src="x" onerror="steal()">',
+    };
+    const event = new Event(testCase.eventType, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, testCase.transferProperty, { value: transfer });
 
-    expect(paste.defaultPrevented).toBe(true);
-    expect(insertText).toHaveBeenCalledWith("insertText", false, "pasted");
+    act(() => {
+      if (testCase.eventType === "drop") {
+        const dragover = new Event("dragover", { bubbles: true, cancelable: true });
+        element.dispatchEvent(dragover);
+        expect(dragover.defaultPrevented).toBe(true);
+      }
+      element.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(insertText).toHaveBeenCalledWith("insertText", false, "plain words");
     act(() => root.unmount());
   });
 });

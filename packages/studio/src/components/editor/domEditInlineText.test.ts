@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it, vi } from "vitest";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
 
@@ -6,7 +8,7 @@ vi.mock("./domEditingLayers", () => ({
   isTextEditableSelection: () => editable.current,
 }));
 
-const { canEditTextInline } = await import("./domEditInlineText");
+const { canEditTextInline, isDoublePress } = await import("./domEditInlineText");
 
 function field(key: string): DomEditTextField {
   return {
@@ -69,5 +71,16 @@ describe("canEditTextInline", () => {
   it("refuses nothing at all", () => {
     editable.current = true;
     expect(canEditTextInline(null)).toBe(false);
+  });
+});
+
+describe("isDoublePress", () => {
+  it("pairs presses only when they land on the same element", () => {
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    const previous = { x: 10, y: 10, at: 100, element: first };
+
+    expect(isDoublePress(previous, { x: 12, y: 12, at: 200, element: first })).toBe(true);
+    expect(isDoublePress(previous, { x: 12, y: 12, at: 200, element: second })).toBe(false);
   });
 });

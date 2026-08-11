@@ -4,7 +4,7 @@ import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
-import { isEditableTarget } from "../utils/timelineDiscovery";
+import { isTypingTarget } from "../utils/typingTarget";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -188,14 +188,14 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
     return true;
   }
 
-  if (key === "g" && !event.altKey && !isEditableTarget(event.target)) {
+  if (key === "g" && !event.altKey && !isTypingTarget(event.target)) {
     event.preventDefault();
     if (event.shiftKey) cb.onUngroupSelection?.();
     else cb.onGroupSelection?.();
     return true;
   }
 
-  if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
+  if (!event.shiftKey && !event.altKey && !isTypingTarget(event.target)) {
     if (key === "c") {
       if (cb.handleCopy()) {
         event.preventDefault();
@@ -454,7 +454,7 @@ export function useAppHotkeys({
       dispatchModifierKey(event, key, cb);
       return;
     }
-    if (!isEditableTarget(event.target)) dispatchPlainKey(event, key, cb);
+    if (!isTypingTarget(event.target)) dispatchPlainKey(event, key, cb);
   }, []);
 
   // eslint-disable-next-line no-restricted-syntax

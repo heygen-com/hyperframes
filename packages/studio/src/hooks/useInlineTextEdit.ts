@@ -46,6 +46,8 @@ export interface InlineTextEditSession {
 
 /** The live markup to persist and the session snapshot to restore on failure. */
 export interface InlineTextEditCommit {
+  /** The exact preview node that owned the edit; a reload must not retarget it. */
+  element: HTMLElement;
   html: string;
   previousHtml: string;
 }
@@ -128,6 +130,8 @@ export function useInlineTextEdit({
       // and collapses any selection. Doing it after all of that is what lands.
       const view = element.ownerDocument.defaultView;
       const raf = view?.requestAnimationFrame(() => {
+        framesRef.current = null;
+        if (openRef.current?.element !== element) return;
         element.focus({ preventScroll: true });
         placeCaret(element, caretAt);
       });
@@ -147,7 +151,7 @@ export function useInlineTextEdit({
     teardown();
     // After teardown, so the commit path's own resync does not fight an
     // element that is still editable.
-    onCommit({ html, previousHtml: open.original });
+    onCommit({ element: open.element, html, previousHtml: open.original });
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {
@@ -184,21 +188,45 @@ export function useInlineTextEdit({
     // word selection and gained nothing the triple click did not already do.
     // Dropping `plaintext-only` means the browser would otherwise paste a whole
     // web page's markup straight in. What arrives is the words.
+    const insertPlainText = (text: string) => {
+      if (text) element.ownerDocument.execCommand("insertText", false, text);
+    };
     const onPaste = (event: ClipboardEvent) => {
       event.preventDefault();
-      const text = event.clipboardData?.getData("text/plain") ?? "";
-      if (text) element.ownerDocument.execCommand("insertText", false, text);
+      insertPlainText(event.clipboardData?.getData("text/plain") ?? "");
+    };
+    // `contenteditable="true"` accepts dragged HTML as eagerly as pasted HTML.
+    // Keep the drop path on the same plain-text rail as paste so markup cannot
+    // execute in the same-origin preview before commit-time sanitisation.
+    const onDragOver = (event: DragEvent) => event.preventDefault();
+    const onDrop = (event: DragEvent) => {
+      event.preventDefault();
+      insertPlainText(event.dataTransfer?.getData("text/plain") ?? "");
     };
 
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("blur", onBlur);
     element.addEventListener("paste", onPaste);
+    element.addEventListener("dragover", onDragOver);
+    element.addEventListener("drop", onDrop);
     return () => {
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("blur", onBlur);
       element.removeEventListener("paste", onPaste);
+      element.removeEventListener("dragover", onDragOver);
+      element.removeEventListener("drop", onDrop);
     };
   }, [session, commit, cancel]);
+
+  // Navigation can remove the overlay while the opening frame is pending.
+  // Teardown is the single owner of cancelling that frame and restoring the
+  // composition node, so unmount closes through the same path as every exit.
+  useEffect(
+    () => () => {
+      teardown();
+    },
+    [teardown],
+  );
 
   return { session, start, commit, cancel };
 }

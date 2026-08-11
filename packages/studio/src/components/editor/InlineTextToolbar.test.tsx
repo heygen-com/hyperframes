@@ -53,6 +53,13 @@ function toolbarIn(host: HTMLElement): HTMLElement | null {
   return host.querySelector<HTMLElement>('[data-inline-text-toolbar="true"]');
 }
 
+function renderSelected(html = "hello world") {
+  const { element, session, iframe } = scene(html);
+  const { host } = render(session, iframe);
+  selectAll(element);
+  return { element, host };
+}
+
 describe("InlineTextToolbar", () => {
   it("stays out of the way until characters are actually selected", () => {
     const { session, iframe } = scene("hello world");
@@ -152,13 +159,24 @@ describe("InlineTextToolbar", () => {
   });
 
   it("styles the selected characters when a control is used", () => {
-    const { element, session, iframe } = scene("hello world");
-    const { host } = render(session, iframe);
-    selectAll(element);
+    const { element, host } = renderSelected();
 
     act(() => host.querySelector<HTMLButtonElement>('[aria-label="Bold"]')!.click());
 
     expect(element.innerHTML).toBe('<span style="font-weight: 700">hello world</span>');
+  });
+
+  it("ignores a click when the selection disappeared before React hid the toolbar", () => {
+    const { element, host } = renderSelected();
+    const bold = host.querySelector<HTMLButtonElement>('[aria-label="Bold"]')!;
+
+    expect(() => {
+      act(() => {
+        document.getSelection()!.removeAllRanges();
+        bold.click();
+      });
+    }).not.toThrow();
+    expect(element.innerHTML).toBe("hello world");
   });
 
   it("reads back the styling it applied, so the control shows the truth", () => {
