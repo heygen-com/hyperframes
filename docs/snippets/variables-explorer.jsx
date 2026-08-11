@@ -1561,7 +1561,10 @@ export const VariablesExplorer = ({
     try {
       const raw = new URLSearchParams(window.location.search).get(urlKey);
       if (!raw) return {};
-      const parsed = JSON.parse(decodeURIComponent(raw));
+      // `URLSearchParams` has already decoded this once. Decoding again turned
+      // a path full of percent-escapes into something that no longer parsed,
+      // and doubled the length of every link.
+      const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
       // Only ids this item declares; a stale link must not inject stray keys.
       const declared = new Set(variables.map((v) => v.id));
@@ -1573,6 +1576,24 @@ export const VariablesExplorer = ({
 
   const [values, setValues] = useState(() => ({ ...defaults, ...readFromUrl() }));
 
+  /**
+   * Read the URL again once the component is actually in a browser.
+   *
+   * The first render happens on the server, where there is no `window`, so the
+   * state above can only be the declared defaults. React then hydrates against
+   * that markup and never revisits it — which is why a shared link opened at
+   * its defaults and only looked right if you touched a control. Applying the
+   * values after mount is what makes a reload land where it left off.
+   *
+   * Runs once. Later edits own the state from then on, and the effect below
+   * keeps the URL in step with them.
+   */
+  useEffect(() => {
+    const fromUrl = readFromUrl();
+    if (Object.keys(fromUrl).length > 0) setValues((current) => ({ ...current, ...fromUrl }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // `replaceState` rather than `pushState`: dragging a slider should not stack
   // up history entries the back button has to walk through.
   useEffect(() => {
@@ -1582,7 +1603,7 @@ export const VariablesExplorer = ({
     );
     const url = new URL(window.location.href);
     if (Object.keys(changed).length === 0) url.searchParams.delete(urlKey);
-    else url.searchParams.set(urlKey, encodeURIComponent(JSON.stringify(changed)));
+    else url.searchParams.set(urlKey, JSON.stringify(changed));
 
     // `defaults` is rebuilt every render, so this effect runs every render too.
     // Comparing first keeps it to an actual change rather than touching the
