@@ -40,6 +40,10 @@
       "type": "hyperframes:example"
     },
     {
+      "name": "ai-chat-reveal",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "app-showcase",
       "type": "hyperframes:block"
     },
