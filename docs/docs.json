@@ -588,6 +588,7 @@
                   "catalog/components/badge-pop",
                   "catalog/components/blur-in",
                   "catalog/components/card-resize",
+                  "catalog/components/chat-message",
                   "catalog/components/chromatic-aberration-wipe",
                   "catalog/components/dynamic-grid",
                   "catalog/components/icon-swap",

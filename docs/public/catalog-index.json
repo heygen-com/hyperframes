@@ -732,6 +732,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chart-story.png"
   },
   {
+    "name": "chat-message",
+    "type": "component",
+    "title": "Chat Message",
+    "description": "One message arrives on the measured entry - scale 0.75, 0.12s, growing from its sender's corner. The type is an enum switched like marker-highlight's style: a received or sent bubble with a real tail, a large emoji row, an image, or a link card with title and domain. The atom that chat-thread builds conversations from",
+    "tags": [
+      "video-primitive",
+      "chat",
+      "mock-ui",
+      "message"
+    ],
+    "href": "/catalog/components/chat-message",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chat-message.png"
+  },
+  {
     "name": "chat-thread",
     "type": "component",
     "title": "Chat Thread",

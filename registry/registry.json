@@ -804,6 +804,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "chat-message",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "chat-thread",
       "type": "hyperframes:component"
     },
@@ -1521,6 +1525,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "152089ec95b90275b4c7fd4aaff1ffe3728a5718917011d1dce801c69b1add94"
+    "revision": "f5cb199165f8e7faec1f52713596613af0ef6b5495938341233a63167ee43d3a"
   }
 }
