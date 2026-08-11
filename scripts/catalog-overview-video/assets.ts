@@ -1,7 +1,29 @@
-export const catalogOverviewAssets = [
+type CatalogOverviewAsset = {
+  section: string;
+  type: "block" | "component";
+  item: string;
+  mediaStart: number;
+  localFile?: string;
+  url: string;
+};
+
+type CatalogOverviewAssetSeed = Omit<CatalogOverviewAsset, "url">;
+
+const catalogOverviewAssetSeeds: CatalogOverviewAssetSeed[] = [
   { section: "Code Animations", type: "block", item: "code-particle-assemble", mediaStart: 1.7 },
-  { section: "Captions", type: "component", item: "caption-kinetic-slam", mediaStart: 1.2 },
-  { section: "HTML-in-Canvas", type: "block", item: "vfx-shatter", mediaStart: 2.6 },
+  {
+    section: "Captions",
+    type: "component",
+    item: "caption-camera-follow",
+    mediaStart: 0.5,
+    localFile: "docs/images/catalog/components/caption-camera-follow.mp4",
+  },
+  {
+    section: "HTML-in-Canvas",
+    type: "block",
+    item: "vfx-iphone-device",
+    mediaStart: 9.25,
+  },
   {
     section: "Social Overlays",
     type: "block",
@@ -20,7 +42,11 @@ export const catalogOverviewAssets = [
   { section: "Data", type: "block", item: "us-map-flow", mediaStart: 4.0 },
   { section: "Effects", type: "component", item: "parallax-unzoom", mediaStart: 1.6 },
   { section: "Blocks", type: "block", item: "hw-pipeline", mediaStart: 1.4 },
-].map((asset) => ({
-  ...asset,
-  url: `https://static.heygen.ai/hyperframes-oss/docs/images/catalog/${asset.type}s/${asset.item}.mp4`,
-}));
+];
+
+export const catalogOverviewAssets: CatalogOverviewAsset[] = catalogOverviewAssetSeeds.map(
+  (asset) => ({
+    ...asset,
+    url: `https://static.heygen.ai/hyperframes-oss/docs/images/catalog/${asset.type}s/${asset.item}.mp4`,
+  }),
+);

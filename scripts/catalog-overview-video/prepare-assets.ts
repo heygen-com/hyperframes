@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { catalogOverviewAssets } from "./assets";
@@ -84,7 +84,57 @@ const downloadAsset = async (url: string, file: string): Promise<number> => {
       throw new Error(`GET ${url} returned ${body.byteLength} bytes; expected more than 1 KiB`);
     }
 
-    await Bun.write(temporaryFile, body);
+    writeFileSync(temporaryFile, Buffer.from(body));
+    const bytes = validateAsset(temporaryFile);
+    renameSync(temporaryFile, file);
+    return bytes;
+  } finally {
+    rmSync(temporaryFile, { force: true });
+  }
+};
+
+const prepareLocalAsset = (source: string, file: string): number => {
+  const sourceFile = resolve(root, source);
+  if (!existsSync(sourceFile)) {
+    throw new Error(
+      `${source} is missing; run the Catalog preview generation command from the overview README`,
+    );
+  }
+
+  const temporaryFile = `${file}.download`;
+  rmSync(temporaryFile, { force: true });
+
+  try {
+    const upscale = spawnSync(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        sourceFile,
+        "-vf",
+        "scale=1920:1080:flags=lanczos",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
+        "-f",
+        "mp4",
+        temporaryFile,
+      ],
+      { encoding: "utf8" },
+    );
+    if (upscale.error) throw upscale.error;
+    if (upscale.status !== 0) {
+      throw new Error(`ffmpeg rejected ${sourceFile}: ${upscale.stderr.trim()}`);
+    }
+
     const bytes = validateAsset(temporaryFile);
     renameSync(temporaryFile, file);
     return bytes;
@@ -107,6 +157,12 @@ for (const asset of catalogOverviewAssets) {
       console.warn(`discarding invalid cached ${asset.item}.mp4: ${String(error)}`);
       rmSync(file, { force: true });
     }
+  }
+
+  if (asset.localFile) {
+    const bytes = prepareLocalAsset(asset.localFile, file);
+    console.log(`validated ${asset.item}.mp4 (${bytes} bytes, generated locally)`);
+    continue;
   }
 
   const bytes = await downloadAsset(asset.url, file);

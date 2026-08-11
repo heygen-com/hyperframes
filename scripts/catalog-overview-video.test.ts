@@ -27,6 +27,8 @@ describe("Catalog overview montage", () => {
   test("covers every Catalog section exactly once in sidebar order", () => {
     expect(catalogOverviewAssets.map(({ section }) => section)).toEqual(sections);
     expect(new Set(catalogOverviewAssets.map(({ item }) => item)).size).toBe(sections.length);
+    expect(catalogOverviewAssets[1]?.item).toBe("caption-camera-follow");
+    expect(catalogOverviewAssets[2]?.item).toBe("vfx-iphone-device");
   });
 
   test("mounts every frozen asset and visible section label", () => {
