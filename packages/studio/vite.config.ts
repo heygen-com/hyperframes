@@ -68,11 +68,11 @@ function devProjectApi(): Plugin {
         createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
           fetch: (req: Request) => Promise<Response>;
         };
-        consumeFileWriteReceipt?: (path: string) => {
-          path: string;
-          version: string;
-          writeToken: string;
-        } | null;
+        consumeFileWriteReceipt?: (
+          path: string,
+          expectedVersion: string,
+        ) => { path: string; version: string; writeToken: string } | null;
+        fileContentVersion?: (content: string) => string;
       } | null = null;
       const getApi = async () => {
         if (!_api) {
@@ -177,7 +177,20 @@ function devProjectApi(): Plugin {
         )
           return;
         console.log(`[Studio] File changed: ${filePath}`);
-        const receipt = _studioServerModule?.consumeFileWriteReceipt?.(filePath) ?? null;
+        // The receipt is matched on the file's current bytes, not just its path,
+        // so a write is only recognised as ours when the version agrees. Calling
+        // this without the version could never match, which left every Studio
+        // write looking external and reloaded the preview on each edit.
+        let version: string | null = null;
+        try {
+          version =
+            _studioServerModule?.fileContentVersion?.(readFileSync(filePath, "utf-8")) ?? null;
+        } catch {
+          // A deletion has no current bytes to match a write receipt against.
+        }
+        const receipt = version
+          ? (_studioServerModule?.consumeFileWriteReceipt?.(filePath, version) ?? null)
+          : null;
         server.ws.send({
           type: "custom",
           event: "hf:file-change",
