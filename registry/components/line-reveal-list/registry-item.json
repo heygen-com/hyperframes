@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "line-reveal-list",
+  "type": "hyperframes:component",
+  "title": "Line Reveal List",
+  "description": "List lines land one after another on a measured writing cadence that slows as the thought gets heavier, and the page makes room with the measured scroll-settle curve instead of a linear glide",
+  "tags": ["video-primitive", "text-effect", "list", "checklist"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Type size of the list lines.",
+      "default": 52,
+      "min": 24,
+      "max": 96,
+      "step": 2,
+      "unit": "px"
+    },
+    {
+      "id": "marker",
+      "type": "enum",
+      "role": "style",
+      "label": "Marker",
+      "description": "What leads each revealed line.",
+      "default": "check",
+      "options": [
+        { "value": "check", "label": "Check" },
+        { "value": "bullet", "label": "Bullet" },
+        { "value": "none", "label": "None" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Ink for light grounds, paper for dark compositions.",
+      "default": "ink",
+      "options": [
+        { "value": "ink", "label": "Ink" },
+        { "value": "paper", "label": "Paper" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "line-reveal-list.html",
+      "target": "compositions/components/line-reveal-list.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

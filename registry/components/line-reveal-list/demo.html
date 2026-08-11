@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Line Reveal List</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #ece1d5;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #ece1d5;
+        background-image: radial-gradient(circle, rgba(178, 150, 138, 0.18) 2px, transparent 2.6px);
+        background-size: 36px 36px;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-lrl-list {
+        position: absolute;
+        left: 560px;
+        top: 300px;
+        display: grid;
+        gap: 30px;
+        font-size: 56px;
+        color: #191919;
+        line-height: 1.25;
+      }
+      .hf-lrl-line {
+        opacity: 0;
+      }
+      .hf-lrl-mark {
+        display: inline-block;
+        width: 1.1em;
+        color: #0a6e5c;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-lrl-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="line-reveal-list-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="9"
+    >
+      <section class="clip" data-start="0" data-duration="9" data-track-index="1" style="position: absolute; inset: 0">
+        <div class="hf-lrl-list" id="hf-lrl-demo-list">
+          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>write the scene in plain HTML</div>
+          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>hyperframes check catches the misses</div>
+          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>render lands the same, every time</div>
+          <div class="hf-lrl-line"><span class="hf-lrl-mark">&#10003;</span>ship it</div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      /* the measured writing cadence, compressed 2x for the demo */
+      var CADENCE = [1.1, 1.015, 1.485, 1.55];
+      var t = 0.5;
+      gsap.utils.toArray("#hf-lrl-demo-list .hf-lrl-line").forEach(function (line, i) {
+        if (i > 0) t += CADENCE[(i - 1) % CADENCE.length];
+        tl.fromTo(line, { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: 0.23, ease: "power2.out" }, t);
+      });
+
+      /* one measured scroll-settle after the third line */
+      var EASE = [0.0, 0.062, 0.297, 0.498, 0.684, 0.786, 0.889, 0.934, 0.968, 0.992, 1.0];
+      EASE.forEach(function (p, k) {
+        tl.set("#hf-lrl-demo-list", { y: -100 * p }, 3.9 + k * 0.055);
+      });
+      tl.set({}, {}, 9);
+
+      window.__timelines["line-reveal-list-demo"] = tl;
+    </script>
+  </body>
+</html>

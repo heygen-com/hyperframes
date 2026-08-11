@@ -416,6 +416,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "notes-reveal",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "notification-cascade",
       "type": "hyperframes:block"
     },
@@ -989,6 +993,10 @@
     },
     {
       "name": "line-by-line-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "line-reveal-list",
       "type": "hyperframes:component"
     },
     {
