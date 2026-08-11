@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
 
-import { FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
+import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "@hyperframes/core/fonts/aliases";
 import {
   locateSystemFontVariants,
   SYSTEM_FONT_SIZE_LIMIT,
@@ -491,6 +491,86 @@ function buildFontFaceRule(
   ].join("\n");
 }
 
+/**
+ * Google serves several canonical families as a variable font: every static
+ * weight resolves to the same woff2. Faces sharing a source can be emitted as
+ * one weight-range rule instead of embedding that blob once per weight.
+ *
+ * Without `text=` the response is ordered weight-major, subset-minor, so those
+ * faces are not adjacent — group by source rather than scanning neighbours.
+ * Insertion order keeps the emitted CSS deterministic.
+ */
+function normalizeWeightKey(weight: string): string {
+  const numeric = Number(weight);
+  return Number.isFinite(numeric) ? String(numeric) : weight.trim().toLowerCase();
+}
+
+function coverageKey(weight: string, style: string): string {
+  return `${normalizeWeightKey(weight)}:${style}`;
+}
+
+function groupFacesBySource(faces: readonly GoogleFontFace[]): GoogleFontFace[][] {
+  const groups = new Map<string, GoogleFontFace[]>();
+  for (const face of faces) {
+    const key = [face.dataUri, face.style, face.unicodeRange ?? ""].join("\u0000");
+    const existing = groups.get(key);
+    if (existing) existing.push(face);
+    else groups.set(key, [face]);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * A weight range must not span a weight the embedded bundle already serves, or
+ * the later rule would win for that weight and shadow the bundled face.
+ */
+function spansCoveredWeight(
+  from: GoogleFontFace,
+  to: GoogleFontFace,
+  coveredWeights: ReadonlySet<string>,
+): boolean {
+  const start = Number(from.weight);
+  const end = Number(to.weight);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return true;
+  const low = Math.min(start, end);
+  const high = Math.max(start, end);
+  for (const covered of coveredWeights) {
+    const [weight, style] = covered.split(":");
+    if (style !== from.style) continue;
+    const value = Number(weight);
+    if (Number.isFinite(value) && value > low && value < high) return true;
+  }
+  return false;
+}
+
+/**
+ * Split one source group into ascending runs, breaking wherever the embedded
+ * bundle already covers a weight inside the span. A weight that is not a plain
+ * number (a variable `100 900` range, say) cannot be ordered, so it stays on
+ * its own.
+ */
+function partitionWeightRuns(
+  faces: readonly GoogleFontFace[],
+  coveredWeights: ReadonlySet<string>,
+): GoogleFontFace[][] {
+  const runs: GoogleFontFace[][] = [];
+  const sortable = faces.filter((face) => Number.isFinite(Number(face.weight)));
+  const unsortable = faces.filter((face) => !Number.isFinite(Number(face.weight)));
+
+  let current: GoogleFontFace[] = [];
+  for (const face of [...sortable].sort((a, b) => Number(a.weight) - Number(b.weight))) {
+    const previous = current[current.length - 1];
+    if (previous && spansCoveredWeight(previous, face, coveredWeights)) {
+      runs.push(current);
+      current = [];
+    }
+    current.push(face);
+  }
+  if (current.length > 0) runs.push(current);
+  for (const face of unsortable) runs.push([face]);
+  return runs;
+}
+
 async function buildFontFaceCss(
   requestedFamilies: Map<string, string>,
   options: InternalFontFetchOptions,
@@ -515,26 +595,49 @@ async function buildFontFaceCss(
         const style = face.style || "normal";
         const src = fontDataUri(canonical.packageName, face.weight, style);
         rules.push(buildFontFaceRule(originalCaseFamily, src, face.weight, style));
-        coveredWeights.add(`${face.weight}:${style}`);
+        coveredWeights.add(coverageKey(face.weight, style));
       }
 
       // Fetch all weights from Google Fonts and add any that aren't
       // already covered by the embedded bundle. This ensures that
       // compositions requesting e.g. wght@200 get that weight even
-      // if the bundle only ships 400/700/900.
-      const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
-      for (const face of googleFaces) {
-        // A weight covered by the embedded bundle is already full-coverage —
-        // skip it. For weights the bundle lacks, add EVERY subset face (a
-        // weight has one face per unicode-range subset), not just the first.
-        if (coveredWeights.has(`${face.weight}:${face.style}`)) continue;
+      // if the bundle only ships 400/700/900. Query the CANONICAL
+      // family, not the authored one: for a cross-typeface alias
+      // (helvetica → inter) the authored name is a different typeface,
+      // so supplementing from it would mix two typefaces under one
+      // font-family. The faces are still emitted under
+      // `originalCaseFamily` so the authored CSS keeps matching.
+      const canonicalFamily = resolveAliasDisplayName(normalizedFamily);
+      const googleFaces = canonicalFamily
+        ? await fetchGoogleFont(canonicalFamily, options, fontText)
+        : [];
+
+      // A weight covered by the embedded bundle is already full-coverage —
+      // skip it. For weights the bundle lacks, keep EVERY subset face (a
+      // weight has one face per unicode-range subset), not just the first.
+      const supplementary = googleFaces.filter(
+        (face) => !coveredWeights.has(coverageKey(face.weight, face.style)),
+      );
+      const runs = groupFacesBySource(supplementary).flatMap((group) =>
+        partitionWeightRuns(group, coveredWeights),
+      );
+      // Overlapping `unicode-range` rules resolve last-defined-first, so a run
+      // is emitted where its first face appeared in the response rather than
+      // grouped by source. Collapsing must not reorder the faces.
+      const firstAppearance = (run: readonly GoogleFontFace[]): number =>
+        Math.min(...run.map((face) => supplementary.indexOf(face)));
+      for (const run of [...runs].sort((a, b) => firstAppearance(a) - firstAppearance(b))) {
+        const first = run[0];
+        const last = run[run.length - 1];
+        if (!first || !last) continue;
+        const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
         rules.push(
           buildFontFaceRule(
             originalCaseFamily,
-            face.dataUri,
-            face.weight,
-            face.style,
-            face.unicodeRange,
+            first.dataUri,
+            weight,
+            first.style,
+            first.unicodeRange,
           ),
         );
       }
