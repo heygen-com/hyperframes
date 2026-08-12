@@ -39,6 +39,8 @@ describe("runAudioStage", () => {
       workDir,
       compiledDir: join(workDir, "compiled"),
       duration: 5,
+      ffmpegProcessTimeout: 3_600_000,
+      audioGain: 1,
       audios,
       abortSignal: undefined,
       assertNotAborted: () => {},
@@ -72,6 +74,16 @@ describe("runAudioStage", () => {
     expect(result.audioFailures).toEqual([
       expect.objectContaining({ reason: "source_not_found", stage: "source" }),
     ]);
+    expect(processCompositionAudioMock).toHaveBeenCalledWith(
+      audios,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      5,
+      undefined,
+      { ffmpegProcessTimeout: 3_600_000, audioGain: 1 },
+      expect.any(String),
+    );
   });
 
   it("falls back to a generic message when the mixer fails without an error string", async () => {
