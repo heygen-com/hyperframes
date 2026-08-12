@@ -3,6 +3,7 @@
 One music bed per composition, produced by the shared audio engine (`scripts/audio.mjs` → `scripts/lib/bgm.mjs`). Two routes, chosen by the engine's one switch — whether a HeyGen credential is present:
 
 - **HeyGen retrieval — the default when credentialed.** Search HeyGen's music catalog by mood, download the top track. No generation; same `~/.heygen` / `$HEYGEN_API_KEY` credential as TTS.
+- **MiniMax generation — preferred for generation when `$MINIMAX_API_KEY` is set.** Generate a music file from a prompt, lyrics, or a supported cover input.
 - **Local generation (Lyria → MusicGen) — the fallback when there is no credential** (or when asked for explicitly). Generate a WAV from a mood prompt. There is **no `npx hyperframes bgm` command**; the engine spawns `scripts/lyria-recipe.py` or an inline MusicGen script directly.
 
 > **Run the Preflight first — no credential is not a green light to silently generate locally.** Before generating, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen's music library, or continue offline with local generation). This applies to a one-off "generate a BGM" request just as much as inside a full workflow.
@@ -32,6 +33,21 @@ One music bed per composition, produced by the shared audio engine (`scripts/aud
 `volume` comes from the engine's `bgmDefaultVolume()`: `BGM_BED_VOLUME` (currently `0.12` ≈ -18 dB — a bed under the voice) under narration, `BGM_SILENT_VOLUME` (currently `0.9`) for a silent film (no voice). Tune those constants in `scripts/lib/bgm.mjs`, not call sites. An explicit `volume` in `audio_meta.json` always overrides this default. `bgm_pending` is `false` — the file is on disk when the engine returns.
 
 For short launch videos, do not assume the beginning of the retrieved file is the best edit point. Check the opening against later five-second sections. If the track starts with a quiet build but a later section has a stronger, clean musical entrance, trim from that section and apply a short fade-in and longer fade-out. Repeat this check whenever the composition duration changes; the final music file must cover the full cut without a silent tail.
+
+## MiniMax generation
+
+Set `$MINIMAX_API_KEY` and use `bgm.mode: generate`. The optional request fields are `model`, `region`, `prompt`, `lyrics`, `lyrics_optimizer`, `is_instrumental`, and `aigc_watermark`. The last field is sent only for the China endpoint.
+
+| Region | Endpoint                                       |
+| ------ | ---------------------------------------------- |
+| Global | `https://api.minimax.io/v1/music_generation`   |
+| China  | `https://api.minimaxi.com/v1/music_generation` |
+
+Generation models are `music-3.0` (default), `music-2.6`, `music-3.0-free`, and `music-2.6-free`. Cover models are `music-cover` and `music-cover-free`; they require exactly one of `audio_url` or `audio_base64`, accept 6–360 seconds of source audio, and limit uploads to 50 MB. `cover_feature_id` is optional.
+
+The API supports `url` and `hex` output, with `hex` required for streaming. Audio formats are `mp3`, `wav`, and `pcm`; generated BGM uses hex-encoded WAV so the existing audio pipeline receives a local file. URL output expires after 24 hours and is downloaded before the pipeline continues.
+
+Response handling checks `base_resp.status_code` for zero, treats `data.status` 1 as in progress and 2 as completed, and reads audio from `data.audio`.
 
 ## Local generation (fallback) — Lyria → MusicGen
 

@@ -234,6 +234,14 @@ if (only.has("bgm")) {
       lyriaRecipe: existsSync(lyriaRecipe) ? lyriaRecipe : null,
       seedSeconds,
       hasVoice,
+      miniMax: {
+        model: request.bgm?.model,
+        region: request.bgm?.region,
+        lyrics: request.bgm?.lyrics,
+        lyrics_optimizer: request.bgm?.lyrics_optimizer,
+        is_instrumental: request.bgm?.is_instrumental,
+        aigc_watermark: request.bgm?.aigc_watermark,
+      },
     });
     if (gen.disabled) {
       anomalies.push(`bgm: ${gen.reason}`);

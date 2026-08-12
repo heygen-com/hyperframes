@@ -13,12 +13,19 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { downloadTo, searchSounds } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 const r3 = (x) => Number(x.toFixed(3));
 const lyriaKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+const miniMaxKey = () => process.env.MINIMAX_API_KEY || "";
+const MINIMAX_MUSIC_RUNNER = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "minimax-music.mjs",
+);
 
 // Default BGM level. Under narration music is a bed that must stay under the
 // voice — 0.12 linear ≈ -18 dB. A silent film (no voice) has no voice to duck
@@ -106,6 +113,29 @@ export function inferBgmPrompt({ blob = "", archetype = "", arc = "", userPrompt
   return `${base}, BPM ${bpm}, MAJOR`;
 }
 
+export function miniMaxMusicRunnerArgs({ outputPath, prompt, options = {} }) {
+  const args = [MINIMAX_MUSIC_RUNNER, "--output", outputPath, "--prompt", prompt];
+  const optionalFlags = [
+    ["model", options.model],
+    ["region", options.region],
+    ["lyrics", options.lyrics],
+  ];
+  for (const [name, value] of optionalFlags) {
+    if (value !== undefined && value !== null && value !== "")
+      args.push(`--${name}`, String(value));
+  }
+  const booleanFlags = [
+    ["lyrics-optimizer", options.lyrics_optimizer],
+    ["instrumental", options.is_instrumental],
+    ["aigc-watermark", options.aigc_watermark],
+  ];
+  for (const [name, value] of booleanFlags) {
+    if (value === true) args.push(`--${name}`);
+    if (value === false) args.push(`--no-${name}`);
+  }
+  return args;
+}
+
 // ── generation (Lyria → MusicGen, detached) ──────────────────────────────────
 // Returns a bgmMeta the caller folds into audio_meta:
 //   { path, mode, volume, provider, pid, log, target_duration_s, seed_duration_s,
@@ -117,6 +147,7 @@ export function generateBgmDetached({
   lyriaRecipe,
   seedSeconds = 28,
   hasVoice,
+  miniMax = {},
 }) {
   const rel = "assets/bgm/track.wav";
   const abs = join(hyperframesDir, rel);
@@ -125,7 +156,25 @@ export function generateBgmDetached({
   const targetS = Math.max(1, durationS);
   const baseMeta = { path: rel, mode: null, volume: bgmDefaultVolume(hasVoice), pending: true };
 
+  const miniMaxConfigured = !!miniMaxKey() && existsSync(MINIMAX_MUSIC_RUNNER);
   const lyriaConfigured = !!lyriaKey() && !!lyriaRecipe && existsSync(lyriaRecipe);
+
+  if (miniMaxConfigured) {
+    const args = miniMaxMusicRunnerArgs({ outputPath: abs, prompt, options: miniMax });
+
+    const fd = openSync(log, "w");
+    const proc = spawn(process.execPath, args, { detached: true, stdio: ["ignore", fd, fd] });
+    proc.unref();
+    closeSync(fd);
+    return {
+      ...baseMeta,
+      mode: "detached-single",
+      provider: "minimax",
+      pid: proc.pid,
+      log,
+      target_duration_s: r3(targetS),
+    };
+  }
 
   // Make a backend runnable: prefer Lyria when configured (install google-genai
   // on demand), else ensure local MusicGen deps. Installs are synchronous here —
