@@ -24,6 +24,7 @@ import {
   readFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   cpSync,
   rmSync,
   writeFileSync,
@@ -170,8 +171,10 @@ export async function prepareProjectDir(
   item: CatalogItem,
   options: PrepareOptions = {},
 ): Promise<string> {
-  const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  // mkdtemp rather than a name built from `Date.now()`: it picks the random
+  // suffix and creates the directory 0700 in one syscall, so nothing can
+  // pre-create or symlink the path between choosing it and making it.
+  const tmpDir = mkdtempSync(join(tmpdir(), `hf-catalog-${item.name}-`));
   cpSync(item.sourceDir, tmpDir, { recursive: true });
   mirrorRegistryTargets(tmpDir);
 
