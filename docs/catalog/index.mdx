@@ -3,15 +3,74 @@ title: "Catalog"
 description: "Browse reusable HyperFrames scenes, transitions, captions, overlays, effects, and components."
 ---
 
-import { CatalogOverviewLoop } from "/snippets/catalog-overview-loop.jsx"
+import { CatalogOverviewPlayer } from "/snippets/catalog-overview-player.jsx"
 
 The Catalog gives you reusable visuals you can add to a project instead of building each one from scratch.
 
-<CatalogOverviewLoop
+<CatalogOverviewPlayer
   title="A fast tour of every HyperFrames Catalog section"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v1.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v1.jpg"
-/>
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v3.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v3.jpg"
+>
+
+```html catalog-overview-v3.html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <style>
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #05070b;
+      }
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      data-composition-id="catalog-overview-v3"
+      data-no-timeline
+      data-start="0"
+      data-duration="19.25"
+      data-fps="60"
+      data-width="1920"
+      data-height="1080"
+    >
+      <video
+        id="catalog-overview-v3"
+        src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v3.mp4"
+        data-start="0"
+        data-duration="19.25"
+        muted
+        playsinline
+      ></video>
+    </main>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["catalog-overview-v3"] = {
+        duration: () => 19.25,
+        time: () => document.querySelector("video").currentTime,
+        seek: (time) => {
+          document.querySelector("video").currentTime = time;
+        },
+        play: () => document.querySelector("video").play(),
+        pause: () => document.querySelector("video").pause(),
+      };
+    </script>
+  </body>
+</html>
+```
+
+</CatalogOverviewPlayer>
 
 <CardGroup cols={2}>
   <Card title="Blocks" icon="objects-column" href="/catalog/blocks/app-showcase">

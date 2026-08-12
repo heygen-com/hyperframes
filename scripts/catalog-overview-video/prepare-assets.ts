@@ -114,7 +114,7 @@ const prepareLocalAsset = (source: string, file: string): number => {
         "-i",
         sourceFile,
         "-vf",
-        "scale=1920:1080:flags=lanczos",
+        "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
         "-c:v",
         "libx264",
         "-preset",
