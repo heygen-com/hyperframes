@@ -70,6 +70,18 @@ function readChain(el: { getAttribute?(name: string): string | null }): {
 }
 
 /**
+ * An element's automation lanes, bound to whatever chain it carries.
+ *
+ * FX lanes need the chain to resolve their target's range, so they are dropped
+ * for an element with no chain; a volume lane is always readable.
+ */
+export function readElementAutomation(el: {
+  getAttribute?(name: string): string | null;
+}): HfAutomation {
+  return readAutomation(el, readChain(el).chain);
+}
+
+/**
  * Splice an element's FX chain between a decoded source and its gain stage.
  *
  * The transport plays audio from a decoded AudioBuffer rather than from the
