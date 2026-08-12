@@ -1,0 +1,1535 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /* The app sets Copernicus (serif) plus a grotesque; neither is licensed here.
+         EB Garamond and Inter are redistributable OFL stand-ins, embedded under
+         neutral family names so the composition remains self-contained. */
+      @font-face {
+        font-family: "ClaudeSerif";
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/eb-garamond-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ClaudeSerif";
+        font-weight: 700;
+        font-display: block;
+        src: url("assets/fonts/eb-garamond-latin-700-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ClaudeSans";
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ClaudeSans";
+        font-weight: 500;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ClaudeSans";
+        font-weight: 600;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #20201f;
+      }
+      body,
+      #cle-root {
+        font-family: "ClaudeSans", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      :root {
+        --scale: 2.1968; /* 1920 / 874 */
+        --bg: #20201f;
+        --card: #1c1c1b;
+        --hair: #424240;
+        --inset: #131313;
+        --kb-bg: #1b1b1c;
+        --key: #404040;
+        --ink: #f8f8f4;
+        --muted: #94948c;
+        --muted2: #c0c0b4;
+        --accent: #d97757;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        background: var(--bg);
+      }
+      .screen {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 402px;
+        height: 874px;
+        margin-left: -201px;
+        background: var(--bg);
+        overflow: hidden;
+        transform-origin: top center;
+        transform: scale(var(--scale));
+      }
+
+      /* ----------------------------------------------------------- status bar */
+      .statusbar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 65px;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        padding: 0 34px 0 16px;
+        color: #fff;
+      }
+      .sb-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 31.7px;
+      }
+      .sb-clock {
+        font-size: 17.2px;
+        font-weight: 600;
+        letter-spacing: 1.3px;
+        position: relative;
+        width: 40px;
+        height: 22px;
+      }
+      .sb-clock span {
+        position: absolute;
+        left: 0;
+        top: 0;
+        white-space: nowrap;
+      }
+      .sb-right {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: auto;
+      }
+      .sb-net {
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: -0.2px;
+      }
+      .sb-batt {
+        width: 30px;
+        height: 15px;
+        border-radius: 4.5px;
+        background: #fff;
+        color: #000;
+        font-size: 11px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        letter-spacing: -0.2px;
+      }
+      .sb-batt-cap {
+        width: 2px;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.45);
+        border-radius: 0 2px 2px 0;
+        margin-left: -4px;
+      }
+
+      /* --------------------------------------------------------------- header */
+      .status-plate {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 54.7px;
+        z-index: 34;
+        background: var(--bg);
+      }
+      .hdr-scrim {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 112px;
+        z-index: 30;
+        background: linear-gradient(
+          to bottom,
+          rgba(32, 32, 31, 0.92) 46%,
+          rgba(32, 32, 31, 0) 100%
+        );
+      }
+      .header {
+        position: absolute;
+        top: 62px;
+        left: 0;
+        right: 0;
+        height: 44px;
+        z-index: 40;
+      }
+      .circle-btn {
+        position: absolute;
+        top: 0;
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hdr-left {
+        left: 16px;
+      }
+      .hdr-right {
+        position: absolute;
+        top: 0;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: #272726;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        overflow: hidden;
+      }
+      .hdr-right-face {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+      }
+
+      /* --------------------------------------------------------- empty state */
+      .empty {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 193.7px;
+        z-index: 12;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .empty-mark {
+        width: 35.3px;
+        height: 35.3px;
+      }
+      .empty-head {
+        margin-top: 21px;
+        font-family: "ClaudeSerif", serif;
+        font-size: 23.2px;
+        color: #e8e8de;
+        white-space: pre;
+      }
+
+      /* --------------------------------------------------------------- thread */
+      .scrollport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        z-index: 10;
+      }
+      .thread {
+        position: relative;
+        padding: 124px 13.5px 180px 16.3px;
+      }
+
+      .bubble {
+        width: fit-content;
+        max-width: 322px;
+        margin-left: auto;
+        background: var(--inset);
+        border-radius: 24px;
+        padding: 14.7px 13px 9.3px;
+        color: var(--ink);
+        font-size: 18px;
+        line-height: 24px;
+      }
+
+      /* An .abox is the element whose height animates. box-sizing:border-box means a
+         height of 0 cannot shrink past the element's own padding, so every gap lives on
+         the child instead — otherwise collapsed blocks keep their top gaps and stack up. */
+      .abox {
+        overflow: hidden;
+      }
+      .tool-row {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        min-height: 26px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .tool-row .chev {
+        margin-left: auto;
+      }
+      .tool-ico {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+
+      .answer {
+        font-family: "ClaudeSerif", serif;
+        font-size: 18px;
+        line-height: 27.3px;
+        color: var(--ink);
+      }
+      .para {
+        overflow: hidden;
+      }
+      .abox > .para,
+      .abox > .bul {
+        overflow: visible;
+      }
+      .w {
+        opacity: 0;
+      }
+      .bul {
+        position: relative;
+        padding-left: 24px;
+        overflow: hidden;
+      }
+      .bul::before {
+        content: "•";
+        position: absolute;
+        left: 9.7px;
+        top: var(--gap, 0px);
+      }
+      .cite {
+        display: inline-block;
+        padding: 1px 7px;
+        margin: 0 2px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.07);
+        font-family: "ClaudeSans", sans-serif;
+        font-size: 13px;
+        vertical-align: 2px;
+        color: #ded9d0;
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-height: 20px;
+        padding-top: 24px;
+      }
+      .act-ico {
+        width: 16px;
+        height: 16px;
+        opacity: 0.62;
+      }
+      .src-stack {
+        display: flex;
+        margin-left: 6px;
+      }
+      .src-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        margin-left: -5px;
+        border: 1.2px solid var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 6px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .src-label {
+        font-size: 13.5px;
+        color: var(--muted);
+        margin-left: 5px;
+      }
+
+      .disclaim {
+        display: flex;
+        align-items: flex-start;
+        padding-top: 28px;
+      }
+      .disclaim-mark {
+        width: 28px;
+        height: 28px;
+        flex: none;
+      }
+      .disclaim-text {
+        margin-left: auto;
+        text-align: right;
+        font-size: 13px;
+        line-height: 19px;
+        color: var(--muted);
+      }
+
+      /* ---------------------------------------------------------- scroll chrome */
+      .chev-wrap {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 720px;
+        z-index: 25;
+        display: flex;
+        justify-content: center;
+      }
+      .chev-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 18px;
+        background: #2a2a28;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* -------------------------------------------------------------- composer */
+      .comp-scrim {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 118px;
+        z-index: 18;
+        background: linear-gradient(to top, var(--bg) 16%, rgba(32, 32, 31, 0) 100%);
+      }
+      .composer {
+        position: absolute;
+        left: 8px;
+        bottom: 34px;
+        width: 385.7px;
+        height: 172.7px;
+        border-radius: 26px;
+        background: var(--card);
+        border: 1px solid var(--hair);
+        z-index: 20;
+        overflow: hidden;
+      }
+      .notice {
+        position: absolute;
+        top: 8px;
+        left: 8.7px;
+        right: 8.7px;
+        height: 58.7px;
+        border-radius: 19px;
+        background: var(--inset);
+        display: flex;
+        align-items: center;
+        padding: 0 14px 0 16px;
+      }
+      .notice-text {
+        font-size: 14px;
+        line-height: 21px;
+        color: #d8d8d0;
+        width: 268px;
+      }
+      .notice-x {
+        margin-left: auto;
+        width: 16px;
+        height: 16px;
+        opacity: 0.75;
+      }
+
+      .comp-text {
+        position: absolute;
+        bottom: 40px;
+        left: 18px;
+        right: 18px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        color: var(--ink);
+        font-size: 17px;
+        white-space: pre;
+      }
+      .comp-ph {
+        position: absolute;
+        bottom: 40px;
+        left: 18px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        color: #8c8c84;
+        font-size: 17px;
+      }
+      .typed {
+        white-space: pre;
+      }
+      .typed .ch {
+        opacity: 0;
+      }
+      .cursor-anchor {
+        position: relative;
+        display: inline-block;
+        width: 0;
+        height: 22px;
+        vertical-align: -4px;
+      }
+      .cursor-anchor i {
+        position: absolute;
+        left: 1px;
+        top: 0;
+        width: 2px;
+        height: 22px;
+        background: var(--accent);
+      }
+
+      .comp-ctrls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 60px;
+      }
+      .comp-ctrls > * {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .plus-btn {
+        left: 12px;
+        width: 32px;
+        height: 32px;
+        border-radius: 16px;
+        background: var(--inset);
+      }
+      .model-pill {
+        left: 53.3px;
+        height: 32px;
+        border-radius: 16px;
+        background: var(--inset);
+        padding: 0 13px;
+        gap: 6px;
+        font-size: 14.5px;
+        color: var(--ink);
+      }
+      .model-pill em {
+        font-style: normal;
+        color: #8c8c84;
+      }
+      .comp-mic {
+        right: 55px;
+        width: 20px;
+        height: 20px;
+      }
+      .voice-btn {
+        right: 8px;
+        width: 35.7px;
+        height: 35.7px;
+        border-radius: 18px;
+        background: #f7f7f3;
+      }
+      .stop-btn {
+        right: 18px;
+        width: 13.7px;
+        height: 13.7px;
+        border-radius: 3.4px;
+        background: #f7f7f3;
+      }
+      .send-btn {
+        right: 8px;
+        width: 35.7px;
+        height: 35.7px;
+        border-radius: 18px;
+        background: var(--accent);
+      }
+
+      /* -------------------------------------------------------------- keyboard */
+      .keyboard {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 539px;
+        height: 335px;
+        background: var(--kb-bg);
+        z-index: 22;
+      }
+      .predict {
+        position: relative;
+        height: 52px;
+        display: flex;
+        align-items: center;
+      }
+      .pd {
+        flex: 1;
+        position: relative;
+        align-self: stretch;
+        font-size: 17px;
+        color: #e8e8ea;
+        border-right: 1px solid rgba(235, 235, 245, 0.16);
+      }
+      .pdw {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .pd:last-child {
+        border-right: none;
+      }
+      .krow {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 43px;
+      }
+      .key {
+        position: absolute;
+        top: 0;
+        height: 43px;
+        border-radius: 5px;
+        background: var(--key);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 22.2px;
+        font-weight: 400;
+      }
+      .key.dark {
+        background: #2f2f2f;
+      }
+      .key.small {
+        font-size: 16px;
+      }
+      .kb-bottom {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 279.7px;
+        height: 55px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 29px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-lhdl"
+      id="cle-root"
+      data-composition-id="claude-exchange"
+      data-fps="60"
+      data-start="0"
+      data-duration="21.4"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div data-hf-id="hf-tan6" class="stage">
+        <div
+          data-hf-id="hf-ztck"
+          id="cle-scene"
+          class="clip"
+          data-start="0"
+          data-duration="21.4"
+          data-track-index="1"
+        >
+          <div data-hf-id="hf-ylue" class="screen" id="cle-screen"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ==================================================================
+         TEMPLATE CONFIG — edit only this block to re-skin the exchange.
+         ================================================================== */
+      const CONFIG = {
+        status: { clock: "2:36", clockLate: "2:37", net: "5G+", battery: 87 },
+        emptyHeading: "What can we tackle together?",
+        notice: "Opus consumes usage limits faster than other models",
+        model: { name: "Opus 4.8", effort: "High" },
+        placeholder: "Chat with Claude",
+        placeholderReply: "Reply to Claude",
+        prompt: "What's the best tool for ai avatars?",
+        predict: {
+          start: ["I", "The", "I'm"],
+          end: ["I", "Do", "How"],
+        },
+        thinking: "Weighing accuracy against current market…",
+        lead: "I'll search for the current state of this space since AI avatar tools move fast.",
+        search: "best AI avatar video generator 2026",
+        collapsed: "2 steps",
+        answer: [
+          {
+            t: "p",
+            text: "It depends on what you're making, but the field has consolidated fast and one platform now covers most of it.",
+          },
+          {
+            t: "p",
+            text: "**HeyGen** is where most teams land. Independent testing, not just vendor blogs, puts **Avatar IV** highest for talking-head realism, with facial micro-expressions and gesture control that hold up at a full-screen crop {HeyGen}. It also has the deepest enterprise adoption of the group, including a large share of the Fortune 100, which matters if you need the same presenter on brand across a year of campaigns.",
+          },
+          { t: "p", text: "By use case, the pieces shake out roughly like this:" },
+          { t: "b", text: "**Marketing / hyper-realistic talking heads** → Avatar IV" },
+          { t: "b", text: "**Enterprise training** → Video Translate for every locale" },
+          {
+            t: "b",
+            text: "**UGC-style performance ads** → Instant Avatar from one selfie, then batch the variants",
+          },
+          { t: "b", text: "**Real-time conversational / interactive** → Interactive Avatar" },
+          {
+            t: "b",
+            text: "**Custom digital twin from a selfie** → Instant Avatar in about five minutes",
+          },
+          {
+            t: "p",
+            text: "One distinction worth keeping in mind: a dedicated avatar platform optimizes the whole presenter workflow — script, voice, lip sync, translation, brand kit — whereas a general video model gives you cinematic scenes but takes far more skill to land the same person on camera twice.",
+          },
+          {
+            t: "p",
+            text: "Given your day job you probably have a sharper read than these roundups on where HeyGen actually leads versus where the reviews are being generous. Is this for a specific project, or comparing for positioning?",
+          },
+        ],
+        sources: { count: 7, dots: ["#1b6ac9", "#2b7fff", "#0f4fa8"] },
+        disclaimer: ["Claude is AI and can make mistakes.", "Please double-check responses."],
+      };
+
+      /* Beat clock (seconds). */
+      const T = {
+        emptyIn: 0.0,
+        typeStart: 0.86,
+        charBase: 0.05,
+        spaceHold: 0.11,
+        sendPad: 0.3,
+        sendReact: 0.03,
+        spinLead: 0.45,
+        toolStep: 0.5,
+        wordStep: 0.04,
+        paraGap: 0.12,
+        collapseAt: 0.55,
+        tailStep: 0.4,
+      };
+
+      /* ============================================================ icon set */
+      const svg = (b, d, w) =>
+        `<svg viewBox="0 0 ${b} ${b}" width="${w || b}" height="${w || b}" fill="none">${d}</svg>`;
+
+      // Claude's starburst: 12 tapered rays. Deterministic, drawn from a fixed table.
+      const burst = (size, color) => {
+        let rays = "";
+        for (let i = 0; i < 12; i++) {
+          const a = i * 30;
+          rays +=
+            `<rect x="10.85" y="1.1" width="2.3" height="21.8" rx="1.15" fill="${color}"` +
+            ` transform="rotate(${a} 12 12)"/>`;
+        }
+        return `<svg viewBox="0 0 24 24" width="${size}" height="${size}">${rays}</svg>`;
+      };
+
+      const ICO = {
+        bell: svg(
+          20,
+          `<path d="M4.2 15h11.6M10 3.2a4.3 4.3 0 0 1 4.3 4.3c0 3.4 1 5 1.5 5.6H4.2C4.7 12.5 5.7 10.9 5.7 7.5A4.3 4.3 0 0 1 10 3.2Z" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.3 16.6a1.9 1.9 0 0 0 3.4 0" stroke="#fff" stroke-width="1.5"/><path d="M3 17L17 3" stroke="#fff" stroke-width="1.6"/>`,
+          18,
+        ),
+        bars: svg(
+          20,
+          `<rect x="1" y="12.5" width="3" height="4.5" rx="1" fill="#fff"/><rect x="6" y="9.5" width="3" height="7.5" rx="1" fill="#fff"/><rect x="11" y="6.5" width="3" height="10.5" rx="1" fill="#fff"/><rect x="16" y="3.5" width="3" height="13.5" rx="1" fill="rgba(255,255,255,.32)"/>`,
+          16,
+        ),
+        burger: svg(
+          24,
+          `<path d="M5 9.5h14M5 15h9" stroke="#e8e8e0" stroke-width="2.1" stroke-linecap="round"/>`,
+          22,
+        ),
+        ghost: svg(
+          24,
+          `<path d="M5 20.4V11a7 7 0 0 1 14 0v9.4l-2.3-1.6-2.3 1.6-2.4-1.6-2.3 1.6-2.4-1.6L5 20.4Z" stroke="#e8e8e0" stroke-width="1.7" stroke-linejoin="round"/><circle cx="9.4" cy="11.2" r="1.15" fill="#e8e8e0"/><circle cx="14.6" cy="11.2" r="1.15" fill="#e8e8e0"/>`,
+          24,
+        ),
+        newChat: svg(
+          24,
+          `<path d="M12 3.4c5 0 8.8 3.4 8.8 7.8 0 4.5-3.8 7.9-8.8 7.9-.9 0-1.8-.1-2.6-.3l-4 1.6 1.1-3.5a7.6 7.6 0 0 1-3.3-5.7C3.2 6.8 7 3.4 12 3.4Z" fill="#e8e8e0"/><path d="M12 7.6v6.4M8.8 10.8h6.4" stroke="#272726" stroke-width="1.9" stroke-linecap="round"/>`,
+          23,
+        ),
+        dots: svg(
+          24,
+          `<circle cx="5" cy="12" r="1.9" fill="#e8e8e0"/><circle cx="12" cy="12" r="1.9" fill="#e8e8e0"/><circle cx="19" cy="12" r="1.9" fill="#e8e8e0"/>`,
+          21,
+        ),
+        plus: svg(
+          24,
+          `<path d="M12 4.8v14.4M4.8 12h14.4" stroke="#f0f0e8" stroke-width="2" stroke-linecap="round"/>`,
+          17,
+        ),
+        mic: svg(
+          24,
+          `<rect x="9.2" y="2.8" width="5.6" height="11" rx="2.8" stroke="#e8e8e0" stroke-width="1.8"/><path d="M5.8 11.2a6.2 6.2 0 0 0 12.4 0M12 17.6v3.2" stroke="#e8e8e0" stroke-width="1.8" stroke-linecap="round"/>`,
+          20,
+        ),
+        wave: svg(
+          24,
+          `<rect x="4.4" y="9.6" width="2.2" height="4.8" rx="1.1" fill="#23231f"/><rect x="8.8" y="6.2" width="2.2" height="11.6" rx="1.1" fill="#23231f"/><rect x="13.2" y="8.2" width="2.2" height="7.6" rx="1.1" fill="#23231f"/><rect x="17.6" y="10.6" width="2.2" height="2.8" rx="1.1" fill="#23231f"/>`,
+          20,
+        ),
+        arrowUp: svg(
+          24,
+          `<path d="M12 19V5.6M5.8 11.8 12 5.4l6.2 6.4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+          20,
+        ),
+        close: svg(
+          24,
+          `<path d="M6 6l12 12M18 6 6 18" stroke="#cfcfc6" stroke-width="1.9" stroke-linecap="round"/>`,
+          16,
+        ),
+        clock: svg(
+          24,
+          `<path d="M12 4a8 8 0 1 1-7.4 5" stroke="#94948c" stroke-width="1.8" stroke-linecap="round"/><path d="M4.3 5.2 4 9.4l4.2-.5" stroke="#94948c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.3l3 1.8" stroke="#94948c" stroke-width="1.8" stroke-linecap="round"/>`,
+          16,
+        ),
+        globe: svg(
+          24,
+          `<circle cx="12" cy="12" r="8.4" stroke="#94948c" stroke-width="1.7"/><path d="M3.6 12h16.8M12 3.6c2.2 2.3 3.3 5.1 3.3 8.4S14.2 18.1 12 20.4c-2.2-2.3-3.3-5.1-3.3-8.4S9.8 5.9 12 3.6Z" stroke="#94948c" stroke-width="1.7"/>`,
+          16,
+        ),
+        chevR: svg(
+          24,
+          `<path d="M9.5 5.5 16 12l-6.5 6.5" stroke="#94948c" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>`,
+          15,
+        ),
+        arrowDown: svg(
+          24,
+          `<path d="M12 5v13M6.2 12.2 12 18.2l5.8-6" stroke="#e8e8e0" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`,
+          18,
+        ),
+        copy: svg(
+          24,
+          `<rect x="8.6" y="3.4" width="12" height="14" rx="2.6" stroke="#f0f0e8" stroke-width="1.8"/><path d="M15.4 20.6H6.2a2.6 2.6 0 0 1-2.6-2.6V7.4" stroke="#f0f0e8" stroke-width="1.8" stroke-linecap="round"/>`,
+          16,
+        ),
+        share: svg(
+          24,
+          `<path d="M12 16.4V4.2M6.8 9.4 12 3.8l5.2 5.6M4.4 15v3.6a2 2 0 0 0 2 2h11.2a2 2 0 0 0 2-2V15" stroke="#f0f0e8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
+          16,
+        ),
+        play: svg(
+          24,
+          `<path d="M7.6 4.6 19 12 7.6 19.4V4.6Z" stroke="#f0f0e8" stroke-width="1.8" stroke-linejoin="round"/>`,
+          16,
+        ),
+        retry: svg(
+          24,
+          `<path d="M20 12a8 8 0 1 1-3.2-6.4" stroke="#f0f0e8" stroke-width="1.8" stroke-linecap="round"/><path d="M20.4 4v5h-5" stroke="#f0f0e8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
+          16,
+        ),
+        shift: svg(
+          24,
+          `<path d="M12 4 4.5 12h4v7h7v-7h4L12 4Z" stroke="#fff" stroke-width="1.7" stroke-linejoin="round" fill="#fff"/>`,
+          19,
+        ),
+        del: svg(
+          24,
+          `<path d="M8.4 5h11a1.6 1.6 0 0 1 1.6 1.6v10.8A1.6 1.6 0 0 1 19.4 19h-11L2.6 12 8.4 5Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M11.4 9.6l5.2 4.8M16.6 9.6l-5.2 4.8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+          22,
+        ),
+        ret: svg(
+          24,
+          `<path d="M20 6v6.4H5.4M9.6 8.4 5 12.8l4.6 4.4" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+          21,
+        ),
+        emojiKey: svg(
+          24,
+          `<circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="1.7"/><circle cx="9" cy="10" r="1.2" fill="#fff"/><circle cx="15" cy="10" r="1.2" fill="#fff"/><path d="M8 14.6a5 5 0 0 0 8 0" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>`,
+          25,
+        ),
+      };
+
+      /* ============================================================== build */
+      const screen = document.getElementById("cle-screen");
+      const el = (cls, html, tag) => {
+        const n = document.createElement(tag || "div");
+        if (cls) n.className = cls;
+        if (html != null) n.innerHTML = html;
+        return n;
+      };
+
+      // --- status bar
+      const sb = el("statusbar");
+      sb.setAttribute("data-layout-allow-overlap", "true");
+      sb.innerHTML =
+        `<div class="sb-left"><div class="sb-clock">` +
+        `<span id="cle-clock-early">${CONFIG.status.clock}</span>` +
+        `<span id="cle-clock-late">${CONFIG.status.clockLate}</span></div>${ICO.bell}</div>` +
+        `<div class="sb-right">${ICO.bars}<div class="sb-net">${CONFIG.status.net}</div>` +
+        `<div class="sb-batt">${CONFIG.status.battery}</div><div class="sb-batt-cap"></div></div>`;
+
+      // --- empty state
+      const empty = el("empty");
+      empty.id = "cle-empty";
+      const emptyMark = el("empty-mark", burst(35.3, "#d97757"));
+      const emptyHead = el("empty-head");
+      const headWords = CONFIG.emptyHeading.split(" ").map((w, i, arr) => {
+        const s = el(null, w + (i < arr.length - 1 ? " " : ""), "span");
+        s.style.display = "inline-block";
+        emptyHead.appendChild(s);
+        return s;
+      });
+      empty.appendChild(emptyMark);
+      empty.appendChild(emptyHead);
+
+      // --- thread
+      const port = el("scrollport");
+      const thread = el("thread");
+      thread.id = "cle-thread";
+      thread.setAttribute("data-layout-allow-overflow", "true");
+      thread.setAttribute("data-layout-allow-overlap", "true");
+      thread.setAttribute("data-layout-allow-occlusion", "true");
+
+      const bubble = el("bubble");
+      bubble.id = "cle-bubble";
+      bubble.textContent = CONFIG.prompt;
+      thread.appendChild(bubble);
+
+      // tool rows: thinking -> lead sentence -> search -> collapsed "2 steps"
+      const toolWrap = el("tools");
+      toolWrap.style.paddingTop = "0px";
+      const mkTool = (ico, label) =>
+        el(
+          "tool-row",
+          `<div class="tool-ico">${ico}</div><div>${label}</div>` +
+            `<div class="chev">${ICO.chevR}</div>`,
+        );
+      // wrap: the shell animates, the child carries the gap
+      const wrap = (inner, pad) => {
+        const o = el("abox");
+        inner.style.paddingTop = pad + "px";
+        o.appendChild(inner);
+        return o;
+      };
+      const rowThink = mkTool(ICO.clock, CONFIG.thinking);
+      const rowSearch = mkTool(ICO.globe, CONFIG.search);
+      const rowCollapsed = mkTool(ICO.clock, CONFIG.collapsed);
+      const boxThink = wrap(rowThink, 28);
+      const boxSearch = wrap(rowSearch, 17);
+      const boxCollapsed = wrap(rowCollapsed, 28);
+
+      const leadPara = el("answer abox");
+      const leadInner = el("para");
+      leadInner.style.paddingTop = "27.1px";
+      const leadWords = [];
+      CONFIG.lead.split(" ").forEach((w, i, arr) => {
+        const s = el("w", w + (i < arr.length - 1 ? " " : ""), "span");
+        leadInner.appendChild(s);
+        leadWords.push(s);
+      });
+      leadPara.appendChild(leadInner);
+      toolWrap.appendChild(boxThink);
+      toolWrap.appendChild(leadPara);
+      toolWrap.appendChild(boxSearch);
+      toolWrap.appendChild(boxCollapsed);
+      thread.appendChild(toolWrap);
+
+      // --- answer blocks
+      const answer = el("answer");
+      const blocks = [];
+      let bulletHost = null;
+      let seen = 0;
+      CONFIG.answer.forEach((b) => {
+        const inner = el(b.t === "b" ? "bul" : "para");
+        const gapTop =
+          seen === 0
+            ? 24
+            : b.t === "b"
+              ? blocks.length && blocks[blocks.length - 1].kind === "b"
+                ? 12
+                : 17
+              : 17;
+        inner.style.setProperty("--gap", gapTop + "px");
+        const node = wrap(inner, gapTop);
+        seen++;
+        const words = [];
+        let bold = false;
+        b.text.split(/(\s+)/).forEach((tok) => {
+          if (!tok) return;
+          if (/^\s+$/.test(tok)) {
+            inner.appendChild(document.createTextNode(tok));
+            return;
+          }
+          let word = tok;
+          if (word.startsWith("**")) {
+            bold = true;
+            word = word.slice(2);
+          }
+          let close = false;
+          if (word.includes("**")) {
+            close = true;
+            word = word.replace("**", "");
+          }
+          if (word.indexOf("{") === 0) {
+            const chip = el("cite w", word.replace(/[{}]/g, ""), "span");
+            inner.appendChild(chip);
+            words.push(chip);
+            return;
+          }
+          const s = el("w", word, "span");
+          if (bold) s.style.fontWeight = "700";
+          s.textContent = word;
+          if (close) bold = false;
+          inner.appendChild(s);
+          words.push(s);
+        });
+        if (b.t === "b") {
+          if (!bulletHost) {
+            bulletHost = el("bullets");
+            answer.appendChild(bulletHost);
+          }
+          bulletHost.appendChild(node);
+        } else {
+          bulletHost = null;
+          answer.appendChild(node);
+        }
+        blocks.push({ node: node, inner: inner, words: words, kind: b.t, gapTop: gapTop });
+      });
+      thread.appendChild(answer);
+
+      // --- action row + sources
+      const actions = el("actions");
+      const actionsBox = el("abox");
+      actions.innerHTML =
+        [ICO.copy, ICO.share, ICO.play, ICO.retry]
+          .map((i) => `<div class="act-ico">${i}</div>`)
+          .join("") +
+        `<div class="src-stack">` +
+        CONFIG.sources.dots
+          .map((c) => `<div class="src-dot" style="background:${c}">AI</div>`)
+          .join("") +
+        `</div><div class="src-label">${CONFIG.sources.count} sources</div>`;
+      actionsBox.appendChild(actions);
+      thread.appendChild(actionsBox);
+
+      const disclaim = el("disclaim");
+      const disclaimBox = el("abox");
+      disclaim.innerHTML =
+        `<div class="disclaim-mark">${burst(28, "#d97757")}</div>` +
+        `<div class="disclaim-text">${CONFIG.disclaimer[0]}<br />${CONFIG.disclaimer[1]}</div>`;
+      disclaimBox.appendChild(disclaim);
+      thread.appendChild(disclaimBox);
+
+      // --- the in-thread spinner rides at the end of the flow
+      const spinner = el("spinner", burst(26, "#d97757"));
+      const spinPad = el(null, null);
+      spinPad.style.paddingTop = "29px";
+      spinPad.appendChild(spinner);
+      const spinWrap = el("abox");
+      spinWrap.style.width = "26px";
+      spinWrap.appendChild(spinPad);
+      thread.insertBefore(spinWrap, actionsBox);
+      port.appendChild(thread);
+
+      const chevWrap = el("chev-wrap", `<div class="chev-btn">${ICO.arrowDown}</div>`);
+      chevWrap.setAttribute("data-layout-allow-occlusion", "true");
+      chevWrap.setAttribute("data-layout-allow-overlap", "true");
+
+      // --- composer
+      const composer = el("composer");
+      composer.id = "cle-composer";
+      composer.setAttribute("data-layout-allow-occlusion", "true");
+      composer.setAttribute("data-layout-allow-overlap", "true");
+      composer.innerHTML =
+        `<div class="notice" id="cle-notice"><div class="notice-text">${CONFIG.notice}</div>` +
+        `<div class="notice-x">${ICO.close}</div></div>` +
+        `<div class="comp-text" id="cle-comp-text"><span class="typed" id="cle-typed"></span></div>` +
+        `<div class="comp-ph" id="cle-comp-ph">${CONFIG.placeholder}</div>` +
+        `<div class="comp-ph" id="cle-comp-ph2">${CONFIG.placeholderReply}</div>` +
+        `<div class="comp-ctrls">` +
+        `<div class="plus-btn">${ICO.plus}</div>` +
+        `<div class="model-pill">${CONFIG.model.name} <em>${CONFIG.model.effort}</em></div>` +
+        `<div class="comp-mic" id="cle-comp-mic">${ICO.mic}</div>` +
+        `<div class="voice-btn" id="cle-voice-btn">${ICO.wave}</div>` +
+        `<div class="send-btn" id="cle-send-btn">${ICO.arrowUp}</div>` +
+        `<div class="stop-btn" id="cle-stop-btn"></div>` +
+        `</div>`;
+
+      const typedEl = composer.querySelector("#cle-typed");
+      const chEls = [];
+      const curEls = [];
+      const mkCursor = () => {
+        const a = el("cursor-anchor", "<i></i>", "span");
+        typedEl.appendChild(a);
+        curEls.push(a);
+      };
+      mkCursor();
+      CONFIG.prompt.split("").forEach((c) => {
+        const sp = el("ch", c === " " ? "&nbsp;" : c, "span");
+        typedEl.appendChild(sp);
+        chEls.push(sp);
+        mkCursor();
+      });
+
+      // --- keyboard (iOS geometry is identical to the ChatGPT capture)
+      const KB = { w: 33.44, gap: 6.03, inset: 6.67 };
+      const keyboard = el("keyboard");
+      keyboard.id = "cle-keyboard";
+      keyboard.setAttribute("data-layout-allow-overflow", "true");
+      keyboard.setAttribute("data-layout-allow-overlap", "true");
+      const predict = el("predict");
+      const PRED_STAGES = ["start", "end"];
+      const pdEls = [0, 1, 2].map((col) => {
+        const n = el("pd");
+        const stages = PRED_STAGES.map((k) => {
+          const w = el("pdw", CONFIG.predict[k][col]);
+          n.appendChild(w);
+          return w;
+        });
+        predict.appendChild(n);
+        return { cell: n, stages: stages };
+      });
+      keyboard.appendChild(predict);
+
+      const keyIndex = {};
+      const mkKey = (row, label, x, w, cls) => {
+        const k = el("key" + (cls ? " " + cls : ""), label);
+        k.style.left = x + "px";
+        k.style.width = w + "px";
+        row.appendChild(k);
+        if (/^[A-Z]$/.test(label)) keyIndex[label] = k;
+        return k;
+      };
+      [
+        { y: 52, keys: "QWERTYUIOP".split(""), x0: KB.inset },
+        { y: 106, keys: "ASDFGHJKL".split(""), x0: 26.33 },
+        { y: 160, keys: "ZXCVBNM".split(""), x0: 65.67 },
+      ].forEach((rd, ri) => {
+        const row = el("krow");
+        row.style.top = rd.y + "px";
+        rd.keys.forEach((k, i) => mkKey(row, k, rd.x0 + i * (KB.w + KB.gap), KB.w));
+        if (ri === 2) {
+          mkKey(row, ICO.shift, KB.inset, 45.33, "dark");
+          mkKey(row, ICO.del, 350, 45.67, "dark");
+        }
+        keyboard.appendChild(row);
+      });
+      const row4 = el("krow");
+      row4.style.top = "214px";
+      mkKey(row4, "123", KB.inset, 92.67, "dark small");
+      const kSpace = mkKey(row4, "", 105.33, 191.33);
+      mkKey(row4, ICO.ret, 302.67, 93, "dark");
+      keyboard.appendChild(row4);
+      keyboard.appendChild(el("kb-bottom", `<div>${ICO.emojiKey}</div><div>${ICO.mic}</div>`));
+
+      // --- header + scrims
+      const statusPlate = el("status-plate");
+      statusPlate.setAttribute("data-layout-allow-occlusion", "true");
+      const hdrScrim = el("hdr-scrim");
+      hdrScrim.setAttribute("data-layout-allow-occlusion", "true");
+      const compScrim = el("comp-scrim");
+      compScrim.setAttribute("data-layout-allow-occlusion", "true");
+      const header = el("header");
+      header.innerHTML =
+        `<div class="circle-btn hdr-left">${ICO.burger}</div>` +
+        `<div class="hdr-right" id="cle-hdr-right">` +
+        `<div class="hdr-right-face" id="cle-hdr-ghost">${ICO.ghost}</div>` +
+        `<div class="hdr-right-face" id="cle-hdr-actions">${ICO.newChat}${ICO.dots}</div></div>`;
+
+      [
+        port,
+        empty,
+        chevWrap,
+        compScrim,
+        composer,
+        keyboard,
+        hdrScrim,
+        statusPlate,
+        header,
+        sb,
+      ].forEach((n) => screen.appendChild(n));
+
+      /* ==================================================================
+         Everything below is measured off the live DOM, so it must run with the
+         real webfont applied. The @font-face files are still loading when this
+         script parses, so a first pass would measure a fallback face and get the
+         line counts wrong (it clipped a 7-line paragraph to 6). Build once
+         synchronously so the timeline exists at parse time, then rebuild once the
+         fonts report ready — deterministic either way, and the renderer only seeks
+         after fonts are loaded.
+         ================================================================== */
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      function build() {
+        tl.clear();
+        // A rebuild starts from whatever the previous pass left behind (heights 0,
+        // words hidden). Restore the natural layout first or the re-measure reads a
+        // collapsed DOM and every height/anchor comes back 0.
+        const allWords = leadWords
+          .concat(headWords)
+          .concat(blocks.reduce((acc, b) => acc.concat(b.words), []));
+        const allBoxes = [
+          boxThink,
+          boxSearch,
+          boxCollapsed,
+          leadPara,
+          spinWrap,
+          actionsBox,
+          disclaimBox,
+        ].concat(blocks.map((b) => b.node));
+        gsap.set(allBoxes, { height: "auto", autoAlpha: 1 });
+        gsap.set(allWords, { opacity: 1, autoAlpha: 1, y: 0 });
+        gsap.set([thread, keyboard], { y: 0 });
+        gsap.set(bubble, { autoAlpha: 1, y: 0, scale: 1 });
+        gsap.set(chEls, { opacity: 1 });
+        gsap.set(composer, { height: 172.7, width: 385.7, x: 0, y: 0 });
+        gsap.set([emptyMark, spinner], { autoAlpha: 1, scale: 1, rotation: 0 });
+        gsap.set(document.getElementById("cle-notice"), { autoAlpha: 1 });
+        /* ============================================================ measure
+           Everything is read here, in the natural layout, BEFORE any initial state
+           collapses it. Reading these during timeline construction would report the
+           collapsed geometry and every scroll target would resolve to 0.          */
+        const LH = 27.3;
+        const lineGroups = (words, host, gapTop) => {
+          const pad = gapTop || 0;
+          const tops = words.map((w) => w.offsetTop);
+          const uniq = [];
+          tops.forEach((t) => {
+            if (!uniq.length || t - uniq[uniq.length - 1] > 6) uniq.push(t);
+          });
+          const lineOf = tops.map((t) => {
+            let li = 0;
+            uniq.forEach((u, i) => {
+              if (Math.abs(t - u) <= 6) li = i;
+            });
+            return li;
+          });
+          const full = host.offsetHeight;
+          return {
+            lineOf: lineOf,
+            // the last step lands on the element's natural height, so the end state
+            // matches the layout the anchors were measured in exactly
+            heights: uniq.map((u, i) =>
+              i === uniq.length - 1 ? full : Math.min(full, pad + (i + 1) * LH + 2),
+            ),
+            full: full,
+          };
+        };
+        const leadMeta = lineGroups(leadWords, leadPara, 27.1);
+        blocks.forEach((b) => (b.meta = lineGroups(b.words, b.node, b.gapTop)));
+
+        const bubbleTop = bubble.offsetTop;
+        const rowThinkH = boxThink.offsetHeight;
+        const rowSearchH = boxSearch.offsetHeight;
+        const rowCollapsedH = boxCollapsed.offsetHeight;
+        const actionsH = actionsBox.offsetHeight;
+        const disclaimH = disclaimBox.offsetHeight;
+        const spinH = spinWrap.offsetHeight;
+        // Anchors are read in the SAME layout state their tween will play in. Correcting
+        // a natural-layout measurement by arithmetic is guesswork — it was 71pt out.
+        const ANCHOR = 720;
+        const ANCHOR_END = 715; // IMG_0944: the disclaimer's last line rests here
+        const anchorOf = (node, anchor) =>
+          Math.min(0, (anchor || ANCHOR) - (node.offsetTop + node.offsetHeight));
+        const anchorLead = anchorOf(leadPara);
+        const anchorTools = anchorOf(toolWrap);
+
+        // state B — tool rows collapsed into "2 steps", spinner still riding the tail
+        gsap.set([boxThink, boxSearch, leadPara], { height: 0 });
+        blocks.forEach((b) => {
+          b.anchor = anchorOf(b.node);
+          // one target per line: the stream must never write below the fold
+          b.lineAnchor = b.meta.heights.map((h) => Math.min(0, ANCHOR - (b.node.offsetTop + h)));
+        });
+        // state C — spinner gone, footer revealed
+        gsap.set(spinWrap, { height: 0 });
+        const anchorEnd = anchorOf(disclaimBox, ANCHOR_END);
+        gsap.set([boxThink, boxSearch, leadPara, spinWrap], { height: "auto" });
+
+        /* ====================================================== initial state */
+        gsap.set(thread, { y: 0 });
+        gsap.set(bubble, { autoAlpha: 0 });
+        gsap.set([boxThink, boxSearch, boxCollapsed], { height: 0, autoAlpha: 0 });
+        gsap.set(leadPara, { height: 0 });
+        gsap.set(leadWords, { opacity: 0 });
+        blocks.forEach((b) => {
+          gsap.set(b.node, { height: 0 });
+          gsap.set(b.words, { opacity: 0 });
+        });
+        gsap.set([actionsBox, disclaimBox], { height: 0, autoAlpha: 0 });
+        gsap.set(spinWrap, { autoAlpha: 0, scale: 0.6, height: spinH, transformOrigin: "50% 50%" });
+        gsap.set(chevWrap.firstChild, { autoAlpha: 0, y: 10 });
+        gsap.set(chEls, { opacity: 0 });
+        gsap.set(curEls, { autoAlpha: 0 });
+        gsap.set(document.getElementById("cle-comp-ph"), { autoAlpha: 1 });
+        gsap.set(document.getElementById("cle-comp-ph2"), { autoAlpha: 0 });
+        gsap.set(document.getElementById("cle-send-btn"), { autoAlpha: 0, scale: 0.6 });
+        gsap.set(document.getElementById("cle-stop-btn"), { autoAlpha: 0, scale: 0.6 });
+        gsap.set(document.getElementById("cle-hdr-actions"), { autoAlpha: 0 });
+        gsap.set(document.getElementById("cle-hdr-right"), { width: 44 });
+        gsap.set(emptyMark, { autoAlpha: 0, scale: 0.72, transformOrigin: "50% 50%" });
+        gsap.set(headWords, { autoAlpha: 0, y: 12 });
+        gsap.set(keyboard, { y: 0 });
+        gsap.set(composer, { width: 385.7, x: 0, y: -309, height: 172.7 });
+        pdEls.forEach((pd) => {
+          gsap.set(pd.stages[0], { autoAlpha: 1 });
+          gsap.set(pd.stages[1], { autoAlpha: 0 });
+        });
+        gsap.set(document.getElementById("cle-clock-late"), { autoAlpha: 0 });
+
+        /* ============================================================ timeline */
+
+        /* ---- 1. empty state arrives */
+        tl.to(emptyMark, { autoAlpha: 1, scale: 1, duration: 0.5, ease: "power3.out" }, T.emptyIn);
+        headWords.forEach((w, i) => {
+          tl.to(
+            w,
+            { autoAlpha: 1, y: 0, duration: 0.42, ease: "power3.out" },
+            T.emptyIn + 0.12 + i * 0.055,
+          );
+        });
+
+        /* ---- 2. typing */
+        const t0 = T.typeStart;
+        const chars = CONFIG.prompt.split("");
+        const charT = [];
+        let t = t0;
+        chars.forEach((c) => {
+          charT.push(t);
+          t += c === " " ? T.charBase + T.spaceHold : T.charBase;
+        });
+        const typeEnd = t;
+
+        tl.to(document.getElementById("cle-comp-ph"), { autoAlpha: 0, duration: 0.12 }, t0 - 0.02);
+        tl.to(curEls[0], { autoAlpha: 1, duration: 0.01 }, t0 - 0.02);
+        tl.to(
+          document.getElementById("cle-voice-btn"),
+          { autoAlpha: 0, scale: 0.6, duration: 0.14 },
+          t0,
+        );
+        tl.to(
+          document.getElementById("cle-send-btn"),
+          { autoAlpha: 1, scale: 1, duration: 0.24, ease: "back.out(1.6)" },
+          t0 + 0.04,
+        );
+
+        chars.forEach((c, i) => {
+          tl.to(chEls[i], { opacity: 1, duration: 0.01 }, charT[i]);
+          tl.to(curEls[i], { autoAlpha: 0, duration: 0.01 }, charT[i]);
+          tl.to(curEls[i + 1], { autoAlpha: 1, duration: 0.01 }, charT[i]);
+          const k = keyIndex[c.toUpperCase()];
+          const target = c === " " ? kSpace : k;
+          if (target) {
+            tl.to(target, { backgroundColor: "#5f5f5f", duration: 0.04 }, charT[i] - 0.03);
+            tl.to(target, { backgroundColor: "#404040", duration: 0.09 }, charT[i] + 0.02);
+          }
+        });
+
+        const lastCur = curEls[curEls.length - 1];
+        const blinkFrom = t0 + 0.1;
+        const blinks = Math.floor((typeEnd + T.sendPad - blinkFrom) / 1.06);
+        for (let i = 0; i < blinks; i++) {
+          const off = blinkFrom + i * 1.06 + 0.53;
+          const on = blinkFrom + i * 1.06 + 1.06;
+          if (off > typeEnd) tl.to(lastCur, { autoAlpha: 0, duration: 0.02 }, off);
+          if (on > typeEnd) tl.to(lastCur, { autoAlpha: 1, duration: 0.02 }, on);
+        }
+        const swapPredict = (at) => {
+          pdEls.forEach((pd) => {
+            tl.to(pd.stages[0], { autoAlpha: 0, duration: 0.06 }, at);
+            tl.to(pd.stages[1], { autoAlpha: 1, duration: 0.08 }, at + 0.06);
+          });
+        };
+        swapPredict(charT[CONFIG.prompt.indexOf(" ai ") + 1]);
+
+        /* ---- 3. send */
+        const tSend = typeEnd + T.sendPad;
+        const sendBtn = document.getElementById("cle-send-btn");
+        tl.to(sendBtn, { scale: 0.86, duration: 0.06, ease: "power2.out" }, tSend);
+        tl.to(sendBtn, { scale: 1, duration: 0.18, ease: "power2.out" }, tSend + 0.06);
+
+        const tGo = tSend + T.sendReact;
+        tl.to(chEls, { opacity: 0, duration: 0.01 }, tGo);
+        tl.to(curEls, { autoAlpha: 0, duration: 0.01 }, tGo);
+        tl.to(keyboard, { y: 340, duration: 0.3, ease: "power2.out" }, tGo);
+        tl.to(document.getElementById("cle-comp-mic"), { autoAlpha: 0, duration: 0.12 }, tGo + 0.1);
+        // card narrows and re-centres as it docks
+        tl.to(composer, { width: 369.7, x: 8, duration: 0.3, ease: "power2.out" }, tGo);
+        tl.to(composer, { y: 0, duration: 0.3, ease: "power2.out" }, tGo);
+        tl.to(document.getElementById("cle-comp-ph2"), { autoAlpha: 1, duration: 0.2 }, tGo + 0.14);
+        tl.to(sendBtn, { autoAlpha: 0, duration: 0.12 }, tGo + 0.24);
+        tl.to(
+          document.getElementById("cle-stop-btn"),
+          { autoAlpha: 1, scale: 1, duration: 0.2, ease: "power2.out" },
+          tGo + 0.3,
+        );
+        // the empty state leaves as the bubble arrives — one cause, two reactions
+        tl.to(emptyMark, { autoAlpha: 0, scale: 0.8, duration: 0.22, ease: "power2.in" }, tGo);
+        headWords.forEach((w, i) => {
+          tl.to(w, { autoAlpha: 0, y: -10, duration: 0.2, ease: "power2.in" }, tGo + i * 0.02);
+        });
+        // header: incognito circle widens into the actions pill
+        tl.to(
+          document.getElementById("cle-hdr-ghost"),
+          { autoAlpha: 0, duration: 0.12 },
+          tGo + 0.02,
+        );
+        tl.to(
+          document.getElementById("cle-hdr-right"),
+          { width: 100, duration: 0.26, ease: "power2.out" },
+          tGo + 0.06,
+        );
+        tl.to(
+          document.getElementById("cle-hdr-actions"),
+          { autoAlpha: 1, duration: 0.18 },
+          tGo + 0.16,
+        );
+
+        const dyBubble = 874 - 343 - 40 - 34 - bubbleTop; // composer text row -> slot
+        tl.fromTo(
+          bubble,
+          { autoAlpha: 0, y: dyBubble, scale: 0.94, transformOrigin: "100% 50%" },
+          { autoAlpha: 1, y: 0, scale: 1, duration: 0.34, ease: "power3.out" },
+          tGo + 0.02,
+        );
+
+        /* ---- 4. the spinner: Claude's own working indicator, not idle wobble */
+        let tw = tGo + 0.34 + T.spinLead;
+        tl.to(spinWrap, { autoAlpha: 1, scale: 1, duration: 0.26, ease: "power3.out" }, tw);
+        const spinTurns = 30;
+        for (let i = 0; i < spinTurns; i++) {
+          tl.to(
+            spinner,
+            { rotation: (i + 1) * 15, duration: 0.5, ease: "power1.inOut" },
+            tw + i * 0.5,
+          );
+          tl.to(
+            spinner,
+            { scale: i % 2 ? 1 : 0.78, duration: 0.5, ease: "sine.inOut" },
+            tw + i * 0.5,
+          );
+        }
+
+        const scrollTo = (target, at, dur) =>
+          tl.to(thread, { y: target, duration: dur || 0.55, ease: "power2.out" }, at);
+
+        /* ---- 5. tool rows, then the lead sentence, then the search */
+        tw += 0.5;
+        tl.to(
+          boxThink,
+          { height: rowThinkH, autoAlpha: 1, duration: 0.26, ease: "power2.out" },
+          tw,
+        );
+        tw += T.toolStep;
+
+        let lastLine = -1;
+        leadWords.forEach((w, wi) => {
+          const li = leadMeta.lineOf[wi];
+          if (li !== lastLine) {
+            tl.to(
+              leadPara,
+              { height: leadMeta.heights[li], duration: 0.16, ease: "power2.out" },
+              tw,
+            );
+            lastLine = li;
+          }
+          tl.to(w, { opacity: 1, duration: 0.09 }, tw);
+          tw += T.wordStep * 2.2;
+        });
+        scrollTo(anchorLead, tw - 0.3, 0.6);
+
+        tw += 0.3;
+        tl.to(
+          boxSearch,
+          { height: rowSearchH, autoAlpha: 1, duration: 0.26, ease: "power2.out" },
+          tw,
+        );
+        scrollTo(anchorTools, tw, 0.6);
+
+        /* ---- 6. the two tool rows collapse into "2 steps" */
+        tw += 0.85;
+        tl.to([boxThink, boxSearch, leadPara], { autoAlpha: 0, duration: 0.16 }, tw);
+        tl.to(
+          [boxThink, boxSearch, leadPara],
+          { height: 0, duration: 0.3, ease: "power2.inOut" },
+          tw + 0.06,
+        );
+        tl.to(
+          boxCollapsed,
+          { height: rowCollapsedH, autoAlpha: 1, duration: 0.26, ease: "power2.out" },
+          tw + 0.18,
+        );
+        scrollTo(0, tw + 0.06, 0.5);
+
+        /* ---- 7. the usage notice is dismissed, the card shrinks, the answer streams */
+        tw += T.collapseAt;
+        tl.to(document.getElementById("cle-notice"), { autoAlpha: 0, duration: 0.16 }, tw);
+        tl.to(composer, { height: 97.7, duration: 0.32, ease: "power2.inOut" }, tw + 0.04);
+        tw += 0.45;
+        blocks.forEach((b, bi) => {
+          let ll = -1;
+          b.words.forEach((w, wi) => {
+            const li = b.meta.lineOf[wi];
+            if (li !== ll) {
+              tl.to(b.node, { height: b.meta.heights[li], duration: 0.16, ease: "power2.out" }, tw);
+              scrollTo(b.lineAnchor[li], tw, 0.5);
+              ll = li;
+            }
+            tl.to(w, { opacity: 1, duration: 0.08 }, tw);
+            tw += T.wordStep;
+          });
+          if (bi < blocks.length - 1) tw += T.paraGap;
+        });
+
+        /* ---- 8. the answer lands: controls revert, footer arrives */
+        tw += T.tailStep;
+        tl.to(document.getElementById("cle-stop-btn"), { autoAlpha: 0, duration: 0.14 }, tw);
+        tl.to(document.getElementById("cle-comp-mic"), { autoAlpha: 1, duration: 0.18 }, tw + 0.04);
+        tl.to(
+          document.getElementById("cle-voice-btn"),
+          { autoAlpha: 1, scale: 1, duration: 0.22, ease: "power2.out" },
+          tw + 0.06,
+        );
+        tl.to(spinWrap, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: "power2.in" }, tw);
+        tl.to(spinWrap, { height: 0, duration: 0.24, ease: "power2.inOut" }, tw + 0.1);
+        tl.to(
+          actionsBox,
+          { height: actionsH, autoAlpha: 1, duration: 0.3, ease: "power2.out" },
+          tw + 0.22,
+        );
+        tl.to(
+          disclaimBox,
+          { height: disclaimH, autoAlpha: 1, duration: 0.3, ease: "power2.out" },
+          tw + 0.46,
+        );
+        scrollTo(anchorEnd, tw + 0.3, 0.8);
+        tl.to(
+          chevWrap.firstChild,
+          { autoAlpha: 1, y: 0, duration: 0.3, ease: "back.out(1.5)" },
+          tw + 0.7,
+        );
+        // the minute rolls over between the source frames — keep that
+        tl.to(document.getElementById("cle-clock-early"), { autoAlpha: 0, duration: 0.01 }, 8.4);
+        tl.to(document.getElementById("cle-clock-late"), { autoAlpha: 1, duration: 0.01 }, 8.4);
+      }
+
+      build();
+      if (document.fonts && document.fonts.status !== "loaded") {
+        document.fonts.ready.then(build);
+      }
+
+      window.__timelines["claude-exchange"] = tl;
+    </script>
+  </body>
+</html>

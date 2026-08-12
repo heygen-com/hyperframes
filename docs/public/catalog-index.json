@@ -761,6 +761,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chat-thread.png"
   },
   {
+    "name": "chatgpt-exchange",
+    "type": "block",
+    "title": "ChatGPT Exchange",
+    "description": "A portrait ChatGPT-style exchange types and sends a prompt, streams an answer, assembles a comparison table, and scrolls back through the result",
+    "tags": [
+      "showcase",
+      "mock-ui",
+      "ai",
+      "chat",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/chatgpt-exchange",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chatgpt-exchange.png"
+  },
+  {
     "name": "checkout-flow",
     "type": "component",
     "title": "Checkout Flow",
@@ -810,6 +826,22 @@
     ],
     "href": "/catalog/blocks/cinematic-zoom",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cinematic-zoom.png"
+  },
+  {
+    "name": "claude-exchange",
+    "type": "block",
+    "title": "Claude Exchange",
+    "description": "A portrait Claude-style exchange types a prompt, works through search and reasoning steps, then streams a detailed answer with citations and actions",
+    "tags": [
+      "showcase",
+      "mock-ui",
+      "ai",
+      "chat",
+      "vertical",
+      "ad-template"
+    ],
+    "href": "/catalog/blocks/claude-exchange",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/claude-exchange.png"
   },
   {
     "name": "code-3d-extrude",
