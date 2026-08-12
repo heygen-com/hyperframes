@@ -1251,6 +1251,26 @@
       loader.setDRACOLoader(draco);
 
       // MacBook
+      // The replacement device models carry UVs authored for a tiling material
+      // (the laptop panel runs u -6.3..6.3), so mapping one screen image onto
+      // them clamps at the edges and smears the last row of pixels across the
+      // whole panel. Both screens are flat planes, so derive planar UVs from
+      // the mesh's own bounds instead of trusting what shipped.
+      function planarScreenUv(mesh) {
+        var g = mesh.geometry;
+        g.computeBoundingBox();
+        var bb = g.boundingBox;
+        var pos = g.attributes.position;
+        var w = bb.max.x - bb.min.x || 1;
+        var h = bb.max.y - bb.min.y || 1;
+        var uv = new Float32Array(pos.count * 2);
+        for (var i = 0; i < pos.count; i++) {
+          uv[i * 2] = (pos.getX(i) - bb.min.x) / w;
+          uv[i * 2 + 1] = (pos.getY(i) - bb.min.y) / h;
+        }
+        g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      }
+
       loader.load("models/macbook.glb", function (gltf) {
         var m = gltf.scene;
         var box = new THREE.Box3().setFromObject(m);
@@ -1261,44 +1281,13 @@
         m.position.sub(box.getCenter(new THREE.Vector3()));
 
         m.traverse(function (child) {
-          if (child.isMesh && (child.name === "matte" || child.name === "Matte")) {
+          // `display` is the panel. `display-notch` is the bezel cut-out beside
+          // it and must keep its own material, so this cannot be a prefix test.
+          if (child.isMesh && child.name.replace(/\.\d+$/, "") === "display") {
+            planarScreenUv(child);
             child.material = new THREE.MeshBasicMaterial({ map: lapTex });
           }
         });
-
-        // Apple logo on back of lid — exact coords from model inspection:
-        // back mesh center: (0, 0.04, -1.54), matte center: (0, 0.15, -1.56)
-        // Back surface faces -Z. Logo at z = -1.63 (outside back surface), facing -Z.
-        var lc = document.createElement("canvas");
-        lc.width = 256;
-        lc.height = 256;
-        var lx = lc.getContext("2d");
-        lx.clearRect(0, 0, 256, 256);
-        lx.save();
-        lx.translate(128, 128);
-        lx.scale(11, 11);
-        lx.translate(-12, -13);
-        lx.fillStyle = "#b8b8bc";
-        lx.fill(
-          new Path2D(
-            "M18.71,19.5C17.88,20.49 17,21.4 15.66,21.42C14.29,21.45 13.73,20.56 12.18,20.56C10.63,20.56 9.99,21.4 8.74,21.45C7.44,21.5 6.47,20.36 5.62,19.39C3.89,17.39 2.59,13.78 4.37,11.37C5.25,10.17 6.61,9.42 8.08,9.4C9.4,9.37 10.62,10.35 11.43,10.35C12.24,10.35 13.72,9.17 15.32,9.35C15.98,9.38 17.66,9.61 18.72,11.17C18.62,11.23 16.39,12.52 16.42,15.19C16.45,18.37 19.18,19.35 19.21,19.36ZM15.23,7.7C15.96,6.82 16.43,5.6 16.31,4.38C15.25,4.42 13.97,5.09 13.22,5.96C12.55,6.74 11.98,7.99 12.12,9.18C13.29,9.27 14.5,8.57 15.23,7.7Z",
-          ),
-        );
-        lx.restore();
-        var logoTex = new THREE.CanvasTexture(lc);
-        logoTex.minFilter = THREE.LinearFilter;
-        var appleLogoMesh = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.55, 0.55),
-          new THREE.MeshBasicMaterial({
-            map: logoTex,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-          }),
-        );
-        appleLogoMesh.position.set(0, 0.1, -1.63);
-        appleLogoMesh.rotation.y = PI;
-        m.add(appleLogoMesh);
 
         lapGrp.add(m);
         ready++;

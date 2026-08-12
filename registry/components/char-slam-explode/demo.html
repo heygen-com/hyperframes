@@ -1,0 +1,84 @@
+<!doctype html>
+<!--
+  char-slam-explode demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default copy, accent, and spread prove
+  that all variables flow through the elastic host mount.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Char Slam Explode Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f7f8fa;
+        --surface: #15181e;
+        --border: #343943;
+        --font-display: Inter, system-ui, sans-serif;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 44%, #1a1722 0%, var(--bg) 72%);
+      }
+
+      .mount-card {
+        width: 82%;
+        height: 64%;
+        left: 9%;
+        top: 18%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(247, 248, 250, 0.12);
+        border-radius: 32px;
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
+        box-shadow: 0 54px 120px rgba(0, 0, 0, 0.46);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="char-slam-explode-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="char-slam-explode-mount"
+        class="mount-card clip"
+        data-composition-id="char-slam-explode"
+        data-composition-src="./char-slam-explode.html"
+        data-variable-values='{"text":"Detonate","accent":"violet","spread":"wild"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1574"
+        data-height="691"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["char-slam-explode-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

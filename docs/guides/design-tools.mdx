@@ -1,78 +1,90 @@
 ---
 title: "Bring a design into a project"
 sidebarTitle: "Bring in a design"
-description: "Start from Figma, a design-tool draft, or an existing brand system without turning the video into a stack of screenshots."
+description: "Start from a Figma file or a design-tool draft. Keep the look, rebuild only what has to move."
 ---
 
-Use an existing design as source material: preserve its visual language, then
-rebuild what must move as editable HyperFrames scenes.
+import { DocsVideo } from "/snippets/docs-video.jsx";
 
-## Choose what should remain editable
+Already have a design — Figma, a design-tool draft, a brand kit? One rule
+decides how each piece comes across:
 
-| Source | Keep as media | Rebuild in HTML |
-| --- | --- | --- |
-| Logo, icon, illustration, or textured artwork | Usually | Only when individual parts must animate |
-| Product screenshot | When a still proves the point | When the scene needs a real interaction or responsive crop |
-| Figma component | When exact pixels matter more than editing | When text, color, layout, or states must change |
-| Storyboard frames | Use as visual references | Reconstruct the intended motion between states |
-| Brand colors and type | Import the files and values | Apply them across the composition |
+**Pictures stay pictures. Anything that has to move or change gets rebuilt as
+real HTML — the editable code the video is made of.**
 
-Do not animate a stack of complete screenshots merely because they came from a
-design tool. Use screenshots for proof; use HTML for the parts that need to
-change.
+## What to keep as a picture
+
+Keep the export when the piece just sits there and looks right:
+
+- Logos, icons, illustrations, textured artwork.
+- A screenshot, when a still proves the point.
+- A Figma component, when exact pixels matter more than editing.
+- Storyboard frames, as references for the look.
+
+## What to rebuild in HTML
+
+Rebuild it when something inside changes while the video plays:
+
+- Parts of an illustration animate separately.
+- A screen shows a real interaction, or is re-cropped to another size.
+- Text, color, layout, or on/off states change.
+- Storyboard frames whose point is the motion between them — build that
+  movement, don't cut between finished frames.
+
+Brand colors and fonts: import once, use everywhere.
+
+Don't animate a stack of finished screenshots just because a design tool made
+them. Screenshots are proof. HTML is what changes.
+
+<DocsVideo
+  title="A design frame beside the same design rebuilt as working HTML"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/figma-to-html-demo-v1.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/figma-to-html-demo-v1.jpg"
+/>
+
+Both panels get the same clicks. Only the rebuilt side reacts, because a picture
+of a form cannot take input. That is the whole rule this page is about.
 
 ## Start from Figma
 
-Send the agent the Figma link and the outcome:
+Give the agent the link and the outcome:
 
 ```text
-Use this Figma section as the visual source for a 20-second product intro:
+Use this Figma section as the source for a 20-second product intro:
 https://www.figma.com/design/FILE/Project?node-id=10-20
 
-Preserve the brand type and colors. Import artwork as local assets, rebuild the
-product states that need to move, and treat the frames as key moments rather
-than separate slides.
+Keep the brand type and colors. Rebuild the states that must move. Treat the
+frames as key moments, not slides.
 ```
 
-The agent can use the `/figma` skill to import assets, read brand values,
-reconstruct editable components, and translate supported motion. Everything
-required by the final render should end up as local project source.
-
-For tokens, API credentials, exact CLI commands, and import troubleshooting,
-use the [Figma integration reference](/guides/figma).
+The `/figma` skill imports artwork, reads brand values, rebuilds components as
+editable HTML, and translates motion where it can. It all lands in the project,
+so rendering never depends on Figma. Tokens, commands and errors:
+[Figma reference](/guides/figma).
 
 ## Start from Claude Design or Open Design
 
-These tools can establish layout, palette, type, and scene direction before a
-deeper production pass.
+These settle layout, palette, type, and scene direction first.
 
-1. Give the design tool the current HyperFrames instruction file and your real
-   brand material.
-2. Ask for a valid project rather than isolated mockups.
-3. Download or save the project to disk.
-4. Open that folder with a coding agent.
-5. Let the agent validate timing, motion, media, captions, and rendering.
+1. Give the tool the HyperFrames instruction file and your brand material.
+2. Ask for a working project, not loose mockups.
+3. Save it to disk, then open that folder with a coding agent.
+4. Let the agent check timing, motion, media, captions, and rendering.
 
-[Claude Design instruction](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) · [Open Design handoff](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/open-design-hyperframes.md)
+[Claude Design instruction](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/design-tools-hyperframes.md) · [Open Design handoff](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/open-design-hyperframes.md)
 
-## Judge the handoff
+## Is the handoff any good?
 
-A useful handoff has:
-
-- a clear visual direction;
-- real assets or honestly labeled placeholders;
-- editable source for anything likely to change;
-- stable local media and fonts;
-- a project that opens and can be checked.
-
-Run:
+A good one has a clear direction, real assets or honestly labeled placeholders,
+editable source for whatever may change, local media and fonts, and a project
+that opens. Check that yourself:
 
 ```bash
 npx hyperframes check
 npx hyperframes preview
 ```
 
-Then review the actual movement in [Studio](/studio), not only the design stills.
+Then watch it move in [Studio](/studio) — stills cannot show timing.
 
 ## Related topics
 

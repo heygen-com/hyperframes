@@ -253,6 +253,17 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     expect(result).toBe(html);
   });
 
+  it("does NOT throw when font-family uses a CSS var() reference with a fallback", async () => {
+    const html = `<!doctype html><html><head><style>
+      .title { font-family: var(--brand-font, inherit); }
+    </style></head><body><h1 class="title">hello</h1></body></html>`;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      fetchImpl: makeFailingFetch(),
+    });
+    expect(result).toBe(html);
+  });
+
   it("resolves simple CSS var() font aliases when injecting deterministic fonts", async () => {
     const html = `<!doctype html><html><head><style>
       :root { --ui-font: "Inter"; --vowel-font: "Montserrat"; }

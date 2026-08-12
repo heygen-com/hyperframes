@@ -3,6 +3,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 export { PROPERTY_DEFAULTS } from "./gsapShared";
 import { idSelector, matchesExactlyOne } from "./gsapShared";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 /**
  * The selector to author a NEW tween against, minting an id on the element when
@@ -119,7 +120,7 @@ export async function assignGsapTargetAutoIdIfNeeded({
     `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
       body: JSON.stringify(patchBody),
     },
   );

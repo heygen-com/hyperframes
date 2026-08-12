@@ -1,0 +1,76 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "trust-strip",
+  "type": "hyperframes:component",
+  "title": "Trust Strip",
+  "description": "A monochrome trust row of wide-tracked mono wordmarks that fade in with an opacity-only left-to-right stagger, then hold dead still.",
+  "tags": ["motion-primitive", "proof", "trust", "logo-strip", "wordmarks"],
+  "jobs": ["prove"],
+  "family": "proof-and-stats",
+  "profile": "quiet-proof",
+  "evidence": "Video Primitives Wave J J1-8 trust-strip contract; cohere-north-launch 06-proof trust strip",
+  "syncPoints": [{ "id": "strip-complete", "phase": "in", "offset": 1.3 }],
+  "files": [
+    {
+      "path": "trust-strip.html",
+      "target": "compositions/components/trust-strip.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "marks",
+      "type": "string",
+      "role": "content",
+      "label": "Marks",
+      "description": "Comma-separated wordmark texts (3 to 7 recommended).",
+      "default": "Northwind, Acme Corp, Globex, Initech, Umbra"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Mark color: quiet muted or full-contrast ink.",
+      "default": "muted",
+      "options": [
+        { "value": "muted", "label": "Muted" },
+        { "value": "ink", "label": "Ink" }
+      ]
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated reveal starts in seconds from mount start. Empty uses the authored 0.15s stagger.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Faint palette tint mixed into the mark color.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "End-of-clip behavior. None holds to the last frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

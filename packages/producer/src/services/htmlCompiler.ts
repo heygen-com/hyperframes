@@ -51,9 +51,17 @@ import {
   type AudioVolumeKeyframe,
   type MediaProbeProfile,
   analyzeKeyframeIntervals,
+  assertMediaPayload,
+  NotMediaPayloadError,
   probeMediaProfile,
 } from "@hyperframes/engine";
-import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
+import {
+  downloadToTemp,
+  fetchPublicHttpsText,
+  isHttpUrl,
+  safeDownloadUrlIdentity,
+  type UrlDownloadTelemetry,
+} from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import {
   injectDeterministicFontFaces,
@@ -65,6 +73,10 @@ import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
+
+function logRemoteDownloadTelemetry(event: UrlDownloadTelemetry): void {
+  defaultLogger.info("[Compiler] Remote asset download integrity", { ...event });
+}
 
 export interface CompiledComposition {
   html: string;
@@ -413,13 +425,16 @@ async function resolveMediaDuration(
   downloadDir: string,
   tagName: string,
   elementIdentity: string,
+  log?: ProducerLogger,
 ): Promise<{ duration: number; resolvedPath: string }> {
   let filePath = src;
 
   if (isHttpUrl(src)) {
     if (!existsSync(downloadDir)) mkdirSync(downloadDir, { recursive: true });
     try {
-      filePath = await downloadToTemp(src, downloadDir);
+      filePath = await downloadToTemp(src, downloadDir, undefined, undefined, undefined, {
+        onTelemetry: logRemoteDownloadTelemetry,
+      });
     } catch {
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
       // The element will get duration 0 and be excluded from the render.
@@ -436,12 +451,30 @@ async function resolveMediaDuration(
   return withMediaProbeSlot(async () => {
     let profile: MediaProbeProfile;
     try {
+      // Payload sniff (STUDIO-5433): if an authoring bug hands us a text
+      // payload (e.g. an unresolved nested-composition preview URL), fail with
+      // a typed NotMediaPayloadError instead of letting ffprobe emit an opaque
+      // `[mov,mp4,...] moov atom not found` that routes as a codec bug.
+      // Deliberately inside this try: the audio/video split below is the
+      // contract, so a bad audio src must still degrade to duration 0 rather
+      // than take down the whole render.
+      await assertMediaPayload(filePath, elementIdentity);
       profile = await probeMediaProfile(filePath);
     } catch (error) {
       // Preserve the historical split: invalid video sources surface their
       // probe failure, while invalid/unreadable audio sources resolve to zero
       // duration and are excluded by the compiler.
-      if (tagName !== "video") return { duration: 0, resolvedPath: filePath };
+      if (tagName !== "video") {
+        if (error instanceof NotMediaPayloadError) {
+          // Dropping it silently is what let STUDIO-5433 resurface downstream
+          // as `prepare/ffmpeg_failed` with owner "system".
+          log?.warn(
+            `[compile] Audio "${elementIdentity}" (${src}) is a text document, not a media ` +
+              "file — the element is dropped from the render. Point it at a rendered media file.",
+          );
+        }
+        return { duration: 0, resolvedPath: filePath };
+      }
       throw error;
     }
     assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, elementIdentity);
@@ -489,9 +522,15 @@ async function compileHtmlFile(
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
-      resolveMediaDuration(el.src!, el.mediaStart, baseDir, downloadDir, el.tagName, el.id).then(
-        ({ duration }) => ({ id: el.id, duration }),
-      ),
+      resolveMediaDuration(
+        el.src!,
+        el.mediaStart,
+        baseDir,
+        downloadDir,
+        el.tagName,
+        el.id,
+        log,
+      ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
   const resolutions: ResolvedDuration[] = resolvedResults.filter((r) => r.duration > 0);
@@ -513,6 +552,7 @@ async function compileHtmlFile(
           downloadDir,
           el.tagName,
           el.id,
+          log,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
       }),
@@ -1306,14 +1346,17 @@ async function downloadAndRewriteUrls(
   await Promise.all(
     [...urlSet].map(async (url) => {
       try {
-        const localPath = await downloadToTemp(url, remoteDir);
+        const localPath = await downloadToTemp(url, remoteDir, undefined, undefined, undefined, {
+          onTelemetry: logRemoteDownloadTelemetry,
+        });
         urlToLocal.set(url, localPath);
       } catch (err) {
-        defaultLogger.warn(
-          `[Compiler] ${warnLabel} ${url} — using original URL as fallback. ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+        const identity = safeDownloadUrlIdentity(url);
+        defaultLogger.warn(`[Compiler] ${warnLabel} — using original URL as fallback.`, {
+          urlFingerprint: identity.urlFingerprint,
+          host: identity.host,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }),
   );
@@ -1369,7 +1412,7 @@ export async function localizeRemoteMediaSources(
     urlSet,
     html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
-    "Remote media download failed for",
+    "Remote media download failed",
     "Localized remote media source(s)",
   );
 }
@@ -1412,7 +1455,7 @@ export async function localizeRemoteImageSources(
     urlSet,
     html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
-    "Remote image download failed for",
+    "Remote image download failed",
     "Localized remote image source(s)",
   );
 }
@@ -1450,7 +1493,7 @@ export async function localizeRemoteBackgroundImages(
     urlSet,
     html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
-    "Remote background-image download failed for",
+    "Remote background-image download failed",
     "Localized remote background-image(s)",
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
@@ -1492,42 +1535,18 @@ function isGoogleFontsUrl(href: string): boolean {
 const MAX_STYLESHEET_BYTES = 2 * 1024 * 1024;
 
 async function fetchExternalStylesheetCss(href: string): Promise<string | null> {
+  const identity = safeDownloadUrlIdentity(href);
   try {
-    assertPublicHttpsUrl(href);
-  } catch {
-    return null;
-  }
-  try {
-    const response = await fetch(href, {
-      signal: AbortSignal.timeout(15_000),
+    return await fetchPublicHttpsText(href, {
+      maxBytes: MAX_STYLESHEET_BYTES,
+      timeoutMs: 15_000,
     });
-    if (!response.ok) {
-      defaultLogger.warn(
-        `[Compiler] External stylesheet fetch failed for ${href} — HTTP ${response.status}`,
-      );
-      return null;
-    }
-    const contentLength = response.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > MAX_STYLESHEET_BYTES) {
-      defaultLogger.warn(
-        `[Compiler] External stylesheet too large (${contentLength} bytes): ${href}`,
-      );
-      return null;
-    }
-    const text = await response.text();
-    if (text.length > MAX_STYLESHEET_BYTES) {
-      defaultLogger.warn(
-        `[Compiler] External stylesheet too large (${text.length} bytes): ${href}`,
-      );
-      return null;
-    }
-    return text;
   } catch (err) {
-    defaultLogger.warn(
-      `[Compiler] External stylesheet fetch failed for ${href} — ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    defaultLogger.warn("[Compiler] External stylesheet fetch failed — preserving link tag.", {
+      urlFingerprint: identity.urlFingerprint,
+      host: identity.host,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -1608,11 +1627,14 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
     if (css === null) continue;
     const fontFaceBlocks = extractFontFaceBlocks(css);
     if (fontFaceBlocks.length === 0) continue;
-    const inlineStyle = `<style>/* Inlined from ${href} */\n${fontFaceBlocks.join("\n")}\n</style>`;
+    const identity = safeDownloadUrlIdentity(href);
+    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
     result = result.replace(fullMatch, inlineStyle);
-    defaultLogger.info(
-      `[Compiler] Inlined ${fontFaceBlocks.length} @font-face rule(s) from external stylesheet: ${href}`,
-    );
+    defaultLogger.info("[Compiler] Inlined external @font-face rule(s)", {
+      count: fontFaceBlocks.length,
+      urlFingerprint: identity.urlFingerprint,
+      host: identity.host,
+    });
   }
   return result;
 }
@@ -1672,7 +1694,7 @@ export async function localizeRemoteFontFaces(
     urlSet,
     processed,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
-    "Remote font download failed for",
+    "Remote font download failed",
     "Localized remote font face(s)",
     (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
   );

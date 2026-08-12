@@ -9,6 +9,7 @@ import { synthesizeFlatTweenKeyframes } from "../../hooks/gsapTweenSynth";
 import { TimelineDiamondLane, type TimelineDiamondKeyframe } from "./TimelineClipDiamonds";
 import { LANE_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
+import { timelineLogicalRowCellId, timelinePropertyRowId } from "./timelineNavigationIdentity";
 
 export interface TimelinePropertyLanesProps {
   /**
@@ -16,7 +17,7 @@ export interface TimelinePropertyLanesProps {
    * `aria-controls` at the lanes a sighted user sees it reveal. Minted by
    * TimelineLanes, which owns both this subtree and the caret's.
    */
-  id?: string;
+  id: string;
   animations: readonly GsapAnimation[];
   clipStart: number;
   clipDuration: number;
@@ -27,6 +28,7 @@ export interface TimelinePropertyLanesProps {
   currentPercentage: number;
   elementId: string;
   selectedKeyframes: ReadonlySet<string>;
+  rovingTargetId?: string | null;
   onSelectSegment?: (target: TimelineKeyframeTarget) => void;
   onClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onShiftClickKeyframe?: (target: TimelineKeyframeTarget) => void;
@@ -187,6 +189,7 @@ export function TimelinePropertyLanes({
   currentPercentage,
   elementId,
   selectedKeyframes,
+  rovingTargetId = null,
   onSelectSegment,
   onClickKeyframe,
   onShiftClickKeyframe,
@@ -223,9 +226,11 @@ export function TimelinePropertyLanes({
       {laneData.map(({ group, keyframesData }, laneIndex) => (
         <div
           key={group}
+          id={timelineLogicalRowCellId(id, timelinePropertyRowId(elementId, group), "content")}
           role="group"
           aria-label={`${group} keyframes`}
           data-property-group={group}
+          data-timeline-element-id={elementId}
           data-timeline-property-lane=""
           data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
           className="absolute"
@@ -240,12 +245,14 @@ export function TimelinePropertyLanes({
             keyframesData={keyframesData}
             clipWidthPx={clipWidthPx}
             clipHeightPx={LANE_H}
-            clipDuration={clipDuration}
             accentColor={accentColor}
             isSelected={isSelected}
             currentPercentage={currentPercentage}
             elementId={elementId}
+            clipStart={clipStart}
+            clipDuration={clipDuration}
             selectedKeyframes={selectedKeyframes}
+            rovingTargetId={rovingTargetId}
             onSelectSegment={onSelectSegment}
             onClickKeyframe={onClickKeyframe}
             onShiftClickKeyframe={onShiftClickKeyframe}

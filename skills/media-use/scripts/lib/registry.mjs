@@ -128,6 +128,44 @@ export function providerNamesFor(type) {
 }
 
 /**
+ * name -> cost tier ("local" | "network_free" | "network_paid") over a collection
+ * of ordered provider lists, i.e. the A / N / P distinction the constructors above
+ * already declare. Exported so the conflict rule below is testable against a
+ * fixture; production reads the REGISTRY-wide index built from it.
+ *
+ * A name declared under two media types must carry the same tier in both. If it
+ * didn't, "did this resolve cost credit" would depend on which type happened to
+ * serve it, and the telemetry property would mean nothing — so this throws at
+ * import rather than silently picking one.
+ */
+export function buildProviderTierIndex(providerLists) {
+  const tiers = new Map();
+  for (const list of providerLists) {
+    for (const p of list) {
+      const tier = p.paid ? "network_paid" : p.network ? "network_free" : "local";
+      const prior = tiers.get(p.name);
+      if (prior && prior !== tier)
+        throw new Error(
+          `provider "${p.name}" is declared ${prior} under one media type and ${tier} under another`,
+        );
+      tiers.set(p.name, tier);
+    }
+  }
+  return tiers;
+}
+
+const PROVIDER_TIERS = buildProviderTierIndex(Object.values(REGISTRY));
+
+/**
+ * Cost tier of a provider by name, or undefined for a name the registry doesn't
+ * declare. The registry stays the single owner of "does this cost credit", so
+ * dashboards and callers never re-derive it from provider-name string matching.
+ */
+export function providerTierFor(name) {
+  return PROVIDER_TIERS.get(name);
+}
+
+/**
  * Does an override token (full name like "codex.image_gen" or a prefix like
  * "codex") match any provider declared for the type? Same match rule as
  * runProviders, so validation and dispatch never disagree.

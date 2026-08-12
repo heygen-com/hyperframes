@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Icon Swap - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of frame */
+        transform: scale(1.47);
+      }
+      .hf-transition-icon-swap {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 58px;
+        height: 58px;
+        border: 0;
+        border-radius: 16px;
+        background: #18181b;
+        color: #fff;
+        font:
+          900 28px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 18px 44px rgba(24, 24, 27, 0.22);
+      }
+      .hf-transition-icon-swap span {
+        position: absolute;
+        filter: blur(var(--hf-icon-blur, 0px));
+        transform: scale(var(--hf-icon-scale, 1)) rotate(var(--hf-icon-rotate, 0deg));
+        will-change: transform, filter, opacity;
+      }
+      .hf-transition-icon-swap .to {
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="icon-swap-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <button class="hf-transition-icon-swap" type="button">
+          <span class="from">+</span><span class="to">OK</span>
+        </button>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.to(
+          ".hf-transition-icon-swap .from",
+          {
+            opacity: 0,
+            "--hf-icon-scale": 0.55,
+            "--hf-icon-blur": "8px",
+            "--hf-icon-rotate": "-18deg",
+            duration: 0.18,
+            ease: "power2.in",
+          },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-transition-icon-swap .to",
+          {
+            opacity: 0,
+            "--hf-icon-scale": 1.35,
+            "--hf-icon-blur": "8px",
+            "--hf-icon-rotate": "18deg",
+          },
+          {
+            opacity: 1,
+            "--hf-icon-scale": 1,
+            "--hf-icon-blur": "0px",
+            "--hf-icon-rotate": "0deg",
+            duration: 0.26,
+            ease: "back.out(1.7)",
+          },
+          startTime + 0.12,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["icon-swap-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

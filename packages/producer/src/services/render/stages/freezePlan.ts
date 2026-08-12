@@ -114,7 +114,7 @@ export interface ChunkSliceJson {
 
 /**
  * Inputs to `freezePlan`. `planDir` already contains `compiled/`,
- * `video-frames/`, and (optionally) `audio.aac` by the time freezePlan
+ * `video-frames/`, and (optionally) the mixed audio by the time freezePlan
  * runs — those are materialized by the upstream compile/probe/extract/audio
  * stages composed in `services/distributed/plan.ts`.
  */
@@ -132,7 +132,7 @@ export interface FreezePlanInput {
   durationSeconds: number;
   /** Total frame count, separately materialized for callers that read `plan.json` without parsing chunks.json. */
   totalFrames: number;
-  /** Whether `<planDir>/audio.aac` was produced. */
+  /** Whether the plan's mixed-audio artifact was produced. */
   hasAudio: boolean;
 }
 

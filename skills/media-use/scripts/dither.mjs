@@ -120,7 +120,7 @@ async function run() {
 function probe(filePath) {
   const raw = execFileSync(
     "ffprobe",
-    ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", filePath],
+    ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", "--", filePath],
     { encoding: "utf8", timeout: 10_000 },
   );
   const parsed = JSON.parse(raw);

@@ -36,6 +36,7 @@ import {
   type EngineConfig,
   closeCaptureSession,
   createCaptureSession,
+  deriveBeginFrameProbeTimeTicks,
   getCompositionDuration,
   initializeSession,
   isTransientBrowserError,
@@ -388,9 +389,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       const livenessStart = Date.now();
       // Tick inside the post-warmup cushion: warmup < probe < first capture
       // keeps the session's BeginFrame frameTimeTicks monotonic.
-      const probeTick = Math.max(
-        0,
-        probeSession.beginFrameTimeTicks - 5 * probeSession.beginFrameIntervalMs,
+      const probeTick = deriveBeginFrameProbeTimeTicks(
+        probeSession.beginFrameTimeTicks,
+        probeSession.beginFrameIntervalMs,
       );
       const alive = await probeBeginFrameLiveness(
         probeSession.page,

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ui-focus-zoom",
+  "type": "hyperframes:component",
+  "title": "UI Focus Zoom",
+  "description": "A full app surface establishes with one settle, then the camera zooms and pans to an anchored region on its cue and holds the zoomed state, with an optional soft focus halo at the anchor. The surface is a slot with a token-styled skeleton default.",
+  "tags": ["camera", "product-demo", "zoom", "focus", "pan", "slot", "servo"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "camera",
+  "evidence": "Wave J J2-2: adversarial panel hero shelf, camera-servo law from flagship frame 04 (one world wrapper, integer-cycle micro-drift ending at zero)",
+  "syncPoints": [{ "id": "focus-arrive", "phase": "in", "offset": 2.5 }],
+  "files": [
+    {
+      "path": "ui-focus-zoom.html",
+      "target": "compositions/components/ui-focus-zoom.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "anchor_x",
+      "type": "number",
+      "role": "content",
+      "label": "Anchor X",
+      "description": "Focus anchor, percent from the left edge of the surface.",
+      "default": 64,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "anchor_y",
+      "type": "number",
+      "role": "content",
+      "label": "Anchor Y",
+      "description": "Focus anchor, percent from the top edge of the surface.",
+      "default": 36,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "zoom",
+      "type": "number",
+      "role": "content",
+      "label": "Zoom",
+      "description": "Camera scale at the focused state.",
+      "default": 1.6,
+      "min": 1,
+      "max": 3,
+      "step": 0.05
+    },
+    {
+      "id": "zoom_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Zoom at",
+      "description": "Seconds from mount start when the camera departs for the anchor. Clamped inside the hold.",
+      "default": 1.4,
+      "min": 0,
+      "max": 30,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "halo",
+      "type": "enum",
+      "role": "style",
+      "label": "Halo",
+      "description": "Soft accent bloom at the anchor as the camera arrives.",
+      "default": "show",
+      "options": [
+        { "value": "show", "label": "Show" },
+        { "value": "hide", "label": "Hide" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Token the halo and skeleton accent elements ride.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "Optional departure. None holds the final frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

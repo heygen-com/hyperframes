@@ -4,10 +4,13 @@ import { setupTempAuthEnv } from "./_test-utils.js";
 import { isAuthError } from "./errors.js";
 import {
   parseTokenResponse,
+  persistFreshOAuth,
+  persistVerifiedOAuthSession,
   refreshTokens,
   resolveClientId,
   revokeTokens,
   startAuthorizationCodeFlow,
+  startDeviceAuthorizationFlow,
 } from "./oauth.js";
 import { readStore, writeStore } from "./store.js";
 
@@ -25,6 +28,45 @@ vi.mock("./loopback.js", () => ({
 vi.mock("./browser.js", () => ({
   openBrowser: vi.fn(async () => ({ opened: true })),
 }));
+
+function tokenFetch(body: Record<string, unknown>): typeof fetch {
+  return (async () =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
+}
+
+function deviceAuthorizationResponse(overrides: Record<string, unknown> = {}): Response {
+  return new Response(
+    JSON.stringify({
+      device_code: "secret-device-code",
+      user_code: "ABCD-2345",
+      verification_uri: "https://app.heygen.com/oauth/device",
+      expires_in: 600,
+      interval: 5,
+      ...overrides,
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+function queuedFetch(
+  responses: Response[],
+  onRequest?: (url: string | URL | Request, init?: RequestInit) => void,
+): typeof fetch {
+  return (async (url: string | URL | Request, init?: RequestInit) => {
+    onRequest?.(url, init);
+    const next = responses.shift();
+    if (!next) throw new Error("unexpected fetch");
+    return next;
+  }) as typeof fetch;
+}
+
+async function loginWithTokens(body: Record<string, unknown>) {
+  await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
+  return (await readStore()).credentials;
+}
 
 describe("auth/oauth", () => {
   let fixture: Awaited<ReturnType<typeof setupTempAuthEnv>>;
@@ -70,7 +112,10 @@ describe("auth/oauth", () => {
     });
 
     it("accepts expires_in as a string (some servers serialize as string)", () => {
-      const tokens = parseTokenResponse({ access_token: "at", expires_in: "1800" });
+      const tokens = parseTokenResponse({
+        access_token: "at",
+        expires_in: "1800",
+      });
       expect(tokens.expires_at).toBeDefined();
     });
 
@@ -103,7 +148,10 @@ describe("auth/oauth", () => {
 
     it("clamps non-positive expires_in to avoid an immediate-refresh loop", () => {
       const zero = parseTokenResponse({ access_token: "at", expires_in: 0 });
-      const negative = parseTokenResponse({ access_token: "at", expires_in: -100 });
+      const negative = parseTokenResponse({
+        access_token: "at",
+        expires_in: -100,
+      });
       // both should resolve to a future time
       expect(new Date(zero.expires_at!).getTime()).toBeGreaterThan(Date.now() + 25 * 1000);
       expect(new Date(negative.expires_at!).getTime()).toBeGreaterThan(Date.now() + 25 * 1000);
@@ -158,11 +206,7 @@ describe("auth/oauth", () => {
           expires_at: "2026-01-01T00:00:00Z",
         },
       });
-      const fetchImpl = (async () =>
-        new Response(JSON.stringify({ access_token: "new_at", expires_in: 3600 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
       await refreshTokens("keep_me_rt", { fetchImpl });
       const { credentials } = await readStore();
       expect(credentials.oauth?.access_token).toBe("new_at");
@@ -172,11 +216,7 @@ describe("auth/oauth", () => {
 
     it("preserves an existing api_key when persisting refreshed oauth", async () => {
       await writeStore({ api_key: "hg_keep" });
-      const fetchImpl = (async () =>
-        new Response(JSON.stringify({ access_token: "new_at", expires_in: 60 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 60 });
       await refreshTokens("old_rt", { fetchImpl });
       const { credentials } = await readStore();
       expect(credentials.api_key).toBe("hg_keep");
@@ -202,11 +242,7 @@ describe("auth/oauth", () => {
         }),
         { mode: 0o600 },
       );
-      const fetchImpl = (async () =>
-        new Response(JSON.stringify({ access_token: "new_at", expires_in: 3600 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
       await refreshTokens("keep_me_rt", { fetchImpl });
 
       const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
@@ -217,7 +253,9 @@ describe("auth/oauth", () => {
 
     it("throws REFRESH_FAILED on 400/401", async () => {
       const fetchImpl = (async () =>
-        new Response("invalid_grant", { status: 400 })) as unknown as typeof fetch;
+        new Response("invalid_grant", {
+          status: 400,
+        })) as unknown as typeof fetch;
       await expect(refreshTokens("bad_rt", { fetchImpl })).rejects.toSatisfy((err) => {
         return isAuthError(err) && (err as { code: string }).code === "REFRESH_FAILED";
       });
@@ -261,7 +299,10 @@ describe("auth/oauth", () => {
         capturedBody = init?.body as string;
         return new Response("", { status: 200 });
       }) as unknown as typeof fetch;
-      await revokeTokens("tok", { fetchImpl, token_type_hint: "refresh_token" });
+      await revokeTokens("tok", {
+        fetchImpl,
+        token_type_hint: "refresh_token",
+      });
       expect(capturedBody).toContain("token_type_hint=refresh_token");
     });
 
@@ -296,24 +337,19 @@ describe("auth/oauth", () => {
   });
 
   describe("startAuthorizationCodeFlow persistence", () => {
-    function tokenFetch(body: Record<string, unknown>): typeof fetch {
-      return (async () =>
-        new Response(JSON.stringify(body), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
-    }
-
     it("overwrites the OAuth block on fresh login (no inherited refresh_token)", async () => {
       // Pre-seed a prior session whose refresh_token must NOT leak into
       // the new login when the new response omits one.
       await writeStore({
-        oauth: { access_token: "old_at", refresh_token: "OLD_rt_should_not_survive" },
+        oauth: {
+          access_token: "old_at",
+          refresh_token: "OLD_rt_should_not_survive",
+        },
       });
-      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
-      await startAuthorizationCodeFlow({ fetchImpl });
-
-      const { credentials } = await readStore();
+      const credentials = await loginWithTokens({
+        access_token: "new_at",
+        expires_in: 3600,
+      });
       expect(credentials.oauth?.access_token).toBe("new_at");
       // Fresh login is a clean session — the old refresh_token is gone.
       expect(credentials.oauth?.refresh_token).toBeUndefined();
@@ -321,10 +357,10 @@ describe("auth/oauth", () => {
 
     it("preserves a co-located api_key across fresh login", async () => {
       await writeStore({ api_key: "hg_keep_me" });
-      const fetchImpl = tokenFetch({ access_token: "new_at", refresh_token: "new_rt" });
-      await startAuthorizationCodeFlow({ fetchImpl });
-
-      const { credentials } = await readStore();
+      const credentials = await loginWithTokens({
+        access_token: "new_at",
+        refresh_token: "new_rt",
+      });
       expect(credentials.api_key).toBe("hg_keep_me");
       expect(credentials.oauth?.access_token).toBe("new_at");
       expect(credentials.oauth?.refresh_token).toBe("new_rt");
@@ -344,16 +380,335 @@ describe("auth/oauth", () => {
         }),
         { mode: 0o600 },
       );
-      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
-      await startAuthorizationCodeFlow({ fetchImpl });
-
-      const { credentials } = await readStore();
+      const credentials = await loginWithTokens({
+        access_token: "new_at",
+        expires_in: 3600,
+      });
       expect(credentials.oauth?.access_token).toBe("new_at");
-      expect(credentials.user).toEqual({ email: "jane@example.com", username: "jdoe" });
+      expect(credentials.user).toEqual({
+        email: "jane@example.com",
+        username: "jdoe",
+      });
 
       // The unknown key is on a hidden slot — assert via the raw file.
       const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
       expect(onDisk.future_field).toEqual({ keep: true });
+    });
+  });
+
+  describe("startDeviceAuthorizationFlow", () => {
+    it("atomically replaces OAuth and identity while preserving foreign fields", async () => {
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          api_key: "hg_keep",
+          oauth: { access_token: "old-at", refresh_token: "old-rt" },
+          user: {
+            email: "old@example.com",
+            username: "old-user",
+            future_user_field: "keep-user",
+          },
+          future_root_field: { keep: true },
+        }),
+        { mode: 0o600 },
+      );
+
+      await persistVerifiedOAuthSession(
+        { access_token: "device-at", refresh_token: "device-rt" },
+        { email: "new@example.com" },
+      );
+
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.api_key).toBe("hg_keep");
+      expect(onDisk.oauth).toMatchObject({
+        access_token: "device-at",
+        refresh_token: "device-rt",
+      });
+      expect(onDisk.user).toEqual({
+        email: "new@example.com",
+        future_user_field: "keep-user",
+      });
+      expect(onDisk.future_root_field).toEqual({ keep: true });
+    });
+
+    it("recovers a corrupt credential file before installing a verified session", async () => {
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(path, "{not-json", { mode: 0o600 });
+
+      await persistVerifiedOAuthSession(
+        { access_token: "device-at", refresh_token: "device-rt" },
+        { email: "new@example.com" },
+      );
+
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.oauth).toMatchObject({
+        access_token: "device-at",
+        refresh_token: "device-rt",
+      });
+      expect(onDisk.user).toEqual({ email: "new@example.com" });
+    });
+
+    it("polls pending and slow_down responses without persisting before identity verification", async () => {
+      const requests: Array<{ url: string; body: URLSearchParams }> = [];
+      const responses = [
+        new Response(
+          JSON.stringify({
+            device_code: "secret-device-code",
+            user_code: "ABCD-2345",
+            verification_uri: "https://app.heygen.com/oauth/device",
+            expires_in: 600,
+            interval: 5,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+        new Response(JSON.stringify({ error: "authorization_pending" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+        new Response(JSON.stringify({ error: "slow_down" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+        new Response(
+          JSON.stringify({
+            access_token: "device-at",
+            refresh_token: "device-rt",
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "openid profile email",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ];
+      const fetchImpl = queuedFetch(responses, (url, init) => {
+        requests.push({
+          url: String(url),
+          body: new URLSearchParams(String(init?.body ?? "")),
+        });
+      });
+      const sleeps: number[] = [];
+      const challenges: Array<{ userCode: string; verificationUri: string }> = [];
+
+      const tokens = await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async (ms) => {
+          sleeps.push(ms);
+        },
+        now: () => 1_000,
+        onChallenge: (challenge) => {
+          challenges.push(challenge);
+        },
+      });
+
+      expect(tokens.access_token).toBe("device-at");
+      expect(challenges).toEqual([
+        {
+          userCode: "ABCD-2345",
+          verificationUri: "https://app.heygen.com/oauth/device",
+        },
+      ]);
+      expect(sleeps).toEqual([5_000, 5_000, 10_000]);
+      expect(requests[0]?.body.get("client_id")).toBe(resolveClientId());
+      expect(requests[1]?.body.get("device_code")).toBe("secret-device-code");
+      expect(requests[1]?.body.get("grant_type")).toBe(
+        "urn:ietf:params:oauth:grant-type:device_code",
+      );
+      expect((await readStore()).source).toBe("absent");
+
+      await persistFreshOAuth(tokens);
+      expect((await readStore()).credentials.oauth?.access_token).toBe("device-at");
+    });
+
+    it("uses the RFC default interval and presents a safe complete verification URL", async () => {
+      const responses = [
+        deviceAuthorizationResponse({
+          interval: undefined,
+          verification_uri_complete: "https://app.heygen.com/oauth/device?user_code=ABCD-2345",
+        }),
+        new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
+      ];
+      const fetchImpl = queuedFetch(responses);
+      const sleeps: number[] = [];
+      const challenges: Array<{
+        userCode: string;
+        verificationUri: string;
+        verificationUriComplete?: string;
+      }> = [];
+
+      await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async (ms) => {
+          sleeps.push(ms);
+        },
+        now: () => 1_000,
+        onChallenge: (challenge) => {
+          challenges.push(challenge);
+        },
+      });
+
+      expect(sleeps).toEqual([5_000]);
+      expect(challenges).toEqual([
+        {
+          userCode: "ABCD-2345",
+          verificationUri: "https://app.heygen.com/oauth/device",
+          verificationUriComplete: "https://app.heygen.com/oauth/device?user_code=ABCD-2345",
+        },
+      ]);
+    });
+
+    it("treats HTTP 429 without an OAuth body as slow_down and honors Retry-After", async () => {
+      const responses = [
+        deviceAuthorizationResponse(),
+        new Response("rate limited", { status: 429, headers: { "retry-after": "20" } }),
+        new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
+      ];
+      const fetchImpl = queuedFetch(responses);
+      const sleeps: number[] = [];
+
+      await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async (ms) => {
+          sleeps.push(ms);
+        },
+        now: () => 1_000,
+      });
+
+      expect(sleeps).toEqual([5_000, 20_000]);
+    });
+
+    it("canonicalizes an internationalized verification host before displaying it", async () => {
+      const unicodeUri = "https://rаypal.example/oauth/device";
+      const responses = [
+        deviceAuthorizationResponse({ verification_uri: unicodeUri }),
+        new Response(JSON.stringify({ access_token: "device-at" }), { status: 200 }),
+      ];
+      const fetchImpl = queuedFetch(responses);
+      const challenges: Array<{ verificationUri: string }> = [];
+
+      await startDeviceAuthorizationFlow({
+        fetchImpl,
+        sleepImpl: async () => {},
+        now: () => 1_000,
+        onChallenge: (challenge) => {
+          challenges.push(challenge);
+        },
+      });
+
+      expect(challenges[0]?.verificationUri).toBe(new URL(unicodeUri).href);
+      expect(challenges[0]?.verificationUri).not.toBe(unicodeUri);
+    });
+
+    it("times out while reading a slow authorization response body", async () => {
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")), {
+              once: true,
+            });
+          },
+        });
+        return new Response(body, { status: 200 });
+      }) as typeof fetch;
+
+      await expect(
+        startDeviceAuthorizationFlow({ fetchImpl, requestTimeoutMs: 5 }),
+      ).rejects.toThrow(/request timed out/);
+    });
+
+    it("times out a stalled token poll", async () => {
+      let call = 0;
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        call += 1;
+        if (call === 1) {
+          return deviceAuthorizationResponse({ interval: undefined });
+        }
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        });
+      }) as typeof fetch;
+
+      await expect(
+        startDeviceAuthorizationFlow({
+          fetchImpl,
+          sleepImpl: async () => {},
+          now: () => 1_000,
+          requestTimeoutMs: 5,
+        }),
+      ).rejects.toThrow(/request timed out/);
+    });
+
+    it.each(["access_denied", "expired_token"])(
+      "fails with a bounded error for %s without echoing the device code",
+      async (oauthError) => {
+        const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+          const body = new URLSearchParams(String(init?.body ?? ""));
+          if (body.has("scope")) {
+            return new Response(
+              JSON.stringify({
+                device_code: "never-log-this-device-code",
+                user_code: "ABCD-2345",
+                verification_uri: "https://app.heygen.com/oauth/device",
+                expires_in: 600,
+                interval: 5,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              error: oauthError,
+              error_description: "echo never-log-this-device-code",
+            }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          );
+        }) as typeof fetch;
+
+        await expect(
+          startDeviceAuthorizationFlow({
+            fetchImpl,
+            sleepImpl: async () => {},
+            now: () => 1_000,
+          }),
+        ).rejects.not.toThrow(/never-log-this-device-code/);
+        expect((await readStore()).source).toBe("absent");
+      },
+    );
+
+    it.each([
+      ["credential-bearing URL", "https://user:pass@app.heygen.com/oauth/device", 600, 5],
+      ["control-character URL", "https://app.heygen.com/oauth/\u001b[31m", 600, 5],
+      ["prefix-parsed expiry", "https://app.heygen.com/oauth/device", "600seconds", 5],
+      ["prefix-parsed interval", "https://app.heygen.com/oauth/device", 600, "5seconds"],
+    ])("rejects an unsafe or malformed %s response", async (_name, uri, expiresIn, interval) => {
+      const fetchImpl = (async () =>
+        new Response(
+          JSON.stringify({
+            device_code: "never-log-this-device-code",
+            user_code: "ABCD-2345",
+            verification_uri: uri,
+            expires_in: expiresIn,
+            interval,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )) as typeof fetch;
+
+      await expect(startDeviceAuthorizationFlow({ fetchImpl })).rejects.toThrow(
+        /Device authorization failed/,
+      );
+    });
+
+    it("rejects an oversized device response without exposing its body", async () => {
+      const marker = "never-log-this-device-code";
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ padding: marker.repeat(8_000) }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as typeof fetch;
+
+      await expect(startDeviceAuthorizationFlow({ fetchImpl })).rejects.not.toThrow(marker);
     });
   });
 });

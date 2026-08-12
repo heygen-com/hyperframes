@@ -105,7 +105,7 @@ test("processes moving MP4 frames, audio, and BT.709 metadata", { skip: !HAS_FFM
   const probe = JSON.parse(
     execFileSync(
       "ffprobe",
-      ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", output],
+      ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", "--", output],
       {
         encoding: "utf8",
       },
@@ -135,6 +135,7 @@ test("processes moving MP4 frames, audio, and BT.709 metadata", { skip: !HAS_FFM
       "frame=best_effort_timestamp_time",
       "-of",
       "csv=p=0",
+      "--",
       output,
     ],
     { encoding: "utf8" },

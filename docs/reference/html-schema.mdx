@@ -122,8 +122,7 @@ Audio has no visual lifecycle.
 
 | Attribute | Applies to | Meaning |
 | --- | --- | --- |
-| `data-media-start` | Video and audio | Offset into the source file |
-| `data-playback-start` | Video, audio, nested composition | Source-time offset used by trim and split operations |
+| `data-media-start` / `data-playback-start` | Video, audio, nested composition | Offset into the source file, used by trim and split. Two groups of readers disagree, so the right name depends on the element. **Read only `data-media-start`:** the timing compiler, the HTML parser, `hyperframes validate` (which only inspects `<audio>`), and the engine's audio mixer (which feeds ffmpeg `-ss`). **Read `data-playback-start` first, falling back to `data-media-start`:** the runtime player, Studio (which also writes it), and `hyperframes snapshot`. Because the audio mixer reads only `data-media-start`, a `<video>` authored with just `data-playback-start` renders a trimmed picture over untrimmed audio. Set the name by kind: **`<video>` / `<audio>` → `data-media-start`**; **nested composition → `data-playback-start`** — composition hosts are inspected only by the playback-start-first readers (the media-start-only ones are all `<video>`/`<audio>`-scoped). `data-media-start` still works there as a fallback, but `data-playback-start` is the canonical name Studio writes and normalises to for new composition hosts, so the other name works until an edit rewrites it (it is the [child-timeline offset](/concepts/compositions)). |
 | `data-playback-rate` | Video, audio, nested composition | Playback multiplier from `0.1` to `5` |
 | `data-volume` | Video and audio | Static volume from `0` to `1` |
 | `data-has-audio="true"` | Video | Declares that the video contributes audio |

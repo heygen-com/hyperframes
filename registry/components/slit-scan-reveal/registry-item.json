@@ -1,0 +1,76 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "slit-scan-reveal",
+  "type": "hyperframes:component",
+  "title": "Slit Scan Reveal",
+  "description": "The frame's rows sample an authored subject at offset times: a canvas painter draws row slices of one pure position function evaluated at t minus offset(row), smearing arrival through time until the offsets collapse to zero and the mark holds coherent.",
+  "tags": ["motion-primitive", "time", "slit-scan", "canvas", "deterministic", "experiment"],
+  "jobs": ["reveal"],
+  "family": "time",
+  "profile": "time-smear",
+  "evidence": "Wave M4 experiment slate; classic slit-scan sampling implemented as a closed-form position function drawn in per-slice clips, offsets collapsing at the resolve cue",
+  "syncPoints": [{ "id": "resolved", "phase": "in", "offset": 2.8 }],
+  "files": [
+    {
+      "path": "slit-scan-reveal.html",
+      "target": "compositions/components/slit-scan-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "axis",
+      "type": "enum",
+      "role": "style",
+      "label": "Axis",
+      "description": "rows smears arrival across horizontal slices; cols across vertical slices.",
+      "default": "rows",
+      "options": [
+        { "value": "rows", "label": "Rows" },
+        { "value": "cols", "label": "Columns" }
+      ]
+    },
+    {
+      "id": "spread",
+      "type": "number",
+      "role": "timing",
+      "label": "Spread",
+      "description": "Maximum sampling offset in seconds across the frame; larger smears further through time.",
+      "default": 0.45
+    },
+    {
+      "id": "resolve_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Resolve at",
+      "description": "Seconds from mount start when the offsets start collapsing to zero. Clamped so the collapse and any exit stay inside the clip.",
+      "default": 2.2
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Subject ring and orbit color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the resolved mark holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

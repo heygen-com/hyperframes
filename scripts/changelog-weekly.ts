@@ -13,12 +13,22 @@ import {
   type ParsedCommit,
   type RawCommit,
 } from "./draft-changelog.ts";
+import { CHANGELOG_STYLE_NOTE } from "./set-version.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const REPO_URL = "https://github.com/heygen-com/hyperframes";
 const DOCS_MARKER =
   "{/* New weekly digest entries are prepended by `bun run changelog:weekly --from YYYY-MM-DD --to YYYY-MM-DD --write`. */}";
-const WEEKLY_REVIEW_TODO = "<!-- TODO: review and rewrite before publishing. -->";
+/**
+ * Weekly entries are rewritten by hand before publishing, so the generator's
+ * only influence on the final prose is the bar it stamps into the draft. The
+ * style note is imported from set-version.ts rather than copied, so the two
+ * release-gate markers cannot drift apart.
+ */
+const WEEKLY_REVIEW_TODO = [
+  "<!-- TODO: review and rewrite before publishing. -->",
+  CHANGELOG_STYLE_NOTE,
+].join("\n");
 
 const CATEGORY_ORDER = [
   "Breaking Changes",
@@ -335,7 +345,10 @@ function renderWeeklyNotes(
     "",
     "## Publishing checklist",
     "",
-    "- Remove the TODO marker after review.",
+    "- Remove both TODO markers after review.",
+    "- Keep every sentence under 25 words. Split a long one into two.",
+    "- Replace semicolons with a full stop or a bullet.",
+    '- Use everyday words. Cut doc-speak such as "leverage" and "surface".',
     "- Run this from an up-to-date `main` branch when drafting the real weekly update.",
     "- Keep the docs entry in `docs/weekly-updates.mdx` aligned with this source file.",
     "- Edit the Discord and X drafts before posting.",
@@ -427,12 +440,12 @@ function renderListOrEmpty(
 
 function renderMarkdownWeeklyBullet(commit: WeeklyCommit) {
   const scope = commit.scope ? `**${formatScope(commit.scope)}:** ` : "";
-  return `- ${scope}${capitalize(commit.summary)} (${commitLinks(commit).join(", ")})`;
+  return `- ${scope}${capitalize(commit.summary)} (${commitLinks(commit).join(", ")}).`;
 }
 
 function renderMdxWeeklyBullet(commit: WeeklyCommit) {
   const scope = commit.scope ? `**${escapeForMdx(formatScope(commit.scope))}:** ` : "";
-  return `- ${scope}${escapeForMdx(capitalize(commit.summary))} (${commitLinks(commit).join(", ")})`;
+  return `- ${scope}${escapeForMdx(capitalize(commit.summary))} (${commitLinks(commit).join(", ")}).`;
 }
 
 function renderPlainWeeklyBullet(commit: WeeklyCommit) {
@@ -518,7 +531,7 @@ function capitalize(value: string) {
   if (!value) {
     return value;
   }
-  return value[0].toUpperCase() + value.slice(1);
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function git(args: string[]) {

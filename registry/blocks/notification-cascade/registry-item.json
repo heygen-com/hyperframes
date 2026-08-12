@@ -1,0 +1,105 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "notification-cascade",
+  "type": "hyperframes:block",
+  "title": "Notification Cascade",
+  "description": "Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card",
+  "tags": ["showcase", "mock-ui", "notification", "vertical", "ad-template"],
+  "author": "Miao Yang",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 14,
+  "variables": [
+    {
+      "id": "notifTitle",
+      "type": "string",
+      "role": "content",
+      "label": "Notification title",
+      "description": "Bold first line on every banner.",
+      "default": "New render"
+    },
+    {
+      "id": "message1",
+      "type": "string",
+      "role": "content",
+      "label": "Message 1",
+      "description": "Subtitle of the first banner to land.",
+      "default": "Launch video is ready."
+    },
+    {
+      "id": "message2",
+      "type": "string",
+      "role": "content",
+      "label": "Message 2",
+      "description": "Subtitle of the second banner.",
+      "default": "All checks passed."
+    },
+    {
+      "id": "message3",
+      "type": "string",
+      "role": "content",
+      "label": "Message 3",
+      "description": "Subtitle of the third banner.",
+      "default": "4K render done in 92s."
+    },
+    {
+      "id": "message4",
+      "type": "string",
+      "role": "content",
+      "label": "Message 4",
+      "description": "Subtitle of the fourth banner.",
+      "default": "Published to the catalog."
+    },
+    {
+      "id": "appName",
+      "type": "string",
+      "role": "content",
+      "label": "App name",
+      "description": "Small credit in the corner of every banner.",
+      "default": "HyperFrames"
+    },
+    {
+      "id": "headlineTop",
+      "type": "string",
+      "role": "content",
+      "label": "End-card line 1",
+      "description": "First line of the closing card.",
+      "default": "SHIP VIDEO"
+    },
+    {
+      "id": "headlineAccent",
+      "type": "string",
+      "role": "content",
+      "label": "End-card line 2",
+      "description": "Accented second line of the closing card.",
+      "default": "FROM HTML"
+    },
+    {
+      "id": "footerText",
+      "type": "string",
+      "role": "content",
+      "label": "End-card footer",
+      "description": "URL or call to action under the headline.",
+      "default": "hyperframes.heygen.com"
+    }
+  ],
+  "files": [
+    {
+      "path": "notification-cascade.html",
+      "target": "compositions/notification-cascade.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/desk-backdrop.jpg",
+      "target": "assets/desk-backdrop.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/hyperframes-logo-white.svg",
+      "target": "assets/hyperframes-logo-white.svg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

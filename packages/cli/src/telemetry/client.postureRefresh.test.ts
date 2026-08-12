@@ -16,6 +16,8 @@ const configState = { telemetryEnabled: true };
 vi.mock("./config.js", () => ({
   readConfig: () => ({ anonymousId: "anon-1", telemetryEnabled: configState.telemetryEnabled }),
   writeConfig: () => {},
+  getIdentityPersistence: () => "durable",
+  getIdentityWriteOutcome: () => undefined,
 }));
 vi.mock("../utils/env.js", () => ({ isDevMode: () => false }));
 vi.mock("./canary.js", () => ({ canaryEventProperties: () => ({}) }));

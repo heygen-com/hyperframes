@@ -24,21 +24,16 @@ import {
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
+import {
+  assertGsapEditPersisted,
+  directEditOutcomeForProperties,
+  GsapEditBlockedError,
+} from "./gsapEditOutcome";
+import type { CommitMutation, CommitMutationCall } from "./gsapScriptCommitTypes";
 
 interface CommitAnimatedPropertyDeps {
   selectedGsapAnimations: GsapAnimation[];
-  gsapCommitMutation:
-    | ((
-        selection: DomEditSelection,
-        mutation: Record<string, unknown>,
-        options: {
-          label: string;
-          coalesceKey?: string;
-          softReload?: boolean;
-          skipReload?: boolean;
-        },
-      ) => Promise<void>)
-    | null;
+  gsapCommitMutation: CommitMutation | null;
   addGsapAnimation: (
     selection: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
@@ -68,6 +63,8 @@ function pickBestAnimation(
   if (candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0];
   const currentTime = usePlayerStore.getState().currentTime;
+  // Intentional multi-signal ranking: group match, selector specificity, and playhead overlap.
+  // fallow-ignore-next-line complexity
   const scored = candidates.map((a) => {
     let score = 0;
     if (a.keyframes) score += 10;
@@ -107,7 +104,7 @@ async function maybeAutoKeyframeSet(
   );
 }
 
-type Commit = NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>;
+type Commit = CommitMutation;
 
 /** Undo-history label for a static-set commit, from the group it writes. */
 const STATIC_SET_LABELS: Partial<Record<ReturnType<typeof classifyPropertyGroup>, string>> = {
@@ -137,6 +134,17 @@ async function commitSetProps(
   animations: GsapAnimation[],
   commit: Commit,
 ): Promise<void> {
+  const call = buildSetPropsCall(selection, setAnim, propEntries, selector);
+  await commit(call.selection, call.mutation, call.options);
+  await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
+}
+
+function buildSetPropsCall(
+  selection: DomEditSelection,
+  setAnim: GsapAnimation,
+  propEntries: [string, number | string][],
+  selector: string | null,
+): CommitMutationCall {
   const properties = Object.fromEntries(propEntries);
   const numericProps: SetPatchProps = {};
   for (const [k, v] of propEntries) {
@@ -152,16 +160,15 @@ async function commitSetProps(
           },
         }
       : undefined;
-  await commit(
+  return {
     selection,
-    { type: "update-properties", animationId: setAnim.id, properties },
-    {
+    mutation: { type: "update-properties", animationId: setAnim.id, properties },
+    options: {
       label: staticSetLabel(propEntries),
       softReload: true,
       ...(instantPatch ? { instantPatch } : {}),
     },
-  );
-  await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
+  };
 }
 
 /**
@@ -177,7 +184,25 @@ async function commitStaticSet(
   animations: GsapAnimation[],
   commit: Commit,
 ): Promise<void> {
-  if (!selector) return;
+  const calls = planStaticSetCalls(selection, propEntries, selector, animations);
+  const only = calls[0];
+  if (!only) return;
+  if (calls.length === 1) {
+    await commit(only.selection, only.mutation, only.options);
+    return;
+  }
+  if (!commit.batch) {
+    throw new Error("Atomic GSAP property batch is unavailable");
+  }
+  await commit.batch(calls, {
+    label: staticSetLabel(propEntries),
+    softReload: true,
+  });
+}
+
+function groupStaticSetEntries(
+  propEntries: [string, number | string][],
+): Map<string, [string, number | string][]> {
   // One commit per PROPERTY GROUP, each into a static write that owns that group —
   // never a live tween, and never a foreign-group write (a width edit used to
   // merge into the element's position set, producing a mixed write the split
@@ -191,9 +216,22 @@ async function commitStaticSet(
     batch.push(entry);
     byGroup.set(group, batch);
   }
-  const staticWrites = animations.filter(
-    (a) => isInstantHold(a) && tweenTargetsElement(a.targetSelector, selector, selection.element),
-  );
+  return byGroup;
+}
+
+function planStaticSetCalls(
+  selection: DomEditSelection,
+  propEntries: [string, number | string][],
+  selector: string | null,
+  animations: GsapAnimation[],
+): CommitMutationCall[] {
+  const byGroup = groupStaticSetEntries(propEntries);
+  const staticWrites = selector
+    ? animations.filter(
+        (a) =>
+          isInstantHold(a) && tweenTargetsElement(a.targetSelector, selector, selection.element),
+      )
+    : [];
   // Resolve every group's target BEFORE committing anything, and coalesce
   // groups that land on the SAME write into one commit: the snapshot is captured
   // once, so if two groups resolved to one legacy mixed write, a first
@@ -209,13 +247,12 @@ async function commitStaticSet(
       newSetBatches.push(batch);
     }
   }
-  for (const [targetWrite, batch] of byTargetWrite) {
-    await commitSetProps(selection, targetWrite, batch, selector, animations, commit);
-  }
-  // Fresh adds don't reshape existing sets, so their ids can't go stale.
-  for (const batch of newSetBatches) {
-    await addGlobalStaticSet(selection, batch, commit);
-  }
+  return [
+    ...[...byTargetWrite].map(([targetWrite, batch]) =>
+      buildSetPropsCall(selection, targetWrite, batch, selector),
+    ),
+    ...newSetBatches.map((batch) => buildGlobalStaticSetCall(selection, batch)),
+  ];
 }
 
 /**
@@ -241,11 +278,10 @@ function findGroupOwningStaticWrite(
  * the timeline (matches the manual-drag UX). The global-set instant patch applies
  * it straight to the element so the first edit shows with no soft-reload flash.
  */
-async function addGlobalStaticSet(
+function buildGlobalStaticSetCall(
   selection: DomEditSelection,
   batch: [string, number | string][],
-  commit: Commit,
-): Promise<void> {
+): CommitMutationCall {
   const numericProps: SetPatchProps = {};
   for (const [k, v] of batch) {
     if (typeof v === "number") numericProps[k as keyof SetPatchProps] = v;
@@ -254,10 +290,10 @@ async function addGlobalStaticSet(
   // selector is the bare class an id-less element yields, which would hold every
   // sibling. No one-element form means no write at all (see writeTargetSelector).
   const target = writeTargetSelector(selection);
-  if (!target) return;
-  await commit(
+  if (!target) throw new GsapEditBlockedError("no-selector");
+  return {
     selection,
-    {
+    mutation: {
       type: "add",
       targetSelector: target,
       method: "set",
@@ -265,7 +301,7 @@ async function addGlobalStaticSet(
       properties: Object.fromEntries(batch),
       global: true,
     },
-    {
+    options: {
       label: staticSetLabel(batch),
       softReload: true,
       ...(Object.keys(numericProps).length > 0
@@ -277,7 +313,7 @@ async function addGlobalStaticSet(
           }
         : {}),
     },
-  );
+  };
 }
 
 /** Convert-if-flat, then write ALL props into ONE keyframe at the playhead. */
@@ -393,11 +429,19 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const { selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache } = deps;
 
   const commitAnimatedProperties = useCallback(
+    // This is the single routing boundary for set, keyframe, whole-tween, and first-group writes.
+    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
       if (!gsapCommitMutation) return;
       const propEntries = Object.entries(props);
       if (propEntries.length === 0) return;
       const primaryProp = propEntries[0]![0];
+      assertGsapEditPersisted(
+        directEditOutcomeForProperties(
+          selectedGsapAnimations,
+          new Set(propEntries.map(([property]) => property)),
+        ),
+      );
 
       const iframe = previewIframeRef.current;
       const selector = selectorFromSelection(selection);
@@ -407,6 +451,9 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         selector,
         primaryProp,
       );
+      if (!anim && !writeTargetSelector(selection)) {
+        throw new GsapEditBlockedError("no-selector");
+      }
       // Whether the element is animated at all. A 3D edit only creates/edits
       // keyframes when it IS — a static element (no keyframes on any of its tweens)
       // gets a `tl.set`, never new keyframes (matches manual drag / resize / rotate).
@@ -461,12 +508,15 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
 
-        // Existing static hold on a NON-animated element — merge the props into the
-        // same write (maybeAutoKeyframeSet no-ops when nothing else is keyframed).
-        if (anim && isInstantHold(anim)) {
-          await commitSetProps(
+        // Static element (no keyframes anywhere) — persist as a `tl.set`, never
+        // keyframes (incl. the no-animation case, which creates a fresh set).
+        // Route the complete property set through the group-aware planner even
+        // when pickBestAnimation found one existing set: a mixed X+width edit
+        // must update the position set AND create a size set atomically rather
+        // than contaminating the first set with a foreign property group.
+        if (!elementHasKeyframes) {
+          await commitStaticSet(
             selection,
-            anim,
             propEntries,
             selector,
             selectedGsapAnimations,
@@ -475,11 +525,12 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
 
-        // Static element (no keyframes anywhere) — persist as a `tl.set`, never
-        // keyframes (incl. the no-animation case, which creates a fresh set).
-        if (!elementHasKeyframes) {
-          await commitStaticSet(
+        // Existing static hold on an otherwise animated element — merge the props
+        // into the same write, then auto-keyframe it against the sibling tween.
+        if (anim && isInstantHold(anim)) {
+          await commitSetProps(
             selection,
+            anim,
             propEntries,
             selector,
             selectedGsapAnimations,
@@ -498,7 +549,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // one-element form the edit is dropped rather than written onto every
         // class sibling (see writeTargetSelector).
         const newTweenTarget = writeTargetSelector(selection);
-        if (selector && newTweenTarget) {
+        if (newTweenTarget) {
           const template = selectedGsapAnimations.find((a) => !!a.keyframes);
           const tStart = template ? (resolveTweenStart(template) ?? 0) : 0;
           const tDur = template ? resolveTweenDuration(template) || 1 : 1;
@@ -528,9 +579,10 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           );
           return;
         }
+        throw new GsapEditBlockedError("no-selector");
+      } catch (error) {
         bumpGsapCache();
-      } catch {
-        bumpGsapCache();
+        throw error;
       }
     },
     [selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache],

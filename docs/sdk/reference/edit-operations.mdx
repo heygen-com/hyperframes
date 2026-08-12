@@ -72,11 +72,11 @@ Stable `code` values for `ok: false`:
 |------|---------|
 | `E_TARGET_NOT_FOUND` | The `target` hf-id does not exist in the document. |
 | `E_NO_ROOT` | The document has no root element (empty HTML). |
-| `E_NO_GSAP_TIMELINE` | Op requires a parsed GSAP timeline; parser engine not yet active. |
+| `E_NO_GSAP_TIMELINE` | The GSAP script has no `gsap.timeline()` to attach to. Declare one (`var tl = gsap.timeline(...)`) and retry. |
 | `E_NO_GSAP_SCRIPT` | Op requires a GSAP `<script>` block; none found in the document. |
 
 <Note>
-  Several Phase-3b GSAP ops (`addGsapTween`, `setGsapTween`, `removeGsapTween`, `addGsapKeyframe`, `setGsapKeyframe`, `removeGsapKeyframe`, etc.) return `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` from `can()` until the parser engine ships. `dispatch()` still applies those ops structurally even when `can()` returns false.
+  `E_NO_GSAP_TIMELINE` is raised by the two ops that attach to a timeline — `addGsapTween` and `addLabel`. If the composition's GSAP script has no `gsap.timeline()` declaration, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }`; add `var tl = gsap.timeline(...)` and it succeeds. `dispatch()` does not consult `can()` — call `can()` first and skip the op when it fails.
 </Note>
 
 See also: [`Composition`](/sdk/reference/composition) for the typed-method wrappers, [`Types`](/sdk/reference/types) for `CanResult` and `EditOp`.
@@ -264,7 +264,7 @@ comp.dispatch({
 | `type` | Key fields | What it does |
 |--------|-----------|--------------|
 | `setVariableValue` | `id`, `value` | Sets a composition variable's current value by id. Value may be a string, number, boolean, `FontValue`, or `ImageValue`. Refuses to create an undeclared variable. |
-| `declareVariable` | `decl` | Creates a new variable declaration, or fully replaces an existing one (type, label, default, and all other schema fields — not just the value). The only op that creates the schema entry from scratch. |
+| `declareVariable` | `declaration` | Creates a new variable declaration, or fully replaces an existing one (type, label, default, and all other schema fields — not just the value). The only op that creates the schema entry from scratch. |
 | `removeVariable` | `id` | Removes a variable's declaration entirely. Live `var.{id}` overrides and `data-var-*` DOM references are left untouched. |
 
 ```typescript
@@ -299,7 +299,7 @@ comp.dispatch({
 // Create a new variable declaration
 comp.dispatch({
   type: "declareVariable",
-  decl: {
+  declaration: {
     id: "brandColor",
     type: "color",
     label: "Brand color",
@@ -318,7 +318,7 @@ comp.dispatch({ type: "removeVariable", id: "brandColor" });
 These ops add, edit, and remove GSAP tween entries in the composition's GSAP script block. They operate by `animationId` — a stable string identifier minted when a tween is created. Use `comp.addGsapTween()` or `addWithKeyframes` to mint a new id; the typed wrapper returns it directly.
 
 <Note>
-  Several GSAP ops require the parser engine to be active. Until it ships, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` for these ops. `dispatch()` still applies the op structurally.
+  Only `addGsapTween` here needs a `gsap.timeline()` to attach to — without one, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }`, so declare a timeline and retry. `setGsapTween`, `removeGsapTween` and `removeGsapProperty` edit or remove an existing tween and don't require it. `dispatch()` does not consult `can()` — call `can()` first and skip the op when it fails.
 </Note>
 
 | `type` | Key fields | What it does |
@@ -484,6 +484,10 @@ GSAP timeline labels mark named positions (in seconds) in the master timeline. L
 |--------|-----------|--------------|
 | `addLabel` | `name`, `position` | Adds a named label at a timeline position (seconds). |
 | `removeLabel` | `name` | Removes a named label. |
+
+<Note>
+  Like `addGsapTween`, `addLabel` attaches to a timeline: without a `gsap.timeline()` declaration in the script, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }`. `removeLabel` has no such requirement.
+</Note>
 
 ```typescript
 comp.dispatch({ type: "addLabel", name: "intro", position: 0 });

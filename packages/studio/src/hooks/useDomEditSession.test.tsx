@@ -60,6 +60,46 @@ const capturedOnReorderShadow: { fn: ((targets: string[]) => void) | undefined }
 const domEditSelectionRef: { current: DomEditSelection | null } = { current: null };
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
 
+function createSessionParams(
+  overrides: Partial<UseDomEditSessionParams> = {},
+): UseDomEditSessionParams {
+  return {
+    projectId: "proj-1",
+    activeCompPath: "index.html",
+    compIdToSrc: new Map(),
+    captionEditMode: false,
+    compositionLoading: false,
+    previewIframeRef: { current: null },
+    timelineElements: [],
+    getTimelineSelectionSet: () => new Set(),
+    setSelectedTimelineElementId: vi.fn(),
+    setTimelineSelectionSet: vi.fn(),
+    setRightCollapsed: vi.fn(),
+    setRightPanelTab: vi.fn(),
+    showToast: vi.fn(),
+    refreshPreviewDocumentVersion: vi.fn(),
+    queueDomEditSave: async <T,>(save: () => Promise<T>) => save(),
+    readProjectFile: async () => "",
+    writeProjectFile: async () => {},
+    updateEditingFileContent: vi.fn(),
+    domEditSaveTimestampRef: { current: 0 },
+    editHistory: { recordEdit: async () => {} },
+    fileTree: [],
+    importedFontAssetsRef: { current: [] },
+    projectDir: null,
+    projectIdRef: { current: "proj-1" },
+    previewIframe: null,
+    refreshKey: 0,
+    previewDocumentVersion: 0,
+    rightPanelTab: "design",
+    applyStudioManualEditsToPreviewRef: { current: async () => {} },
+    syncPreviewHistoryHotkey: vi.fn(),
+    reloadPreview: vi.fn(),
+    setRefreshKey: vi.fn(),
+    ...overrides,
+  };
+}
+
 vi.mock("../utils/sdkResolverShadow", () => ({
   runResolverShadow: vi.fn(),
   recordResolverParity: (...args: unknown[]) => recordResolverParity(...args),
@@ -220,43 +260,16 @@ describe("onReorderShadow source filter", () => {
     const sdkSession = {} as unknown as Composition;
 
     function Probe() {
-      const params: UseDomEditSessionParams = {
-        projectId: "proj-1",
-        activeCompPath: "index.html",
-        isMasterView: false,
-        compIdToSrc: new Map(),
-        captionEditMode: false,
-        compositionLoading: false,
-        previewIframeRef: { current: null },
-        timelineElements: [],
-        setSelectedTimelineElementId: vi.fn(),
-        setRightCollapsed: vi.fn(),
-        setRightPanelTab: vi.fn(),
-        showToast: vi.fn(),
-        refreshPreviewDocumentVersion: vi.fn(),
+      const params = createSessionParams({
         queueDomEditSave: vi.fn(async <T,>(save: () => Promise<T>) => save()) as <T>(
           save: () => Promise<T>,
         ) => Promise<T>,
         readProjectFile,
         writeProjectFile: vi.fn(async () => {}),
-        updateEditingFileContent: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         editHistory: { recordEdit: vi.fn(async () => {}) },
-        fileTree: [],
-        importedFontAssetsRef: { current: [] },
-        projectDir: null,
-        projectIdRef: { current: "proj-1" },
-        previewIframe: null,
-        refreshKey: 0,
-        previewDocumentVersion: 0,
-        rightPanelTab: "design",
-        applyStudioManualEditsToPreviewRef: { current: async () => {} },
-        syncPreviewHistoryHotkey: vi.fn(),
-        reloadPreview: vi.fn(),
-        setRefreshKey: vi.fn(),
         sdkSession,
         forceReloadSdkSession: vi.fn(),
-      };
+      });
       useDomEditSession(params);
       return null;
     }
@@ -318,39 +331,7 @@ describe("bulk segment ease commits", () => {
       | undefined;
 
     function Probe() {
-      const params: UseDomEditSessionParams = {
-        projectId: "proj-1",
-        activeCompPath: "index.html",
-        isMasterView: false,
-        compIdToSrc: new Map(),
-        captionEditMode: false,
-        compositionLoading: false,
-        previewIframeRef: { current: null },
-        timelineElements: [],
-        setSelectedTimelineElementId: vi.fn(),
-        setRightCollapsed: vi.fn(),
-        setRightPanelTab: vi.fn(),
-        showToast: vi.fn(),
-        refreshPreviewDocumentVersion: vi.fn(),
-        queueDomEditSave: async <T,>(save: () => Promise<T>) => save(),
-        readProjectFile: async () => "",
-        writeProjectFile: async () => {},
-        updateEditingFileContent: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit: async () => {} },
-        fileTree: [],
-        importedFontAssetsRef: { current: [] },
-        projectDir: null,
-        projectIdRef: { current: "proj-1" },
-        previewIframe: null,
-        refreshKey: 0,
-        previewDocumentVersion: 0,
-        rightPanelTab: "design",
-        applyStudioManualEditsToPreviewRef: { current: async () => {} },
-        syncPreviewHistoryHotkey: vi.fn(),
-        reloadPreview: vi.fn(),
-        setRefreshKey: vi.fn(),
-      };
+      const params = createSessionParams();
       updateSegmentEase = useDomEditSession(params).handleUpdateSegmentEase;
       return null;
     }
