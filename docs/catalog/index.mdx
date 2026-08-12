@@ -7,64 +7,40 @@ import { CatalogOverviewPlayer } from "/snippets/catalog-overview-player.jsx"
 
 The Catalog gives you reusable visuals you can add to a project instead of building each one from scratch.
 
-<CatalogOverviewPlayer
-  title="A fast tour of every HyperFrames Catalog section"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v3.mp4"
-  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v3.jpg"
->
+<CatalogOverviewPlayer title="A fast tour of every HyperFrames Catalog section">
 
 ```html catalog-overview-v3.html
 <!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=1920, height=1080" />
     <style>
-      html,
-      body {
-        width: 1920px;
-        height: 1080px;
+      html, body {
         margin: 0;
+        height: 100%;
         overflow: hidden;
         background: #05070b;
       }
-      video {
+      hyperframes-player {
+        display: block;
         width: 100%;
         height: 100%;
-        object-fit: cover;
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"></script>
   </head>
   <body>
-    <main
-      data-composition-id="catalog-overview-v3"
-      data-no-timeline
-      data-start="0"
-      data-duration="19.25"
-      data-fps="60"
-      data-width="1920"
-      data-height="1080"
-    >
-      <video
-        id="catalog-overview-v3"
-        src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/catalog-overview-v3.mp4"
-        data-start="0"
-        data-duration="19.25"
-        muted
-        playsinline
-      ></video>
-    </main>
-    <script>
-      window.__timelines = window.__timelines || {};
-      window.__timelines["catalog-overview-v3"] = {
-        duration: () => 19.25,
-        time: () => document.querySelector("video").currentTime,
-        seek: (time) => {
-          document.querySelector("video").currentTime = time;
-        },
-        play: () => document.querySelector("video").play(),
-        pause: () => document.querySelector("video").pause(),
-      };
+    <script type="module">
+      const item = await fetch("/public/catalog/blocks/ai-chat-reveal.json").then((response) =>
+        response.json(),
+      );
+      const player = document.createElement("hyperframes-player");
+      player.setAttribute("srcdoc", item.html);
+      player.setAttribute("controls", "");
+      player.setAttribute("autoplay", "");
+      player.setAttribute("muted", "");
+      player.setAttribute("loop", "");
+      document.body.appendChild(player);
     </script>
   </body>
 </html>

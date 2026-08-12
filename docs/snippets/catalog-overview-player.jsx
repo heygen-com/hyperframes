@@ -1,4 +1,4 @@
-export const CatalogOverviewPlayer = ({ src, poster, title, children }) => {
+export const CatalogOverviewPlayer = ({ title, children }) => {
   const [tab, setTab] = useState("preview");
   const [reduced, setReduced] = useState(
     () =>
@@ -19,48 +19,81 @@ export const CatalogOverviewPlayer = ({ src, poster, title, children }) => {
   const localDocs =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  const playbackSrc = localDocs ? "/images/showcase/catalog-overview-v3.mp4" : src;
-  const playbackPoster = localDocs ? "/images/showcase/catalog-overview-v3.jpg" : poster;
-
-  const composition = [
-    "<!doctype html><html><head><meta charset='utf-8'>",
-    "<meta name='viewport' content='width=1920,height=1080'>",
-    "<style>html,body{width:1920px;height:1080px;margin:0;overflow:hidden;background:#05070b}",
-    "video{width:100%;height:100%;object-fit:cover}</style></head><body>",
-    "<main data-composition-id='catalog-overview-v3' data-no-timeline data-start='0' data-duration='19.25' data-fps='60' data-width='1920' data-height='1080'>",
-    `<video id="catalog-overview-v3" src="${playbackSrc}" data-start="0" data-duration="19.25" muted playsinline></video>`,
-    "</main><script>",
-    "window.__timelines=window.__timelines||{};",
-    "window.__timelines['catalog-overview-v3']={",
-    "duration:function(){return 19.25},time:function(){return document.querySelector('video').currentTime},",
-    "seek:function(t){document.querySelector('video').currentTime=t;return this},",
-    "play:function(){document.querySelector('video').play();return this},",
-    "pause:function(){document.querySelector('video').pause();return this}};",
-    "var media=document.querySelector('video');",
-    "media.addEventListener('playing',function(){parent.postMessage({type:'catalog-overview-media',state:'playing'},'*')});",
-    "media.addEventListener('error',function(){parent.postMessage({type:'catalog-overview-media',state:'error'},'*')});",
-    "</" + "script></body></html>",
-  ].join("");
-  const serializedComposition = JSON.stringify(composition).replace(/<\//g, "<\\/");
-
+  const catalogBase = localDocs
+    ? "https://raw.githubusercontent.com/heygen-com/hyperframes/main/docs"
+    : "";
+  const assetBase = localDocs ? "https://hyperframes.heygen.com" : "";
+  const scenes = JSON.stringify([
+    {
+      section: "Code Animations",
+      catalog: "/public/catalog/blocks/code-particle-assemble.json",
+      mediaStart: 1.7,
+    },
+    {
+      section: "Captions",
+      catalog: "/public/catalog/components/caption-camera-follow.json",
+      mediaStart: 0.5,
+    },
+    {
+      section: "HTML-in-Canvas",
+      video:
+        "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.mp4",
+      mediaStart: 9.25,
+    },
+    {
+      section: "Social Overlays",
+      catalog: "/public/catalog/blocks/editorial-flash-overlay.json",
+      mediaStart: 0.35,
+    },
+    {
+      section: "Lower Thirds",
+      catalog: "/public/catalog/blocks/lower-third-bild.json",
+      mediaStart: 0.5,
+    },
+    {
+      section: "Shader Transitions",
+      catalog: "/public/catalog/blocks/domain-warp-dissolve.json",
+      mediaStart: 1.25,
+    },
+    {
+      section: "CSS Transitions",
+      catalog: "/public/catalog/blocks/transitions-grid.json",
+      mediaStart: 4.3,
+    },
+    {
+      section: "Showcases",
+      catalog: "/public/catalog/blocks/ai-chat-reveal.json",
+      mediaStart: 15.85,
+    },
+    {
+      section: "Data",
+      catalog: "/public/catalog/blocks/us-map-flow.json",
+      mediaStart: 4,
+    },
+    {
+      section: "Effects",
+      catalog: "/public/catalog/components/parallax-unzoom.json",
+      mediaStart: 1.6,
+    },
+    {
+      section: "Blocks",
+      catalog: "/public/catalog/blocks/hw-pipeline.json",
+      mediaStart: 1.4,
+    },
+  ]).replace(/<\//g, "<\\/");
   const bootstrap = [
     "<!doctype html><html><head><meta charset='utf-8'>",
     "<style>html,body{margin:0;height:100%;overflow:hidden;background:#05070b}",
-    "#fallback{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:contain;background:#05070b;pointer-events:none}",
-    "hyperframes-player{position:absolute;inset:0;display:block;width:100%;height:100%}</style>",
+    "#stage,hyperframes-player{position:absolute;inset:0;display:block;width:100%;height:100%}",
+    "#label{position:absolute;z-index:2;top:24px;left:24px;padding:10px 16px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(5,7,11,.82);color:#fff;font:700 18px/1.2 ui-sans-serif,system-ui,sans-serif;pointer-events:none}",
+    "#error{position:absolute;z-index:3;inset:0;display:none;place-items:center;background:#05070b;color:#fff;font:600 18px ui-sans-serif,system-ui,sans-serif}</style>",
     '<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"></' +
       "script>",
-    `</head><body><img id="fallback" src=${JSON.stringify(playbackPoster)} alt=""><script>`,
-    "var player=document.createElement('hyperframes-player');",
-    `player.setAttribute('srcdoc',${serializedComposition});`,
-    `player.setAttribute('poster',${JSON.stringify(playbackPoster)});`,
-    "player.setAttribute('controls','');player.setAttribute('muted','');",
-    "player.setAttribute('autoplay','');player.setAttribute('loop','');",
-    "document.body.appendChild(player);",
-    "window.addEventListener('message',function(event){",
-    "if(event.source!==player.iframeElement.contentWindow||event.data?.type!=='catalog-overview-media')return;",
-    "document.getElementById('fallback').hidden=event.data.state==='playing';",
-    "});",
+    `</head><body><div id="stage"></div><div id="label"></div><div id="error">Preview unavailable</div><script>var scenes=${scenes};var reduced=${JSON.stringify(reduced)};var catalogBase=${JSON.stringify(catalogBase)};var assetBase=${JSON.stringify(assetBase)};var current=0;var request=0;`,
+    "function videoComposition(scene){return \"<!doctype html><html><head><meta charset='utf-8'><style>html,body{width:1920px;height:1080px;margin:0;overflow:hidden;background:#05070b}video{width:100%;height:100%;object-fit:cover}</style></head><body><main data-composition-id='catalog-video' data-start='0' data-duration='15' data-width='1920' data-height='1080'><video id='catalog-video-media' src='\"+scene.video+\"' data-start='0' data-duration='15' muted playsinline></video></main><script>window.__timelines=window.__timelines||{};var media=document.querySelector('video');window.__timelines['catalog-video']={duration:function(){return 15},time:function(){return media.currentTime},seek:function(t){media.currentTime=t;return this},play:function(){media.play();return this},pause:function(){media.pause();return this}};</\"+\"script></body></html>\"}",
+    "async function compositionFor(scene){if(scene.catalog){var response=await fetch(catalogBase+scene.catalog);if(!response.ok)throw new Error('Catalog '+response.status);var html=(await response.json()).html;if(assetBase)html=html.replace('<head>','<head><base href=\"'+assetBase+'/\">');return html}return videoComposition(scene)}",
+    "async function show(index){var token=++request;var scene=scenes[index];try{var html=await compositionFor(scene);if(token!==request)return;var player=document.createElement('hyperframes-player');player.setAttribute('srcdoc',html);player.setAttribute('controls','');player.setAttribute('muted','');player.addEventListener('ready',function(){player.seek(scene.mediaStart||0);if(!reduced)player.play()},{once:true});document.getElementById('stage').replaceChildren(player);document.getElementById('label').textContent=scene.section;document.getElementById('error').style.display='none'}catch(error){if(token===request){document.getElementById('label').textContent=scene.section;document.getElementById('error').style.display='grid'}}}",
+    "show(0);if(!reduced)setInterval(function(){current=(current+1)%scenes.length;show(current)},2500);",
     "</" + "script></body></html>",
   ].join("");
 
@@ -88,19 +121,11 @@ export const CatalogOverviewPlayer = ({ src, poster, title, children }) => {
       </div>
 
       <div hidden={tab !== "preview"}>
-        {reduced ? (
-          <img
-            src={playbackPoster}
-            alt={title}
-            className="aspect-video w-full rounded-xl bg-zinc-950 object-cover"
-          />
-        ) : (
-          <iframe
-            srcDoc={bootstrap}
-            className="block aspect-video w-full rounded-xl bg-zinc-950"
-            title={title}
-          />
-        )}
+        <iframe
+          srcDoc={bootstrap}
+          className="block aspect-video w-full rounded-xl bg-zinc-950"
+          title={title}
+        />
       </div>
       <div hidden={tab !== "code"}>{children}</div>
     </div>

@@ -181,12 +181,5 @@ tmp/
 # Studio-generated preview thumbnails
 .thumbnails/
 
-# Catalog overview docs film — reproducible from scripts/catalog-overview-video/assets.ts
-docs/video-sources/catalog-overview/assets/
-docs/video-sources/catalog-overview/renders/
-docs/video-sources/catalog-overview/snapshots/
-docs/images/showcase/catalog-overview-v3.mp4
-docs/images/showcase/catalog-overview-v3.jpg
-
 # Local editor settings
 .zed/
