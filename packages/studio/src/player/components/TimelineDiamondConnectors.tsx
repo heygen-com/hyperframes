@@ -2,7 +2,8 @@ import { Fragment, useRef } from "react";
 import { KEYFRAME_DRAG_THRESHOLD_PX } from "../../components/editor/keyframeDrag";
 import { MiniCurveSvg } from "../../components/editor/EaseCurveSection";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
-import type { TimelineDiamondKeyframe } from "./TimelineClipDiamonds";
+import { keyframeTimeLabel, type TimelineDiamondKeyframe } from "./timelineDiamondTypes";
+import { timelineEaseFocusId } from "./timelineNavigationIdentity";
 
 /** One diamond's geometry within its row, as computed by the lane. */
 export interface TimelineDiamondMarker {
@@ -21,6 +22,10 @@ export interface TimelineDiamondMarker {
 export function TimelineDiamondConnectors({
   markers,
   centerY,
+  elementId,
+  clipStart,
+  clipDuration,
+  rovingTargetId,
   baseColor,
   baseOpacity,
   groupAware,
@@ -30,6 +35,11 @@ export function TimelineDiamondConnectors({
 }: {
   markers: readonly TimelineDiamondMarker[];
   centerY: number;
+  elementId: string;
+  clipStart: number;
+  clipDuration: number;
+  /** Focus id of the one timeline control currently in the tab order. */
+  rovingTargetId: string | null;
   baseColor: string;
   baseOpacity: number;
   groupAware: boolean;
@@ -48,6 +58,7 @@ export function TimelineDiamondConnectors({
         if (x2 - x1 < 1) return null;
         const connectorLeft = x1 + previous.visualSize / 2;
         const connectorWidth = x2 - x1 - previous.visualSize / 2 - marker.visualSize / 2;
+        const target = keyframeTarget(kf);
         return (
           <Fragment key={`line-${i}-${previous.keyframe.percentage}-${kf.percentage}`}>
             <div
@@ -70,7 +81,14 @@ export function TimelineDiamondConnectors({
                 width={x2 - x1}
                 centerY={centerY}
                 ease={kf.ease ?? globalEase}
-                target={keyframeTarget(kf)}
+                target={target}
+                focusId={timelineEaseFocusId(elementId, target)}
+                rovingTargetId={rovingTargetId}
+                afterLabel={keyframeTimeLabel(
+                  clipStart,
+                  clipDuration,
+                  previous.keyframe.percentage,
+                )}
                 // connectorWidth is the clear span between the two diamonds'
                 // edges, so a 24x24 target centred in it overhangs a diamond as
                 // soon as the span is narrower than 24. The segment wrapper sits
@@ -111,6 +129,9 @@ function SegmentEaseControl({
   centerY,
   ease,
   target,
+  focusId,
+  rovingTargetId,
+  afterLabel,
   roomForFullTarget,
   onSelectSegment,
 }: {
@@ -119,6 +140,11 @@ function SegmentEaseControl({
   centerY: number;
   ease: string;
   target: TimelineKeyframeTarget;
+  focusId: string;
+  /** Focus id of the one timeline control currently in the tab order. */
+  rovingTargetId: string | null;
+  /** Time label of the keyframe this segment starts at, for the accessible name. */
+  afterLabel: string;
   roomForFullTarget: boolean;
   onSelectSegment: (target: TimelineKeyframeTarget) => void;
 }) {
@@ -151,7 +177,9 @@ function SegmentEaseControl({
       <button
         type="button"
         data-keyframe-ease-button=""
-        aria-label={`Edit ${ease} easing`}
+        data-timeline-focus-id={focusId}
+        tabIndex={focusId === rovingTargetId ? 0 : -1}
+        aria-label={`Edit ${ease} easing after ${afterLabel}`}
         title={`Edit ${ease} easing`}
         // A visible 24x24 badge would collide with the diamonds either side, so
         // the WCAG 2.2 (2.5.8) target is met with a centered transparent

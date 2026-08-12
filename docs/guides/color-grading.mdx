@@ -1,12 +1,15 @@
 ---
 title: "Color grade images and footage"
 sidebarTitle: "Color grading"
-description: "Correct exposure and color, shape a look, apply a LUT, and review the result in Studio."
+description: "Fix exposure and color on an image or video, shape a look with wheels and curves, apply a LUT, and check the result against real measurements."
 ---
 
-Use Color Grading when an image or video needs correction or a deliberate
-visual look. It changes that media element only; text, captions, SVG, and normal
-HTML remain separate layers.
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Grading changes how a photo or video **looks** — brighter, warmer, moodier, more
+or less colorful. It runs on one media element at a time. The file on disk never
+changes, and text, captions, SVG and ordinary HTML stay on their own layers,
+untouched.
 
 <Frame caption="The same source before and after a restrained natural-portrait grade.">
   <img
@@ -15,114 +18,168 @@ HTML remain separate layers.
   />
 </Frame>
 
-## Work in this order
+<DocsVideo
+  title="Correction, presets, curves, selective colour, scopes and a LUT on real footage"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/color-grading-demo-v1.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/color-grading-demo-v1.jpg"
+/>
 
-| Pass | Purpose |
-| --- | --- |
-| Correct | Fix exposure, white balance, contrast, and saturation |
-| Grade | Shape tonal ranges or a selected color |
-| Apply a look | Start from a preset or a compatible `.cube` LUT |
-| Finish | Add restrained detail or film effects |
+Every control moves and the picture answers. The numbers on screen are measured
+from the frame, not illustrative — shadows lifted 2% to 23%, median 28% to 41%.
 
-Correct before stylizing. A strong preset cannot rescue clipped highlights,
-unreadable shadows, or the wrong source.
+## Correct first, then style
 
-## Grade in Studio
+Get exposure, white balance, contrast and saturation believable first. Then shape
+the tonal ranges or a single color, then a preset or a LUT, then grain, vignette
+and film effects last. No preset rescues blown-out highlights, shadows with
+nothing left in them, or the wrong shot.
 
-1. Select an image or video on the canvas, in Layers, or on the timeline.
-2. Open **Color grading** in **Design**.
-3. Start with a preset or small corrections.
-4. Use the scopes and compare control to check the result.
-5. Scrub several moments before judging moving footage.
+## Try it in Studio
 
-The controls answer different questions:
+Select an image or video — on the canvas, in Layers, or on the timeline — and
+open **Grade** in the Inspector.
+
+Start with a preset. There are thirteen, from Neutral and Clean Studio to Night Lift, and Studio renders each as a thumbnail of **your** frame rather than
+someone else's sample. **Strength** dials the chosen look between nothing and
+full.
+
+{/* VISUAL NEEDED (1): Studio's preset thumbnail grid — all thirteen Grade presets on one real frame, Neutral through Night Lift. */}
+
+Hold the compare button in the panel header to flash back to the original. On
+moving footage, scrub several places first — a grade that flatters one frame can
+wreck the next.
+
+## What each control does
 
 | Control | Use it for |
 | --- | --- |
-| Preset and strength | Establish a starting look |
-| Exposure, contrast, highlights, shadows, white point, black point | Correct brightness and contrast |
-| Warmth, tint, vibrance, saturation | Correct or shape color |
-| Color wheels | Shift shadows, midtones, or highlights |
-| RGB curves | Remap luminance or individual channels |
-| Hue curves | Move, saturate, or brighten a selected hue |
-| HSL selections | Correct pixels inside a hue, saturation, and luma range |
-| Grain, vignette, blur, and effects | Finish or deliberately degrade the image |
-| Custom LUT | Apply a known 3D `.cube` transform |
+| Preset and strength | Pick a whole look, then dial it back |
+| Exposure, contrast, highlights, shadows, whites, blacks | Brightness and contrast, overall and per tonal range |
+| Warmth, tint, vibrance, saturation | Take out a color cast, or push color further |
+| Color wheels | Tint shadows, midtones and highlights separately |
+| RGB curves | Redraw the brightness ramp — whole image, or red, green and blue one at a time |
+| Hue curves | Pick one hue and move only it: shift, saturate or brighten |
+| HSL selections | Key a band of hue, saturation and brightness, then correct only those pixels. Up to four, in order |
+| Grain and vignette | Add texture, or darken the edges to pull the eye in |
+| Custom LUT | Load a `.cube` file that maps every color to another |
 
-HyperFrames supports up to four ordered HSL selections. They are static
-pixel-value qualifiers, not object tracking, rotoscoping, or spatial masks.
+{/* VISUAL NEEDED (2): color wheels, a bent RGB curve, a hue curve and one HSL
+selection, each beside the frame it produced. */}
 
-Studio scopes are inspection tools:
+## Read the scopes, not your screen
 
-| Scope | Shows |
-| --- | --- |
-| Histogram | Overall dark-to-bright distribution |
-| Waveform | Brightness by horizontal image position |
-| RGB Parade | Channel balance and clipping |
-| Vectorscope | Hue direction and saturation |
+Scopes measure the picture live, so you are not guessing from a monitor that may
+be too bright. Studio draws four.
 
-## Give the agent the visible problem
+- **Histogram** — how much of the frame is dark, mid, or bright. Piled against
+  either end means detail is already gone.
+- **Waveform** — brightness across the frame left to right, so you see *which
+  part* is blown out.
+- **RGB parade** — that waveform split into red, green and blue. One channel
+  riding high is your color cast, named.
+- **Vectorscope** — a circle of hues: direction is which color, distance from the
+  centre is how saturated. Skin tones land on one known line, so faces are quick
+  to check.
 
-You do not need to prescribe shader values:
+{/* VISUAL NEEDED (3): the four scopes side by side, on the same frame before
+and after a correction. */}
+
+## Compare candidate looks in one image
+
+Instead of flipping between options, render them all onto one reference frame:
+
+```bash
+npx hyperframes grade-compare --for frame.png --grades grades.json
+```
+
+`--grades` takes a JSON array of `{ label, grading }` entries; `--for` takes an
+image, or a video sampled at its first frame. The untouched frame leads as a cell
+labelled `original` unless you pass `--no-baseline`. Up to sixteen cells land
+four to a row in `grade-compare.png`, or wherever `--out` points. Swap `--grades`
+for `--luts looks/a.cube,looks/b.cube` to compare LUT files the same way.
+
+{/* VISUAL NEEDED (4): a real grade-compare.png sheet — the labelled grid with
+`original` in the first cell. */}
+
+## Or describe the problem to the agent
+
+You do not need to name controls or invent values:
 
 ```text
 The interview looks too dark and slightly cold.
 Keep skin natural, recover the background enough to read, and avoid a filtered look.
 ```
 
-The agent can inspect the current capability contract and analyze a local
-source before changing it:
+The agent can list what exists, and measure a local source before changing it:
 
 ```bash
 npx hyperframes media-treatment --capabilities --json
 npx hyperframes media-treatment --selector '#interview' --analyze --json
 ```
 
-For source-sensitive prompts and worked A/B examples, continue to
+`--analyze` reports the source's color metadata, where its brightness sits, what
+is clipping, and a bounded correction to start from. For source-sensitive prompts
+and worked before-and-afters, see
 [Color grading and film effects](/prompting/color-grading).
 
-## Reuse a grade carefully
+## Reuse a grade
 
-In Studio, use **Copy grade to** for other media in the current file or project.
-Treat the copy as a starting point and inspect each source.
+**Copy grade to** applies the current grade to other media, in this file or
+across the project — a starting point, since the same numbers rarely suit two
+shots. Project-wide copy refuses a relative LUT path, because that path means
+something different from another composition's folder; stay in the current file,
+or use a LUT reachable by URL or data URL.
 
-Project-wide copy rejects project-relative LUT paths because the same path can
-resolve differently from another composition. Use a project-root path, a data
-URL, or copy only within the current file.
+## Use a LUT only when you know what it expects
 
-## Use LUTs with known intent
+A LUT is a lookup table: a file mapping every input color to an output color.
+HyperFrames reads a 3D `.cube` file up to 64 points per side and blends it in at
+an intensity you set.
 
-Import a project-local 3D `.cube` LUT only when you know the look or conversion
-it expects. HyperFrames does not identify camera profiles or apply an automatic
-ACES/OCIO workflow.
+Nothing normalizes your footage first — HyperFrames does not identify camera
+profiles or run an ACES or OCIO pipeline, the color-management systems film
+finishing uses. The safe case is a creative Rec.709 LUT, built for ordinary web
+and broadcast video, which is also the only color space these controls work in.
+LOG footage, shot deliberately flat and grey so it holds detail for grading,
+needs the transform its camera expects or comes out wrong rather than stylized.
 
-A creative Rec.709 LUT is the safest normal path. LOG or HDR footage requires a
-known source transform.
+{/* VISUAL NEEDED (5): one frame under two or three .cube LUTs, plus the same
+LUT at partial and full intensity. */}
 
+## Where the grade is stored
 
-## Current limits
+Studio and the CLI write the result into `data-color-grading`, in named sections:
+corrections under `adjust`, grain and vignette under `details`, stylized
+treatments under `effects`.
 
-| Source or workflow | Status |
-| --- | --- |
-| SDR image or video | Supported |
-| 4K SDR media | Supported with higher preview and render cost |
-| iPhone HDR, HLG, or Dolby Vision-style media | Studio can show an SDR preview; native HDR delivery is a separate path |
-| LOG footage | Requires a known matching transform or LUT |
-| Full-scene grade including HTML text | Not supported; grading targets individual media elements |
-| Face or region tracking | Not supported |
-| Remote media | Requires compatible CORS headers |
-| ACES/OCIO finishing | Outside the current browser shader pipeline |
+```html
+<video src="./interview.mp4" data-color-grading='{"preset":"skin-soft","intensity":0.7,"adjust":{"exposure":0.15},"effects":{"bloom":0.4}}'></video>
+```
 
-Continue to [Media effects](/guides/media-effects) for blur, bloom, retro,
-print, glitch, and art treatments. Use [HDR rendering](/guides/hdr) when the
-final delivery must remain HDR.
+The nesting is not optional. A flat object such as `{"exposure":0.15}` renders
+nothing at all; `npx hyperframes lint` catches it and names the section the
+control belongs in.
 
-<Card title="Implement a grade in HTML" icon="code" href="/reference/color-grading">
-  Persist a grade, animate supported properties, or isolate a graded region.
-</Card>
+## What it cannot do
+
+Grading picks pixels by value, never by position: no face tracking, region
+tracking, rotoscoping or masks — an HSL selection is a color qualifier, not a
+shape. To treat one part of a frame, split it into its own media layer and grade
+that layer, as in the [implementation reference](/reference/color-grading). It
+targets media elements only, so a whole scene including HTML text cannot be
+graded.
+
+SDR images and video are the supported case; 4K works at a higher preview and
+render cost. An HDR source — iPhone HDR, HLG, Dolby Vision-style — gets an SDR
+preview and a banner saying so: the render may stay HDR-tagged, but this is not
+true HDR grading yet. Remote media needs permissive CORS headers and can vanish
+before render time, so keep media in the project.
+
+For blur, bloom, retro, print, glitch and art treatments, see
+[Media effects](/guides/media-effects).
 
 ## Related topics
 
 - [Apply media effects](/guides/media-effects)
-- [Use images and video](/guides/video-components)
+- [Implement a grade in HTML](/reference/color-grading)
 - [Deliver an HDR render](/guides/hdr)

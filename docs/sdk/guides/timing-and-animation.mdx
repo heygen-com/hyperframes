@@ -182,30 +182,30 @@ if (firstAnimId) {
 }
 ```
 
-### Feature-detecting advanced ops
+### Gating an op with `can()`
 
-Some GSAP operations (such as `setGsapKeyframe`, arc paths, and label ops) require the parser engine, which ships in a later phase. Use `can()` to gate them before dispatching:
+`dispatch()` does not run validation, so gate any op that can fail with `can()`
+first and skip it when the result is not `ok`. Adding a tween or a label attaches
+to a timeline — without a `gsap.timeline()` in the script, `can()` returns
+`E_NO_GSAP_TIMELINE`:
 
 ```typescript
-const check = comp.can({
-  type: "setGsapTween",
-  animationId: firstAnimId,
-  properties: { ease: "power3.inOut" },
-});
+const op = {
+  type: "addGsapTween",
+  target: "hf-title",
+  tween: { method: "to", properties: { opacity: 1 }, duration: 0.5 },
+} as const;
 
+const check = comp.can(op);
 if (!check.ok) {
   if (check.code === "E_NO_GSAP_TIMELINE") {
-    // Parser engine not yet available — show a disabled state or skip
+    // No gsap.timeline() in this composition — add one (var tl = gsap.timeline(...)) or skip
     console.warn("GSAP timeline not available:", check.message);
   }
   return;
 }
 
-comp.dispatch({
-  type: "setGsapTween",
-  animationId: firstAnimId,
-  properties: { ease: "power3.inOut" },
-});
+comp.dispatch(op);
 ```
 
 Stable error codes returned by `can()`:
@@ -214,7 +214,7 @@ Stable error codes returned by `can()`:
 | -------------------- | --------------------------------------------------------------- |
 | `E_TARGET_NOT_FOUND` | The target `HfId` does not exist in the document.               |
 | `E_NO_ROOT`          | The document has no root element.                               |
-| `E_NO_GSAP_TIMELINE` | Op requires the GSAP parser engine, which is not yet available. |
+| `E_NO_GSAP_TIMELINE` | The GSAP script has no `gsap.timeline()` to attach to. Declare one and retry. |
 | `E_NO_GSAP_SCRIPT`   | The composition has no embedded GSAP script.                    |
 
 ---

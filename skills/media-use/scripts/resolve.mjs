@@ -14,7 +14,13 @@ import {
 } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
-import { runCapability, listTypes, providerMatches, providerNamesFor } from "./lib/registry.mjs";
+import {
+  runCapability,
+  listTypes,
+  providerMatches,
+  providerNamesFor,
+  providerTierFor,
+} from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
 import { track } from "./lib/telemetry.mjs";
@@ -1206,6 +1212,11 @@ async function result(record, source) {
     // signal about the fetch that actually consumed a heygen credit, not
     // about the (free, no-credential) act of copying a cached file.
     auth_method: record.provenance?.authMethod,
+    // "local" / "network_free" / "network_paid", straight from the registry's own
+    // A/N/P declaration — so a dashboard can separate free lookups from calls that
+    // spend credit without hardcoding provider names. Sparse: absent when the
+    // record carries no provider (cache and reuse hits) or the name is unknown.
+    provider_tier: providerTierFor(record.provenance?.provider),
     local_only: !!args["local-only"],
     provider_override: !!args.provider,
   });

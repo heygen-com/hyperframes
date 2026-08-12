@@ -57,7 +57,12 @@ export type { HistoryModule, HistoryOptions, HistoryEntry } from "./history.js";
 export { createPersistQueue } from "./persist-queue.js";
 export type { PersistQueueModule, PersistQueueOptions } from "./persist-queue.js";
 
-export type { PersistAdapter, PreviewAdapter, PersistVersionEntry } from "./adapters/types.js";
+export type {
+  PersistAdapter,
+  PreviewAdapter,
+  PersistVersionEntry,
+  PaintQueryOptions,
+} from "./adapters/types.js";
 
 // Concrete adapter factories (browser-safe — Node-only fs adapter: @hyperframes/sdk/adapters/fs).
 export { createMemoryAdapter } from "./adapters/memory.js";

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "notes-reveal",
+  "type": "hyperframes:block",
+  "title": "Notes Reveal",
+  "description": "A personal note is typed character by character in a notes app - caret riding every letter, the page scrolling up on measured settle curves as each line lands - then cuts to a hand-lettered paper card with a marker headline and a ticked checklist",
+  "tags": ["showcase", "mock-ui", "notes", "typing", "vertical", "ad-template"],
+  "author": "Miao Yang",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 24.85,
+  "variables": [
+    {
+      "id": "titleL1",
+      "type": "string",
+      "role": "content",
+      "label": "Note title line 1",
+      "description": "First line of the note title.",
+      "default": "Things nobody told me"
+    },
+    {
+      "id": "titleL2",
+      "type": "string",
+      "role": "content",
+      "label": "Note title line 2",
+      "description": "Second line of the note title.",
+      "default": "about video."
+    },
+    {
+      "id": "cardTop",
+      "type": "string",
+      "role": "content",
+      "label": "Card headline top",
+      "description": "First marker line on the closing card.",
+      "default": "THE POWER"
+    },
+    {
+      "id": "check1Label",
+      "type": "string",
+      "role": "content",
+      "label": "Checklist 1 label",
+      "description": "Typewriter label of the first checklist row.",
+      "default": "WRITE"
+    },
+    {
+      "id": "check1Value",
+      "type": "string",
+      "role": "content",
+      "label": "Checklist 1 value",
+      "description": "Marker value of the first checklist row.",
+      "default": "HTML"
+    },
+    {
+      "id": "check2Label",
+      "type": "string",
+      "role": "content",
+      "label": "Checklist 2 label",
+      "description": "Typewriter label of the second checklist row.",
+      "default": "RENDER"
+    },
+    {
+      "id": "check2Value",
+      "type": "string",
+      "role": "content",
+      "label": "Checklist 2 value",
+      "description": "Marker value of the second checklist row.",
+      "default": "IN 4K"
+    },
+    {
+      "id": "check3Label",
+      "type": "string",
+      "role": "content",
+      "label": "Checklist 3 label",
+      "description": "Typewriter label of the third checklist row.",
+      "default": "SHIP"
+    },
+    {
+      "id": "check3Value",
+      "type": "string",
+      "role": "content",
+      "label": "Checklist 3 value",
+      "description": "Marker value of the third checklist row.",
+      "default": "TODAY"
+    }
+  ],
+  "files": [
+    {
+      "path": "notes-reveal.html",
+      "target": "compositions/notes-reveal.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/permanent-marker-400.woff2",
+      "target": "assets/permanent-marker-400.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/courier-prime-400.woff2",
+      "target": "assets/courier-prime-400.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/courier-prime-700.woff2",
+      "target": "assets/courier-prime-700.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

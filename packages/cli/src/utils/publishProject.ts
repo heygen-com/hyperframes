@@ -15,6 +15,8 @@ const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/"];
 const PUBLISH_CONTENT_TYPE = "application/zip";
 const PUBLISH_METADATA_TIMEOUT_MS = 30_000;
 const PUBLISH_UPLOAD_MIN_TIMEOUT_MS = 120_000;
+const PUBLISH_TRANSPORT_ATTEMPTS = 2;
+const PUBLISH_RETRY_DELAY_MS = 200;
 // Conservative floor — most connections are faster, but this prevents
 // premature aborts on slow/unstable networks (hotel wifi, tethering).
 const PUBLISH_UPLOAD_BYTES_PER_SECOND = 500_000;
@@ -164,6 +166,83 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 
   const text = await response.text().catch(() => "");
   return text.trim() ? `${fallback}: ${text.trim().slice(0, 180)}` : fallback;
+}
+
+function systemErrorMetadata(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const metadata: string[] = [];
+  if (typeof value["code"] === "string") metadata.push(value["code"]);
+  if (typeof value["syscall"] === "string") metadata.push(`syscall=${value["syscall"]}`);
+  if (typeof value["errno"] === "string" || typeof value["errno"] === "number") {
+    metadata.push(`errno=${value["errno"]}`);
+  }
+  return metadata;
+}
+
+function redactUrlQuery(message: string): string {
+  return message.replace(/(https?:\/\/[^\s?]+)\?[^\s]+/gu, "$1?[redacted]");
+}
+
+function proxySupportHint(): string {
+  const proxyConfigured = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].some((key) =>
+    Boolean(process.env[key]?.trim()),
+  );
+  const proxyEnabled =
+    process.env["NODE_USE_ENV_PROXY"] === "1" ||
+    process.execArgv.includes("--use-env-proxy") ||
+    process.env["NODE_OPTIONS"]?.split(/\s+/u).includes("--use-env-proxy") === true;
+  if (!proxyConfigured || proxyEnabled) return "";
+  return (
+    ". Proxy variables are set but ignored by Node fetch; if this network requires them, retry with " +
+    "NODE_USE_ENV_PROXY=1 (Node 22.21+)"
+  );
+}
+
+function describeFetchFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error instanceof Error ? error.cause : undefined;
+  const causeMessage = cause instanceof Error ? cause.message : "";
+  const metadata = [...systemErrorMetadata(cause), ...systemErrorMetadata(error)].filter(
+    (value, index, all) => all.indexOf(value) === index,
+  );
+  const distinctCauseMessage = causeMessage && causeMessage !== message ? causeMessage : "";
+  const detail = [metadata.join(", "), distinctCauseMessage].filter(Boolean).join(": ");
+  return `${redactUrlQuery(message)}${detail ? ` (${redactUrlQuery(detail)})` : ""}${proxySupportHint()}`;
+}
+
+function isRequestTimeout(error: unknown): boolean {
+  return (
+    error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")
+  );
+}
+
+function waitBeforePublishRetry(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, PUBLISH_RETRY_DELAY_MS));
+}
+
+async function fetchForPublish(
+  input: string,
+  createInit: () => RequestInit,
+  failureStage: string,
+  attempts = 1,
+): Promise<Response> {
+  if (attempts < 1) throw new RangeError("Publish fetch attempts must be at least 1");
+  let lastError: unknown;
+  let attemptsMade = 0;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    attemptsMade = attempt;
+    try {
+      return await fetch(input, createInit());
+    } catch (error) {
+      lastError = error;
+      if (isRequestTimeout(error) || attempt === attempts) break;
+      await waitBeforePublishRetry();
+    }
+  }
+  const attemptDetail = attemptsMade > 1 ? ` after ${attemptsMade} attempts` : "";
+  throw new Error(`${failureStage}${attemptDetail}: ${describeFetchFailure(lastError)}`, {
+    cause: lastError instanceof Error ? lastError : undefined,
+  });
 }
 
 export function uploadTimeoutMs(byteLength: number): number {
@@ -478,17 +557,18 @@ async function publishProjectArchiveDirect(
     "file",
     new File([archiveArrayBuffer(archive)], `${title}.zip`, { type: PUBLISH_CONTENT_TYPE }),
   );
-  const headers: Record<string, string> = {
-    ...authHeaders,
-    heygen_route: "canary",
-  };
+  const headers: Record<string, string> = { ...authHeaders };
 
-  const response = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish`, {
-    method: "POST",
-    body,
-    headers,
-    signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
-  });
+  const response = await fetchForPublish(
+    `${apiBaseUrl}/v1/hyperframes/projects/publish`,
+    () => ({
+      method: "POST",
+      body,
+      headers,
+      signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
+    }),
+    "Failed to publish project",
+  );
 
   const payload = await readJson(response);
   const publishedProject = parsePublishedProjectResponse(payload);
@@ -504,14 +584,19 @@ async function uploadArchiveToPresignedUrl(
   archive: PublishArchiveResult,
 ): Promise<void> {
   const presignedUrlTtlMs = stagedUpload.expiresInSeconds * 1000 - PUBLISH_METADATA_TIMEOUT_MS;
-  const s3Response = await fetch(stagedUpload.uploadUrl, {
-    method: "PUT",
-    body: new Blob([archiveArrayBuffer(archive)], { type: stagedUpload.contentType }),
-    headers: stagedUpload.uploadHeaders,
-    signal: AbortSignal.timeout(
-      Math.min(uploadTimeoutMs(archive.buffer.byteLength), presignedUrlTtlMs),
-    ),
-  });
+  const s3Response = await fetchForPublish(
+    stagedUpload.uploadUrl,
+    () => ({
+      method: "PUT",
+      body: new Blob([archiveArrayBuffer(archive)], { type: stagedUpload.contentType }),
+      headers: stagedUpload.uploadHeaders,
+      signal: AbortSignal.timeout(
+        Math.min(uploadTimeoutMs(archive.buffer.byteLength), presignedUrlTtlMs),
+      ),
+    }),
+    "Failed to upload project archive",
+    PUBLISH_TRANSPORT_ATTEMPTS,
+  );
   if (!s3Response.ok) {
     throw new Error(await readErrorMessage(s3Response, "Failed to upload project archive"));
   }
@@ -526,20 +611,24 @@ async function publishProjectArchiveStaged(
   projectId: string | undefined,
 ): Promise<PublishedProjectResponse | null> {
   const fileName = `${title}.zip`;
-  const uploadResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/upload`, {
-    method: "POST",
-    body: JSON.stringify({
-      file_name: fileName,
-      content_type: PUBLISH_CONTENT_TYPE,
-      content_length: archive.buffer.byteLength,
+  const uploadResponse = await fetchForPublish(
+    `${apiBaseUrl}/v1/hyperframes/projects/publish/upload`,
+    () => ({
+      method: "POST",
+      body: JSON.stringify({
+        file_name: fileName,
+        content_type: PUBLISH_CONTENT_TYPE,
+        content_length: archive.buffer.byteLength,
+      }),
+      headers: {
+        ...authHeaders,
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(PUBLISH_METADATA_TIMEOUT_MS),
     }),
-    headers: {
-      ...authHeaders,
-      "content-type": "application/json",
-      heygen_route: "canary",
-    },
-    signal: AbortSignal.timeout(PUBLISH_METADATA_TIMEOUT_MS),
-  });
+    "Failed to prepare project upload",
+    PUBLISH_TRANSPORT_ATTEMPTS,
+  );
 
   if (uploadResponse.status === 404 || uploadResponse.status === 405) {
     return null;
@@ -553,22 +642,25 @@ async function publishProjectArchiveStaged(
 
   await uploadArchiveToPresignedUrl(stagedUpload, archive);
 
-  const completeResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/complete`, {
-    method: "POST",
-    body: JSON.stringify({
-      upload_key: stagedUpload.uploadKey,
-      file_name: fileName,
-      title,
-      ...(isPublic ? { is_public: true } : {}),
-      ...(projectId ? { project_id: projectId } : {}),
+  const completeResponse = await fetchForPublish(
+    `${apiBaseUrl}/v1/hyperframes/projects/publish/complete`,
+    () => ({
+      method: "POST",
+      body: JSON.stringify({
+        upload_key: stagedUpload.uploadKey,
+        file_name: fileName,
+        title,
+        ...(isPublic ? { is_public: true } : {}),
+        ...(projectId ? { project_id: projectId } : {}),
+      }),
+      headers: {
+        ...authHeaders,
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
     }),
-    headers: {
-      ...authHeaders,
-      "content-type": "application/json",
-      heygen_route: "canary",
-    },
-    signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
-  });
+    "Failed to finalize project publish",
+  );
 
   const completePayload = await readJson(completeResponse);
   const publishedProject = parsePublishedProjectResponse(completePayload);

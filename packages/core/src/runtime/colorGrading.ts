@@ -3065,12 +3065,19 @@ function drawEntry(entry: ColorGradingEntry): boolean {
   const sourceVisibility = entry.element.style.getPropertyValue("visibility");
   const injectedFrameSource = isRenderFrameImage(source);
   if (injectedFrameSource) keepCanvasAboveSource(entry, source);
+  const computed = window.getComputedStyle(injectedFrameSource ? source : entry.element);
+  // `hideSourceElement` owns the source's inline opacity while grading is active
+  // (opacity:0 !important), so reading it back would mirror grading's own hide
+  // onto the canvas and blank it. That gate is about opacity ONLY: grading never
+  // writes `visibility`, so the source's computed visibility always tracks the
+  // clip window and has to be re-read every frame. Leaving it stale let the
+  // canvas keep an explicit `visibility: visible` and paint straight through an
+  // inactive ancestor clip's inherited `visibility: hidden`.
   if (injectedFrameSource || !hiddenByColorGrading) {
-    const computed = window.getComputedStyle(injectedFrameSource ? source : entry.element);
     entry.sourceOpacityForCanvas = computed.opacity || "1";
-    entry.sourceVisibleForCanvas =
-      (injectedFrameSource || sourceVisibility !== "hidden") && computed.visibility !== "hidden";
   }
+  entry.sourceVisibleForCanvas =
+    (injectedFrameSource || sourceVisibility !== "hidden") && computed.visibility !== "hidden";
   const layout = updateCanvasLayout(entry, styleSource);
   if (!layout) return false;
 

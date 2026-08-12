@@ -5,6 +5,7 @@ import {
   orientedGroupAwareOverlayRect,
   overlayCornersCentroid,
   selectionCacheKey,
+  orientedVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
 
 describe("overlayCornersCentroid", () => {
@@ -66,6 +67,17 @@ describe("orientedOverlayRect — rotation gate (perf fix, V15 18a/18b)", () => 
         number,
         number,
       ];
+    }
+    /** `this` applied outside `other`, the way an ancestor composes over a child. */
+    multiply(other: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+      const out = new (this.constructor as new (init?: string) => this)();
+      out.a = this.a * other.a + this.c * other.b;
+      out.b = this.b * other.a + this.d * other.b;
+      out.c = this.a * other.c + this.c * other.d;
+      out.d = this.b * other.c + this.d * other.d;
+      out.e = this.a * other.e + this.c * other.f + this.e;
+      out.f = this.b * other.e + this.d * other.f + this.f;
+      return out;
     }
     transformPoint(pt: { x: number; y: number }) {
       return {
@@ -148,12 +160,107 @@ describe("orientedOverlayRect — rotation gate (perf fix, V15 18a/18b)", () => 
     expect(rect!.angle ?? 0).toBe(0);
   });
 
+  /**
+   * A child outline is drawn ON the child, not around it. Measured axis-aligned,
+   * a text layer inside a rotated card got an upright dashed box sitting across
+   * the rotated glyphs — the parent's chrome rotated and its children's did not.
+   */
+  /**
+   * The selection box and the crop outline compose the same ancestor walk, so
+   * this asserts the geometry side of the case the crop test covers: a child
+   * inside a rotated parent reports the angle it paints at, not its own.
+   */
+  it("composes the parent's rotation into the child's angle", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.parentElement!.style.transform = ROTATE_30DEG_MATRIX;
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  it("child outlines carry the element's angle, so they can co-rotate with it", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.style.transform = ROTATE_30DEG_MATRIX;
+    const rect = orientedVisibleOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  it("an unrotated child outline is unchanged — no angle, same box as before", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    const rect = orientedVisibleOverlayRect(overlayEl, iframe, el);
+    expect(rect).not.toBeNull();
+    expect(rect!.angle ?? 0).toBe(0);
+    expect(rect!.left).toBeCloseTo(400, 5);
+    expect(rect!.top).toBeCloseTo(450, 5);
+    expect(rect!.width).toBeCloseTo(200, 5);
+    expect(rect!.height).toBeCloseTo(100, 5);
+  });
+
   it("rotated element takes the corner-geometry path — reports the live angle", () => {
     const { overlayEl, iframe, el } = buildHarness();
     el.style.transform = ROTATE_30DEG_MATRIX;
     const rect = orientedOverlayRect(overlayEl, iframe, el);
     expect(rect).not.toBeNull();
     expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  /**
+   * The selection box is drawn at the size the element PAINTS, which is the
+   * product of every transform between it and the composition root.
+   *
+   * A text layer inside a card carrying `scale(1.2)` was drawn at 1/1.2 of the
+   * text: the top-left was right, because the caller anchors that to the real
+   * bounding rect, and the right and bottom edges fell short. The same read
+   * decides whether to draw the box rotated, so an element inside a rotated
+   * parent got an upright box.
+   */
+  const SCALE_1_2_MATRIX = "matrix(1.2, 0, 0, 1.2, 0, 0)";
+  const MIRROR_X_MATRIX = "matrix(-1, 0, 0, 1, 0, 0)";
+
+  it("sizes the box by the accumulated transform, not the element's own", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    // The element carries no transform; its parent scales it by 1.2, so it
+    // paints at 240x120 and its bounding rect says so.
+    el.parentElement!.style.transform = SCALE_1_2_MATRIX;
+    el.style.transform = ROTATE_30DEG_MATRIX;
+    stubRect(el, { left: 400, top: 450, width: 240, height: 120 });
+
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+
+    expect(rect).not.toBeNull();
+    // 200x100 local, scaled by the ancestor, then rotated: the oriented box is
+    // the scaled local box, and the AABB it is anchored to is wider again.
+    expect(rect!.width).toBeCloseTo(240, 3);
+    expect(rect!.height).toBeCloseTo(120, 3);
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  it("takes the rotated path when only an ANCESTOR is rotated", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.parentElement!.style.transform = ROTATE_30DEG_MATRIX;
+
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  it("does not misread a mirrored ancestor as a 180-degree rotation", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.parentElement!.style.transform = MIRROR_X_MATRIX;
+
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+
+    expect(rect?.angle ?? 0).toBe(0);
+  });
+
+  it("stops transform composition at the composition root", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    iframe.contentDocument!.body.style.transform = ROTATE_30DEG_MATRIX;
+
+    const rect = orientedOverlayRect(overlayEl, iframe, el);
+
+    expect(rect?.angle ?? 0).toBe(0);
   });
 
   it("preserves an ordinary element's rotation through the group-aware entry point", () => {

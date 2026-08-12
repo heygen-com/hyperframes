@@ -70,6 +70,7 @@ function renderPropertyLanes(overrides: Partial<TimelinePropertyLanesProps> = {}
   act(() => {
     root.render(
       <TimelinePropertyLanes
+        id="timeline-property-lanes-test"
         animations={[]}
         clipStart={0}
         clipDuration={1}
@@ -367,6 +368,7 @@ describe("TimelinePropertyLanes", () => {
     act(() => {
       root.render(
         <TimelinePropertyLanes
+          id="timeline-property-lanes-selected-test"
           animations={animations}
           clipStart={0}
           clipDuration={1}
@@ -417,6 +419,7 @@ describe("TimelinePropertyLanes", () => {
     act(() => {
       root.render(
         <TimelinePropertyLanes
+          id="timeline-property-lanes-unselected-test"
           animations={animations}
           clipStart={0}
           clipDuration={1}
@@ -433,7 +436,7 @@ describe("TimelinePropertyLanes", () => {
     });
     const unselectedSegments = laneEaseSegments(host, "position");
     expect(unselectedSegments).toHaveLength(2);
-    expect(revealEaseButton(unselectedSegments[0]!)).not.toBeNull();
+    expect(laneEaseButtons(host, "position")).toHaveLength(2);
     act(() => root.unmount());
   });
 
@@ -461,13 +464,14 @@ describe("TimelinePropertyLanes", () => {
     expect(new Set(paths).size).toBe(3);
     // Uniqueness alone passes even when the curves are swapped between segments.
     // Each segment is labelled with the ease it draws, so pin the ORDER: a
-    // segment carries the ease of the keyframe it arrives at.
+    // segment carries the ease of the keyframe it arrives at. The trailing time
+    // is what separates two segments that share an ease name in the same lane.
     expect(
       segments.map((segment) => revealEaseButton(segment)?.getAttribute("aria-label")),
     ).toEqual([
-      "Edit none easing",
-      "Edit power2.out easing",
-      "Edit custom(M0,0 C0.1,0.2 0.3,0.9 1,1) easing",
+      "Edit none easing after 0s",
+      "Edit power2.out easing after 0.33s",
+      "Edit custom(M0,0 C0.1,0.2 0.3,0.9 1,1) easing after 0.66s",
     ]);
     act(() => root.unmount());
   });

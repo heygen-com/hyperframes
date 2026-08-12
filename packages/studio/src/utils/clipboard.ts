@@ -26,7 +26,7 @@ function copyWithSelection(text: string): boolean {
   } catch {
     return false;
   } finally {
-    document.body.removeChild(textarea);
+    textarea.remove();
   }
 }
 

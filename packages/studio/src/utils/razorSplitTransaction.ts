@@ -3,6 +3,7 @@ import type { RecordEditInput } from "../hooks/timelineEditingHelpers";
 import { buildPatchTarget } from "./timelineElementSplit";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { buildProjectApiPath } from "./projectRouting";
+import { markStudioWriteToken } from "./studioFileVersion";
 
 type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
@@ -117,6 +118,7 @@ async function requestAtomicCut(
     });
   }
   const transactionToken = `cut:${crypto.randomUUID()}`;
+  markStudioWriteToken(transactionToken);
   const response = await fetch(buildProjectApiPath(projectId, "/file-mutations/split-batch"), {
     method: "POST",
     headers: {

@@ -174,7 +174,7 @@ Pick by `safe-zones.json` (`heroAnchor.bandLuma`, `palette.temperature`) × cont
 
 The engine generates the **hero three-act** from the DNA (no authoring needed): co-visible captions dim (setup) → per-letter entrance with amplitude ∝ spoken loudness (impact) → breathe + glow until exit (afterglow).
 
-(Legacy: `plan.template:"cinematic-cream"` maps to `dna:"cream"` automatically. The retired 54-template library lives outside the skill at `~/Downloads/embedded-captions-archive/standard-templates-54/`; `_motion.md` remains in-skill as the motion-verb reference catalog.)
+(Legacy: `plan.template:"cinematic-cream"` maps to `dna:"cream"` automatically. The retired 54-template library is archived outside this repo and is not distributed with the skill; `_motion.md` remains in-skill as the motion-verb reference catalog.)
 
 ---
 

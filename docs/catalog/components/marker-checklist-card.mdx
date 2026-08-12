@@ -1,0 +1,694 @@
+---
+title: "Marker Checklist Card"
+description: "A hand-lettered paper card: marker headline with an underline and a drawn ellipse around one word, then three checklist rows whose checks draw themselves on - typewriter labels, marker values. The paper-and-marker sibling of mk-specs-list's clean professional rows"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/components/marker-checklist-card.json"
+  compositionId="marker-checklist-card"
+  compositionSrc="compositions/components/marker-checklist-card.html"
+  variables={[{"id":"top","type":"string","role":"content","label":"Headline top","description":"First marker line.","default":"THE POWER"},{"id":"mid","type":"string","role":"content","label":"Headline middle","description":"Small connecting word under the underline.","default":"OF"},{"id":"circled","type":"string","role":"content","label":"Circled word","description":"The word the marker ellipse draws around.","default":"ONE"},{"id":"rest","type":"string","role":"content","label":"Headline rest","description":"The rest of the bottom line.","default":"FILE"},{"id":"l1","type":"string","role":"content","label":"Row 1 label","description":"Typewriter label of row 1.","default":"WRITE"},{"id":"v1","type":"string","role":"content","label":"Row 1 value","description":"Marker value of row 1.","default":"HTML"},{"id":"l2","type":"string","role":"content","label":"Row 2 label","description":"Typewriter label of row 2.","default":"RENDER"},{"id":"v2","type":"string","role":"content","label":"Row 2 value","description":"Marker value of row 2.","default":"IN 4K"},{"id":"l3","type":"string","role":"content","label":"Row 3 label","description":"Typewriter label of row 3.","default":"SHIP"},{"id":"v3","type":"string","role":"content","label":"Row 3 value","description":"Marker value of row 3.","default":"TODAY"}]}
+>
+
+```html marker-checklist-card.html
+<!doctype html>
+<!--
+  marker-checklist-card: HyperFrames motion primitive (scene)
+
+  A hand-lettered paper card, measured from reference ad footage: a marker
+  headline with an underline and a drawn ellipse around one word, then three
+  checklist rows - typewriter label, marker value, a check that draws itself
+  on. The aesthetic sibling of mk-specs-list's clean professional rows: this
+  one is paper, marker and Courier.
+
+  #root only, container-type: size, one paused timeline registered under the
+  literal "marker-checklist-card" key. Ships two open-licensed faces (Permanent Marker, Apache-2.0; Courier Prime, OFL 1.1). Deterministic.
+-->
+<html
+  lang="en"
+  data-composition-id="marker-checklist-card"
+  data-composition-duration="4.5"
+  data-composition-variables='[{"id": "top", "type": "string", "role": "content", "label": "Headline top", "description": "First marker line.", "default": "THE POWER"}, {"id": "mid", "type": "string", "role": "content", "label": "Headline middle", "description": "Small connecting word under the underline.", "default": "OF"}, {"id": "circled", "type": "string", "role": "content", "label": "Circled word", "description": "The word the marker ellipse draws around.", "default": "ONE"}, {"id": "rest", "type": "string", "role": "content", "label": "Headline rest", "description": "The rest of the bottom line.", "default": "FILE"}, {"id": "l1", "type": "string", "role": "content", "label": "Row 1 label", "description": "Typewriter label of row 1.", "default": "WRITE"}, {"id": "v1", "type": "string", "role": "content", "label": "Row 1 value", "description": "Marker value of row 1.", "default": "HTML"}, {"id": "l2", "type": "string", "role": "content", "label": "Row 2 label", "description": "Typewriter label of row 2.", "default": "RENDER"}, {"id": "v2", "type": "string", "role": "content", "label": "Row 2 value", "description": "Marker value of row 2.", "default": "IN 4K"}, {"id": "l3", "type": "string", "role": "content", "label": "Row 3 label", "description": "Typewriter label of row 3.", "default": "SHIP"}, {"id": "v3", "type": "string", "role": "content", "label": "Row 3 value", "description": "Marker value of row 3.", "default": "TODAY"}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Marker Checklist Card</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="marker-checklist-card" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          @font-face {
+            font-family: "Permanent Marker";
+            src: url("assets/fonts/permanent-marker-400.woff2") format("woff2");
+          }
+          @font-face {
+            font-family: "Courier Prime";
+            font-weight: 700;
+            src: url("assets/fonts/courier-prime-700.woff2") format("woff2");
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, transparent);
+            pointer-events: none;
+          }
+          .mcc-card {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: min(74cqw, 52cqh);
+            aspect-ratio: 0.585;
+            transform: translate(-50%, -50%) rotate(-3.03deg);
+            background: #fcfcfc;
+            box-shadow: 0 1.2cqmin 3cqmin rgba(90, 60, 40, 0.16);
+            container-type: size;
+            will-change: opacity, transform;
+          }
+          .mcc-mk {
+            font-family: "Permanent Marker", cursive;
+            color: #602640;
+            position: absolute;
+            white-space: nowrap;
+            will-change: opacity;
+          }
+          #mcc-top {
+            left: 14cqw;
+            top: 4cqh;
+            font-size: 13cqw;
+            letter-spacing: 0.02em;
+          }
+          #mcc-ul {
+            position: absolute;
+            left: 40cqw;
+            top: 12.6cqh;
+            width: 49cqw;
+            height: 0.55cqh;
+            background: #602640;
+            border-radius: 1cqmin;
+            will-change: opacity;
+          }
+          #mcc-mid {
+            left: 43cqw;
+            top: 12.2cqh;
+            font-size: 12cqw;
+          }
+          #mcc-line2 {
+            left: 15cqw;
+            top: 21.5cqh;
+            font-size: 13cqw;
+          }
+          #mcc-line2 .c {
+            padding-left: 4.5cqw;
+          }
+          #mcc-line2 .r {
+            padding-left: 6cqw;
+          }
+          #mcc-ellipse {
+            position: absolute;
+            left: 10cqw;
+            top: 20.2cqh;
+            width: 34cqw;
+            height: 10.4cqh;
+            will-change: opacity;
+          }
+          #mcc-ellipse ellipse {
+            fill: none;
+            stroke: #602640;
+            stroke-width: 1.8cqmin;
+          }
+          .mcc-row {
+            position: absolute;
+            left: 9cqw;
+            width: 82cqw;
+            will-change: opacity;
+          }
+          .mcc-label {
+            font-family: "Courier Prime", monospace;
+            font-weight: 700;
+            font-size: 5.2cqw;
+            color: #602640;
+            position: absolute;
+            left: 0;
+            top: 1.4cqh;
+          }
+          .mcc-value {
+            font-family: "Permanent Marker", cursive;
+            font-size: 6cqw;
+            color: #602640;
+            position: absolute;
+            left: 38cqw;
+            top: 0;
+          }
+          .mcc-check {
+            position: absolute;
+            right: 2cqw;
+            top: 0.4cqh;
+            width: 6cqw;
+            height: 5.5cqw;
+          }
+          .mcc-check path {
+            fill: none;
+            stroke: #602640;
+            stroke-width: 1.6cqmin;
+            stroke-linecap: round;
+          }
+          .mcc-rule {
+            position: absolute;
+            left: 0;
+            top: 5.4cqh;
+            width: 82cqw;
+            height: 0.18cqh;
+            background: #602640;
+            opacity: 0.92;
+          }
+        </style>
+        <div class="mcc-card" id="mcc-card">
+          <div
+            class="mcc-mk"
+            id="mcc-top"
+            data-layout-allow-overflow
+            data-layout-allow-overlap
+            data-layout-allow-occlusion
+          >
+            THE POWER
+          </div>
+          <div id="mcc-ul"></div>
+          <div
+            class="mcc-mk"
+            id="mcc-mid"
+            data-layout-allow-overflow
+            data-layout-allow-overlap
+            data-layout-allow-occlusion
+          >
+            OF
+          </div>
+          <svg id="mcc-ellipse" viewBox="0 0 100 32" preserveAspectRatio="none">
+            <ellipse cx="50" cy="16" rx="47" ry="13.5" pathLength="100" />
+          </svg>
+          <div
+            class="mcc-mk"
+            id="mcc-line2"
+            data-layout-allow-overflow
+            data-layout-allow-overlap
+            data-layout-allow-occlusion
+          >
+            <span class="c" id="mcc-circled">ONE</span><span class="r" id="mcc-rest">FILE</span>
+          </div>
+          <div class="mcc-row" style="top: 62cqh" id="mcc-row1">
+            <div class="mcc-label">WRITE</div>
+            <div class="mcc-value">HTML</div>
+            <svg class="mcc-check" viewBox="0 0 86 80">
+              <path d="M6 46 L30 72 L80 8" pathLength="100" />
+            </svg>
+            <div class="mcc-rule"></div>
+          </div>
+          <div class="mcc-row" style="top: 72cqh" id="mcc-row2">
+            <div class="mcc-label">RENDER</div>
+            <div class="mcc-value">IN 4K</div>
+            <svg class="mcc-check" viewBox="0 0 86 80">
+              <path d="M6 46 L30 72 L80 8" pathLength="100" />
+            </svg>
+            <div class="mcc-rule"></div>
+          </div>
+          <div class="mcc-row" style="top: 82cqh" id="mcc-row3">
+            <div class="mcc-label">SHIP</div>
+            <div class="mcc-value">TODAY</div>
+            <svg class="mcc-check" viewBox="0 0 86 80">
+              <path d="M6 46 L30 72 L80 8" pathLength="100" />
+            </svg>
+            <div class="mcc-rule"></div>
+          </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "marker-checklist-card";
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            document.getElementById("mcc-top").textContent = text(vars.top, "THE POWER", 12);
+            document.getElementById("mcc-mid").textContent = text(vars.mid, "OF", 6);
+            document.getElementById("mcc-circled").textContent = text(vars.circled, "ONE", 8);
+            document.getElementById("mcc-rest").textContent = text(vars.rest, "FILE", 10);
+            [
+              ["1", "WRITE", "HTML"],
+              ["2", "RENDER", "IN 4K"],
+              ["3", "SHIP", "TODAY"],
+            ].forEach(function (row) {
+              var el = document.getElementById("mcc-row" + row[0]);
+              el.querySelector(".mcc-label").textContent = text(vars["l" + row[0]], row[1], 9);
+              el.querySelector(".mcc-value").textContent = text(vars["v" + row[0]], row[2], 9);
+            });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              "#mcc-card",
+              { autoAlpha: 0, y: "2cqh" },
+              { autoAlpha: 1, y: 0, duration: 0.4, ease: "power2.out" },
+              0.2,
+            );
+            tl.fromTo(
+              "#mcc-top",
+              { autoAlpha: 0 },
+              { autoAlpha: 1, duration: 0.25, ease: "none" },
+              0.55,
+            );
+            tl.fromTo(
+              ["#mcc-ul", "#mcc-mid"],
+              { autoAlpha: 0 },
+              { autoAlpha: 1, duration: 0.25, ease: "none" },
+              0.8,
+            );
+            tl.fromTo(
+              "#mcc-line2",
+              { autoAlpha: 0 },
+              { autoAlpha: 1, duration: 0.25, ease: "none" },
+              1.05,
+            );
+            /* the marker draws the ellipse around the circled word */
+            tl.set("#mcc-ellipse", { autoAlpha: 1 }, 1.3);
+            tl.fromTo(
+              "#mcc-ellipse ellipse",
+              { strokeDasharray: 100, strokeDashoffset: 100 },
+              { strokeDashoffset: 0, duration: 0.55, ease: "power1.inOut" },
+              1.3,
+            );
+            gsap.set("#mcc-ellipse", { autoAlpha: 0 });
+            /* rows land, each check draws itself on */
+            [1, 2, 3].forEach(function (n, i) {
+              var at = 1.9 + i * 0.55;
+              tl.fromTo(
+                "#mcc-row" + n,
+                { autoAlpha: 0 },
+                { autoAlpha: 1, duration: 0.25, ease: "none" },
+                at,
+              );
+              tl.fromTo(
+                "#mcc-row" + n + " .mcc-check path",
+                { strokeDasharray: 100, strokeDashoffset: 100 },
+                { strokeDashoffset: 0, duration: 0.35, ease: "power1.in" },
+                at + 0.25,
+              );
+            });
+            tl.set({}, {}, 4.5);
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add marker-checklist-card" item="marker-checklist-card" />
+
+That writes `compositions/components/marker-checklist-card.html`, plus 2 supporting files under `assets/fonts/`.
+
+## Paste it into your composition
+
+Open `compositions/components/marker-checklist-card.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `top` | `THE POWER` | string | First marker line. |
+| `mid` | `OF` | string | Small connecting word under the underline. |
+| `circled` | `ONE` | string | The word the marker ellipse draws around. |
+| `rest` | `FILE` | string | The rest of the bottom line. |
+| `l1` | `WRITE` | string | Typewriter label of row 1. |
+| `v1` | `HTML` | string | Marker value of row 1. |
+| `l2` | `RENDER` | string | Typewriter label of row 2. |
+| `v2` | `IN 4K` | string | Marker value of row 2. |
+| `l3` | `SHIP` | string | Typewriter label of row 3. |
+| `v3` | `TODAY` | string | Marker value of row 3. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="marker-checklist-card"
+  data-composition-src="compositions/components/marker-checklist-card.html"
+  data-variable-values='{"top":"THE POWER","mid":"OF","circled":"ONE","rest":"FILE","l1":"WRITE","v1":"HTML","l2":"RENDER","v2":"IN 4K","l3":"SHIP","v3":"TODAY"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`marker-checklist-card.html`}>
+
+```html
+<!doctype html>
+<!--
+  marker-checklist-card: HyperFrames motion primitive (scene)
+
+  A hand-lettered paper card, measured from reference ad footage: a marker
+  headline with an underline and a drawn ellipse around one word, then three
+  checklist rows - typewriter label, marker value, a check that draws itself
+  on. The aesthetic sibling of mk-specs-list's clean professional rows: this
+  one is paper, marker and Courier.
+
+  #root only, container-type: size, one paused timeline registered under the
+  literal "marker-checklist-card" key. Ships two open-licensed faces (Permanent Marker, Apache-2.0; Courier Prime, OFL 1.1). Deterministic.
+-->
+<html
+  lang="en"
+  data-composition-id="marker-checklist-card"
+  data-composition-duration="4.5"
+  data-composition-variables='[{"id": "top", "type": "string", "role": "content", "label": "Headline top", "description": "First marker line.", "default": "THE POWER"}, {"id": "mid", "type": "string", "role": "content", "label": "Headline middle", "description": "Small connecting word under the underline.", "default": "OF"}, {"id": "circled", "type": "string", "role": "content", "label": "Circled word", "description": "The word the marker ellipse draws around.", "default": "ONE"}, {"id": "rest", "type": "string", "role": "content", "label": "Headline rest", "description": "The rest of the bottom line.", "default": "FILE"}, {"id": "l1", "type": "string", "role": "content", "label": "Row 1 label", "description": "Typewriter label of row 1.", "default": "WRITE"}, {"id": "v1", "type": "string", "role": "content", "label": "Row 1 value", "description": "Marker value of row 1.", "default": "HTML"}, {"id": "l2", "type": "string", "role": "content", "label": "Row 2 label", "description": "Typewriter label of row 2.", "default": "RENDER"}, {"id": "v2", "type": "string", "role": "content", "label": "Row 2 value", "description": "Marker value of row 2.", "default": "IN 4K"}, {"id": "l3", "type": "string", "role": "content", "label": "Row 3 label", "description": "Typewriter label of row 3.", "default": "SHIP"}, {"id": "v3", "type": "string", "role": "content", "label": "Row 3 value", "description": "Marker value of row 3.", "default": "TODAY"}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Marker Checklist Card</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="marker-checklist-card" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          @font-face {
+            font-family: "Permanent Marker";
+            src: url("assets/fonts/permanent-marker-400.woff2") format("woff2");
+          }
+          @font-face {
+            font-family: "Courier Prime";
+            font-weight: 700;
+            src: url("assets/fonts/courier-prime-700.woff2") format("woff2");
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, transparent);
+            pointer-events: none;
+          }
+          .mcc-card {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: min(74cqw, 52cqh);
+            aspect-ratio: 0.585;
+            transform: translate(-50%, -50%) rotate(-3.03deg);
+            background: #fcfcfc;
+            box-shadow: 0 1.2cqmin 3cqmin rgba(90, 60, 40, 0.16);
+            container-type: size;
+            will-change: opacity, transform;
+          }
+          .mcc-mk {
+            font-family: "Permanent Marker", cursive;
+            color: #602640;
+            position: absolute;
+            white-space: nowrap;
+            will-change: opacity;
+          }
+          #mcc-top {
+            left: 14cqw;
+            top: 4cqh;
+            font-size: 13cqw;
+            letter-spacing: 0.02em;
+          }
+          #mcc-ul {
+            position: absolute;
+            left: 40cqw;
+            top: 12.6cqh;
+            width: 49cqw;
+            height: 0.55cqh;
+            background: #602640;
+            border-radius: 1cqmin;
+            will-change: opacity;
+          }
+          #mcc-mid {
+            left: 43cqw;
+            top: 12.2cqh;
+            font-size: 12cqw;
+          }
+          #mcc-line2 {
+            left: 15cqw;
+            top: 21.5cqh;
+            font-size: 13cqw;
+          }
+          #mcc-line2 .c {
+            padding-left: 4.5cqw;
+          }
+          #mcc-line2 .r {
+            padding-left: 6cqw;
+          }
+          #mcc-ellipse {
+            position: absolute;
+            left: 10cqw;
+            top: 20.2cqh;
+            width: 34cqw;
+            height: 10.4cqh;
+            will-change: opacity;
+          }
+          #mcc-ellipse ellipse {
+            fill: none;
+            stroke: #602640;
+            stroke-width: 1.8cqmin;
+          }
+          .mcc-row {
+            position: absolute;
+            left: 9cqw;
+            width: 82cqw;
+            will-change: opacity;
+          }
+          .mcc-label {
+            font-family: "Courier Prime", monospace;
+            font-weight: 700;
+            font-size: 5.2cqw;
+            color: #602640;
+            position: absolute;
+            left: 0;
+            top: 1.4cqh;
+          }
+          .mcc-value {
+            font-family: "Permanent Marker", cursive;
+            font-size: 6cqw;
+            color: #602640;
+            position: absolute;
+            left: 38cqw;
+            top: 0;
+          }
+          .mcc-check {
+            position: absolute;
+            right: 2cqw;
+            top: 0.4cqh;
+            width: 6cqw;
+            height: 5.5cqw;
+          }
+          .mcc-check path {
+            fill: none;
+            stroke: #602640;
+            stroke-width: 1.6cqmin;
+            stroke-linecap: round;
+          }
+          .mcc-rule {
+            position: absolute;
+            left: 0;
+            top: 5.4cqh;
+            width: 82cqw;
+            height: 0.18cqh;
+            background: #602640;
+            opacity: 0.92;
+          }
+        </style>
+        <div class="mcc-card" id="mcc-card">
+          <div
+            class="mcc-mk"
+            id="mcc-top"
+            data-layout-allow-overflow
+            data-layout-allow-overlap
+            data-layout-allow-occlusion
+          >
+            THE POWER
+          </div>
+          <div id="mcc-ul"></div>
+          <div
+            class="mcc-mk"
+            id="mcc-mid"
+            data-layout-allow-overflow
+            data-layout-allow-overlap
+            data-layout-allow-occlusion
+          >
+            OF
+          </div>
+          <svg id="mcc-ellipse" viewBox="0 0 100 32" preserveAspectRatio="none">
+            <ellipse cx="50" cy="16" rx="47" ry="13.5" pathLength="100" />
+          </svg>
+          <div
+            class="mcc-mk"
+            id="mcc-line2"
+            data-layout-allow-overflow
+            data-layout-allow-overlap
+            data-layout-allow-occlusion
+          >
+            <span class="c" id="mcc-circled">ONE</span><span class="r" id="mcc-rest">FILE</span>
+          </div>
+          <div class="mcc-row" style="top: 62cqh" id="mcc-row1">
+            <div class="mcc-label">WRITE</div>
+            <div class="mcc-value">HTML</div>
+            <svg class="mcc-check" viewBox="0 0 86 80">
+              <path d="M6 46 L30 72 L80 8" pathLength="100" />
+            </svg>
+            <div class="mcc-rule"></div>
+          </div>
+          <div class="mcc-row" style="top: 72cqh" id="mcc-row2">
+            <div class="mcc-label">RENDER</div>
+            <div class="mcc-value">IN 4K</div>
+            <svg class="mcc-check" viewBox="0 0 86 80">
+              <path d="M6 46 L30 72 L80 8" pathLength="100" />
+            </svg>
+            <div class="mcc-rule"></div>
+          </div>
+          <div class="mcc-row" style="top: 82cqh" id="mcc-row3">
+            <div class="mcc-label">SHIP</div>
+            <div class="mcc-value">TODAY</div>
+            <svg class="mcc-check" viewBox="0 0 86 80">
+              <path d="M6 46 L30 72 L80 8" pathLength="100" />
+            </svg>
+            <div class="mcc-rule"></div>
+          </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "marker-checklist-card";
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            document.getElementById("mcc-top").textContent = text(vars.top, "THE POWER", 12);
+            document.getElementById("mcc-mid").textContent = text(vars.mid, "OF", 6);
+            document.getElementById("mcc-circled").textContent = text(vars.circled, "ONE", 8);
+            document.getElementById("mcc-rest").textContent = text(vars.rest, "FILE", 10);
+            [
+              ["1", "WRITE", "HTML"],
+              ["2", "RENDER", "IN 4K"],
+              ["3", "SHIP", "TODAY"],
+            ].forEach(function (row) {
+              var el = document.getElementById("mcc-row" + row[0]);
+              el.querySelector(".mcc-label").textContent = text(vars["l" + row[0]], row[1], 9);
+              el.querySelector(".mcc-value").textContent = text(vars["v" + row[0]], row[2], 9);
+            });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              "#mcc-card",
+              { autoAlpha: 0, y: "2cqh" },
+              { autoAlpha: 1, y: 0, duration: 0.4, ease: "power2.out" },
+              0.2,
+            );
+            tl.fromTo(
+              "#mcc-top",
+              { autoAlpha: 0 },
+              { autoAlpha: 1, duration: 0.25, ease: "none" },
+              0.55,
+            );
+            tl.fromTo(
+              ["#mcc-ul", "#mcc-mid"],
+              { autoAlpha: 0 },
+              { autoAlpha: 1, duration: 0.25, ease: "none" },
+              0.8,
+            );
+            tl.fromTo(
+              "#mcc-line2",
+              { autoAlpha: 0 },
+              { autoAlpha: 1, duration: 0.25, ease: "none" },
+              1.05,
+            );
+            /* the marker draws the ellipse around the circled word */
+            tl.set("#mcc-ellipse", { autoAlpha: 1 }, 1.3);
+            tl.fromTo(
+              "#mcc-ellipse ellipse",
+              { strokeDasharray: 100, strokeDashoffset: 100 },
+              { strokeDashoffset: 0, duration: 0.55, ease: "power1.inOut" },
+              1.3,
+            );
+            gsap.set("#mcc-ellipse", { autoAlpha: 0 });
+            /* rows land, each check draws itself on */
+            [1, 2, 3].forEach(function (n, i) {
+              var at = 1.9 + i * 0.55;
+              tl.fromTo(
+                "#mcc-row" + n,
+                { autoAlpha: 0 },
+                { autoAlpha: 1, duration: 0.25, ease: "none" },
+                at,
+              );
+              tl.fromTo(
+                "#mcc-row" + n + " .mcc-check path",
+                { strokeDasharray: 100, strokeDashoffset: 100 },
+                { strokeDashoffset: 0, duration: 0.35, ease: "power1.in" },
+                at + 0.25,
+              );
+            });
+            tl.set({}, {}, 4.5);
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `handwritten` `checklist` `paper` `marker`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

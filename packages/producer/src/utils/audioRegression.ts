@@ -315,6 +315,7 @@ function probeAudioDuration(file: string): { seconds: number; error?: string } {
       "stream=duration",
       "-of",
       "default=noprint_wrappers=1:nokey=1",
+      "--",
       file,
     ],
     { encoding: "utf-8" },

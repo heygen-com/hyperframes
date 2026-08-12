@@ -9,6 +9,7 @@ import { getTimelineDragOverlayPosition } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import type { TrackVisualStyle } from "./timelineIcons";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
+import type { TimelineClipRenderContext } from "./TimelineTypes";
 
 interface TimelineGestureOverlayProps {
   drag: DraggedClipState | null;
@@ -22,6 +23,7 @@ interface TimelineGestureOverlayProps {
   renderClipContent?: (
     element: TimelineElement,
     style: { clip: string; label: string },
+    context: TimelineClipRenderContext,
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
 }
@@ -87,6 +89,7 @@ export const TimelineGestureOverlay = memo(function TimelineGestureOverlay({
               getTrackStyle(element.tag),
               renderClipContent,
               renderClipOverlay,
+              { priority: "interaction", rich: true },
             )}
           </TimelineClip>
         </div>

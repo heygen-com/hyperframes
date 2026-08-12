@@ -33,7 +33,9 @@ export type { UserInfo } from "./client.js";
 
 export {
   assertOAuthConfiguredOrExit,
+  persistVerifiedOAuthSession,
   refreshTokens,
   revokeTokens,
   startAuthorizationCodeFlow,
+  startDeviceAuthorizationFlow,
 } from "./oauth.js";

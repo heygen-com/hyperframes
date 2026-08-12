@@ -1,0 +1,52 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "pan-stations",
+  "type": "hyperframes:component",
+  "title": "Pan Stations",
+  "description": "A lateral camera move across a continuous row of labeled feature stations, with a steady dwell at each stop before the next pan.",
+  "tags": ["camera", "pan", "stations", "features", "exhibit", "agitate", "cross-shelved"],
+  "jobs": ["exhibit", "agitate"],
+  "family": "camera",
+  "profile": "holdable",
+  "evidence": "SIM fixture, CORPUS blueprint (re-filed per adversary; cross-shelved): one mechanic, two readings: panning across broken tools agitates, panning across features exhibits. The pause cadence is the frozen law.",
+  "files": [
+    {
+      "path": "pan-stations.html",
+      "target": "compositions/components/pan-stations.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "stationCount",
+      "type": "number",
+      "role": "layout",
+      "label": "Station count",
+      "description": "Number of feature stations in the row.",
+      "default": 4,
+      "min": 3,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "id": "labels",
+      "type": "string",
+      "role": "content",
+      "label": "Station labels",
+      "description": "Comma-separated labels shown on the station cards.",
+      "default": "Capture,Edit,Render,Share"
+    },
+    {
+      "id": "dwell",
+      "type": "number",
+      "role": "timing",
+      "label": "Dwell",
+      "description": "Seconds the camera holds at each station before panning.",
+      "default": 0.6,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.1,
+      "unit": "s"
+    }
+  ]
+}

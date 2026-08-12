@@ -1,0 +1,80 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "chromatic-aberration-wipe",
+  "type": "hyperframes:component",
+  "title": "Chromatic Aberration Wipe",
+  "description": "A fast slide wipe with RGB channel split on peak frames.",
+  "tags": ["video-primitive", "transition-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "chromatic-aberration-wipe.html",
+      "target": "compositions/components/chromatic-aberration-wipe.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "The direction the reveal travels; both scenes slide the same way and the wipe edge follows.",
+      "default": "left",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        },
+        {
+          "value": "up",
+          "label": "Up"
+        },
+        {
+          "value": "down",
+          "label": "Down"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the incoming scene's gradient.",
+      "default": "blue",
+      "options": [
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "aberration",
+      "type": "number",
+      "role": "style",
+      "label": "Aberration",
+      "description": "Multiplies the red/cyan channel split: 0 removes it, 1 is the stock strength, 2 doubles the offset and saturates the flash.",
+      "default": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "unit": "x"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chromatic-aberration-wipe.png"
+  }
+}

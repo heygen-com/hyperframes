@@ -1,0 +1,92 @@
+<!--
+  Onboarding Stepper Flow - Remocn-inspired composed UI flow for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-onboarding-flow">
+  <div class="hf-ui-onboarding-steps">
+    <span class="done">1</span><span class="active">2</span><span>3</span>
+  </div>
+  <div class="hf-ui-onboarding-card">
+    <small>Step 2 of 3</small>
+    <strong>Choose your visual style</strong>
+    <p>Pick a direction so the agent can generate matching motion primitives.</p>
+    <button type="button">Continue</button>
+  </div>
+</div>
+
+<style>
+  .hf-ui-onboarding-flow {
+    display: grid;
+    gap: 22px;
+    width: 520px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-onboarding-steps {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+  }
+  .hf-ui-onboarding-steps span {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 2px solid #e4e4e7;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #71717a;
+    font-weight: 900;
+  }
+  .hf-ui-onboarding-steps .done,
+  .hf-ui-onboarding-steps .active {
+    border-color: #18181b;
+    background: #18181b;
+    color: #ffffff;
+  }
+  .hf-ui-onboarding-card {
+    display: grid;
+    gap: 14px;
+    padding: 34px;
+    border: 1px solid #e4e4e7;
+    border-radius: 28px;
+    background: #ffffff;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.1);
+  }
+  .hf-ui-onboarding-card small {
+    color: #71717a;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hf-ui-onboarding-card strong {
+    font-size: 30px;
+    line-height: 1;
+  }
+  .hf-ui-onboarding-card p {
+    margin: 0;
+    color: #71717a;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  .hf-ui-onboarding-card button {
+    justify-self: start;
+    height: 46px;
+    padding: 0 19px;
+    border: 0;
+    border-radius: 14px;
+    background: #18181b;
+    color: #ffffff;
+    font-weight: 900;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-onboarding-steps span', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, stagger: 0.08, ease: 'back.out(1.8)' }, 0.3);
+  tl.fromTo('.hf-ui-onboarding-card', { y: 28, opacity: 0 }, { y: 0, opacity: 1, duration: 0.42, ease: 'power3.out' }, 0.62);
+  tl.to('.hf-ui-onboarding-steps .active', { scale: 1.16, duration: 0.16, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 1.1);
+-->

@@ -34,7 +34,6 @@ export interface RenderExecutionDependencies {
 }
 
 // Exported only through render.ts so command tests can lock the user-facing guidance.
-// fallow-ignore-next-line unused-export
 export function renderLintContinuationHint(strictErrors: boolean): string {
   return strictErrors
     ? "  Continuing render despite lint warnings. Use --strict-all to block warnings."
@@ -109,7 +108,7 @@ export async function executeRenderPlan(
     protocolTimeout: plan.protocolTimeout,
     playerReadyTimeout: plan.playerReadyTimeout,
     exitAfterComplete: true,
-    enableDeParallelRouterTrial: true,
+    manageDeParallelRouterBreaker: true,
   };
   if (plan.useDocker) {
     options.pageSideCompositing = plan.pageSideCompositing;
@@ -259,7 +258,7 @@ async function executeBatchRender(
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,
-    enableDeParallelRouterTrial: plan.batchConcurrency <= 1,
+    manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
   };
   const manifest = await batchModule.runBatchRender({
     prepared: preparedBatch,

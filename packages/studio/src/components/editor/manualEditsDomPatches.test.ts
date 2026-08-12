@@ -17,6 +17,8 @@ import {
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
   STUDIO_ORIGINAL_WIDTH_ATTR,
   STUDIO_ORIGINAL_HEIGHT_ATTR,
+  STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
+  STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MIN_WIDTH_ATTR,
   STUDIO_ORIGINAL_MIN_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MAX_WIDTH_ATTR,
@@ -222,6 +224,9 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
       { type: "attribute", property: STUDIO_ORIGINAL_WIDTH_ATTR, value: null },
       { type: "inline-style", property: "height", value: "150px" },
       { type: "attribute", property: STUDIO_ORIGINAL_HEIGHT_ATTR, value: null },
+      // Measurements, so they are cleared without restoring a style.
+      { type: "attribute", property: STUDIO_ORIGINAL_BOX_WIDTH_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, value: null },
       { type: "inline-style", property: "min-width", value: "0px" },
       { type: "attribute", property: STUDIO_ORIGINAL_MIN_WIDTH_ATTR, value: null },
       { type: "inline-style", property: "min-height", value: "0px" },
@@ -257,9 +262,23 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
 
   it("clear: bare element emits only null ops — no style restores fire when orig attrs are absent", () => {
     const ops = buildClearBoxSizePatches(div());
-    // 3 fixed (studio-width, studio-height, box-size marker) + 14 attr-null pushes (one per BOX_SIZE_ORIG_ATTR)
-    expect(ops).toHaveLength(17);
+    // 3 fixed (studio-width, studio-height, box-size marker) + 16 attr-null pushes (one per BOX_SIZE_ORIG_ATTR)
+    expect(ops).toHaveLength(19);
     expect(ops.every((op) => op.value === null)).toBe(true);
+  });
+
+  it("backfills the measured box on a legacy element that already has the resize marker", () => {
+    const e = div();
+    e.setAttribute(STUDIO_BOX_SIZE_ATTR, "true");
+    Object.defineProperties(e, {
+      offsetWidth: { configurable: true, value: 630 },
+      offsetHeight: { configurable: true, value: 252 },
+    });
+
+    applyStudioBoxSize(e, { width: 320, height: 128 });
+
+    expect(e.getAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR)).toBe("630");
+    expect(e.getAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR)).toBe("252");
   });
 
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {

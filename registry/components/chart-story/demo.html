@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  chart-story demo. Large centered mount (80% x 76%) on a light editorial
+  backdrop: the bar chart tells its story at presentation scale, with the
+  emphasized bar and unit labels readable across the frame.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>chart-story Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #f4f6f9);
+      }
+
+      #root {
+        --bg: #f4f6f9;
+        --fg: #14161b;
+        --surface: #ffffff;
+        --border: #dfe4ec;
+        --brand: #1d4ed8;
+        --accent: #0284c7;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 40%, #ffffff 0%, var(--bg, #f4f6f9) 70%);
+      }
+
+      .mount-stage {
+        width: 80%;
+        height: 76%;
+        left: 10%;
+        top: 12%;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="chart-story-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+      data-fps="30"
+    >
+      <div
+        id="chart-story-mount"
+        class="mount-stage clip"
+        data-composition-id="chart-story"
+        data-composition-src="./chart-story.html"
+        data-variable-values='{"type":"bars","data":"12,28,45,61,88","labels":"Q1,Q2,Q3,Q4,Q5","emphasize":4,"unit":"%","accent":"green"}'
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+        data-width="1536"
+        data-height="821"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["chart-story-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
