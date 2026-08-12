@@ -1,0 +1,125 @@
+<!doctype html>
+<!--
+  ordered-dither-pass demo. A full-bleed 1920x1080 LIGHT host mounts the
+  primitive through data-composition-src with non-default variables
+  (8x8 matrix, 3 levels, blue accent) and supplies the scene slot to
+  prove the snapshot raster path while the primitive stays elastic.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Ordered Dither Pass Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #f5f6f8);
+      }
+
+      #root {
+        --bg: #f5f6f8;
+        --fg: #101318;
+        --muted: #5b6472;
+        --surface: #ffffff;
+        --border: #d7dce4;
+        --brand: #14a35e;
+        --accent: #2f6fed;
+        --accent-2: #7a5cd6;
+        --radius: 24px;
+        --font-display: "Inter", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .mount-stage {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+
+      .dither-demo-scene {
+        display: grid;
+        place-items: center;
+      }
+
+      .dither-demo-scene .panel {
+        display: grid;
+        place-items: center;
+        gap: 18px;
+        width: 900px;
+        height: 480px;
+        border-radius: 36px;
+        background: linear-gradient(135deg, #2f6fed 0%, #7a5cd6 55%, #d9506b 100%);
+      }
+
+      .dither-demo-scene .word {
+        color: #ffffff;
+        font-family: system-ui, sans-serif;
+        font-size: 124px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .dither-demo-scene .tag {
+        color: rgba(255, 255, 255, 0.78);
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 28px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="ordered-dither-pass-scene">
+      <div class="dither-demo-scene">
+        <div class="panel">
+          <span class="word">RESOLVE</span>
+          <span class="tag">signal from noise</span>
+        </div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="ordered-dither-pass-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="ordered-dither-pass-mount"
+        class="mount-stage clip"
+        data-composition-id="ordered-dither-pass"
+        data-composition-src="./ordered-dither-pass.html"
+        data-variable-values='{"matrix":"8","levels":3,"accent":"blue"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["ordered-dither-pass-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "text-state-swap",
+  "type": "hyperframes:component",
+  "title": "Text State Swap",
+  "description": "A text state swap primitive with outgoing blur and incoming lift",
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "text", "swap"],
+  "files": [
+    {
+      "path": "text-state-swap.html",
+      "target": "compositions/components/text-state-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "from-text",
+      "type": "string",
+      "role": "content",
+      "label": "From text",
+      "description": "The outgoing label, on screen before the swap.",
+      "default": "Saving draft"
+    },
+    {
+      "id": "to-text",
+      "type": "string",
+      "role": "content",
+      "label": "To text",
+      "description": "The incoming label, on screen after the swap. It rests hidden until the timeline reveals it.",
+      "default": "Saved"
+    },
+    {
+      "id": "distance",
+      "type": "enum",
+      "role": "motion",
+      "label": "Distance",
+      "description": "Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Label colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-state-swap.png"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "focus-swap",
+  "type": "hyperframes:component",
+  "title": "Focus Swap",
+  "description": "Moves attention between two side-by-side cards as one recedes with scale, blur, and dimming while the other advances to full focus.",
+  "tags": ["effect", "ui-props", "focus", "blur", "attention", "demonstrate"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "launches-motion-vocabulary.md section 3.6, Blur-focus / defocus: observed in 14 of 18 production launches and identified as the high-frequency missing focus-swap primitive for blur + opacity + optional scale.",
+  "syncPoints": [{ "id": "focus-landed", "phase": "in", "offset": 0.9 }],
+  "files": [
+    {
+      "path": "focus-swap.html",
+      "target": "compositions/components/focus-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "focus",
+      "type": "enum",
+      "role": "motion",
+      "label": "Final focus",
+      "description": "Card that ends sharp, full-size, and fully opaque.",
+      "default": "b",
+      "options": [
+        { "value": "a", "label": "Card A" },
+        { "value": "b", "label": "Card B" }
+      ]
+    },
+    {
+      "id": "blurPx",
+      "type": "number",
+      "role": "style",
+      "label": "Unfocused blur",
+      "description": "Blur applied to the card outside the viewer focus.",
+      "default": 6,
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "dim",
+      "type": "number",
+      "role": "style",
+      "label": "Unfocused opacity",
+      "description": "Opacity of the card outside the viewer focus.",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    }
+  ]
+}

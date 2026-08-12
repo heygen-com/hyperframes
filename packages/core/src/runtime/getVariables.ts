@@ -42,7 +42,132 @@ export function getVariables<
   }
   const overrides = readRenderOverrides();
 
-  return { ...declaredDefaults, ...overrides } as Partial<T>;
+  const merged = { ...declaredDefaults, ...overrides };
+  for (const el of declarers) warnUnknownEnumValues(el, merged);
+  return merged as Partial<T>;
+}
+
+/**
+ * An enum variable given a value outside its declared `options` is coerced to
+ * the composition's default by the composition's own guard. That fallback is
+ * deliberate (a bad value must never break a frame) but it was silent, so a
+ * meaningless value could sit in a project indefinitely and look correct only
+ * by coincidence. Warn; do not change what renders.
+ *
+ * Reads the option set straight off `data-composition-variables`, so it covers
+ * every declared enum, not just the `accentColors` guard shape, and needs no
+ * per-composition code. Deduped per composition+variable+value so a remount
+ * (studio re-init, seek) cannot spam the console.
+ *
+ * Silent for a valid value, for an absent one (an absent variable resolves to
+ * its own declared default), and for a value that already equals that default
+ * (nothing fell back).
+ */
+const warnedUnknownEnumValues = new Set<string>();
+
+/**
+ * The declaration array on an element, or empty when there isn't a usable one.
+ *
+ * One owner for `getAttribute` -> `JSON.parse` -> "is it an array", because
+ * every reader of this attribute needs exactly that and each copy was a place
+ * the three answers could drift apart.
+ */
+function readDeclarations(el: Element | null | undefined): Record<string, unknown>[] {
+  const raw = el?.getAttribute("data-composition-variables");
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (entry): entry is Record<string, unknown> => !!entry && typeof entry === "object",
+  );
+}
+
+/**
+ * What to call the composition in a warning.
+ *
+ * The canonical top-level shape declares the variables on `<html>`, which
+ * carries no id: the composition id sits on the root element below it. Without
+ * the descendant lookup the message reads "composition variable ...", naming
+ * nothing in a project that has more than one.
+ */
+function compositionLabel(declarer: Element, compositionId?: string): string {
+  return (
+    compositionId?.trim() ||
+    declarer.getAttribute("data-composition-id")?.trim() ||
+    declarer.querySelector("[data-composition-id]")?.getAttribute("data-composition-id")?.trim() ||
+    "composition"
+  );
+}
+
+/** The declared option values of an enum entry, as comparable primitives. */
+function declaredOptions(entry: Record<string, unknown>): (string | number)[] {
+  if (!Array.isArray(entry.options)) return [];
+  return entry.options
+    .map((option) =>
+      option && typeof option === "object" ? (option as Record<string, unknown>).value : option,
+    )
+    .filter((v): v is string | number => typeof v === "string" || typeof v === "number");
+}
+
+/**
+ * Did `resolved` hand this entry a value outside its own option set?
+ *
+ * Silent for a valid value, for an absent one (an absent variable resolves to
+ * its own declared default), and for a value that already equals that default,
+ * because then nothing fell back. A default outside its own option set is a
+ * declaration defect for the linter to catch; warning here would print the
+ * self-contradictory "got X ... rendering X".
+ */
+function unknownEnumValue(
+  entry: Record<string, unknown>,
+  resolved: Record<string, unknown>,
+): { id: string; value: unknown; allowed: (string | number)[] } | null {
+  if (typeof entry.id !== "string") return null;
+  const value = resolved[entry.id];
+  if (value === undefined || value === null) return null;
+  if ("default" in entry && String(value) === String(entry.default)) return null;
+  const allowed = declaredOptions(entry);
+  // Stringified compare: `--variables` / `data-variable-values` can deliver a
+  // declared numeric option as a string, and that is not the defect here.
+  if (allowed.length === 0 || allowed.some((v) => String(v) === String(value))) return null;
+  return { id: entry.id, value, allowed };
+}
+
+export function warnUnknownEnumValues(
+  declarer: Element | null | undefined,
+  resolved: Record<string, unknown>,
+  compositionId?: string,
+): void {
+  if (!declarer) return;
+  const entries = readDeclarations(declarer);
+  if (entries.length === 0) return;
+  const move = compositionLabel(declarer, compositionId);
+
+  for (const entry of entries) {
+    const found = unknownEnumValue(entry, resolved);
+    if (!found) continue;
+
+    // Deduped per composition+variable+value so a remount (studio re-init,
+    // seek) cannot spam the console.
+    const key = `${move}|${found.id}|${String(found.value)}`;
+    if (warnedUnknownEnumValues.has(key)) continue;
+    warnedUnknownEnumValues.add(key);
+
+    const fallback = "default" in entry ? JSON.stringify(entry.default) : "the composition default";
+    console.warn(
+      `[hyperframes] runtime_unknown_enum_value: ${move} variable "${found.id}" got ${JSON.stringify(found.value)}, which is not a declared option (${found.allowed.join(", ")}). Rendering ${fallback} instead.`,
+    );
+  }
+}
+
+/** Test-only: clear the per-page dedupe set. */
+export function resetUnknownEnumWarnings(): void {
+  warnedUnknownEnumValues.clear();
 }
 
 /**
@@ -52,24 +177,10 @@ export function getVariables<
  * compositionLoader can compute the same defaults map for sub-comp instances.
  */
 export function readDeclaredDefaults(root: Element | null): Record<string, unknown> {
-  if (!root) return {};
-  const raw = root.getAttribute("data-composition-variables");
-  if (!raw) return {};
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (!Array.isArray(parsed)) return {};
-
   const out: Record<string, unknown> = {};
-  for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e.id !== "string" || !("default" in e)) continue;
-    out[e.id] = e.default;
+  for (const entry of readDeclarations(root)) {
+    if (typeof entry.id !== "string" || !("default" in entry)) continue;
+    out[entry.id] = entry.default;
   }
   return out;
 }

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "directional-wipe",
+  "type": "hyperframes:component",
+  "title": "Directional Wipe",
+  "description": "A directional scene push that slides one panel over another.",
+  "tags": ["transition-primitive", "remocn-port"],
+  "variables": [
+    {
+      "id": "palette",
+      "type": "enum",
+      "role": "style",
+      "label": "Palette",
+      "description": "Theme token for the ring marking the incoming panel. Slate rides --accent, teal --brand, ember --accent-2; each falls back to a neutral hairline.",
+      "default": "slate",
+      "options": [
+        {
+          "value": "slate",
+          "label": "Slate"
+        },
+        {
+          "value": "teal",
+          "label": "Teal"
+        },
+        {
+          "value": "ember",
+          "label": "Ember"
+        }
+      ]
+    },
+    {
+      "id": "corner",
+      "type": "enum",
+      "role": "style",
+      "label": "Corner",
+      "description": "Corner radius of the transition card.",
+      "default": "rounded",
+      "options": [
+        {
+          "value": "square",
+          "label": "Square"
+        },
+        {
+          "value": "rounded",
+          "label": "Rounded"
+        },
+        {
+          "value": "soft",
+          "label": "Soft"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "directional-wipe.html",
+      "target": "compositions/components/directional-wipe.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/directional-wipe.png"
+  }
+}

@@ -206,6 +206,8 @@ export class HyperframesRenderStack extends Construct {
       "PLAN_V2_INTEGRITY_UNRECOVERABLE",
       "VIDEO_SOURCE_UNRENDERABLE",
       "INVALID_VIDEO_METADATA",
+      "NOT_MEDIA_PAYLOAD",
+      "NotMediaPayloadError",
       "PlanV2IntegrityError",
       "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",

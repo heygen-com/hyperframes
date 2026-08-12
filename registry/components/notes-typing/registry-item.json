@@ -1,0 +1,45 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "notes-typing",
+  "type": "hyperframes:component",
+  "title": "Notes Typing",
+  "description": "The notes-app confession as a mountable scene: a bold title, then body lines typed character by character on the measured human keystroke rhythm, the caret riding every landed character and jumping down at each paragraph. For a bare prompt line use typed-prompt; for an even mechanical reveal use typewriter",
+  "tags": ["motion-primitive", "notes", "typing", "mock-ui", "vertical"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "title",
+      "type": "string",
+      "role": "content",
+      "label": "Title",
+      "description": "Bold note title. A | breaks the line.",
+      "default": "Things nobody told me|about video."
+    },
+    {
+      "id": "lines",
+      "type": "string",
+      "role": "content",
+      "label": "Lines",
+      "description": "Pipe-separated body lines, typed one after another.",
+      "default": "my videos sucked|my tools cost $$$|and re-edits never end."
+    },
+    {
+      "id": "speed",
+      "type": "number",
+      "role": "timing",
+      "label": "Speed",
+      "description": "Typing speed multiplier. 1 is the measured human rhythm.",
+      "default": 1,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.1
+    }
+  ],
+  "files": [
+    {
+      "path": "notes-typing.html",
+      "target": "compositions/components/notes-typing.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

@@ -46,6 +46,12 @@ let createSessionFailUntilAttempt = 0;
 let createSessionError: Error | null = null;
 let closeCaptureSessionCallCount = 0;
 let probeBeginFrameAlive = true;
+const beginFrameProbeCalls: Array<{
+  page: unknown;
+  timeoutMs: number;
+  frameTimeTicks: number;
+  intervalMs: number;
+}> = [];
 const createdSessions: MockSession[] = [];
 const closedSessions: MockSession[] = [];
 const durationProbeSessions: MockSession[] = [];
@@ -59,6 +65,7 @@ function resetRetryMocks() {
   createSessionError = null;
   closeCaptureSessionCallCount = 0;
   probeBeginFrameAlive = true;
+  beginFrameProbeCalls.length = 0;
   createdSessions.length = 0;
   closedSessions.length = 0;
   durationProbeSessions.length = 0;
@@ -137,7 +144,15 @@ mock.module("@hyperframes/engine", () => ({
     closeCaptureSessionCallCount++;
     closedSessions.push(session);
   },
-  probeBeginFrameLiveness: async () => probeBeginFrameAlive,
+  probeBeginFrameLiveness: async (
+    page: unknown,
+    timeoutMs: number,
+    frameTimeTicks: number,
+    intervalMs: number,
+  ) => {
+    beginFrameProbeCalls.push({ page, timeoutMs, frameTimeTicks, intervalMs });
+    return probeBeginFrameAlive;
+  },
   // Mirror of the real engine classifier. Canonical tests + pattern list
   // live in frameCapture-transientErrors.test.ts — update both if patterns change.
   isTransientBrowserError: (error: unknown) => {
@@ -678,6 +693,14 @@ describe("runProbeStage — transient browser error retry (#1687)", () => {
     expect(createSessionCallCount).toBe(2);
     expect(closedSessions).toEqual([createdSessions[0]]);
     expect(capturedCfgs[1]).toMatchObject({ forceScreenshot: true });
+    expect(beginFrameProbeCalls).toEqual([
+      {
+        page: createdSessions[0]?.page,
+        timeoutMs: 30_000,
+        frameTimeTicks: 95,
+        intervalMs: 1,
+      },
+    ]);
     expect(durationProbeSessions).toEqual([createdSessions[1]]);
     expect(result.probeSession).toBe(createdSessions[1]);
     expect(result.beginFrameStalled).toBe(true);

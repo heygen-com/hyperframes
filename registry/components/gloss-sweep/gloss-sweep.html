@@ -1,0 +1,213 @@
+<!doctype html>
+<!--
+  gloss-sweep: HyperFrames video primitive (celebrations / payoff)
+
+  Concept: a compact card lands with a restrained slam, receives one
+  diagonal specular sweep, then holds perfectly still. The gloss is the
+  whole celebration. There is no pulse, confetti, drift, or exit.
+
+  Variables:
+    - text (string, default "Pro"): the card label.
+    - accent (green | blue | violet, default green): the card color.
+    - sweep_angle (number, default 25): gloss angle in degrees.
+
+  Envelope (fixed IN, elastic HOLD, no OUT):
+    IN_BASE  = 1.35s, small landing followed by one gloss sweep
+    HOLD     = elastic = max(0, D - IN_BASE), completely still
+    OUT_BASE = 0s, the card remains in its confident resting state
+    If D is shorter than IN_BASE, the landing and sweep compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  gloss-sweep id.
+-->
+<html
+  lang="en"
+  data-composition-id="gloss-sweep"
+  data-composition-duration="2.5"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Label", "description": "Text displayed on the card.", "default": "Pro" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color treatment for the card.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "sweep_angle", "type": "number", "role": "style", "label": "Sweep angle", "description": "Angle of the specular gloss in degrees.", "default": 25, "min": -60, "max": 60, "step": 1, "unit": "deg" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gloss Sweep</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="gloss-sweep" data-duration="2.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .gs-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .gs-card {
+            position: relative;
+            display: grid;
+            min-width: 48cqw;
+            max-width: 78cqw;
+            min-height: 34cqh;
+            padding: 7cqh 9cqw;
+            place-items: center;
+            overflow: hidden;
+            border: 0.22cqmin solid var(--gs-edge);
+            border-radius: 5cqmin;
+            background: linear-gradient(145deg, var(--gs-surface-bright), var(--gs-surface));
+            box-shadow:
+              0 3cqh 8cqh color-mix(in srgb, var(--bg, #05070d) 62%, transparent),
+              inset 0 0 0 0.12cqmin color-mix(in srgb, white 12%, transparent);
+            transform-origin: 50% 50%;
+            will-change: transform;
+          }
+
+          .gs-label {
+            position: relative;
+            z-index: 1;
+            max-width: 62cqw;
+            overflow: hidden;
+            color: var(--gs-label);
+            font-size: clamp(8cqmin, 15cqmin, 18cqmin);
+            font-weight: 780;
+            line-height: 1;
+            letter-spacing: -0.04em;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .gs-gloss {
+            --gs-sweep: -30;
+            --gs-angle: 25deg;
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            opacity: 0;
+            background: linear-gradient(
+              var(--gs-angle),
+              transparent calc(var(--gs-sweep) * 1% - 22%),
+              rgba(255, 255, 255, 0.06) calc(var(--gs-sweep) * 1% - 9%),
+              rgba(255, 255, 255, 0.72) calc(var(--gs-sweep) * 1%),
+              rgba(255, 255, 255, 0.08) calc(var(--gs-sweep) * 1% + 9%),
+              transparent calc(var(--gs-sweep) * 1% + 22%)
+            );
+            pointer-events: none;
+          }
+        </style>
+
+        <div
+          id="gloss-sweep-clip"
+          class="gs-clip clip"
+          data-start="0"
+          data-duration="2.5"
+          data-track-index="0"
+        >
+          <div class="gs-card">
+            <span class="gs-label"></span>
+            <span class="gs-gloss" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var card = root.querySelector(".gs-card");
+            var label = root.querySelector(".gs-label");
+            var gloss = root.querySelector(".gs-gloss");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var accents = {
+              green: {
+                surface: "#123b2c",
+                surfaceBright: "#1a513c",
+                edge: "#39d98a",
+                label: "#ecfff5",
+              },
+              blue: {
+                surface: "#123554",
+                surfaceBright: "#19486f",
+                edge: "#4db5ff",
+                label: "#eef8ff",
+              },
+              violet: {
+                surface: "#31205b",
+                surfaceBright: "#463078",
+                edge: "#a98cff",
+                label: "#f7f2ff",
+              },
+            };
+            var accent = accents[vars.accent] ? vars.accent : "green";
+            var palette = accents[accent];
+            var text = vars.text == null ? "Pro" : String(vars.text);
+            var angleValue = Number(vars.sweep_angle);
+            var sweepAngle = Number.isFinite(angleValue)
+              ? Math.max(-60, Math.min(60, angleValue))
+              : 25;
+
+            label.textContent = text;
+            card.style.setProperty("--gs-surface", palette.surface);
+            card.style.setProperty("--gs-surface-bright", palette.surfaceBright);
+            card.style.setProperty("--gs-edge", palette.edge);
+            card.style.setProperty("--gs-label", palette.label);
+            gloss.style.setProperty("--gs-angle", sweepAngle + "deg");
+
+            var IN_BASE = 1.35;
+            var LAND_BASE = 0.5;
+            var SWEEP_AT_BASE = 0.65;
+            var SWEEP_BASE = 0.7;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2.5"));
+            var scale = duration < IN_BASE ? duration / IN_BASE : 1;
+            var LAND = LAND_BASE * scale;
+            var SWEEP_AT = SWEEP_AT_BASE * scale;
+            var SWEEP = SWEEP_BASE * scale;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              card,
+              { y: "-5cqh", scale: 1.06 },
+              { y: "0cqh", scale: 1, duration: LAND, ease: "expo.out" },
+              0,
+            );
+            tl.set(gloss, { opacity: 1, "--gs-sweep": -30 }, SWEEP_AT);
+            tl.to(gloss, { "--gs-sweep": 130, duration: SWEEP, ease: "power2.out" }, SWEEP_AT);
+            tl.set(gloss, { opacity: 0 }, SWEEP_AT + SWEEP);
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["gloss-sweep"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

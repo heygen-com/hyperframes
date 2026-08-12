@@ -1,0 +1,40 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "multiplayer-cursors",
+  "type": "hyperframes:component",
+  "title": "Multiplayer Cursors",
+  "description": "Labeled collaborator cursors with token-derived colors and soft glows drift from spread positions into a shared center zone, proving live multiplayer presence.",
+  "tags": ["cursor", "pointer", "multiplayer", "collaboration", "presence", "loop", "prove"],
+  "jobs": ["prove"],
+  "family": "pointers",
+  "profile": "loop",
+  "evidence": "power-reel source 15-frosted-cursors.html; patches the multiplayer-arrows hole the family definition predicted",
+  "files": [
+    {
+      "path": "multiplayer-cursors.html",
+      "target": "compositions/components/multiplayer-cursors.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "cursorCount",
+      "type": "number",
+      "role": "content",
+      "label": "Cursor count",
+      "description": "Number of labeled collaborator cursors.",
+      "default": 4,
+      "min": 2,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "id": "labels",
+      "type": "string",
+      "role": "content",
+      "label": "Labels",
+      "description": "Comma-separated cursor names, in order.",
+      "default": "Ana,Ken,Wen,Mia"
+    }
+  ]
+}

@@ -35,7 +35,7 @@ describe("submitFeedback", () => {
       "https://api.example.com/v1/hyperframes/feedback",
       expect.objectContaining({
         method: "POST",
-        headers: { "content-type": "application/json", heygen_route: "canary" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           rating: 4,
           rating_scale: 10,

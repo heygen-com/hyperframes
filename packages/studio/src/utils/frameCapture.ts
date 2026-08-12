@@ -24,6 +24,7 @@ export function buildFrameCaptureUrl({
   );
   url.searchParams.set("t", Math.max(0, currentTime).toFixed(3));
   url.searchParams.set("format", "png");
+  url.searchParams.set("output", "source");
   url.searchParams.set("v", String(Date.now()));
   return url.toString();
 }

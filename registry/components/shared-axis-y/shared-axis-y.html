@@ -1,0 +1,98 @@
+<!--
+  Shared Axis Y - remocn typography primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe below is untouched by them: it
+  keeps driving one vertical offset, and these decide what that offset means
+  on screen. At rest the offset is 0, so every setting lands on the same
+  final frame.
+
+    - direction (up | down, default up): which side of the baseline the words
+      travel in from. up rises into place, down drops in.
+    - distance (close | standard | far, default standard): scales the offset.
+      close covers half the run, far nearly double, in the same time.
+    - tone (ink | paper | accent, default ink): word colour. ink is near-black
+      for light frames, paper near-white for dark ones, accent rides --brand.
+
+  On every default the result is identical to the original: words rise 32px
+  into place in near-black.
+-->
+
+<div
+  class="hf-remocn-shared-axis-y"
+  data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side of the baseline the words travel in from.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+>
+  <span>Plan</span><span>Debug</span><span>Ask</span>
+</div>
+
+<style>
+  .hf-remocn-shared-axis-y {
+    color: var(--hf-word-color, #18181b);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-shared-axis-y {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-shared-axis-y span {
+    display: inline-block;
+    transform: translate(
+        var(--hf-word-x, 0px),
+        calc(var(--hf-word-y, 0px) * var(--hf-word-axis-y, 1))
+      )
+      scale(var(--hf-word-scale, 1));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var signs = { up: 1, down: -1 };
+    var reaches = { close: 0.5, standard: 1, far: 1.85 };
+    var tones = {
+      ink: "#18181b",
+      paper: "#fafafa",
+      accent: "var(--brand, #34d399)",
+    };
+
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var sign = signs[pick(signs, vars.direction, "up")];
+    var reach = reaches[pick(reaches, vars.distance, "standard")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-remocn-shared-axis-y");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-word-axis-y", String(sign * reach));
+      roots[i].style.setProperty("--hf-word-color", tone);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-shared-axis-y span', { opacity: 0, '--hf-word-y': '32px' }, { opacity: 1, '--hf-word-y': '0px', duration: 0.22, stagger: 0.075, ease: 'power2.out' }, startTime);
+-->

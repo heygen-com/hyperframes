@@ -1,0 +1,66 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "social-proof-card",
+  "type": "hyperframes:component",
+  "title": "Social Proof Card",
+  "description": "The app-store close as one mountable scene: wordmark, five stars, a proof line, three feature icons and a CTA capsule build in a quiet stagger and hold - measured from reference ad footage. For an animated star sweep use star-rating-fill; for a quote card use testimonial-proof-card; for a bare lockup use cta-lockup",
+  "tags": ["motion-primitive", "social-proof", "end-card", "cta", "vertical"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "brand",
+      "type": "string",
+      "role": "content",
+      "label": "Brand",
+      "description": "Wordmark at the top of the card.",
+      "default": "HyperFrames"
+    },
+    {
+      "id": "proof",
+      "type": "string",
+      "role": "content",
+      "label": "Proof line",
+      "description": "Social-proof line under the stars.",
+      "default": "12,000+ creators"
+    },
+    {
+      "id": "cta",
+      "type": "string",
+      "role": "content",
+      "label": "CTA",
+      "description": "Label on the closing capsule.",
+      "default": "Start rendering free"
+    },
+    {
+      "id": "f1",
+      "type": "string",
+      "role": "content",
+      "label": "Feature 1",
+      "description": "First feature, | breaks the line.",
+      "default": "Write|plain HTML"
+    },
+    {
+      "id": "f2",
+      "type": "string",
+      "role": "content",
+      "label": "Feature 2",
+      "description": "Second feature, | breaks the line.",
+      "default": "Render|pixel-perfect"
+    },
+    {
+      "id": "f3",
+      "type": "string",
+      "role": "content",
+      "label": "Feature 3",
+      "description": "Third feature, | breaks the line.",
+      "default": "Own|every line"
+    }
+  ],
+  "files": [
+    {
+      "path": "social-proof-card.html",
+      "target": "compositions/components/social-proof-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

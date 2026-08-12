@@ -90,6 +90,75 @@ describe("FlatRow", () => {
     act(() => root.unmount());
   });
 
+  it("restores its durable value when an async commit rejects", async () => {
+    let rejectCommit: ((error: Error) => void) | null = null;
+    const onCommit = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCommit = reject;
+        }),
+    );
+    const row = (value: string) => (
+      <FlatRow label="X" value={value} tier="explicitDefault" onCommit={onCommit} />
+    );
+    const { host, root } = renderInto(row("22px"));
+    const input = host.querySelector<HTMLInputElement>("input");
+    if (!input) throw new Error("expected an input");
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      nativeInputValueSetter?.call(input, "99px");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("focusout", { bubbles: true }));
+    });
+    // The parent can echo the preview before persistence settles. That is not a
+    // durable acknowledgement and must not invalidate the pending rollback.
+    act(() => root.render(row("99px")));
+    await act(async () => {
+      rejectCommit?.(new Error("save failed"));
+      await Promise.resolve();
+    });
+
+    expect(onCommit).toHaveBeenCalledWith("99px");
+    expect(input.value).toBe("22px");
+    act(() => root.unmount());
+  });
+
+  it("does not let an older rejected commit overwrite a newer draft", async () => {
+    let rejectCommit: ((error: Error) => void) | null = null;
+    const onCommit = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCommit = reject;
+        }),
+    );
+    const { host, root } = renderInto(
+      <FlatRow label="X" value="22px" tier="explicitDefault" onCommit={onCommit} />,
+    );
+    const input = host.querySelector<HTMLInputElement>("input");
+    if (!input) throw new Error("expected an input");
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      nativeInputValueSetter?.call(input, "99px");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("focusout", { bubbles: true }));
+      nativeInputValueSetter?.call(input, "100px");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      rejectCommit?.(new Error("old save failed"));
+      await Promise.resolve();
+    });
+
+    expect(input.value).toBe("100px");
+    act(() => root.unmount());
+  });
+
   it("persists a rapid numeric arrow-key burst as one commit", () => {
     vi.useFakeTimers();
     const onCommit = vi.fn();

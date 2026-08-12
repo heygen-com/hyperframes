@@ -8,13 +8,17 @@ import { findElementForSelection, type DomEditSelection } from "../components/ed
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { PatchTarget } from "../utils/sourcePatcher";
+import { logSelect } from "../utils/selectDebug";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
   activeCompPath: string | null;
   captionEditMode: boolean;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
+  domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
   domEditSelection: DomEditSelection | null;
+  /** Re-resolves a whole multi-selection against the current preview document. */
+  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
   applyDomSelection: (
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; preserveGroup?: boolean },
@@ -35,8 +39,10 @@ export function useDomEditPreviewSync({
   activeCompPath,
   captionEditMode,
   domEditSelectionRef,
+  domEditGroupSelectionsRef,
   domEditSelection,
   applyDomSelection,
+  refreshDomEditGroupSelectionsFromPreview,
   buildDomSelectionFromTarget,
   refreshPreviewDocumentVersion,
   syncPreviewHistoryHotkey,
@@ -72,6 +78,21 @@ export function useDomEditPreviewSync({
         // Clear so overlay geometry isn't computed on a stale, detached node.
         // (Drag-release-in-gray-zone is handled separately by
         // suppressNextBoxClickRef; the dragged element still resolves here.)
+        //
+        // One lost member is not the whole selection though. A multi-select that
+        // loses its primary here used to be wiped entirely, so moving a group and
+        // having any one of its elements fail to re-resolve deselected all of
+        // them. Re-resolve the group instead and keep whoever survived; it only
+        // clears when nobody did.
+        const group = domEditGroupSelectionsRef.current;
+        logSelect("preview-sync-lost", {
+          target: currentSelection.selector ?? currentSelection.id ?? null,
+          group: group.length,
+        });
+        if (group.length > 1) {
+          await refreshDomEditGroupSelectionsFromPreview(group);
+          return;
+        }
         applyDomSelection(null, { revealPanel: false });
         return;
       }
@@ -103,8 +124,10 @@ export function useDomEditPreviewSync({
     applyDomSelection,
     buildDomSelectionFromTarget,
     captionEditMode,
+    domEditGroupSelectionsRef,
     domEditSelectionRef,
     previewIframe,
+    refreshDomEditGroupSelectionsFromPreview,
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,

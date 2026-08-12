@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Chat Message</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
+      }
+      .spec-phone {
+        position: absolute;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+        container-type: size;
+      }
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
+        top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
+        display: grid;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      #root {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        container-type: size;
+        isolation: isolate;
+        background: #000;
+        font-family: var(--font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        pointer-events: none;
+      }
+      .cm-slot {
+        position: absolute;
+        left: 6cqw;
+        right: 6cqw;
+        bottom: 10cqh;
+      }
+      .cm-slot.sent {
+        text-align: right;
+      }
+      .cm-pop {
+        display: inline-block;
+        transform-origin: left bottom;
+        text-align: left;
+      }
+      .cm-slot.sent .cm-pop {
+        transform-origin: right bottom;
+      }
+      .cm-bubble {
+        display: inline-block;
+        position: relative;
+        max-width: 78cqw;
+        padding: 2cqh 5cqw;
+        border-radius: 6.4cqmin;
+        font-size: 4.6cqmin;
+        line-height: 1.35;
+        color: #fff;
+      }
+      .cm-bubble.recv {
+        background: #242428;
+      }
+      .cm-bubble.sent {
+        background: #0a80f8;
+      }
+      .cm-tail-recv::before {
+        content: "";
+        position: absolute;
+        left: -1.5cqmin;
+        bottom: 0;
+        width: 4cqmin;
+        height: 4cqmin;
+        background: #242428;
+        border-bottom-right-radius: 3cqmin 2.8cqmin;
+      }
+      .cm-tail-recv::after {
+        content: "";
+        position: absolute;
+        left: -4cqmin;
+        bottom: -0.3cqmin;
+        width: 3cqmin;
+        height: 4.6cqmin;
+        background: #000;
+        border-bottom-right-radius: 2.4cqmin;
+      }
+      .cm-tail-sent::before {
+        content: "";
+        position: absolute;
+        right: -1.5cqmin;
+        bottom: 0;
+        width: 4cqmin;
+        height: 4cqmin;
+        background: #0a80f8;
+        border-bottom-left-radius: 3cqmin 2.8cqmin;
+      }
+      .cm-tail-sent::after {
+        content: "";
+        position: absolute;
+        right: -4cqmin;
+        bottom: -0.3cqmin;
+        width: 3cqmin;
+        height: 4.6cqmin;
+        background: #000;
+        border-bottom-left-radius: 2.4cqmin;
+      }
+      .cm-delivered {
+        color: #8e8e93;
+        font-size: 3.4cqmin;
+        margin-top: 1.2cqh;
+        padding-right: 1cqw;
+        text-align: right;
+      }
+      .cm-emoji {
+        font-size: 15cqmin;
+        line-height: 1.25;
+        letter-spacing: 0.02em;
+        color: #fff;
+        white-space: nowrap;
+      }
+      .cm-media {
+        display: inline-block;
+        width: 66cqw;
+        aspect-ratio: 4 / 3;
+        border-radius: 5cqmin;
+        position: relative;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+      }
+      .cm-play {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 13cqmin;
+        height: 13cqmin;
+        border-radius: 50%;
+        background: rgba(253, 253, 253, 0.94);
+      }
+      .cm-play::before {
+        content: "";
+        position: absolute;
+        left: 38%;
+        top: 30%;
+        border-left: 4.4cqmin solid #0d0d0d;
+        border-top: 2.6cqmin solid transparent;
+        border-bottom: 2.6cqmin solid transparent;
+      }
+      .cm-card {
+        display: inline-block;
+        width: 70cqw;
+        border-radius: 5cqmin;
+        overflow: hidden;
+        text-align: left;
+      }
+      .cm-cardimg {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1.02;
+        position: relative;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+      }
+      .cm-cardmeta {
+        background: #28282c;
+        display: flex;
+        align-items: center;
+        padding: 1.8cqh 3cqw 1.8cqh 4cqw;
+      }
+      .cm-cardtxt {
+        flex: 1;
+        min-width: 0;
+      }
+      .cm-cardtitle {
+        display: block;
+        color: #fff;
+        font-size: 3.5cqmin;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .cm-carddomain {
+        display: block;
+        color: #8e8e93;
+        font-size: 3cqmin;
+        margin-top: 0.6cqh;
+      }
+      .cm-cardchev {
+        color: #8e8e93;
+        font-size: 6cqmin;
+        padding-left: 1.4cqw;
+      }
+      .cmd-variant {
+        position: absolute;
+        left: 6cqw;
+        right: 6cqw;
+        bottom: 10cqh;
+        visibility: hidden;
+      }
+      .cmd-variant.sent {
+        text-align: right;
+      }
+      .cmd-chip {
+        position: absolute;
+        left: 50%;
+        top: 4cqh;
+        transform: translateX(-50%);
+        font:
+          600 3.4cqmin/1 ui-monospace,
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        background: #14312a;
+        border-radius: 100cqmin;
+        padding: 1.6cqh 4cqw;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      class="hf-ui-demo-canvas"
+      data-composition-id="chat-message-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="12"
+    >
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div
+              id="root"
+              style="
+                position: relative;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                background: #000;
+              "
+            >
+              <div class="cmd-chip" id="cmd-chip" data-layout-allow-overlap>type: recv</div>
+              <div
+                class="cmd-variant"
+                id="cmd-recv"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+              >
+                <div class="cm-pop">
+                  <div class="cm-bubble recv cm-tail-recv">
+                    what r u using for the launch video??
+                  </div>
+                </div>
+              </div>
+              <div
+                class="cmd-variant sent"
+                id="cmd-sent"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+              >
+                <div class="cm-pop" style="transform-origin: right bottom">
+                  <div class="cm-bubble sent cm-tail-sent">wait look &#128064;</div>
+                  <div class="cm-delivered">Delivered</div>
+                </div>
+              </div>
+              <div
+                class="cmd-variant"
+                id="cmd-emoji"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+              >
+                <div class="cm-pop"><div class="cm-emoji">&#129327;&#129327;&#129327;</div></div>
+              </div>
+              <div
+                class="cmd-variant sent"
+                id="cmd-img"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+              >
+                <div class="cm-pop" style="transform-origin: right bottom">
+                  <span class="cm-media"><span class="cm-play"></span></span>
+                </div>
+              </div>
+              <div
+                class="cmd-variant sent"
+                id="cmd-card"
+                data-layout-allow-overflow
+                data-layout-allow-overlap
+              >
+                <div class="cm-pop" style="transform-origin: right bottom">
+                  <span class="cm-card"
+                    ><span class="cm-cardimg"><span class="cm-play"></span></span
+                    ><span class="cm-cardmeta" style="display: flex"
+                      ><span class="cm-cardtxt"
+                        ><span class="cm-cardtitle"
+                          >HyperFrames &#8212; Write HTML, render pixel-perfect video</span
+                        ><span class="cm-carddomain">hyperframes.heygen.com</span></span
+                      ><span class="cm-cardchev">&#8250;</span></span
+                    ></span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-cap">
+          <div class="name">chat-message</div>
+          <div class="rule"></div>
+          <div class="desc">
+            ONE message arrives on the measured entry, growing from its sender&#39;s corner. The
+            type is an enum, switched like marker-highlight&#39;s style &#8212; the demo cycles all
+            five.
+          </div>
+          <div class="stats">
+            <div class="stat"><b>type</b> — recv / sent / emoji / img / card</div>
+            <div class="stat"><b>measured</b> — pop-in scale .75 / 0.12s power2.out</div>
+            <div class="stat"><b>the atom</b> — chat-thread builds conversations from it</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      var SEQ = [
+        ["#cmd-recv", "type: recv"],
+        ["#cmd-sent", "type: sent"],
+        ["#cmd-emoji", "type: emoji"],
+        ["#cmd-img", "type: img"],
+        ["#cmd-card", "type: card"],
+      ];
+      SEQ.forEach(function (v) {
+        tl.set(v[0], { autoAlpha: 0 }, 0.001);
+      });
+      SEQ.forEach(function (v, i) {
+        var at = 0.5 + i * 2.25;
+        tl.set("#cmd-chip", { textContent: v[1] }, i === 0 ? 0.001 : at - 0.15);
+        tl.set(v[0], { autoAlpha: 1 }, at);
+        tl.fromTo(
+          v[0] + " .cm-pop",
+          { scale: 0.75, autoAlpha: 0.6 },
+          { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+          at,
+        );
+        tl.to(v[0], { autoAlpha: 0, duration: 0.2, ease: "none" }, at + 1.85);
+      });
+      tl.set({}, {}, 12);
+      window.__timelines["chat-message-demo"] = tl;
+    </script>
+  </body>
+</html>

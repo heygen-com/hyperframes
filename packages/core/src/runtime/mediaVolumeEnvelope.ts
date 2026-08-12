@@ -179,8 +179,15 @@ export interface VolumeProbeOptions {
 }
 
 /**
- * Probe a media element and, if volume automation is detected, store the
- * keyframes in `cache`. Safe to call with a null timeline — returns early.
+ * Probe a media element and, if volume automation is detected, store a
+ * NORMALISED envelope in `cache`. Safe to call with a null timeline — returns
+ * early.
+ *
+ * `probeElementVolumeKeyframes` stamps each keyframe with the timeline seek
+ * time it was sampled at. Everything downstream of this cache — like the
+ * renderer's PCM baker — indexes an envelope by track-relative seconds, so the
+ * rebase belongs here, at the one point that fills the cache, rather than at
+ * each read.
  */
 export function probeAndCacheElementVolume(
   mediaEl: HTMLMediaElement,
@@ -217,6 +224,8 @@ export function probeAndCacheElementVolume(
   const keyframes = probeElementVolumeKeyframes(mediaEl, seekFn, compositionDuration, 60);
   if (Number.isFinite(originalTime)) seekFn(originalTime);
   if (keyframes) {
-    cache.set(mediaEl, keyframes);
+    const { start, staticVolume } = resolveVolumeProbeWindow(mediaEl, compositionDuration);
+    const envelope = normaliseEnvelope(keyframes, start, staticVolume);
+    if (envelope.length > 0) cache.set(mediaEl, envelope);
   }
 }

@@ -1,0 +1,522 @@
+<!doctype html>
+<!--
+  camera-scan-gate -- HyperFrames video primitive (ui-props / interaction / demonstrate)
+
+  Concept: a camera viewfinder scans once, tightens its four L-shaped corner
+  brackets onto a detected target, then confirms recognition with a pulse,
+  check flash, and target label. One mechanic, one job: demonstrate the causal
+  scan -> lock -> confirmation gate that unlocks a product's next beat.
+
+  Compiled-from evidence: SIM fixture; MOBILE mobile-inventory (scan-to-onboard
+  and scan-to-pay moments in the video-primitives candidates card).
+
+  Use when: a mobile product scene needs a camera, QR, identity, or payment
+  recognition moment whose successful lock causes the following action. Skip
+  it for passive camera decoration or a generic loading state.
+
+  Variables (declared in data-composition-variables below):
+    - scanColor (string, default "var(--brand)"): any CSS color value used by
+      the scan line, lock brackets, and confirmation glow.
+    - targetLabel (string, default "Verified"): label revealed at lock. Empty
+      string hides the label line entirely.
+    - sweepSpeed (number, default 1, range 0.8 to 1.6): scan sweep speed only.
+      It changes the sweep start while its landing sync point stays fixed.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 1.05s  stage settles, sweep lands, then recognition locks
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); a faint finite
+               frame glow breathes, or remains still when HOLD == 0
+    OUT_BASE = 0.50s  resolved gate releases with a short fade
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so IN + OUT == D
+    and HOLD == 0.
+
+  Sync points (fixed offsets into IN, never inside elastic HOLD):
+    - scan-landed: 0.50s into unscaled IN, the --ease-standard sweep completes
+    - recognition-lock: 0.68s into unscaled IN, brackets tighten with
+      --ease-overshoot while confirmation and the target label fire
+    Both offsets scale proportionally only when the full envelope compresses.
+
+  Sound cue: a soft recognition chime fires at recognition-lock. The primitive
+  never plays audio itself. It dispatches an `hf:sfx` CustomEvent
+  ({ id: "lock-chime", t: LOCK_AT }) for the host mix stage to route.
+
+  Mount contract: this file is a MOUNTABLE SUB-COMPOSITION, not a standalone
+  composition. A host loads it via data-composition-src; the runtime clones
+  only <template> contents, so all live style, markup, and script stays inside
+  the template. The root has no data-width/data-height and fills the host box
+  with position:absolute, inset:0, and container-type:size. It is styled by
+  #root because mounted CSS scoping would stop a root-class selector from
+  matching the root itself. The hardcoded "camera-scan-gate" composition id
+  is required because the mounted flattening step strips data-composition-id
+  before this script registers its timeline. Variables are read through
+  window.__hyperframes.getVariables(), which owns declared defaults merged
+  with per-instance host overrides after mounting.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "scanColor", "type": "string", "role": "style", "label": "Scan color", "description": "Any CSS color value used by the scan line and recognition glow.", "default": "var(--brand)" },
+    { "id": "targetLabel", "type": "string", "role": "content", "label": "Target label", "description": "Confirmation label revealed at recognition lock. Blank hides the line.", "default": "Verified" },
+    { "id": "sweepSpeed", "type": "number", "role": "timing", "label": "Sweep speed", "description": "Speed multiplier for the scan sweep phase only.", "default": 1, "min": 0.8, "max": 1.6, "step": 0.1, "unit": "x" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Camera Scan Gate</title>
+    <!-- Metadata only. The loader reads variable declarations from this html
+         element, while the mount runtime discards everything outside the
+         template. -->
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="camera-scan-gate"
+        data-start="0"
+        data-duration="4"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* INVARIANT: the host owns dimensions. #root fills that box and
+             establishes the cqw/cqh basis for every visible measurement. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .csg-clip {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, #0b1120);
+          }
+
+          .csg-stage {
+            position: relative;
+            width: min(64cqw, 76cqh);
+            aspect-ratio: 1;
+            opacity: 0;
+          }
+
+          /* EDIT ZONE: the outer viewfinder is a square so one centered scale
+             operation tightens all four brackets onto the target equally. */
+          .csg-frame,
+          .csg-corner-layer,
+          .csg-scan-window {
+            position: absolute;
+            inset: 0;
+          }
+
+          .csg-frame {
+            border: 0.16cqw solid color-mix(in srgb, var(--border, #334155) 74%, transparent);
+            border-radius: var(--space-2, 2.4cqw);
+            background: color-mix(in srgb, var(--surface, #1e293b) 34%, transparent);
+            box-shadow: inset 0 0 5cqw color-mix(in srgb, var(--bg, #0b1120) 60%, transparent);
+          }
+
+          .csg-grid {
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background-image:
+              linear-gradient(
+                to right,
+                transparent 33%,
+                color-mix(in srgb, var(--border, #334155) 32%, transparent) 33% 33.25%,
+                transparent 33.25% 66.5%,
+                color-mix(in srgb, var(--border, #334155) 32%, transparent) 66.5% 66.75%,
+                transparent 66.75%
+              ),
+              linear-gradient(
+                to bottom,
+                transparent 33%,
+                color-mix(in srgb, var(--border, #334155) 32%, transparent) 33% 33.25%,
+                transparent 33.25% 66.5%,
+                color-mix(in srgb, var(--border, #334155) 32%, transparent) 66.5% 66.75%,
+                transparent 66.75%
+              );
+            opacity: 0.55;
+          }
+
+          .csg-ambient {
+            position: absolute;
+            inset: -4%;
+            border: 0.45cqw solid
+              color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 48%, transparent);
+            border-radius: var(--space-3, 3.2cqw);
+            box-shadow: 0 0 4.5cqw
+              color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 38%, transparent);
+            opacity: 0;
+          }
+
+          .csg-corner-layer {
+            transform-origin: center;
+            z-index: 3;
+          }
+
+          .csg-corner {
+            position: absolute;
+            width: 18%;
+            height: 18%;
+            border-color: var(--csg-scan-color, var(--brand, #22c55e));
+            border-style: solid;
+            filter: drop-shadow(
+              0 0 0.9cqw
+                color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 56%, transparent)
+            );
+          }
+
+          .csg-corner-tl {
+            top: 0;
+            left: 0;
+            border-width: 0.65cqw 0 0 0.65cqw;
+            border-radius: var(--space-2, 2.4cqw) 0 0;
+          }
+
+          .csg-corner-tr {
+            top: 0;
+            right: 0;
+            border-width: 0.65cqw 0.65cqw 0 0;
+            border-radius: 0 var(--space-2, 2.4cqw) 0 0;
+          }
+
+          .csg-corner-br {
+            right: 0;
+            bottom: 0;
+            border-width: 0 0.65cqw 0.65cqw 0;
+            border-radius: 0 0 var(--space-2, 2.4cqw);
+          }
+
+          .csg-corner-bl {
+            bottom: 0;
+            left: 0;
+            border-width: 0 0 0.65cqw 0.65cqw;
+            border-radius: 0 0 0 var(--space-2, 2.4cqw);
+          }
+
+          .csg-scan-window {
+            z-index: 2;
+            inset: 3.5%;
+            overflow: hidden;
+          }
+
+          .csg-sweep {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .csg-scan-line {
+            position: absolute;
+            inset: 0 0 auto;
+            width: 100%;
+            height: 0.38cqh;
+            border-radius: 999cqw;
+            background: var(--csg-scan-color, var(--brand, #22c55e));
+            box-shadow:
+              0 0 1.2cqw var(--csg-scan-color, var(--brand, #22c55e)),
+              0 1.8cqh 3.6cqh
+                color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 42%, transparent);
+          }
+
+          .csg-target {
+            position: absolute;
+            z-index: 1;
+            width: 60%;
+            height: 60%;
+            top: 20%;
+            left: 20%;
+            border: 0.2cqw solid
+              color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 65%, transparent);
+            border-radius: var(--space-2, 2.4cqw);
+            background: color-mix(
+              in srgb,
+              var(--csg-scan-color, var(--brand, #22c55e)) 7%,
+              transparent
+            );
+            opacity: 0;
+          }
+
+          .csg-confirmation {
+            position: absolute;
+            z-index: 4;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2, 2.2cqh);
+          }
+
+          .csg-pulse {
+            position: absolute;
+            width: 30%;
+            aspect-ratio: 1;
+            border: 0.42cqw solid var(--csg-scan-color, var(--brand, #22c55e));
+            border-radius: 50%;
+            box-shadow: 0 0 4.5cqw
+              color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 58%, transparent);
+            opacity: 0;
+          }
+
+          .csg-check {
+            display: block;
+            width: 8.5%;
+            height: 15%;
+            margin-top: -5%;
+            border-right: 0.8cqw solid var(--csg-scan-color, var(--brand, #22c55e));
+            border-bottom: 0.8cqw solid var(--csg-scan-color, var(--brand, #22c55e));
+            filter: drop-shadow(
+              0 0 1.1cqw
+                color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 65%, transparent)
+            );
+            opacity: 0;
+            transform: rotate(45deg);
+          }
+
+          .csg-label {
+            min-width: 34%;
+            padding: var(--space-1, 1cqh) var(--space-3, 3cqw);
+            border: 0.14cqw solid
+              color-mix(in srgb, var(--csg-scan-color, var(--brand, #22c55e)) 48%, transparent);
+            border-radius: 999cqw;
+            background: color-mix(in srgb, var(--surface, #1e293b) 88%, transparent);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: clamp(2cqh, 2.8cqw, 3.3cqh);
+            font-weight: 760;
+            letter-spacing: 0.035em;
+            line-height: 1.1;
+            text-align: center;
+            opacity: 0;
+          }
+
+          .csg-label:empty {
+            display: none;
+          }
+        </style>
+
+        <div
+          id="camera-scan-gate-clip"
+          class="csg-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="csg-stage" role="img" aria-label="Camera recognition scanner">
+            <div class="csg-frame">
+              <div class="csg-grid" aria-hidden="true"></div>
+            </div>
+            <div class="csg-ambient" aria-hidden="true"></div>
+            <div class="csg-target" aria-hidden="true"></div>
+            <div class="csg-scan-window" aria-hidden="true">
+              <div class="csg-sweep">
+                <div class="csg-scan-line"></div>
+              </div>
+            </div>
+            <div class="csg-corner-layer" aria-hidden="true">
+              <span class="csg-corner csg-corner-tl"></span>
+              <span class="csg-corner csg-corner-tr"></span>
+              <span class="csg-corner csg-corner-br"></span>
+              <span class="csg-corner csg-corner-bl"></span>
+            </div>
+            <div class="csg-confirmation">
+              <span class="csg-pulse" aria-hidden="true"></span>
+              <span class="csg-check" aria-hidden="true"></span>
+              <span class="csg-label"></span>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal, not read from the DOM. Mounted flattening strips the
+            // root's data-composition-id before timeline registration.
+            var compositionId = "camera-scan-gate";
+            var stage = root.querySelector(".csg-stage");
+            var cornerLayer = root.querySelector(".csg-corner-layer");
+            var sweep = root.querySelector(".csg-sweep");
+            var target = root.querySelector(".csg-target");
+            var ambient = root.querySelector(".csg-ambient");
+            var pulse = root.querySelector(".csg-pulse");
+            var check = root.querySelector(".csg-check");
+            var label = root.querySelector(".csg-label");
+
+            // EDIT ZONE: declared defaults and per-instance overrides have one
+            // owner after mount, window.__hyperframes.getVariables().
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            var scanColor =
+              vars.scanColor == null || String(vars.scanColor).trim() === ""
+                ? "var(--brand)"
+                : String(vars.scanColor);
+            var targetLabel = vars.targetLabel == null ? "" : String(vars.targetLabel);
+            var rawSweepSpeed = Number(vars.sweepSpeed);
+            // INVARIANT: sweep speed is finite and clamped to the declared
+            // 0.8 to 1.6 range. It never changes IN, HOLD, OUT, or sync points.
+            var sweepSpeed = Number.isFinite(rawSweepSpeed)
+              ? Math.max(0.8, Math.min(1.6, rawSweepSpeed))
+              : 1;
+
+            root.style.setProperty("--csg-scan-color", scanColor);
+            label.textContent = targetLabel;
+
+            var beatValue = parseFloat(getComputedStyle(root).getPropertyValue("--dur-beat"));
+            var beat = Number.isFinite(beatValue) && beatValue > 0 ? beatValue : 0.5;
+            var AMBIENT_HALF = beat * 1.5;
+
+            // RETIME RANGE: IN_BASE and OUT_BASE own the interaction envelope.
+            // The only elastic phase is HOLD. Short durations scale IN and OUT
+            // together with one factor, never gsap.timeScale().
+            var IN_BASE = 1.05;
+            var OUT_BASE = 0.5;
+            var STAGE_IN_BASE = 0.28;
+            var SWEEP_DURATION_BASE = 0.4;
+            var SWEEP_LANDS_BASE = 0.5;
+            var LOCK_AT_BASE = 0.68;
+            var LOCK_DURATION_BASE = 0.22;
+            var CONFIRM_DURATION_BASE = 0.2;
+            var PULSE_HALF_BASE = 0.18;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var STAGE_IN = STAGE_IN_BASE * scale;
+            var SWEEP_LANDS = SWEEP_LANDS_BASE * scale;
+            var SWEEP_DURATION = (SWEEP_DURATION_BASE / sweepSpeed) * scale;
+            var SWEEP_START = Math.max(0, SWEEP_LANDS - SWEEP_DURATION);
+            var LOCK_AT = LOCK_AT_BASE * scale;
+            var LOCK_DURATION = LOCK_DURATION_BASE * scale;
+            var CONFIRM_DURATION = CONFIRM_DURATION_BASE * scale;
+            var PULSE_HALF = PULSE_HALF_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // Explicit both-endpoints state before timeline construction keeps
+            // direct seek to t=0 correct without playing through prior frames.
+            gsap.set(stage, { opacity: 0, scale: 0.94 });
+            gsap.set(cornerLayer, { scale: 1 });
+            gsap.set(sweep, { opacity: 1, yPercent: 0 });
+            gsap.set(target, { opacity: 0, scale: 0.96 });
+            gsap.set(ambient, { opacity: 0, scale: 1 });
+            gsap.set(pulse, { opacity: 0, scale: 0.9 });
+            gsap.set(check, { opacity: 0, scale: 0.94 });
+            gsap.set(label, { opacity: 0, y: "1.2cqh", scale: 0.96 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: settle, scan, then lock. The sweep uses --ease-standard's
+            // GSAP equivalent and lands at a fixed offset inside IN.
+            tl.to(stage, { opacity: 1, scale: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+            tl.to(
+              sweep,
+              { yPercent: 100, duration: SWEEP_DURATION, ease: "power2.out" },
+              SWEEP_START,
+            );
+            tl.set(sweep, { opacity: 0 }, SWEEP_LANDS);
+
+            // recognition-lock is the single causal gate. Corner tightening is
+            // the one moderate --ease-overshoot motion in this primitive.
+            tl.to(
+              cornerLayer,
+              { scale: 0.6, duration: LOCK_DURATION, ease: "back.out(1.7)" },
+              LOCK_AT,
+            );
+            tl.to(
+              target,
+              { opacity: 1, scale: 1, duration: CONFIRM_DURATION, ease: "power2.out" },
+              LOCK_AT,
+            );
+            tl.to(
+              check,
+              { opacity: 1, scale: 1, duration: CONFIRM_DURATION, ease: "power2.out" },
+              LOCK_AT,
+            );
+            tl.to(
+              label,
+              { opacity: 1, y: 0, scale: 1, duration: CONFIRM_DURATION, ease: "power2.out" },
+              LOCK_AT,
+            );
+            tl.to(
+              pulse,
+              {
+                opacity: 0.9,
+                scale: 1.25,
+                duration: PULSE_HALF,
+                ease: "power2.out",
+                yoyo: true,
+                repeat: 1,
+              },
+              LOCK_AT,
+            );
+            // Side-effect invariant: this timeline callback is the only actor
+            // that emits lock-chime, once at the recognition-lock sync point.
+            tl.call(
+              function () {
+                fireSfx("lock-chime", LOCK_AT);
+              },
+              [],
+              LOCK_AT,
+            );
+
+            // HOLD: a separate layer breathes with a finite repeat count, so
+            // the resolved gate stays alive without competing with lock tweens.
+            if (HOLD > AMBIENT_HALF) {
+              var ambientRepeat = Math.max(0, Math.floor(HOLD / AMBIENT_HALF) - 1);
+              tl.to(
+                ambient,
+                {
+                  opacity: 0.3,
+                  scale: 1.015,
+                  duration: AMBIENT_HALF,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: ambientRepeat,
+                },
+                HOLD_START,
+              );
+            }
+
+            // OUT: asymmetric release. HOLD alone absorbs duration changes.
+            tl.to(stage, { opacity: 0, scale: 0.98, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

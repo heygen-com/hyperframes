@@ -12,7 +12,7 @@ export function probe(filePath) {
     // can't break out of the quoting — filePath is passed as a literal argv entry.
     const raw = execFileSync(
       "ffprobe",
-      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
+      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", filePath],
       { encoding: "utf8", timeout: 5000 },
     );
     const info = JSON.parse(raw);

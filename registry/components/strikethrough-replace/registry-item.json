@@ -1,0 +1,72 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "strikethrough-replace",
+  "type": "hyperframes:component",
+  "title": "Strikethrough Replace",
+  "description": "Draw a strike line across old text, then reveal the replacement.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "strikethrough-replace.html",
+      "target": "compositions/components/strikethrough-replace.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "origin",
+      "type": "enum",
+      "role": "motion",
+      "label": "Origin",
+      "description": "Edge the strike grows out of as the timeline runs its scale from 0 to 1.",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "id": "thickness",
+      "type": "enum",
+      "role": "style",
+      "label": "Thickness",
+      "description": "Height of the strike line, from a hairline rule to a heavy bar.",
+      "default": "standard",
+      "options": [
+        { "value": "thin", "label": "Thin" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "thick", "label": "Thick" }
+      ]
+    },
+    {
+      "id": "tint",
+      "type": "enum",
+      "role": "style",
+      "label": "Tint",
+      "description": "Strike colour. Blue and violet ride --accent and --accent-2.",
+      "default": "red",
+      "options": [
+        { "value": "red", "label": "Red" },
+        { "value": "amber", "label": "Amber" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Colour of both words: ink for light frames, paper for dark ones.",
+      "default": "ink",
+      "options": [
+        { "value": "ink", "label": "Ink" },
+        { "value": "paper", "label": "Paper" }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/strikethrough-replace.png"
+  }
+}

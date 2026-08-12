@@ -253,7 +253,7 @@ function Transform3dField({
           onCommit={(next) => {
             const v = parse(next);
             if (v != null && onCommitAnimatedProperty) {
-              void onCommitAnimatedProperty(ctx.element, prop, v);
+              return onCommitAnimatedProperty(ctx.element, prop, v);
             }
           }}
         />

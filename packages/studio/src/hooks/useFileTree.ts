@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
+import { captureProjectProvenance } from "../components/feedback/projectProvenance";
 
 interface UseFileTreeOptions {
   projectId: string | null;
@@ -24,9 +25,13 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
       .then((data: { files?: string[]; dir?: string; compositions?: string[] }) => {
-        if (!cancelled && data.files) setFileTree(data.files);
-        if (!cancelled && data.compositions) setCompositionPaths(data.compositions);
-        if (!cancelled) setProjectDir(typeof data.dir === "string" ? data.dir : null);
+        if (cancelled) return;
+        if (data.files) setFileTree(data.files);
+        if (data.compositions) setCompositionPaths(data.compositions);
+        setProjectDir(typeof data.dir === "string" ? data.dir : null);
+        // Snapshot how this project was made, while the listing is in hand and
+        // the app is still alive. A crash later has no other way to learn it.
+        void captureProjectProvenance(projectId, data.files ?? [], data.compositions ?? []);
       })
       .catch(() => {
         if (!cancelled) setProjectDir(null);

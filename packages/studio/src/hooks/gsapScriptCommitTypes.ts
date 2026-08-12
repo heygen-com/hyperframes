@@ -22,6 +22,18 @@ export interface CommitMutationOptions {
   coalesceMs?: number;
   softReload?: boolean;
   skipReload?: boolean;
+  /**
+   * Write the source but leave the preview alone; the caller renders once when it
+   * is done. For a multi-write action like a group drag, rendering after each
+   * write shows a source where the members not yet written still hold their old
+   * values, so they snap back until their own write lands. This also defers the
+   * in-place runtime patch's seek, which re-renders the whole timeline and repaints
+   * the queued members the same way. Unlike `skipReload` this changes nothing about
+   * error handling — a failed write still throws.
+   */
+  deferPreviewSync?: boolean;
+  /** Shares an in-place patch miss with the final render of one multi-write action. */
+  previewFallbackLatch?: { pending: boolean };
   beforeReload?: () => void;
   /**
    * Serialize this commit against others sharing the same key. Used to chain
@@ -39,6 +51,14 @@ export interface CommitMutationOptions {
    * existing soft/full reload path. Structural edits omit this and reload as before.
    */
   instantPatch?: { selector: string; change: RuntimeTweenChange };
+  /**
+   * The same fast path for a batched commit: one patch per element the batch
+   * wrote, applied in order. All of them must land for the reload to be skipped
+   * — one that can't be applied leaves the preview half-patched, so the whole
+   * batch falls back to the reload. Only the last patch re-renders (see
+   * `deferSeek`), so a ten-element batch repaints once.
+   */
+  instantPatches?: Array<{ selector: string; change: RuntimeTweenChange }>;
 }
 
 export interface CommitMutationCall {
