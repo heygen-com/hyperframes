@@ -1,0 +1,1386 @@
+---
+title: "ChatGPT Exchange"
+description: "A portrait ChatGPT-style exchange types and sends a prompt, streams an answer, assembles a comparison table, and scrolls back through the result"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="chatgpt-exchange preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/chatgpt-exchange.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chatgpt-exchange.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
+
+## Install
+
+<InstallCommand command="npx hyperframes add chatgpt-exchange" item="chatgpt-exchange" />
+
+That writes `compositions/chatgpt-exchange.html`, plus 4 supporting files under `assets/fonts/`.
+
+## Add it to your video
+
+It runs for 14.9 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="chatgpt-exchange"
+  data-composition-src="compositions/chatgpt-exchange.html"
+  data-start="0"
+  data-duration="14.9"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Source
+
+<Accordion title={`chatgpt-exchange.html`}>
+
+```html
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /* The real app sets OpenAI Sans, which is not licensed here. Inter is the
+         redistributable OFL stand-in, embedded under a neutral family name so the
+         composition remains self-contained and deterministic. */
+      @font-face {
+        font-family: "ChatUI";
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ChatUI";
+        font-weight: 500;
+        font-style: normal;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ChatUI";
+        font-weight: 600;
+        font-style: normal;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Apple Color Emoji";
+        src: local("Apple Color Emoji");
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+      }
+      body,
+      #cge-root {
+        font-family: "ChatUI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ---------------------------------------------------------------- tokens
+         Geometry is authored in POINTS (1pt = 1px inside .screen) exactly as
+         measured off the source screenshots, then scaled to the 1080x1920 frame.
+         The layout is measured from the source UI at 402 × 874 points.       */
+      :root {
+        --scale: 2.1968; /* 1920 / 874 */
+        --ink: #fcfcfc;
+        --dim: #a8a8ac;
+        --placeholder: #9a9a9e;
+        --bubble: #212121;
+        --kb-bg: #141414;
+        --key: #3c3c3c;
+        --key-hit: #5f5f5f;
+        --seg-track: #181818;
+        --seg-active: #3a3a3a;
+        --blue: #48aaff;
+        --rule-head: #202020;
+        --rule-row: #131313;
+        --chip-bg: #0b0b0c;
+        --chip-line: #2b2b2d;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+
+      .screen {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 402px;
+        height: 874px;
+        margin-left: -201px;
+        background: #000;
+        overflow: hidden;
+        transform-origin: top center;
+        transform: scale(var(--scale));
+      }
+
+      /* ----------------------------------------------------------- status bar */
+      .statusbar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 65px;
+        display: flex;
+        align-items: center;
+        z-index: 40;
+        padding: 0 34px 0 16px;
+        color: #fff;
+      }
+      .sb-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 31.7px;
+      }
+      .sb-clock {
+        font-size: 17.2px;
+        font-weight: 600;
+        letter-spacing: 1.3px;
+      }
+      .sb-clock-box {
+        position: relative;
+        width: 38px;
+        height: 22px;
+      }
+      .sb-clock-box span {
+        position: absolute;
+        left: 0;
+        top: 0;
+        white-space: nowrap;
+      }
+      .sb-right {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: auto;
+      }
+      .sb-net {
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: -0.2px;
+      }
+      .sb-batt {
+        width: 30px;
+        height: 15px;
+        border-radius: 4.5px;
+        background: #fff;
+        color: #000;
+        font-size: 11px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        letter-spacing: -0.2px;
+        position: relative;
+      }
+      .sb-batt span {
+        position: absolute;
+      }
+      .sb-batt-cap {
+        width: 2px;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.45);
+        border-radius: 0 2px 2px 0;
+        margin-left: -4px;
+      }
+
+      /* --------------------------------------------------------------- header */
+      .header {
+        position: absolute;
+        top: 62px;
+        left: 0;
+        right: 0;
+        height: 44px;
+        z-index: 40;
+      }
+      .status-plate {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 54.7px;
+        z-index: 34;
+        background: #000;
+      }
+      .hdr-scrim {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 118px;
+        z-index: 30;
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+      }
+      .circle-btn {
+        position: absolute;
+        top: 0;
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: #1c1c1e;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hdr-left {
+        left: 16px;
+      }
+      .hdr-right {
+        position: absolute;
+        top: 0;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: #1c1c1e;
+        overflow: hidden;
+      }
+      .hdr-right-face {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+      .seg {
+        position: absolute;
+        top: -1.7px;
+        left: 121.7px;
+        width: 158px;
+        height: 48px;
+        border-radius: 24px;
+        background: var(--seg-track);
+        display: flex;
+        align-items: center;
+        padding: 4px;
+      }
+      .seg-item {
+        flex: 1;
+        height: 40px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 500;
+        color: #fff;
+      }
+      .seg-item.on {
+        background: var(--seg-active);
+      }
+
+      /* --------------------------------------------------------------- thread */
+      .scrollport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        z-index: 10;
+      }
+      .thread {
+        position: relative;
+        padding: 128px 16px 190px;
+      }
+
+      .bubble {
+        position: relative;
+        margin-left: auto;
+        width: 245.7px;
+        background: var(--bubble);
+        border-radius: 24px;
+        padding: 10px 16px;
+        color: var(--ink);
+        font-size: 16px;
+        line-height: 25.667px;
+      }
+      .answer {
+        margin-top: 36px;
+        width: 360px;
+        color: var(--ink);
+        font-size: 16px;
+        line-height: 25.667px;
+      }
+      .para {
+        overflow: hidden;
+      }
+      .para + .para {
+        margin-top: 24px;
+      }
+      .w {
+        opacity: 1;
+      }
+
+      /* ---------------------------------------------------------------- table */
+      .tbl {
+        margin: 19px 0 0 -5.7px;
+        width: 480px;
+        overflow: hidden;
+      }
+      .tr {
+        display: flex;
+        overflow: hidden;
+      }
+      .td {
+        padding: 8px 12px 8px 0;
+        font-size: 14.5px;
+        line-height: 23px;
+        color: var(--ink);
+      }
+      .c1 {
+        width: 168px;
+      }
+      .c2 {
+        width: 120px;
+        font-weight: 600;
+      }
+      .c3 {
+        width: 173px;
+      }
+      .th {
+        font-size: 14.5px;
+        line-height: 23px;
+        font-weight: 600;
+        padding-bottom: 6px;
+      }
+      .rule-head {
+        height: 2px;
+        background: var(--rule-head);
+      }
+      .rule-row {
+        height: 2px;
+        background: var(--rule-row);
+      }
+      .use {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .emo {
+        font-family: "Apple Color Emoji";
+        font-size: 14px;
+      }
+      .chip {
+        display: flex;
+        width: fit-content;
+        align-items: center;
+        gap: 6px;
+        height: 24px;
+        margin-top: 6px;
+        padding: 0 8px;
+        border-radius: 12px;
+        background: var(--chip-bg);
+        border: 1px solid var(--chip-line);
+        font-size: 10px;
+        color: #b9b9bd;
+        white-space: nowrap;
+      }
+      .chip-dot {
+        width: 12.5px;
+        height: 12.5px;
+        border-radius: 6.25px;
+        background: #2e2e30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 6px;
+        font-weight: 700;
+        color: #d8d8da;
+      }
+
+      /* ---------------------------------------------------------- scroll chrome */
+      .scrollbar {
+        position: absolute;
+        right: 3.3px;
+        top: 145px;
+        width: 2.7px;
+        border-radius: 1.4px;
+        background: rgba(235, 235, 245, 0.32);
+        z-index: 20;
+      }
+      .chev-wrap {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 738.7px;
+        z-index: 25;
+        display: flex;
+        justify-content: center;
+      }
+      .chev {
+        width: 36px;
+        height: 36px;
+        border-radius: 18px;
+        background: #1c1c1e;
+        border: 1px solid #2c2c2e;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* ------------------------------------------------------------ suggestions */
+      .suggests {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 407.7px;
+        z-index: 15;
+      }
+      .sug {
+        height: 47px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding-left: 27.7px;
+        color: var(--ink);
+        font-size: 16px;
+      }
+      .sug-ico {
+        width: 15.7px;
+        height: 15.7px;
+        display: flex;
+        align-items: center;
+      }
+
+      /* -------------------------------------------------------------- composer */
+      .comp-scrim {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 120px;
+        z-index: 18;
+        background: linear-gradient(to top, #000 12%, rgba(0, 0, 0, 0) 100%);
+      }
+      .composer {
+        position: absolute;
+        left: 12px;
+        bottom: 38.3px;
+        width: 378px;
+        height: 48px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.055);
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+        z-index: 20;
+        overflow: hidden;
+      }
+      .comp-text {
+        position: absolute;
+        top: 0;
+        left: 16px;
+        right: 16px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        color: var(--ink);
+        font-size: 16px;
+        line-height: 22px;
+        white-space: pre;
+      }
+      .comp-ph {
+        position: absolute;
+        top: 0;
+        left: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        color: var(--placeholder);
+        font-size: 16px;
+      }
+      .typed {
+        white-space: pre;
+      }
+      .typed .ch {
+        opacity: 0;
+      }
+      .cursor-anchor {
+        position: relative;
+        display: inline-block;
+        width: 0;
+        height: 22px;
+        vertical-align: -4px;
+      }
+      .cursor-anchor i {
+        position: absolute;
+        left: 1px;
+        top: 0;
+        width: 2px;
+        height: 22px;
+        background: var(--blue);
+      }
+      .comp-ctrls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 48px;
+      }
+      .comp-ctrls > * {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #cge-comp-plus {
+        left: 15px;
+      }
+      .comp-mic {
+        right: 60px;
+      }
+      .blue-btn {
+        right: 8px;
+        width: 32px;
+        height: 32px;
+        border-radius: 16px;
+        background: var(--blue);
+      }
+      .blue-face {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* -------------------------------------------------------------- keyboard */
+      .keyboard {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 539px;
+        height: 335px;
+        background: var(--kb-bg);
+        z-index: 22;
+      }
+      .predict {
+        position: relative;
+        height: 52px;
+        display: flex;
+        align-items: center;
+      }
+      .pd {
+        flex: 1;
+        position: relative;
+        align-self: stretch;
+        font-size: 17px;
+        color: #e8e8ea;
+        border-right: 1px solid rgba(235, 235, 245, 0.16);
+      }
+      .pdw {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .pd:last-child {
+        border-right: none;
+      }
+      .krow {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 43px;
+      }
+      .key {
+        position: absolute;
+        top: 0;
+        height: 43px;
+        border-radius: 5px;
+        background: var(--key);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 22.2px;
+        font-weight: 400;
+      }
+      .key.dark {
+        background: #2b2b2d;
+      }
+      .key.small {
+        font-size: 16px;
+        font-weight: 400;
+      }
+      .kb-bottom {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 279.7px;
+        height: 55px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 29px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-ahdx"
+      id="cge-root"
+      data-composition-id="chatgpt-exchange"
+      data-fps="60"
+      data-start="0"
+      data-duration="14.9"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div data-hf-id="hf-tan6" class="stage">
+        <div
+          data-hf-id="hf-szt4"
+          id="cge-scene"
+          class="clip"
+          data-start="0"
+          data-duration="14.9"
+          data-track-index="1"
+        >
+          <div data-hf-id="hf-ylue" class="screen" id="cge-screen"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ==================================================================
+         TEMPLATE CONFIG — edit only this block to re-skin the exchange.
+         ================================================================== */
+      const CONFIG = {
+        status: { clock: "1:29", clockLate: "1:30", net: "5G+", battery: 89, batteryLate: 88 },
+        prompt: "Hey what's the best tool for ai avatars",
+        suggestions: [
+          { icon: "slack", label: "Summarize my to-dos" },
+          { icon: "gmail", label: "Draft follow-up emails" },
+          { icon: "cal", label: "Prep me for upcoming meetings" },
+        ],
+        predict: {
+          start: ["I", "The", "I'm"],
+          mid: ["ai", "AI", "a"],
+          end: ['"avatars"', "avatar sick", "avatar stressed"],
+        },
+        paragraphs: [
+          "It really depends on what you're trying to do, because “AI avatars” has split into a few different categories.",
+          "For **most creators and marketers**, here's how I'd rank them today:",
+        ],
+        table: {
+          head: ["Use case", "Best tool", "Why"],
+          rows: [
+            {
+              emoji: "🥇",
+              use: "Overall realism",
+              tool: "HeyGen",
+              why: "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos.",
+              chip: "Official A.I Ranking",
+            },
+            {
+              emoji: "🏢",
+              use: "Enterprise/training",
+              tool: "Synthesia",
+              why: "Better collaboration, SCORM, compliance, team workflows; less creator-focused.",
+              chip: "Official A.I Ranking",
+            },
+            {
+              emoji: "📱",
+              use: "Mobile UGC",
+              tool: "Captions",
+              why: "Extremely fast mobile workflow and social editing. Great for Reels creators.",
+              chip: "Creator Stack",
+            },
+            {
+              emoji: "💬",
+              use: "Real-time conversations",
+              tool: "Tavus",
+              why: "Interactive avatars that can hold live conversations.",
+              chip: "Creator Stack",
+            },
+          ],
+        },
+      };
+
+      /* Beat clock (seconds). Every tween hangs off these. */
+      const T = {
+        suggestsIn: 0.0,
+        typeStart: 0.86,
+        charBase: 0.05,
+        spaceHold: 0.11,
+        sendPad: 0.3, // stillness-before-climax between last keystroke and the tap
+        sendReact: 0.03,
+        streamLead: 0.6, // model "thinking" comma
+        wordStep: 0.15,
+        tableLead: 0.2,
+        rowStep: 0.7,
+        readbackDur: 1.1,
+        tailHold: 0.7,
+      };
+
+      /* =========================================================== icon set */
+      const svg = (b, d, w) =>
+        `<svg viewBox="0 0 ${b} ${b}" width="${w || b}" height="${w || b}" fill="none">${d}</svg>`;
+      const ICO = {
+        bell: svg(
+          20,
+          `<path d="M4.2 15h11.6M10 3.2a4.3 4.3 0 0 1 4.3 4.3c0 3.4 1 5 1.5 5.6H4.2C4.7 12.5 5.7 10.9 5.7 7.5A4.3 4.3 0 0 1 10 3.2Z" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.3 16.6a1.9 1.9 0 0 0 3.4 0" stroke="#fff" stroke-width="1.5"/><path d="M3 17L17 3" stroke="#fff" stroke-width="1.6"/>`,
+          18,
+        ),
+        bars: svg(
+          20,
+          `<rect x="1" y="12.5" width="3" height="4.5" rx="1" fill="#fff"/><rect x="6" y="9.5" width="3" height="7.5" rx="1" fill="#fff"/><rect x="11" y="6.5" width="3" height="10.5" rx="1" fill="#fff"/><rect x="16" y="3.5" width="3" height="13.5" rx="1" fill="rgba(255,255,255,.32)"/>`,
+          19,
+        ),
+        burger: svg(
+          24,
+          `<path d="M5 9.5h14M5 15h9" stroke="#fff" stroke-width="2.1" stroke-linecap="round"/>`,
+          24,
+        ),
+        voiceCircle: svg(
+          24,
+          `<path d="M15.4 3.9a8.6 8.6 0 1 1-9.1 14.6" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/><path d="M6.3 18.5 4 21.2l3.4.5" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.6 8.4a4.1 4.1 0 1 0-3.3 6.9" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/>`,
+          23,
+        ),
+        compose: svg(
+          24,
+          `<path d="M4.5 15.5 15.2 4.8a2 2 0 0 1 2.9 2.9L7.4 18.4l-4 1 1-3.9Z" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>`,
+          21,
+        ),
+        dots: svg(
+          24,
+          `<circle cx="5" cy="12" r="1.9" fill="#fff"/><circle cx="12" cy="12" r="1.9" fill="#fff"/><circle cx="19" cy="12" r="1.9" fill="#fff"/>`,
+          21,
+        ),
+        plus: svg(
+          24,
+          `<path d="M12 4.5v15M4.5 12h15" stroke="#fff" stroke-width="2.1" stroke-linecap="round"/>`,
+          18,
+        ),
+        mic: svg(
+          24,
+          `<rect x="9" y="2.6" width="6" height="11.4" rx="3" stroke="#fff" stroke-width="1.8"/><path d="M5.5 11.4a6.5 6.5 0 0 0 13 0M12 18v3.2" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
+          17,
+        ),
+        wave: svg(
+          24,
+          `<rect x="4" y="9.5" width="2.4" height="5" rx="1.2" fill="#fff"/><rect x="8.6" y="6" width="2.4" height="12" rx="1.2" fill="#fff"/><rect x="13.2" y="8" width="2.4" height="8" rx="1.2" fill="#fff"/><rect x="17.8" y="10.5" width="2.4" height="3" rx="1.2" fill="#fff"/>`,
+          19,
+        ),
+        arrowUp: svg(
+          24,
+          `<path d="M12 19V5.6M5.8 11.8 12 5.4l6.2 6.4" stroke="#000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+          19,
+        ),
+        stop: svg(24, `<rect x="7" y="7" width="10" height="10" rx="2" fill="#000"/>`, 18),
+        chevDown: svg(
+          24,
+          `<path d="M12 5v13M6.2 12.2 12 18.2l5.8-6" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`,
+          18,
+        ),
+        shift: svg(
+          24,
+          `<path d="M12 4 4.5 12h4v7h7v-7h4L12 4Z" stroke="#fff" stroke-width="1.7" stroke-linejoin="round" fill="#fff"/>`,
+          19,
+        ),
+        del: svg(
+          24,
+          `<path d="M8.4 5h11a1.6 1.6 0 0 1 1.6 1.6v10.8A1.6 1.6 0 0 1 19.4 19h-11L2.6 12 8.4 5Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M11.4 9.6l5.2 4.8M16.6 9.6l-5.2 4.8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+          22,
+        ),
+        ret: svg(
+          24,
+          `<path d="M20 6v6.4H5.4M9.6 8.4 5 12.8l4.6 4.4" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+          21,
+        ),
+        emojiKey: svg(
+          24,
+          `<circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="1.7"/><circle cx="9" cy="10" r="1.2" fill="#fff"/><circle cx="15" cy="10" r="1.2" fill="#fff"/><path d="M8 14.6a5 5 0 0 0 8 0" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>`,
+          25,
+        ),
+        slack: svg(
+          24,
+          `<path d="M6.2 14.4a2 2 0 1 1-2 2v-2h2Z" fill="#e01e5a"/><path d="M7.3 14.4a2 2 0 0 1 4 0v5a2 2 0 1 1-4 0v-5Z" fill="#e01e5a"/><path d="M9.6 6.2a2 2 0 1 1 2-2v2h-2Z" fill="#36c5f0"/><path d="M9.6 7.3a2 2 0 0 1 0 4h-5a2 2 0 1 1 0-4h5Z" fill="#36c5f0"/><path d="M17.8 9.6a2 2 0 1 1 2 2h-2v-2Z" fill="#2eb67d"/><path d="M16.7 9.6a2 2 0 0 1-4 0v-5a2 2 0 1 1 4 0v5Z" fill="#2eb67d"/><path d="M14.4 17.8a2 2 0 1 1-2 2v-2h2Z" fill="#ecb22e"/><path d="M14.4 16.7a2 2 0 0 1 0-4h5a2 2 0 1 1 0 4h-5Z" fill="#ecb22e"/>`,
+          16,
+        ),
+        gmail: svg(
+          24,
+          `<path d="M3 6.6 12 13l9-6.4V18a1 1 0 0 1-1 1h-3V11l-5 3.6L7 11v8H4a1 1 0 0 1-1-1V6.6Z" fill="#ea4335"/><path d="M17 11v8h3a1 1 0 0 0 1-1V6.6L17 9.5V11Z" fill="#34a853"/><path d="M3 6.6 7 9.5V19H4a1 1 0 0 1-1-1V6.6Z" fill="#4285f4"/><path d="M3 5.6A1.6 1.6 0 0 1 5.4 4.3L12 9l6.6-4.7A1.6 1.6 0 0 1 21 5.6v1L12 13 3 6.6v-.8Z" fill="#fbbc04"/>`,
+          16,
+        ),
+        cal: svg(
+          24,
+          `<rect x="3" y="4" width="18" height="17" rx="3" fill="#1a73e8"/><rect x="3" y="4" width="18" height="4.5" rx="3" fill="#1967d2"/><text x="12" y="17.6" font-size="9" font-weight="700" fill="#fff" text-anchor="middle" font-family="Helvetica">31</text>`,
+          16,
+        ),
+      };
+
+      /* ============================================================== build */
+      const screen = document.getElementById("cge-screen");
+      const el = (cls, html, tag) => {
+        const n = document.createElement(tag || "div");
+        if (cls) n.className = cls;
+        if (html != null) n.innerHTML = html;
+        return n;
+      };
+
+      // --- status bar
+      const sb = el("statusbar");
+      sb.innerHTML =
+        `<div class="sb-left"><div class="sb-clock sb-clock-box">` +
+        `<span id="cge-clock-early">${CONFIG.status.clock}</span>` +
+        `<span id="cge-clock-late">${CONFIG.status.clockLate}</span></div>${ICO.bell}</div>` +
+        `<div class="sb-right">${ICO.bars}<div class="sb-net">${CONFIG.status.net}</div>` +
+        `<div class="sb-batt"><span id="cge-batt-early">${CONFIG.status.battery}</span>` +
+        `<span id="cge-batt-late">${CONFIG.status.batteryLate}</span></div>` +
+        `<div class="sb-batt-cap"></div></div>`;
+
+      // --- thread
+      const port = el("scrollport");
+      const thread = el("thread");
+      thread.setAttribute("data-layout-allow-overflow", "true");
+      thread.setAttribute("data-layout-allow-overlap", "true");
+      thread.setAttribute("data-layout-allow-occlusion", "true");
+      thread.id = "cge-thread";
+
+      const bubble = el("bubble");
+      bubble.id = "cge-bubble";
+      bubble.textContent = CONFIG.prompt + "?";
+      thread.appendChild(bubble);
+
+      const answer = el("answer");
+      answer.id = "cge-answer";
+      thread.appendChild(answer);
+
+      // paragraphs -> word spans (**bold** supported)
+      const paraEls = [];
+      CONFIG.paragraphs.forEach((txt) => {
+        const p = el("para");
+        const inner = el("para-inner");
+        let bold = false;
+        txt.split(/(\s+)/).forEach((tok) => {
+          if (!tok) return;
+          if (/^\s+$/.test(tok)) {
+            inner.appendChild(document.createTextNode(tok));
+            return;
+          }
+          let word = tok;
+          let open = false;
+          if (word.startsWith("**")) {
+            bold = true;
+            open = true;
+            word = word.slice(2);
+          }
+          let close = false;
+          if (word.includes("**")) {
+            close = true;
+            word = word.replace("**", "");
+          }
+          const s = el("w", null, "span");
+          if (bold) s.style.fontWeight = "600";
+          s.textContent = word;
+          if (close) bold = false;
+          void open;
+          inner.appendChild(s);
+        });
+        p.appendChild(inner);
+        answer.appendChild(p);
+        paraEls.push({ p: p, inner: inner, words: [].slice.call(inner.querySelectorAll(".w")) });
+      });
+
+      // table
+      const tbl = el("tbl");
+      tbl.id = "cge-tbl";
+      const headRow = el("tr");
+      headRow.innerHTML =
+        `<div class="td th c1">${CONFIG.table.head[0]}</div>` +
+        `<div class="td th c2">${CONFIG.table.head[1]}</div>` +
+        `<div class="td th c3">${CONFIG.table.head[2]}</div>`;
+      const headRule = el("rule-head");
+      headRule.id = "cge-head-rule";
+      tbl.appendChild(headRow);
+      tbl.appendChild(headRule);
+      answer.appendChild(tbl);
+
+      const rowEls = [];
+      CONFIG.table.rows.forEach((r, i) => {
+        const row = el("tr");
+        row.id = "cge-row" + i;
+        const whyWords = r.why
+          .split(" ")
+          .map((w) => `<span class="w">${w}</span>`)
+          .join(" ");
+        row.innerHTML =
+          `<div class="td c1"><div class="use"><span class="emo">${r.emoji}</span>` +
+          `<span class="w">${r.use}</span></div></div>` +
+          `<div class="td c2"><span class="w">${r.tool}</span></div>` +
+          `<div class="td c3">${whyWords}` +
+          `<div class="chip"><span class="chip-dot">AI</span>${r.chip}</div></div>`;
+        const rule = el("rule-row");
+        rule.id = "cge-rule" + i;
+        tbl.appendChild(row);
+        tbl.appendChild(rule);
+        rowEls.push({
+          row: row,
+          rule: rule,
+          words: [].slice.call(row.querySelectorAll(".w")),
+          emo: row.querySelector(".emo"),
+          chip: row.querySelector(".chip"),
+        });
+      });
+
+      port.appendChild(thread);
+
+      // --- scroll chrome
+      const sbar = el("scrollbar");
+      sbar.id = "cge-scrollbar";
+      const chevWrap = el("chev-wrap", `<div class="chev" id="cge-chev">${ICO.chevDown}</div>`);
+
+      // --- suggestions
+      const suggests = el("suggests");
+      const sugEls = CONFIG.suggestions.map((s) => {
+        const n = el("sug", `<div class="sug-ico">${ICO[s.icon]}</div><div>${s.label}</div>`);
+        suggests.appendChild(n);
+        return n;
+      });
+
+      // --- composer
+      const composer = el("composer");
+      composer.setAttribute("data-layout-allow-occlusion", "true");
+      composer.setAttribute("data-layout-allow-overlap", "true");
+      composer.id = "cge-composer";
+      composer.innerHTML =
+        `<div class="comp-text" id="cge-comp-text"><span class="typed" id="cge-typed"></span></div>` +
+        `<div class="comp-ph" id="cge-comp-ph">Ask ChatGPT</div>` +
+        `<div class="comp-ctrls"><div id="cge-comp-plus">${ICO.plus}</div>` +
+        `<div class="comp-mic" id="cge-comp-mic">${ICO.mic}</div>` +
+        `<div class="blue-btn" id="cge-blue-btn">` +
+        `<div class="blue-face" id="cge-face-wave">${ICO.wave}</div>` +
+        `<div class="blue-face" id="cge-face-send">${ICO.arrowUp}</div>` +
+        `<div class="blue-face" id="cge-face-stop">${ICO.stop}</div></div></div>`;
+
+      // one span per character, each followed by a zero-width caret slot. Hidden
+      // characters still occupy their final space, so the caret needs no measuring.
+      const typedEl = composer.querySelector("#cge-typed");
+      const chEls = [];
+      const curEls = [];
+      const mkCursor = () => {
+        const a = el("cursor-anchor", "<i></i>", "span");
+        typedEl.appendChild(a);
+        curEls.push(a);
+      };
+      mkCursor();
+      CONFIG.prompt.split("").forEach((c) => {
+        const sp = el("ch", c === " " ? "&nbsp;" : c, "span");
+        typedEl.appendChild(sp);
+        chEls.push(sp);
+        mkCursor();
+      });
+
+      // --- keyboard
+      const KB = { w: 33.44, gap: 6.03, inset: 6.67 };
+      const keyboard = el("keyboard");
+      keyboard.setAttribute("data-layout-allow-overflow", "true");
+      keyboard.setAttribute("data-layout-allow-overlap", "true");
+      keyboard.id = "cge-keyboard";
+      const predict = el("predict");
+      predict.id = "cge-predict";
+      const PRED_STAGES = ["start", "mid", "end"];
+      const pdEls = [0, 1, 2].map((col) => {
+        const n = el("pd");
+        const stages = PRED_STAGES.map((k) => {
+          const w = el("pdw", CONFIG.predict[k][col]);
+          n.appendChild(w);
+          return w;
+        });
+        predict.appendChild(n);
+        return { cell: n, stages: stages };
+      });
+      keyboard.appendChild(predict);
+
+      const keyIndex = {};
+      const mkKey = (row, label, x, w, cls) => {
+        const k = el("key" + (cls ? " " + cls : ""), label);
+        k.style.left = x + "px";
+        k.style.width = w + "px";
+        row.appendChild(k);
+        if (/^[A-Z]$/.test(label)) keyIndex[label] = k;
+        return k;
+      };
+      const rowsDef = [
+        { y: 52, keys: "QWERTYUIOP".split(""), x0: KB.inset },
+        { y: 106, keys: "ASDFGHJKL".split(""), x0: 26.33 },
+        { y: 160, keys: "ZXCVBNM".split(""), x0: 65.67 },
+      ];
+      rowsDef.forEach((rd, ri) => {
+        const row = el("krow");
+        row.style.top = rd.y + "px";
+        rd.keys.forEach((k, i) => mkKey(row, k, rd.x0 + i * (KB.w + KB.gap), KB.w));
+        if (ri === 2) {
+          mkKey(row, ICO.shift, KB.inset, 45.33, "dark");
+          mkKey(row, ICO.del, 350, 45.67, "dark");
+        }
+        keyboard.appendChild(row);
+      });
+      const row4 = el("krow");
+      row4.style.top = "214px";
+      const kNum = mkKey(row4, "123", KB.inset, 92.67, "dark small");
+      const kSpace = mkKey(row4, "", 105.33, 191.33);
+      const kRet = mkKey(row4, ICO.ret, 302.67, 93, "dark");
+      keyboard.appendChild(row4);
+      keyboard.appendChild(el("kb-bottom", `<div>${ICO.emojiKey}</div><div>${ICO.mic}</div>`));
+      void kNum;
+      void kRet;
+
+      // --- header (built last so it stacks above the thread)
+      const hdrScrim = el("hdr-scrim");
+      hdrScrim.setAttribute("data-layout-allow-occlusion", "true");
+      hdrScrim.id = "cge-hdr-scrim";
+      const header = el("header");
+      header.innerHTML =
+        `<div class="circle-btn hdr-left">${ICO.burger}</div>` +
+        `<div class="seg" id="cge-seg"><div class="seg-item on">Chat</div><div class="seg-item">Work</div></div>` +
+        `<div class="hdr-right" id="cge-hdr-right">` +
+        `<div class="hdr-right-face" id="cge-hdr-voice">${ICO.voiceCircle}</div>` +
+        `<div class="hdr-right-face" id="cge-hdr-actions">${ICO.compose}${ICO.dots}</div></div>`;
+
+      const statusPlate = el("status-plate");
+      statusPlate.setAttribute("data-layout-allow-occlusion", "true");
+      const compScrim = el("comp-scrim");
+      compScrim.setAttribute("data-layout-allow-occlusion", "true");
+      [
+        port,
+        sbar,
+        chevWrap,
+        suggests,
+        compScrim,
+        composer,
+        keyboard,
+        hdrScrim,
+        statusPlate,
+        header,
+        sb,
+      ].forEach((n) => screen.appendChild(n));
+
+      /* ============================================================ measure
+         All layout reads happen here, once, before any state is set. Widths
+         come off getBoundingClientRect (sub-pixel) divided by --scale; block
+         offsets come off offsetTop, which is unscaled. Deterministic: the same
+         layout every load, so every seek resolves identically.               */
+      // paragraph line grouping + heights
+      const LH = 25.667;
+      paraEls.forEach((pe) => {
+        pe.height = pe.inner.offsetHeight;
+        const tops = pe.words.map((w) => w.offsetTop);
+        const uniq = [];
+        tops.forEach((t) => {
+          if (!uniq.length || t - uniq[uniq.length - 1] > 4) uniq.push(t);
+        });
+        pe.lineOf = tops.map((t) => {
+          let li = 0;
+          uniq.forEach((u, i) => {
+            if (Math.abs(t - u) <= 4) li = i;
+          });
+          return li;
+        });
+        pe.lineHeights = uniq.map((u, i) => Math.min(pe.height, (i + 1) * LH + 1));
+      });
+
+      const headRowH = headRow.offsetHeight;
+      rowEls.forEach((re) => (re.h = re.row.offsetHeight));
+
+      // Scroll anchors: keep the newest revealed element just above the composer.
+      // Read here, in the natural layout — by timeline-build time every paragraph
+      // and row has been collapsed to height 0 and offsetTop/Height would lie.
+      const ANCHOR = 772;
+      const anchorOf = (node) => Math.min(0, ANCHOR - (node.offsetTop + node.offsetHeight));
+      paraEls.forEach((pe) => (pe.anchor = anchorOf(pe.p)));
+      rowEls.forEach((re) => (re.anchor = anchorOf(re.row)));
+      const Y_FINAL = 37 - bubble.offsetTop; // IMG_0937: bubble top rests at y=37
+
+      /* ====================================================== initial state */
+      gsap.set(composer, { y: -309, x: 0, width: 378, height: 48 }); // keyboard-up rest
+      gsap.set([answer], { autoAlpha: 1 });
+      gsap.set(
+        paraEls.map((p) => p.p),
+        { height: 0 },
+      );
+      paraEls.forEach((pe) => gsap.set(pe.words, { opacity: 0 }));
+      gsap.set([headRow, headRule], { height: 0, opacity: 0 });
+      rowEls.forEach((re) => {
+        gsap.set(re.row, { height: 0 });
+        gsap.set(re.rule, { height: 0 });
+        gsap.set(re.words, { opacity: 0 });
+        gsap.set([re.emo, re.chip], { opacity: 0 });
+      });
+      gsap.set(bubble, { autoAlpha: 0 });
+      gsap.set(thread, { y: 0 });
+      gsap.set(sbar, { autoAlpha: 0, y: 60, height: 250 });
+      gsap.set(chevWrap.firstChild, { autoAlpha: 0, y: 10 });
+      gsap.set(sugEls, { autoAlpha: 0, y: 14 });
+      gsap.set(chEls, { opacity: 0 });
+      gsap.set(curEls, { autoAlpha: 0 });
+      gsap.set(document.getElementById("cge-comp-ph"), { autoAlpha: 1 });
+      gsap.set(document.getElementById("cge-face-send"), { autoAlpha: 0, scale: 0.6 });
+      gsap.set(document.getElementById("cge-face-stop"), { autoAlpha: 0, scale: 0.6 });
+      gsap.set(document.getElementById("cge-hdr-actions"), { autoAlpha: 0 });
+      gsap.set(document.getElementById("cge-hdr-right"), { width: 44 });
+      gsap.set(document.getElementById("cge-seg"), { autoAlpha: 1, scale: 1 });
+      gsap.set(hdrScrim, { autoAlpha: 1 });
+      gsap.set(keyboard, { y: 0 });
+      pdEls.forEach((pd) => {
+        gsap.set(pd.stages[0], { autoAlpha: 1 });
+        gsap.set([pd.stages[1], pd.stages[2]], { autoAlpha: 0 });
+      });
+      gsap.set(document.getElementById("cge-clock-late"), { autoAlpha: 0 });
+      gsap.set(document.getElementById("cge-batt-late"), { autoAlpha: 0 });
+
+      /* ============================================================ timeline */
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* ---- 1. suggestions cascade in (waterfall entry, weight-ordered) */
+      sugEls.forEach((n, i) => {
+        tl.to(
+          n,
+          { autoAlpha: 1, y: 0, duration: 0.42, ease: "power3.out" },
+          T.suggestsIn + i * 0.09,
+        );
+      });
+
+      /* ---- 2. typing. Each keystroke IS the cause: key flash -> width step. */
+      const t0 = T.typeStart;
+      const chars = CONFIG.prompt.split("");
+      const charT = [];
+      let t = t0;
+      chars.forEach((c, i) => {
+        charT.push(t);
+        t += c === " " ? T.charBase + T.spaceHold : T.charBase;
+        void i;
+      });
+      const typeEnd = t;
+
+      // composer grows to two rows on the first keystroke
+      tl.to(composer, { height: 92, duration: 0.24, ease: "power2.out" }, t0 - 0.02);
+      tl.to(document.getElementById("cge-comp-ph"), { autoAlpha: 0, duration: 0.12 }, t0 - 0.02);
+      tl.to(curEls[0], { autoAlpha: 1, duration: 0.01 }, t0 - 0.02);
+      // suggestions clear — caused by the first keystroke
+      sugEls.forEach((n, i) => {
+        tl.to(n, { autoAlpha: 0, y: 10, duration: 0.2, ease: "power2.in" }, t0 - 0.02 + i * 0.04);
+      });
+      // voice waveform -> send arrow
+      tl.to(
+        document.getElementById("cge-face-wave"),
+        { autoAlpha: 0, scale: 0.6, duration: 0.14 },
+        t0,
+      );
+      tl.to(
+        document.getElementById("cge-face-send"),
+        { autoAlpha: 1, scale: 1, duration: 0.24, ease: "back.out(1.6)" },
+        t0 + 0.04,
+      );
+
+      chars.forEach((c, i) => {
+        tl.to(chEls[i], { opacity: 1, duration: 0.01 }, charT[i]);
+        tl.to(curEls[i], { autoAlpha: 0, duration: 0.01 }, charT[i]);
+        tl.to(curEls[i + 1], { autoAlpha: 1, duration: 0.01 }, charT[i]);
+        const k = keyIndex[c.toUpperCase()];
+        const target = c === " " ? kSpace : k;
+        if (target) {
+          tl.to(target, { backgroundColor: "#5f5f5f", duration: 0.04 }, charT[i] - 0.03);
+          tl.to(
+            target,
+            { backgroundColor: c === " " ? "#3c3c3c" : "#3c3c3c", duration: 0.09 },
+            charT[i] + 0.02,
+          );
+        }
+      });
+
+      // caret blink (finite, deterministic)
+      const blinkFrom = t0 + 0.1;
+      const blinks = Math.floor((typeEnd + T.sendPad - blinkFrom) / 1.06);
+      const lastCur = curEls[curEls.length - 1];
+      for (let i = 0; i < blinks; i++) {
+        const off = blinkFrom + i * 1.06 + 0.53;
+        const on = blinkFrom + i * 1.06 + 1.06;
+        if (off > typeEnd) tl.to(lastCur, { autoAlpha: 0, duration: 0.02 }, off);
+        if (on > typeEnd) tl.to(lastCur, { autoAlpha: 1, duration: 0.02 }, on);
+      }
+
+      // predictive row swaps at word boundaries
+      const swapPredict = (at, stage) => {
+        pdEls.forEach((pd) => {
+          tl.to(pd.stages[stage - 1], { autoAlpha: 0, duration: 0.06 }, at);
+          tl.to(pd.stages[stage], { autoAlpha: 1, duration: 0.08 }, at + 0.06);
+        });
+      };
+      swapPredict(charT[CONFIG.prompt.indexOf(" ai ") + 1], 1);
+      swapPredict(charT[CONFIG.prompt.length - 1], 2);
+
+      /* ---- 3. send. Tap ignites: bubble flight + keyboard down + header morph */
+      const tSend = typeEnd + T.sendPad;
+      const blueBtn = document.getElementById("cge-blue-btn");
+      tl.to(blueBtn, { scale: 0.86, duration: 0.06, ease: "power2.out" }, tSend);
+      tl.to(blueBtn, { scale: 1, duration: 0.18, ease: "power2.out" }, tSend + 0.06);
+
+      const tGo = tSend + T.sendReact;
+      // composer empties and collapses; keyboard leaves downward
+      tl.to(chEls, { opacity: 0, duration: 0.01 }, tGo);
+      tl.to(curEls, { autoAlpha: 0, duration: 0.01 }, tGo);
+      tl.to(composer, { height: 48, width: 326, duration: 0.3, ease: "power2.out" }, tGo);
+      tl.to(composer, { y: 0, x: 26, duration: 0.32, ease: "power2.out" }, tGo);
+      tl.to(document.getElementById("cge-comp-ph"), { autoAlpha: 1, duration: 0.2 }, tGo + 0.12);
+      tl.to(keyboard, { y: 340, duration: 0.3, ease: "power2.out" }, tGo);
+      tl.to(document.getElementById("cge-face-send"), { autoAlpha: 0, duration: 0.12 }, tGo + 0.28);
+      tl.to(
+        document.getElementById("cge-face-stop"),
+        { autoAlpha: 1, scale: 1, duration: 0.2, ease: "power2.out" },
+        tGo + 0.34,
+      );
+
+      // header: segmented control out, right control widens into the actions pill
+      tl.to(document.getElementById("cge-seg"), { autoAlpha: 0, scale: 0.92, duration: 0.16 }, tGo);
+      tl.to(document.getElementById("cge-hdr-voice"), { autoAlpha: 0, duration: 0.12 }, tGo + 0.02);
+      tl.to(
+        document.getElementById("cge-hdr-right"),
+        { width: 108, duration: 0.26, ease: "power2.out" },
+        tGo + 0.06,
+      );
+      tl.to(
+        document.getElementById("cge-hdr-actions"),
+        { autoAlpha: 1, duration: 0.18 },
+        tGo + 0.16,
+      );
+
+      // the bubble: born at the composer's text position, lands in its thread slot
+      const bubbleTop = bubble.offsetTop + thread.offsetTop; // 128
+      const dy = 526.7 - 48 + 10 - bubbleTop; // keyboard-up composer text row -> slot
+      tl.fromTo(
+        bubble,
+        { autoAlpha: 0, y: dy, scale: 0.94, transformOrigin: "100% 50%" },
+        { autoAlpha: 1, y: 0, scale: 1, duration: 0.34, ease: "power3.out" },
+        tGo + 0.02,
+      );
+
+      /* ---- 4. stream. Words land in reading order; the box grows by the line. */
+      let tw = tGo + 0.34 + T.streamLead;
+      const scrollTo = (target, at, dur) =>
+        tl.to(thread, { y: target, duration: dur || 0.5, ease: "power2.out" }, at);
+
+      paraEls.forEach((pe, pi) => {
+        let lastLine = -1;
+        pe.words.forEach((w, wi) => {
+          const li = pe.lineOf[wi];
+          if (li !== lastLine) {
+            tl.to(pe.p, { height: pe.lineHeights[li], duration: 0.16, ease: "power2.out" }, tw);
+            lastLine = li;
+          }
+          tl.to(w, { opacity: 1, duration: 0.1 }, tw);
+          tw += T.wordStep;
+        });
+        scrollTo(pe.anchor, tw - T.wordStep * 2, 0.6);
+        if (pi === 0) tw += 0.12;
+      });
+
+      /* ---- 5. the table assembles, row by row */
+      tw += T.tableLead;
+      tl.to(
+        [headRow, headRule],
+        { height: (i) => (i === 0 ? headRowH : 2), opacity: 1, duration: 0.2, ease: "power2.out" },
+        tw,
+      );
+      tw += 0.34;
+
+      rowEls.forEach((re) => {
+        tl.to(re.row, { height: re.h, duration: 0.22, ease: "power2.out" }, tw);
+        tl.to(re.emo, { opacity: 1, duration: 0.14 }, tw + 0.04);
+        re.words.forEach((w, wi) => {
+          tl.to(w, { opacity: 1, duration: 0.09 }, tw + 0.08 + wi * 0.028);
+        });
+        tl.to(re.chip, { opacity: 1, duration: 0.2, ease: "power2.out" }, tw + 0.42);
+        tl.to(re.rule, { height: 2, duration: 0.12 }, tw + 0.2);
+        scrollTo(re.anchor, tw + 0.1, 0.72);
+        tw += T.rowStep;
+      });
+
+      /* ---- 6. streaming ends, then the read-back scroll lands on the hero frame */
+      tl.to(document.getElementById("cge-face-stop"), { autoAlpha: 0, duration: 0.14 }, tw);
+      tl.to(
+        document.getElementById("cge-face-wave"),
+        { autoAlpha: 1, scale: 1, duration: 0.22, ease: "power2.out" },
+        tw + 0.06,
+      );
+
+      const tRead = tw + 0.24;
+      tl.to(sbar, { autoAlpha: 1, duration: 0.14 }, tRead);
+      // the minute rolls over between the source frames — keep that
+      tl.to(
+        document.getElementById("cge-clock-early"),
+        { autoAlpha: 0, duration: 0.01 },
+        tRead - 0.5,
+      );
+      tl.to(
+        document.getElementById("cge-clock-late"),
+        { autoAlpha: 1, duration: 0.01 },
+        tRead - 0.5,
+      );
+      tl.to(
+        document.getElementById("cge-batt-early"),
+        { autoAlpha: 0, duration: 0.01 },
+        tRead - 0.5,
+      );
+      tl.to(
+        document.getElementById("cge-batt-late"),
+        { autoAlpha: 1, duration: 0.01 },
+        tRead - 0.5,
+      );
+      tl.to(thread, { y: Y_FINAL, duration: T.readbackDur, ease: "power2.inOut" }, tRead);
+      tl.to(sbar, { y: 0, duration: T.readbackDur, ease: "power2.inOut" }, tRead);
+      tl.to(
+        chevWrap.firstChild,
+        { autoAlpha: 1, y: 0, duration: 0.3, ease: "back.out(1.5)" },
+        tRead + T.readbackDur - 0.35,
+      );
+
+      window.__timelines["chatgpt-exchange"] = tl;
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `showcase` `mock-ui` `ai` `chat` `vertical` `ad-template`.
+
+Created by Jake Moran.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
