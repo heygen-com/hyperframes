@@ -498,6 +498,37 @@ export function trackInitTemplate(templateId: string, props?: { tailwind?: boole
   trackEvent("init_template", { template: templateId, tailwind: props?.tailwind });
 }
 
+/**
+ * One event per registry item written into a project.
+ *
+ * `cli_command` records that `add` ran, never what it installed, so the
+ * catalog cannot be ranked by what people actually pull — and the registry is
+ * served from raw.githubusercontent.com, which gives us no per-item counter
+ * either. `add` is the only place an item lands in a project, so this is the
+ * one signal that answers "which block is worth building more of".
+ *
+ * `requested` separates the item the user named from the transitive
+ * `registryDependencies` dragged in behind it. A dependency installed
+ * alongside something else is not a vote for itself, and collapsing the two
+ * would rank a popular dependency above everything that depends on it.
+ *
+ * Item names are public registry identifiers, never user content or project
+ * data. This routes through `trackEvent`, so an install that opted out
+ * (`hyperframes telemetry disable`, `HYPERFRAMES_NO_TELEMETRY`, `DO_NOT_TRACK`)
+ * emits nothing.
+ */
+export function trackRegistryItemAdded(props: {
+  item: string;
+  itemType: string;
+  requested: boolean;
+}): void {
+  trackEvent("registry_item_added", {
+    item: props.item,
+    item_type: props.itemType,
+    requested: props.requested,
+  });
+}
+
 export function trackBrowserInstall(): void {
   trackEvent("browser_install", {});
 }
@@ -507,7 +538,8 @@ export function trackBrowserInstall(): void {
 // dashboards — a completed sign-in, a browser flow the user abandoned, and a
 // rejected key all look identical (i.e. absent). These three events close that
 // gap so the sign-in funnel is measurable like the render funnel already is.
-// `method` is "oauth" (the default browser PKCE flow) or "api_key". No token,
+// `method` is "oauth" (the default browser PKCE flow), "device" (attended
+// RFC 8628 flow), or "api_key". No token,
 // key, identity, email, or free text is ever attached — only the method and a
 // low-cardinality outcome/reason.
 //
@@ -516,7 +548,7 @@ export function trackBrowserInstall(): void {
 // today (events attribute to the install's anonymousId), but pre-plumbing it
 // makes attributing a completed sign-in to a resolved identity later a one-line
 // change at the callsite rather than a signature sweep.
-export type AuthLoginMethod = "oauth" | "api_key";
+export type AuthLoginMethod = "oauth" | "device" | "api_key";
 export type AuthLoginFailureReason =
   | "flow_error" // OAuth authorization/exchange threw a real error
   | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
@@ -696,6 +728,27 @@ export function trackRenderFeedback(props: {
     ...(props.recentRenderIds?.length
       ? { recent_render_ids: props.recentRenderIds.join(",") }
       : {}),
+  });
+}
+
+/**
+ * A catalog search that found nothing worth installing.
+ *
+ * This is the only path that ever sends a query anywhere, and it is a separate
+ * deliberate command rather than something `catalog --query` does on its own:
+ * plain search stays entirely local, which is what the CLI promises. The query
+ * is the point of the report — it names a move the catalog does not have yet,
+ * so the gaps can be read directly rather than guessed from install counts.
+ */
+export function trackCatalogSearchMiss(props: {
+  query: string;
+  wanted?: string;
+  tier?: string;
+}): void {
+  trackEvent("cli_catalog_search_miss", {
+    query: props.query,
+    ...(props.wanted ? { wanted: props.wanted } : {}),
+    ...(props.tier ? { tier: props.tier } : {}),
   });
 }
 

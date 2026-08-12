@@ -23,7 +23,25 @@ describe("file versions and write receipts", () => {
     };
     recordFileWriteReceipt("/project/index.html", receipt);
 
-    expect(consumeFileWriteReceipt("/project/index.html")).toEqual(receipt);
-    expect(consumeFileWriteReceipt("/project/index.html")).toBeNull();
+    expect(consumeFileWriteReceipt("/project/index.html", receipt.version)).toEqual(receipt);
+    expect(consumeFileWriteReceipt("/project/index.html", receipt.version)).toBeNull();
+  });
+
+  it("matches the final debounced watcher version instead of receipt insertion order", () => {
+    const first = {
+      path: "index.html",
+      version: fileContentVersion("first"),
+      writeToken: "write-1",
+    };
+    const last = {
+      path: "index.html",
+      version: fileContentVersion("last"),
+      writeToken: "write-2",
+    };
+    recordFileWriteReceipt("/project/index.html", first);
+    recordFileWriteReceipt("/project/index.html", last);
+
+    expect(consumeFileWriteReceipt("/project/index.html", last.version)).toEqual(last);
+    expect(consumeFileWriteReceipt("/project/index.html", first.version)).toEqual(first);
   });
 });

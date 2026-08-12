@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "stagger-lattice",
+  "type": "hyperframes:component",
+  "title": "Stagger Lattice",
+  "description": "A staggered grid reveal inspired by Anime.js v4 stagger utilities, implemented with GSAP for HyperFrames.",
+  "tags": ["advanced-motion", "anime-inspired", "hyperframes-native"],
+  "files": [
+    {
+      "path": "stagger-lattice.html",
+      "target": "compositions/components/stagger-lattice.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stagger-lattice.png"
+  }
+}

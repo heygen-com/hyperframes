@@ -23,6 +23,8 @@ export interface UseDomEditWiringParams {
   activeCompPath: string | null;
   domEditSelection: DomEditSelection | null;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
+  domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
+  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   previewIframe: HTMLIFrameElement | null;
   captionEditMode: boolean;
@@ -115,6 +117,8 @@ export function useDomEditWiring({
   activeCompPath,
   domEditSelection,
   domEditSelectionRef,
+  domEditGroupSelectionsRef,
+  refreshDomEditGroupSelectionsFromPreview,
   previewIframeRef,
   previewIframe,
   captionEditMode,
@@ -254,8 +258,10 @@ export function useDomEditWiring({
     activeCompPath,
     captionEditMode,
     domEditSelectionRef,
+    domEditGroupSelectionsRef,
     domEditSelection,
     applyDomSelection,
+    refreshDomEditGroupSelectionsFromPreview,
     buildDomSelectionFromTarget,
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,

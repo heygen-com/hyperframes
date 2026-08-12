@@ -4,17 +4,18 @@ sidebarTitle: "Captions and talking head"
 description: "Add captions, add designed overlays, or change the spoken edit."
 ---
 
-<Frame caption="One source clip, three caption treatments. The spoken edit stays untouched.">
-  <video
-    autoPlay
-    loop
-    muted
-    playsInline
-    preload="metadata"
-    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-captions.jpg"
-    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-captions.mp4"
-  />
-</Frame>
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+
+<DocsVideo
+  title="Five caption treatments on the same untouched clip"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/captions-recut-demo-v1.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/captions-recut-demo-v1.jpg"
+/>
+
+A verbatim rail, an embedded climax word, kinetic emphasis, a lower third and a
+pull-quote. The footage underneath is never re-edited — the overlays carry all
+of it.
 
 ## Make the request
 
@@ -30,9 +31,19 @@ quotes, statistics, lower thirds, or picture-in-picture.
 
 ## What should change?
 
-- **Add captions** — keep the original clip and audio unchanged; add readable, timed words over it.
-- **Add designed overlays** — keep the clip underneath and add titles, quotes, statistics, lower thirds, or picture-in-picture.
-- **Change the footage** — use General Video when pauses, selected moments, or the spoken order must change.
+This page covers two workflows. `/hyperframes` picks between them from what you
+ask for, and you can name one directly if you already know which you want.
+
+- **Words on screen** — `/embedded-captions`. Readable, timed words over the clip.
+  Plain subtitles, or cinematic captions set behind the subject.
+- **Designed cards on screen** — `/talking-head-recut`. Titles, pull-quotes, data
+  callouts, lower thirds, picture-in-picture, synced to the transcript.
+- **Change the footage itself** — neither of these. Use
+  [General Video](/guides/general-video) when pauses, selected moments, or the
+  spoken order must change.
+
+Both leave the clip and its audio untouched: the first adds words, the second adds
+graphics, and the footage plays the same underneath either way.
 
 Captions and designed overlays work best on a clear, single-subject clip with audible speech. Both keep the original footage and audio intact.
 

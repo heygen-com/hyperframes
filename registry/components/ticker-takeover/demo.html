@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  ticker-takeover demo. This standalone composition mounts the primitive in
+  a sized host and supplies non-default options, final word, and accent.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Ticker Takeover Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #17191f;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 45%, #171a21 0%, #0b0c0e 72%);
+      }
+
+      .mount-card {
+        width: 70%;
+        height: 64%;
+        left: 15%;
+        top: 18%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 32px;
+        background: rgba(17, 19, 24, 0.82);
+        box-shadow: 0 48px 120px rgba(0, 0, 0, 0.45);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="ticker-takeover-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.5"
+      data-fps="30"
+    >
+      <div
+        id="ticker-takeover-mount"
+        class="mount-card clip"
+        data-composition-id="ticker-takeover"
+        data-composition-src="./ticker-takeover.html"
+        data-variable-values='{"options":"build,shape,launch,repeat,scale","final_word":"launch","accent":"violet"}'
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+        data-width="1344"
+        data-height="691"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["ticker-takeover-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

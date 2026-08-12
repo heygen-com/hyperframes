@@ -3,9 +3,21 @@ title: Figma integration
 description: "Bring Figma designs into HyperFrames — frozen assets, brand tokens, editable components, storyboard reconstruction, and Figma Motion timelines translated to GSAP."
 ---
 
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
 Import the parts of a Figma design that should survive into the project: assets,
 brand values, editable components, motion, or storyboard states. HyperFrames
 stores the result locally so the render does not depend on Figma.
+
+<DocsVideo
+  title="A Figma frame beside the same design imported as working HTML"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/figma-to-html-demo-v1.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/figma-to-html-demo-v1.jpg"
+/>
+
+The same cursor and the same clicks land on both panels. Only the imported side
+responds — the field takes text, the button runs its states. One side is pixels,
+the other is a component.
 
 ## What you can import
 

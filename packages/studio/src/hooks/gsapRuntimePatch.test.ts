@@ -523,3 +523,46 @@ describe("patchRuntimeTweenInPlace — composition isolation", () => {
     expect(otherTween.invalidate).not.toHaveBeenCalled();
   });
 });
+
+describe("patchRuntimeTweenInPlace — deferSeek", () => {
+  /**
+   * A group drag commits one member at a time. Each in-place patch used to seek,
+   * and a seek re-renders the WHOLE timeline — so every member still queued behind
+   * the current one got repainted from its un-patched tween, back to where it sat
+   * before the drag, and stayed there until its own patch landed. That is the jump.
+   */
+  it("does not seek while a group commit is still writing its other members", () => {
+    const a = { id: "a" };
+    const rendered = { a: 0, b: 0 };
+    const tweenA = makeTween({ vars: { x: 0 }, targetIds: ["a"], duration: 0 }, a);
+    const tweenB = makeTween({ vars: { x: 0 }, targetIds: ["b"], duration: 0 }, a);
+    const { iframe, seek } = fakeIframe(a, [tweenA, tweenB], {
+      onSeek: () => {
+        rendered.a = tweenA.vars.x as number;
+        rendered.b = tweenB.vars.x as number;
+      },
+    });
+
+    const first = patchRuntimeTweenInPlace(
+      iframe,
+      "#a",
+      { kind: "set", props: { x: 500 } },
+      undefined,
+      true,
+    );
+
+    expect(first).toBe(true);
+    expect(tweenA.vars.x).toBe(500);
+    // No repaint yet: "b" keeps the transform the gesture left on it instead of
+    // being rendered from its own tween, which still holds the pre-drag value.
+    expect(seek).not.toHaveBeenCalled();
+    expect(rendered).toEqual({ a: 0, b: 0 });
+
+    tweenB.vars.x = 600;
+    const last = patchRuntimeTweenInPlace(iframe, "#a", { kind: "set", props: { x: 500 } });
+
+    expect(last).toBe(true);
+    expect(seek).toHaveBeenCalledTimes(1);
+    expect(rendered).toEqual({ a: 500, b: 600 });
+  });
+});

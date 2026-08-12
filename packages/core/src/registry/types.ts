@@ -128,6 +128,11 @@ export interface RegistryManifest {
   name: string;
   /** Registry homepage URL. */
   homepage: string;
+  /** Published on-device vector artifact, when this registry provides one. */
+  catalogArtifact?: {
+    /** SHA-256 identity of the searchable corpus and embedding contract. */
+    revision: string;
+  };
   /** Items in this registry. */
   items: RegistryManifestEntry[];
 }

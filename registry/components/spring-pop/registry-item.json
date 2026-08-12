@@ -1,0 +1,52 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spring-pop",
+  "type": "hyperframes:component",
+  "title": "Spring Pop",
+  "description": "A badge pops in from a visible near-rest scale, overshoots full size once, and settles cleanly.",
+  "tags": ["motion-primitive", "effects", "spring", "overshoot", "pop", "reveal"],
+  "jobs": ["reveal"],
+  "family": "effects",
+  "profile": "burst",
+  "evidence": "Video Primitives v1 Easing section (--ease-overshoot: back.out(1.7), taste rules 4-5) + hyperframes-animation rules/spring-pop-entrance.md playful overshoot variation",
+  "syncPoints": [{ "id": "pop-settle", "phase": "in", "offset": 0.6 }],
+  "files": [
+    {
+      "path": "spring-pop.html",
+      "target": "compositions/components/spring-pop.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "overshoot",
+      "type": "number",
+      "role": "timing",
+      "label": "Overshoot",
+      "description": "Strength passed to the back.out entrance curve.",
+      "default": 1.7,
+      "min": 1.1,
+      "max": 2,
+      "step": 0.1
+    },
+    {
+      "id": "fromScale",
+      "type": "number",
+      "role": "timing",
+      "label": "Starting scale",
+      "description": "Scale at the start of the entrance.",
+      "default": 0.9,
+      "min": 0.8,
+      "max": 0.97,
+      "step": 0.01
+    },
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Label",
+      "description": "Text displayed inside the badge.",
+      "default": "New"
+    }
+  ]
+}

@@ -1,0 +1,2999 @@
+---
+title: "Message Thread Reveal"
+description: "A full text conversation plays out on a phone - bubbles popping in, typing indicators, a shared link card, emoji, delivered receipts - with the whole thread scrolling up beat by beat until a closing card lands. The complete chat ad-template, measured message by message"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/blocks/message-thread-reveal.json"
+  compositionId="message-thread-reveal"
+  compositionSrc="compositions/message-thread-reveal.html"
+  variables={[{"id":"contactName","type":"string","role":"content","label":"Contact name","description":"Name pill in the chat header; the avatar shows its first letter.","default":"Rachel"},{"id":"cardTitle","type":"string","role":"content","label":"Link card title","description":"Title on the shared link card.","default":"HyperFrames | Write HTML, render pixel-perfect video"},{"id":"cardDomain","type":"string","role":"content","label":"Link card domain","description":"Domain line under the card title.","default":"hyperframes.heygen.com"},{"id":"ecProof","type":"string","role":"content","label":"End-card proof","description":"Social-proof line under the stars.","default":"12,000+ creators"},{"id":"ecCta","type":"string","role":"content","label":"End-card CTA","description":"Label on the closing card button.","default":"Start rendering free"}]}
+>
+
+```html message-thread-reveal.html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "contactName", "type": "string", "role": "content", "label": "Contact name", "description": "Name pill in the chat header; the avatar shows its first letter.", "default": "Rachel" },
+    { "id": "cardTitle", "type": "string", "role": "content", "label": "Link card title", "description": "Title on the shared link card.", "default": "HyperFrames | Write HTML, render pixel-perfect video" },
+    { "id": "cardDomain", "type": "string", "role": "content", "label": "Link card domain", "description": "Domain line under the card title.", "default": "hyperframes.heygen.com" },
+    { "id": "ecProof", "type": "string", "role": "content", "label": "End-card proof", "description": "Social-proof line under the stars.", "default": "12,000+ creators" },
+    { "id": "ecCta", "type": "string", "role": "content", "label": "End-card CTA", "description": "Label on the closing card button.", "default": "Start rendering free" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Message Thread Reveal</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #000;
+      }
+      #mtr-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      #mtr-plate {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse 90% 60% at 30% 20%,
+            rgba(60, 230, 172, 0.1) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(168deg, #23262b 0%, #17191d 55%, #101114 100%);
+      }
+      #mtr-phonebody {
+        position: absolute;
+        left: 124px;
+        top: 64px;
+        width: 832px;
+        height: 1797px;
+        border-radius: 112px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.25),
+          0 40px 90px rgba(0, 0, 0, 0.6);
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      /* ---------- phone screen ---------- */
+      #mtr-screen {
+        position: absolute;
+        left: 140px;
+        top: 80px;
+        width: 800px;
+        height: 1765px;
+        border-radius: 100px;
+        background: #000;
+        overflow: hidden;
+      }
+      /* status bar */
+      #mtr-sb-time {
+        position: absolute;
+        left: 88px;
+        top: 57px;
+        color: #fff;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      #mtr-sb-icons {
+        position: absolute;
+        left: 578px;
+        top: 66px;
+      }
+      /* header */
+      #mtr-hdr-back {
+        position: absolute;
+        left: 48px;
+        top: 158px;
+      }
+      #mtr-hdr-badge {
+        position: absolute;
+        left: 112px;
+        top: 163px;
+        height: 44px;
+        padding: 0 22px;
+        background: #262628;
+        border-radius: 22px;
+        color: #fff;
+        font-size: 28px;
+        line-height: 44px;
+      }
+      #mtr-hdr-avatar {
+        position: absolute;
+        left: 356px;
+        top: 122px;
+        width: 86px;
+        height: 86px;
+        border-radius: 50%;
+        background: #9ce474;
+        color: #12300c;
+        font-size: 44px;
+        font-weight: 600;
+        display: grid;
+        place-items: center;
+      }
+      #mtr-hdr-name {
+        position: absolute;
+        left: 400px;
+        top: 213px;
+        transform: translateX(-50%);
+        height: 46px;
+        padding: 0 20px;
+        background: #232325;
+        border-radius: 23px;
+        color: #fff;
+        font-size: 29px;
+        line-height: 46px;
+        white-space: nowrap;
+      }
+      #mtr-hdr-name .chev {
+        color: #8e8e93;
+        font-size: 26px;
+        margin-left: 8px;
+      }
+      #mtr-hdr-cam {
+        position: absolute;
+        left: 699px;
+        top: 166px;
+      }
+      /* chat viewport */
+      #mtr-chatview {
+        position: absolute;
+        left: 0;
+        top: 265px;
+        width: 800px;
+        height: 1367px;
+        overflow: hidden;
+      }
+      .item {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        visibility: hidden;
+      }
+      .item.recv {
+        padding-left: 44px;
+        text-align: left;
+      }
+      .item.sent {
+        padding-right: 45px;
+        text-align: right;
+      }
+      .pop {
+        display: inline-block;
+        position: relative;
+      }
+      .pop-recv {
+        transform-origin: left bottom;
+      }
+      .pop-sent {
+        transform-origin: right bottom;
+      }
+      /* font 32.9px: artifact-closed-loop calibration (ref m1 ink 624x32 vs shipped-render 711x36 -> x0.876;
+     the earlier 37.5px also overflowed max-width). padding 28px: ref ink inset 31/30 vs rep 26. */
+      .bubble {
+        display: inline-block;
+        position: relative;
+        max-width: 720px;
+        padding: 0 28px;
+        height: 81px;
+        line-height: 81px;
+        border-radius: 40px;
+        font-size: 32.9px;
+        color: #fff;
+        white-space: nowrap;
+        text-align: left;
+      }
+      .bubble.recv {
+        background: #242428;
+      }
+      .bubble.sent {
+        background: #0a80f8;
+      }
+      /* iMessage tails (screen bg is pure black -> cover circle trick) */
+      .tail-recv::before {
+        content: "";
+        position: absolute;
+        left: -10px;
+        bottom: 0;
+        width: 26px;
+        height: 26px;
+        background: #242428;
+        border-bottom-right-radius: 20px 18px;
+      }
+      .tail-recv::after {
+        content: "";
+        position: absolute;
+        left: -26px;
+        bottom: -2px;
+        width: 20px;
+        height: 30px;
+        background: #000;
+        border-bottom-right-radius: 16px;
+      }
+      .tail-sent::before {
+        content: "";
+        position: absolute;
+        right: -10px;
+        bottom: 0;
+        width: 26px;
+        height: 26px;
+        background: #0a80f8;
+        border-bottom-left-radius: 20px 18px;
+      }
+      .tail-sent::after {
+        content: "";
+        position: absolute;
+        right: -26px;
+        bottom: -2px;
+        width: 20px;
+        height: 30px;
+        background: #000;
+        border-bottom-left-radius: 16px;
+      }
+      .delivered {
+        color: #8e8e93;
+        font-size: 28px;
+        margin-top: 12px;
+        padding-right: 7px;
+        text-align: right;
+      }
+      /* 105.5px/ls2/ml12: artifact-closed-loop (ref yellow body h92, row w304, x203 vs rep 103/383/209) */
+      .emojirow {
+        font-size: 105.5px;
+        line-height: 140px;
+        letter-spacing: 2px;
+        margin-left: 12px;
+        white-space: nowrap;
+        color: #fff;
+      }
+      /* typing indicator */
+      .dotswrap {
+        position: relative;
+        display: inline-block;
+      }
+      .dotsbubble {
+        width: 124px;
+        height: 67px;
+        background: #242428;
+        border-radius: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .dot {
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        background: #8e8e93;
+        display: inline-block;
+      }
+      .dtail1 {
+        position: absolute;
+        left: -2px;
+        bottom: -4px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #242428;
+      }
+      .dtail2 {
+        position: absolute;
+        left: -14px;
+        bottom: -14px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #242428;
+      }
+      /* link card */
+      .card {
+        display: inline-block;
+        width: 443px;
+        border-radius: 36px;
+        overflow: hidden;
+        text-align: left;
+      }
+      .cardimg {
+        display: block;
+        width: 443px;
+        height: 432px;
+        object-fit: cover;
+      }
+      .cardmeta {
+        height: 178px;
+        background: #28282c;
+        display: flex;
+        align-items: center;
+        padding: 0 18px 0 26px;
+      }
+      .cardtxt {
+        flex: 1;
+        min-width: 0;
+      }
+      /* 26.8/23.3px: artifact-closed-loop (ref title ink w302 vs rep 350 -> x0.863); max-width keeps the
+     measured 3-line wrap 'Where Are You? Dad / Edition | A personalized / book about him' */
+      .cardtitle {
+        color: #fff;
+        font-size: 26.8px;
+        font-weight: 600;
+        line-height: 34px;
+        max-width: 318px;
+      }
+      .carddomain {
+        color: #8e8e93;
+        font-size: 23.3px;
+        margin-top: 4px;
+      }
+      .cardchev {
+        color: #8e8e93;
+        font-size: 48px;
+        padding-left: 8px;
+      }
+      /* input bar */
+      #mtr-plusbtn {
+        position: absolute;
+        left: 12px;
+        top: 1653px;
+        width: 86px;
+        height: 86px;
+        border-radius: 50%;
+        background: #262628;
+        color: #8e8e93;
+        font-size: 52px;
+        font-weight: 300;
+        display: grid;
+        place-items: center;
+      }
+      #mtr-field {
+        position: absolute;
+        left: 124px;
+        top: 1646px;
+        width: 665px;
+        height: 93px;
+        border: 2px solid #202022;
+        border-radius: 47px;
+      }
+      #mtr-ph {
+        position: absolute;
+        left: 158px;
+        top: 1668px;
+        color: #8e8e93;
+        font-size: 35px;
+        line-height: 48px;
+      }
+      #mtr-typedwrap {
+        position: absolute;
+        left: 158px;
+        top: 1668px;
+        width: 600px;
+        height: 48px;
+        white-space: pre;
+      }
+      .typed {
+        position: absolute;
+        left: 0;
+        top: 0;
+        visibility: hidden;
+        color: #fff;
+        font-size: 36px;
+        line-height: 48px;
+        white-space: pre;
+      }
+      .caret {
+        display: inline-block;
+        width: 4px;
+        height: 42px;
+        background: #0a80f8;
+        vertical-align: -8px;
+        margin-left: 2px;
+        border-radius: 2px;
+      }
+      #mtr-mic {
+        position: absolute;
+        left: 724px;
+        top: 1664px;
+      }
+      #mtr-sendbtn {
+        position: absolute;
+        left: 698px;
+        top: 1660px;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: #0a80f8;
+        visibility: hidden;
+        display: grid;
+        place-items: center;
+      }
+      /* ---------- end card ---------- */
+      #mtr-ec-wrap {
+        position: absolute;
+        inset: 0;
+        background: #f9f2e7;
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      #mtr-ec-logo {
+        position: absolute;
+        left: 308px;
+        top: 500px;
+        width: 464px;
+        height: 139px;
+      }
+      #mtr-ec-stars {
+        position: absolute;
+        left: 372px;
+        top: 714px;
+        width: 336px;
+        display: flex;
+        gap: 15px;
+      }
+      #mtr-ec-fam {
+        position: absolute;
+        left: 0;
+        top: 796px;
+        width: 100%;
+        text-align: center;
+        color: #185450;
+        font-size: 35.5px;
+        font-weight: 700;
+      }
+      .ec-icon {
+        position: absolute;
+        top: 934px;
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: #185450;
+        display: grid;
+        place-items: center;
+      }
+      #mtr-ec-fam {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      .ec-label {
+        position: absolute;
+        top: 1098px;
+        width: 240px;
+        text-align: center;
+        color: #205048;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 31px;
+        line-height: 40px;
+      }
+      #mtr-ec-cta {
+        position: absolute;
+        left: 200px;
+        top: 1298px;
+        width: 680px;
+        height: 118px;
+        border-radius: 59px;
+        background: #3ce6ac;
+        color: #0d3b2b;
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        font-size: 46px;
+        display: grid;
+        place-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="mtr-root"
+      data-composition-id="message-thread-reveal"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="25.7667"
+    >
+      <div id="mtr-plate">
+        <div id="mtr-phonebody"></div>
+      </div>
+      <section
+        id="scene-chat"
+        class="clip"
+        data-start="0"
+        data-duration="23.62"
+        data-track-index="1"
+      >
+        <div id="mtr-screen">
+          <div id="mtr-sb-time">9:41</div>
+          <svg id="mtr-sb-icons" width="86" height="30" viewBox="0 0 86 30">
+            <rect x="0" y="16" width="5" height="9" rx="1.5" fill="#fff" />
+            <rect x="8" y="12" width="5" height="13" rx="1.5" fill="#fff" />
+            <rect x="16" y="8" width="5" height="17" rx="1.5" fill="#fff" />
+            <rect x="24" y="4" width="5" height="21" rx="1.5" fill="#fff" />
+            <g transform="translate(44,2)">
+              <path
+                d="M18 21.5 L21.5 25 L25 21.5 A5 5 0 0 0 18 21.5"
+                fill="#fff"
+                transform="translate(-10,-2)"
+              />
+              <path
+                d="M4 13 A14 14 0 0 1 23 13"
+                stroke="#fff"
+                stroke-width="4"
+                fill="none"
+                transform="translate(-2,-2)"
+              />
+              <path
+                d="M8.5 17.5 A8 8 0 0 1 18.5 17.5"
+                stroke="#fff"
+                stroke-width="4"
+                fill="none"
+                transform="translate(-2,-2)"
+              />
+            </g>
+          </svg>
+          <svg id="mtr-hdr-back" width="26" height="48" viewBox="0 0 26 48">
+            <path
+              d="M23 3 L4 24 L23 45"
+              stroke="#E4E4E4"
+              stroke-width="6"
+              fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <div id="mtr-hdr-badge">12</div>
+          <div id="mtr-hdr-avatar">R</div>
+          <div id="mtr-hdr-name">Rachel<span class="chev">›</span></div>
+          <svg id="mtr-hdr-cam" width="52" height="34" viewBox="0 0 52 34">
+            <rect x="0" y="1" width="36" height="32" rx="9" fill="#fff" />
+            <path d="M38 12 L50 4 V30 L38 22 Z" fill="#fff" />
+          </svg>
+          <div id="mtr-chatview">
+            <div
+              class="item recv"
+              id="mtr-it-m1"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="bubble recv">what r u using for the launch video??</div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-dots"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="dotswrap">
+                  <div class="dotsbubble">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  </div>
+                  <div class="dtail1"></div>
+                  <div class="dtail2"></div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m2"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent tail-sent">wait look 👀</div>
+                <div class="delivered">Delivered</div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m3"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="card">
+                  <img class="cardimg" src="assets/card-image.jpg" alt="" />
+                  <div class="cardmeta">
+                    <div class="cardtxt">
+                      <div class="cardtitle">
+                        HyperFrames | Write HTML, render pixel-perfect video
+                      </div>
+                      <div class="carddomain">hyperframes.heygen.com</div>
+                    </div>
+                    <div class="cardchev">›</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m4"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="bubble recv">OMG IT&#39;S HTML</div></div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m5"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="emojirow">🤯🤯🤯</div></div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m6"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent tail-sent">renders in 4K. no editor</div>
+                <div class="delivered">Delivered</div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-dots2"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="dotswrap">
+                  <div class="dotsbubble">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  </div>
+                  <div class="dtail1"></div>
+                  <div class="dtail2"></div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m7"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="bubble recv tail-recv">where did u find this</div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m8"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent"><div class="bubble sent">on heygen</div></div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m9"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent">u just write plain html tags</div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m10"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent tail-sent">the code is yours forever</div>
+                <div class="delivered">Delivered</div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m11"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="bubble recv">installing rn</div></div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m12"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="bubble recv tail-recv">ty bestie 💚</div></div>
+            </div>
+          </div>
+          <div id="mtr-plusbtn">+</div>
+          <div id="mtr-field"></div>
+          <div id="mtr-ph">Message</div>
+          <div id="mtr-typedwrap">
+            <span class="typed" id="mtr-ty-1-0">o<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-1">wa<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-2">wai<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-3">wait<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-4">wait <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-5">wait l<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-6">wait lo<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-7">wait loo<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-8">wait look<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-9">wait look <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-10">wait look 👀<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-0">r<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-1">re<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-2">ren<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-3">rend<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-4">rende<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-5">render<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-6">renders<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-7">renders <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-8">renders i<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-9">renders in<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-10">renders in <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-11">renders in 4<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-12">renders in 4K<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-13">renders in 4K.<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-14">renders in 4K. <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-15">renders in 4K. n<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-16">renders in 4K. no<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-17"
+              >renders in 4K. no <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-18"
+              >renders in 4K. no e<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-19"
+              >renders in 4K. no ed<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-20"
+              >renders in 4K. no edi<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-21"
+              >renders in 4K. no edit<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-22"
+              >renders in 4K. no edito<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-23"
+              >renders in 4K. no editor<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-3-0">o<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-1">on<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-2">on <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-3">on h<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-4">on he<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-5">on hey<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-6">on heyg<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-7">on heyge<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-8">on heygen<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-0">u<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-1">u <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-2">u j<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-3">u ju<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-4">u jus<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-5">u just<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-6">u just <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-7">u just w<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-8">u just wr<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-9">u just wri<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-10">u just writ<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-11">u just write<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-12">u just write <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-13">u just write p<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-14">u just write pl<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-15">u just write pla<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-16">u just write plai<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-17"
+              >u just write plain<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-18"
+              >u just write plain <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-19"
+              >u just write plain h<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-20"
+              >u just write plain ht<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-21"
+              >u just write plain htm<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-22"
+              >u just write plain html<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-23"
+              >u just write plain html <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-24"
+              >u just write plain html t<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-25"
+              >u just write plain html ta<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-26"
+              >u just write plain html tag<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-27"
+              >u just write plain html tags<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-0">r<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-1">th<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-2">the<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-3">the <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-4">the c<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-5">the co<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-6">the cod<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-7">the code<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-8">the code <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-9">the code i<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-10">the code is<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-11">the code is <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-12">the code is y<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-13">the code is yo<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-14">the code is you<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-15">the code is your<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-16">the code is yours<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-17"
+              >the code is yours <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-18"
+              >the code is yours f<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-19"
+              >the code is yours fo<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-20"
+              >the code is yours for<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-21"
+              >the code is yours fore<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-22"
+              >the code is yours forev<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-23"
+              >the code is yours foreve<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-24"
+              >the code is yours forever<span class="caret"></span
+            ></span>
+          </div>
+          <svg id="mtr-mic" width="26" height="42" viewBox="0 0 26 42">
+            <rect x="8" y="0" width="10" height="22" rx="5" fill="#8E8E93" />
+            <path
+              d="M2 16 A11 11 0 0 0 24 16"
+              stroke="#8E8E93"
+              stroke-width="3.5"
+              fill="none"
+              transform="translate(0,2)"
+            />
+            <line x1="13" y1="30" x2="13" y2="38" stroke="#8E8E93" stroke-width="3.5" />
+            <line x1="6" y1="39" x2="20" y2="39" stroke="#8E8E93" stroke-width="3.5" />
+          </svg>
+          <div id="mtr-sendbtn">
+            <svg width="26" height="30" viewBox="0 0 26 30">
+              <path
+                d="M13 28 V4 M3 13 L13 3 L23 13"
+                stroke="#fff"
+                stroke-width="5"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+      </section>
+      <section
+        id="scene-end"
+        class="clip"
+        data-start="23.2567"
+        data-duration="2.53"
+        data-track-index="2"
+        style="z-index: 5"
+      >
+        <div id="mtr-ec-wrap" data-layout-allow-overlap data-layout-allow-occlusion>
+          <img id="mtr-ec-logo" src="assets/hyperframes-logo-black.svg" alt="HyperFrames" />
+          <div id="mtr-ec-stars">
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+          </div>
+          <div id="mtr-ec-fam">12,000+ creators</div>
+          <div class="ec-icon" style="left: 150px">
+            <svg width="58" height="58" viewBox="0 0 24 24">
+              <path
+                d="M3 17.2 V21 h3.8 L18 9.8 l-3.8-3.8 L3 17.2 Z M20.7 7.1 c0.4-0.4 0.4-1 0-1.4 l-2.4-2.4 c-0.4-0.4-1-0.4-1.4 0 l-1.8 1.8 3.8 3.8 1.8-1.8 Z"
+                fill="#F9F2E7"
+              />
+            </svg>
+          </div>
+          <div class="ec-icon" style="left: 470px">
+            <svg width="60" height="56" viewBox="0 0 24 22">
+              <path
+                d="M12 21 C12 21 1 14.4 1 7.6 C1 3.9 3.9 1 7.5 1 C9.4 1 11.1 1.9 12 3.3 C12.9 1.9 14.6 1 16.5 1 C20.1 1 23 3.9 23 7.6 C23 14.4 12 21 12 21 Z"
+                fill="#F9F2E7"
+              />
+            </svg>
+          </div>
+          <div class="ec-icon" style="left: 790px">
+            <svg width="60" height="60" viewBox="0 0 24 24">
+              <path
+                d="M12 2 C6.5 2 2 6.5 2 12 s4.5 10 10 10 c0.9 0 1.6-0.7 1.6-1.6 0-0.4-0.2-0.8-0.4-1.1 -0.3-0.3-0.4-0.7-0.4-1.1 0-0.9 0.7-1.6 1.6-1.6 h1.9 c3.1 0 5.7-2.6 5.7-5.7 C22 7 17.5 2 12 2 Z M6.5 12 c-0.8 0-1.5-0.7-1.5-1.5 S5.7 9 6.5 9 8 9.7 8 10.5 7.3 12 6.5 12 Z M9.5 8 C8.7 8 8 7.3 8 6.5 S8.7 5 9.5 5 s1.5 0.7 1.5 1.5 S10.3 8 9.5 8 Z M14.5 8 c-0.8 0-1.5-0.7-1.5-1.5 S13.7 5 14.5 5 16 5.7 16 6.5 15.3 8 14.5 8 Z M17.5 12 c-0.8 0-1.5-0.7-1.5-1.5 S16.7 9 17.5 9 19 9.7 19 10.5 18.3 12 17.5 12 Z"
+                fill="#F9F2E7"
+              />
+            </svg>
+          </div>
+          <div class="ec-label" style="left: 100px">
+            <div>Write</div>
+            <div>plain HTML</div>
+          </div>
+          <div class="ec-label" style="left: 420px">
+            <div>Render</div>
+            <div>pixel-perfect</div>
+          </div>
+          <div class="ec-label" style="left: 740px">
+            <div>Own</div>
+            <div>every line</div>
+          </div>
+          <div id="mtr-ec-cta">Start rendering free</div>
+        </div>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        "use strict";
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+        function text(value, fallback, max) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > max ? t.slice(0, max) : t;
+        }
+        var contact = text(vars.contactName, "Rachel", 16);
+        document.getElementById("mtr-hdr-avatar").textContent = contact.charAt(0).toUpperCase();
+        var namePill = document.getElementById("mtr-hdr-name");
+        namePill.innerHTML = "";
+        namePill.appendChild(document.createTextNode(contact));
+        var chev = document.createElement("span");
+        chev.className = "chev";
+        chev.textContent = "\u203A";
+        namePill.appendChild(chev);
+        document.querySelector(".cardtitle").textContent = text(
+          vars.cardTitle,
+          "HyperFrames | Write HTML, render pixel-perfect video",
+          80,
+        );
+        document.querySelector(".carddomain").textContent = text(
+          vars.cardDomain,
+          "hyperframes.heygen.com",
+          40,
+        );
+        document.getElementById("mtr-ec-fam").textContent = text(
+          vars.ecProof,
+          "12,000+ creators",
+          30,
+        );
+        document.getElementById("mtr-ec-cta").textContent = text(
+          vars.ecCta,
+          "Start rendering free",
+          26,
+        );
+      })();
+      // initial states applied immediately (CSS hides all .item; m1 must be live at frame 0)
+      gsap.set("#mtr-it-m1", { autoAlpha: 1 });
+      const tl = gsap.timeline({ paused: true });
+      gsap.set("#mtr-it-m1", { y: 1264 });
+      tl.fromTo(
+        "#mtr-it-m1 .pop",
+        { scale: 0.75, autoAlpha: 0.6 },
+        { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+        0.0,
+      );
+      tl.set("#mtr-it-m1", { autoAlpha: 1 }, 0.0);
+      tl.set("#mtr-it-m1", { y: 1179 }, 0.7662);
+      tl.set("#mtr-it-dots", { y: 1278 }, 0.7662);
+      tl.fromTo(
+        "#mtr-it-dots .pop",
+        { scale: 0.6, autoAlpha: 0.4 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        0.7662,
+      );
+      tl.set("#mtr-it-dots", { autoAlpha: 1 }, 0.7662);
+      tl.set("#mtr-it-m1", { y: 1036 }, 2.9662);
+      tl.set("#mtr-it-dots", { y: 1135 }, 2.9662);
+      tl.set("#mtr-it-m2", { y: 1218 }, 2.9662);
+      tl.fromTo(
+        "#mtr-it-m2 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        2.9662,
+      );
+      tl.set("#mtr-it-m2", { autoAlpha: 1 }, 2.9662);
+      tl.set("#mtr-it-m1", { y: 416 }, 3.6995);
+      tl.set("#mtr-it-dots", { y: 515 }, 3.6995);
+      tl.set("#mtr-it-m2", { y: 598 }, 3.6995);
+      tl.set("#mtr-it-m3", { y: 735 }, 3.6995);
+      tl.fromTo(
+        "#mtr-it-m3 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        3.6995,
+      );
+      tl.set("#mtr-it-m3", { autoAlpha: 1 }, 3.6995);
+      tl.set("#mtr-it-dots", { autoAlpha: 0 }, 7.2995);
+      tl.set("#mtr-it-m1", { y: 400 }, 7.2995);
+      tl.set("#mtr-it-m2", { y: 499 }, 7.2995);
+      tl.set("#mtr-it-m3", { y: 636 }, 7.2995);
+      tl.set("#mtr-it-m4", { y: 1264 }, 7.2995);
+      tl.fromTo(
+        "#mtr-it-m4 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        7.2995,
+      );
+      tl.set("#mtr-it-m4", { autoAlpha: 1 }, 7.2995);
+      tl.set("#mtr-it-m1", { y: 250 }, 8.0328);
+      tl.set("#mtr-it-m2", { y: 349 }, 8.0328);
+      tl.set("#mtr-it-m3", { y: 486 }, 8.0328);
+      tl.set("#mtr-it-m4", { y: 1114 }, 8.0328);
+      tl.set("#mtr-it-m5", { y: 1205 }, 8.0328);
+      tl.fromTo(
+        "#mtr-it-m5 .pop",
+        { scale: 0.5, autoAlpha: 0.3 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        8.0328,
+      );
+      tl.set("#mtr-it-m5", { autoAlpha: 1 }, 8.0328);
+      tl.set("#mtr-it-m1", { y: 113 }, 10.5995);
+      tl.set("#mtr-it-m2", { y: 212 }, 10.5995);
+      tl.set("#mtr-it-m3", { y: 349 }, 10.5995);
+      tl.set("#mtr-it-m4", { y: 977 }, 10.5995);
+      tl.set("#mtr-it-m5", { y: 1068 }, 10.5995);
+      tl.set("#mtr-it-m6", { y: 1218 }, 10.5995);
+      tl.fromTo(
+        "#mtr-it-m6 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        10.5995,
+      );
+      tl.set("#mtr-it-m6", { autoAlpha: 1 }, 10.5995);
+      tl.set("#mtr-it-m1", { y: 28 }, 11.3662);
+      tl.set("#mtr-it-m2", { y: 127 }, 11.3662);
+      tl.set("#mtr-it-m3", { y: 264 }, 11.3662);
+      tl.set("#mtr-it-m4", { y: 892 }, 11.3662);
+      tl.set("#mtr-it-m5", { y: 983 }, 11.3662);
+      tl.set("#mtr-it-m6", { y: 1133 }, 11.3662);
+      tl.set("#mtr-it-dots2", { y: 1278 }, 11.3662);
+      tl.fromTo(
+        "#mtr-it-dots2 .pop",
+        { scale: 0.6, autoAlpha: 0.4 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        11.3662,
+      );
+      tl.set("#mtr-it-dots2", { autoAlpha: 1 }, 11.3662);
+      tl.set("#mtr-it-dots2", { autoAlpha: 0 }, 12.3662);
+      tl.set("#mtr-it-m1", { y: 14 }, 12.3662);
+      tl.set("#mtr-it-m2", { y: 113 }, 12.3662);
+      tl.set("#mtr-it-m3", { y: 250 }, 12.3662);
+      tl.set("#mtr-it-m4", { y: 878 }, 12.3662);
+      tl.set("#mtr-it-m5", { y: 969 }, 12.3662);
+      tl.set("#mtr-it-m6", { y: 1119 }, 12.3662);
+      tl.set("#mtr-it-m7", { y: 1264 }, 12.3662);
+      tl.fromTo(
+        "#mtr-it-m7 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        12.3662,
+      );
+      tl.set("#mtr-it-m7", { autoAlpha: 1 }, 12.3662);
+      tl.set("#mtr-it-m1", { y: -85 }, 14.0662);
+      tl.set("#mtr-it-m2", { y: 14 }, 14.0662);
+      tl.set("#mtr-it-m3", { y: 151 }, 14.0662);
+      tl.set("#mtr-it-m4", { y: 779 }, 14.0662);
+      tl.set("#mtr-it-m5", { y: 870 }, 14.0662);
+      tl.set("#mtr-it-m6", { y: 1020 }, 14.0662);
+      tl.set("#mtr-it-m7", { y: 1165 }, 14.0662);
+      tl.set("#mtr-it-m8", { y: 1264 }, 14.0662);
+      tl.fromTo(
+        "#mtr-it-m8 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        14.0662,
+      );
+      tl.set("#mtr-it-m8", { autoAlpha: 1 }, 14.0662);
+      tl.set("#mtr-it-m1", { y: -176 }, 17.0995);
+      tl.set("#mtr-it-m2", { y: -77 }, 17.0995);
+      tl.set("#mtr-it-m3", { y: 60 }, 17.0995);
+      tl.set("#mtr-it-m4", { y: 688 }, 17.0995);
+      tl.set("#mtr-it-m5", { y: 779 }, 17.0995);
+      tl.set("#mtr-it-m6", { y: 929 }, 17.0995);
+      tl.set("#mtr-it-m7", { y: 1074 }, 17.0995);
+      tl.set("#mtr-it-m8", { y: 1173 }, 17.0995);
+      tl.set("#mtr-it-m9", { y: 1264 }, 17.0995);
+      tl.fromTo(
+        "#mtr-it-m9 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        17.0995,
+      );
+      tl.set("#mtr-it-m9", { autoAlpha: 1 }, 17.0995);
+      tl.set("#mtr-it-m1", { y: -313 }, 19.8995);
+      tl.set("#mtr-it-m2", { y: -214 }, 19.8995);
+      tl.set("#mtr-it-m3", { y: -77 }, 19.8995);
+      tl.set("#mtr-it-m4", { y: 551 }, 19.8995);
+      tl.set("#mtr-it-m5", { y: 642 }, 19.8995);
+      tl.set("#mtr-it-m6", { y: 792 }, 19.8995);
+      tl.set("#mtr-it-m7", { y: 937 }, 19.8995);
+      tl.set("#mtr-it-m8", { y: 1036 }, 19.8995);
+      tl.set("#mtr-it-m9", { y: 1127 }, 19.8995);
+      tl.set("#mtr-it-m10", { y: 1218 }, 19.8995);
+      tl.fromTo(
+        "#mtr-it-m10 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        19.8995,
+      );
+      tl.set("#mtr-it-m10", { autoAlpha: 1 }, 19.8995);
+      tl.set("#mtr-it-m1", { y: -412 }, 20.6662);
+      tl.set("#mtr-it-m2", { y: -313 }, 20.6662);
+      tl.set("#mtr-it-m3", { y: -176 }, 20.6662);
+      tl.set("#mtr-it-m4", { y: 452 }, 20.6662);
+      tl.set("#mtr-it-m5", { y: 543 }, 20.6662);
+      tl.set("#mtr-it-m6", { y: 693 }, 20.6662);
+      tl.set("#mtr-it-m7", { y: 838 }, 20.6662);
+      tl.set("#mtr-it-m8", { y: 937 }, 20.6662);
+      tl.set("#mtr-it-m9", { y: 1028 }, 20.6662);
+      tl.set("#mtr-it-m10", { y: 1119 }, 20.6662);
+      tl.set("#mtr-it-m11", { y: 1264 }, 20.6662);
+      tl.fromTo(
+        "#mtr-it-m11 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        20.6662,
+      );
+      tl.set("#mtr-it-m11", { autoAlpha: 1 }, 20.6662);
+      tl.set("#mtr-it-m1", { y: -503 }, 21.4328);
+      tl.set("#mtr-it-m2", { y: -404 }, 21.4328);
+      tl.set("#mtr-it-m3", { y: -267 }, 21.4328);
+      tl.set("#mtr-it-m4", { y: 361 }, 21.4328);
+      tl.set("#mtr-it-m5", { y: 452 }, 21.4328);
+      tl.set("#mtr-it-m6", { y: 602 }, 21.4328);
+      tl.set("#mtr-it-m7", { y: 747 }, 21.4328);
+      tl.set("#mtr-it-m8", { y: 846 }, 21.4328);
+      tl.set("#mtr-it-m9", { y: 937 }, 21.4328);
+      tl.set("#mtr-it-m10", { y: 1028 }, 21.4328);
+      tl.set("#mtr-it-m11", { y: 1173 }, 21.4328);
+      tl.set("#mtr-it-m12", { y: 1264 }, 21.4328);
+      tl.fromTo(
+        "#mtr-it-m12 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        21.4328,
+      );
+      tl.set("#mtr-it-m12", { autoAlpha: 1 }, 21.4328);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 2.0328);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 2.0328);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 2.0328);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 2.9662);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 2.9662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 2.9662);
+      tl.set("#mtr-ty-1-0", { autoAlpha: 1 }, 2.0328);
+      tl.set("#mtr-ty-1-0", { autoAlpha: 0 }, 2.0995);
+      tl.set("#mtr-ty-1-1", { autoAlpha: 1 }, 2.0995);
+      tl.set("#mtr-ty-1-1", { autoAlpha: 0 }, 2.1662);
+      tl.set("#mtr-ty-1-2", { autoAlpha: 1 }, 2.1662);
+      tl.set("#mtr-ty-1-2", { autoAlpha: 0 }, 2.2328);
+      tl.set("#mtr-ty-1-3", { autoAlpha: 1 }, 2.2328);
+      tl.set("#mtr-ty-1-3", { autoAlpha: 0 }, 2.2995);
+      tl.set("#mtr-ty-1-4", { autoAlpha: 1 }, 2.2995);
+      tl.set("#mtr-ty-1-4", { autoAlpha: 0 }, 2.3995);
+      tl.set("#mtr-ty-1-5", { autoAlpha: 1 }, 2.3995);
+      tl.set("#mtr-ty-1-5", { autoAlpha: 0 }, 2.4328);
+      tl.set("#mtr-ty-1-6", { autoAlpha: 1 }, 2.4328);
+      tl.set("#mtr-ty-1-6", { autoAlpha: 0 }, 2.4995);
+      tl.set("#mtr-ty-1-7", { autoAlpha: 1 }, 2.4995);
+      tl.set("#mtr-ty-1-7", { autoAlpha: 0 }, 2.5662);
+      tl.set("#mtr-ty-1-8", { autoAlpha: 1 }, 2.5662);
+      tl.set("#mtr-ty-1-8", { autoAlpha: 0 }, 2.5995);
+      tl.set("#mtr-ty-1-9", { autoAlpha: 1 }, 2.5995);
+      tl.set("#mtr-ty-1-9", { autoAlpha: 0 }, 2.7995);
+      tl.set("#mtr-ty-1-10", { autoAlpha: 1 }, 2.7995);
+      tl.set("#mtr-ty-1-10", { autoAlpha: 0 }, 2.9662);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 8.8662);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 8.8662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 8.8662);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 10.5995);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 10.5995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 10.5995);
+      tl.set("#mtr-ty-2-0", { autoAlpha: 1 }, 8.8662);
+      tl.set("#mtr-ty-2-0", { autoAlpha: 0 }, 8.9662);
+      tl.set("#mtr-ty-2-1", { autoAlpha: 1 }, 8.9662);
+      tl.set("#mtr-ty-2-1", { autoAlpha: 0 }, 8.9995);
+      tl.set("#mtr-ty-2-2", { autoAlpha: 1 }, 8.9995);
+      tl.set("#mtr-ty-2-2", { autoAlpha: 0 }, 9.0662);
+      tl.set("#mtr-ty-2-3", { autoAlpha: 1 }, 9.0662);
+      tl.set("#mtr-ty-2-3", { autoAlpha: 0 }, 9.1662);
+      tl.set("#mtr-ty-2-4", { autoAlpha: 1 }, 9.1662);
+      tl.set("#mtr-ty-2-4", { autoAlpha: 0 }, 9.2328);
+      tl.set("#mtr-ty-2-5", { autoAlpha: 1 }, 9.2328);
+      tl.set("#mtr-ty-2-5", { autoAlpha: 0 }, 9.2662);
+      tl.set("#mtr-ty-2-6", { autoAlpha: 1 }, 9.2662);
+      tl.set("#mtr-ty-2-6", { autoAlpha: 0 }, 9.3662);
+      tl.set("#mtr-ty-2-7", { autoAlpha: 1 }, 9.3662);
+      tl.set("#mtr-ty-2-7", { autoAlpha: 0 }, 9.3995);
+      tl.set("#mtr-ty-2-8", { autoAlpha: 1 }, 9.3995);
+      tl.set("#mtr-ty-2-8", { autoAlpha: 0 }, 9.4328);
+      tl.set("#mtr-ty-2-9", { autoAlpha: 1 }, 9.4328);
+      tl.set("#mtr-ty-2-9", { autoAlpha: 0 }, 9.5662);
+      tl.set("#mtr-ty-2-10", { autoAlpha: 1 }, 9.5662);
+      tl.set("#mtr-ty-2-10", { autoAlpha: 0 }, 9.5995);
+      tl.set("#mtr-ty-2-11", { autoAlpha: 1 }, 9.5995);
+      tl.set("#mtr-ty-2-11", { autoAlpha: 0 }, 9.6662);
+      tl.set("#mtr-ty-2-12", { autoAlpha: 1 }, 9.6662);
+      tl.set("#mtr-ty-2-12", { autoAlpha: 0 }, 9.7995);
+      tl.set("#mtr-ty-2-13", { autoAlpha: 1 }, 9.7995);
+      tl.set("#mtr-ty-2-13", { autoAlpha: 0 }, 9.8662);
+      tl.set("#mtr-ty-2-14", { autoAlpha: 1 }, 9.8662);
+      tl.set("#mtr-ty-2-14", { autoAlpha: 0 }, 9.8995);
+      tl.set("#mtr-ty-2-15", { autoAlpha: 1 }, 9.8995);
+      tl.set("#mtr-ty-2-15", { autoAlpha: 0 }, 9.9662);
+      tl.set("#mtr-ty-2-16", { autoAlpha: 1 }, 9.9662);
+      tl.set("#mtr-ty-2-16", { autoAlpha: 0 }, 9.9995);
+      tl.set("#mtr-ty-2-17", { autoAlpha: 1 }, 9.9995);
+      tl.set("#mtr-ty-2-17", { autoAlpha: 0 }, 10.0662);
+      tl.set("#mtr-ty-2-18", { autoAlpha: 1 }, 10.0662);
+      tl.set("#mtr-ty-2-18", { autoAlpha: 0 }, 10.1662);
+      tl.set("#mtr-ty-2-19", { autoAlpha: 1 }, 10.1662);
+      tl.set("#mtr-ty-2-19", { autoAlpha: 0 }, 10.2328);
+      tl.set("#mtr-ty-2-20", { autoAlpha: 1 }, 10.2328);
+      tl.set("#mtr-ty-2-20", { autoAlpha: 0 }, 10.2995);
+      tl.set("#mtr-ty-2-21", { autoAlpha: 1 }, 10.2995);
+      tl.set("#mtr-ty-2-21", { autoAlpha: 0 }, 10.3995);
+      tl.set("#mtr-ty-2-22", { autoAlpha: 1 }, 10.3995);
+      tl.set("#mtr-ty-2-22", { autoAlpha: 0 }, 10.4662);
+      tl.set("#mtr-ty-2-23", { autoAlpha: 1 }, 10.4662);
+      tl.set("#mtr-ty-2-23", { autoAlpha: 0 }, 10.5995);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 13.3995);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 13.3995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 13.3995);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 14.0662);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 14.0662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 14.0662);
+      tl.set("#mtr-ty-3-0", { autoAlpha: 1 }, 13.3995);
+      tl.set("#mtr-ty-3-0", { autoAlpha: 0 }, 13.4328);
+      tl.set("#mtr-ty-3-1", { autoAlpha: 1 }, 13.4328);
+      tl.set("#mtr-ty-3-1", { autoAlpha: 0 }, 13.4995);
+      tl.set("#mtr-ty-3-2", { autoAlpha: 1 }, 13.4995);
+      tl.set("#mtr-ty-3-2", { autoAlpha: 0 }, 13.5995);
+      tl.set("#mtr-ty-3-3", { autoAlpha: 1 }, 13.5995);
+      tl.set("#mtr-ty-3-3", { autoAlpha: 0 }, 13.6662);
+      tl.set("#mtr-ty-3-4", { autoAlpha: 1 }, 13.6662);
+      tl.set("#mtr-ty-3-4", { autoAlpha: 0 }, 13.6995);
+      tl.set("#mtr-ty-3-5", { autoAlpha: 1 }, 13.6995);
+      tl.set("#mtr-ty-3-5", { autoAlpha: 0 }, 13.7995);
+      tl.set("#mtr-ty-3-6", { autoAlpha: 1 }, 13.7995);
+      tl.set("#mtr-ty-3-6", { autoAlpha: 0 }, 13.9662);
+      tl.set("#mtr-ty-3-7", { autoAlpha: 1 }, 13.9662);
+      tl.set("#mtr-ty-3-7", { autoAlpha: 0 }, 14.0328);
+      tl.set("#mtr-ty-3-8", { autoAlpha: 1 }, 14.0328);
+      tl.set("#mtr-ty-3-8", { autoAlpha: 0 }, 14.0662);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 15.1662);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 15.1662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 15.1662);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 17.0995);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 17.0995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 17.0995);
+      tl.set("#mtr-ty-4-0", { autoAlpha: 1 }, 15.1662);
+      tl.set("#mtr-ty-4-0", { autoAlpha: 0 }, 15.1995);
+      tl.set("#mtr-ty-4-1", { autoAlpha: 1 }, 15.1995);
+      tl.set("#mtr-ty-4-1", { autoAlpha: 0 }, 15.2328);
+      tl.set("#mtr-ty-4-2", { autoAlpha: 1 }, 15.2328);
+      tl.set("#mtr-ty-4-2", { autoAlpha: 0 }, 15.2995);
+      tl.set("#mtr-ty-4-3", { autoAlpha: 1 }, 15.2995);
+      tl.set("#mtr-ty-4-3", { autoAlpha: 0 }, 15.3995);
+      tl.set("#mtr-ty-4-4", { autoAlpha: 1 }, 15.3995);
+      tl.set("#mtr-ty-4-4", { autoAlpha: 0 }, 15.4328);
+      tl.set("#mtr-ty-4-5", { autoAlpha: 1 }, 15.4328);
+      tl.set("#mtr-ty-4-5", { autoAlpha: 0 }, 15.4995);
+      tl.set("#mtr-ty-4-6", { autoAlpha: 1 }, 15.4995);
+      tl.set("#mtr-ty-4-6", { autoAlpha: 0 }, 15.5662);
+      tl.set("#mtr-ty-4-7", { autoAlpha: 1 }, 15.5662);
+      tl.set("#mtr-ty-4-7", { autoAlpha: 0 }, 15.6328);
+      tl.set("#mtr-ty-4-8", { autoAlpha: 1 }, 15.6328);
+      tl.set("#mtr-ty-4-8", { autoAlpha: 0 }, 15.6662);
+      tl.set("#mtr-ty-4-9", { autoAlpha: 1 }, 15.6662);
+      tl.set("#mtr-ty-4-9", { autoAlpha: 0 }, 15.6995);
+      tl.set("#mtr-ty-4-10", { autoAlpha: 1 }, 15.6995);
+      tl.set("#mtr-ty-4-10", { autoAlpha: 0 }, 15.7995);
+      tl.set("#mtr-ty-4-11", { autoAlpha: 1 }, 15.7995);
+      tl.set("#mtr-ty-4-11", { autoAlpha: 0 }, 15.8662);
+      tl.set("#mtr-ty-4-12", { autoAlpha: 1 }, 15.8662);
+      tl.set("#mtr-ty-4-12", { autoAlpha: 0 }, 15.8995);
+      tl.set("#mtr-ty-4-13", { autoAlpha: 1 }, 15.8995);
+      tl.set("#mtr-ty-4-13", { autoAlpha: 0 }, 16.0662);
+      tl.set("#mtr-ty-4-14", { autoAlpha: 1 }, 16.0662);
+      tl.set("#mtr-ty-4-14", { autoAlpha: 0 }, 16.0995);
+      tl.set("#mtr-ty-4-15", { autoAlpha: 1 }, 16.0995);
+      tl.set("#mtr-ty-4-15", { autoAlpha: 0 }, 16.2328);
+      tl.set("#mtr-ty-4-16", { autoAlpha: 1 }, 16.2328);
+      tl.set("#mtr-ty-4-16", { autoAlpha: 0 }, 16.2662);
+      tl.set("#mtr-ty-4-17", { autoAlpha: 1 }, 16.2662);
+      tl.set("#mtr-ty-4-17", { autoAlpha: 0 }, 16.2995);
+      tl.set("#mtr-ty-4-18", { autoAlpha: 1 }, 16.2995);
+      tl.set("#mtr-ty-4-18", { autoAlpha: 0 }, 16.3995);
+      tl.set("#mtr-ty-4-19", { autoAlpha: 1 }, 16.3995);
+      tl.set("#mtr-ty-4-19", { autoAlpha: 0 }, 16.4662);
+      tl.set("#mtr-ty-4-20", { autoAlpha: 1 }, 16.4662);
+      tl.set("#mtr-ty-4-20", { autoAlpha: 0 }, 16.4995);
+      tl.set("#mtr-ty-4-21", { autoAlpha: 1 }, 16.4995);
+      tl.set("#mtr-ty-4-21", { autoAlpha: 0 }, 16.5662);
+      tl.set("#mtr-ty-4-22", { autoAlpha: 1 }, 16.5662);
+      tl.set("#mtr-ty-4-22", { autoAlpha: 0 }, 16.6328);
+      tl.set("#mtr-ty-4-23", { autoAlpha: 1 }, 16.6328);
+      tl.set("#mtr-ty-4-23", { autoAlpha: 0 }, 16.6995);
+      tl.set("#mtr-ty-4-24", { autoAlpha: 1 }, 16.6995);
+      tl.set("#mtr-ty-4-24", { autoAlpha: 0 }, 16.7995);
+      tl.set("#mtr-ty-4-25", { autoAlpha: 1 }, 16.7995);
+      tl.set("#mtr-ty-4-25", { autoAlpha: 0 }, 16.8328);
+      tl.set("#mtr-ty-4-26", { autoAlpha: 1 }, 16.8328);
+      tl.set("#mtr-ty-4-26", { autoAlpha: 0 }, 16.8995);
+      tl.set("#mtr-ty-4-27", { autoAlpha: 1 }, 16.8995);
+      tl.set("#mtr-ty-4-27", { autoAlpha: 0 }, 17.0995);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 18.1662);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 18.1662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 18.1662);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 19.8995);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 19.8995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 19.8995);
+      tl.set("#mtr-ty-5-0", { autoAlpha: 1 }, 18.1662);
+      tl.set("#mtr-ty-5-0", { autoAlpha: 0 }, 18.2328);
+      tl.set("#mtr-ty-5-1", { autoAlpha: 1 }, 18.2328);
+      tl.set("#mtr-ty-5-1", { autoAlpha: 0 }, 18.2662);
+      tl.set("#mtr-ty-5-2", { autoAlpha: 1 }, 18.2662);
+      tl.set("#mtr-ty-5-2", { autoAlpha: 0 }, 18.3662);
+      tl.set("#mtr-ty-5-3", { autoAlpha: 1 }, 18.3662);
+      tl.set("#mtr-ty-5-3", { autoAlpha: 0 }, 18.4328);
+      tl.set("#mtr-ty-5-4", { autoAlpha: 1 }, 18.4328);
+      tl.set("#mtr-ty-5-4", { autoAlpha: 0 }, 18.4995);
+      tl.set("#mtr-ty-5-5", { autoAlpha: 1 }, 18.4995);
+      tl.set("#mtr-ty-5-5", { autoAlpha: 0 }, 18.5995);
+      tl.set("#mtr-ty-5-6", { autoAlpha: 1 }, 18.5995);
+      tl.set("#mtr-ty-5-6", { autoAlpha: 0 }, 18.6662);
+      tl.set("#mtr-ty-5-7", { autoAlpha: 1 }, 18.6662);
+      tl.set("#mtr-ty-5-7", { autoAlpha: 0 }, 18.7328);
+      tl.set("#mtr-ty-5-8", { autoAlpha: 1 }, 18.7328);
+      tl.set("#mtr-ty-5-8", { autoAlpha: 0 }, 18.7995);
+      tl.set("#mtr-ty-5-9", { autoAlpha: 1 }, 18.7995);
+      tl.set("#mtr-ty-5-9", { autoAlpha: 0 }, 18.8328);
+      tl.set("#mtr-ty-5-10", { autoAlpha: 1 }, 18.8328);
+      tl.set("#mtr-ty-5-10", { autoAlpha: 0 }, 18.9995);
+      tl.set("#mtr-ty-5-11", { autoAlpha: 1 }, 18.9995);
+      tl.set("#mtr-ty-5-11", { autoAlpha: 0 }, 19.0328);
+      tl.set("#mtr-ty-5-12", { autoAlpha: 1 }, 19.0328);
+      tl.set("#mtr-ty-5-12", { autoAlpha: 0 }, 19.0995);
+      tl.set("#mtr-ty-5-13", { autoAlpha: 1 }, 19.0995);
+      tl.set("#mtr-ty-5-13", { autoAlpha: 0 }, 19.1662);
+      tl.set("#mtr-ty-5-14", { autoAlpha: 1 }, 19.1662);
+      tl.set("#mtr-ty-5-14", { autoAlpha: 0 }, 19.1995);
+      tl.set("#mtr-ty-5-15", { autoAlpha: 1 }, 19.1995);
+      tl.set("#mtr-ty-5-15", { autoAlpha: 0 }, 19.2662);
+      tl.set("#mtr-ty-5-16", { autoAlpha: 1 }, 19.2662);
+      tl.set("#mtr-ty-5-16", { autoAlpha: 0 }, 19.3662);
+      tl.set("#mtr-ty-5-17", { autoAlpha: 1 }, 19.3662);
+      tl.set("#mtr-ty-5-17", { autoAlpha: 0 }, 19.4328);
+      tl.set("#mtr-ty-5-18", { autoAlpha: 1 }, 19.4328);
+      tl.set("#mtr-ty-5-18", { autoAlpha: 0 }, 19.4995);
+      tl.set("#mtr-ty-5-19", { autoAlpha: 1 }, 19.4995);
+      tl.set("#mtr-ty-5-19", { autoAlpha: 0 }, 19.5328);
+      tl.set("#mtr-ty-5-20", { autoAlpha: 1 }, 19.5328);
+      tl.set("#mtr-ty-5-20", { autoAlpha: 0 }, 19.5995);
+      tl.set("#mtr-ty-5-21", { autoAlpha: 1 }, 19.5995);
+      tl.set("#mtr-ty-5-21", { autoAlpha: 0 }, 19.6662);
+      tl.set("#mtr-ty-5-22", { autoAlpha: 1 }, 19.6662);
+      tl.set("#mtr-ty-5-22", { autoAlpha: 0 }, 19.7662);
+      tl.set("#mtr-ty-5-23", { autoAlpha: 1 }, 19.7662);
+      tl.set("#mtr-ty-5-23", { autoAlpha: 0 }, 19.7995);
+      tl.set("#mtr-ty-5-24", { autoAlpha: 1 }, 19.7995);
+      tl.set("#mtr-ty-5-24", { autoAlpha: 0 }, 19.8995);
+      tl.set("#mtr-ec-wrap", { autoAlpha: 0 }, 23.257);
+      tl.fromTo(
+        "#mtr-ec-wrap",
+        { autoAlpha: 0 },
+        { autoAlpha: 1, duration: 0.3, ease: "none" },
+        23.2667,
+      );
+      window.__timelines["message-thread-reveal"] = tl;
+    </script>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add message-thread-reveal" item="message-thread-reveal" />
+
+That writes `compositions/message-thread-reveal.html`, plus 2 supporting files under `assets/`.
+
+## Add it to your video
+
+It runs for 25.7667 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="message-thread-reveal"
+  data-composition-src="compositions/message-thread-reveal.html"
+  data-start="0"
+  data-duration="25.7667"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `contactName` | `Rachel` | string | Name pill in the chat header; the avatar shows its first letter. |
+| `cardTitle` | `HyperFrames | Write HTML, render pixel-perfect video` | string | Title on the shared link card. |
+| `cardDomain` | `hyperframes.heygen.com` | string | Domain line under the card title. |
+| `ecProof` | `12,000+ creators` | string | Social-proof line under the stars. |
+| `ecCta` | `Start rendering free` | string | Label on the closing card button. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="message-thread-reveal"
+  data-composition-src="compositions/message-thread-reveal.html"
+  data-variable-values='{"contactName":"Rachel","cardTitle":"HyperFrames | Write HTML, render pixel-perfect video","cardDomain":"hyperframes.heygen.com","ecProof":"12,000+ creators","ecCta":"Start rendering free"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`message-thread-reveal.html`}>
+
+```html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "contactName", "type": "string", "role": "content", "label": "Contact name", "description": "Name pill in the chat header; the avatar shows its first letter.", "default": "Rachel" },
+    { "id": "cardTitle", "type": "string", "role": "content", "label": "Link card title", "description": "Title on the shared link card.", "default": "HyperFrames | Write HTML, render pixel-perfect video" },
+    { "id": "cardDomain", "type": "string", "role": "content", "label": "Link card domain", "description": "Domain line under the card title.", "default": "hyperframes.heygen.com" },
+    { "id": "ecProof", "type": "string", "role": "content", "label": "End-card proof", "description": "Social-proof line under the stars.", "default": "12,000+ creators" },
+    { "id": "ecCta", "type": "string", "role": "content", "label": "End-card CTA", "description": "Label on the closing card button.", "default": "Start rendering free" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Message Thread Reveal</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #000;
+      }
+      #mtr-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      #mtr-plate {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse 90% 60% at 30% 20%,
+            rgba(60, 230, 172, 0.1) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(168deg, #23262b 0%, #17191d 55%, #101114 100%);
+      }
+      #mtr-phonebody {
+        position: absolute;
+        left: 124px;
+        top: 64px;
+        width: 832px;
+        height: 1797px;
+        border-radius: 112px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.25),
+          0 40px 90px rgba(0, 0, 0, 0.6);
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      /* ---------- phone screen ---------- */
+      #mtr-screen {
+        position: absolute;
+        left: 140px;
+        top: 80px;
+        width: 800px;
+        height: 1765px;
+        border-radius: 100px;
+        background: #000;
+        overflow: hidden;
+      }
+      /* status bar */
+      #mtr-sb-time {
+        position: absolute;
+        left: 88px;
+        top: 57px;
+        color: #fff;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      #mtr-sb-icons {
+        position: absolute;
+        left: 578px;
+        top: 66px;
+      }
+      /* header */
+      #mtr-hdr-back {
+        position: absolute;
+        left: 48px;
+        top: 158px;
+      }
+      #mtr-hdr-badge {
+        position: absolute;
+        left: 112px;
+        top: 163px;
+        height: 44px;
+        padding: 0 22px;
+        background: #262628;
+        border-radius: 22px;
+        color: #fff;
+        font-size: 28px;
+        line-height: 44px;
+      }
+      #mtr-hdr-avatar {
+        position: absolute;
+        left: 356px;
+        top: 122px;
+        width: 86px;
+        height: 86px;
+        border-radius: 50%;
+        background: #9ce474;
+        color: #12300c;
+        font-size: 44px;
+        font-weight: 600;
+        display: grid;
+        place-items: center;
+      }
+      #mtr-hdr-name {
+        position: absolute;
+        left: 400px;
+        top: 213px;
+        transform: translateX(-50%);
+        height: 46px;
+        padding: 0 20px;
+        background: #232325;
+        border-radius: 23px;
+        color: #fff;
+        font-size: 29px;
+        line-height: 46px;
+        white-space: nowrap;
+      }
+      #mtr-hdr-name .chev {
+        color: #8e8e93;
+        font-size: 26px;
+        margin-left: 8px;
+      }
+      #mtr-hdr-cam {
+        position: absolute;
+        left: 699px;
+        top: 166px;
+      }
+      /* chat viewport */
+      #mtr-chatview {
+        position: absolute;
+        left: 0;
+        top: 265px;
+        width: 800px;
+        height: 1367px;
+        overflow: hidden;
+      }
+      .item {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        visibility: hidden;
+      }
+      .item.recv {
+        padding-left: 44px;
+        text-align: left;
+      }
+      .item.sent {
+        padding-right: 45px;
+        text-align: right;
+      }
+      .pop {
+        display: inline-block;
+        position: relative;
+      }
+      .pop-recv {
+        transform-origin: left bottom;
+      }
+      .pop-sent {
+        transform-origin: right bottom;
+      }
+      /* font 32.9px: artifact-closed-loop calibration (ref m1 ink 624x32 vs shipped-render 711x36 -> x0.876;
+     the earlier 37.5px also overflowed max-width). padding 28px: ref ink inset 31/30 vs rep 26. */
+      .bubble {
+        display: inline-block;
+        position: relative;
+        max-width: 720px;
+        padding: 0 28px;
+        height: 81px;
+        line-height: 81px;
+        border-radius: 40px;
+        font-size: 32.9px;
+        color: #fff;
+        white-space: nowrap;
+        text-align: left;
+      }
+      .bubble.recv {
+        background: #242428;
+      }
+      .bubble.sent {
+        background: #0a80f8;
+      }
+      /* iMessage tails (screen bg is pure black -> cover circle trick) */
+      .tail-recv::before {
+        content: "";
+        position: absolute;
+        left: -10px;
+        bottom: 0;
+        width: 26px;
+        height: 26px;
+        background: #242428;
+        border-bottom-right-radius: 20px 18px;
+      }
+      .tail-recv::after {
+        content: "";
+        position: absolute;
+        left: -26px;
+        bottom: -2px;
+        width: 20px;
+        height: 30px;
+        background: #000;
+        border-bottom-right-radius: 16px;
+      }
+      .tail-sent::before {
+        content: "";
+        position: absolute;
+        right: -10px;
+        bottom: 0;
+        width: 26px;
+        height: 26px;
+        background: #0a80f8;
+        border-bottom-left-radius: 20px 18px;
+      }
+      .tail-sent::after {
+        content: "";
+        position: absolute;
+        right: -26px;
+        bottom: -2px;
+        width: 20px;
+        height: 30px;
+        background: #000;
+        border-bottom-left-radius: 16px;
+      }
+      .delivered {
+        color: #8e8e93;
+        font-size: 28px;
+        margin-top: 12px;
+        padding-right: 7px;
+        text-align: right;
+      }
+      /* 105.5px/ls2/ml12: artifact-closed-loop (ref yellow body h92, row w304, x203 vs rep 103/383/209) */
+      .emojirow {
+        font-size: 105.5px;
+        line-height: 140px;
+        letter-spacing: 2px;
+        margin-left: 12px;
+        white-space: nowrap;
+        color: #fff;
+      }
+      /* typing indicator */
+      .dotswrap {
+        position: relative;
+        display: inline-block;
+      }
+      .dotsbubble {
+        width: 124px;
+        height: 67px;
+        background: #242428;
+        border-radius: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .dot {
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        background: #8e8e93;
+        display: inline-block;
+      }
+      .dtail1 {
+        position: absolute;
+        left: -2px;
+        bottom: -4px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #242428;
+      }
+      .dtail2 {
+        position: absolute;
+        left: -14px;
+        bottom: -14px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #242428;
+      }
+      /* link card */
+      .card {
+        display: inline-block;
+        width: 443px;
+        border-radius: 36px;
+        overflow: hidden;
+        text-align: left;
+      }
+      .cardimg {
+        display: block;
+        width: 443px;
+        height: 432px;
+        object-fit: cover;
+      }
+      .cardmeta {
+        height: 178px;
+        background: #28282c;
+        display: flex;
+        align-items: center;
+        padding: 0 18px 0 26px;
+      }
+      .cardtxt {
+        flex: 1;
+        min-width: 0;
+      }
+      /* 26.8/23.3px: artifact-closed-loop (ref title ink w302 vs rep 350 -> x0.863); max-width keeps the
+     measured 3-line wrap 'Where Are You? Dad / Edition | A personalized / book about him' */
+      .cardtitle {
+        color: #fff;
+        font-size: 26.8px;
+        font-weight: 600;
+        line-height: 34px;
+        max-width: 318px;
+      }
+      .carddomain {
+        color: #8e8e93;
+        font-size: 23.3px;
+        margin-top: 4px;
+      }
+      .cardchev {
+        color: #8e8e93;
+        font-size: 48px;
+        padding-left: 8px;
+      }
+      /* input bar */
+      #mtr-plusbtn {
+        position: absolute;
+        left: 12px;
+        top: 1653px;
+        width: 86px;
+        height: 86px;
+        border-radius: 50%;
+        background: #262628;
+        color: #8e8e93;
+        font-size: 52px;
+        font-weight: 300;
+        display: grid;
+        place-items: center;
+      }
+      #mtr-field {
+        position: absolute;
+        left: 124px;
+        top: 1646px;
+        width: 665px;
+        height: 93px;
+        border: 2px solid #202022;
+        border-radius: 47px;
+      }
+      #mtr-ph {
+        position: absolute;
+        left: 158px;
+        top: 1668px;
+        color: #8e8e93;
+        font-size: 35px;
+        line-height: 48px;
+      }
+      #mtr-typedwrap {
+        position: absolute;
+        left: 158px;
+        top: 1668px;
+        width: 600px;
+        height: 48px;
+        white-space: pre;
+      }
+      .typed {
+        position: absolute;
+        left: 0;
+        top: 0;
+        visibility: hidden;
+        color: #fff;
+        font-size: 36px;
+        line-height: 48px;
+        white-space: pre;
+      }
+      .caret {
+        display: inline-block;
+        width: 4px;
+        height: 42px;
+        background: #0a80f8;
+        vertical-align: -8px;
+        margin-left: 2px;
+        border-radius: 2px;
+      }
+      #mtr-mic {
+        position: absolute;
+        left: 724px;
+        top: 1664px;
+      }
+      #mtr-sendbtn {
+        position: absolute;
+        left: 698px;
+        top: 1660px;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: #0a80f8;
+        visibility: hidden;
+        display: grid;
+        place-items: center;
+      }
+      /* ---------- end card ---------- */
+      #mtr-ec-wrap {
+        position: absolute;
+        inset: 0;
+        background: #f9f2e7;
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      #mtr-ec-logo {
+        position: absolute;
+        left: 308px;
+        top: 500px;
+        width: 464px;
+        height: 139px;
+      }
+      #mtr-ec-stars {
+        position: absolute;
+        left: 372px;
+        top: 714px;
+        width: 336px;
+        display: flex;
+        gap: 15px;
+      }
+      #mtr-ec-fam {
+        position: absolute;
+        left: 0;
+        top: 796px;
+        width: 100%;
+        text-align: center;
+        color: #185450;
+        font-size: 35.5px;
+        font-weight: 700;
+      }
+      .ec-icon {
+        position: absolute;
+        top: 934px;
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: #185450;
+        display: grid;
+        place-items: center;
+      }
+      #mtr-ec-fam {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      .ec-label {
+        position: absolute;
+        top: 1098px;
+        width: 240px;
+        text-align: center;
+        color: #205048;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 31px;
+        line-height: 40px;
+      }
+      #mtr-ec-cta {
+        position: absolute;
+        left: 200px;
+        top: 1298px;
+        width: 680px;
+        height: 118px;
+        border-radius: 59px;
+        background: #3ce6ac;
+        color: #0d3b2b;
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        font-size: 46px;
+        display: grid;
+        place-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="mtr-root"
+      data-composition-id="message-thread-reveal"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="25.7667"
+    >
+      <div id="mtr-plate">
+        <div id="mtr-phonebody"></div>
+      </div>
+      <section
+        id="scene-chat"
+        class="clip"
+        data-start="0"
+        data-duration="23.62"
+        data-track-index="1"
+      >
+        <div id="mtr-screen">
+          <div id="mtr-sb-time">9:41</div>
+          <svg id="mtr-sb-icons" width="86" height="30" viewBox="0 0 86 30">
+            <rect x="0" y="16" width="5" height="9" rx="1.5" fill="#fff" />
+            <rect x="8" y="12" width="5" height="13" rx="1.5" fill="#fff" />
+            <rect x="16" y="8" width="5" height="17" rx="1.5" fill="#fff" />
+            <rect x="24" y="4" width="5" height="21" rx="1.5" fill="#fff" />
+            <g transform="translate(44,2)">
+              <path
+                d="M18 21.5 L21.5 25 L25 21.5 A5 5 0 0 0 18 21.5"
+                fill="#fff"
+                transform="translate(-10,-2)"
+              />
+              <path
+                d="M4 13 A14 14 0 0 1 23 13"
+                stroke="#fff"
+                stroke-width="4"
+                fill="none"
+                transform="translate(-2,-2)"
+              />
+              <path
+                d="M8.5 17.5 A8 8 0 0 1 18.5 17.5"
+                stroke="#fff"
+                stroke-width="4"
+                fill="none"
+                transform="translate(-2,-2)"
+              />
+            </g>
+          </svg>
+          <svg id="mtr-hdr-back" width="26" height="48" viewBox="0 0 26 48">
+            <path
+              d="M23 3 L4 24 L23 45"
+              stroke="#E4E4E4"
+              stroke-width="6"
+              fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <div id="mtr-hdr-badge">12</div>
+          <div id="mtr-hdr-avatar">R</div>
+          <div id="mtr-hdr-name">Rachel<span class="chev">›</span></div>
+          <svg id="mtr-hdr-cam" width="52" height="34" viewBox="0 0 52 34">
+            <rect x="0" y="1" width="36" height="32" rx="9" fill="#fff" />
+            <path d="M38 12 L50 4 V30 L38 22 Z" fill="#fff" />
+          </svg>
+          <div id="mtr-chatview">
+            <div
+              class="item recv"
+              id="mtr-it-m1"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="bubble recv">what r u using for the launch video??</div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-dots"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="dotswrap">
+                  <div class="dotsbubble">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  </div>
+                  <div class="dtail1"></div>
+                  <div class="dtail2"></div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m2"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent tail-sent">wait look 👀</div>
+                <div class="delivered">Delivered</div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m3"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="card">
+                  <img class="cardimg" src="assets/card-image.jpg" alt="" />
+                  <div class="cardmeta">
+                    <div class="cardtxt">
+                      <div class="cardtitle">
+                        HyperFrames | Write HTML, render pixel-perfect video
+                      </div>
+                      <div class="carddomain">hyperframes.heygen.com</div>
+                    </div>
+                    <div class="cardchev">›</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m4"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="bubble recv">OMG IT&#39;S HTML</div></div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m5"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="emojirow">🤯🤯🤯</div></div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m6"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent tail-sent">renders in 4K. no editor</div>
+                <div class="delivered">Delivered</div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-dots2"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="dotswrap">
+                  <div class="dotsbubble">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  </div>
+                  <div class="dtail1"></div>
+                  <div class="dtail2"></div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m7"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv">
+                <div class="bubble recv tail-recv">where did u find this</div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m8"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent"><div class="bubble sent">on heygen</div></div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m9"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent">u just write plain html tags</div>
+              </div>
+            </div>
+            <div
+              class="item sent"
+              id="mtr-it-m10"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-sent">
+                <div class="bubble sent tail-sent">the code is yours forever</div>
+                <div class="delivered">Delivered</div>
+              </div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m11"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="bubble recv">installing rn</div></div>
+            </div>
+            <div
+              class="item recv"
+              id="mtr-it-m12"
+              data-layout-allow-overflow
+              data-layout-allow-overlap
+              data-layout-allow-occlusion
+            >
+              <div class="pop pop-recv"><div class="bubble recv tail-recv">ty bestie 💚</div></div>
+            </div>
+          </div>
+          <div id="mtr-plusbtn">+</div>
+          <div id="mtr-field"></div>
+          <div id="mtr-ph">Message</div>
+          <div id="mtr-typedwrap">
+            <span class="typed" id="mtr-ty-1-0">o<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-1">wa<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-2">wai<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-3">wait<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-4">wait <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-5">wait l<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-6">wait lo<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-7">wait loo<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-8">wait look<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-9">wait look <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-1-10">wait look 👀<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-0">r<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-1">re<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-2">ren<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-3">rend<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-4">rende<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-5">render<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-6">renders<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-7">renders <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-8">renders i<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-9">renders in<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-10">renders in <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-11">renders in 4<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-12">renders in 4K<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-13">renders in 4K.<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-14">renders in 4K. <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-15">renders in 4K. n<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-16">renders in 4K. no<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-2-17"
+              >renders in 4K. no <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-18"
+              >renders in 4K. no e<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-19"
+              >renders in 4K. no ed<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-20"
+              >renders in 4K. no edi<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-21"
+              >renders in 4K. no edit<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-22"
+              >renders in 4K. no edito<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-2-23"
+              >renders in 4K. no editor<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-3-0">o<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-1">on<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-2">on <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-3">on h<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-4">on he<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-5">on hey<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-6">on heyg<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-7">on heyge<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-3-8">on heygen<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-0">u<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-1">u <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-2">u j<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-3">u ju<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-4">u jus<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-5">u just<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-6">u just <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-7">u just w<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-8">u just wr<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-9">u just wri<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-10">u just writ<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-11">u just write<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-12">u just write <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-13">u just write p<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-14">u just write pl<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-15">u just write pla<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-16">u just write plai<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-4-17"
+              >u just write plain<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-18"
+              >u just write plain <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-19"
+              >u just write plain h<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-20"
+              >u just write plain ht<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-21"
+              >u just write plain htm<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-22"
+              >u just write plain html<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-23"
+              >u just write plain html <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-24"
+              >u just write plain html t<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-25"
+              >u just write plain html ta<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-26"
+              >u just write plain html tag<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-4-27"
+              >u just write plain html tags<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-0">r<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-1">th<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-2">the<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-3">the <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-4">the c<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-5">the co<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-6">the cod<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-7">the code<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-8">the code <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-9">the code i<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-10">the code is<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-11">the code is <span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-12">the code is y<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-13">the code is yo<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-14">the code is you<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-15">the code is your<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-16">the code is yours<span class="caret"></span></span>
+            <span class="typed" id="mtr-ty-5-17"
+              >the code is yours <span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-18"
+              >the code is yours f<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-19"
+              >the code is yours fo<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-20"
+              >the code is yours for<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-21"
+              >the code is yours fore<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-22"
+              >the code is yours forev<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-23"
+              >the code is yours foreve<span class="caret"></span
+            ></span>
+            <span class="typed" id="mtr-ty-5-24"
+              >the code is yours forever<span class="caret"></span
+            ></span>
+          </div>
+          <svg id="mtr-mic" width="26" height="42" viewBox="0 0 26 42">
+            <rect x="8" y="0" width="10" height="22" rx="5" fill="#8E8E93" />
+            <path
+              d="M2 16 A11 11 0 0 0 24 16"
+              stroke="#8E8E93"
+              stroke-width="3.5"
+              fill="none"
+              transform="translate(0,2)"
+            />
+            <line x1="13" y1="30" x2="13" y2="38" stroke="#8E8E93" stroke-width="3.5" />
+            <line x1="6" y1="39" x2="20" y2="39" stroke="#8E8E93" stroke-width="3.5" />
+          </svg>
+          <div id="mtr-sendbtn">
+            <svg width="26" height="30" viewBox="0 0 26 30">
+              <path
+                d="M13 28 V4 M3 13 L13 3 L23 13"
+                stroke="#fff"
+                stroke-width="5"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+      </section>
+      <section
+        id="scene-end"
+        class="clip"
+        data-start="23.2567"
+        data-duration="2.53"
+        data-track-index="2"
+        style="z-index: 5"
+      >
+        <div id="mtr-ec-wrap" data-layout-allow-overlap data-layout-allow-occlusion>
+          <img id="mtr-ec-logo" src="assets/hyperframes-logo-black.svg" alt="HyperFrames" />
+          <div id="mtr-ec-stars">
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+            <svg width="55" height="53" viewBox="0 0 24 23">
+              <path
+                d="M12 0 L15 8.2 L23.4 8.2 L16.6 13.4 L19.2 21.8 L12 16.8 L4.8 21.8 L7.4 13.4 L0.6 8.2 L9 8.2 Z"
+                fill="#FED059"
+              />
+            </svg>
+          </div>
+          <div id="mtr-ec-fam">12,000+ creators</div>
+          <div class="ec-icon" style="left: 150px">
+            <svg width="58" height="58" viewBox="0 0 24 24">
+              <path
+                d="M3 17.2 V21 h3.8 L18 9.8 l-3.8-3.8 L3 17.2 Z M20.7 7.1 c0.4-0.4 0.4-1 0-1.4 l-2.4-2.4 c-0.4-0.4-1-0.4-1.4 0 l-1.8 1.8 3.8 3.8 1.8-1.8 Z"
+                fill="#F9F2E7"
+              />
+            </svg>
+          </div>
+          <div class="ec-icon" style="left: 470px">
+            <svg width="60" height="56" viewBox="0 0 24 22">
+              <path
+                d="M12 21 C12 21 1 14.4 1 7.6 C1 3.9 3.9 1 7.5 1 C9.4 1 11.1 1.9 12 3.3 C12.9 1.9 14.6 1 16.5 1 C20.1 1 23 3.9 23 7.6 C23 14.4 12 21 12 21 Z"
+                fill="#F9F2E7"
+              />
+            </svg>
+          </div>
+          <div class="ec-icon" style="left: 790px">
+            <svg width="60" height="60" viewBox="0 0 24 24">
+              <path
+                d="M12 2 C6.5 2 2 6.5 2 12 s4.5 10 10 10 c0.9 0 1.6-0.7 1.6-1.6 0-0.4-0.2-0.8-0.4-1.1 -0.3-0.3-0.4-0.7-0.4-1.1 0-0.9 0.7-1.6 1.6-1.6 h1.9 c3.1 0 5.7-2.6 5.7-5.7 C22 7 17.5 2 12 2 Z M6.5 12 c-0.8 0-1.5-0.7-1.5-1.5 S5.7 9 6.5 9 8 9.7 8 10.5 7.3 12 6.5 12 Z M9.5 8 C8.7 8 8 7.3 8 6.5 S8.7 5 9.5 5 s1.5 0.7 1.5 1.5 S10.3 8 9.5 8 Z M14.5 8 c-0.8 0-1.5-0.7-1.5-1.5 S13.7 5 14.5 5 16 5.7 16 6.5 15.3 8 14.5 8 Z M17.5 12 c-0.8 0-1.5-0.7-1.5-1.5 S16.7 9 17.5 9 19 9.7 19 10.5 18.3 12 17.5 12 Z"
+                fill="#F9F2E7"
+              />
+            </svg>
+          </div>
+          <div class="ec-label" style="left: 100px">
+            <div>Write</div>
+            <div>plain HTML</div>
+          </div>
+          <div class="ec-label" style="left: 420px">
+            <div>Render</div>
+            <div>pixel-perfect</div>
+          </div>
+          <div class="ec-label" style="left: 740px">
+            <div>Own</div>
+            <div>every line</div>
+          </div>
+          <div id="mtr-ec-cta">Start rendering free</div>
+        </div>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        "use strict";
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+        function text(value, fallback, max) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > max ? t.slice(0, max) : t;
+        }
+        var contact = text(vars.contactName, "Rachel", 16);
+        document.getElementById("mtr-hdr-avatar").textContent = contact.charAt(0).toUpperCase();
+        var namePill = document.getElementById("mtr-hdr-name");
+        namePill.innerHTML = "";
+        namePill.appendChild(document.createTextNode(contact));
+        var chev = document.createElement("span");
+        chev.className = "chev";
+        chev.textContent = "\u203A";
+        namePill.appendChild(chev);
+        document.querySelector(".cardtitle").textContent = text(
+          vars.cardTitle,
+          "HyperFrames | Write HTML, render pixel-perfect video",
+          80,
+        );
+        document.querySelector(".carddomain").textContent = text(
+          vars.cardDomain,
+          "hyperframes.heygen.com",
+          40,
+        );
+        document.getElementById("mtr-ec-fam").textContent = text(
+          vars.ecProof,
+          "12,000+ creators",
+          30,
+        );
+        document.getElementById("mtr-ec-cta").textContent = text(
+          vars.ecCta,
+          "Start rendering free",
+          26,
+        );
+      })();
+      // initial states applied immediately (CSS hides all .item; m1 must be live at frame 0)
+      gsap.set("#mtr-it-m1", { autoAlpha: 1 });
+      const tl = gsap.timeline({ paused: true });
+      gsap.set("#mtr-it-m1", { y: 1264 });
+      tl.fromTo(
+        "#mtr-it-m1 .pop",
+        { scale: 0.75, autoAlpha: 0.6 },
+        { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+        0.0,
+      );
+      tl.set("#mtr-it-m1", { autoAlpha: 1 }, 0.0);
+      tl.set("#mtr-it-m1", { y: 1179 }, 0.7662);
+      tl.set("#mtr-it-dots", { y: 1278 }, 0.7662);
+      tl.fromTo(
+        "#mtr-it-dots .pop",
+        { scale: 0.6, autoAlpha: 0.4 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        0.7662,
+      );
+      tl.set("#mtr-it-dots", { autoAlpha: 1 }, 0.7662);
+      tl.set("#mtr-it-m1", { y: 1036 }, 2.9662);
+      tl.set("#mtr-it-dots", { y: 1135 }, 2.9662);
+      tl.set("#mtr-it-m2", { y: 1218 }, 2.9662);
+      tl.fromTo(
+        "#mtr-it-m2 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        2.9662,
+      );
+      tl.set("#mtr-it-m2", { autoAlpha: 1 }, 2.9662);
+      tl.set("#mtr-it-m1", { y: 416 }, 3.6995);
+      tl.set("#mtr-it-dots", { y: 515 }, 3.6995);
+      tl.set("#mtr-it-m2", { y: 598 }, 3.6995);
+      tl.set("#mtr-it-m3", { y: 735 }, 3.6995);
+      tl.fromTo(
+        "#mtr-it-m3 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        3.6995,
+      );
+      tl.set("#mtr-it-m3", { autoAlpha: 1 }, 3.6995);
+      tl.set("#mtr-it-dots", { autoAlpha: 0 }, 7.2995);
+      tl.set("#mtr-it-m1", { y: 400 }, 7.2995);
+      tl.set("#mtr-it-m2", { y: 499 }, 7.2995);
+      tl.set("#mtr-it-m3", { y: 636 }, 7.2995);
+      tl.set("#mtr-it-m4", { y: 1264 }, 7.2995);
+      tl.fromTo(
+        "#mtr-it-m4 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        7.2995,
+      );
+      tl.set("#mtr-it-m4", { autoAlpha: 1 }, 7.2995);
+      tl.set("#mtr-it-m1", { y: 250 }, 8.0328);
+      tl.set("#mtr-it-m2", { y: 349 }, 8.0328);
+      tl.set("#mtr-it-m3", { y: 486 }, 8.0328);
+      tl.set("#mtr-it-m4", { y: 1114 }, 8.0328);
+      tl.set("#mtr-it-m5", { y: 1205 }, 8.0328);
+      tl.fromTo(
+        "#mtr-it-m5 .pop",
+        { scale: 0.5, autoAlpha: 0.3 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        8.0328,
+      );
+      tl.set("#mtr-it-m5", { autoAlpha: 1 }, 8.0328);
+      tl.set("#mtr-it-m1", { y: 113 }, 10.5995);
+      tl.set("#mtr-it-m2", { y: 212 }, 10.5995);
+      tl.set("#mtr-it-m3", { y: 349 }, 10.5995);
+      tl.set("#mtr-it-m4", { y: 977 }, 10.5995);
+      tl.set("#mtr-it-m5", { y: 1068 }, 10.5995);
+      tl.set("#mtr-it-m6", { y: 1218 }, 10.5995);
+      tl.fromTo(
+        "#mtr-it-m6 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        10.5995,
+      );
+      tl.set("#mtr-it-m6", { autoAlpha: 1 }, 10.5995);
+      tl.set("#mtr-it-m1", { y: 28 }, 11.3662);
+      tl.set("#mtr-it-m2", { y: 127 }, 11.3662);
+      tl.set("#mtr-it-m3", { y: 264 }, 11.3662);
+      tl.set("#mtr-it-m4", { y: 892 }, 11.3662);
+      tl.set("#mtr-it-m5", { y: 983 }, 11.3662);
+      tl.set("#mtr-it-m6", { y: 1133 }, 11.3662);
+      tl.set("#mtr-it-dots2", { y: 1278 }, 11.3662);
+      tl.fromTo(
+        "#mtr-it-dots2 .pop",
+        { scale: 0.6, autoAlpha: 0.4 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        11.3662,
+      );
+      tl.set("#mtr-it-dots2", { autoAlpha: 1 }, 11.3662);
+      tl.set("#mtr-it-dots2", { autoAlpha: 0 }, 12.3662);
+      tl.set("#mtr-it-m1", { y: 14 }, 12.3662);
+      tl.set("#mtr-it-m2", { y: 113 }, 12.3662);
+      tl.set("#mtr-it-m3", { y: 250 }, 12.3662);
+      tl.set("#mtr-it-m4", { y: 878 }, 12.3662);
+      tl.set("#mtr-it-m5", { y: 969 }, 12.3662);
+      tl.set("#mtr-it-m6", { y: 1119 }, 12.3662);
+      tl.set("#mtr-it-m7", { y: 1264 }, 12.3662);
+      tl.fromTo(
+        "#mtr-it-m7 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        12.3662,
+      );
+      tl.set("#mtr-it-m7", { autoAlpha: 1 }, 12.3662);
+      tl.set("#mtr-it-m1", { y: -85 }, 14.0662);
+      tl.set("#mtr-it-m2", { y: 14 }, 14.0662);
+      tl.set("#mtr-it-m3", { y: 151 }, 14.0662);
+      tl.set("#mtr-it-m4", { y: 779 }, 14.0662);
+      tl.set("#mtr-it-m5", { y: 870 }, 14.0662);
+      tl.set("#mtr-it-m6", { y: 1020 }, 14.0662);
+      tl.set("#mtr-it-m7", { y: 1165 }, 14.0662);
+      tl.set("#mtr-it-m8", { y: 1264 }, 14.0662);
+      tl.fromTo(
+        "#mtr-it-m8 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        14.0662,
+      );
+      tl.set("#mtr-it-m8", { autoAlpha: 1 }, 14.0662);
+      tl.set("#mtr-it-m1", { y: -176 }, 17.0995);
+      tl.set("#mtr-it-m2", { y: -77 }, 17.0995);
+      tl.set("#mtr-it-m3", { y: 60 }, 17.0995);
+      tl.set("#mtr-it-m4", { y: 688 }, 17.0995);
+      tl.set("#mtr-it-m5", { y: 779 }, 17.0995);
+      tl.set("#mtr-it-m6", { y: 929 }, 17.0995);
+      tl.set("#mtr-it-m7", { y: 1074 }, 17.0995);
+      tl.set("#mtr-it-m8", { y: 1173 }, 17.0995);
+      tl.set("#mtr-it-m9", { y: 1264 }, 17.0995);
+      tl.fromTo(
+        "#mtr-it-m9 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        17.0995,
+      );
+      tl.set("#mtr-it-m9", { autoAlpha: 1 }, 17.0995);
+      tl.set("#mtr-it-m1", { y: -313 }, 19.8995);
+      tl.set("#mtr-it-m2", { y: -214 }, 19.8995);
+      tl.set("#mtr-it-m3", { y: -77 }, 19.8995);
+      tl.set("#mtr-it-m4", { y: 551 }, 19.8995);
+      tl.set("#mtr-it-m5", { y: 642 }, 19.8995);
+      tl.set("#mtr-it-m6", { y: 792 }, 19.8995);
+      tl.set("#mtr-it-m7", { y: 937 }, 19.8995);
+      tl.set("#mtr-it-m8", { y: 1036 }, 19.8995);
+      tl.set("#mtr-it-m9", { y: 1127 }, 19.8995);
+      tl.set("#mtr-it-m10", { y: 1218 }, 19.8995);
+      tl.fromTo(
+        "#mtr-it-m10 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        19.8995,
+      );
+      tl.set("#mtr-it-m10", { autoAlpha: 1 }, 19.8995);
+      tl.set("#mtr-it-m1", { y: -412 }, 20.6662);
+      tl.set("#mtr-it-m2", { y: -313 }, 20.6662);
+      tl.set("#mtr-it-m3", { y: -176 }, 20.6662);
+      tl.set("#mtr-it-m4", { y: 452 }, 20.6662);
+      tl.set("#mtr-it-m5", { y: 543 }, 20.6662);
+      tl.set("#mtr-it-m6", { y: 693 }, 20.6662);
+      tl.set("#mtr-it-m7", { y: 838 }, 20.6662);
+      tl.set("#mtr-it-m8", { y: 937 }, 20.6662);
+      tl.set("#mtr-it-m9", { y: 1028 }, 20.6662);
+      tl.set("#mtr-it-m10", { y: 1119 }, 20.6662);
+      tl.set("#mtr-it-m11", { y: 1264 }, 20.6662);
+      tl.fromTo(
+        "#mtr-it-m11 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        20.6662,
+      );
+      tl.set("#mtr-it-m11", { autoAlpha: 1 }, 20.6662);
+      tl.set("#mtr-it-m1", { y: -503 }, 21.4328);
+      tl.set("#mtr-it-m2", { y: -404 }, 21.4328);
+      tl.set("#mtr-it-m3", { y: -267 }, 21.4328);
+      tl.set("#mtr-it-m4", { y: 361 }, 21.4328);
+      tl.set("#mtr-it-m5", { y: 452 }, 21.4328);
+      tl.set("#mtr-it-m6", { y: 602 }, 21.4328);
+      tl.set("#mtr-it-m7", { y: 747 }, 21.4328);
+      tl.set("#mtr-it-m8", { y: 846 }, 21.4328);
+      tl.set("#mtr-it-m9", { y: 937 }, 21.4328);
+      tl.set("#mtr-it-m10", { y: 1028 }, 21.4328);
+      tl.set("#mtr-it-m11", { y: 1173 }, 21.4328);
+      tl.set("#mtr-it-m12", { y: 1264 }, 21.4328);
+      tl.fromTo(
+        "#mtr-it-m12 .pop",
+        { autoAlpha: 0.55 },
+        { autoAlpha: 1, duration: 0.0667, ease: "none" },
+        21.4328,
+      );
+      tl.set("#mtr-it-m12", { autoAlpha: 1 }, 21.4328);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 2.0328);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 2.0328);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 2.0328);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 2.9662);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 2.9662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 2.9662);
+      tl.set("#mtr-ty-1-0", { autoAlpha: 1 }, 2.0328);
+      tl.set("#mtr-ty-1-0", { autoAlpha: 0 }, 2.0995);
+      tl.set("#mtr-ty-1-1", { autoAlpha: 1 }, 2.0995);
+      tl.set("#mtr-ty-1-1", { autoAlpha: 0 }, 2.1662);
+      tl.set("#mtr-ty-1-2", { autoAlpha: 1 }, 2.1662);
+      tl.set("#mtr-ty-1-2", { autoAlpha: 0 }, 2.2328);
+      tl.set("#mtr-ty-1-3", { autoAlpha: 1 }, 2.2328);
+      tl.set("#mtr-ty-1-3", { autoAlpha: 0 }, 2.2995);
+      tl.set("#mtr-ty-1-4", { autoAlpha: 1 }, 2.2995);
+      tl.set("#mtr-ty-1-4", { autoAlpha: 0 }, 2.3995);
+      tl.set("#mtr-ty-1-5", { autoAlpha: 1 }, 2.3995);
+      tl.set("#mtr-ty-1-5", { autoAlpha: 0 }, 2.4328);
+      tl.set("#mtr-ty-1-6", { autoAlpha: 1 }, 2.4328);
+      tl.set("#mtr-ty-1-6", { autoAlpha: 0 }, 2.4995);
+      tl.set("#mtr-ty-1-7", { autoAlpha: 1 }, 2.4995);
+      tl.set("#mtr-ty-1-7", { autoAlpha: 0 }, 2.5662);
+      tl.set("#mtr-ty-1-8", { autoAlpha: 1 }, 2.5662);
+      tl.set("#mtr-ty-1-8", { autoAlpha: 0 }, 2.5995);
+      tl.set("#mtr-ty-1-9", { autoAlpha: 1 }, 2.5995);
+      tl.set("#mtr-ty-1-9", { autoAlpha: 0 }, 2.7995);
+      tl.set("#mtr-ty-1-10", { autoAlpha: 1 }, 2.7995);
+      tl.set("#mtr-ty-1-10", { autoAlpha: 0 }, 2.9662);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 8.8662);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 8.8662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 8.8662);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 10.5995);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 10.5995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 10.5995);
+      tl.set("#mtr-ty-2-0", { autoAlpha: 1 }, 8.8662);
+      tl.set("#mtr-ty-2-0", { autoAlpha: 0 }, 8.9662);
+      tl.set("#mtr-ty-2-1", { autoAlpha: 1 }, 8.9662);
+      tl.set("#mtr-ty-2-1", { autoAlpha: 0 }, 8.9995);
+      tl.set("#mtr-ty-2-2", { autoAlpha: 1 }, 8.9995);
+      tl.set("#mtr-ty-2-2", { autoAlpha: 0 }, 9.0662);
+      tl.set("#mtr-ty-2-3", { autoAlpha: 1 }, 9.0662);
+      tl.set("#mtr-ty-2-3", { autoAlpha: 0 }, 9.1662);
+      tl.set("#mtr-ty-2-4", { autoAlpha: 1 }, 9.1662);
+      tl.set("#mtr-ty-2-4", { autoAlpha: 0 }, 9.2328);
+      tl.set("#mtr-ty-2-5", { autoAlpha: 1 }, 9.2328);
+      tl.set("#mtr-ty-2-5", { autoAlpha: 0 }, 9.2662);
+      tl.set("#mtr-ty-2-6", { autoAlpha: 1 }, 9.2662);
+      tl.set("#mtr-ty-2-6", { autoAlpha: 0 }, 9.3662);
+      tl.set("#mtr-ty-2-7", { autoAlpha: 1 }, 9.3662);
+      tl.set("#mtr-ty-2-7", { autoAlpha: 0 }, 9.3995);
+      tl.set("#mtr-ty-2-8", { autoAlpha: 1 }, 9.3995);
+      tl.set("#mtr-ty-2-8", { autoAlpha: 0 }, 9.4328);
+      tl.set("#mtr-ty-2-9", { autoAlpha: 1 }, 9.4328);
+      tl.set("#mtr-ty-2-9", { autoAlpha: 0 }, 9.5662);
+      tl.set("#mtr-ty-2-10", { autoAlpha: 1 }, 9.5662);
+      tl.set("#mtr-ty-2-10", { autoAlpha: 0 }, 9.5995);
+      tl.set("#mtr-ty-2-11", { autoAlpha: 1 }, 9.5995);
+      tl.set("#mtr-ty-2-11", { autoAlpha: 0 }, 9.6662);
+      tl.set("#mtr-ty-2-12", { autoAlpha: 1 }, 9.6662);
+      tl.set("#mtr-ty-2-12", { autoAlpha: 0 }, 9.7995);
+      tl.set("#mtr-ty-2-13", { autoAlpha: 1 }, 9.7995);
+      tl.set("#mtr-ty-2-13", { autoAlpha: 0 }, 9.8662);
+      tl.set("#mtr-ty-2-14", { autoAlpha: 1 }, 9.8662);
+      tl.set("#mtr-ty-2-14", { autoAlpha: 0 }, 9.8995);
+      tl.set("#mtr-ty-2-15", { autoAlpha: 1 }, 9.8995);
+      tl.set("#mtr-ty-2-15", { autoAlpha: 0 }, 9.9662);
+      tl.set("#mtr-ty-2-16", { autoAlpha: 1 }, 9.9662);
+      tl.set("#mtr-ty-2-16", { autoAlpha: 0 }, 9.9995);
+      tl.set("#mtr-ty-2-17", { autoAlpha: 1 }, 9.9995);
+      tl.set("#mtr-ty-2-17", { autoAlpha: 0 }, 10.0662);
+      tl.set("#mtr-ty-2-18", { autoAlpha: 1 }, 10.0662);
+      tl.set("#mtr-ty-2-18", { autoAlpha: 0 }, 10.1662);
+      tl.set("#mtr-ty-2-19", { autoAlpha: 1 }, 10.1662);
+      tl.set("#mtr-ty-2-19", { autoAlpha: 0 }, 10.2328);
+      tl.set("#mtr-ty-2-20", { autoAlpha: 1 }, 10.2328);
+      tl.set("#mtr-ty-2-20", { autoAlpha: 0 }, 10.2995);
+      tl.set("#mtr-ty-2-21", { autoAlpha: 1 }, 10.2995);
+      tl.set("#mtr-ty-2-21", { autoAlpha: 0 }, 10.3995);
+      tl.set("#mtr-ty-2-22", { autoAlpha: 1 }, 10.3995);
+      tl.set("#mtr-ty-2-22", { autoAlpha: 0 }, 10.4662);
+      tl.set("#mtr-ty-2-23", { autoAlpha: 1 }, 10.4662);
+      tl.set("#mtr-ty-2-23", { autoAlpha: 0 }, 10.5995);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 13.3995);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 13.3995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 13.3995);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 14.0662);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 14.0662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 14.0662);
+      tl.set("#mtr-ty-3-0", { autoAlpha: 1 }, 13.3995);
+      tl.set("#mtr-ty-3-0", { autoAlpha: 0 }, 13.4328);
+      tl.set("#mtr-ty-3-1", { autoAlpha: 1 }, 13.4328);
+      tl.set("#mtr-ty-3-1", { autoAlpha: 0 }, 13.4995);
+      tl.set("#mtr-ty-3-2", { autoAlpha: 1 }, 13.4995);
+      tl.set("#mtr-ty-3-2", { autoAlpha: 0 }, 13.5995);
+      tl.set("#mtr-ty-3-3", { autoAlpha: 1 }, 13.5995);
+      tl.set("#mtr-ty-3-3", { autoAlpha: 0 }, 13.6662);
+      tl.set("#mtr-ty-3-4", { autoAlpha: 1 }, 13.6662);
+      tl.set("#mtr-ty-3-4", { autoAlpha: 0 }, 13.6995);
+      tl.set("#mtr-ty-3-5", { autoAlpha: 1 }, 13.6995);
+      tl.set("#mtr-ty-3-5", { autoAlpha: 0 }, 13.7995);
+      tl.set("#mtr-ty-3-6", { autoAlpha: 1 }, 13.7995);
+      tl.set("#mtr-ty-3-6", { autoAlpha: 0 }, 13.9662);
+      tl.set("#mtr-ty-3-7", { autoAlpha: 1 }, 13.9662);
+      tl.set("#mtr-ty-3-7", { autoAlpha: 0 }, 14.0328);
+      tl.set("#mtr-ty-3-8", { autoAlpha: 1 }, 14.0328);
+      tl.set("#mtr-ty-3-8", { autoAlpha: 0 }, 14.0662);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 15.1662);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 15.1662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 15.1662);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 17.0995);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 17.0995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 17.0995);
+      tl.set("#mtr-ty-4-0", { autoAlpha: 1 }, 15.1662);
+      tl.set("#mtr-ty-4-0", { autoAlpha: 0 }, 15.1995);
+      tl.set("#mtr-ty-4-1", { autoAlpha: 1 }, 15.1995);
+      tl.set("#mtr-ty-4-1", { autoAlpha: 0 }, 15.2328);
+      tl.set("#mtr-ty-4-2", { autoAlpha: 1 }, 15.2328);
+      tl.set("#mtr-ty-4-2", { autoAlpha: 0 }, 15.2995);
+      tl.set("#mtr-ty-4-3", { autoAlpha: 1 }, 15.2995);
+      tl.set("#mtr-ty-4-3", { autoAlpha: 0 }, 15.3995);
+      tl.set("#mtr-ty-4-4", { autoAlpha: 1 }, 15.3995);
+      tl.set("#mtr-ty-4-4", { autoAlpha: 0 }, 15.4328);
+      tl.set("#mtr-ty-4-5", { autoAlpha: 1 }, 15.4328);
+      tl.set("#mtr-ty-4-5", { autoAlpha: 0 }, 15.4995);
+      tl.set("#mtr-ty-4-6", { autoAlpha: 1 }, 15.4995);
+      tl.set("#mtr-ty-4-6", { autoAlpha: 0 }, 15.5662);
+      tl.set("#mtr-ty-4-7", { autoAlpha: 1 }, 15.5662);
+      tl.set("#mtr-ty-4-7", { autoAlpha: 0 }, 15.6328);
+      tl.set("#mtr-ty-4-8", { autoAlpha: 1 }, 15.6328);
+      tl.set("#mtr-ty-4-8", { autoAlpha: 0 }, 15.6662);
+      tl.set("#mtr-ty-4-9", { autoAlpha: 1 }, 15.6662);
+      tl.set("#mtr-ty-4-9", { autoAlpha: 0 }, 15.6995);
+      tl.set("#mtr-ty-4-10", { autoAlpha: 1 }, 15.6995);
+      tl.set("#mtr-ty-4-10", { autoAlpha: 0 }, 15.7995);
+      tl.set("#mtr-ty-4-11", { autoAlpha: 1 }, 15.7995);
+      tl.set("#mtr-ty-4-11", { autoAlpha: 0 }, 15.8662);
+      tl.set("#mtr-ty-4-12", { autoAlpha: 1 }, 15.8662);
+      tl.set("#mtr-ty-4-12", { autoAlpha: 0 }, 15.8995);
+      tl.set("#mtr-ty-4-13", { autoAlpha: 1 }, 15.8995);
+      tl.set("#mtr-ty-4-13", { autoAlpha: 0 }, 16.0662);
+      tl.set("#mtr-ty-4-14", { autoAlpha: 1 }, 16.0662);
+      tl.set("#mtr-ty-4-14", { autoAlpha: 0 }, 16.0995);
+      tl.set("#mtr-ty-4-15", { autoAlpha: 1 }, 16.0995);
+      tl.set("#mtr-ty-4-15", { autoAlpha: 0 }, 16.2328);
+      tl.set("#mtr-ty-4-16", { autoAlpha: 1 }, 16.2328);
+      tl.set("#mtr-ty-4-16", { autoAlpha: 0 }, 16.2662);
+      tl.set("#mtr-ty-4-17", { autoAlpha: 1 }, 16.2662);
+      tl.set("#mtr-ty-4-17", { autoAlpha: 0 }, 16.2995);
+      tl.set("#mtr-ty-4-18", { autoAlpha: 1 }, 16.2995);
+      tl.set("#mtr-ty-4-18", { autoAlpha: 0 }, 16.3995);
+      tl.set("#mtr-ty-4-19", { autoAlpha: 1 }, 16.3995);
+      tl.set("#mtr-ty-4-19", { autoAlpha: 0 }, 16.4662);
+      tl.set("#mtr-ty-4-20", { autoAlpha: 1 }, 16.4662);
+      tl.set("#mtr-ty-4-20", { autoAlpha: 0 }, 16.4995);
+      tl.set("#mtr-ty-4-21", { autoAlpha: 1 }, 16.4995);
+      tl.set("#mtr-ty-4-21", { autoAlpha: 0 }, 16.5662);
+      tl.set("#mtr-ty-4-22", { autoAlpha: 1 }, 16.5662);
+      tl.set("#mtr-ty-4-22", { autoAlpha: 0 }, 16.6328);
+      tl.set("#mtr-ty-4-23", { autoAlpha: 1 }, 16.6328);
+      tl.set("#mtr-ty-4-23", { autoAlpha: 0 }, 16.6995);
+      tl.set("#mtr-ty-4-24", { autoAlpha: 1 }, 16.6995);
+      tl.set("#mtr-ty-4-24", { autoAlpha: 0 }, 16.7995);
+      tl.set("#mtr-ty-4-25", { autoAlpha: 1 }, 16.7995);
+      tl.set("#mtr-ty-4-25", { autoAlpha: 0 }, 16.8328);
+      tl.set("#mtr-ty-4-26", { autoAlpha: 1 }, 16.8328);
+      tl.set("#mtr-ty-4-26", { autoAlpha: 0 }, 16.8995);
+      tl.set("#mtr-ty-4-27", { autoAlpha: 1 }, 16.8995);
+      tl.set("#mtr-ty-4-27", { autoAlpha: 0 }, 17.0995);
+      tl.set("#mtr-ph", { autoAlpha: 0 }, 18.1662);
+      tl.set("#mtr-mic", { autoAlpha: 0 }, 18.1662);
+      tl.set("#mtr-sendbtn", { autoAlpha: 1 }, 18.1662);
+      tl.set("#mtr-ph", { autoAlpha: 1 }, 19.8995);
+      tl.set("#mtr-mic", { autoAlpha: 1 }, 19.8995);
+      tl.set("#mtr-sendbtn", { autoAlpha: 0 }, 19.8995);
+      tl.set("#mtr-ty-5-0", { autoAlpha: 1 }, 18.1662);
+      tl.set("#mtr-ty-5-0", { autoAlpha: 0 }, 18.2328);
+      tl.set("#mtr-ty-5-1", { autoAlpha: 1 }, 18.2328);
+      tl.set("#mtr-ty-5-1", { autoAlpha: 0 }, 18.2662);
+      tl.set("#mtr-ty-5-2", { autoAlpha: 1 }, 18.2662);
+      tl.set("#mtr-ty-5-2", { autoAlpha: 0 }, 18.3662);
+      tl.set("#mtr-ty-5-3", { autoAlpha: 1 }, 18.3662);
+      tl.set("#mtr-ty-5-3", { autoAlpha: 0 }, 18.4328);
+      tl.set("#mtr-ty-5-4", { autoAlpha: 1 }, 18.4328);
+      tl.set("#mtr-ty-5-4", { autoAlpha: 0 }, 18.4995);
+      tl.set("#mtr-ty-5-5", { autoAlpha: 1 }, 18.4995);
+      tl.set("#mtr-ty-5-5", { autoAlpha: 0 }, 18.5995);
+      tl.set("#mtr-ty-5-6", { autoAlpha: 1 }, 18.5995);
+      tl.set("#mtr-ty-5-6", { autoAlpha: 0 }, 18.6662);
+      tl.set("#mtr-ty-5-7", { autoAlpha: 1 }, 18.6662);
+      tl.set("#mtr-ty-5-7", { autoAlpha: 0 }, 18.7328);
+      tl.set("#mtr-ty-5-8", { autoAlpha: 1 }, 18.7328);
+      tl.set("#mtr-ty-5-8", { autoAlpha: 0 }, 18.7995);
+      tl.set("#mtr-ty-5-9", { autoAlpha: 1 }, 18.7995);
+      tl.set("#mtr-ty-5-9", { autoAlpha: 0 }, 18.8328);
+      tl.set("#mtr-ty-5-10", { autoAlpha: 1 }, 18.8328);
+      tl.set("#mtr-ty-5-10", { autoAlpha: 0 }, 18.9995);
+      tl.set("#mtr-ty-5-11", { autoAlpha: 1 }, 18.9995);
+      tl.set("#mtr-ty-5-11", { autoAlpha: 0 }, 19.0328);
+      tl.set("#mtr-ty-5-12", { autoAlpha: 1 }, 19.0328);
+      tl.set("#mtr-ty-5-12", { autoAlpha: 0 }, 19.0995);
+      tl.set("#mtr-ty-5-13", { autoAlpha: 1 }, 19.0995);
+      tl.set("#mtr-ty-5-13", { autoAlpha: 0 }, 19.1662);
+      tl.set("#mtr-ty-5-14", { autoAlpha: 1 }, 19.1662);
+      tl.set("#mtr-ty-5-14", { autoAlpha: 0 }, 19.1995);
+      tl.set("#mtr-ty-5-15", { autoAlpha: 1 }, 19.1995);
+      tl.set("#mtr-ty-5-15", { autoAlpha: 0 }, 19.2662);
+      tl.set("#mtr-ty-5-16", { autoAlpha: 1 }, 19.2662);
+      tl.set("#mtr-ty-5-16", { autoAlpha: 0 }, 19.3662);
+      tl.set("#mtr-ty-5-17", { autoAlpha: 1 }, 19.3662);
+      tl.set("#mtr-ty-5-17", { autoAlpha: 0 }, 19.4328);
+      tl.set("#mtr-ty-5-18", { autoAlpha: 1 }, 19.4328);
+      tl.set("#mtr-ty-5-18", { autoAlpha: 0 }, 19.4995);
+      tl.set("#mtr-ty-5-19", { autoAlpha: 1 }, 19.4995);
+      tl.set("#mtr-ty-5-19", { autoAlpha: 0 }, 19.5328);
+      tl.set("#mtr-ty-5-20", { autoAlpha: 1 }, 19.5328);
+      tl.set("#mtr-ty-5-20", { autoAlpha: 0 }, 19.5995);
+      tl.set("#mtr-ty-5-21", { autoAlpha: 1 }, 19.5995);
+      tl.set("#mtr-ty-5-21", { autoAlpha: 0 }, 19.6662);
+      tl.set("#mtr-ty-5-22", { autoAlpha: 1 }, 19.6662);
+      tl.set("#mtr-ty-5-22", { autoAlpha: 0 }, 19.7662);
+      tl.set("#mtr-ty-5-23", { autoAlpha: 1 }, 19.7662);
+      tl.set("#mtr-ty-5-23", { autoAlpha: 0 }, 19.7995);
+      tl.set("#mtr-ty-5-24", { autoAlpha: 1 }, 19.7995);
+      tl.set("#mtr-ty-5-24", { autoAlpha: 0 }, 19.8995);
+      tl.set("#mtr-ec-wrap", { autoAlpha: 0 }, 23.257);
+      tl.fromTo(
+        "#mtr-ec-wrap",
+        { autoAlpha: 0 },
+        { autoAlpha: 1, duration: 0.3, ease: "none" },
+        23.2667,
+      );
+      window.__timelines["message-thread-reveal"] = tl;
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `showcase` `mock-ui` `chat` `vertical` `ad-template`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

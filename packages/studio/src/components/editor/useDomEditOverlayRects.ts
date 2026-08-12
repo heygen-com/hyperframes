@@ -17,7 +17,7 @@ import {
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
-  toVisibleOverlayRect,
+  orientedVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
@@ -172,7 +172,9 @@ export function useDomEditOverlayRects({
             for (let i = 0; i < descendants.length; i++) {
               const child = descendants[i] as HTMLElement;
               if (!child.getBoundingClientRect) continue;
-              const r = toVisibleOverlayRect(overlayEl, iframe, child);
+              // Oriented, not axis-aligned: a child of a rotated element drew its
+              // outline square around the rotated glyphs instead of on them.
+              const r = orientedVisibleOverlayRect(overlayEl, iframe, child);
               if (r && r.width > 2 && r.height > 2) nextChildRects.push(r);
             }
             if (!childRectsEqual(childRectsRef.current, nextChildRects)) {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import {
   resolveConfig,
   resolveDefaultDrawElement,
+  explainDrawElementDisabled,
   DEFAULT_CONFIG,
   scaleProtocolTimeoutForComposition,
   shouldClampToScreenshotForConcreteGpu,
@@ -230,6 +231,85 @@ describe("resolveConfig", () => {
       setEnv("HYPERFRAMES_EXTRACT_CACHE_MAX_MB", "512");
 
       expect(resolveConfig().extractCacheMaxBytes).toBe(512 * 1024 ** 2);
+    });
+  });
+
+  // Every resolveDefaultDrawElement branch returns a bare `false`, so a render
+  // that never became a DE candidate reached telemetry with no reason at all
+  // and landed in the dashboard's `other` bucket. These pin that each silent
+  // refusal now has a name, and that the names stay in the same ORDER as the
+  // resolver's branches — if the two drift, the reason is a plausible lie,
+  // which is worse than no reason.
+  describe("explainDrawElementDisabled (names the silent refusals)", () => {
+    const base = { browserGpuMode: "hardware" as const, workerEncode: true };
+
+    it("names each refusal", () => {
+      expect(explainDrawElementDisabled({ ...base, platform: "linux" })).toBe(
+        "unsupported_platform",
+      );
+      expect(
+        explainDrawElementDisabled({ ...base, platform: "darwin", browserGpuMode: "software" }),
+      ).toBe("software_gpu");
+      expect(explainDrawElementDisabled({ ...base, platform: "win32", workerEncode: false })).toBe(
+        "worker_encode_off",
+      );
+    });
+
+    // The Windows case this shipped for: hardware GPU, supported platform,
+    // worker-encode on — nothing environmental explains it, so it was an
+    // explicit opt-out. Must NOT masquerade as one of the other three.
+    // The caller-side path: resolveDefaultDrawElement never even runs when the
+    // feature is off at a higher config level, so the orchestrator seeds from
+    // the environment alone and must land on `disabled` rather than inventing
+    // an environmental cause.
+    it("reports `disabled` for a config-time refusal on a healthy host", () => {
+      expect(
+        resolveDefaultDrawElement({ ...base, useDrawElement: false, platform: "darwin" }),
+      ).toBe(false);
+      expect(explainDrawElementDisabled({ ...base, platform: "darwin" })).toBe("disabled");
+    });
+
+    it("falls back to `disabled` when nothing environmental explains it", () => {
+      expect(explainDrawElementDisabled({ ...base, platform: "win32" })).toBe("disabled");
+      expect(explainDrawElementDisabled({ ...base, platform: "darwin" })).toBe("disabled");
+    });
+
+    // Platform is checked BEFORE gpu mode, matching the resolver. A linux
+    // software host is reported as unsupported_platform, not software_gpu:
+    // fixing the GPU would not help.
+    it("orders platform ahead of gpu mode, like the resolver", () => {
+      expect(
+        explainDrawElementDisabled({
+          platform: "linux",
+          browserGpuMode: "software",
+          workerEncode: false,
+        }),
+      ).toBe("unsupported_platform");
+    });
+
+    // The contract that keeps the two functions honest: whenever the resolver
+    // says false, the explainer must produce a reason, and whenever it says
+    // true the caller must not ask.
+    it("covers every input where the resolver refuses", () => {
+      const platforms: NodeJS.Platform[] = ["darwin", "win32", "linux"];
+      const gpuModes = ["hardware", "software", "auto"] as const;
+      for (const platform of platforms) {
+        for (const browserGpuMode of gpuModes) {
+          for (const workerEncode of [true, false]) {
+            const on = resolveDefaultDrawElement({
+              useDrawElement: true,
+              explicitOptIn: false,
+              platform,
+              browserGpuMode,
+              workerEncode,
+            });
+            if (on) continue;
+            expect(explainDrawElementDisabled({ platform, browserGpuMode, workerEncode })).not.toBe(
+              "disabled",
+            );
+          }
+        }
+      }
     });
   });
 

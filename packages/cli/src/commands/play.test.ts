@@ -251,6 +251,31 @@ describe("registerCompositionRoute", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
+  it("serves the runtime script ahead of every author script", async () => {
+    // Compositions read `window.__hyperframes.getVariables()` from an inline
+    // script at init. A runtime injected before </body> loads after that script,
+    // so the documented API is undefined exactly where authors are told to call
+    // it. Pin the ordering at the served-document boundary.
+    const project = tmpProject();
+    writeFileSync(
+      join(project.dir, "index.html"),
+      [
+        '<html><head><script src="https://cdn.example/gsap.js"></script></head>',
+        '<body><div id="root"></div>',
+        "<script>window.__probe = typeof window.__hyperframes;</script>",
+        "</body></html>",
+      ].join(""),
+    );
+    const app = await buildApp(project, false);
+
+    const html = await (await app.request("/composition/index.html")).text();
+
+    const runtimeIndex = html.indexOf('<script src="/runtime.js">');
+    expect(runtimeIndex).toBeGreaterThanOrEqual(0);
+    const firstAuthorScriptIndex = html.search(/<script(?! src="\/runtime\.js")/);
+    expect(firstAuthorScriptIndex).toBeGreaterThan(runtimeIndex);
+  });
+
   it("injects __HF_MEDIA_CODEC_MAP__ into served composition HTML", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");

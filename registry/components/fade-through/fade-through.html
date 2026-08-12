@@ -1,0 +1,96 @@
+<!--
+  Fade Through - scene transition primitive.
+
+  Put class="hf-fade-through-out" on the outgoing layer and
+  class="hf-fade-through-in" on the incoming layer. Add the optional wash
+  overlay below when you want a brighter mid-transition frame.
+
+  Variables. The wash is the only surface this primitive paints, so all three
+  describe it. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS above consumes. The timeline recipe below is untouched by them.
+
+    - wash (paper | white | ink | accent, default paper): the colour of the
+      mid-transition frame. paper still resolves through
+      --hf-fade-through-wash, so an existing override keeps working; accent
+      rides --accent.
+    - strength (number 0.1 to 1, default 1): how far the wash is allowed to
+      cover at its peak. 1 is a full flash, 0.3 a light veil over the cut.
+    - shape (flat | bloom, default flat): flat fills the frame evenly, bloom
+      concentrates the wash in the centre and falls off to the edges.
+
+  On every default the result is identical to the original: a flat, fully
+  opaque #f8f5ec wash.
+-->
+
+<div
+  class="hf-fade-through-wash"
+  aria-hidden="true"
+  data-composition-variables='[
+    { "id": "wash", "type": "enum", "role": "style", "label": "Wash", "description": "Colour of the mid-transition frame. Paper resolves through --hf-fade-through-wash, accent rides --accent.", "default": "paper", "options": [{ "value": "paper", "label": "Paper" }, { "value": "white", "label": "White" }, { "value": "ink", "label": "Ink" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "strength", "type": "number", "role": "style", "label": "Strength", "description": "How far the wash covers at its peak. 1 is a full flash, 0.3 a light veil.", "default": 1, "min": 0.1, "max": 1, "step": 0.05 },
+    { "id": "shape", "type": "enum", "role": "style", "label": "Shape", "description": "Flat fills the frame evenly, bloom concentrates the wash in the centre.", "default": "flat", "options": [{ "value": "flat", "label": "Flat" }, { "value": "bloom", "label": "Bloom" }] }
+  ]'
+></div>
+
+<style>
+  .hf-fade-through-in {
+    opacity: 0;
+  }
+  .hf-fade-through-wash {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--hf-fade-through-paint, var(--hf-fade-through-wash, #f8f5ec));
+    filter: opacity(var(--hf-fade-through-strength, 1));
+    z-index: 900;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    var washes = {
+      paper: "var(--hf-fade-through-wash, #f8f5ec)",
+      white: "#ffffff",
+      ink: "#0b0b0f",
+      accent: "var(--accent, #38bdf8)",
+    };
+
+    var wash = Object.prototype.hasOwnProperty.call(washes, vars.wash) ? vars.wash : "paper";
+    var shape = vars.shape === "bloom" ? "bloom" : "flat";
+
+    var strength = parseFloat(vars.strength);
+    if (!isFinite(strength)) strength = 1;
+    strength = Math.min(1, Math.max(0.1, strength));
+
+    var colour = washes[wash];
+    var paint =
+      shape === "bloom"
+        ? "radial-gradient(circle at 50% 50%, " + colour + " 0%, transparent 72%)"
+        : colour;
+
+    var overlays = document.querySelectorAll(".hf-fade-through-wash");
+    for (var i = 0; i < overlays.length; i += 1) {
+      overlays[i].style.setProperty("--hf-fade-through-paint", paint);
+      overlays[i].style.setProperty("--hf-fade-through-strength", String(strength));
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-fade-through-out", { opacity: 0, duration: 0.45, ease: "power2.inOut" }, startTime);
+  tl.to(".hf-fade-through-wash", { opacity: 1, duration: 0.35, ease: "power2.inOut" }, startTime);
+  tl.to(".hf-fade-through-wash", { opacity: 0, duration: 0.45, ease: "power2.inOut" }, startTime + 0.35);
+  tl.to(".hf-fade-through-in", { opacity: 1, duration: 0.55, ease: "power2.out" }, startTime + 0.35);
+-->

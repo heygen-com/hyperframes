@@ -1,25 +1,51 @@
 ---
 title: When to generate artwork
-description: "Code-drawn wins for UI, type, geometry, and 3D; illustration-led hero art comes from an image model, animated as layers."
+description: "Code-drawn wins for UI, type, geometry, and 3D. Illustration-led hero art comes from an image model, animated as layers."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Your Level 1 music slideshow cut real photos to the beat — there was real art to work with. This chapter is for the opposite case: a hero character, a painterly scene, sculptural objects that don't exist as a photo or a footage capture yet.
+Your Level 1 music slideshow cut real photos to the beat. There was real art to
+work with. This chapter is for the opposite case: a hero character, a painterly
+scene, or sculptural objects that do not exist yet as a photo or a capture.
 
-Code-drawn HTML/CSS/SVG excels where the medium is native: UI mockups, typography, geometric shapes, charts, pixel art, and 3D via Three.js. For **illustration-led** hero art — characters, painterly scenes, sculptural objects — hand-drawn SVG tops out at clipart quality no matter how well you prompt. The fix is a hybrid:
+## What code draws well — and what it doesn't
+
+Code-drawn HTML, CSS, and SVG excel where the medium is native. That means UI
+mockups, typography, geometric shapes, charts, pixel art, and 3D via Three.js.
+
+**Illustration-led** hero art is the exception. Characters, painterly scenes,
+and sculptural objects are what hand-drawn SVG is worst at. It tops out at
+clipart quality no matter how well you prompt.
+
+## The hybrid: generate the art, animate it in code
+
+Ask for the still art from an image model, then move it with code:
 
 > Generate the hero artwork as an image (via the media-use skill's image generation), then animate it with code. Anything that must move independently — eyelids, light beams, drawing lines — stays a code layer on top of the static art.
 
-Three rules that make this work:
+The generated image is one flat layer. Everything that has to move on its own
+stays a code layer above it.
 
-1. **Generate on a solid contrasting background** (magenta works) so the subject keys out cleanly. A light subject on a light background gets silently eaten.
-2. **Key flat vector-style art with a chroma key** (`ffmpeg colorkey`), not AI background removal — `remove-background`'s matting model is tuned for photographic and human subjects and reads flat art unreliably, sometimes keeping the background instead of the subject. Reserve `remove-background` for photographs.
-3. **Put a restraint clause in the generation prompt** ("minimal, lots of negative space") — image models fill the frame by default, and a busy generated texture reads as cheap as bad vector art.
+## Three rules that make this work
+
+1. **Generate on a solid contrasting background.** Magenta works well. It lets
+   the subject key out cleanly. A light subject on a light background gets
+   silently eaten.
+2. **Key flat vector-style art with a chroma key** (`ffmpeg colorkey`), not AI
+   background removal. `remove-background` runs a human-segmentation matting
+   model, so it is tuned for photographs and people. It reads flat art
+   unreliably, and sometimes keeps the background instead of the subject. Save
+   `remove-background` for photographs.
+3. **Put a restraint clause in the generation prompt** — "minimal, lots of
+   negative space". Image models fill the frame by default. A busy generated
+   texture reads as cheap as bad vector art.
 
 ## The difference, side by side
 
-The same brief — four people arm in arm, warm gradient sweaters, flat-illustration style — built both ways. Same animation beats, same craft layer (lighting, atmosphere, grade); the only variable is where the figures came from.
+The same brief built both ways: four people arm in arm, warm gradient sweaters,
+flat-illustration style. Same animation beats, same craft layer of lighting,
+atmosphere, and grade. The only variable is where the figures came from.
 
 <DocsVideo
   title="HyperFrames video: Artwork Hand Drawn"
@@ -33,13 +59,17 @@ The same brief — four people arm in arm, warm gradient sweaters, flat-illustra
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-generated.mp4#t=0.1"
   loop
 />
-*Generated illustration animated as layers — real anatomy and editorial shading; the animated line still passes behind the figures because the artwork was keyed to transparency.*
+*Generated illustration animated as layers — real anatomy and editorial shading. The animated line still passes behind the figures, because the artwork was keyed to transparency.*
 
 <Note>
-**Capstone thread** — the [Level 7 film](/prompting/capstone)'s Surface region rides on generated artwork: a palette-neutral mural duotoned live by CSS from the composition's two variables, so even the raster re-skins on a `--variables` render (cut from the film, below).
+**Capstone thread** — the [Level 7 film](/prompting/capstone)'s Surface region
+rides on generated artwork. The mural is generated palette-neutral, then
+duotoned live by CSS from the composition's two variables. So even the raster
+re-skins on a `--variables` render. That region is cut from the film below.
 </Note>
 
-This is the clause in the [full capstone prompt](/prompting/capstone#the-full-prompt-verbatim) that buys the piece — prompt language you can lift for your own video:
+This is the clause in the [full capstone prompt](/prompting/capstone#the-prompt-word-for-word)
+that buys the piece — prompt language you can lift for your own video:
 
 > […] over a **generated-artwork backdrop** — a flat abstract mural evoking motion trails, generated **palette-neutral (grayscale) and duotoned live by CSS** from the two variables so it re-skins with everything else. **The mural is a full-frame, screen-fixed backdrop: it never moves on screen — the widening iris circle alone reveals it already in place at full frame […] and it exits by fading out.**
 

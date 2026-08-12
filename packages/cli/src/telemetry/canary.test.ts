@@ -142,6 +142,9 @@ describe("telemetry opt-out is canary opt-out", () => {
       "$feature/canary-test-alpha": "false",
       "$feature/canary-test-gamma": "false",
       "$feature/canary-test-beta": "false",
+      canary_reason_test_alpha: "telemetry_opt_out",
+      canary_reason_test_gamma: "telemetry_opt_out",
+      canary_reason_test_beta: "telemetry_opt_out",
     });
   });
 });
@@ -228,10 +231,54 @@ describe("CLI canary binding", () => {
       "$feature/canary-test-alpha": "true",
       "$feature/canary-test-gamma": expect.stringMatching(/^(true|false)$/),
       "$feature/canary-test-beta": "false",
+      canary_reason_test_alpha: "in_cohort",
+      canary_reason_test_gamma: expect.stringMatching(/^(in_cohort|out_of_cohort)$/),
+      canary_reason_test_beta: "out_of_cohort",
     });
 
     __resetCanaryCacheForTests();
     process.env.HF_CANARY_TEST_ALPHA = "off";
     expect(canaryEventProperties()["$feature/canary-test-alpha"]).toBe("false");
+  });
+});
+
+// End of the wire: the CLI binding computes the reason and used to drop it.
+describe("reason reaches the event properties", () => {
+  it("pairs every canary's assignment with its reason", () => {
+    const props = canaryEventProperties();
+    expect(props["$feature/canary-test-alpha"]).toBe("true");
+    expect(props["canary_reason_test_alpha"]).toBe("in_cohort");
+    expect(props["canary_reason_test_beta"]).toBe("out_of_cohort");
+  });
+
+  it("reports an explicit override as forced, not as a cohort roll", () => {
+    process.env.HF_CANARY_TEST_BETA = "on";
+    const props = canaryEventProperties();
+    expect(props["$feature/canary-test-beta"]).toBe("true");
+    // Same assignment a real enrolment would produce — the reason is the only
+    // thing that distinguishes them, which is the point.
+    expect(props["canary_reason_test_beta"]).toBe("forced_on");
+  });
+
+  it("reports CI as excluded rather than out_of_cohort", () => {
+    systemState.is_ci = true;
+    // Both are enabled:false, but `excluded` was never bucketed. Conflating
+    // them is what biased the first fleet accuracy read low.
+    expect(canaryEventProperties()["canary_reason_test_gamma"]).toBe("excluded");
+  });
+
+  // The PR body advertises no_unit_id as one of two values that pay for
+  // themselves; the resolver exercises it but the emission layer did not.
+  it("reports no_unit_id at the emission layer when the install has no id", () => {
+    configState.anonymousId = "";
+    configState.bucketSeed = undefined;
+    expect(canaryEventProperties()["canary_reason_test_gamma"]).toBe("no_unit_id");
+  });
+
+  it("reports telemetry_opt_out when the preference is off", () => {
+    configState.telemetryEnabled = false;
+    // Emitted for completeness; by construction such an install sends nothing,
+    // so this value should never actually be observed in the warehouse.
+    expect(canaryEventProperties()["canary_reason_test_alpha"]).toBe("telemetry_opt_out");
   });
 });

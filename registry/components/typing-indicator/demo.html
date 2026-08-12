@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Typing Indicator</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
+      }
+      /* the device */
+      .spec-phone {
+        position: absolute;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+      }
+      /* interior is authored at 1080x1920 and scaled into the screen */
+      .spec-int {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        transform: scale(0.3796);
+        transform-origin: 0 0;
+      }
+      /* the caption column */
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
+        top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
+        display: grid;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+
+      .ti-screen {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+      .ti-name {
+        position: absolute;
+        left: 0;
+        top: 120px;
+        width: 1080px;
+        text-align: center;
+      }
+      .ti-name .av {
+        display: inline-grid;
+        place-items: center;
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: #9ce474;
+        color: #12300c;
+        font-size: 48px;
+        font-weight: 600;
+      }
+      .ti-name .nm {
+        display: block;
+        margin-top: 12px;
+        font-size: 30px;
+        color: #8e8e93;
+      }
+      .ti-item {
+        position: absolute;
+        left: 44px;
+      }
+      .ti-bubble {
+        display: inline-block;
+        max-width: 720px;
+        padding: 22px 30px;
+        border-radius: 40px;
+        font-size: 34px;
+        line-height: 1.3;
+        color: #fff;
+      }
+      .ti-recv {
+        background: #242428;
+      }
+      .ti-sent {
+        background: #0a80f8;
+      }
+      .ti-sent-item {
+        left: auto;
+        right: 45px;
+        text-align: right;
+      }
+      .dotswrap {
+        position: relative;
+        display: inline-block;
+      }
+      .dotsbubble {
+        width: 124px;
+        height: 67px;
+        background: #242428;
+        border-radius: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .dot {
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        background: #8e8e93;
+      }
+      .dtail1 {
+        position: absolute;
+        left: -2px;
+        bottom: -4px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #242428;
+      }
+      .pop {
+        display: inline-block;
+        transform-origin: left bottom;
+      }
+      .pop-sent {
+        transform-origin: right bottom;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-ti-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="typing-indicator-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.5"
+    >
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div class="spec-int">
+              <div class="ti-screen"></div>
+              <div class="ti-name"><span class="av">R</span><span class="nm">Rachel</span></div>
+              <div class="ti-item" id="ti-m1" style="top: 1080px">
+                <div class="pop">
+                  <div class="ti-bubble ti-recv">what r u using for the launch video??</div>
+                </div>
+              </div>
+              <div class="ti-item" id="ti-dots" style="top: 1230px">
+                <div class="pop" id="ti-dots-pop">
+                  <div class="dotswrap">
+                    <div class="dotsbubble">
+                      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    </div>
+                    <div class="dtail1"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="ti-item ti-sent-item" id="ti-m2" style="top: 1230px; left: auto">
+                <div class="pop pop-sent">
+                  <div class="ti-bubble ti-sent">hyperframes &#128064;</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-cap">
+          <div class="name">typing-indicator</div>
+          <div class="rule"></div>
+          <div class="desc">
+            The three-dot bubble that says someone is writing: it pops in at the thread&#39;s edge,
+            holds while the reply is coming, and yields the moment the message lands.
+          </div>
+          <div class="stats">
+            <div class="stat"><b>0.10s</b> — pop-in, scale 0.6 to 1, measured</div>
+            <div class="stat"><b>alpha .4 to 1</b> — the measured entry ramp</div>
+            <div class="stat"><b>bounded wave</b> — optional; the reference holds still</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.set(["#ti-dots", "#ti-m2"], { autoAlpha: 0 }, 0.001);
+      /* pop-in exactly as measured */
+      tl.set("#ti-dots", { autoAlpha: 1 }, 0.7);
+      tl.fromTo(
+        "#ti-dots-pop",
+        { scale: 0.6, autoAlpha: 0.4 },
+        { scale: 1, autoAlpha: 1, duration: 0.1, ease: "power2.out" },
+        0.7,
+      );
+      /* bounded dot wave while the reply is coming */
+      gsap.utils.toArray("#ti-dots .dot").forEach(function (dot, i) {
+        tl.to(
+          dot,
+          { y: -9, duration: 0.28, ease: "sine.inOut", yoyo: true, repeat: 5 },
+          0.85 + i * 0.14,
+        );
+      });
+      /* the message lands: indicator out, bubble pops on the same beat */
+      tl.set("#ti-dots", { autoAlpha: 0 }, 2.9);
+      tl.set("#ti-m2", { autoAlpha: 1 }, 2.9);
+      tl.fromTo(
+        "#ti-m2 .pop",
+        { scale: 0.75, autoAlpha: 0.6 },
+        { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+        2.9,
+      );
+      tl.set({}, {}, 4.5);
+      window.__timelines["typing-indicator-demo"] = tl;
+    </script>
+  </body>
+</html>

@@ -80,6 +80,7 @@ import {
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
   applyConcreteGpuScreenshotClamp,
+  explainDrawElementDisabled,
   scaleProtocolTimeoutForComposition,
   classifyCaptureFailure,
   cloneCaptureWarning,
@@ -295,7 +296,7 @@ export interface RenderConfig {
    *   stream; transparency is binary because GIF has no partial alpha.
    * - `"png-sequence"`: a directory of zero-padded RGBA PNGs
    *   (`frame_000001.png` …). Lossless alpha, largest on disk, no muxed
-   *   audio (an `audio.aac` sidecar is written alongside the PNGs when
+   *   audio (an `audio.m4a` sidecar is written alongside the PNGs when
    *   the composition has audio elements). Use for After Effects / Nuke
    *   / Fusion ingest, or when frames need post-processing before
    *   encoding. `outputPath` is treated as a directory; it is created if
@@ -805,6 +806,72 @@ export function buildMissingFrameRetryBatches(
   }
 
   return batches;
+}
+
+/**
+ * The capture mode this render will REPORT, pre-capture.
+ *
+ * BeginFrame is Linux-only. Both real entry points enforce that —
+ * `frameCapture`'s preMode (`headlessShell && isLinux && !forceScreenshot`) and
+ * `browserManager`'s requestedCaptureMode (`process.platform === "linux"`) —
+ * but the observability field derived the mode from `forceScreenshot` alone,
+ * with no platform test. Every non-Linux render that did not force screenshot
+ * therefore reported `beginframe` for a capture that was really screenshot:
+ * 30,625 Windows renders over 14 days, a fifth of the fast-capture dashboard's
+ * capture-mode data.
+ *
+ * `config.ts` documents this same failure for "darwin + software" and adds a
+ * `forceScreenshot` clamp as defence-in-depth — but that clamp only fires on
+ * software GPU, so Windows-on-hardware slipped straight past it (41,102 of the
+ * mislabelled renders).
+ *
+ * NECESSARY, NOT SUFFICIENT — read this before trusting the value on Linux.
+ * The platform test is the only condition modelled here. Linux BeginFrame
+ * additionally requires a headless-shell binary, no supersampling, no
+ * transparent drawElement route (`frameCapture.ts` preMode) and the
+ * `--enable-begin-frame-control` flag (`browserManager.ts`). Any of those can
+ * make the ACTUAL mode screenshot while this still reports `beginframe`, so a
+ * Linux `beginframe` reading is an upper bound, not a fact. The authoritative
+ * value is the session's own `launchCaptureMode` — the same field the runtime
+ * video gate already falls back to. Deriving this field from the resolved
+ * session instead of from config is the real fix and is deliberately NOT in
+ * this change: it closes the Windows mislabel, which is platform-only and
+ * needs no session plumbing.
+ *
+ * Pure; exported for tests.
+ */
+export function resolveObservedCaptureMode(
+  forceScreenshot: boolean,
+  platform: NodeJS.Platform = process.platform,
+): "screenshot" | "beginframe" {
+  return forceScreenshot || platform !== "linux" ? "screenshot" : "beginframe";
+}
+
+/**
+ * Build the observability patcher, re-deriving `captureMode` on every patch.
+ *
+ * Extracted and exported because the previous inline closure was where the
+ * Windows mislabel actually lived. Seeding `captureMode` correctly at
+ * construction is NOT sufficient: this updater is invoked at 23 sites through
+ * the pipeline, and one of them —
+ * `updateCaptureObservability({ forceScreenshot: captureForceScreenshot })`
+ * straight after compile — runs unconditionally on every render. The old body
+ * re-derived from `forceScreenshot` alone, so the seeded value was overwritten
+ * with `beginframe` again before capture began, and both the success and error
+ * telemetry emits read the reverted object. A helper-only test cannot catch
+ * that: it never round-trips through this closure. Hence the export.
+ */
+export function createCaptureObservabilityUpdater(
+  observability: RenderCaptureObservability,
+  platform: NodeJS.Platform = process.platform,
+): (patch: Partial<RenderCaptureObservability>) => void {
+  return (patch: Partial<RenderCaptureObservability>): void => {
+    Object.assign(observability, patch);
+    observability.captureMode = resolveObservedCaptureMode(
+      Boolean(observability.forceScreenshot),
+      platform,
+    );
+  };
 }
 
 export function getNextRetryWorkerCount(currentWorkers: number): number {
@@ -1564,11 +1631,12 @@ export function resolveInversionRetryPlan(args: {
  * clear 1.25x (3,600f, 39% static/dedup-heavy) still didn't LOSE to single-
  * worker (1.16x) — dedup already skips the capture work parallelism would
  * split, so there's mechanically less headroom, not a regression. No comp
- * anywhere showed par3 < single. Default-off (HF_DE_PARALLEL_ROUTER): this
- * promotes the opt-in mechanism from #2056 into the auto-routing decision,
- * but the decision itself stays gated behind its own flag pending the
- * telemetry soak (revert rate, de_verify_min_db distribution) on real wild
- * traffic — there is currently none, since nothing routes here by default.
+ * anywhere showed par3 < single. Default ON since 2026-07-27
+ * (HF_DE_PARALLEL_ROUTER=false is the kill switch): the default-off soak
+ * proved the safety half (zero shipped damage, 100% revert recovery), so the
+ * flip trades an accepted ~2.3% revert rate for parallelizing the ≥700f
+ * band. This promotes the opt-in mechanism from #2056 into the auto-routing
+ * decision.
  * Takes priority over the single-worker inversion when both would fire.
  * Re-calibrated 2026-07-27: a controlled crossover sweep (three content
  * profiles including a genuinely init-expensive 24-sub-composition comp;
@@ -1578,6 +1646,29 @@ export function resolveInversionRetryPlan(args: {
  * dropped below the inversion's threshold (700 vs 900): where both fire,
  * parallel wins over the inversion's single-worker pick (+17–21% at 700f).
  */
+/**
+ * Is the DE parallel router enabled for this process?
+ *
+ * Default ON since 2026-07-27; `HF_DE_PARALLEL_ROUTER` is the kill switch.
+ * Every conventional spelling of "off" disables it — a naive
+ * `!== "false"` would silently ignore `0`, `off`, `no`, `FALSE`, and an
+ * exported-but-empty var, i.e. an opt-out that FAILS OPEN and hands the user
+ * 3-worker parallel DE anyway (review finding). A set-but-empty value means
+ * "unset" here, matching how the sibling HF_DE_* numeric knobs treat it.
+ *
+ * The CLI's circuit breaker relies on this accepting an explicit "false":
+ * once an install trips the breaker it writes that value rather than
+ * unsetting the var, because under a default-ON flag unsetting means ON.
+ * Pure; exported for tests.
+ */
+export function isDeParallelRouterEnabled(
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  const raw = env.HF_DE_PARALLEL_ROUTER?.trim().toLowerCase();
+  if (raw === undefined || raw === "") return true;
+  return !(raw === "false" || raw === "0" || raw === "off" || raw === "no");
+}
+
 export function shouldPreferParallelDrawElement(args: {
   workerCount: number;
   /** job.config.workers — a number means the user explicitly chose. */
@@ -1593,7 +1684,7 @@ export function shouldPreferParallelDrawElement(args: {
   supersampling: boolean;
   probeDeGated: boolean;
   experimentalParallelDeOptIn: boolean;
-  /** HF_DE_PARALLEL_ROUTER === "true" — the router's own kill switch, default off. */
+  /** HF_DE_PARALLEL_ROUTER !== "false" — default ON since 2026-07-27; env var is the kill switch. */
   routerEnabled: boolean;
   /**
    * Whether verified parallel DE STREAMING can actually run for this render
@@ -1993,7 +2084,7 @@ async function executeRenderPipeline(input: {
   const chunkedEncodeSize = cfg.chunkSizeFrames;
   const captureObservability: RenderCaptureObservability = {
     forceScreenshot: Boolean(cfg.forceScreenshot),
-    captureMode: cfg.forceScreenshot ? "screenshot" : "beginframe",
+    captureMode: resolveObservedCaptureMode(Boolean(cfg.forceScreenshot)),
     browserGpuMode: cfg.browserGpuMode,
     protocolTimeoutMs: cfg.protocolTimeout,
     pageNavigationTimeoutMs: cfg.pageNavigationTimeout,
@@ -2001,12 +2092,7 @@ async function executeRenderPipeline(input: {
   };
   let extractionObservability: RenderExtractionObservability | undefined;
   let compositionHash: string | undefined;
-  const updateCaptureObservability = (patch: Partial<RenderCaptureObservability>): void => {
-    Object.assign(captureObservability, patch);
-    captureObservability.captureMode = captureObservability.forceScreenshot
-      ? "screenshot"
-      : "beginframe";
-  };
+  const updateCaptureObservability = createCaptureObservabilityUpdater(captureObservability);
   // Function-scoped (not inside the try) so both the success path AND the catch
   // can read it — the catch records transient-retry burn on renders that still
   // failed, which is the more actionable signal for tuning the retry cap.
@@ -2163,7 +2249,21 @@ async function executeRenderPipeline(input: {
     // drawElement release telemetry: why default DE disengaged (if it did),
     // whether self-verify fell back, and the drain-side counters.
     const deCompileGate = compileResult.deCompileGate;
-    let deClampReason: string | undefined;
+    // Seed with the CONFIG-TIME refusal, if there was one. The clamp further
+    // down only runs `if (cfg.useDrawElement && ...)`, so a render that never
+    // became a drawElement candidate at all could never acquire a reason —
+    // it reached telemetry with every DE field empty and landed in the
+    // dashboard's `other` bucket (56,507 renders / 14d, second-largest bar on
+    // "Why not drawElement", explaining nothing). Re-derived from the same
+    // inputs `resolveConfig` used, so it cannot disagree with the decision.
+    // Later clamps overwrite this: a more specific reason always wins.
+    let deClampReason: string | undefined = cfg.useDrawElement
+      ? undefined
+      : explainDrawElementDisabled({
+          platform: process.platform,
+          browserGpuMode: cfg.browserGpuMode,
+          workerEncode: cfg.enableDrawElementWorkerEncode,
+        });
     // "inverted" = fired and held; "reverted" = fired but the self-verify
     // retry rolled back to the parallel path; undefined = never fired.
     let deWorkerInversion: "inverted" | "reverted" | undefined;
@@ -2733,7 +2833,17 @@ async function executeRenderPipeline(input: {
         ? Math.min(deSingleMinFrames, deShortBandMinFrames)
         : deSingleMinFrames;
     // DE parallel-router eligibility — see shouldPreferParallelDrawElement.
-    // Default-off (HF_DE_PARALLEL_ROUTER); HF_DE_PARALLEL_MIN_FRAMES default
+    // Default ON since 2026-07-27 (kill switch: HF_DE_PARALLEL_ROUTER=false).
+    // The soak that gated this flip answered the safety question: zero
+    // damaged frames shipped across the entire default-off window — every
+    // revert was the self-verify net catching a bad frame and recovering via
+    // screenshot. The residual metric (revert rate ~2.3% vs the 2% goal) is
+    // an efficiency cost (a revert forfeits the speedup, never correctness),
+    // accepted in exchange for parallelizing the ≥700-frame band (~80% of
+    // all DE capture wall-clock). Post-flip tripwire on dashboard 1807532:
+    // sustained revert >10% or any verify-missed damage rolls this back —
+    // one env default, decoupled from the floor change one release earlier.
+    // HF_DE_PARALLEL_MIN_FRAMES default
     // 700, re-calibrated 2026-07-27 from the original safe-high 2000. A
     // controlled frame-count sweep (fixed content-per-frame, three synthetic
     // profiles × {350..3000f} × {single,par2,par3} × 3 reps, worker counts +
@@ -2745,7 +2855,7 @@ async function executeRenderPipeline(input: {
     // duplicated init costs CPU, not wall-clock. Below ~700f the win thins
     // toward ~+10% while still paying 3 hardware-GPU browsers, so the floor
     // stays. Harness: plans/drawelement-fast-capture/de-crossover-bench.sh.
-    const deParallelRouterEnabled = process.env.HF_DE_PARALLEL_ROUTER === "true";
+    const deParallelRouterEnabled = isDeParallelRouterEnabled(process.env);
     const deParallelMinFramesRaw = process.env.HF_DE_PARALLEL_MIN_FRAMES;
     const deParallelMinFramesNum =
       deParallelMinFramesRaw === undefined || deParallelMinFramesRaw.trim() === ""
@@ -3019,8 +3129,9 @@ async function executeRenderPipeline(input: {
       // Which mode will stream: the engine picks beginframe only on Linux with
       // headless-shell and no forced screenshot (frameCapture.ts preMode);
       // everything else is screenshot. Recorded for telemetry cohorting.
-      const captureParallelStream =
-        process.platform === "linux" && !captureForceScreenshot ? "beginframe" : "screenshot";
+      // Same predicate as the observability field — use the one helper so the
+      // two cannot drift if the router's modes ever change.
+      const captureParallelStream = resolveObservedCaptureMode(captureForceScreenshot);
       log.info(
         `[Render] Parallel ${captureParallelStream} capture will stream to the encoder ` +
           `(interleaved, ${workerCount} workers) instead of the disk path. ` +
@@ -3265,6 +3376,15 @@ async function executeRenderPipeline(input: {
       usePageSideCompositing: capturePlan.usePageSideCompositing,
       hasHdrContent: capturePlan.hasHdrContent,
       forceScreenshot: capturePlan.forceScreenshot,
+      // Re-recorded here because `syncCapturePlan` above is where routing is
+      // actually decided — including "reverted", which the earlier update
+      // could not know. Without this, capture observability keeps whatever
+      // was true before the plan resolved, so a render that failed while
+      // routed reports no routing state at all: `de_parallel_router` was
+      // present on 95% of render_complete events and 0.8% of render_error.
+      // The failure path is the one the rollout is watching.
+      deWorkerInversion,
+      deParallelRouter,
     });
     observability.checkpoint("capture_strategy", "resolved", {
       plan: capturePlan.kind,

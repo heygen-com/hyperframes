@@ -4,11 +4,7 @@ import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
-import {
-  findMatchingTimelineElementId,
-  findTimelineIdByAncestor,
-  type RightPanelTab,
-} from "../utils/studioHelpers";
+import { type RightPanelTab } from "../utils/studioHelpers";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -24,6 +20,8 @@ import {
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import { useStudioTestHooks } from "./useStudioTestHooks";
+import { logSelect } from "../utils/selectDebug";
+import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
 
 // ── Types ──
 
@@ -47,7 +45,10 @@ export interface UseDomSelectionParams {
   captionEditMode: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
+  getTimelineSelectionSet: () => ReadonlySet<string>;
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  /** Publishes a whole multi-selection to the timeline; the anchor is set separately. */
+  setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
@@ -109,7 +110,9 @@ export function useDomSelection({
   captionEditMode,
   previewIframeRef,
   timelineElements,
+  getTimelineSelectionSet,
   setSelectedTimelineElementId,
+  setTimelineSelectionSet,
   setRightCollapsed,
   setRightPanelTab,
   previewIframe,
@@ -145,6 +148,26 @@ export function useDomSelection({
 
   // ── Callbacks ──
 
+  const announceTimelineSelection = useCallback(
+    (group: DomEditSelection[], primary: DomEditSelection | null) =>
+      announceSelectionToTimeline(
+        {
+          timelineElements,
+          getTimelineSelectionSet,
+          setSelectedTimelineElementId,
+          setTimelineSelectionSet,
+        },
+        group,
+        primary,
+      ),
+    [
+      getTimelineSelectionSet,
+      setSelectedTimelineElementId,
+      setTimelineSelectionSet,
+      timelineElements,
+    ],
+  );
+
   const applyDomSelection = useCallback(
     // fallow-ignore-next-line complexity
     (
@@ -156,11 +179,12 @@ export function useDomSelection({
       },
     ) => {
       if (!selection) {
+        logSelect("clear", { hadGroup: domEditGroupSelectionsRef.current.length });
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
+        announceTimelineSelection([], null);
         return;
       }
 
@@ -186,6 +210,13 @@ export function useDomSelection({
               : (nextGroup[0] ?? null)
           : selection;
 
+      logSelect("apply", {
+        additive: isAdditiveSelection,
+        target: selection.selector ?? selection.id ?? null,
+        wasInGroup,
+        prevGroup: previousGroup.length,
+        nextGroup: nextGroup.length,
+      });
       domEditSelectionRef.current = nextSelection;
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
@@ -208,21 +239,13 @@ export function useDomSelection({
             setRightPanelTab("design");
           }
         }
-        const nextSelectedTimelineId =
-          findMatchingTimelineElementId(nextSelection, timelineElements) ??
-          findTimelineIdByAncestor(
-            nextSelection.element,
-            timelineElements,
-            nextSelection.sourceFile || "index.html",
-          );
-        // Late marquee notify: a primary already in the live set must not collapse it.
-        setSelectedTimelineElementId(nextSelectedTimelineId, { preserveSet: true });
+        announceTimelineSelection(nextGroup, nextSelection);
         return;
       }
 
-      setSelectedTimelineElementId(null);
+      announceTimelineSelection([], null);
     },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
+    [announceTimelineSelection, setRightCollapsed, setRightPanelTab],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -375,6 +398,13 @@ export function useDomSelection({
     [applyDomSelection, buildDomSelectionForTimelineElement],
   );
 
+  // Forward handle to the group refresher defined below: the single-selection
+  // refresher falls back to it when the primary is gone, and a ref keeps that from
+  // forcing either callback to be declared in the other's dependency list.
+  const refreshDomEditGroupSelectionsFromPreviewRef = useRef<
+    (selections: DomEditSelection[]) => Promise<void>
+  >(async () => {});
+
   const refreshDomEditSelectionFromPreview = useCallback(
     // fallow-ignore-next-line complexity
     async (selection: DomEditSelection) => {
@@ -389,6 +419,17 @@ export function useDomSelection({
 
       const element = findElementForSelection(doc, selection, activeCompPath);
       if (!element) {
+        // Losing the primary is not losing the selection. When a group is live,
+        // re-resolve it and keep whoever still exists rather than wiping the lot.
+        const group = domEditGroupSelectionsRef.current;
+        logSelect("refresh-lost", {
+          target: selection.selector ?? selection.id ?? null,
+          group: group.length,
+        });
+        if (group.length > 1) {
+          await refreshDomEditGroupSelectionsFromPreviewRef.current(group);
+          return;
+        }
         applyDomSelection(null, { revealPanel: false });
         return;
       }
@@ -436,24 +477,16 @@ export function useDomSelection({
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
 
-      if (nextSelection) {
-        setSelectedTimelineElementId(
-          findMatchingTimelineElementId(nextSelection, timelineElements),
-        );
-      } else {
-        setSelectedTimelineElementId(null);
-      }
+      announceTimelineSelection(nextGroup, nextSelection);
     },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      setSelectedTimelineElementId,
-      timelineElements,
-      previewIframeRef,
-    ],
+    [activeCompPath, announceTimelineSelection, buildDomSelectionFromTarget, previewIframeRef],
   );
 
   // ── Effects ──
+
+  useEffect(() => {
+    refreshDomEditGroupSelectionsFromPreviewRef.current = refreshDomEditGroupSelectionsFromPreview;
+  }, [refreshDomEditGroupSelectionsFromPreview]);
 
   // Clear hover unconditionally on composition/project/preview change
   // eslint-disable-next-line no-restricted-syntax
@@ -503,6 +536,7 @@ export function useDomSelection({
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
+      logSelect("marquee", { hits: selections.length, additive });
       if (selections.length === 0) {
         if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
@@ -527,16 +561,9 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId =
-        findMatchingTimelineElementId(nextSelection, timelineElements) ??
-        findTimelineIdByAncestor(
-          nextSelection.element,
-          timelineElements,
-          nextSelection.sourceFile || "index.html",
-        );
-      setSelectedTimelineElementId(nextTimelineId);
+      announceTimelineSelection(nextGroup, nextSelection);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
+    [applyDomSelection, announceTimelineSelection],
   );
 
   return {

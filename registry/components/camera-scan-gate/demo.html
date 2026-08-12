@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  camera-scan-gate -- demo. Standalone 1920x1080 composition that MOUNTS the
+  primitive through data-composition-src instead of inlining it. The host clip
+  supplies deliberately non-default scanColor, targetLabel, and sweepSpeed
+  values so preview and snapshot verification prove variable flow through the
+  real sub-composition mount path. Kept in sync with camera-scan-gate.html by
+  hand; not installed by `hyperframes add`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Camera Scan Gate - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 42%, #132036 0%, #05070d 72%);
+      }
+
+      /* A definite host box is required for the primitive's cqw/cqh geometry.
+         data-width/data-height below mirror these rendered dimensions for
+         tooling, while the primitive itself stays fully elastic. */
+      .mount-card {
+        --bg: #0d1728;
+        --fg: #f8fafc;
+        --surface: #17253a;
+        --border: #50647d;
+        --muted: #a5b4c7;
+        --brand: #22c55e;
+        --accent: #38bdf8;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --dur-beat: 0.48s;
+        width: 48%;
+        height: 64%;
+        left: 26%;
+        top: 18%;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 32px;
+        box-shadow: 0 42px 100px rgba(0, 0, 0, 0.48);
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="camera-scan-gate-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="camera-scan-gate-mount"
+        class="mount-card clip"
+        data-composition-id="camera-scan-gate"
+        data-composition-src="./camera-scan-gate.html"
+        data-variable-values='{"scanColor":"var(--accent)","targetLabel":"Payment approved","sweepSpeed":1.1}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="922"
+        data-height="691"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // The demo owns no motion. It registers one empty paused timeline under
+      // its own id, while the mounted primitive owns the interaction timeline.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["camera-scan-gate-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -34,6 +34,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
+      catalog_index: ${{ steps.filter.outputs.catalog_index }}
       codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
       gcp_beginframe: ${{ steps.filter.outputs.gcp_beginframe }}
       studio: ${{ steps.filter.outputs.studio }}
@@ -44,11 +45,18 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - name: Reject accidental file deletions
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-no-main-deletions.mjs --base origin/main
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
         id: filter
         with:
           token: ""
           filters: |
+            catalog_index:
+              - "registry/registry.json"
+              - "registry/catalog-artifact/**"
+              - "scripts/catalog/check-artifact-coverage.ts"
             code:
               - "packages/**"
               - "scripts/**"
@@ -129,7 +137,7 @@ jobs:
       - run: corepack enable
       - run: corepack prepare pnpm@10.17.1 --activate
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run verify:packed-manifests
 
@@ -148,7 +156,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run lint
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
@@ -182,7 +190,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - name: Run fallow audit
         id: audit
         # `bun install` above made `bunx fallow` resolve from node_modules, so
@@ -238,7 +246,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run format:check
 
   typecheck:
@@ -256,9 +264,10 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run --filter '*' typecheck
+      - run: bun run typecheck:scripts
 
   test:
     name: Test
@@ -283,11 +292,14 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
-      - run: bun run test:scripts
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
+      # After the builds: the preview scripts drive the producer, which imports
+      # @hyperframes/core from dist, so running these first fails on a missing
+      # module rather than on anything the test is actually checking.
+      - run: bun run test:scripts
       - run: bun run --filter '!@hyperframes/producer' test
 
   producer-source-tests:
@@ -314,7 +326,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --filter @hyperframes/engine build
@@ -359,6 +371,21 @@ jobs:
   # `gen:skills-manifest --check`, which compares per-skill content hashes; the
   # manifest carries no version/timestamp, so it only fails on real content
   # drift. bun runs the TS script directly, no install needed.
+  catalog-index-coverage:
+    name: "Catalog: search index covers the registry"
+    needs: changes
+    if: needs.changes.outputs.catalog_index == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      # Comparing two name lists needs neither the embedding model nor a
+      # network call, so this stays a seconds-long gate. Regenerating the
+      # vectors does need the model, which is why CI checks rather than fixes.
+      - name: Verify every searchable registry item has a vector
+        run: bun scripts/catalog/check-artifact-coverage.ts
+
   skills-manifest:
     name: "Skills: manifest in sync"
     needs: changes
@@ -422,7 +449,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         if: runner.os != 'Windows'
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: bash scripts/ci/install-workspace-dependencies.sh --ignore-scripts
       - name: Install dependencies
         if: runner.os == 'Windows'
         run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
@@ -437,7 +464,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
       # imports resolve via the "node" export condition (dist) under vitest.
       - run: bun run --filter '@hyperframes/parsers' build
@@ -459,7 +486,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Runtime coverage now imports core modules that consume workspace
       # subpaths. Build their dist exports before Vitest resolves them.
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
@@ -480,7 +507,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the studio vite.config.ts (loaded by Node) can
       # resolve @hyperframes/core and @hyperframes/studio-server via the "node"
       # export condition (dist).
@@ -523,7 +550,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Same reason as studio-load-smoke: vite.config.ts is loaded by Node and
       # resolves the workspace packages through their "node" export condition.
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
@@ -634,7 +661,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
 
       # Pack the CLI as a tarball (simulates what `npm publish` produces)
@@ -711,7 +738,7 @@ jobs:
           sudo apt-get install -y ffmpeg
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-workspace-dependencies.sh
       - name: Build monorepo
         run: bun run build
 
@@ -754,6 +781,13 @@ jobs:
             --output /tmp/hf-cli-inside/renders/inside.mp4 2>&1 | tee /tmp/hf-cli-render.log
 
           test -s /tmp/hf-cli-inside/renders/inside.mp4
+
+      # Belongs in this job because it needs the BUILT CLI: `shouldTrack()`
+      # short-circuits whenever `isDevMode()` is true, which it is for any `.ts`
+      # entry, so under vitest a real event and no event look identical. Sends
+      # nothing to PostHog — the script wraps fetch and captures the batch.
+      - name: Smoke-test `add` telemetry end to end
+        run: node scripts/ci/cli-telemetry-e2e.mjs
 
       - name: Assert page.goto completes under 5s budget
         run: |

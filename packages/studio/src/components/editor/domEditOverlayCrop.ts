@@ -1,3 +1,4 @@
+import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
 import { parseInsetClipPathSides, type ClipPathInsetSides } from "./clipPathHelpers";
 
 export type CropEdge = "top" | "right" | "bottom" | "left";
@@ -147,6 +148,96 @@ export interface CropFrame {
   scaleY: number;
 }
 
+/**
+ * The element's own 2D transform as matrix components, plus the `rotate`
+ * property's angle.
+ *
+ * `rotate` is a separate CSS property, not part of `transform`, and it is the
+ * one Studio's rotate handle writes — reading `transform` alone reported a
+ * turned element as upright, so the crop outline drew square across it.
+ *
+ * Null means there is nothing planar to draw against: no transform and no
+ * rotation, or a 3D/unparseable matrix. The caller falls back to the
+ * axis-aligned box rather than guessing an angle.
+ */
+const IDENTITY = { a: 1, b: 0, c: 0, d: 1 };
+
+/** Perspective terms this far from zero mean the mapping is not affine. */
+const PERSPECTIVE_EPSILON = 1e-6;
+
+type Planar2D = { a: number; b: number; c: number; d: number };
+
+/**
+ * The 2D components of a computed transform, or null when it cannot be used.
+ *
+ * Accepts `matrix3d` as well as `matrix`, taking the same 2D projection the
+ * rest of the overlay reads through DOMMatrix. GSAP writes a 3D matrix for an
+ * ordinary 2D move or spin (force3D), and a composition that flips an element
+ * writes one with a negative z scale — treating either as unmeasurable left the
+ * crop outline square on an element every other piece of chrome drew rotated.
+ *
+ * Only a perspective term rules the matrix out, because that is where the
+ * mapping stops being affine and a single angle stops describing it.
+ */
+function parseMatrixComponents(transform: string): Planar2D | null {
+  const flat = /^matrix\(([^)]+)\)$/.exec(transform);
+  if (flat) {
+    const [a, b, c, d] = flat[1]!.split(",").map((v) => Number.parseFloat(v));
+    return [a, b, c, d].every(Number.isFinite) ? { a: a!, b: b!, c: c!, d: d! } : null;
+  }
+  const spatial = /^matrix3d\(([^)]+)\)$/.exec(transform);
+  if (!spatial) return null;
+  const m = spatial[1]!.split(",").map((v) => Number.parseFloat(v));
+  if (m.length !== 16 || !m.every(Number.isFinite)) return null;
+  const affine = [m[3], m[7], m[11]].every((v) => Math.abs(v!) < PERSPECTIVE_EPSILON);
+  if (!affine) return null;
+  return { a: m[0]!, b: m[1]!, c: m[4]!, d: m[5]! };
+}
+
+/** The crop frame only needs an angle and a scale, so it composes plain 2D components. */
+const PLANAR_2D_OPS: PlanarTransformOps<Planar2D> = {
+  identity: () => IDENTITY,
+  fromTransform: parseMatrixComponents,
+  fromRotate: (degrees) => {
+    const rad = (degrees * Math.PI) / 180;
+    return { a: Math.cos(rad), b: Math.sin(rad), c: -Math.sin(rad), d: Math.cos(rad) };
+  },
+  compose: (outer, inner) => ({
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+  }),
+};
+
+/** Whether the matrix leaves the box exactly as it found it. */
+function isIdentity(m: Planar2D): boolean {
+  return (
+    Math.abs(m.a - 1) < PERSPECTIVE_EPSILON &&
+    Math.abs(m.b) < PERSPECTIVE_EPSILON &&
+    Math.abs(m.c) < PERSPECTIVE_EPSILON &&
+    Math.abs(m.d - 1) < PERSPECTIVE_EPSILON
+  );
+}
+
+/**
+ * The transform the element paints under, in 2D components.
+ *
+ * Null when nothing up the chain transforms it: the caller's axis-aligned rect
+ * already describes it, and that comes from real layout rather than the
+ * element's untransformed box.
+ */
+function readPlanarTransform(element: HTMLElement): Planar2D | null {
+  const acc = composeElementTransform(element, PLANAR_2D_OPS, (node) => {
+    try {
+      return node.ownerDocument.defaultView?.getComputedStyle(node) ?? null;
+    } catch {
+      return null;
+    }
+  });
+  return acc && !isIdentity(acc) ? acc : null;
+}
+
 export function readElementCropFrame(
   element: HTMLElement,
   overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
@@ -162,22 +253,15 @@ export function readElementCropFrame(
     scaleX: editX,
     scaleY: editY,
   };
-  let transform = "";
-  try {
-    transform = element.ownerDocument.defaultView?.getComputedStyle(element).transform ?? "";
-  } catch {
-    return aabb;
-  }
-  if (!transform || transform === "none") return aabb;
-  const m = /^matrix\(([^)]+)\)$/.exec(transform);
-  if (!m) return aabb; // matrix3d or unparseable → axis-aligned fallback
-  const [a, b, c, d] = m[1]!.split(",").map((v) => Number.parseFloat(v));
-  if (![a, b, c, d].every(Number.isFinite)) return aabb;
-  const elScaleX = Math.hypot(a!, b!);
-  const det = a! * d! - b! * c!;
-  const elScaleY = elScaleX !== 0 ? det / elScaleX : 1;
+  const planar = readPlanarTransform(element);
+  if (!planar) return aabb;
+  const { a, b, c, d } = planar;
+  const elScaleX = Math.hypot(a, b);
+  const det = a * d - b * c;
+  // |det| : a flipped element (negative determinant) still has a real size.
+  const elScaleY = elScaleX !== 0 ? Math.abs(det) / elScaleX : 1;
   if (elScaleX <= 0 || elScaleY <= 0) return aabb;
-  const angleDeg = (Math.atan2(b!, a!) * 180) / Math.PI;
+  const angleDeg = (Math.atan2(b, a) * 180) / Math.PI;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
   const width = element.offsetWidth * scaleX;

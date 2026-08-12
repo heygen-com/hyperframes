@@ -24,6 +24,20 @@ export function setElementGsapPosition(element: HTMLElement, x: number, y: numbe
   return true;
 }
 
+/**
+ * Set the element's GSAP scale. Returns false when no runtime is reachable.
+ *
+ * Used to make the element show a scale that has been committed but not yet
+ * re-rendered by the timeline, so measuring it afterwards reports where the
+ * commit actually puts it rather than where it happened to be mid-flight.
+ */
+export function setElementGsapScale(element: HTMLElement, x: number, y: number): boolean {
+  const gsap = gsapOf(element);
+  if (!gsap?.set) return false;
+  gsap.set(element, { scaleX: x, scaleY: y });
+  return true;
+}
+
 /** The element's GSAP numeric property, or null when unreadable. */
 export function readElementGsapNumber(element: HTMLElement, prop: string): number | null {
   const value = Number(gsapOf(element)?.getProperty?.(element, prop));

@@ -69,6 +69,44 @@ describe("weekly changelog rendering", () => {
     assert.doesNotMatch(draft.docsUpdate, /Update generated baselines/);
   });
 
+  it("terminates generated bullets so consecutive items are not read as one sentence", () => {
+    const draft = createWeeklyDraft(
+      {
+        from: "2026-06-01",
+        to: "2026-06-07",
+        write: false,
+        force: false,
+      },
+      [commit("feat(cli): add render hints (#42)"), commit("fix: repair playback")],
+    );
+
+    const bullets = draft.docsUpdate.split("\n").filter((line) => line.startsWith("- "));
+    assert.ok(bullets.length > 0);
+    // Every bullet ends a sentence, so a reader (or an RSS feed) does not run
+    // consecutive list items together into one giant run-on sentence.
+    bullets.forEach((bullet) => assert.ok(bullet.endsWith("."), `unterminated bullet: ${bullet}`));
+
+    const commitBullets = bullets.filter((bullet) => bullet.includes("/commit/"));
+    assert.ok(commitBullets.length > 0);
+    commitBullets.forEach((bullet) => assert.ok(bullet.endsWith(").")));
+  });
+
+  it("stamps the writing bar into drafts that a human has to rewrite", () => {
+    const draft = createWeeklyDraft(
+      {
+        from: "2026-06-01",
+        to: "2026-06-07",
+        write: false,
+        force: false,
+      },
+      [commit("fix: repair playback")],
+    );
+
+    for (const text of [draft.docsUpdate, draft.weeklyNotes, draft.discordDraft, draft.xDraft]) {
+      assert.match(text, /Style bar: keep sentences under 25 words/);
+    }
+  });
+
   it("uses predictable packet paths from the week ending date", () => {
     assert.deepEqual(weeklyPacketPaths("2026-06-07"), {
       weeklyNotes: "updates/weekly/2026-06-07.md",

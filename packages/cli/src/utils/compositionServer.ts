@@ -6,6 +6,7 @@ import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { getMimeType } from "@hyperframes/studio-server";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 
 /**
  * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
@@ -63,12 +64,17 @@ export function resolveSlideshowPath(): string | null {
   return candidates.find((p) => existsSync(p)) ?? null;
 }
 
-/** Inject the runtime <script> into composition HTML before </body> (or at the end). */
+/**
+ * Inject the runtime <script> at the top of the composition's <head>, ahead of
+ * every author script. Compositions read `window.__hyperframes.getVariables()`
+ * from an inline script at init, so a runtime appended before </body> is not
+ * loaded yet at that point and the documented API is undefined. The compiled
+ * render path hoists the runtime into <head> the same way; this keeps the
+ * served `play` document in parity with it. Placement falls back to before
+ * <body>, then to the top of the document, for fragments without a <head>.
+ */
 export function injectRuntime(html: string): string {
-  const runtimeTag = `<script src="/runtime.js"></script>`;
-  return html.includes("</body>")
-    ? html.replace("</body>", `${runtimeTag}\n</body>`)
-    : html + `\n${runtimeTag}`;
+  return injectTagsAtHeadStart(html, `<script src="/runtime.js"></script>`);
 }
 
 export function assetContentType(filePath: string): string {

@@ -176,6 +176,19 @@ export function canaryFeatureKey(name: string): string {
 }
 
 /**
+ * Companion key carrying WHY a canary resolved as it did.
+ *
+ * Deliberately outside the `$feature/` namespace: PostHog treats those as flag
+ * values and a non-boolean there would corrupt the flag's own breakdowns. This
+ * is an ordinary property that sits alongside.
+ *
+ * `de-parallel-router` → `canary_reason_de_parallel_router`.
+ */
+export function canaryReasonKey(name: string): string {
+  return `canary_reason_${name.replace(/[^A-Za-z0-9]+/g, "_")}`;
+}
+
+/**
  * Build the telemetry properties for a set of resolved canaries.
  *
  * Emits EVERY registered canary, not just the enrolled ones, because absent
@@ -186,13 +199,26 @@ export function canaryFeatureKey(name: string): string {
  *
  * Values are the strings `"true"` / `"false"` to match how PostHog records
  * boolean flag values, so the property is directly comparable to a real flag.
+ *
+ * **The reason rides alongside when supplied**, under `canary_reason_<name>`.
+ * Without it the assignment alone is ambiguous in the one case that matters:
+ * an install reporting both `"true"` and `"false"` for a canary whose
+ * percentage never moved is indistinguishable from a developer toggling
+ * `HF_CANARY_*`. The first calibration read hit exactly that wall — 304
+ * installs reported both values and the genuinely anomalous ones could not be
+ * separated from deliberate overrides. The registry doc deferred this until
+ * the stability check came back dirty; it did.
+ *
+ * `reason` is optional so existing callers keep working; a caller that has the
+ * full decision should pass it.
  */
 export function canaryFeatureProperties(
-  entries: ReadonlyArray<{ name: string; enabled: boolean }>,
+  entries: ReadonlyArray<{ name: string; enabled: boolean; reason?: CanaryReason }>,
 ): Record<string, string> {
   const props: Record<string, string> = {};
   for (const entry of entries) {
     props[canaryFeatureKey(entry.name)] = entry.enabled ? "true" : "false";
+    if (entry.reason !== undefined) props[canaryReasonKey(entry.name)] = entry.reason;
   }
   return props;
 }

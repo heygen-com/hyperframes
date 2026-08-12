@@ -86,6 +86,7 @@ function probeWebmAlpha(filePath: string): WebmAlphaProbe {
         "stream=codec_name:stream_tags=alpha_mode",
         "-of",
         "json",
+        "--",
         filePath,
       ],
       { encoding: "utf-8", timeout: 15_000 },

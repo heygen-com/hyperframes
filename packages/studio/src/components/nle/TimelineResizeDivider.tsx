@@ -1,7 +1,5 @@
 import { useCallback, useRef } from "react";
-
-export const MIN_TIMELINE_H = 100;
-export const MIN_PREVIEW_H = 120;
+import { MIN_PREVIEW_H, MIN_TIMELINE_H, fitTimelineHeight } from "../../utils/fitPanels";
 
 /**
  * Horizontal drag/keyboard-resizable divider between the preview and the
@@ -41,12 +39,7 @@ export function TimelineResizeDivider({
       if (!isDragging.current || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const mouseY = e.clientY - rect.top;
-      const containerH = rect.height;
-      const newTimelineH = Math.max(
-        MIN_TIMELINE_H,
-        Math.min(containerH - MIN_PREVIEW_H, containerH - mouseY),
-      );
-      setTimelineH(newTimelineH);
+      setTimelineH(fitTimelineHeight(rect.height, rect.height - mouseY));
     },
     [disabled, containerRef, setTimelineH],
   );
@@ -61,10 +54,10 @@ export function TimelineResizeDivider({
       if (disabled) return;
       if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
       e.preventDefault();
-      const containerH = containerRef.current?.getBoundingClientRect().height ?? Infinity;
+      const containerH = containerRef.current?.getBoundingClientRect().height ?? 0;
       const delta = e.key === "ArrowUp" ? 16 : -16;
       setTimelineH((prev) => {
-        const next = Math.max(MIN_TIMELINE_H, Math.min(containerH - MIN_PREVIEW_H, prev + delta));
+        const next = fitTimelineHeight(containerH, prev + delta);
         persistTimelineH(next);
         return next;
       });

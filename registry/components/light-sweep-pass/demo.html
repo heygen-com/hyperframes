@@ -1,0 +1,90 @@
+<!doctype html>
+<!--
+  light-sweep-pass demo. FULL-BLEED mount on a LIGHT token stage: the band
+  crosses early at a steeper angle with the blue accent at standard
+  strength, proving the one-property pass, the per-element highlight and
+  shadow lockstep, and the settled resting key on a light host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>light-sweep-pass Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #eef0f3);
+      }
+
+      #root {
+        --bg: #eef0f3;
+        --fg: #14171c;
+        --muted: #626873;
+        --surface: #fbfcfd;
+        --border: #d3d8df;
+        --brand: #16a34a;
+        --accent: #0284c7;
+        --accent-2: #7c5cff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --radius: 22px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #eef0f3);
+      }
+
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="light-sweep-pass-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="light-sweep-pass-mount"
+        class="mount-stage clip"
+        data-composition-id="light-sweep-pass"
+        data-composition-src="./light-sweep-pass.html"
+        data-variable-values='{"angle":128,"sweep_at":0.6,"accent":"blue"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["light-sweep-pass-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "logo-sting",
+  "type": "hyperframes:component",
+  "title": "Logo Sting",
+  "description": "A wordmark slams into its final scale, fires one accent ring and one white impact frame, then holds completely still.",
+  "tags": ["motion-primitive", "brand", "logo", "sting", "impact", "reveal"],
+  "jobs": ["reveal"],
+  "family": "brand",
+  "profile": "burst",
+  "evidence": "Video Primitives Wave F U15 logo-sting contract",
+  "syncPoints": [{ "id": "impact", "phase": "in", "offset": 0.55 }],
+  "files": [
+    {
+      "path": "logo-sting.html",
+      "target": "compositions/components/logo-sting.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "wordmark",
+      "type": "string",
+      "role": "content",
+      "label": "Wordmark",
+      "description": "Brand name displayed in the final lockup.",
+      "default": "HYPERFRAMES"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color of the single impact ring.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

@@ -52,7 +52,7 @@ export function DesignPanelPromoteProvider({
   children: ReactNode;
 }) {
   const targetPath = selection?.sourceFile || activeCompPath || "index.html";
-  const handle = useSdkSession(projectId, targetPath, persistDeps.domEditSaveTimestampRef);
+  const handle = useSdkSession(projectId, targetPath);
   const rawPersist = useVariablesPersist({
     ...persistDeps,
     sdkSession: handle.session,
