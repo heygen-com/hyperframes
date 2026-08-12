@@ -1,0 +1,41 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "chatgpt-exchange",
+  "type": "hyperframes:block",
+  "title": "ChatGPT Exchange",
+  "description": "A portrait ChatGPT-style exchange types and sends a prompt, streams an answer, assembles a comparison table, and scrolls back through the result",
+  "tags": ["showcase", "mock-ui", "ai", "chat", "vertical", "ad-template"],
+  "author": "Jake Moran",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 14.9,
+  "files": [
+    {
+      "path": "chatgpt-exchange.html",
+      "target": "compositions/chatgpt-exchange.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/fonts/inter-latin-400-normal.woff2",
+      "target": "assets/fonts/inter-latin-400-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-500-normal.woff2",
+      "target": "assets/fonts/inter-latin-500-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-600-normal.woff2",
+      "target": "assets/fonts/inter-latin-600-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-LICENSE.txt",
+      "target": "assets/fonts/inter-LICENSE.txt",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
