@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "signup-flow",
+  "type": "hyperframes:component",
+  "title": "Signup Flow",
+  "description": "A composed signup flow with social action, email field, password field, and submit button",
+  "tags": ["ui-flow", "remocn-port", "signup", "form"],
+  "files": [
+    {
+      "path": "signup-flow.html",
+      "target": "compositions/components/signup-flow.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/signup-flow.png"
+  }
+}

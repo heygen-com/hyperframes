@@ -87,7 +87,7 @@ describe("measurePlanSizeBreakdown", () => {
       join(dir, "video-frames", "customer-video-name", "frame_000001.jpg"),
       Buffer.alloc(300),
     );
-    writeFileSync(join(dir, "audio.aac"), Buffer.alloc(40));
+    writeFileSync(join(dir, "audio.m4a"), Buffer.alloc(40));
     writeFileSync(join(dir, "meta", "encoder.json"), Buffer.alloc(20));
     writeFileSync(join(dir, "plan.json"), Buffer.alloc(10));
     writeFileSync(join(dir, "other.bin"), Buffer.alloc(5));

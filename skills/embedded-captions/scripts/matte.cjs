@@ -83,6 +83,7 @@ function probeRates(src) {
         "stream=r_frame_rate,avg_frame_rate",
         "-of",
         "default=nk=1:nw=1",
+        "--",
         src,
       ])
       .toString()

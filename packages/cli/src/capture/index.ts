@@ -42,6 +42,13 @@ import {
 import type { VisionCaptionOutcome } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
 import { detectBlockedPage } from "./pageBlockDetection.js";
+import { navigateForCapture } from "./navigateForCapture.js";
+import {
+  captureProtocolTimeoutMs,
+  isDegradableEvaluateTimeoutError,
+  withRemainingBudget,
+} from "./captureTimeout.js";
+import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
@@ -122,6 +129,7 @@ export async function captureWebsite(
   const chromeBrowser = await puppeteer.default.launch({
     headless: true,
     executablePath: browser.executablePath,
+    protocolTimeout: captureProtocolTimeoutMs(timeout, budgetMs),
     args: [
       "--no-sandbox",
       "--disable-dev-shm-usage",
@@ -238,34 +246,65 @@ export async function captureWebsite(
       }
     });
 
-    // Use networkidle2 (allows 2 ongoing connections) instead of networkidle0 —
-    // modern SPAs often have persistent WebSocket/analytics connections that
-    // prevent networkidle0 from ever resolving.
-    const navigationResponse = await page1.goto(url, { waitUntil: "networkidle2", timeout });
+    const navigation = await navigateForCapture(page1, url, timeout);
+    const navigationResponse = navigation.response;
+    if (navigation.fellBackFromNetworkIdle) {
+      warnings.push(
+        `networkidle2 timed out after ${navigation.networkIdleTimeoutMs}ms; continued with domcontentloaded`,
+      );
+      progress(
+        "warn",
+        `networkidle2 timed out after ${navigation.networkIdleTimeoutMs}ms; continuing with domcontentloaded`,
+      );
+    }
     postNavigationDeadline = Date.now() + budgetMs;
     await new Promise((r) => setTimeout(r, settleTime));
 
-    // Check if the page loaded real content or an anti-bot challenge
-    // Combine structural evidence with the main response status/title. Low text
-    // alone stays non-fatal so image-led sites are not rejected.
-    const pageContentCheck = (await page1.evaluate(`(() => {
-      var text = (document.body.innerText || "").trim();
-      var title = document.title || "";
-      // Structural: Cloudflare Turnstile widget or challenge iframe
-      var hasCfTurnstile = !!document.querySelector('.cf-turnstile, [data-sitekey], iframe[src*="challenges.cloudflare.com"], #challenge-running, #challenge-form');
-      // Structural: page is almost empty (challenge pages have minimal DOM)
-      var bodyChildCount = document.body.children.length;
-      return { textLength: text.length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
-    })()`)) as {
+    let pageContentCheck: {
       textLength: number;
       title: string;
       hasChallengeElement: boolean;
       bodyChildCount: number;
+    } = {
+      textLength: 0,
+      title: "",
+      hasChallengeElement: false,
+      bodyChildCount: Number.POSITIVE_INFINITY,
     };
+    let contentCheckTimedOut = false;
+    try {
+      pageContentCheck = (await withRemainingBudget(
+        page1.evaluate(`(() => {
+      var text = (document.body && document.body.innerText || "").trim();
+      var title = document.title || "";
+      var hasCfTurnstile = !!document.querySelector('.cf-turnstile, [data-sitekey], iframe[src*="challenges.cloudflare.com"], #challenge-running, #challenge-form');
+      var bodyChildCount = document.body ? document.body.children.length : 0;
+      return { textLength: text.length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
+    })()`),
+        Math.min(5_000, remainingMs()),
+        "content-check",
+      )) as typeof pageContentCheck;
+    } catch (err) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      contentCheckTimedOut = true;
+      const message =
+        "post-navigation content check timed out; continuing with HTTP-status blocked-page detection only";
+      warnings.push(message);
+      progress("warn", message);
+    }
 
     const blockedReason = detectBlockedPage({
       httpStatus: navigationResponse?.status() ?? null,
-      ...pageContentCheck,
+      ...(contentCheckTimedOut
+        ? {
+            title: "",
+            textLength: 0,
+            bodyChildCount: 0,
+            hasChallengeElement: false,
+          }
+        : pageContentCheck),
     });
     if (blockedReason) {
       phase("navigation", "degraded", "blocked");
@@ -275,7 +314,7 @@ export async function captureWebsite(
     phase("navigation", "completed");
     phase("core-extraction", "started");
 
-    if (pageContentCheck.textLength < 100) {
+    if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
       const reason =
         "Page has very little text content (" +
         pageContentCheck.textLength +
@@ -284,42 +323,18 @@ export async function captureWebsite(
       progress("warn", reason);
     }
 
-    // Scroll through page to trigger lazy-loaded images and Lottie animations
-    // Framer and other modern sites use IntersectionObserver — images only load
-    // when scrolled into view. We scroll the full page, then wait for all images
-    // to finish loading before proceeding.
     const lazyLoadBudgetMs = Math.min(15_000, remainingMs());
-    if (lazyLoadBudgetMs > 0) {
-      await page1.evaluate(`(async () => {
-      var lazyLoadDeadline = Date.now() + ${lazyLoadBudgetMs};
-      var h = document.body.scrollHeight;
-      for (var y = 0; y < h; y += window.innerHeight * 0.7) {
-        if (Date.now() >= lazyLoadDeadline) break;
-        window.scrollTo(0, y);
-        await new Promise(function(r) { setTimeout(r, 400); });
-      }
-      // Scroll to very bottom to catch footer lazy-loads
-      if (Date.now() < lazyLoadDeadline) {
-        window.scrollTo(0, document.body.scrollHeight);
-        await new Promise(function(r) { setTimeout(r, Math.min(800, Math.max(0, lazyLoadDeadline - Date.now()))); });
-      }
-      // Wait for all images to finish loading
-      var imgs = Array.from(document.querySelectorAll('img'));
-      var pending = imgs.filter(function(img) { return !img.complete; });
-      var imageWaitMs = Math.min(5000, Math.max(0, lazyLoadDeadline - Date.now()));
-      if (pending.length > 0 && imageWaitMs > 0) {
-        await Promise.race([
-          Promise.all(pending.map(function(img) {
-            return new Promise(function(r) { img.onload = r; img.onerror = r; });
-          })),
-          new Promise(function(r) { setTimeout(r, imageWaitMs); })
-        ]);
-      }
-      window.scrollTo(0, 0);
-    })()`);
+    const lazyScroll = await lazyScrollForCapture(page1, lazyLoadBudgetMs, {
+      onWarning: (message) => {
+        warnings.push(message);
+        progress("warn", message);
+      },
+    });
+    if (lazyScroll.timedOut && !lazyScroll.degraded) {
+      const message = `lazy-scroll stopped after ${lazyScroll.steps} steps (budget ${lazyLoadBudgetMs}ms)`;
+      warnings.push(message);
+      progress("warn", message);
     }
-
-    await page1.evaluate(`window.scrollTo(0, 0)`);
     await new Promise((r) => setTimeout(r, 300));
 
     // Save discovered Lottie animations
@@ -426,15 +441,47 @@ export async function captureWebsite(
       warnings.push(`Design style extraction failed: ${errMsg}`);
     }
 
-    // Collect animation catalog
     progress("animations", "Cataloging animations...");
-    animationCatalog = await collectAnimationCatalog(page1, cdpAnims, cdp);
+    try {
+      const animationOutcome = await collectAnimationCatalog(page1, cdpAnims, cdp, {
+        scrollBudgetMs: Math.min(8_000, remainingMs()),
+        evaluateBudgetMs: Math.min(15_000, remainingMs()),
+      });
+      animationCatalog = animationOutcome.catalog;
+      if (animationOutcome.timedOut) {
+        const message =
+          "animation catalog evaluate timed out; continuing without animation catalog";
+        warnings.push(message);
+        progress("warn", message);
+      }
+    } catch (err) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      const message = "animation catalog evaluate timed out; continuing without animation catalog";
+      warnings.push(message);
+      progress("warn", message);
+      try {
+        await cdp.send("Animation.disable");
+      } catch {
+        /* ignore */
+      }
+    }
 
-    // Capture scroll-position viewport screenshots
     progress("screenshots", "Capturing scroll screenshots...");
     const { captureScrollScreenshots } = await import("./screenshotCapture.js");
-    const screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
-    progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+    let screenshots: string[] = [];
+    try {
+      screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
+      progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+    } catch (err) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      const message = "scroll screenshots timed out; continuing without screenshots";
+      warnings.push(message);
+      progress("warn", message);
+    }
 
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");

@@ -35,7 +35,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Fps } from "@hyperframes/core";
 import { assemble, plan, renderChunk } from "./distributed.js";
-import type { DistributedFormat } from "./services/distributed/shared.js";
+import { PLAN_AUDIO_RELATIVE_PATH, type DistributedFormat } from "./services/distributed/shared.js";
 
 /**
  * Three-mode contract that backs `--mode=<value>` on the regression
@@ -199,9 +199,9 @@ export async function runDistributedSimulatedRender(
     chunkPaths.push(chunkPath);
   }
 
-  // Step C: assemble. `audio.aac` only exists when the composition has
+  // Step C: assemble. The audio artifact only exists when the composition has
   // audio — pass null otherwise so `assemble()` doesn't try to mux silence.
-  const audioPath = join(planDir, "audio.aac");
+  const audioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
   const audioForAssemble = existsSync(audioPath) ? audioPath : null;
   await assemble(planDir, chunkPaths, audioForAssemble, input.renderedOutputPath);
 }

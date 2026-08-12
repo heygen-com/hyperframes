@@ -4,6 +4,8 @@ sidebarTitle: "Hosted templates"
 description: "Start from an official Vercel, Cloudflare, or Modal template when you need a hosted preview and MP4 render endpoint."
 ---
 
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
 HyperFrames has three official hosting templates. Each one previews a bundled
 composition in `<hyperframes-player>` and renders it to MP4 on server-side
 Chrome and FFmpeg.
@@ -17,6 +19,15 @@ distributed infrastructure, or a Node backend, start with
 | [Vercel](https://github.com/heygen-com/hyperframes-vercel-template) | Vercel Sandbox | Vercel Blob | A Next.js application already deployed on Vercel |
 | [Cloudflare](https://github.com/heygen-com/hyperframes-cloudflare-template) | Cloudflare Container | R2 | A Workers application that needs a containerized renderer |
 | [Modal](https://github.com/heygen-com/hyperframes-modal-template) | Spawned Modal Function | Modal Volume | A Python service with render jobs that run outside the web request |
+
+<DocsVideo
+  title="The four places a render can run, and what each one changes"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/render-targets-demo-v1.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/render-targets-demo-v1.jpg"
+/>
+
+Local machine, HeyGen cloud, AWS Lambda, Google Cloud Run — what each is for and
+what you trade. Anything not executed live is labelled on screen.
 
 ## Vercel
 

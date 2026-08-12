@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { MutableRefObject } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
 import { readStudioFileChangePath } from "../components/editor/manualEdits";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { PublishSdkSession } from "../utils/sdkCutover";
+import { addExternalFileReloadListener } from "./externalFileReloadBus";
 
 /**
  * Read a project file's content, or undefined on a non-2xx (optional read).
@@ -48,22 +48,6 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
  * stale. The session has NO persist queue — Studio is the sole file writer; see
  * the open effect below.
  */
-// Reload-suppression baseline: a file-change within this window of our own SDK
-// cutover write is a CANDIDATE echo, but the decision is content-identity based
-// (isSelfWriteEcho) not time-only — so an undo write that lands inside the window
-// still reloads (its reverted bytes were never registered as a self-write). The
-// window only bounds how long a registered self-write stays suppressible.
-const SELF_WRITE_SUPPRESS_MS = 2000;
-
-/** Best-effort read of the changed file's content from a file-change payload. */
-function readFileChangeContent(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  if (typeof record.content === "string") return record.content;
-  if ("data" in record) return readFileChangeContent(record.data);
-  return null;
-}
-
 /**
  * Decide whether a file-change for the active composition should reload the SDK
  * session. `content` is the new on-disk bytes (from the payload or a re-read);
@@ -157,7 +141,6 @@ function disposeSdkSession(session: Composition): void {
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
-  domEditSaveTimestampRef?: MutableRefObject<number>,
 ): SdkSessionHandle {
   const [ownedSession, setOwnedSession] = useState<OwnedSdkSession | null>(null);
   const ownedSessionRef = useRef<OwnedSdkSession | null>(null);
@@ -171,40 +154,13 @@ export function useSdkSession(
   const reloadTokenRef = useRef(reloadToken);
   reloadTokenRef.current = reloadToken;
 
-  // ── Re-open on external change to the active composition ──
-  useEffect(() => {
-    if (!activeCompPath) return;
-    const compPath = activeCompPath;
-    const readProjectId = projectId ?? null;
-    const handler = (payload?: unknown) => {
-      if (!shouldReloadSdkSession(payload, compPath)) return;
-      const withinWindow =
-        !!domEditSaveTimestampRef &&
-        Date.now() - domEditSaveTimestampRef.current < SELF_WRITE_SUPPRESS_MS;
-      const decide = (content: string | null) => {
-        if (shouldReloadOnFileChange(compPath, content, withinWindow)) setReloadToken((t) => t + 1);
-      };
-      const payloadContent = readFileChangeContent(payload);
-      // Prefer payload content; otherwise re-read so the decision is by IDENTITY
-      // (an undo's reverted bytes won't match a registered self-write → reload).
-      if (payloadContent != null || readProjectId == null) {
-        decide(payloadContent);
-        return;
-      }
-      readProjectFileOptional(readProjectId, compPath)
-        .then((c) => decide(c ?? null))
-        .catch(() => decide(null));
-    };
-    if (import.meta.hot) {
-      import.meta.hot.on("hf:file-change", handler);
-      return () => import.meta.hot?.off?.("hf:file-change", handler);
-    }
-    // SSE fallback for the embedded studio server.
-    const es = new EventSource("/api/events");
-    es.addEventListener("file-change", handler);
-    return () => es.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCompPath, projectId]);
+  useEffect(
+    () =>
+      addExternalFileReloadListener((changedPath) => {
+        if (changedPath === activeCompPathRef.current) setReloadToken((token) => token + 1);
+      }),
+    [],
+  );
 
   // ── Open / re-open the session ──
   useEffect(() => {

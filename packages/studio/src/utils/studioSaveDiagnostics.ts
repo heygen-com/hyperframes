@@ -56,6 +56,11 @@ export class StudioFileConflictError extends StudioSaveHttpError {
   }
 }
 
+export type StudioSaveDrainResult<Failure = unknown> =
+  | { status: "clean" }
+  | { status: "conflict"; error: StudioFileConflictError }
+  | { status: "failed"; error: Failure };
+
 function readNumericProperty(value: object, key: string): number | undefined {
   const record = value as Record<string, unknown>;
   const property = record[key];

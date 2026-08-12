@@ -192,6 +192,17 @@
         "produceDrawElementFrame",
       ],
     },
+    // External-conflict persistence is the #2990 stack boundary. The coordinator
+    // consumes these exports in child PR #2991; keep the primitive independently reviewable.
+    {
+      "file": "packages/studio/src/utils/externalConflictStorage.ts",
+      "exports": [
+        "persistExternalConflictSnapshot",
+        "persistExternalFailureSnapshot",
+        "loadExternalConflictSnapshot",
+        "deleteExternalConflictSnapshot",
+      ],
+    },
     // CLI command files: every command exports a const `examples` per the
     // convention documented in CLAUDE.md. This is a namespace barrel, not a
     // collision.
@@ -563,6 +574,12 @@
       // this PR only teaches the server scan to prefer its reported PID, but that
       // line shift makes fallow re-flag the inherited probe clones.
       "packages/cli/src/server/portUtils.ts",
+      // iframe.test.ts: the remaining clone groups are pre-existing per-case arrange
+      // blocks in the selection and draft-loop suites (build an adapter, wire a spy,
+      // act). Appending the paint-query suite shifts their line numbers and re-flags
+      // them; each block states its own setup on purpose, which a shared fixture
+      // would hide.
+      "packages/sdk/src/adapters/iframe.test.ts",
       // gsapParserAcorn.motionEval.test.ts: parallel arrange/act/assert cases for
       // the staggered-collection honesty pass (.from reveal vs .to landing on the
       // rest pose). Each asserts a distinct keyframe shape; collapsing the shared
@@ -653,6 +670,28 @@
       // inherited clone; consistent with the norm above of leaving parallel
       // command-test cases unabstracted.
       "packages/cli/src/commands/check.test.ts",
+      // canary.test.ts: rawFnv is a deliberate independent re-implementation of
+      // canary.ts's fnv1a32, not copy-paste — its own docstring explains why:
+      // the test re-derives the hash so it can cross-check canaryBucket against
+      // a copy that owes it nothing, rather than importing the function under
+      // test. Importing fnv1a32 here would defeat the point of the assertion.
+      "packages/core/src/canary.test.ts",
+      // The audio FX property-panel test files (and the two siblings outside
+      // this stack, propertyPanelFlatMotionSection.test.tsx and
+      // propertyPanelFlatEffectsSection.test.tsx) share a `renderInto` React
+      // mount helper — pre-existing across nine files, not introduced here.
+      // The FxSection/FlatTextSection `mount()` wrappers additionally look
+      // alike because both build a props-with-overrides harness for their own
+      // component; the prop shapes differ per component, so a shared mount
+      // abstraction would obscure more than it dedupes (same rationale as
+      // slideshowPanelHelpers.ts above).
+      "packages/studio/src/components/editor/PropertyPanelEmptyState.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatColorGradingSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatLayoutSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatPrimitives.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatTextSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatToggle.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFxSection.test.tsx",
     ],
   },
   "health": {

@@ -32,7 +32,6 @@ export async function submitFeedback(input: {
       }),
       headers: {
         "content-type": "application/json",
-        heygen_route: "canary",
       },
       signal: AbortSignal.timeout(5000),
     });

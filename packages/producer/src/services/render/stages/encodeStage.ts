@@ -3,7 +3,7 @@
  *
  *   1. png-sequence: no encoder. Captured PNGs are renamed to
  *      `frame_NNNNNN.png` and copied to `outputPath`. Audio (if any) is
- *      written as an `audio.aac` sidecar.
+ *      written as a `MIXED_AUDIO_FILENAME` sidecar.
  *   2. gif: runs a two-pass FFmpeg palette encode and writes directly to
  *      `outputPath`. GIF has no mux/faststart stage and ignores audio.
  *   3. mp4 / webm / mov: invokes `encodeFramesFromDir` (or the chunked-
@@ -35,6 +35,7 @@ import {
   encodeFramesFromDir,
   formatFfmpegError,
   getEncoderPreset,
+  MIXED_AUDIO_FILENAME,
   resolveConfig,
   runFfmpeg,
   type EngineConfig,
@@ -246,8 +247,10 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       // Sidecar audio for callers that need to re-mux later. png-sequence
       // has no container of its own, so this is the only place audio
       // can land alongside the frames.
-      copyFileSync(audioOutputPath, join(outputPath, "audio.aac"));
-      log.info(`[Render] png-sequence: audio.aac sidecar written to ${outputPath}/audio.aac`);
+      copyFileSync(audioOutputPath, join(outputPath, MIXED_AUDIO_FILENAME));
+      log.info(
+        `[Render] png-sequence: ${MIXED_AUDIO_FILENAME} sidecar written to ${outputPath}/${MIXED_AUDIO_FILENAME}`,
+      );
     }
     return { encodeMs: Date.now() - stage5Start };
   }

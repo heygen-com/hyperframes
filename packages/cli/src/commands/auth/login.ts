@@ -1,4 +1,4 @@
-import { failCommand } from "../../utils/commandResult.js";
+import { failCommand, failUsage } from "../../utils/commandResult.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
@@ -35,8 +35,11 @@ import {
   isUserInfoEmpty,
   readStore,
   refreshTokens,
+  revokeTokens,
   saveUserInfo,
+  persistVerifiedOAuthSession,
   startAuthorizationCodeFlow,
+  startDeviceAuthorizationFlow,
   tryResolveCredential,
   userDisplayName,
   writeStore,
@@ -63,17 +66,148 @@ export default defineCommand({
       type: "string",
       description: "API key value, or pass `--api-key` with no value to read from stdin / prompt.",
     },
+    device: {
+      type: "boolean",
+      description: "Use an attended device code (for SSH/headless terminals; never for CI).",
+    },
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
     const inlineKey = args["api-key"];
+    if (inlineKey !== undefined && args.device) {
+      console.error(c.error("Choose either --device or --api-key, not both."));
+      failUsage();
+    }
     if (inlineKey !== undefined) {
       await runApiKeyLogin(inlineKey);
       return;
     }
+    if (args.device) {
+      await runDeviceLogin();
+      return;
+    }
+    if (isRemoteOrHeadless()) {
+      console.error(
+        c.error(
+          "Browser callback login is unavailable in this remote/headless terminal. Run `hyperframes auth login --device`.",
+        ),
+      );
+      failUsage();
+    }
     await runOAuthLogin();
   },
 });
+
+function isRemoteOrHeadless(): boolean {
+  const remoteEnvironment = [
+    "CODESPACES",
+    "GITHUB_CODESPACES",
+    "REMOTE_CONTAINERS",
+    "GITPOD_WORKSPACE_ID",
+    "container",
+  ].some(envFlagEnabled);
+  return Boolean(
+    process.env["SSH_CONNECTION"] ||
+    process.env["SSH_CLIENT"] ||
+    process.env["SSH_TTY"] ||
+    process.env["BROWSER"] === "none" ||
+    process.env["HF_NO_BROWSER"] === "1" ||
+    remoteEnvironment ||
+    process.stdout.isTTY !== true,
+  );
+}
+
+function envFlagEnabled(name: string): boolean {
+  const value = process.env[name]?.trim().toLowerCase();
+  return Boolean(value && value !== "0" && value !== "false" && value !== "no");
+}
+
+function assertAttendedDeviceFlow(): void {
+  if (envFlagEnabled("CI") || process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+    console.error(
+      c.error(
+        "`--device` requires an attended terminal and is disabled in CI. Use an API key or workload credential for automation.",
+      ),
+    );
+    failUsage();
+  }
+}
+
+async function runDeviceLogin(): Promise<void> {
+  assertAttendedDeviceFlow();
+  assertOAuthConfiguredOrExit();
+  const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
+    await import("../../telemetry/index.js");
+  trackAuthLoginStarted("device");
+
+  let tokens;
+  try {
+    tokens = await startDeviceAuthorizationFlow({
+      onChallenge: ({ verificationUri, verificationUriComplete, userCode }) => {
+        console.log(`Open ${c.accent(verificationUriComplete ?? verificationUri)} in a browser.`);
+        if (!verificationUriComplete) console.log(`Enter code ${c.bold(userCode)}.`);
+        console.log(c.dim("Waiting for approval…"));
+      },
+    });
+  } catch (err) {
+    const message = (err as Error).message || "Device authorization failed.";
+    trackAuthLoginFailed("device", /expired/i.test(message) ? "flow_timeout" : "flow_error");
+    console.error(c.error(message));
+    failCommand();
+  }
+
+  const credential = {
+    type: "oauth" as const,
+    access_token: tokens.access_token,
+    ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+    source: "file_json" as const,
+    refreshable: false,
+  };
+  let user: UserInfo;
+  try {
+    user = await new AuthClient().getCurrentUser(credential);
+  } catch (err) {
+    await revokeDeviceTokens(tokens);
+    trackAuthLoginFailed("device", "rejected");
+    console.error(
+      c.error(
+        `HeyGen could not verify the approved device session; no credential was saved. ${(err as Error).message}`,
+      ),
+    );
+    failCommand();
+  }
+
+  try {
+    await persistVerifiedOAuthSession(tokens, toStoredUserInfo(user));
+  } catch (err) {
+    await revokeDeviceTokens(tokens);
+    trackAuthLoginFailed("device", "flow_error");
+    console.error(
+      c.error(
+        `Could not save the verified device session; it was revoked. ${(err as Error).message}`,
+      ),
+    );
+    failCommand();
+  }
+
+  const id = identityKey(user);
+  if (id) identifyUser(id);
+  trackAuthLoginCompleted("device", id);
+  const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
+  console.log(c.success(`✓ Signed in as ${identity}.`));
+}
+
+async function revokeDeviceTokens(tokens: {
+  access_token: string;
+  refresh_token?: string;
+}): Promise<void> {
+  await revokeTokens(tokens.access_token, { token_type_hint: "access_token" });
+  if (tokens.refresh_token) {
+    await revokeTokens(tokens.refresh_token, {
+      token_type_hint: "refresh_token",
+    });
+  }
+}
 
 // fallow-ignore-next-line complexity
 async function runOAuthLogin(): Promise<void> {
@@ -286,7 +420,11 @@ async function rollback(previous: Credentials): Promise<void> {
 async function verifyAndReport(key: string): Promise<UserInfo | null> {
   const client = new AuthClient();
   try {
-    const user = await client.getCurrentUser({ type: "api_key", key, source: "file_json" });
+    const user = await client.getCurrentUser({
+      type: "api_key",
+      key,
+      source: "file_json",
+    });
     // Persist the friendly-display block next to the now-verified api_key
     // so `auth status` can show a recognizable identity. Best-effort.
     await persistUserInfo(user);

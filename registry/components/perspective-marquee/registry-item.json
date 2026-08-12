@@ -1,0 +1,67 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "perspective-marquee",
+  "type": "hyperframes:component",
+  "title": "Perspective Marquee",
+  "description": "A 3D tilted marquee with depth feel as items roll toward the horizon.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "perspective-marquee.html",
+      "target": "compositions/components/perspective-marquee.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "tilt",
+      "type": "enum",
+      "role": "style",
+      "label": "Tilt",
+      "description": "How far the marquee plane leans back toward the horizon.",
+      "default": "standard",
+      "options": [
+        { "value": "flat", "label": "Flat" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "steep", "label": "Steep" }
+      ]
+    },
+    {
+      "id": "travel",
+      "type": "enum",
+      "role": "motion",
+      "label": "Travel",
+      "description": "Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        { "value": "short", "label": "Short" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "long", "label": "Long" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Pill colour: ink for light frames, paper for dark ones, accent rides the brand token.",
+      "default": "ink",
+      "options": [
+        { "value": "ink", "label": "Ink" },
+        { "value": "paper", "label": "Paper" },
+        { "value": "accent", "label": "Accent" }
+      ]
+    },
+    {
+      "id": "words",
+      "type": "string",
+      "role": "content",
+      "label": "Words",
+      "description": "Comma separated pill labels. The list is laid down twice so the strip still reads as a continuous loop.",
+      "default": "COMPONENTS, PRIMITIVES, TRANSITIONS, AGENTS"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/perspective-marquee.png"
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect } from "react";
 import { useSdkSession } from "./useSdkSession";
 import { usePreviewVariablesStore } from "./previewVariablesStore";
 
@@ -17,18 +17,13 @@ import { usePreviewVariablesStore } from "./previewVariablesStore";
 export function useStudioSdkSessions(
   projectId: string | null,
   activeCompPath: string | null,
-  domEditSaveTimestampRef: MutableRefObject<number>,
   masterCompPath: string | null,
 ) {
   // On the master view (no explicit comp) the schema panels target the project's
   // resolved main composition — the first `.html` in the tree, not a hardcoded
   // "index.html" that may not exist. `null` when the project has no composition
   // yet, which correctly leaves the session (and the panels) empty.
-  const sdkHandle = useSdkSession(
-    projectId,
-    activeCompPath ?? masterCompPath,
-    domEditSaveTimestampRef,
-  );
+  const sdkHandle = useSdkSession(projectId, activeCompPath ?? masterCompPath);
   const editFlowSdkSession = activeCompPath ? sdkHandle.session : null;
   useEffect(() => {
     usePreviewVariablesStore.getState().setValues(null);

@@ -21,14 +21,14 @@ export const WorkflowChooser = () => {
       title: "Explain an idea",
       bring: "Bring notes, an article, a script, or one rough thought.",
       href: "/guides/faceless-explainer",
-      video: `${CDN}/wfv2-explainer.mp4`,
+      video: `${CDN}/wfv2-explainer-v4.mp4`,
       poster: `${CDN}/wfv2-explainer.jpg`,
     },
     {
       title: "Work with existing footage",
       bring: "Bring a talking-head, interview, or podcast clip.",
       href: "/guides/captions-and-recuts",
-      video: `${CDN}/wfv2-captions.mp4`,
+      video: `${CDN}/wfv2-captions-v4.mp4`,
       poster: `${CDN}/wfv2-captions.jpg`,
     },
     {
@@ -56,7 +56,7 @@ export const WorkflowChooser = () => {
       title: "Build a presentation",
       bring: "Bring an outline, pitch, report, or existing deck.",
       href: "/guides/slideshow",
-      video: "https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-slideshow.mp4",
+      video: "https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-slideshow-v4.mp4",
       poster: "https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-slideshow.jpg",
     },
     {
@@ -65,6 +65,11 @@ export const WorkflowChooser = () => {
       href: "/guides/general-video",
       video: `${CDN}/wfv2-general.mp4`,
       poster: `${CDN}/wfv2-general.jpg`,
+    },
+    {
+      title: "Port a Remotion composition",
+      bring: "Bring an existing Remotion project. One-way migration, not a new build.",
+      href: "/guides/hyperframes-vs-remotion",
     },
   ];
 
@@ -110,16 +115,23 @@ export const WorkflowChooser = () => {
           aria-label={`${route.title}. ${route.bring}`}
           className="hf-workflow-route"
         >
-          <video
-            src={reducedMotion ? undefined : route.video}
-            poster={route.poster}
-            autoPlay={!reducedMotion}
-            muted
-            loop={!reducedMotion}
-            playsInline
-            preload="metadata"
-            aria-hidden="true"
-          />
+          {/* A route without a preview renders no <video> at all. An empty
+              video element draws a black rectangle, which reads as a broken
+              tile rather than a route with no clip yet. */}
+          {route.video ? (
+            <video
+              src={reducedMotion ? undefined : route.video}
+              poster={route.poster}
+              autoPlay={!reducedMotion}
+              muted
+              loop={!reducedMotion}
+              playsInline
+              preload="metadata"
+              aria-hidden="true"
+            />
+          ) : (
+            <span className="hf-workflow-route-noclip" aria-hidden="true" />
+          )}
           <span>
             <span className="hf-workflow-route-title">{route.title}</span>
             <span className="hf-workflow-route-copy">{route.bring}</span>

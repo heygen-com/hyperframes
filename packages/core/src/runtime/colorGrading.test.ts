@@ -770,6 +770,35 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.opacity).toBe("0.75");
   });
 
+  it("hides the canvas when an ancestor clip goes out of its visibility window", () => {
+    // A graded <img> inside a timed sub-composition carries no data-start of its
+    // own, so nothing tells grading the clip left the screen — the canvas has to
+    // notice from the source's inherited visibility. Before the fix, grading's own
+    // opacity hide short-circuited that read and the canvas kept an explicit
+    // `visibility: visible`, painting the treated plate over the active scene.
+    const scene = document.createElement("div");
+    const image = makeDrawableImage();
+    scene.appendChild(image);
+    document.body.appendChild(scene);
+
+    runtime = createColorGradingRuntime();
+    const canvas = document.querySelector<HTMLCanvasElement>("[data-hf-color-grading-canvas]");
+    if (!canvas) throw new Error("Expected color grading canvas");
+    expect(canvas.style.visibility).toBe("visible");
+
+    scene.style.visibility = "hidden";
+    runtime.redraw();
+
+    expect(canvas.style.visibility).toBe("hidden");
+
+    scene.style.visibility = "visible";
+    runtime.redraw();
+
+    expect(canvas.style.visibility).toBe("visible");
+    // Grading still owns the source's opacity hide, so the canvas keeps full opacity.
+    expect(canvas.style.opacity).toBe("1");
+  });
+
   it("allows a drawable producer render frame to initialize hidden source grading", () => {
     const video = makeDrawableVideo();
     video.style.display = "none";

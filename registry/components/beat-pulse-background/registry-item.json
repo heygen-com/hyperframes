@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "beat-pulse-background",
+  "type": "hyperframes:component",
+  "title": "Beat Pulse Background",
+  "description": "An accent-derived backdrop pulses its glow intensity and saturation on a deterministic, supplied beat grid.",
+  "tags": ["motion-primitive", "background", "beat", "pulse", "rhythmic", "reactive"],
+  "jobs": ["emphasize"],
+  "family": "backgrounds",
+  "profile": "rhythmic",
+  "evidence": "Wave G U21 beat-pulse-background specification",
+  "files": [
+    {
+      "path": "beat-pulse-background.html",
+      "target": "compositions/components/beat-pulse-background.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "beats",
+      "type": "string",
+      "role": "timing",
+      "label": "Beats",
+      "description": "Comma-separated beat times in seconds. Invalid entries are ignored and numeric values are clamped to the composition duration.",
+      "default": "0.5,1.0,1.5,2.0,2.5,3.0,3.5"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used by the pulsing glow.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "intensity",
+      "type": "enum",
+      "role": "style",
+      "label": "Intensity",
+      "description": "Strength of the glow and saturation pulse.",
+      "default": "subtle",
+      "options": [
+        { "value": "subtle", "label": "Subtle" },
+        { "value": "club", "label": "Club" }
+      ]
+    }
+  ]
+}

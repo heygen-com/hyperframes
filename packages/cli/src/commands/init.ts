@@ -109,7 +109,7 @@ function probeVideo(filePath: string): VideoMeta | undefined {
     if (!ffprobePath) return undefined;
     const raw = execFileSync(
       ffprobePath,
-      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
+      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", filePath],
       { encoding: "utf-8", timeout: 15_000 },
     );
 

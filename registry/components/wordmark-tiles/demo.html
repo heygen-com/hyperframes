@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  wordmark-tiles demo: standalone 1920x1080 host composition. It mounts the
+  primitive through data-composition-src into a definite card instead of
+  inlining primitive markup or motion. The non-default text, column count,
+  and wave stagger prove that per-instance variables cross the mount.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Wordmark Tiles Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root {
+        --bg: #070a12;
+        --fg: #f5f7ff;
+        --muted: #7f8aa3;
+        --surface: #151b2b;
+        --border: rgba(245, 247, 255, 0.14);
+        --brand: #7c9dff;
+        --accent: #64e2c2;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, monospace;
+        --radius: 16px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-body);
+      }
+
+      .mount-card {
+        width: 64%;
+        height: 56%;
+        left: 18%;
+        top: 22%;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) * 1.75);
+        background: var(--surface);
+        box-shadow: 0 4cqh 10cqh color-mix(in srgb, var(--fg) 12%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="wordmark-tiles-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6.5"
+      data-fps="30"
+    >
+      <div
+        id="wordmark-tiles-mount"
+        class="mount-card clip"
+        data-composition-id="wordmark-tiles"
+        data-composition-src="./wordmark-tiles.html"
+        data-variable-values='{"text":"ORBIT","columns":14,"waveStagger":28}'
+        data-start="0"
+        data-duration="6.5"
+        data-track-index="0"
+        data-width="1229"
+        data-height="605"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // The mounted primitive owns all visible motion. This standalone host
+      // registers only the empty paused timeline required for its own id.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["wordmark-tiles-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

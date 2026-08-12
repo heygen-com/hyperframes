@@ -27,23 +27,22 @@ import {
   cpSync,
   rmSync,
   writeFileSync,
+  statSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
-  createFileServer,
-  createCaptureSession,
-  initializeSession,
   captureFrame,
-  getCompositionDuration,
   closeCaptureSession,
   createRenderJob,
   executeRenderJob,
 } from "../packages/producer/src/index.js";
 import { compileForRender } from "../packages/producer/src/services/htmlCompiler.js";
 import { resolveContainedCopies } from "./registry-target-paths.mjs";
+import { openOpaqueCapture } from "./preview-capture.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -58,9 +57,9 @@ if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type ItemKind = "block" | "component";
+export type ItemKind = "block" | "component";
 
-interface CatalogItem {
+export interface CatalogItem {
   name: string;
   kind: ItemKind;
   /** Directory containing the item's files in the registry. */
@@ -71,7 +70,10 @@ interface CatalogItem {
 
 // ── Discovery ──────────────────────────────────────────────────────────────
 
-function discoverItems(kindFilter: ItemKind | null, nameFilter: string | null): CatalogItem[] {
+export function discoverItems(
+  kindFilter: ItemKind | null,
+  nameFilter: string | null,
+): CatalogItem[] {
   const items: CatalogItem[] = [];
 
   // Blocks and components only — examples use the existing generate-template-previews.ts.
@@ -150,7 +152,24 @@ function mirrorRegistryTargets(projectDir: string): void {
   }
 }
 
-async function prepareProjectDir(item: CatalogItem): Promise<string> {
+export interface PrepareOptions {
+  /**
+   * Inline sub-compositions ahead of time. On by default, because a render
+   * needs one self-contained document.
+   *
+   * The interactive preview turns it off: compiling resolves each mounted
+   * component's variables into the markup and CSS, so nothing is left for a
+   * reader to change. Left uncompiled, the mount survives and the runtime
+   * loads it live, which is the only state where `data-variable-values` still
+   * means anything.
+   */
+  compile?: boolean;
+}
+
+export async function prepareProjectDir(
+  item: CatalogItem,
+  options: PrepareOptions = {},
+): Promise<string> {
   const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   cpSync(item.sourceDir, tmpDir, { recursive: true });
@@ -162,7 +181,15 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
   // just rename it to index.html. Otherwise create a wrapper.
   if (!existsSync(join(tmpDir, "index.html")) && existsSync(join(tmpDir, item.entryFile))) {
     const entryContent = readFileSync(join(tmpDir, item.entryFile), "utf-8");
-    const hasTimeline = entryContent.includes("__timelines");
+    // A registration inside <template> does NOT make the file standalone: the
+    // template's markup and scripts stay inert until a host composition mounts
+    // it via data-composition-src. Rendering such a block as index.html paints
+    // a blank page and fails with "Composition has zero duration", so match on
+    // the document with template content removed and let those blocks fall
+    // through to the wrapper below.
+    const hasTimeline = entryContent
+      .replace(/<template\b[\s\S]*?<\/template>/gi, "")
+      .includes("__timelines");
     if (hasTimeline) {
       // Standalone block — copy to index.html and render directly.
       // For social overlays with transparent backgrounds, inject a dark bg
@@ -201,27 +228,40 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
     }
   }
   if (!existsSync(join(tmpDir, "index.html"))) {
-    const manifestPath = join(tmpDir, "registry-item.json");
-    let width = 1920;
-    let height = 1080;
-    let duration = 5;
-    if (existsSync(manifestPath)) {
-      const m = JSON.parse(readFileSync(manifestPath, "utf-8"));
-      width = m.dimensions?.width ?? width;
-      height = m.dimensions?.height ?? height;
-      duration = m.duration ?? duration;
-    }
-
-    // Dark background for social overlays so transparent cards are visible.
-    const tags: string[] = (() => {
+    // One read for every field the wrapper needs. A malformed manifest cannot
+    // reach here — `discoverItems` parses the same file without a guard — so
+    // the only case this absorbs is the file being absent, which is what each
+    // `??` default below already stood for.
+    const manifest: {
+      dimensions?: { width?: number; height?: number };
+      duration?: number;
+      tags?: string[];
+      files?: { path?: string; target?: string }[];
+    } = (() => {
       try {
-        return JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8")).tags ?? [];
+        return JSON.parse(readFileSync(join(tmpDir, "registry-item.json"), "utf-8"));
       } catch {
-        return [];
+        return {};
       }
     })();
+
+    const width = manifest.dimensions?.width ?? 1920;
+    const height = manifest.dimensions?.height ?? 1080;
+    const duration = manifest.duration ?? 5;
+
+    // Dark background for social overlays so transparent cards are visible.
+    const tags = manifest.tags ?? [];
     const isSocialOverlay = tags.includes("social") || tags.includes("overlay");
     const bgColor = isSocialOverlay ? "#1a1a2e" : "#ffffff";
+
+    // Mount the mirrored install-layout copy when one exists. Blocks reference
+    // their own assets the way they will after `hyperframes add`
+    // (`../assets/background.jpeg` from `compositions/`), which only resolves
+    // from the target path — the flat source copy at the project root resolves
+    // it outside the project and silently renders without the asset.
+    const entryTarget = manifest.files?.find((f) => f.path === item.entryFile)?.target;
+    const entrySrc =
+      entryTarget && existsSync(join(tmpDir, entryTarget)) ? entryTarget : item.entryFile;
 
     const wrapper = `<!doctype html>
 <html lang="en">
@@ -233,7 +273,7 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
 </head>
 <body>
   <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0" data-duration="${duration}">
-    <div data-composition-id="${item.name}" data-composition-src="${item.entryFile}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
+    <div data-composition-id="${item.name}" data-composition-src="${entrySrc}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
   </div>
   <script>
     window.__timelines = window.__timelines || {};
@@ -246,12 +286,18 @@ async function prepareProjectDir(item: CatalogItem): Promise<string> {
 
   const indexPath = join(tmpDir, "index.html");
   const indexHtml = readFileSync(indexPath, "utf-8");
-  if (indexHtml.includes("data-composition-src")) {
+  if (options.compile !== false && indexHtml.includes("data-composition-src")) {
     const compiled = await compileForRender(tmpDir, indexPath, join(tmpDir, "_downloads"));
     writeFileSync(indexPath, compiled.html, "utf-8");
   }
 
   return tmpDir;
+}
+
+/** Pull a `data-<attr>` pixel value out of the wrapper markup, or fall back. */
+function wrapperDimension(html: string, attr: "width" | "height", fallback: number): number {
+  const match = html.match(new RegExp(`data-${attr}="(\\d+)"`))?.[1];
+  return match ? parseInt(match, 10) : fallback;
 }
 
 async function generateThumbnail(item: CatalogItem, projectDir: string): Promise<void> {
@@ -260,43 +306,23 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
 
   // Read dimensions from the wrapper index.html (which may differ from native
   // dimensions for portrait overlays that are scaled to fit landscape).
-  let width = 1920;
-  let height = 1080;
-  const wrapperPath = join(projectDir, "index.html");
-  const wrapperHtml = readFileSync(wrapperPath, "utf-8");
-  const wMatch = wrapperHtml.match(/data-width="(\d+)"/);
-  const hMatch = wrapperHtml.match(/data-height="(\d+)"/);
-  if (wMatch) width = parseInt(wMatch[1], 10);
-  if (hMatch) height = parseInt(hMatch[1], 10);
+  const wrapperHtml = readFileSync(join(projectDir, "index.html"), "utf-8");
+  const width = wrapperDimension(wrapperHtml, "width", 1920);
+  const height = wrapperDimension(wrapperHtml, "height", 1080);
 
   const framesDir = join(projectDir, "_thumb_frames");
-  mkdirSync(framesDir, { recursive: true });
-
-  const fileServer = await createFileServer({
-    projectDir,
-    port: 0,
-    fps: { num: 30, den: 1 },
-  });
+  const { fileServer, session, duration } = await openOpaqueCapture({ projectDir, width, height });
   try {
-    const session = await createCaptureSession(fileServer.url, framesDir, {
-      width,
-      height,
-      fps: { num: 30, den: 1 },
-      format: "png",
-    });
-    await initializeSession(session);
-
-    let duration: number;
-    try {
-      duration = await getCompositionDuration(session);
-    } catch {
-      duration = 5;
-    }
-
     // Capture after the treatment appears, capped for long compositions.
     const captureTime = Math.min(3.0, duration * 0.6);
     const result = await captureFrame(session, 0, captureTime);
-    cpSync(result.path, join(outDir, `${item.name}.png`));
+    execFileSync(
+      "ffmpeg",
+      ["-v", "error", "-y", "-i", result.path, join(outDir, `${item.name}.png`)],
+      {
+        stdio: "inherit",
+      },
+    );
     console.log(`  ✓ ${item.name}.png (${result.captureTimeMs}ms)`);
 
     await closeCaptureSession(session);
@@ -311,13 +337,62 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
   mkdirSync(outDir, { recursive: true });
 
   const outMp4 = join(outDir, `${item.name}.mp4`);
+  const masterMp4 = join(outDir, `${item.name}.master.mp4`);
   const job = createRenderJob({
     fps: { num: 24, den: 1 },
     quality: "draft",
     format: "mp4",
   });
-  await executeRenderJob(job, projectDir, outMp4);
-  console.log(`  ✓ ${item.name}.mp4`);
+  await executeRenderJob(job, projectDir, masterMp4);
+  encodeForWeb(masterMp4, outMp4);
+  rmSync(masterMp4, { force: true });
+  console.log(`  ✓ ${item.name}.mp4 (${(statSync(outMp4).size / 1048576).toFixed(1)} MB)`);
+}
+
+/**
+ * The render output is a master, not a deliverable. Publishing it directly put
+ * 25 Mbps files on the docs CDN — one 20-second preview was 60 MB, which a
+ * reader on a phone pays for the moment they press play. This pass is the
+ * difference between a master and something you serve.
+ */
+function encodeForWeb(input: string, output: string): void {
+  execFileSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-y",
+      "-i",
+      input,
+      // 1280 wide is twice the 590px docs column: sharp on retina, no pixels
+      // nobody sees.
+      "-vf",
+      "scale='min(1280,iw)':-2",
+      "-c:v",
+      "libx264",
+      "-profile:v",
+      "high",
+      "-crf",
+      "28",
+      "-preset",
+      "slow",
+      "-pix_fmt",
+      "yuv420p",
+      // faststart puts the index first so playback can begin before the whole
+      // file has arrived.
+      "-movflags",
+      "+faststart",
+      // ffmpeg ignores these when the input carries no audio stream.
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-ac",
+      "2",
+      output,
+    ],
+    { stdio: "inherit" },
+  );
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────
@@ -375,7 +450,12 @@ async function main(): Promise<void> {
   console.log("\nDone.");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only render when run as a command. This module also exports discoverItems
+// and prepareProjectDir for the payload generator, and an unguarded main()
+// would render every preview the moment that script imported them.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

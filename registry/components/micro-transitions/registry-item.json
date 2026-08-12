@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "micro-transitions",
+  "type": "hyperframes:component",
+  "title": "Micro Transitions",
+  "description": "A transitions.dev-inspired pack of badge, dropdown, modal, tabs, tooltip, and success-check micro transitions",
+  "tags": [
+    "transition-primitive",
+    "motion-primitive",
+    "transitions-dev-port",
+    "ui",
+    "transition",
+    "microinteraction"
+  ],
+  "files": [
+    {
+      "path": "micro-transitions.html",
+      "target": "compositions/components/micro-transitions.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "badge",
+      "type": "string",
+      "role": "content",
+      "label": "Badge",
+      "description": "Count inside the notification badge on the bell.",
+      "default": "3"
+    },
+    {
+      "id": "tooltip",
+      "type": "string",
+      "role": "content",
+      "label": "Tooltip",
+      "description": "Wording inside the small dark tooltip.",
+      "default": "Copied"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Badge tone",
+      "description": "Colour of the notification badge chip.",
+      "default": "red",
+      "options": [
+        {
+          "value": "red",
+          "label": "Red"
+        },
+        {
+          "value": "amber",
+          "label": "Amber"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "travel",
+      "type": "enum",
+      "role": "motion",
+      "label": "Travel",
+      "description": "Scales how far every panel starts from its resting place before it settles.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/micro-transitions.png"
+  }
+}

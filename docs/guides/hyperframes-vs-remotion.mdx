@@ -1,103 +1,165 @@
 ---
 title: "HyperFrames or Remotion?"
-description: "A practical comparison of HTML-first HyperFrames and React-first Remotion."
+description: "The same three-second title card written in Remotion React and in HyperFrames HTML, plus an honest read on which tool fits your project."
 ---
 
-Both tools create videos with web technology and render them through a browser. The main difference is the authoring model.
+Both tools make video out of web pages. Both open a real browser, draw each
+frame, and encode the result. The difference is what you write.
 
-- **HyperFrames** treats HTML, CSS, and browser animation as the composition.
-- **Remotion** treats React components and frame-based React code as the composition.
+Remotion asks for a React component. HyperFrames asks for an HTML file.
 
-Neither choice is universally better. Pick the one that fits the source material, team, and workflow.
+Here is the same three seconds — a title that fades in, holds, and fades out —
+written both ways. Neither version is padded or crippled to make a point.
 
-## At a glance
+## The same title card, twice
 
-| Question | HyperFrames | Remotion |
+**Remotion.** The component is a function of the current frame number. You do
+the timing math yourself, in frames.
+
+```tsx
+import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+
+export const TitleCard = () => {
+  const frame = useCurrentFrame();
+
+  // fade in over frames 0-15, hold to 75, fade out by 90
+  const opacity = interpolate(frame, [0, 15, 75, 90], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <AbsoluteFill
+      style={{ backgroundColor: "#0a0a0a", justifyContent: "center", alignItems: "center" }}
+    >
+      <div style={{ fontSize: 160, fontWeight: 800, color: "#fff", opacity }}>HELLO</div>
+    </AbsoluteFill>
+  );
+};
+```
+
+A `<Composition>` entry in another file registers it as 90 frames at 30fps,
+1280×720.
+
+**HyperFrames.** The markup declares when things are on screen. A GSAP timeline
+declares how they move. Both live in one file.
+
+```html
+<style>
+  #stage { position: relative; width: 1280px; height: 720px; overflow: hidden; background: #0a0a0a; }
+  .clip  { position: absolute; inset: 0; display: grid; place-items: center; }
+  #title { font-size: 160px; font-weight: 800; color: #fff; opacity: 0; }
+</style>
+
+<div id="stage" data-composition-id="title-card" data-start="0"
+     data-width="1280" data-height="720" data-duration="3" data-fps="30">
+  <div id="card" class="clip" data-start="0" data-duration="3" data-track-index="0">
+    <div id="title">HELLO</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  // same fade, written in seconds instead of frames
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#title", { opacity: 1, duration: 0.5, ease: "none" }, 0);
+  tl.to("#title", { opacity: 1, duration: 2.0, ease: "none" }, 0.5);
+  tl.to("#title", { opacity: 0, duration: 0.5, ease: "none" }, 2.5);
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["title-card"] = tl;
+</script>
+```
+
+That is the whole file apart from `<head>` boilerplate. Three rules make it
+render: every visible slot carries `class="clip"` with an `id`, `data-start`,
+`data-duration`, and `data-track-index`; the timeline is created **paused**; and
+it is registered on `window.__timelines` under the same id as the root element.
+Miss the last one and you get a still frame with no motion. The
+[HTML schema](/reference/html-schema) lists every attribute.
+
+{/* VISUAL: side-by-side stills of both renders of this title card. No approved asset exists yet — do not add a URL until one does. */}
+
+Neither file is obviously better. The Remotion one is a pure function you can
+reason about in your head. The HyperFrames one is a page you can open in a
+browser and inspect with devtools.
+
+## Where they actually differ
+
+| | HyperFrames | Remotion |
 | --- | --- | --- |
-| Main authoring surface | HTML, CSS, and JavaScript | React and TypeScript |
-| Agent workflow | Built around agent skills and plain HTML projects | Provides agent skills and React video workflows |
-| Visual editing | HyperFrames Studio edits the rendered DOM and project source | Remotion Studio can edit and animate React compositions visually, then save changes back to code |
-| Existing web material | Can often be used directly or adapted as HTML | Usually translated into React components |
-| Animation model | Seeks registered browser timelines frame by frame | Commonly derives visuals from the current frame in React |
-| Reuse | HTML scenes, components, and Catalog items | React components and the React ecosystem |
-| Cloud rendering | Local, hosted cloud, AWS Lambda, and other deployment paths | Mature AWS Lambda and server-rendering options |
-| License | Apache 2.0 | Custom license with free and paid eligibility rules |
+| What you write | HTML, CSS, and JavaScript | React and TypeScript |
+| How motion is timed | The renderer pauses your animation and *seeks* it — jumps it to an exact moment — before capturing each frame | Your code reads the frame number and returns the values for that frame |
+| Existing web material | HTML, CSS, and a GSAP or Lottie animation usually drop in close to as-is | Rewritten as React components |
+| License | [Apache 2.0](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) | Its own license — free for individuals and companies up to three people, paid above that. Check the [current terms](https://www.remotion.pro/license) |
 
-## Choose HyperFrames when
+The seeking model is the interesting one. Because HyperFrames drives the
+animation rather than watching a clock, GSAP, Web Animations, Lottie, and other
+browser runtimes render deterministically — the same frame comes out the same
+every time. See [Frame adapters](/concepts/frame-adapters) and
+[Deterministic rendering](/concepts/determinism).
 
-HyperFrames is a strong fit when:
+Both projects ship a visual editor and both save changes back to source.
+[HyperFrames Studio](/studio) edits the same DOM the renderer captures. Remotion
+Studio edits React compositions. They are not interchangeable, and neither
+replaces editing the source for real structural changes.
 
-- an AI agent will do most of the authoring;
-- the source is a website, HTML prototype, design artifact, or browser animation;
-- you want GSAP and other browser timelines to be seeked deterministically;
-- a human should review and edit the same DOM the renderer consumes;
-- Apache 2.0 licensing matters;
-- you want a project that can remain mostly plain HTML.
+Both render on AWS Lambda. HyperFrames also renders locally, on HeyGen's hosted
+cloud, and on Google Cloud Run — see [rendering paths](/deploy/overview).
 
-The main tradeoff is ecosystem maturity. HyperFrames is newer, and some advanced deployment and integration surfaces have less history than Remotion’s.
+## What Remotion does better
 
-## Choose Remotion when
+Say this plainly, because it matters if you are choosing today.
 
-Remotion is a strong fit when:
+Remotion is older and much more established. It has more templates, more
+tutorials, more answered questions, and far more production history. Remotion
+Lambda in particular is a mature, heavily documented rendering system; ours is
+newer.
 
-- your team already builds in React and TypeScript;
-- you want to reuse React components and tooling;
-- frame-driven React code is a natural way to express the animation;
-- you depend on Remotion’s established templates, community, or production infrastructure;
-- its mature Lambda ecosystem is important;
-- your organization is comfortable with its current license.
+If your team already writes React, Remotion gives you your components, your
+design system, your charting libraries, and typed, validated composition inputs
+for free. Nothing to translate.
 
-The main tradeoff is translation. Existing HTML, imperative browser animation, or a non-React design artifact may need to be adapted into React’s model.
+And its model is genuinely simpler to hold in your head. One pure function of
+the frame number, no timeline to register, no contract to get subtly wrong.
+HyperFrames asks you to follow rules — paused timeline, no wall clocks, no
+unseeded randomness — and breaks quietly if you don't.
 
-## Animation is the deepest technical difference
+## What HyperFrames does better
 
-Remotion compositions commonly calculate visual state from the current frame. This is explicit and works naturally with React.
+You do not need React, a build step, or a component rewrite. A website, an HTML
+prototype, an exported design, or an existing browser animation is already
+close to a composition.
 
-HyperFrames can also use frame-derived logic, but its distinctive path is a **frame adapter**: the renderer pauses a browser animation timeline and seeks it to the exact output time before capturing the frame.
+It is built for an AI agent to author. The [agent skills](/guides/skills)
+encode the framework's rules, so the agent writes valid compositions instead of
+guessing, and a human can then edit the same file in Studio.
 
-That makes GSAP, Web Animations, Lottie, and other supported browser runtimes usable without letting their wall clock control the render.
+And Apache 2.0 means no seat count and no license review.
 
-See [Frame adapters](/concepts/frame-adapters) and [Deterministic rendering](/concepts/determinism).
+## Moving a Remotion project across
 
-## Studio works differently
+There is a real migration path, not a promise. Install the skill:
 
-HyperFrames Studio selects and edits elements in the live composition DOM. It includes Storyboard and Preview views, direct canvas editing, layers, a timeline, animation controls, assets, captions, variables, source files, lint handoff, and export.
+```bash
+npx skills add heygen-com/hyperframes --skill remotion-to-hyperframes --full-depth
+```
 
-That does not mean every structural change should be made visually. Broader story and source changes are often better handled by the agent.
+Then ask your agent to port the composition. It maps `useCurrentFrame` and
+`interpolate` onto timeline tweens, `Sequence` onto clips, and converts frames
+to seconds. Roughly 80% of a typical composition translates mechanically.
 
-Remotion Studio is a development and visual-editing environment for React compositions. It supports direct manipulation and animation controls, then saves the result back to React code. Remotion also publishes tooling for building custom editing applications.
+The other 20% is the point of the skill. It refuses to translate what does not
+fit: React state machines built on `useState` or `useEffect`, async metadata,
+third-party React UI libraries. Those get flagged instead of silently
+mistranslated. It also grades its own output — it renders both versions and
+compares them frame by frame, and it writes down anything it dropped.
 
-The two Studios are not interchangeable. HyperFrames Studio operates on the DOM and HTML project that HyperFrames renders; Remotion Studio operates on React compositions.
-
-## Rendering and deployment
-
-Remotion Lambda is a mature distributed-rendering system with extensive AWS documentation.
-
-HyperFrames supports local rendering, HeyGen-hosted cloud rendering, AWS Lambda, Google Cloud Run, and custom deployment. The right comparison depends on the destination, expected volume, and how much infrastructure the team wants to operate.
-
-See [HyperFrames deployment](/developers) and [Remotion Lambda](https://www.remotion.dev/docs/lambda).
-
-## Licensing
-
-HyperFrames is available under the [Apache 2.0 license](https://github.com/heygen-com/hyperframes/blob/main/LICENSE).
-
-Remotion uses its own license. Its current terms allow free use for individuals and companies of up to three people, with a Company License required for larger organizations. Pricing and eligibility can change, so check the [official Remotion license page](https://www.remotion.pro/license) instead of relying on a copied price here.
-
-## Moving an existing project
-
-Do not migrate only because one framework looks newer. First identify what the current project depends on:
-
-- React components and React-specific libraries;
-- imperative browser animation;
-- cloud-rendering infrastructure;
-- visual editing;
-- licensing;
-- team familiarity.
-
-If a Remotion composition is a good candidate for HyperFrames, ask `/hyperframes` to route the work through the Remotion-to-HyperFrames migration workflow. Validate the result scene by scene; source migration is not a mechanical file conversion.
+Migrate because your source material or your team fits better on this side. Not
+because one framework looks newer.
 
 ## Related topics
 
-- [Understand the HyperFrames project model](/concepts)
+- [How a HyperFrames composition works](/concepts/compositions)
+- [Install and use the agent skills](/guides/skills)
 - [Choose a rendering path](/deploy/overview)
-- [Build on HyperFrames](/developers)

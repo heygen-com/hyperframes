@@ -100,6 +100,19 @@ describe("preview errors", () => {
     );
   });
 
+  it("unmounts cleanly when the player element is already detached", async () => {
+    const { player } = await mountPlayer();
+
+    // A container re-render, a crossfade swap, or a page-translation extension
+    // can detach the element before React tears the Player down. Cleanup must
+    // not throw NotFoundError — the error boundary turns that into a
+    // full-screen "Something went wrong".
+    player.remove();
+
+    expect(() => act(() => root?.unmount())).not.toThrow();
+    root = null;
+  });
+
   it("attaches lifecycle listeners before navigating the player", async () => {
     await mountPlayer();
     const srcIndex = lifecycleLog.indexOf("src");

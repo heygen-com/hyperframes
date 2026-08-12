@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.91",
+  "version": "0.7.107",
   "description": "",
   "repository": {
     "type": "git",
@@ -51,6 +51,12 @@
       "node": "./dist/utils/htmlAttrSafety.js",
       "import": "./src/utils/htmlAttrSafety.ts",
       "types": "./src/utils/htmlAttrSafety.ts"
+    },
+    "./rich-text-sanitize": {
+      "bun": "./src/utils/richTextSanitize.ts",
+      "node": "./dist/utils/richTextSanitize.js",
+      "import": "./src/utils/richTextSanitize.ts",
+      "types": "./src/utils/richTextSanitize.ts"
     },
     "./composition-contract": {
       "bun": "./src/compositionContract.ts",
@@ -374,6 +380,10 @@
         "import": "./dist/utils/htmlAttrSafety.js",
         "types": "./dist/utils/htmlAttrSafety.d.ts"
       },
+      "./rich-text-sanitize": {
+        "import": "./dist/utils/richTextSanitize.js",
+        "types": "./dist/utils/richTextSanitize.d.ts"
+      },
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
@@ -586,9 +596,9 @@
     "typecheck": "tsc --noEmit && bun run typecheck:runtime",
     "typecheck:runtime": "tsc --noEmit -p tsconfig.runtime.json",
     "lint:runtime-preview-guards": "bun scripts/lint-runtime-preview-guards.ts",
-    "build:audio-fx-runtime": "tsx scripts/build-audio-fx-runtime.ts",
+    "build:audio-fx-runtime": "tsx scripts/build-inline-artifact.ts audio-fx",
     "build:hyperframes-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",
-    "build:position-edits-render": "tsx scripts/build-position-edits-render.ts",
+    "build:position-edits-render": "tsx scripts/build-inline-artifact.ts position-edits",
     "check:position-edits-render": "bun run build:position-edits-render && git diff --exit-code -- src/generated/position-edits-render-inline.ts",
     "build:hyperframes-runtime:modular": "SANDBOX_RUNTIME_VARIANT=modular tsx scripts/build-hyperframes-runtime-artifact.ts",
     "build:hyperframe-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",

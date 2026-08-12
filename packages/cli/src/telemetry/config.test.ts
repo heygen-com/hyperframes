@@ -699,3 +699,132 @@ describe("an unwritable config dir must not re-roll the seed", () => {
     });
   });
 });
+
+describe("identity-persistence classification (sticky per anonymous id)", () => {
+  let readConfig: typeof import("./config.js").readConfig;
+  let readConfigFresh: typeof import("./config.js").readConfigFresh;
+  let getIdentityPersistence: typeof import("./config.js").getIdentityPersistence;
+  let getIdentityWriteOutcome: typeof import("./config.js").getIdentityWriteOutcome;
+  let CONFIG_PATH: typeof import("./config.js").CONFIG_PATH;
+
+  beforeEach(async () => {
+    fsState.files.clear();
+    policyState.runtimeOverride = null;
+    vi.resetModules();
+    ({ readConfig, readConfigFresh, getIdentityPersistence, getIdentityWriteOutcome, CONFIG_PATH } =
+      await import("./config.js"));
+  });
+
+  it("classifies a fresh mint whose write landed as unknown, never durable", () => {
+    readConfig();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+
+  it("classifies an id loaded from a preexisting config as durable, with no write outcome", () => {
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ telemetryEnabled: true, anonymousId: "prior-id", bucketSeed: "seed" }),
+    );
+    readConfig();
+    expect(getIdentityPersistence()).toBe("durable");
+    expect(getIdentityWriteOutcome()).toBeUndefined();
+  });
+
+  it("classifies a fresh mint whose write failed as process_only", async () => {
+    const fs = await import("node:fs");
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw new Error("EACCES: permission denied");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    readConfig();
+    expect(getIdentityPersistence()).toBe("process_only");
+    expect(getIdentityWriteOutcome()).toBe("failed");
+
+    warn.mockRestore();
+    vi.mocked(fs.writeFileSync).mockImplementation((path, content) => {
+      fsState.files.set(String(path), String(content));
+    });
+  });
+
+  it("does not self-promote to durable when a fresh-install process re-reads its own write", () => {
+    readConfig();
+    expect(fsState.files.has(CONFIG_PATH)).toBe(true);
+    // The file now exists on disk; a cache-bypassing re-read hits the
+    // existing-file path — the ephemeral-HOME churn signature.
+    readConfigFresh();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+
+  it("reclassifies a new id after a durable install's config is deleted", () => {
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ telemetryEnabled: true, anonymousId: "prior-id", bucketSeed: "seed" }),
+    );
+    const first = readConfig();
+    expect(getIdentityPersistence()).toBe("durable");
+
+    fsState.files.delete(CONFIG_PATH);
+    const replacement = readConfigFresh();
+
+    expect(replacement.anonymousId).not.toBe(first.anonymousId);
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+
+  it("reclassifies a new id after process-only storage recovers", async () => {
+    const fs = await import("node:fs");
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw new Error("EACCES: permission denied");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const first = readConfig();
+    expect(getIdentityPersistence()).toBe("process_only");
+    expect(getIdentityWriteOutcome()).toBe("failed");
+
+    vi.mocked(fs.writeFileSync).mockImplementation((path, content) => {
+      fsState.files.set(String(path), String(content));
+    });
+    const replacement = readConfigFresh();
+
+    expect(replacement.anonymousId).not.toBe(first.anonymousId);
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+
+    warn.mockRestore();
+  });
+
+  it("does not label a replacement id minted at read time as durable (seed present, no write)", () => {
+    // Hand-edited / image-baked config: file exists with a seed but NO
+    // anonymousId. materializeConfig mints a replacement, nothing persists it
+    // (the seed suppresses the backfill write) — so the install re-mints
+    // every run. Labelling that durable would dress the churn signature in
+    // the one trustworthy label (review finding).
+    fsState.files.set(
+      CONFIG_PATH,
+      JSON.stringify({ telemetryEnabled: true, bucketSeed: "baked-seed" }),
+    );
+    readConfig();
+    expect(getIdentityPersistence()).toBe("process_only");
+  });
+
+  it("classifies a replacement id carried to disk by the seed backfill by its write outcome", () => {
+    // Same hand-edited shape but ALSO missing the seed: the backfill write
+    // persists the whole config, replacement id included — a fresh mint in
+    // all but name, so it classifies like one (unknown, never durable).
+    fsState.files.set(CONFIG_PATH, JSON.stringify({ telemetryEnabled: true }));
+    readConfig();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+
+  it("classifies a corrupt-config recovery mint by its write outcome, not as durable", () => {
+    fsState.files.set(CONFIG_PATH, "{not json");
+    readConfig();
+    expect(getIdentityPersistence()).toBe("unknown");
+    expect(getIdentityWriteOutcome()).toBe("ok");
+  });
+});
