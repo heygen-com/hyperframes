@@ -1064,6 +1064,7 @@ export async function buildLocalExecutionPlan(
     compiledDir,
     duration: job.duration,
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+    audioGain: cfg.audioGain,
     audios: composition.audios,
     abortSignal,
     assertNotAborted,

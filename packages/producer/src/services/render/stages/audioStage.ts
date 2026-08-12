@@ -33,7 +33,9 @@ export interface AudioStageInput {
   /** Composition duration (post-probe). Must be > 0 — probeStage guarantees this. */
   duration: number;
   /** Timeout forwarded to ffmpeg subprocesses used by the audio mixer. */
-  ffmpegProcessTimeout?: number;
+  ffmpegProcessTimeout: number;
+  /** Master gain forwarded to the audio mixer. */
+  audioGain: number;
   /** Read-only view of `composition.audios`. */
   audios: CompositionMetadata["audios"];
   abortSignal: AbortSignal | undefined;
@@ -64,6 +66,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     compiledDir,
     duration,
     ffmpegProcessTimeout,
+    audioGain,
     audios,
     abortSignal,
     assertNotAborted,
@@ -83,7 +86,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
       audioOutputPath,
       duration,
       abortSignal,
-      { ffmpegProcessTimeout },
+      { ffmpegProcessTimeout, audioGain },
       compiledDir,
     );
     assertNotAborted();
