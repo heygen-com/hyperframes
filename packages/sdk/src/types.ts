@@ -592,7 +592,8 @@ export interface Composition {
    * Dry-run validation — would dispatch(op) succeed?
    * Returns {ok:true} when dispatch would mutate the document, {ok:false,code,message} otherwise.
    * Use as a feature-detection gate: `const r = comp.can(op); if (!r.ok) return;`
-   * Phase 3b ops return {ok:false,code:'E_NO_GSAP_TIMELINE'} until parser engine ships.
+   * addGsapTween / addLabel return {ok:false,code:'E_NO_GSAP_TIMELINE'} when the
+   * script has no gsap.timeline() declaration to attach to.
    */
   can(op: EditOp): CanResult;
 

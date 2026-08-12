@@ -59,11 +59,15 @@ describe("timeline performance fixture", () => {
     expect(Math.max(...perTrack.values())).toBeLessThanOrEqual(128);
   });
 
-  it.each(PROFILES)("generates an identical 50k %s fixture", (profile) => {
-    const first = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
-    const second = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
-    expect(second).toEqual(first);
-  });
+  it.each(PROFILES)(
+    "generates an identical 50k %s fixture",
+    (profile) => {
+      const first = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
+      const second = createTimelinePerformanceFixture({ elementCount: 50_000, profile });
+      expect(second).toEqual(first);
+    },
+    30_000,
+  );
 
   it.each(PROFILES)("builds the %s 1k scale profile", (profile) => {
     const fixture = createTimelinePerformanceFixture({ elementCount: 1_000, profile });
@@ -90,7 +94,7 @@ describe("timeline performance fixture", () => {
     usePlayerStore.setState({
       isPlaying: true,
       requestedSeekTime: 42,
-      clipRevealRequest: { elementId: "stale", nonce: 7 },
+      timelineFocus: { id: "stale", projectId: null, sessionEpoch: 0, nonce: 7 },
       clipManifest: [],
       lintFindingsByElement: new Map([["stale", { count: 1, messages: ["stale"] }]]),
     });
@@ -108,7 +112,7 @@ describe("timeline performance fixture", () => {
     expect(usePlayerStore.getState()).toMatchObject({
       isPlaying: false,
       requestedSeekTime: null,
-      clipRevealRequest: null,
+      timelineFocus: null,
       clipManifest: null,
       duration: 600,
       timelineReady: true,

@@ -3,6 +3,7 @@ import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
+import { studioWriteHeaders } from "../../utils/studioFileVersion";
 
 interface CaptionOverrideEntry {
   wordId?: string;
@@ -77,7 +78,7 @@ export function useCaptionSync(projectId: string | null) {
 
     fetch(`/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`, {
       method: "PUT",
-      headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": "text/plain", ...studioWriteHeaders() },
       body: JSON.stringify(overrides, null, 2),
     }).catch((error: unknown) => {
       // Caption auto-save is a data-loss path; surface failures via telemetry

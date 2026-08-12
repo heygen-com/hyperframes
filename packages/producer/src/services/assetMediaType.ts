@@ -1,6 +1,8 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
+  fingerprintElementId,
+  isNotMediaPayload,
+  NotMediaPayloadError,
   probeMediaProfile,
   resolveProjectRelativeSrc,
   type AudioElement,
@@ -37,10 +39,6 @@ export class AssetMediaTypeMismatchError extends Error {
     this.name = "AssetMediaTypeMismatchError";
     this.mismatches = mismatches;
   }
-}
-
-function fingerprintElementId(elementId: string): string {
-  return createHash("sha256").update(elementId).digest("hex").slice(0, 16);
 }
 
 function detectedAssetMediaType(profile: MediaProbeProfile): DetectedAssetMediaType {
@@ -133,10 +131,29 @@ export async function preflightCompositionAssetMediaTypes(input: {
   }
 
   const mismatches: AssetMediaTypeMismatch[] = [];
+  const notMediaFingerprints: string[] = [];
   const entries = [...byPath];
   await Promise.all(
     entries.map(([resolvedPath, pathReferences]) =>
       withMediaProbeSlot(async () => {
+        // STUDIO-5433. This preflight is the only place every local media src is
+        // seen regardless of its authored timing, so it is where a document
+        // payload behind a `data-end` video gets caught — the compiler's own
+        // sniff only runs for elements whose duration it has to resolve.
+        //
+        // Video only, deliberately. An `<img>` may legitimately be an SVG,
+        // which ffprobe reads through its `svg_pipe` demuxer. And a bad audio
+        // source is non-fatal by existing policy (audioStage ships the render
+        // without the track and reports `audioError`), so it is classified
+        // per-element in audioMixer instead of aborted here.
+        const sniffableReferences = pathReferences.filter((ref) => ref.expected === "video");
+        if (sniffableReferences.length > 0 && (await isNotMediaPayload(resolvedPath))) {
+          notMediaFingerprints.push(
+            ...sniffableReferences.map((ref) => fingerprintElementId(ref.id)),
+          );
+          return;
+        }
+
         let profile: MediaProbeProfile;
         try {
           profile = await probeMediaProfile(resolvedPath, { signal: input.signal });
@@ -156,5 +173,8 @@ export async function preflightCompositionAssetMediaTypes(input: {
     ),
   );
 
+  // Thrown ahead of the mismatch aggregate: "this file is an HTML page" is the
+  // actionable diagnosis, while the type mismatch it also produces is a symptom.
+  if (notMediaFingerprints.length > 0) throw new NotMediaPayloadError(notMediaFingerprints);
   if (mismatches.length > 0) throw new AssetMediaTypeMismatchError(mismatches);
 }

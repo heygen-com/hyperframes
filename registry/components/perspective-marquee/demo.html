@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Perspective Marquee - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        /* ponytail: scale on wrapper — GSAP only targets the inner div, so CSS transform is safe here */
+        transform: scale(3);
+      }
+      .hf-remocn-perspective-marquee {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-perspective-marquee {
+        width: 580px;
+        perspective: 900px;
+        overflow: hidden;
+        transform: rotateX(18deg);
+      }
+      .hf-remocn-perspective-marquee div {
+        display: inline-flex;
+        gap: 22px;
+        white-space: nowrap;
+        transform: translateX(var(--hf-marquee-x, 0px));
+      }
+      .hf-remocn-perspective-marquee span {
+        padding: 12px 18px;
+        border-radius: 999px;
+        background: #18181b;
+        color: #fff;
+        font-size: 28px;
+        box-shadow: 0 18px 44px rgba(24, 24, 27, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="perspective-marquee-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-perspective-marquee">
+          <div>
+            <span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span><span>AGENTS</span
+            ><span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span
+            ><span>AGENTS</span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-perspective-marquee div",
+          { "--hf-marquee-x": "0px" },
+          { "--hf-marquee-x": "-360px", duration: 4.5, ease: "none" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["perspective-marquee-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

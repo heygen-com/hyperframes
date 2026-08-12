@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
+import { PLAN_AUDIO_RELATIVE_PATH } from "./shared.js";
 
 const MAX_TOP_COMPONENTS = 10;
 const SOURCE_MEDIA_EXTENSIONS = new Set([
@@ -56,7 +57,7 @@ interface ClassifiedFile {
 
 const PLAN_ROOT_CATEGORY: Readonly<Record<string, PlanSizeCategory>> = {
   compiled: "compiled",
-  "audio.aac": "audio",
+  [PLAN_AUDIO_RELATIVE_PATH]: "audio",
   meta: "metadata",
   "plan.json": "metadata",
 };

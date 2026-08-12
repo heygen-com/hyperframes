@@ -44,6 +44,7 @@ function probeMedia(mediaPath, ffprobePath) {
         "stream=color_space,color_transfer,color_primaries,pix_fmt,duration:format=duration",
         "-of",
         "json",
+        "--",
         mediaPath,
       ],
       { encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "pipe"] },

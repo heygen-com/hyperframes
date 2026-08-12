@@ -4,6 +4,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
   clearKeyframeCacheForElement,
+  elementCacheKeys,
   pruneKeyframeCacheToFiles,
   publishKeyframeCache,
   writeGsapAnimationsForElement,
@@ -302,8 +303,9 @@ export function useGsapAnimationsForElement(
       // scan already cached. Only clear when no source cached this element —
       // otherwise selecting it would wipe its diamonds.
       const { keyframeCache } = usePlayerStore.getState();
-      const hasCached =
-        keyframeCache.has(`${sourceFile}#${elementId}`) || keyframeCache.has(elementId);
+      const hasCached = elementCacheKeys(sourceFile, elementId).some((key) =>
+        keyframeCache.has(key),
+      );
       if (!hasCached) clearKeyframeCacheForElement(sourceFile, elementId);
       return;
     }
@@ -314,14 +316,16 @@ export function useGsapAnimationsForElement(
       ...(ease ? { ease } : {}),
       ...(easeEach ? { easeEach } : {}),
     };
-    // PropertyPanel reads the cache by bare elementId (without sourceFile
-    // prefix), so the same entry is written under the bare key for
-    // cross-component lookups. Both keys land in one publish: a reader that woke
-    // between two separate writes saw the prefixed key updated and the bare one
-    // still stale.
+    // elementCacheKeys owns the key-variant list every writer sets (prefixed,
+    // index.html fallback, bare id). Building it by hand here is what let this
+    // site drift: it omitted the fallback key, and it wrote the bare id without
+    // the string coercion that keeps prune from throwing on a non-string. All
+    // keys land in one publish: a reader that woke between two separate writes
+    // saw the prefixed key updated and the bare one still stale.
     publishKeyframeCache((draft) => {
-      draft.keyframeCache.set(`${sourceFile}#${elementId}`, merged);
-      draft.keyframeCache.set(elementId, merged);
+      for (const key of elementCacheKeys(sourceFile, elementId)) {
+        draft.keyframeCache.set(key, merged);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elementId, sourceFile, animations, domClipChildrenKey]);
@@ -426,13 +430,8 @@ export function usePopulateKeyframeCacheForFile(
       // in between re-rendered against a cache only partly filled in.
       publishKeyframeCache((draft) => {
         for (const [id, data] of scanned) {
-          const cacheKey = `${sf}#${id}`;
-          const fallbackKey = `index.html#${id}`;
-          const alreadyCached =
-            draft.keyframeCache.has(cacheKey) ||
-            draft.keyframeCache.has(fallbackKey) ||
-            draft.keyframeCache.has(id);
-          if (alreadyCached) continue;
+          const keys = elementCacheKeys(sf, id);
+          if (keys.some((key) => draft.keyframeCache.has(key))) continue;
           // Skip position-only set tweens from runtime too, same filter as AST path
           const isPosOnly =
             data.keyframes.length === 1 &&
@@ -445,9 +444,7 @@ export function usePopulateKeyframeCacheForFile(
             keyframes: data.keyframes,
             ...(data.easeEach ? { easeEach: data.easeEach } : {}),
           };
-          draft.keyframeCache.set(cacheKey, entry);
-          if (sf !== "index.html") draft.keyframeCache.set(fallbackKey, entry);
-          draft.keyframeCache.set(id, entry);
+          for (const key of keys) draft.keyframeCache.set(key, entry);
         }
       });
       runtimeScanDoneRef.current = `kf-cache:${projectId}:${sf}:${version}`;

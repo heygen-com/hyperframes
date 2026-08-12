@@ -87,7 +87,7 @@ function makeMinimalV1PlanDir(dir: string, withAudio: boolean): void {
     JSON.stringify([{ index: 0, startFrame: 0, endFrame: 30 }]),
   );
   writeFileSync(join(dir, "meta", "encoder.json"), "{}");
-  if (withAudio) writeFileSync(join(dir, "audio.aac"), "AAC");
+  if (withAudio) writeFileSync(join(dir, "audio.m4a"), "AAC");
   planJson.planHash = recomputePlanHashFromPlanDir(dir);
   writeFileSync(join(dir, "plan.json"), JSON.stringify(planJson));
 }
@@ -273,7 +273,7 @@ describe("dispatch", () => {
       chunkIndex: number,
       outputBase: string,
     ): Promise<ChunkResult> => {
-      expect(existsSync(join(planDir, "audio.aac"))).toBe(false);
+      expect(existsSync(join(planDir, "audio.m4a"))).toBe(false);
       writeFileSync(outputBase, `chunk-${chunkIndex}`);
       return {
         outputPath: outputBase,

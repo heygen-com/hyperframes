@@ -1,0 +1,96 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "share-sheet-carousel",
+  "type": "hyperframes:block",
+  "title": "Share-Sheet Carousel",
+  "description": "A share sheet springs up from the bottom of the phone and cycles previews inside its card on a fast cut rhythm while the blurred ground swaps behind it, ending on an accept tap",
+  "tags": ["showcase", "mock-ui", "share-sheet", "vertical", "ad-template"],
+  "author": "Miao Yang",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 7.2333,
+  "variables": [
+    {
+      "id": "shareTitle",
+      "type": "string",
+      "role": "content",
+      "label": "Sheet title",
+      "description": "Heading at the top of the share sheet.",
+      "default": "Share"
+    },
+    {
+      "id": "senderName",
+      "type": "string",
+      "role": "content",
+      "label": "Sender",
+      "description": "Bold name in the sheet subtitle.",
+      "default": "HyperFrames"
+    },
+    {
+      "id": "itemLabel",
+      "type": "string",
+      "role": "content",
+      "label": "Item",
+      "description": "What the sender is offering, completing the sentence \"… would like to share …\".",
+      "default": "a video"
+    },
+    {
+      "id": "stripText",
+      "type": "string",
+      "role": "content",
+      "label": "Brand strip",
+      "description": "Small-caps line under the preview, beside the logo.",
+      "default": "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML"
+    },
+    {
+      "id": "acceptLabel",
+      "type": "string",
+      "role": "content",
+      "label": "Accept label",
+      "description": "Right-hand action button.",
+      "default": "Accept"
+    },
+    {
+      "id": "declineLabel",
+      "type": "string",
+      "role": "content",
+      "label": "Decline label",
+      "description": "Left-hand action button.",
+      "default": "Decline"
+    }
+  ],
+  "files": [
+    {
+      "path": "share-sheet-carousel.html",
+      "target": "compositions/share-sheet-carousel.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/slide-01.jpg",
+      "target": "assets/slide-01.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/slide-02.jpg",
+      "target": "assets/slide-02.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/slide-03.jpg",
+      "target": "assets/slide-03.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/slide-04.jpg",
+      "target": "assets/slide-04.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/hyperframes-logo-black.svg",
+      "target": "assets/hyperframes-logo-black.svg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

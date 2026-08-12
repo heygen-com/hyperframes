@@ -1,0 +1,414 @@
+<!doctype html>
+<!--
+  particle-text-dissolve: HyperFrames video primitive (type / particles).
+  Wave M8. Direct donor: particle-image-reveal (canvas determinism law).
+
+  Text assembles FROM a seeded particle cloud, or dissolves TO it (direction
+  enum). Per-particle target positions are sampled ONCE at mount from the
+  rendered text bitmap: the token-styled line is rastered to an offscreen
+  canvas, read back with getImageData, and every lit cell on a deterministic
+  grid becomes a particle target. Particles are table-driven with ZERO
+  per-particle tweens; one onUpdate painter clears and redraws the whole
+  field from scratch each frame.
+
+  direction "in": particles fly from a scattered cloud onto the glyphs while
+  the crisp DOM line wipes in along the same left-to-right front; each
+  particle fades as it settles, so by the end of IN the canvas is empty and
+  the DOM text holds crisp and themable.
+  direction "out": the crisp line holds for a beat, then erases left to
+  right as particles are born on the departing glyphs and scatter outward,
+  fading in flight; the HOLD is empty.
+
+  Variables (declared in data-composition-variables below):
+    - text (string, default "Dissolve"): the line that assembles/dissolves.
+    - direction ("in" | "out", default "in").
+    - density ("low" | "med" | "high", default "med"): particle count cap.
+    - accent ("green" | "blue" | "violet", default "green"): text and
+      particle color; green rides --brand, blue rides --accent, violet
+      rides --accent-2.
+    - exit ("none" | "fade" | "up", default "none"): frame roots own
+      transitions.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN_BASE  = 2.80s  the assembly (or dissolve) plays out completely
+    HOLD     = max(0, D - IN - OUT); truly still: direction in holds the
+               crisp DOM line, direction out holds an empty stage; either
+               way the canvas is one clear rect
+    OUT_BASE = 0.45s  only when exit != none
+    If D < IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Determinism (canvas 2D law, per particle-image-reveal): the text bitmap
+  readback and the per-particle attribute table are computed exactly once
+  during synchronous timeline construction; the table's random components
+  come from fixed LCG seed 0x9d1550f7. Every painted frame is a pure
+  function of (table, timeline time): the anchor tween's onUpdate clears
+  the canvas and redraws every particle. No Math.random, no wall clock, no
+  incremental state, no requestAnimationFrame. Eventful seeks
+  (suppressEvents=false, the engine's render path) repaint identically in
+  any order and either direction.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cqmin units),
+  is styled via #root only, and registers one paused timeline under the
+  LITERAL "particle-text-dissolve" key. All DOM state is set with explicit
+  endpoints (gsap.set + fromTo) so any seek order lands identical frames.
+-->
+<html
+  lang="en"
+  data-composition-id="particle-text-dissolve"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "The line that assembles from (or dissolves into) the particle cloud.", "default": "Dissolve" },
+    { "id": "direction", "type": "enum", "role": "timing", "label": "Direction", "description": "in assembles the text from the cloud and holds it crisp; out erases the text into the cloud and holds empty.", "default": "in", "options": [{ "value": "in", "label": "Assemble in" }, { "value": "out", "label": "Dissolve out" }] },
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Particle count cap for the field.", "default": "med", "options": [{ "value": "low", "label": "Low" }, { "value": "med", "label": "Medium" }, { "value": "high", "label": "High" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Text and particle color: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the end state holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Particle Text Dissolve</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="particle-text-dissolve" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, "Inter", system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .ptd-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .ptd-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          .ptd-text {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            will-change: clip-path, opacity;
+          }
+
+          .ptd-line {
+            color: var(--ptd-accent);
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+          }
+
+          .ptd-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+        </style>
+
+        <div
+          id="particle-text-dissolve-clip"
+          class="ptd-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="ptd-stage">
+            <div class="ptd-text">
+              <span class="ptd-line"></span>
+            </div>
+            <canvas class="ptd-canvas" aria-hidden="true"></canvas>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".ptd-stage");
+            var textLayer = root.querySelector(".ptd-text");
+            var line = root.querySelector(".ptd-line");
+            var canvas = root.querySelector(".ptd-canvas");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text =
+              typeof vars.text === "string" && vars.text.length > 0 ? vars.text : "Dissolve";
+            var direction = vars.direction === "out" ? "out" : "in";
+            var densityCaps = { low: 900, med: 1700, high: 2800 };
+            var density = Object.prototype.hasOwnProperty.call(densityCaps, vars.density)
+              ? vars.density
+              : "med";
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--ptd-accent", accentColors[accent]);
+            line.textContent = text;
+
+            // Envelope: fixed IN/OUT, elastic HOLD, never time-scaled.
+            var IN_BASE = 2.8;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            // Canvas raster basis is fixed once at mount. Elastic root: the
+            // host box decides the resolution; the same host always yields
+            // the same raster, so painted frames stay byte-stable.
+            var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+            var box = root.getBoundingClientRect();
+            var cssW = Math.max(1, Math.round(box.width) || 640);
+            var cssH = Math.max(1, Math.round(box.height) || 360);
+            canvas.width = Math.round(cssW * dpr);
+            canvas.height = Math.round(cssH * dpr);
+            var ctx = canvas.getContext("2d");
+            var minDim = Math.min(canvas.width, canvas.height);
+
+            // Resolve the accent token to a concrete color once at mount so
+            // canvas fills never depend on style recalc during seeks.
+            var hostDoc = root.ownerDocument;
+            var probe = hostDoc.createElement("span");
+            probe.style.color = accentColors[accent];
+            root.appendChild(probe);
+            var particleColor = getComputedStyle(probe).color || "#71f5a7";
+            probe.remove();
+
+            // Rendered-text raster, sampled ONCE at mount. The DOM line and
+            // the offscreen raster share the same computed font stack and the
+            // same fitted pixel size, so particle targets sit on the glyphs
+            // the crisp line will draw.
+            var fontFamily = getComputedStyle(line).fontFamily || "system-ui, sans-serif";
+            var off = hostDoc.createElement("canvas");
+            off.width = canvas.width;
+            off.height = canvas.height;
+            var offCtx = off.getContext("2d", { willReadFrequently: true });
+            var fontPx = Math.round(canvas.height * 0.3);
+            offCtx.font = "600 " + fontPx + "px " + fontFamily;
+            var measured = offCtx.measureText(text).width || 1;
+            var maxWidth = canvas.width * 0.86;
+            if (measured > maxWidth) {
+              fontPx = Math.max(8, Math.floor((fontPx * maxWidth) / measured));
+              offCtx.font = "600 " + fontPx + "px " + fontFamily;
+            }
+            offCtx.textAlign = "center";
+            offCtx.textBaseline = "middle";
+            offCtx.fillStyle = "#ffffff";
+            offCtx.fillText(text, off.width / 2, off.height / 2);
+            // Lock the crisp DOM line to the exact raster the targets came
+            // from: same family string, same device-pixel size.
+            line.style.fontFamily = fontFamily;
+            line.style.fontSize = fontPx / dpr + "px";
+
+            // The LCG and every per-particle decision live here. This IIFE
+            // runs once before timeline construction, then only the table is
+            // read. Particle state at any time is a pure function of
+            // (table row, timeline time). Zero per-particle tweens.
+            var particles = (function () {
+              var state = 0x9d1550f7;
+              function next() {
+                state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+                return state / 4294967296;
+              }
+              // Grid-sample lit cells from the readback (alpha over half).
+              var data = offCtx.getImageData(0, 0, off.width, off.height).data;
+              var step = Math.max(2, Math.round(minDim / 260));
+              var cells = [];
+              var minX = Infinity;
+              var maxX = -Infinity;
+              for (var y = 0; y < off.height; y += step) {
+                for (var x = 0; x < off.width; x += step) {
+                  if (data[(y * off.width + x) * 4 + 3] > 127) {
+                    cells.push({ x: x, y: y });
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                  }
+                }
+              }
+              if (cells.length === 0) {
+                // Degenerate raster (empty text box): no particles, the DOM
+                // line still plays its wipe.
+                minX = 0;
+                maxX = 1;
+              }
+              var span = Math.max(1, maxX - minX);
+              // Thin deterministically to the density cap. The keep decision
+              // consumes exactly one LCG draw per cell in grid order, so the
+              // surviving set is a pure function of (raster, seed).
+              var cap = densityCaps[density];
+              var keep = cells.length > cap ? cap / cells.length : 1;
+              var rows = [];
+              for (var i = 0; i < cells.length; i += 1) {
+                var take = next() < keep;
+                if (!take) continue;
+                var tx = cells[i].x;
+                var ty = cells[i].y;
+                var key = (tx - minX) / span;
+                // The front sweeps left to right for both directions; the
+                // per-particle schedule completes strictly inside [0, 0.97].
+                var at = 0.2 + 0.62 * key + 0.05 * next();
+                var travel = 0.18 + 0.1 * next();
+                var fade = 0.05 + 0.04 * next();
+                var angle = next() * Math.PI * 2;
+                rows.push({
+                  tx: tx,
+                  ty: ty,
+                  at: Math.min(0.9, at),
+                  travel: travel,
+                  fade: fade,
+                  offset: (0.1 + 0.22 * next()) * minDim,
+                  ox: Math.cos(angle),
+                  oy: Math.sin(angle),
+                  radius: (0.26 + 0.5 * next()) * (minDim / 200) * step * 0.5,
+                  dim: 0.5 + 0.5 * next(),
+                });
+              }
+              return rows;
+            })();
+
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+
+            // Pure repaint: clear, then draw every particle from (row, p).
+            // direction in: fly cloud -> glyph, fade once settled (donor
+            // law). direction out: born on the glyph as the front passes,
+            // fly outward, fade in flight. Both end all-zero by p = 1.
+            function paint(timeSeconds) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              var p = IN > 0 ? clamp01(timeSeconds / IN) : 1;
+              var endClamp = clamp01((1 - p) / 0.04);
+              if (endClamp === 0) return;
+              ctx.fillStyle = particleColor;
+              for (var i = 0; i < particles.length; i += 1) {
+                var row = particles[i];
+                var alpha;
+                var dist;
+                if (direction === "in") {
+                  var birth = Math.max(0, row.at - row.travel);
+                  var u = clamp01((p - birth) / (row.at - birth));
+                  if (u <= 0) continue;
+                  var settled = clamp01((p - row.at) / row.fade);
+                  alpha = clamp01(u / 0.16) * (1 - settled) * row.dim * endClamp;
+                  var e = 1 - Math.pow(1 - u, 3);
+                  dist = row.offset * (1 - e);
+                } else {
+                  var v = clamp01((p - row.at) / row.travel);
+                  if (v <= 0) continue;
+                  alpha = clamp01(v / 0.14) * (1 - v) * row.dim * endClamp;
+                  dist = row.offset * (v * v);
+                }
+                if (alpha <= 0.002) continue;
+                var x = row.tx + row.ox * dist;
+                var y = row.ty + row.oy * dist;
+                ctx.globalAlpha = alpha * 0.92;
+                ctx.beginPath();
+                ctx.arc(x, y, row.radius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              ctx.globalAlpha = 1;
+            }
+
+            // The crisp line wipes along the same front the particles sweep.
+            var clipShown = "inset(0% 0% 0% 0%)";
+            var clipInStart = "inset(0% 100% 0% 0%)";
+            var clipOutEnd = "inset(0% 0% 0% 100%)";
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                paint(tl.time());
+              },
+            });
+
+            // Anchor tween: an inert plain-object tween spanning the full
+            // authored duration so tl.time() covers [0, D] and the painter
+            // fires on every eventful seek, including seeks into the hold.
+            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
+
+            if (direction === "in") {
+              // The line reveals behind the arriving particles.
+              tl.fromTo(
+                textLayer,
+                { opacity: 0 },
+                { opacity: 1, duration: IN * 0.3, ease: "power2.out" },
+                IN * 0.16,
+              );
+              tl.fromTo(
+                textLayer,
+                { clipPath: clipInStart },
+                { clipPath: clipShown, duration: IN * 0.76, ease: "power1.inOut" },
+                IN * 0.18,
+              );
+            } else {
+              // The line erases as the front passes; particles carry it off.
+              gsap.set(textLayer, { opacity: 1 });
+              tl.fromTo(
+                textLayer,
+                { clipPath: clipShown },
+                { clipPath: clipOutEnd, duration: IN * 0.76, ease: "power1.inOut" },
+                IN * 0.18,
+              );
+            }
+
+            // HOLD: truly still. The canvas is one clear rect (every alpha
+            // is exactly zero by the end of IN) and the line is either fully
+            // shown or fully clipped; nothing drifts.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            paint(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["particle-text-dissolve"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vector-editor-rig",
+  "type": "hyperframes:component",
+  "title": "Vector Editor Rig",
+  "description": "A dark design-tool app chrome with a live vector pen path, sequential anchor points, bezier handles, a selection frame, and theme-driven blue accents.",
+  "tags": [
+    "prop",
+    "ui-props",
+    "demonstrate",
+    "vector",
+    "design-tool",
+    "pen-tool",
+    "bezier",
+    "app-chrome"
+  ],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "power-reel source 11-vector-editor (design-tool twin of terminal-run)",
+  "files": [
+    {
+      "path": "vector-editor-rig.html",
+      "target": "compositions/components/vector-editor-rig.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "tool",
+      "type": "enum",
+      "role": "content",
+      "label": "Active tool",
+      "description": "Tool highlighted in the editor toolbar.",
+      "default": "pen",
+      "options": [
+        { "value": "pen", "label": "Pen" },
+        { "value": "shape", "label": "Shape" },
+        { "value": "type", "label": "Type" }
+      ]
+    },
+    {
+      "id": "pathLabel",
+      "type": "string",
+      "role": "content",
+      "label": "Path label",
+      "description": "Name shown for the active vector path.",
+      "default": "Logo"
+    }
+  ]
+}

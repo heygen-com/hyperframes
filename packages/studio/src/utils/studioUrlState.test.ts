@@ -77,8 +77,11 @@ function renderStudioUrlStateHarness(
     rightCollapsed: true,
     activeCompPathHydrated: true,
     domEditSelection: null,
+    domEditGroupSelections: [],
+    applyMarqueeSelection: () => {},
     buildDomSelectionFromTarget: () => Promise.resolve(null),
     applyDomSelection: () => {},
+    setRightPanelTab: () => {},
     initialState: {
       activeCompPath: null,
       currentTime: 4.2,
@@ -116,6 +119,12 @@ function StudioUrlStateHarness(props: Parameters<typeof useStudioUrlState>[0]) {
   return null;
 }
 
+function previewIframeFor(contentDocument: Document): HTMLIFrameElement {
+  const iframe = document.createElement("iframe");
+  Object.defineProperty(iframe, "contentDocument", { value: contentDocument });
+  return iframe;
+}
+
 describe("studio url state", () => {
   it("parses persisted studio state from project hash", () => {
     const state = parseStudioUrlStateFromHash(
@@ -132,7 +141,135 @@ describe("studio url state", () => {
       id: "hero",
       selector: undefined,
       selectorIndex: undefined,
+      group: undefined,
     });
+  });
+
+  /**
+   * A link to a bug hit while several elements were selected has to carry the
+   * whole selection. Without the group the URL reopens one element, the report
+   * cannot be reproduced from it, and it reads as "works for me".
+   */
+  it("round-trips a multi-selection through the hash", () => {
+    const hash = buildStudioHash("demo", {
+      activeCompPath: null,
+      currentTime: null,
+      rightPanelTab: null,
+      rightCollapsed: null,
+      timelineVisible: null,
+      selection: {
+        sourceFile: "index.html",
+        id: "chip",
+        group: [
+          { sourceFile: "index.html", id: "card" },
+          { sourceFile: "index.html", selector: ".dot", selectorIndex: 1 },
+        ],
+      },
+    });
+
+    expect(parseStudioUrlStateFromHash(hash).selection?.group).toEqual([
+      { sourceFile: "index.html", id: "card" },
+      { sourceFile: "index.html", selector: ".dot", selectorIndex: 1 },
+    ]);
+  });
+
+  it("reads a single selection as having no group", () => {
+    const hash = parseStudioUrlStateFromHash("#project/demo?v=1&selFile=index.html&selId=hero");
+    expect(hash.selection?.group).toBeUndefined();
+  });
+
+  it("restores selector-based multi-selection members from the hash", async () => {
+    const previewDoc = document.implementation.createHTMLDocument("preview");
+    const primaryElement = previewDoc.createElement("div");
+    primaryElement.id = "hero";
+    const memberElement = previewDoc.createElement("div");
+    memberElement.className = "dot";
+    previewDoc.body.append(primaryElement, memberElement);
+    const primary = { element: primaryElement, id: "hero", sourceFile: "index.html" };
+    const member = {
+      element: memberElement,
+      selector: ".dot",
+      selectorIndex: 0,
+      sourceFile: "index.html",
+    };
+    const applyMarqueeSelection = vi.fn();
+
+    const harness = renderStudioUrlStateHarness({
+      previewIframeRef: {
+        current: previewIframeFor(previewDoc),
+      },
+      applyMarqueeSelection,
+      buildDomSelectionFromTarget: (target) =>
+        Promise.resolve(target === primaryElement ? primary : member),
+      initialState: {
+        activeCompPath: null,
+        currentTime: null,
+        rightPanelTab: null,
+        rightCollapsed: null,
+        timelineVisible: null,
+        selection: {
+          sourceFile: "index.html",
+          id: "hero",
+          group: [{ sourceFile: "index.html", selector: ".dot", selectorIndex: 0 }],
+        },
+      },
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(applyMarqueeSelection).toHaveBeenCalledWith([primary, member], false);
+    harness.unmount();
+  });
+
+  it("does not let an older async URL selection overwrite a newer hash", async () => {
+    const previewDoc = document.implementation.createHTMLDocument("preview");
+    const firstElement = previewDoc.createElement("div");
+    firstElement.id = "first";
+    const secondElement = previewDoc.createElement("div");
+    secondElement.id = "second";
+    previewDoc.body.append(firstElement, secondElement);
+    const first = { element: firstElement, id: "first", sourceFile: "index.html" };
+    const second = { element: secondElement, id: "second", sourceFile: "index.html" };
+    let resolveFirst = (_selection: typeof first) => undefined;
+    const firstResolution = new Promise<typeof first>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const applyDomSelection = vi.fn();
+    const harness = renderStudioUrlStateHarness({
+      previewIframeRef: { current: previewIframeFor(previewDoc) },
+      applyDomSelection,
+      buildDomSelectionFromTarget: (target) =>
+        target === firstElement ? firstResolution : Promise.resolve(second),
+      initialState: {
+        activeCompPath: null,
+        currentTime: null,
+        rightPanelTab: null,
+        rightCollapsed: null,
+        timelineVisible: null,
+        selection: null,
+      },
+    });
+
+    act(() => {
+      window.history.replaceState(null, "", "#project/demo?v=1&selId=first");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      window.history.replaceState(null, "", "#project/demo?v=1&selId=second");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(applyDomSelection).toHaveBeenCalled();
+    expect(applyDomSelection.mock.calls.every(([selection]) => selection === second)).toBe(true);
+    const appliedBeforeOlderResolution = applyDomSelection.mock.calls.length;
+
+    await act(async () => {
+      resolveFirst(first);
+      await firstResolution;
+    });
+    expect(applyDomSelection).toHaveBeenCalledTimes(appliedBeforeOlderResolution);
+    harness.unmount();
   });
 
   it("builds a project hash with persisted studio state", () => {
@@ -228,7 +365,7 @@ describe("studio url state", () => {
 
     const harness = renderStudioUrlStateHarness({
       previewIframeRef: {
-        current: { contentDocument: previewDoc } as HTMLIFrameElement,
+        current: previewIframeFor(previewDoc),
       },
       rightPanelTab: "design",
       rightCollapsed: false,
@@ -278,6 +415,31 @@ describe("studio url state", () => {
     });
     expect(window.location.hash).toContain("t=4.2");
     expect(window.location.hash).toContain("selId=hero");
+
+    const selectorMember = {
+      ...restoredSelection,
+      element: document.createElement("div"),
+      id: "",
+      selector: ".dot",
+      selectorIndex: 1,
+      label: "Dot",
+    };
+    harness.rerender({
+      currentTime: 4.2,
+      domEditSelection: restoredSelection,
+      domEditGroupSelections: [restoredSelection, selectorMember],
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(parseStudioUrlStateFromHash(window.location.hash).selection?.group).toEqual([
+      {
+        sourceFile: "index.html",
+        id: undefined,
+        selector: ".dot",
+        selectorIndex: 1,
+      },
+    ]);
 
     harness.unmount();
   });

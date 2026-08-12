@@ -1,0 +1,108 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "chat-message",
+  "type": "hyperframes:component",
+  "title": "Chat Message",
+  "description": "One message arrives on the measured entry - scale 0.75, 0.12s, growing from its sender's corner. The type is an enum switched like marker-highlight's style: a received or sent bubble with a real tail, a large emoji row, an image, or a link card with title and domain. The atom that chat-thread builds conversations from",
+  "tags": ["video-primitive", "chat", "mock-ui", "message"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "type",
+      "type": "enum",
+      "role": "content",
+      "label": "Type",
+      "description": "Which message form arrives.",
+      "default": "sent",
+      "options": [
+        {
+          "value": "recv",
+          "label": "Received"
+        },
+        {
+          "value": "sent",
+          "label": "Sent"
+        },
+        {
+          "value": "emoji",
+          "label": "Emoji"
+        },
+        {
+          "value": "img",
+          "label": "Image"
+        },
+        {
+          "value": "card",
+          "label": "Link card"
+        }
+      ]
+    },
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Bubble text, or the emoji row for the Emoji type.",
+      "default": "wait look 👀"
+    },
+    {
+      "id": "cardTitle",
+      "type": "string",
+      "role": "content",
+      "label": "Card title",
+      "description": "Link-card title (Link card type only).",
+      "default": "HyperFrames — Write HTML, render pixel-perfect video"
+    },
+    {
+      "id": "cardDomain",
+      "type": "string",
+      "role": "content",
+      "label": "Card domain",
+      "description": "Link-card domain line (Link card type only).",
+      "default": "hyperframes.heygen.com"
+    },
+    {
+      "id": "tail",
+      "type": "enum",
+      "role": "style",
+      "label": "Tail",
+      "description": "The bubble tail anchoring the message to its side.",
+      "default": "on",
+      "options": [
+        {
+          "value": "on",
+          "label": "On"
+        },
+        {
+          "value": "off",
+          "label": "Off"
+        }
+      ]
+    },
+    {
+      "id": "delivered",
+      "type": "enum",
+      "role": "content",
+      "label": "Delivered",
+      "description": "The receipt under a sent message.",
+      "default": "on",
+      "options": [
+        {
+          "value": "on",
+          "label": "On"
+        },
+        {
+          "value": "off",
+          "label": "Off"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "chat-message.html",
+      "target": "compositions/components/chat-message.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

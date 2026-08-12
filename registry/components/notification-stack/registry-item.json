@@ -1,0 +1,83 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "notification-stack",
+  "type": "hyperframes:component",
+  "title": "Notification Stack",
+  "description": "1 to 5 token notification cards slide-settle into a vertical stack on cues, newest on top; one card grows slightly and brightens as the focus while the rest dim by position.",
+  "tags": ["motion-primitive", "product-demo", "notification", "stack", "stagger"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "stack",
+  "evidence": "Wave J J2-9: product-demo notification unit per the Wave J2 shelf expansion",
+  "syncPoints": [{ "id": "stack-resolved", "phase": "in", "offset": 2.45 }],
+  "files": [
+    {
+      "path": "notification-stack.html",
+      "target": "compositions/components/notification-stack.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "titles",
+      "type": "string",
+      "role": "content",
+      "label": "Titles",
+      "description": "Comma-separated card titles (1 to 5 cards).",
+      "default": "Build queued,Checks passed,Deploy live"
+    },
+    {
+      "id": "bodies",
+      "type": "string",
+      "role": "content",
+      "label": "Bodies",
+      "description": "Comma-separated body lines matched to titles by index. Blank entries hide that body line.",
+      "default": "Pipeline started for main,All 42 checks green,Now serving version 2.4"
+    },
+    {
+      "id": "expand",
+      "type": "number",
+      "role": "content",
+      "label": "Expand",
+      "description": "Index of the focus card in the titles list. -1 focuses the newest card (top of the stack).",
+      "default": -1,
+      "min": -1,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated per-card arrival times in seconds. Blank entries use the default rhythm.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used by the icon dots.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the stack leaves the frame. Default none: the hold ends the film.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

@@ -32,13 +32,17 @@ export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceip
   receipts.set(absPath, current);
 }
 
-/** Attach one API write's identity to the corresponding filesystem-watch echo. */
-export function consumeFileWriteReceipt(absPath: string): FileWriteReceipt | null {
+/** Attach one API write's identity to the watcher echo for its exact bytes. */
+export function consumeFileWriteReceipt(
+  absPath: string,
+  expectedVersion: string,
+): FileWriteReceipt | null {
   const now = Date.now();
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
   );
-  const receipt = current.shift() ?? null;
+  const receiptIndex = current.findIndex((entry) => entry.version === expectedVersion);
+  const receipt = receiptIndex === -1 ? null : (current.splice(receiptIndex, 1)[0] ?? null);
   if (current.length > 0) receipts.set(absPath, current);
   else receipts.delete(absPath);
   if (!receipt) return null;

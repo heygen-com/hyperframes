@@ -9,6 +9,7 @@ export type AuthErrorCode =
   | "API_ERROR"
   | "UNAUTHENTICATED"
   | "OAUTH_NOT_CONFIGURED"
+  | "DEVICE_AUTH_FAILED"
   | "REFRESH_FAILED";
 
 export class AuthError extends Error {
@@ -59,6 +60,13 @@ export const ErrRefreshFailed = (detail?: string) =>
     "REFRESH_FAILED",
     detail ? `Failed to refresh OAuth tokens: ${detail}` : "Failed to refresh OAuth tokens",
     "Run `hyperframes auth login` to re-authenticate.",
+  );
+
+export const ErrDeviceAuthFailed = (detail: string) =>
+  new AuthError(
+    "DEVICE_AUTH_FAILED",
+    `Device authorization failed: ${detail}`,
+    "Run `hyperframes auth login --device` to start a new code.",
   );
 
 export function isAuthError(err: unknown): err is AuthError {

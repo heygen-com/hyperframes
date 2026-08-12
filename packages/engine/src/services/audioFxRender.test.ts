@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,10 @@ import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 import { defaultAudioFxParams, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { applyAudioFxChain, AudioFxRenderError, readWav, writeWav } from "./audioFxRender.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+
+/** Same probe the ffmpeg-dependent suites use: ask the binary, don't assume it. */
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
 
 /**
  * Whether a Chrome is actually on this machine, asked the same way the render
@@ -24,7 +28,14 @@ import { resolveHeadlessShellPath } from "./browserManager.js";
  */
 const HAS_BROWSER = ((): boolean => {
   try {
-    return Boolean(resolveHeadlessShellPath());
+    const path = resolveHeadlessShellPath();
+    if (!path) return false;
+    // ASK the binary rather than trusting that the file is there. CI carries a
+    // chrome-headless-shell in its cache that resolves and then fails to spawn
+    // — a partial download is indistinguishable from a working one by
+    // existsSync, and the first version of this guard was fooled by exactly
+    // that. Same probe the ffmpeg suites use.
+    return spawnSync(path, ["--version"], { encoding: "utf-8" }).status === 0;
   } catch {
     // An explicitly-configured path that does not exist throws. That is a
     // broken environment rather than an absent browser, but either way these
@@ -125,9 +136,12 @@ describe("readWav / writeWav", () => {
     expect(back.samples[1]).toBeCloseTo(-1, 3);
   });
 
-  it("reads 16-bit PCM, which the trim step can emit", () => {
+  // Needs a real ffmpeg to author the 16-bit fixture. The Test job installs one,
+  // but a bare "ffmpeg" is not on PATH there — hence getFfmpegBinary above — and
+  // a contributor without it should skip rather than fail.
+  it.skipIf(!HAS_FFMPEG)("reads 16-bit PCM, which the trim step can emit", () => {
     const p = join(dir, "pcm16.wav");
-    execFileSync("ffmpeg", [
+    execFileSync(getFfmpegBinary(), [
       "-hide_banner",
       "-loglevel",
       "error",

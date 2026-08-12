@@ -6,6 +6,34 @@ bundled `heygen-tts.mjs` script below.
 
 > **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
 
+## Narrating a HyperFrames docs video
+
+Anything that will sit on hyperframes.heygen.com uses one narrator, so the site
+does not sound like two products.
+
+|                |                                                |
+| -------------- | ---------------------------------------------- |
+| Voice          | **River** — "Relaxed, Neutral, Informative"    |
+| Provider       | ElevenLabs                                     |
+| `voice_id`     | `SAz9YHcvj6GT2YYXdXww`                         |
+| Model          | `eleven_multilingual_v2`                       |
+| Pace           | 145–155 words per minute, with room to breathe |
+| Music under it | about −31 LUFS, never masking the voice        |
+
+```bash
+curl -s -X POST "https://api.elevenlabs.io/v1/text-to-speech/SAz9YHcvj6GT2YYXdXww" \
+  -H "xi-api-key: $ELEVENLABS_API_KEY" -H "Content-Type: application/json" \
+  -d '{"text":"...","model_id":"eleven_multilingual_v2"}' -o take.mp3
+```
+
+This is the voice every user-journey film on the docs site already uses. Falling
+back to local Kokoro because a key was not to hand produces a film that sounds
+wrong beside the others — three docs videos were built that way and had to be
+re-voiced. If you cannot reach ElevenLabs, say so and stop rather than
+substituting a different voice.
+
+Use another voice only for a documented reason, and write the reason down.
+
 ## Available routes
 
 | Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |

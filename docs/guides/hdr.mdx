@@ -3,7 +3,20 @@ title: Render HDR video
 description: Preserve BT.2020 PQ or HLG sources in a 10-bit H.265 MP4.
 ---
 
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
 HyperFrames detects HDR media during render. When an MP4 project contains a BT.2020 PQ or HLG source, the output uses 10-bit H.265 and keeps the HDR signal. Projects without HDR media stay SDR.
+
+
+<DocsVideo
+  title="What HDR rendering produces, measured rather than simulated"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/hdr-render-demo-v2.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/hdr-render-demo-v1.jpg"
+/>
+
+You are reading this on an SDR screen, so nothing above can show you HDR
+brightness — and it does not try. It shows the `ffprobe` verdict on a real render
+and a brightness round-trip: 4000 nits authored, 4012 measured back out.
 
 ## Render and verify
 

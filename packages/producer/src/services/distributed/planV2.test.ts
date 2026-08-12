@@ -141,7 +141,7 @@ function createV1Plan(
       rmSync(join(planDir, "meta", "videos.json"));
     }
   }
-  if (audio) writeFileSync(join(planDir, "audio.aac"), "assemble-only-audio");
+  if (audio) writeFileSync(join(planDir, "audio.m4a"), "assemble-only-audio");
   writeFileSync(
     join(planDir, "plan.json"),
     JSON.stringify({
@@ -387,9 +387,9 @@ describe("Plan v2 manifest", () => {
     const chunk = listPlanV2ArtifactsForTarget(manifest, { role: "chunk", chunkIndex: 0 });
     const assembler = listPlanV2ArtifactsForTarget(manifest, { role: "assembler" });
 
-    expect(chunk.some((artifact) => artifact.path === "audio.aac")).toBe(false);
+    expect(chunk.some((artifact) => artifact.path === "audio.m4a")).toBe(false);
     expect(chunk.some((artifact) => artifact.path === "compiled/index.html")).toBe(true);
-    expect(assembler.some((artifact) => artifact.path === "audio.aac")).toBe(true);
+    expect(assembler.some((artifact) => artifact.path === "audio.m4a")).toBe(true);
     expect(assembler.some((artifact) => artifact.path === "compiled/index.html")).toBe(false);
   });
 
@@ -626,11 +626,11 @@ describe("Plan v2 manifest", () => {
     );
     const assembler = materializePlanV2Target(result.planDir, { role: "assembler" }, assemblerDir);
 
-    expect(existsSync(join(chunkDir, "audio.aac"))).toBe(false);
+    expect(existsSync(join(chunkDir, "audio.m4a"))).toBe(false);
     expect(
       validatePlanV2MaterializedTarget(chunkDir, { role: "chunk", chunkIndex: 1 })?.planHash,
     ).toBe(result.planHash);
-    expect(assembler.audioPath).toBe(join(assemblerDir, "audio.aac"));
+    expect(assembler.audioPath).toBe(join(assemblerDir, "audio.m4a"));
     expect(validatePlanV2MaterializedTarget(assemblerDir, { role: "assembler" })?.planHash).toBe(
       result.planHash,
     );

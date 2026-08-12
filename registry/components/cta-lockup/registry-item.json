@@ -1,0 +1,59 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cta-lockup",
+  "type": "hyperframes:component",
+  "title": "CTA Lockup",
+  "description": "A canonical closing lockup that reveals an action line, pops in an accent CTA capsule, settles supporting microcopy, and holds with confidence.",
+  "tags": ["motion-primitive", "ui-props", "cta", "end-card", "lockup", "ask"],
+  "jobs": ["ask"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "Wave F U14 cta-lockup build contract",
+  "syncPoints": [{ "id": "lockup-settled", "phase": "in", "offset": 1.6 }],
+  "files": [
+    {
+      "path": "cta-lockup.html",
+      "target": "compositions/components/cta-lockup.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "action_line",
+      "type": "string",
+      "role": "content",
+      "label": "Action line",
+      "description": "Primary action statement shown above the CTA.",
+      "default": "Start building today"
+    },
+    {
+      "id": "button_label",
+      "type": "string",
+      "role": "content",
+      "label": "Button label",
+      "description": "Text displayed inside the CTA capsule.",
+      "default": "Get HyperFrames"
+    },
+    {
+      "id": "microcopy",
+      "type": "string",
+      "role": "content",
+      "label": "Microcopy",
+      "description": "Supporting detail shown below the CTA capsule.",
+      "default": "Free while in beta"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Fill color used by the CTA capsule.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

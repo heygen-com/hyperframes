@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Sheet Spring Up</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
+      }
+      /* the device */
+      .spec-phone {
+        position: absolute;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+      }
+      /* interior is authored at 1080x1920 and scaled into the screen */
+      .spec-int {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        transform: scale(0.3796);
+        transform-origin: 0 0;
+      }
+      /* the caption column */
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
+        top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
+        display: grid;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+
+      .ssu-ground {
+        position: absolute;
+        inset: -80px;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 70%, #3ce6ac 120%);
+        filter: blur(0px);
+      }
+      .ssu-blob1 {
+        position: absolute;
+        left: 60px;
+        top: 200px;
+        width: 600px;
+        height: 600px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(60, 230, 172, 0.5) 0%, rgba(60, 230, 172, 0) 70%);
+        filter: blur(30px);
+      }
+      .ssu-blob2 {
+        position: absolute;
+        right: -100px;
+        top: 900px;
+        width: 700px;
+        height: 700px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(233, 171, 85, 0.35) 0%, rgba(233, 171, 85, 0) 70%);
+        filter: blur(30px);
+      }
+      .ssu-card {
+        position: absolute;
+        left: 106px;
+        top: 473px;
+        width: 868px;
+        height: 1100px;
+        background: #f9f9f9;
+        border-radius: 44px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+        opacity: 0;
+      }
+      .ssu-title {
+        position: absolute;
+        top: 60px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 54px;
+        font-weight: 600;
+        color: #101010;
+      }
+      .ssu-sub {
+        position: absolute;
+        top: 145px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 36px;
+        color: #313131;
+      }
+      .ssu-sub b {
+        font-weight: 700;
+      }
+      .ssu-prev {
+        position: absolute;
+        left: 56px;
+        top: 235px;
+        width: 756px;
+        height: 620px;
+        border-radius: 30px;
+        overflow: hidden;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+      }
+      .ssu-play {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: rgba(253, 253, 253, 0.94);
+      }
+      .ssu-play svg {
+        position: absolute;
+        left: 50px;
+        top: 42px;
+      }
+      .ssu-div {
+        position: absolute;
+        left: 0;
+        top: 920px;
+        width: 100%;
+        height: 2px;
+        background: #dfdfdf;
+      }
+      .ssu-btn {
+        position: absolute;
+        top: 922px;
+        bottom: 0;
+        width: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 42px;
+      }
+      .ssu-dec {
+        left: 0;
+        color: #6f6f73;
+      }
+      .ssu-acc {
+        right: 0;
+        color: #087a57;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-ssu-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="sheet-spring-up-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+    >
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div class="spec-int">
+              <div class="ssu-ground"></div>
+              <div class="ssu-blob1"></div>
+              <div class="ssu-blob2"></div>
+              <div class="ssu-card" id="ssu-sheet">
+                <div class="ssu-title">Share</div>
+                <div class="ssu-sub"><b>HyperFrames</b> would like to share a video</div>
+                <div class="ssu-prev">
+                  <div class="ssu-play">
+                    <svg width="48" height="54" viewBox="0 0 44 48" fill="none">
+                      <path
+                        d="M40.5 20.6 C43.2 22.1 43.2 25.9 40.5 27.4 L6.2 46.6 C3.5 48.1 0.2 46.2 0.2 43.2 L0.2 4.8 C0.2 1.8 3.5 -0.1 6.2 1.4 Z"
+                        fill="#0d0d0d"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="ssu-div"></div>
+                <div class="ssu-btn ssu-dec">Decline</div>
+                <div class="ssu-btn ssu-acc">Accept</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-cap">
+          <div class="name">sheet-spring-up</div>
+          <div class="rule"></div>
+          <div class="desc">
+            A bottom sheet rushes up from below the frame on a real spring sampled frame by frame —
+            overshoot, then a long soft settle. No ease approximates it; the table ships.
+          </div>
+          <div class="stats">
+            <div class="stat"><b>22 steps</b> — the sampled y/alpha table</div>
+            <div class="stat"><b>192px</b> — overshoot past rest</div>
+            <div class="stat"><b>0.72s</b> — launch to settle</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      /* the measured spring, verbatim */
+      var SPRING = [
+        [0.0, 1450, 0.0],
+        [0.057, 1198, 0.13],
+        [0.09, 903, 0.21],
+        [0.123, 648, 0.36],
+        [0.157, 437, 0.43],
+        [0.19, 262, 0.5],
+        [0.223, 120, 0.62],
+        [0.257, 8, 0.78],
+        [0.29, -76, 0.89],
+        [0.323, -138, 1.0],
+        [0.357, -175, null],
+        [0.39, -191, null],
+        [0.423, -192, null],
+        [0.457, -181, null],
+        [0.49, -159, null],
+        [0.523, -131, null],
+        [0.557, -100, null],
+        [0.59, -68, null],
+        [0.623, -41, null],
+        [0.657, -18, null],
+        [0.69, -5, null],
+        [0.723, 0, null],
+      ];
+      var START = 0.6;
+      SPRING.forEach(function (s) {
+        var p = { y: s[1] };
+        if (s[2] !== null) p.autoAlpha = s[2];
+        tl.set("#ssu-sheet", p, START + s[0]);
+      });
+      /* accept press beat */
+      tl.set("#ssu-sheet", { y: 3 }, 3.0);
+      tl.set("#ssu-sheet", { y: 0 }, 3.33);
+      tl.set({}, {}, 4);
+      window.__timelines["sheet-spring-up-demo"] = tl;
+    </script>
+  </body>
+</html>

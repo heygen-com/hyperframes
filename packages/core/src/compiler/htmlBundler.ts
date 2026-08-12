@@ -1,6 +1,6 @@
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
-import { parseHostVariableValues } from "../runtime/getVariables";
+import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
 import { cssVariableName } from "../tokenSlug";
 import { readFileSync, existsSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
@@ -979,6 +979,13 @@ export async function bundleToSingleHtml(
       const mergedVariables = runtimeCompId ? parseHostVariableValues(host) : {};
       if (runtimeCompId && Object.keys(mergedVariables).length > 0) {
         compVariablesByComp[runtimeCompId] = mergedVariables;
+      }
+      // Same defect on the <template> mount as on the data-composition-src
+      // mount (see inlineSubCompositions): the merged instance values are
+      // baked in here, so only compile time can see a value that falls back.
+      if (runtimeCompId) {
+        warnUnknownEnumValues(innerDoc.documentElement, mergedVariables, runtimeCompId);
+        warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
       }
       pushSubCompVariableStyles(
         innerDoc,

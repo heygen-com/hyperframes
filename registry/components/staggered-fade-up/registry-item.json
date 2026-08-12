@@ -1,0 +1,98 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "staggered-fade-up",
+  "type": "hyperframes:component",
+  "title": "Staggered Fade Up",
+  "description": "Words fade in and slide up one after another with configurable delay.",
+  "tags": ["video-primitive", "motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "staggered-fade-up.html",
+      "target": "compositions/components/staggered-fade-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Where the offset the timeline drives points.",
+      "default": "up",
+      "options": [
+        {
+          "value": "up",
+          "label": "Up"
+        },
+        {
+          "value": "down",
+          "label": "Down"
+        },
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "id": "distance",
+      "type": "enum",
+      "role": "motion",
+      "label": "Distance",
+      "description": "Scales the travel offset, so the words cover a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "close",
+          "label": "Close"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "far",
+          "label": "Far"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    },
+    {
+      "id": "words",
+      "type": "string",
+      "role": "content",
+      "label": "Words",
+      "description": "The words themselves, split on spaces, one span and one stagger step each.",
+      "default": "Staggered fade up"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/staggered-fade-up.png"
+  }
+}

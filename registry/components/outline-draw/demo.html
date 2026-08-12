@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  outline-draw demo. This standalone composition mounts outline-draw.html
+  through data-composition-src. The panel beneath the hollow overlay remains
+  visible, proving that the mask cuts out the center instead of covering it.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Outline Draw Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #05070d);
+      }
+
+      #root {
+        --bg: #05070d;
+        --surface: #131b2e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #38bdf8;
+        --space-8: 8cqmin;
+        --radius-lg: 2.8cqmin;
+        --shadow-panel: 0 3.8cqh 8.4cqh rgb(0 0 0 / 45%);
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 40%, var(--surface) 0%, var(--bg) 70%);
+      }
+
+      .mount-card {
+        width: 64%;
+        height: 56%;
+        left: 18%;
+        top: 22%;
+        container-type: size;
+        overflow: hidden;
+        border: 0.12cqmin solid color-mix(in srgb, var(--border) 75%, transparent);
+        border-radius: var(--radius-lg);
+        background: var(--surface);
+        box-shadow: var(--shadow-panel);
+      }
+
+      .mount-card::before {
+        content: "PROOF";
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: var(--fg);
+        font-family: var(--font-display, Inter, system-ui, sans-serif);
+        font-size: 8cqh;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="outline-draw-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="outline-draw-mount"
+        class="mount-card clip"
+        data-composition-id="outline-draw"
+        data-composition-src="./outline-draw.html"
+        data-variable-values='{"progress":100,"thickness":10,"radius":42}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1229"
+        data-height="605"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["outline-draw-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

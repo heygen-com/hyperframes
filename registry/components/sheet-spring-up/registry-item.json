@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "sheet-spring-up",
+  "type": "hyperframes:component",
+  "title": "Sheet Spring-Up",
+  "description": "A bottom sheet rushes up from below the frame on a real spring sampled frame by frame from reference footage, overshooting its resting place and settling back without an approximated ease",
+  "tags": ["video-primitive", "sheet", "spring", "mock-ui", "overlay"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "width",
+      "type": "number",
+      "role": "style",
+      "label": "Width",
+      "description": "Sheet width in pixels.",
+      "default": 668,
+      "min": 400,
+      "max": 900,
+      "step": 4,
+      "unit": "px"
+    },
+    {
+      "id": "radius",
+      "type": "number",
+      "role": "style",
+      "label": "Radius",
+      "description": "Sheet corner radius.",
+      "default": 34,
+      "min": 16,
+      "max": 48,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Light is the reference near-white sheet; dark is the raised surface token.",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "sheet-spring-up.html",
+      "target": "compositions/components/sheet-spring-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

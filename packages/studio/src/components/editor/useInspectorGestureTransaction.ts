@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+function isPromiseCommit(result: void | Promise<void>): result is Promise<void> {
+  return Boolean(result && typeof result.then === "function");
+}
+
 /** One owner for continuous inspector edits: preview freely, persist once. */
 export function useInspectorGestureTransaction<T>({
   sourceValue,
@@ -8,44 +12,96 @@ export function useInspectorGestureTransaction<T>({
 }: {
   sourceValue: T;
   onPreview: (value: T) => void;
-  onCommit: (value: T) => void;
+  onCommit: (value: T) => void | Promise<void>;
 }) {
   const sourceRef = useRef(sourceValue);
   const activeRef = useRef<{ before: T; latest: T } | null>(null);
   const previewRef = useRef(onPreview);
   const commitRef = useRef(onCommit);
-  if (!activeRef.current) sourceRef.current = sourceValue;
+  const generationRef = useRef(0);
+  const pendingRef = useRef<{ before: T; latest: T } | null>(null);
+  const awaitingSourceAckRef = useRef<{ generation: number; value: T } | null>(null);
+  const lastSourceValueRef = useRef(sourceValue);
+  if (!Object.is(lastSourceValueRef.current, sourceValue)) {
+    lastSourceValueRef.current = sourceValue;
+    const matchesSourceAck = Object.is(awaitingSourceAckRef.current?.value, sourceValue);
+    const matchesOptimisticValue =
+      (activeRef.current && Object.is(activeRef.current.latest, sourceValue)) ||
+      (pendingRef.current && Object.is(pendingRef.current.latest, sourceValue)) ||
+      matchesSourceAck;
+    if (matchesSourceAck) awaitingSourceAckRef.current = null;
+    if (!matchesOptimisticValue) {
+      generationRef.current += 1;
+      activeRef.current = null;
+      pendingRef.current = null;
+      awaitingSourceAckRef.current = null;
+      sourceRef.current = sourceValue;
+    } else {
+      sourceRef.current = sourceValue;
+    }
+  }
   previewRef.current = onPreview;
   commitRef.current = onCommit;
 
   const begin = useCallback(() => {
     if (!activeRef.current) {
+      generationRef.current += 1;
       activeRef.current = { before: sourceRef.current, latest: sourceRef.current };
     }
   }, []);
 
   const preview = useCallback((value: T) => {
     if (!activeRef.current) {
+      generationRef.current += 1;
       activeRef.current = { before: sourceRef.current, latest: sourceRef.current };
     }
     activeRef.current.latest = value;
     previewRef.current(value);
   }, []);
 
+  const rollbackCommit = useCallback((active: { before: T; latest: T }, generation: number) => {
+    if (generation !== generationRef.current) return;
+    pendingRef.current = null;
+    if (awaitingSourceAckRef.current?.generation === generation) {
+      awaitingSourceAckRef.current = null;
+    }
+    sourceRef.current = active.before;
+    previewRef.current(active.before);
+  }, []);
+
   const settle = useCallback(() => {
     const active = activeRef.current;
     activeRef.current = null;
     if (active && !Object.is(active.before, active.latest)) {
+      const generation = ++generationRef.current;
       sourceRef.current = active.latest;
-      // Restore the captured baseline before the persistent commit captures
-      // rollback state. The commit reapplies `latest` synchronously, so this
-      // is not visible but a failed save can now correctly restore `before`.
-      previewRef.current(active.before);
-      commitRef.current(active.latest);
+      pendingRef.current = active;
+      awaitingSourceAckRef.current = { generation, value: active.latest };
+      try {
+        const result = commitRef.current(active.latest);
+        if (isPromiseCommit(result)) {
+          void result.then(
+            () => {
+              if (generation === generationRef.current) pendingRef.current = null;
+            },
+            () => rollbackCommit(active, generation),
+          );
+        } else if (generation === generationRef.current) {
+          pendingRef.current = null;
+          // Synchronous inspector consumers historically restore their preview
+          // after persisting (color pickers close, curves release the pointer).
+          // Async source mutations keep the optimistic preview until the write
+          // resolves so they do not flash back to the baseline while pending.
+          previewRef.current(active.before);
+        }
+      } catch {
+        rollbackCommit(active, generation);
+      }
     }
-  }, []);
+  }, [rollbackCommit]);
 
   const cancel = useCallback(() => {
+    generationRef.current += 1;
     const active = activeRef.current;
     activeRef.current = null;
     if (active && !Object.is(active.before, active.latest)) {
@@ -66,7 +122,7 @@ export function useInspectorGestureDraft<T>({
 }: {
   sourceValue: T;
   onPreview: (value: T) => void;
-  onCommit: (value: T) => void;
+  onCommit: (value: T) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState(sourceValue);
   const transaction = useInspectorGestureTransaction({
@@ -77,7 +133,7 @@ export function useInspectorGestureDraft<T>({
     },
     onCommit: (next) => {
       setDraft(next);
-      onCommit(next);
+      return onCommit(next);
     },
   });
 

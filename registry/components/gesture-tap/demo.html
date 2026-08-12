@@ -1,0 +1,79 @@
+<!doctype html>
+<!--
+  gesture-tap demo. This standalone composition mounts gesture-tap.html
+  through data-composition-src. All three non-default values prove that the
+  labels and accent flow through the elastic host mount.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Gesture Tap Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 44%, #171a20 0%, #0b0c0e 72%);
+      }
+
+      .mount-card {
+        width: 50%;
+        height: 60%;
+        left: 25%;
+        top: 20%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 32px;
+        background: #12151b;
+        box-shadow: 0 42px 100px rgba(0, 0, 0, 0.48);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="gesture-tap-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+      data-fps="30"
+    >
+      <div
+        id="gesture-tap-mount"
+        class="mount-card clip"
+        data-composition-id="gesture-tap"
+        data-composition-src="./gesture-tap.html"
+        data-variable-values='{"tap_label":"Connect","response_label":"Connected","accent":"violet"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+        data-width="960"
+        data-height="648"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["gesture-tap-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

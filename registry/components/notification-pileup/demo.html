@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  notification-pileup demo. This standalone 1920x1080 host mounts the
+  primitive through data-composition-src instead of inlining it. Non-default
+  count, speed, and showBadges values prove per-instance variables cross the
+  mount boundary. The host owns only the stage and an empty paused timeline.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Notification Pileup Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--demo-bg, #05070d);
+      }
+
+      #root {
+        --bg: #0b1120;
+        --fg: #f8fafc;
+        --surface: #1e293b;
+        --brand: #22c55e;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #38bdf8;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-display: Inter, system-ui, sans-serif;
+        --dur-beat: 0.5s;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          circle at 50% 42%,
+          color-mix(in srgb, var(--surface) 68%, var(--bg)),
+          var(--bg) 72%
+        );
+      }
+
+      .mount-card {
+        position: absolute;
+        left: 16%;
+        top: 9%;
+        width: 68%;
+        height: 82%;
+        overflow: hidden;
+        border: 2px solid color-mix(in srgb, var(--border) 70%, transparent);
+        border-radius: 40px;
+        background: var(--bg);
+        box-shadow: 0 42px 110px color-mix(in srgb, var(--bg) 72%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="notification-pileup-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="8"
+      data-fps="30"
+    >
+      <div
+        id="notification-pileup-mount"
+        class="mount-card clip"
+        data-composition-id="notification-pileup"
+        data-composition-src="./notification-pileup.html"
+        data-variable-values='{"count":9,"speed":0.75,"showBadges":"no"}'
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        data-width="1306"
+        data-height="886"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // No motion of its own. The mounted primitive owns the pileup timeline.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["notification-pileup-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
