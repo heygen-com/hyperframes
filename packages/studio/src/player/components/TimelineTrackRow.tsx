@@ -7,7 +7,10 @@ interface TimelineTrackRowProps {
   rowKey: number;
   logicalRow: TimelineLogicalRow;
   propertyRows: readonly TimelineLogicalRow[];
+  /** Ids the visible canvas property-lanes container (`<TimelinePropertyLanes id={lanesId}>`). */
   lanesId: string;
+  /** Ids the visible header lane row — a distinct DOM node, so a distinct id. */
+  headerLanesId: string;
   top: number;
   height: number;
   virtualized: boolean;
@@ -24,6 +27,7 @@ export function TimelineTrackRow({
   logicalRow,
   propertyRows,
   lanesId,
+  headerLanesId,
   top,
   height,
   virtualized,
@@ -78,7 +82,7 @@ export function TimelineTrackRow({
             <div
               role="rowheader"
               aria-colindex={1}
-              aria-owns={timelineLogicalRowCellId(lanesId, row.id, "header")}
+              aria-owns={timelineLogicalRowCellId(headerLanesId, row.id, "header")}
             >
               {group}
             </div>
