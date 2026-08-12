@@ -19,9 +19,24 @@ export function captureProtocolTimeoutMs(navTimeoutMs: number, postNavBudgetMs: 
   return Math.max(60_000, Math.max(0, navTimeoutMs), Math.max(0, postNavBudgetMs));
 }
 
-export function isNavigationTimeoutError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function hasNavigationTimeoutMessage(msg: string): boolean {
   return /navigation timeout/i.test(msg);
+}
+
+function hasProtocolEvaluateTimeoutMessage(msg: string): boolean {
+  return /Runtime\.evaluate timed out|protocolTimeout|protocol timeout/i.test(msg);
+}
+
+export function isNavigationTimeoutError(err: unknown): boolean {
+  if (err instanceof TimeoutError) {
+    return hasNavigationTimeoutMessage(err.message);
+  }
+  // String path used by BLOCKED.md formatting.
+  return typeof err === "string" && hasNavigationTimeoutMessage(err);
 }
 
 function isStageBudgetTimeoutError(err: unknown): boolean {
@@ -29,14 +44,10 @@ function isStageBudgetTimeoutError(err: unknown): boolean {
 }
 
 export function isProtocolEvaluateTimeoutError(err: unknown): boolean {
-  if (isNavigationTimeoutError(err)) {
-    return false;
-  }
-  const msg = err instanceof Error ? err.message : String(err);
   if (err instanceof TimeoutError) {
-    return /Runtime\.evaluate timed out|protocolTimeout|protocol timeout/i.test(msg);
+    return !hasNavigationTimeoutMessage(err.message);
   }
-  return /Runtime\.evaluate timed out|protocolTimeout|protocol timeout/i.test(msg);
+  return hasProtocolEvaluateTimeoutMessage(errorMessage(err));
 }
 
 export function isDegradableEvaluateTimeoutError(err: unknown): boolean {
@@ -70,13 +81,13 @@ export async function withRemainingBudget<T>(
 }
 
 export function formatCaptureFailureReason(errMsg: string): string {
-  if (isProtocolEvaluateTimeoutError(errMsg) || /stage budget exceeded/i.test(errMsg)) {
+  if (hasProtocolEvaluateTimeoutMessage(errMsg) || /stage budget exceeded/i.test(errMsg)) {
     return (
       `Page extraction timed out while running in-page script (${errMsg}). ` +
       "The page likely opened, but a later capture step hung."
     );
   }
-  if (isNavigationTimeoutError(errMsg)) {
+  if (hasNavigationTimeoutMessage(errMsg)) {
     return "Page navigation timed out — the site may be blocking headless browsers or requires authentication.";
   }
   if (/timeout|timed out/i.test(errMsg)) {

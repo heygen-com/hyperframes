@@ -27,8 +27,26 @@ describe("captureProtocolTimeoutMs", () => {
   });
 });
 
+describe("isNavigationTimeoutError", () => {
+  it("matches Puppeteer TimeoutError navigation timeouts", () => {
+    expect(
+      isNavigationTimeoutError(new TimeoutError("Navigation timeout of 30000 ms exceeded")),
+    ).toBe(true);
+  });
+
+  it("does not treat plain Error as navigation timeout", () => {
+    expect(isNavigationTimeoutError(new Error("Navigation timeout of 30000 ms exceeded"))).toBe(
+      false,
+    );
+  });
+
+  it("still classifies message strings for BLOCKED.md formatting", () => {
+    expect(isNavigationTimeoutError("Navigation timeout of 30000 ms exceeded")).toBe(true);
+  });
+});
+
 describe("isProtocolEvaluateTimeoutError", () => {
-  it("matches Puppeteer TimeoutError evaluate timeouts", () => {
+  it("matches Puppeteer TimeoutError evaluate timeouts by instanceof", () => {
     expect(
       isProtocolEvaluateTimeoutError(
         new TimeoutError(
@@ -38,13 +56,16 @@ describe("isProtocolEvaluateTimeoutError", () => {
     ).toBe(true);
   });
 
-  it("ignores navigation timeouts", () => {
+  it("treats non-navigation TimeoutError as evaluate/protocol timeout even if wording drifts", () => {
     expect(
-      isProtocolEvaluateTimeoutError(new Error("Navigation timeout of 30000 ms exceeded")),
+      isProtocolEvaluateTimeoutError(new TimeoutError("Timed out after waiting 180000ms")),
+    ).toBe(true);
+  });
+
+  it("ignores navigation TimeoutErrors", () => {
+    expect(
+      isProtocolEvaluateTimeoutError(new TimeoutError("Navigation timeout of 30000 ms exceeded")),
     ).toBe(false);
-    expect(isNavigationTimeoutError(new Error("Navigation timeout of 30000 ms exceeded"))).toBe(
-      true,
-    );
   });
 });
 

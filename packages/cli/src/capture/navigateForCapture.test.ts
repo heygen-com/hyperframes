@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { TimeoutError } from "puppeteer-core";
 import {
   isNavigationTimeoutError,
   navigateForCapture,
@@ -17,10 +18,10 @@ describe("networkIdleAttemptTimeoutMs", () => {
 });
 
 describe("isNavigationTimeoutError", () => {
-  it("matches Puppeteer navigation timeouts", () => {
-    expect(isNavigationTimeoutError(new Error("Navigation timeout of 30000 ms exceeded"))).toBe(
-      true,
-    );
+  it("matches Puppeteer TimeoutError navigation timeouts", () => {
+    expect(
+      isNavigationTimeoutError(new TimeoutError("Navigation timeout of 30000 ms exceeded")),
+    ).toBe(true);
   });
 
   it("ignores unrelated failures", () => {
@@ -51,7 +52,7 @@ describe("navigateForCapture", () => {
     const response = { status: () => 200 };
     const goto = vi
       .fn()
-      .mockRejectedValueOnce(new Error("Navigation timeout of 30000 ms exceeded"))
+      .mockRejectedValueOnce(new TimeoutError("Navigation timeout of 30000 ms exceeded"))
       .mockResolvedValueOnce(response);
 
     const result = await navigateForCapture({ goto }, "https://www.yahoo.com/", 120_000);
@@ -81,7 +82,7 @@ describe("navigateForCapture", () => {
       const response = { status: () => 200 };
       const goto = vi
         .fn()
-        .mockRejectedValueOnce(new Error("Navigation timeout of 30000 ms exceeded"))
+        .mockRejectedValueOnce(new TimeoutError("Navigation timeout of 30000 ms exceeded"))
         .mockResolvedValueOnce(response);
 
       await navigateForCapture({ goto }, "https://www.yahoo.com/", totalTimeoutMs);
@@ -106,7 +107,7 @@ describe("navigateForCapture", () => {
   });
 
   it("does not fall back when the caller timeout already equals the idle attempt", async () => {
-    const err = new Error("Navigation timeout of 10000 ms exceeded");
+    const err = new TimeoutError("Navigation timeout of 10000 ms exceeded");
     const goto = vi.fn().mockRejectedValue(err);
 
     await expect(navigateForCapture({ goto }, "https://example.com", 10_000)).rejects.toBe(err);
