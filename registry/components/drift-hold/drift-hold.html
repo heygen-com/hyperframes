@@ -1,0 +1,192 @@
+<!doctype html>
+<!--
+  drift-hold: HyperFrames video primitive (camera / ambient / hold)
+
+  Concept: a centered content card never becomes fully static. Sub-degree
+  rotation, restrained scale breathing, and a soft light sweep each follow
+  one complete sine cycle across the mounted duration.
+
+  Variables:
+    - text (string, default "Always alive"): the card label.
+    - intensity (whisper | standard, default "standard"): selects the
+      amplitudes for rotation, breathing, and the light sweep.
+
+  Envelope:
+    IN = 0s
+    HOLD = elastic = the complete mounted duration
+    OUT = 0s
+    HOLD owns exactly one whole cycle at every duration. The endpoint phase
+    is explicitly wrapped to zero so the pose at t=0 exactly equals the pose
+    at t=duration.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  drift-hold id.
+-->
+<html
+  lang="en"
+  data-composition-id="drift-hold"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Text displayed in the default centered card.", "default": "Always alive" },
+    { "id": "intensity", "type": "enum", "role": "motion", "label": "Intensity", "description": "Amplitude of the ambient rotation, breathing, and light sweep.", "default": "standard", "options": [{ "value": "whisper", "label": "Whisper" }, { "value": "standard", "label": "Standard" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Drift Hold</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="drift-hold" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .dh-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .dh-card {
+            position: relative;
+            display: grid;
+            width: 68cqw;
+            min-height: 44cqh;
+            place-items: center;
+            overflow: hidden;
+            padding: var(--space-3, 5cqh) var(--space-3, 6cqw);
+            border: 0.16cqmin solid color-mix(in srgb, var(--border, #475569) 82%, transparent);
+            border-radius: var(--radius, 3.2cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 94%, var(--accent, #38bdf8));
+            box-shadow: 0 3.5cqh 10cqh color-mix(in srgb, var(--bg, #05070d) 58%, transparent);
+            transform-origin: 50% 50%;
+            will-change: transform;
+          }
+
+          .dh-sweep {
+            position: absolute;
+            top: -45%;
+            left: 42%;
+            width: 20cqw;
+            height: 190%;
+            background: linear-gradient(
+              90deg,
+              transparent 0%,
+              color-mix(in srgb, var(--accent, #38bdf8) 10%, transparent) 25%,
+              color-mix(in srgb, var(--fg, #f8fafc) 28%, transparent) 50%,
+              color-mix(in srgb, var(--accent, #38bdf8) 10%, transparent) 75%,
+              transparent 100%
+            );
+            filter: blur(1.8cqmin);
+            will-change: transform, opacity;
+          }
+
+          .dh-label {
+            position: relative;
+            z-index: 1;
+            max-width: 56cqw;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: clamp(20px, 9cqmin, 76px);
+            font-weight: 720;
+            line-height: 1.05;
+            letter-spacing: -0.035em;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="drift-hold-clip"
+          class="dh-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="dh-card">
+            <div class="dh-sweep" aria-hidden="true"></div>
+            <div class="dh-label"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var card = root.querySelector(".dh-card");
+            var sweep = root.querySelector(".dh-sweep");
+            var label = root.querySelector(".dh-label");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "Always alive" : String(vars.text);
+            var intensity = vars.intensity === "whisper" ? "whisper" : "standard";
+            var amplitudes = {
+              whisper: { rotation: 0.24, scale: 0.006, sweep: 30, light: 0.04 },
+              standard: { rotation: 0.6, scale: 0.015, sweep: 42, light: 0.08 },
+            };
+            var motion = amplitudes[intensity];
+
+            label.textContent = text;
+
+            var TAU = Math.PI * 2;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var state = { phase: 0 };
+
+            function renderPose() {
+              // Literal phase zero at the endpoint removes floating point
+              // residue from Math.sin(2 * PI) and makes the seam exact.
+              var phase = state.phase === TAU ? 0 : state.phase;
+              var rotation = Math.sin(phase + Math.PI / 6) * motion.rotation;
+              var scale = 1 + Math.sin(phase + Math.PI / 2) * motion.scale;
+              var sweepX = Math.sin(phase - Math.PI / 2) * motion.sweep;
+              var sweepOpacity = 0.12 + Math.sin(phase + Math.PI / 3) * motion.light;
+
+              gsap.set(card, { rotation: rotation, scale: scale });
+              gsap.set(sweep, {
+                x: sweepX + "cqw",
+                rotation: 14,
+                opacity: sweepOpacity,
+              });
+            }
+
+            var tl = gsap.timeline({ paused: true });
+
+            // HOLD: uniform phase travel drives only whole-cycle sine motion.
+            tl.to(state, { phase: TAU, duration: duration, ease: "none", onUpdate: renderPose }, 0);
+
+            renderPose();
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["drift-hold"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

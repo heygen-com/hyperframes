@@ -99,6 +99,65 @@ iframeDoc.addEventListener("click", (e) => {
 
 `resolveNearestHfElement` returns `null` when the walk exits the tree without finding a `[data-hf-id]` node, when the matching node carries `[data-hf-root]` (the root is transparent to selection), or when `isVisible` returns `false` for that node.
 
+## Transparent compositions over other content
+
+A composition authored as an overlay — a small graphic on an otherwise-empty 1080×1920 frame, layered over a video or an avatar — is still a rectangular DOM box covering every pixel of the frame. Without help it swallows every click, and whatever sits beneath it becomes unreachable.
+
+`preview.isProvablyEmptyAt(x, y)` is the question you need answered: is this point provably free of ink, so a click may safely reach what sits beneath? Toggle `pointer-events` on your wrapper from the answer, and let the browser deliver the event to the right target:
+
+```typescript
+const wrapper = document.querySelector<HTMLElement>("#composition-wrapper")!;
+
+/**
+ * Host-page pointer coordinates → the iframe document's own client space, which is what
+ * the paint query samples against. The iframe renders at the composition's native size and is
+ * CSS-scaled to fit, so the on-screen scale has to be divided out — skip this and you
+ * sample the wrong pixel, and pass-through toggles over the wrong regions.
+ */
+function toCompositionPoint(clientX: number, clientY: number) {
+  const rect = iframe.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const scaleX = rect.width / compositionNativeWidth;
+  const scaleY = rect.height / compositionNativeHeight;
+  if (!scaleX || !scaleY) return null;
+  return { x: (clientX - rect.left) / scaleX, y: (clientY - rect.top) / scaleY };
+}
+
+function updatePassThrough(clientX: number, clientY: number, altKey: boolean) {
+  const point = toCompositionPoint(clientX, clientY);
+  // Alt is the escape hatch for grabbing the composition itself in an empty region.
+  // Every uncertain case — no point, still loading, adapter without the method — is
+  // falsy here, so the composition stays clickable rather than vanishing.
+  const passThrough =
+    !!point && !altKey && !!preview.isProvablyEmptyAt?.(point.x, point.y);
+  wrapper.style.pointerEvents = passThrough ? "none" : "";
+}
+```
+
+<Warning>
+  Listen on the **host document**, not on the wrapper or the iframe. The first time this
+  sets `pointer-events: none` the wrapper stops receiving events, so a listener attached
+  there can never turn it back on — the pass-through state sticks.
+</Warning>
+
+Three things are easy to get wrong here:
+
+<Steps>
+  <Step title="Decide before the press, not during it">
+    The browser picks an event's target before any handler runs, so flipping `pointer-events` inside `mousedown` cannot retarget the click already in flight. Sample the pointer position on `mousemove` and keep the decision current.
+  </Step>
+  <Step title="Re-evaluate on every frame, not only on movement">
+    Animated artwork moves under a stationary cursor. Anything that can change the answer — pointer movement, the Alt key, and the playhead — has to re-run the query from the last known position. Coalesce those triggers into one `requestAnimationFrame` query rather than answering each separately, and short-circuit before the query when the pointer is outside the composition's box: it is a walk over the document, so it does not belong on an ungated per-event path.
+  </Step>
+  <Step title="Let the polarity do the work">
+    `isProvablyEmptyAt` is true only when it has established there is no ink. A document that hasn't loaded, an adapter without the method, and a point you couldn't map all come back falsy — which keeps the composition clickable. Don't invert it into a "does it paint" variable; that reintroduces the bug the polarity removes.
+  </Step>
+</Steps>
+
+Pass `{ fullBleedFraction: 0.9 }` if your editor treats a layer covering nearly the whole frame as background rather than artwork — a common choice, since a full-bleed wrapper is usually scaffolding rather than something the user is pointing at.
+
+Do not reimplement this with `elementsFromPoint`. That stack omits `pointer-events: none` nodes, and a decorative overlay carrying `pointer-events: none` still paints — a z-stack query would report no ink over visible artwork and pass the click through anyway. The paint walk covers element boxes geometrically for that reason.
+
 ## Draft loop: 60fps drag without model mutations
 
 The draft loop keeps the model clean during a drag. The SDK is **not** in the 60fps path — you call `preview.applyDraft` on every `pointermove` and `preview.commitPreview` once on `pointerup`. The model sees exactly one `moveElement` op per drag, rather than hundreds.

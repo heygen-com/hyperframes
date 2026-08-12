@@ -7,6 +7,8 @@ import { join } from "node:path";
 
 import type { Browser, PuppeteerNode } from "puppeteer-core";
 
+import type { CaptureMode } from "./browserLeasePool.js";
+
 import {
   _resetAutoBrowserGpuModeCacheForTests,
   _resetBrowserPoolForTests,
@@ -132,23 +134,22 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).not.toContain("--enable-gpu-rasterization");
   });
 
-  it("disables GPU compositing only for software BeginFrame capture", () => {
-    const softwareBeginFrame = buildChromeArgs(
-      { ...base, captureMode: "beginframe" },
-      { browserGpuMode: "software" },
-    );
-    const softwareScreenshot = buildChromeArgs(
-      { ...base, captureMode: "screenshot" },
-      { browserGpuMode: "software" },
-    );
-    const hardwareBeginFrame = buildChromeArgs(
-      { ...base, captureMode: "beginframe", platform: "linux" },
-      { browserGpuMode: "hardware" },
-    );
+  // HF#3049: the stale-raster accumulation lives in SwiftShader's compositor,
+  // which every capture mode reads from — so the gate is the GPU mode alone.
+  // Swept over the whole CaptureMode union so a future mode can't quietly opt
+  // out of the workaround the way `screenshot` did.
+  const captureModes: CaptureMode[] = ["beginframe", "screenshot", "drawelement"];
 
-    expect(softwareBeginFrame).toContain("--disable-gpu-compositing");
-    expect(softwareScreenshot).not.toContain("--disable-gpu-compositing");
-    expect(hardwareBeginFrame).not.toContain("--disable-gpu-compositing");
+  it.each(captureModes)("disables GPU compositing for software %s capture", (captureMode) => {
+    expect(
+      buildChromeArgs({ ...base, captureMode, platform: "linux" }, { browserGpuMode: "software" }),
+    ).toContain("--disable-gpu-compositing");
+  });
+
+  it.each(captureModes)("leaves hardware %s capture on the GPU compositor", (captureMode) => {
+    expect(
+      buildChromeArgs({ ...base, captureMode, platform: "linux" }, { browserGpuMode: "hardware" }),
+    ).not.toContain("--disable-gpu-compositing");
   });
 
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
@@ -241,9 +242,66 @@ describe("resolveBrowserGpuMode", () => {
     expect(mode).toBe("software");
   });
 
-  it("passes 'hardware' through unchanged without probing", async () => {
+  it("passes 'hardware' through unchanged", async () => {
+    setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA GeForce RTX 3070" });
     const mode = await resolveBrowserGpuMode("hardware");
     expect(mode).toBe("hardware");
+  });
+
+  it("warns when explicit 'hardware' probes to software, but still honours it", async () => {
+    // heygen-com/hyperframes#2967: `--browser-gpu` inside a container with no
+    // GPU passthrough rendered 19186 frames on CPU with no diagnostic.
+    setMockWebGlProbe({
+      hasWebGL: true,
+      vendor: "Google Inc. (Google)",
+      renderer: "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mode = await resolveBrowserGpuMode("hardware", { platform: "linux" });
+    expect(mode).toBe("hardware");
+    const warning = warn.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(warning).toContain("browserGpuMode=hardware was requested");
+    expect(warning).toContain("--gpus all");
+    // Once per process, not once per worker — the render path resolves the
+    // mode for the probe browser plus every parallel worker.
+    await resolveBrowserGpuMode("hardware", { platform: "linux" });
+    await resolveBrowserGpuMode("hardware", { platform: "linux" });
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet when explicit 'hardware' probes to hardware", async () => {
+    setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA GeForce RTX 3070" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await resolveBrowserGpuMode("hardware")).toBe("hardware");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("gives non-linux hosts the generic remediation, not the Docker one", async () => {
+    setMockWebGlProbe({
+      hasWebGL: true,
+      vendor: "Google Inc. (Google)",
+      renderer: "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await resolveBrowserGpuMode("hardware", { platform: "darwin" })).toBe("hardware");
+    const warning = String(warn.mock.calls[0]?.[0]);
+    expect(warning).toContain("host exposes a GPU");
+    expect(warning).not.toContain("--gpus all");
+  });
+
+  it("does not blame the GPU when the probe itself failed to launch", async () => {
+    // A probe that could not run is NO evidence about the GPU. Sending this
+    // operator to `--gpus all` would hide a broken Chrome install behind a
+    // phantom passthrough problem.
+    _setPuppeteerForTests({
+      launch: vi.fn().mockRejectedValue(new Error("spawn ENOENT /bad/chrome")),
+    } as unknown as PuppeteerNode);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await resolveBrowserGpuMode("hardware", { platform: "linux" })).toBe("hardware");
+    const warning = String(warn.mock.calls[0]?.[0]);
+    expect(warning).toContain("GPU probe could not run");
+    expect(warning).toContain("hyperframes doctor");
+    expect(warning).not.toContain("--gpus all");
   });
 
   it("falls back to 'software' when the probe browser cannot launch", async () => {
@@ -272,31 +330,45 @@ describe("resolveBrowserGpuMode", () => {
     expect(second).toBe("software");
     // Reset and re-probe to confirm the test-only reset works.
     _resetAutoBrowserGpuModeCacheForTests();
-    const third = await resolveBrowserGpuMode("hardware");
+    setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA GeForce RTX 3070" });
+    const third = await resolveBrowserGpuMode("auto");
     expect(third).toBe("hardware");
   });
 
-  it("deduplicates concurrent auto-mode probes by caching the in-flight Promise", async () => {
+  it("deduplicates concurrent probes so only one Chrome launches", async () => {
     // Parallel coordinator fires N workers via Promise.all — without Promise-
     // level caching, a `--workers 4` render against a no-GPU host would launch
-    // 4 simultaneous probe Chromes. Verify all concurrent callers get the
-    // exact same Promise reference (proving the probe runs once, not N times).
-    const p1 = resolveBrowserGpuMode("auto", {
-      chromePath: "/definitely/not/a/real/chrome/binary",
-      browserTimeout: 2000,
+    // 4 simultaneous probe Chromes. Assert the launch count directly rather
+    // than Promise identity: `"auto"` and `"hardware"` now each adapt the
+    // shared cached Promise via `.then`, so identity is no longer the
+    // invariant — "the probe browser starts exactly once" is.
+    const { launch } = setMockWebGlProbe({
+      hasWebGL: true,
+      vendor: "Google Inc. (Google)",
+      renderer: "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))",
     });
-    const p2 = resolveBrowserGpuMode("auto", {
-      chromePath: "/definitely/not/a/real/chrome/binary",
-      browserTimeout: 2000,
-    });
-    const p3 = resolveBrowserGpuMode("auto", {
-      chromePath: "/definitely/not/a/real/chrome/binary",
-      browserTimeout: 2000,
-    });
-    expect(p1).toBe(p2);
-    expect(p2).toBe(p3);
-    const results = await Promise.all([p1, p2, p3]);
+    const results = await Promise.all([
+      resolveBrowserGpuMode("auto", { browserTimeout: 2000 }),
+      resolveBrowserGpuMode("auto", { browserTimeout: 2000 }),
+      resolveBrowserGpuMode("auto", { browserTimeout: 2000 }),
+    ]);
     expect(results).toEqual(["software", "software", "software"]);
+    expect(launch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares the one probe across mixed 'auto' and 'hardware' callers", async () => {
+    const { launch } = setMockWebGlProbe({
+      hasWebGL: true,
+      vendor: "NVIDIA",
+      renderer: "NVIDIA GeForce RTX 3070",
+    });
+    const results = await Promise.all([
+      resolveBrowserGpuMode("auto"),
+      resolveBrowserGpuMode("hardware"),
+      resolveBrowserGpuMode("auto"),
+    ]);
+    expect(results).toEqual(["hardware", "hardware", "hardware"]);
+    expect(launch).toHaveBeenCalledTimes(1);
   });
 
   it.each([

@@ -1,36 +1,54 @@
 ---
 title: Capstone — every technique, one journey
-description: "One prompt, one continuous camera move, every technique in this guide — the viewer rides the timeline itself from typed markup to rendered MP4."
+description: "One prompt, one unbroken camera move, and every technique in this guide joined into a single 62-second film."
 ---
 
-import { DocsVideo } from "/snippets/docs-video.jsx";
-
-<DocsVideo
-  title="HyperFrames video: Capstone Timeline Default"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-timeline-default.mp4#t=0.1"
-  loop
-/>
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-timeline-default-v2.mp4#t=0.1" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
 *"The Timeline" — 1920x1080, ~62 seconds, one prompt, one unbroken camera move, unedited.*
 
-The prompt targeted roughly 60 seconds; the delivered render runs 1:02 because the final lockup holds for a two-second breath.
+One prompt made this. Nothing was cut or stitched together afterward. The prompt asked for about 60 seconds. The render came back at 1:02, because the closing lockup holds for a two-second breath.
 
-If you read the guide in order, you have already seen every piece of this film. Each region was cut out and embedded in the chapter that teaches its technique — the typed opening in [Code animations](/prompting/code-blocks), the chart and map in [Data and maps](/prompting/data-and-maps), the footage pipeline in [Media and audio](/prompting/media-and-audio), the glass and mural in [VFX](/prompting/vfx-and-liquid-glass) and [Generated artwork](/prompting/generated-artwork), the beat grid in [Music](/prompting/music-and-slideshows), the 3D coil in [Runtimes and 3D](/prompting/runtimes-and-3d), the continuous camera in [Motion](/prompting/motion), the seeded finale in [Rendering and output](/prompting/rendering-and-output). This page is where the pieces become one composition, and the prompt below is the glue: every paragraph of it is a chapter of this guide restated as a binding clause.
+If you read this guide in order, you have already seen every part of this film. Each region was pulled out and embedded in the chapter that teaches it. The table further down says which chapter each part came from. This page is where the pieces become one composition.
 
-The concept is the product: the viewer travels along one literal timeline — the thing HyperFrames is built on — from the first typed character to the finished MP4. Everything in it is true: real catalog counts, real cloud regions, real product surfaces, footage staged as the material the tool processes. And the film has no scenes in the slideshow sense — it is one continuous camera journey through one wide world, which is the chapter's biggest lesson.
+## The idea
 
-## The cinematography contract
+The concept is the product. The viewer travels along one literal timeline — the thing HyperFrames is built on — from the first typed character to the finished MP4.
 
-Two earlier builds of this capstone passed every gate and still failed review — first as sparse frames floating in space, then as a well-dressed slideshow: discrete scenes, hard cuts, motion confined inside each frame. What fixed it wasn't more animation; it was a **cinematography contract** written into the prompt:
+Everything in the film is true. Real catalog counts. Real cloud regions. Real product surfaces. The footage appears as material the tool is processing, not as a testimonial.
 
-- **One continuous camera, dwell-and-sweep.** The whole film is a single wide world the camera dollies across in one unbroken move — but the rhythm matters as much as the continuity: the camera SWEEPS between regions, then eases to a genuine full stop for a couple of seconds while each region's main point lands (the count completing, the kicker stamping, the spoken keywords), then accelerates away. The dwell is what gives the sweep meaning — without the rest, emphasis dies mid-motion. During a dwell the world keeps resolving; the camera rests, the film never freezes. Scene changes happen by *arriving*: the next region is already visible at the frame edge before the camera reaches it, and the previous one exits by parallax, not by fade.
-- **Persistent elements that tell the story.** Three things never leave frame: the **wire** (a single continuous line that is the timeline itself — it becomes the chart baseline, the map arc, the waveform, the 3D coil), the **ruler** (a frame-ruler chrome strip whose playhead tracks the film's real playback time), and the **protagonist** — the `<div class="clip">` typed in the opening, which rides the wire through every region and is the thing that finally renders at the end.
-- **Anti-slideshow negatives.** No element cluster that fades in centered, sits, and fades out; no region that reads as a static slide the camera happens to pass; no motion that is just idling in place.
+And the film has no scenes. There is one wide world and one camera moving through it. That is the biggest lesson on this page.
 
-Like every rule in this film, it only exists because it was demanded in writing — the linter can verify a timeline, but only the prompt can demand cinematography.
+## Why the first two builds failed
 
-## The full prompt, verbatim
+Two earlier builds of this capstone passed every check and still failed review.
 
-This is the full prompt, nothing paraphrased or trimmed. Several of its clauses — the chip's hard bind to the wire's path geometry, the mural's pinned/iris-revealed/fade-out behavior, and the Depth region's 3D contract (the coil winding out of and back onto the wire, the chip passing through the loops and behind the form with true depth occlusion instead of floating over the geometry) — were added after frame review caught the builder drifting on exactly those points, and the film was patched to comply: the same catch-and-tighten loop [Iterating](/prompting/iterating) teaches, applied to the prompt itself so the next run can't regress.
+The first looked like sparse frames floating in space. The second was a well-dressed slideshow: separate scenes, hard cuts, motion trapped inside each frame.
+
+{/* VISUAL: three stills side by side — the sparse-frames build, the slideshow build, and the approved continuous-camera build — so the reader can see the difference the contract made. */}
+
+More animation was not the fix. What fixed it was a **cinematography contract** written into the prompt. Three rules:
+
+**One camera, dwell and sweep.** The camera dollies across one wide world in a single unbroken move. The rhythm matters as much as the continuity. The camera sweeps between regions, then eases to a genuine full stop. It rests for a couple of seconds while the region's main point lands: the count completing, the kicker stamping, the spoken keywords. Then it accelerates away. The dwell is what gives the sweep meaning. Without the rest, emphasis dies mid-motion. The world keeps resolving during a dwell, so the camera rests but the film never freezes.
+
+**Regions change by arriving, not cutting.** The next region is already visible at the edge of frame before the camera reaches it. The previous one leaves by parallax, not by fading out.
+
+**No slideshow tells.** Nothing fades in centered, sits, and fades out. No region reads as a static slide the camera happens to pass. No motion that is just idling in place.
+
+Three things also never leave frame. The **wire** is one continuous line, and it is the timeline itself. It becomes the chart baseline, then the map arc, then the waveform, then the 3D coil. The **ruler** is a chrome strip across the top. Its playhead tracks the film's real playback time. The **protagonist** is the `<div class="clip">` typed in the opening. It rides the wire through every region, and it is the thing that finally renders.
+
+None of this happens on its own. The linter can check that a timeline is valid. Only the prompt can ask for cinematography.
+
+## The prompt, word for word
+
+Below is the whole prompt, nothing paraphrased or trimmed. It is long on purpose. This is what a film-scale ask looks like when every clause has a job. It is written at [High-fidelity looks](/prompting/visual-specs)' level of detail: exact hex values, exact timings, named eases, copy quoted word for word.
+
+Three clauses were added after the fact. Frame review caught the builder drifting. So the prompt was tightened and the film was patched to match:
+
+- The chip must bind to the wire's actual path geometry. It cannot just float near the line.
+- The mural must stay pinned in place, be revealed by the iris, and exit by fading out.
+- In the Depth region the coil must wind out of the wire and back onto it. The chip must pass behind the 3D form with real depth occlusion, not float over it.
+
+That is the same catch-and-tighten loop [Iterating](/prompting/iterating) teaches, applied to the prompt itself so the next run cannot regress.
 
 > /general-video Make a ~60-second 1920x1080 promo film for HyperFrames — the open-source framework that turns hand-authored HTML and GSAP animation into deterministic, frame-accurate video. The film's concept IS the product: the viewer travels along one literal timeline — the thing HyperFrames is built on — from the first typed character to the finished MP4. Everything true, nothing invented: real catalog counts, real cloud regions, real product surfaces.
 >
@@ -87,57 +105,65 @@ This is the full prompt, nothing paraphrased or trimmed. Several of its clauses 
 >
 > **Negatives:** no hard cuts outside the two sanctioned seams; no static regions; no shaking or idle-in-place motion passed off as energy; no hue beyond mint (cyan only inside the one CTA gradient) — and per the brand file, no purple-blue SaaS gradients ever; no stock footage or photography; no fictional stats, projects, or testimonials — every number and label must be true of HyperFrames today; no real OS/browser chrome; no unseeded randomness; none of the film is silent.
 
-## Walking the prompt, chapter by chapter
-
-Every region pins a different technique, and every technique has a chapter:
+## Which chapter taught which region
 
 | Region | What it demonstrates | Chapter that teaches it |
 | --- | --- | --- |
-| Type (0:00–0:07) | Per-character code typing; the underline that becomes the wire | [Code animations](/prompting/code-blocks), [Prompt anatomy](/prompting/anatomy) |
-| Mount (0:07–0:14) | The timeline's own vocabulary — tracks, clips, `data-*` labels | [Prompt anatomy](/prompting/anatomy) |
-| Measure (0:14–0:21) | `data-chart` block; the wire as chart baseline (matched motion) | [Data and maps](/prompting/data-and-maps), [Transitions](/prompting/transitions) |
-| Everywhere (0:21–0:28) | `world-map` block; real Lambda / Cloud Run regions | [Data and maps](/prompting/data-and-maps), [Rendering and output](/prompting/rendering-and-output) |
-| Material (0:28–0:39) | Generated clip → HEVC proxy → background removed *before* the speech → the line's keywords slam in word-synced as display text BEHIND the cutout (silhouette occlusion) → lower-third behind the subject | [Media and audio](/prompting/media-and-audio), [Caption styles](/prompting/captions-catalog), [Overlays and lower thirds](/prompting/overlays-and-lower-thirds) |
-| Surface (0:39–0:45) | `sdf-iris` shader lens, frosted glass, palette-neutral generated mural | [Transitions](/prompting/transitions), [VFX and liquid glass](/prompting/vfx-and-liquid-glass), [When to generate artwork](/prompting/generated-artwork) |
-| Rhythm (0:45–0:52) | Cuts on a real analyzed beat grid (`hyperframes beats`) | [Music videos and slideshows](/prompting/music-and-slideshows) |
-| Depth (0:52–0:56) | Real Three.js via the frame adapter, wire as 3D coil; the chip joins the scene to thread the loops and pass behind the form (true depth occlusion) | [Runtimes and 3D](/prompting/runtimes-and-3d) |
-| Render (0:56–1:02) | Seeded (42) two-frame-hold confetti — determinism as the punchline | [Motion that reads premium](/prompting/motion) (rule 8) |
+| Type (0:00–0:07) | Per-character code typing. The underline that becomes the wire. | [Code animations](/prompting/code-blocks), [Prompt anatomy](/prompting/anatomy) |
+| Mount (0:07–0:14) | The timeline's own vocabulary: tracks, clips, `data-*` labels | [Prompt anatomy](/prompting/anatomy) |
+| Measure (0:14–0:21) | The `data-chart` block. The wire as a chart baseline, by matched motion. | [Data and maps](/prompting/data-and-maps), [Transitions](/prompting/transitions) |
+| Everywhere (0:21–0:28) | The `world-map` block. Real Lambda and Cloud Run regions. | [Data and maps](/prompting/data-and-maps), [Rendering and output](/prompting/rendering-and-output) |
+| Material (0:28–0:39) | The footage pipeline, in order. Generated clip, HEVC proxy, background removed *before* the speech, the speaker's own keywords slamming in behind the cutout, lower third behind the subject. | [Media and audio](/prompting/media-and-audio), [Caption styles](/prompting/captions-catalog), [Overlays and lower thirds](/prompting/overlays-and-lower-thirds) |
+| Surface (0:39–0:45) | The `sdf-iris` shader lens, frosted glass, a palette-neutral generated mural. | [Transitions](/prompting/transitions), [VFX and liquid glass](/prompting/vfx-and-liquid-glass), [When to generate artwork](/prompting/generated-artwork) |
+| Rhythm (0:45–0:52) | Cuts on a real analyzed beat grid from `hyperframes beats`. | [Music videos and slideshows](/prompting/music-and-slideshows) |
+| Depth (0:52–0:56) | Real Three.js via the frame adapter. The wire as a 3D coil, with the chip threading the loops and passing behind the form. | [Runtimes and 3D](/prompting/runtimes-and-3d) |
+| Render (0:56–1:02) | Seeded confetti, two-frame holds. Determinism as the punchline. | [Motion that reads premium](/prompting/motion) (rule 8) |
 
-The camera itself is [Motion that reads premium](/prompting/motion)'s "camera as actor" rule taken to its logical end — the camera isn't *in* the film, it *is* the film. The persistent wire/ruler/protagonist are [Storyboards](/prompting/storyboards)' callback device stretched across the whole runtime instead of two frames. And the whole thing is written in [High-fidelity looks](/prompting/visual-specs)' density: exact hexes, exact timings, named eases, quoted copy.
+Three more chapters run through the whole film instead of one region.
 
-One more chapter runs through every pixel: the film's look isn't described in the prompt at all — the prompt points at a **`frame.md` brand file** (the real HyperFrames design system: near-black ground, greyscale hierarchy, mint as the single go/active accent, ABC Solar Display lockups, TT Norms Pro Mono for machine text, one sanctioned mint→cyan gradient on the CTA) and says *obey it exactly*. That's [Design systems and brand](/prompting/design-systems)'s whole thesis — a source of brand truth beats any adjective — demonstrated at film scale.
+The camera is [Motion that reads premium](/prompting/motion)'s "camera as actor" rule taken to its limit. The camera is not in the film. It is the film.
 
-### Why one file, still
+The wire, the ruler, and the chip are [Storyboards](/prompting/storyboards)' callback device stretched across the full runtime instead of across two frames.
 
-HyperFrames scopes `data-composition-variables` **per composition file**, so the single-file constraint from the earlier capstones carries over — one `index.html`, one variable scope, which is what lets one `--variables` flag re-skin the whole journey. The new wrinkle: the world is one wide scene space traversed by a camera transform, while regions stay timed `class="clip"` sections synchronized to the camera's arrival — the persistent layers (wire, ruler, chip) are the only elements alive for all 62 seconds, so capture stays efficient without breaking the illusion of one continuous space. See [Variables and templating](/prompting/variables-and-templating).
+And the look is never described in the prompt at all. The prompt points at a `frame.md` brand file and says obey it exactly. That file holds the real HyperFrames design system. Near-black ground, greyscale text hierarchy, mint as the single go/active accent. ABC Solar Display for the lockups, TT Norms Pro Mono for machine text. One sanctioned mint-to-cyan gradient, on the closing CTA and nowhere else. A source of brand truth beats any adjective. That is [Design systems and brand](/prompting/design-systems)' whole thesis, shown at film scale.
 
-## The re-skin: one flag, the whole journey
+### Why it is one file
+
+HyperFrames reads `data-composition-variables` per composition file. One file means one variable scope, and one variable scope is what lets a single `--variables` flag re-skin the whole journey. So the single-file rule from the earlier capstones still applies here: one `index.html`.
+
+The new wrinkle is the world. It is one wide scene space that a camera transform travels across. The regions are still timed `class="clip"` sections, synced to the moment the camera arrives, and the framework shows and hides each one by its own time window. Only the wire, the ruler, and the chip are alive for all 62 seconds. See [Variables and templating](/prompting/variables-and-templating).
+
+## Change two colors, re-skin the film
 
 ```bash
 hyperframes render --variables '{"ground":"#0d1420","ink":"#c8ff3d"}' --strict-variables
 ```
 
-<DocsVideo
-  title="HyperFrames video: Capstone Timeline Reskin"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-timeline-reskin.mp4#t=0.1"
-  loop
-/>
-*The same composition, navy/acid-green — the wire, ruler, chart, map, glass, and even the generated mural all follow the override.*
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-timeline-reskin-v2.mp4#t=0.1" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The same composition, navy and acid green — the wire, ruler, chart, map, glass, and even the generated mural all follow the override.*
 
-The mural trick from the previous capstone carries over: the artwork is generated **palette-neutral** (grayscale) and duotoned live by CSS layers driven by the `ground`/`ink` variables, so even the raster re-skins. Keep color in CSS and shapes in the raster whenever a template frame needs to survive a re-skin.
+The mural trick from the previous capstone carries over. The artwork is generated in grayscale, then duotoned live by CSS layers driven by the `ground` and `ink` variables. Even the raster re-skins. Keep color in CSS and shapes in the raster whenever a template frame needs to survive a re-skin.
 
-## How everything ties together
+## What the prompt actually adds
 
-Read the prompt again with the guide behind you and it stops looking like one enormous ask. Region by region it is material you already have: the typed opening is [Code animations](/prompting/code-blocks), the Mount paragraph is [Prompt anatomy](/prompting/anatomy)'s framework vocabulary staged as scenery, the chart and map paragraphs are [Data and maps](/prompting/data-and-maps), the Material paragraph is [Media and audio](/prompting/media-and-audio) + [Caption styles](/prompting/captions-catalog) + [Overlays](/prompting/overlays-and-lower-thirds) run in sequence, Surface is [Transitions](/prompting/transitions) + [VFX](/prompting/vfx-and-liquid-glass) + [Generated artwork](/prompting/generated-artwork), Rhythm is [Music](/prompting/music-and-slideshows), Depth is [Runtimes and 3D](/prompting/runtimes-and-3d), and the finale is [Motion](/prompting/motion)'s rule 8. None of those clauses is new — they are the chapters, restated as requirements.
+Read the prompt again with the guide behind you and it stops looking like one enormous ask. Region by region it is material you already have. None of those clauses is new. They are the chapters, restated as requirements.
 
-What IS new — the part you could not have written after any single chapter — is the connective tissue, and that is exactly what the rest of the prompt spends its words on:
+What is new is the connective tissue, and that is where most of the prompt's words go.
 
-- **The cinematography contract** fuses nine demos into one space: one camera, arrivals instead of cuts, dwell-and-sweep pacing. Remove it and you get a playlist of chapter examples; with it, the same nine pieces are a film.
-- **The persistent elements do the handoffs.** The wire is the trick that makes each region *become* the next — the same line is the typed underline, the chart baseline, the map arc, the waveform, the 3D coil. The chip is a callback threaded through all nine techniques; the ruler makes the film's own medium visible.
-- **One brand file governs every region** ([Design systems](/prompting/design-systems)) — so nine techniques drawn from a dozen chapters land looking like one designer made them.
-- **One variable scope re-skins all of it** ([Variables and templating](/prompting/variables-and-templating)) — the single-file constraint exists so the chart, the map, the glass, the mural, and the confetti all answer to the same two variables in one `--variables` flag.
-- **One soundtrack paces all of it** ([Media and audio](/prompting/media-and-audio)) — the VO cues every region's reveals ([pace reveals to the narration](/prompting/media-and-audio#pace-reveals-to-the-narration)), the same BGM that beds the narration feeds the Rhythm region's beat analysis, and one SFX plan rides the visual hits — keystrokes at the open, a whoosh per handoff, ticks on counters and beats, one riser into the render ([sound effects](/prompting/media-and-audio#sound-effects)).
+- **The cinematography contract** fuses nine demos into one space. Remove it and you get a playlist of chapter examples. Keep it and the same nine pieces are a film.
+- **The persistent elements do the handoffs.** The wire is the trick that makes each region *become* the next. The same line is the typed underline, the chart baseline, the map arc, the waveform, and the 3D coil. The chip is a callback threaded through all nine techniques. The ruler makes the film's own medium visible.
+- **One brand file governs every region.** Nine techniques drawn from a dozen chapters land looking like one designer made them.
+- **One variable scope re-skins all of it.** The chart, the map, the glass, the mural, and the confetti all answer to the same two variables.
+- **One soundtrack paces all of it** ([Media and audio](/prompting/media-and-audio)). The narration cues every region's reveals. The same BGM that beds the narration feeds the Rhythm region's beat analysis. One SFX plan rides the visual hits: keystrokes at the open, a whoosh per handoff, ticks on counters and beats, one riser into the render.
 
-That's the method this guide has been building toward: learn each technique in isolation, then write the prompt whose job is not to invent the pieces but to bind them — shared space, shared spine, shared brand, shared variables, shared clock. A chart, a map, typed markup, processed footage, 3D, glass, a shader seam, a beat grid, seeded confetti: every one traceable to a chapter you've already read. The film is what the glue makes of them — and the glue, like everything else here, is just words in the prompt.
+That is the method this guide has been building toward. Learn each technique on its own. Then write the prompt whose job is not to invent the pieces but to bind them: shared space, shared spine, shared brand, shared variables, shared clock.
 
 *Next: [Rules and anti-patterns](/prompting/rules-and-anti-patterns) — keep this cheat sheet open while you build.*
+
+## Related topics
+
+- [Fix a render that came back wrong](/prompting/iterating)
+- [Rules and anti-patterns](/prompting/rules-and-anti-patterns)
+- [Motion that reads premium](/prompting/motion)
+- [Design systems and brand](/prompting/design-systems)
+- [Variables and templating](/prompting/variables-and-templating)

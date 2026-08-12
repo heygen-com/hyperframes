@@ -1,0 +1,12 @@
+# Build output, not source. The catalog is derived from the registry by
+# scripts/catalog/build-catalog-artifact.ts, and committing the hosted copy
+# would create a stale artifact that a later run silently ranks against.
+# vectors.json is also ~9 MB, well past the repository's non-LFS file limit;
+# the hosted tier reads it from the server, never from a checkout.
+#
+# The on-device pair is the exception: the CLI fetches local-vectors.bin and
+# local-vectors.json from this registry when a user opts into offline search,
+# so they have to be served from here. Ignoring either one leaves the fetch
+# half-complete and the offline tier silently unable to rank.
+*.json
+!local-vectors.json

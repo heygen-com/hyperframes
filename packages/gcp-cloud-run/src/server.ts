@@ -32,6 +32,9 @@ import {
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   plan,
+  isPlanAudioArtifactPath,
+  PLAN_AUDIO_RELATIVE_PATH,
+  resolvePlanAudioPath,
   planV2WithPublisher,
   type PlanResult,
   type PlanV2Artifact,
@@ -322,7 +325,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanRes
 
     // Upload the planDir as a single tarball. The workflow cannot pass a
     // directory-shaped artifact between steps; we serialize and rely on the
-    // consumer (renderChunk / assemble) to untar. `audio.aac` lives inside
+    // consumer (renderChunk / assemble) to untar. The audio artifact lives inside
     // planDir, so it already rides along in this tarball — every consumer
     // (including assemble) gets it from the untar. We deliberately do NOT
     // upload a separate audio object: it would duplicate the bytes on every
@@ -331,7 +334,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanRes
     const planTar = join(work, "plan.tar.gz");
     await tarDirectory(planDir, planTar);
     const planTarUri = `${trimTrailingSlash(event.PlanOutputGcsPrefix)}/plan.tar.gz`;
-    const audioPath = join(planDir, "audio.aac");
+    const audioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
     const hasAudio = existsSync(audioPath) && statSync(audioPath).size > 0;
     await uploadFileToGcs(storage, planTar, planTarUri, "application/gzip");
 
@@ -397,7 +400,7 @@ async function handlePlanV2(
       Width: manifest.width,
       Height: manifest.height,
       Format: manifest.format,
-      HasAudio: manifest.artifacts.some((artifact) => artifact.path === "audio.aac"),
+      HasAudio: manifest.artifacts.some((artifact) => isPlanAudioArtifactPath(artifact.path)),
       AudioGcsUri: null,
       FfmpegVersion: manifest.ffmpegVersion,
       ProducerVersion: manifest.producerVersion,
@@ -567,7 +570,7 @@ async function handleAssemble(
     // only for backward compatibility with an older Plan that uploaded it
     // standalone.
     let audioPath: string | null = null;
-    const planAudio = join(planDir, "audio.aac");
+    const planAudio = resolvePlanAudioPath(planDir) ?? join(planDir, PLAN_AUDIO_RELATIVE_PATH);
     if (existsSync(planAudio) && statSync(planAudio).size > 0) {
       audioPath = planAudio;
     } else if (event.AudioGcsUri) {
@@ -619,7 +622,7 @@ async function handleAssembleV2(
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-assemble-v2-"));
   try {
     const planDir = await downloadAndMaterializePlanV2(storage, event, { role: "assembler" }, work);
-    const audioPath = existsSync(join(planDir, "audio.aac")) ? join(planDir, "audio.aac") : null;
+    const audioPath = resolvePlanAudioPath(planDir);
     const chunkPaths = await downloadChunkObjects(storage, event.ChunkGcsUris, work, event.Format);
     const finalOutput =
       event.Format === "png-sequence"
@@ -906,11 +909,13 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   "PLAN_V2_INTEGRITY_UNRECOVERABLE",
   "VIDEO_SOURCE_UNRENDERABLE",
   "INVALID_VIDEO_METADATA",
+  "NOT_MEDIA_PAYLOAD",
   // Producer error class names (`.name`) + their string code aliases — the
   // class sets `.name` to the class name but wraps a `code`; cover both so a
   // raw-code throw is caught too. Mirrors the AWS state machine's
   // non-retryable list.
   "FormatNotSupportedInDistributedError",
+  "NotMediaPayloadError",
   "PlanTooLargeError",
   "PlanProtocolUnsupportedError",
   "PlanV2IntegrityError",

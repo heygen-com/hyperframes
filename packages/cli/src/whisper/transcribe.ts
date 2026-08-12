@@ -171,6 +171,7 @@ function getMediaDurationSeconds(filePath: string): number | null {
         "format=duration",
         "-of",
         "default=noprint_wrappers=1:nokey=1",
+        "--",
         filePath,
       ],
       { encoding: "utf-8", timeout: 10_000 },
@@ -329,7 +330,7 @@ function isWav16kMono(filePath: string): boolean {
     if (!ffprobePath) return false;
     const raw = execFileSync(
       ffprobePath,
-      ["-v", "quiet", "-print_format", "json", "-show_streams", filePath],
+      ["-v", "quiet", "-print_format", "json", "-show_streams", "--", filePath],
       { encoding: "utf-8", timeout: 10_000 },
     );
     const parsed: {

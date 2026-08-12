@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "avatar-group-hover",
+  "type": "hyperframes:component",
+  "title": "Avatar Group Hover",
+  "description": "A distance-falloff avatar group lift with bouncy hover return",
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "avatar", "hover"],
+  "files": [
+    {
+      "path": "avatar-group-hover.html",
+      "target": "compositions/components/avatar-group-hover.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "style",
+      "label": "Size",
+      "description": "Avatar diameter, with the initials scaling alongside it.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "small",
+          "label": "Small"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "large",
+          "label": "Large"
+        }
+      ]
+    },
+    {
+      "id": "overlap",
+      "type": "enum",
+      "role": "style",
+      "label": "Overlap",
+      "description": "How far each avatar tucks under the one before it, as a share of its own diameter.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "tight",
+          "label": "Tight"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "loose",
+          "label": "Loose"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour the avatar gradient resolves into.",
+      "default": "blue",
+      "options": [
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/avatar-group-hover.png"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "badge-pop",
+  "type": "hyperframes:component",
+  "title": "Badge Pop",
+  "description": "A transitions.dev-inspired notification badge pop with elastic scale and count reveal",
+  "tags": [
+    "video-primitive",
+    "transition-primitive",
+    "transitions-dev-port",
+    "badge",
+    "microinteraction"
+  ],
+  "files": [
+    {
+      "path": "badge-pop.html",
+      "target": "compositions/components/badge-pop.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "count",
+      "type": "string",
+      "role": "style",
+      "label": "Count",
+      "description": "Text shown inside the notification badge, up to four characters.",
+      "default": "3",
+      "maxLength": 4
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the badge.",
+      "default": "red",
+      "options": [
+        {
+          "value": "red",
+          "label": "Red"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "surface",
+      "type": "enum",
+      "role": "style",
+      "label": "Surface",
+      "description": "Chrome of the button and the badge ring: light for bright frames, dark for dark ones.",
+      "default": "light",
+      "options": [
+        {
+          "value": "light",
+          "label": "Light"
+        },
+        {
+          "value": "dark",
+          "label": "Dark"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/badge-pop.png"
+  }
+}

@@ -745,7 +745,7 @@ type EditOp =
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
   | { type: "setVariableValue"; id: string; value: string | number | boolean | FontValue | ImageValue }
-  | { type: "declareVariable"; decl: CompositionVariable }
+  | { type: "declareVariable"; declaration: CompositionVariable }
   | { type: "removeVariable"; id: string }
   | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
   | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }

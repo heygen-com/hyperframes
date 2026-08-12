@@ -8,6 +8,7 @@ import { getAnonymousId, hasShownNotice, markNoticeShown } from "./config";
 import { browserTelemetryAllowed } from "./policy";
 import { getBrowserSystemMeta } from "./system";
 import { canaryEventProperties } from "./canary";
+import { recordBreadcrumb } from "./breadcrumbs";
 
 // Write-only PostHog project key, safe to embed in client code.
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -36,6 +37,10 @@ export function shouldTrack(): boolean {
 
 export function trackEvent(event: string, properties: EventProperties = {}): void {
   if (!shouldTrack()) return;
+
+  // Every studio event passes through here, so this is the one place that can
+  // build a repro trail without asking each call site to opt in.
+  recordBreadcrumb(event, properties);
 
   const sys = getBrowserSystemMeta();
   eventQueue.push({

@@ -1,4 +1,7 @@
-interface MediaProbeResult {
+import { resolveMediaPreviewUrl } from "../components/thumbnailUtils";
+import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
+
+export interface MediaProbeResult {
   duration: number;
   width?: number;
   height?: number;
@@ -6,11 +9,24 @@ interface MediaProbeResult {
   hasAudio: boolean;
 }
 
-const cache = new Map<string, MediaProbeResult>();
+interface CachedProbe {
+  result: MediaProbeResult;
+  lastAccess: number;
+}
+
+const cache = new Map<string, CachedProbe>();
 const inflight = new Map<string, Promise<MediaProbeResult | null>>();
 // URLs whose probe failed (CORS, 404, non-media). Remembered so the rAF-driven
 // timeline re-derive doesn't re-fetch them every frame and flood the console.
-const failed = new Set<string>();
+const failed = new Map<string, { failedAt: number; lastAccess: number }>();
+let accessSequence = 0;
+let activeProbes = 0;
+let registryEpoch = 0;
+const probeQueue: Array<{
+  key: string;
+  epoch: number;
+  resolve: (result: MediaProbeResult | null) => void;
+}> = [];
 
 let mediabunnyModule: typeof import("mediabunny") | null | false = null;
 
@@ -65,7 +81,26 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
 }
 
 function getCachedProbe(url: string): MediaProbeResult | undefined {
-  return cache.get(normalizeUrl(url));
+  const cached = cache.get(normalizeUrl(url));
+  if (cached) cached.lastAccess = ++accessSequence;
+  return cached?.result;
+}
+
+function resolveProbeSource(src: string, projectId: string | null): string {
+  return projectId ? resolveMediaPreviewUrl(src, projectId, window.location.origin) : src;
+}
+
+function evictMetadataOverflow(): void {
+  const overflow = cache.size + failed.size - TIMELINE_VIEWPORT_BUDGETS.metadataRegistryEntries;
+  if (overflow <= 0) return;
+  const entries = [
+    ...Array.from(cache, ([key, value]) => ({ key, at: value.lastAccess, failed: false })),
+    ...Array.from(failed, ([key, value]) => ({ key, at: value.lastAccess, failed: true })),
+  ].sort((left, right) => left.at - right.at);
+  for (const entry of entries.slice(0, overflow)) {
+    if (entry.failed) failed.delete(entry.key);
+    else cache.delete(entry.key);
+  }
 }
 
 /**
@@ -76,11 +111,11 @@ function getCachedProbe(url: string): MediaProbeResult | undefined {
  */
 export function applyCachedSourceDurations<
   T extends { src?: string; tag: string; sourceDuration?: number },
->(elements: T[]): T[] {
+>(elements: T[], projectId: string | null): T[] {
   return elements.map((el) => {
     const tag = el.tag.toLowerCase();
     if (!el.src || el.sourceDuration != null || (tag !== "audio" && tag !== "video")) return el;
-    const cached = getCachedProbe(el.src);
+    const cached = getCachedProbe(resolveProbeSource(el.src, projectId));
     return cached?.duration && cached.duration > 0
       ? { ...el, sourceDuration: cached.duration }
       : el;
@@ -94,39 +129,96 @@ export function applyCachedSourceDurations<
  */
 export async function probeMissingSourceDurations<
   T extends { src?: string; tag: string; sourceDuration?: number; key?: string; id: string },
->(elements: T[], apply: (key: string, durationSeconds: number) => void): Promise<void> {
-  const needs = elements.filter(
-    (el) =>
-      el.src &&
-      el.sourceDuration == null &&
-      ["video", "audio"].includes(el.tag.toLowerCase()) &&
-      !getCachedProbe(el.src) &&
-      !failed.has(normalizeUrl(el.src)),
-  );
+>(
+  elements: T[],
+  projectId: string | null,
+  apply: (key: string, durationSeconds: number) => void,
+): Promise<void> {
+  const needs = elements.flatMap((el) => {
+    if (
+      !el.src ||
+      el.sourceDuration != null ||
+      !["video", "audio"].includes(el.tag.toLowerCase())
+    ) {
+      return [];
+    }
+    const source = resolveProbeSource(el.src, projectId);
+    return !getCachedProbe(source) && !hasFreshFailure(normalizeUrl(source))
+      ? [{ el, source }]
+      : [];
+  });
   if (needs.length === 0) return;
   await Promise.allSettled(
-    needs.map(async (el) => {
-      const result = await probeMediaUrl(el.src!);
+    needs.map(async ({ el, source }) => {
+      const result = await probeMediaUrl(source);
       if (result) apply(el.key ?? el.id, result.duration);
     }),
   );
 }
 
-async function probeMediaUrl(url: string): Promise<MediaProbeResult | null> {
+function hasFreshFailure(key: string): boolean {
+  const failedAt = failed.get(key);
+  if (failedAt === undefined) return false;
+  if (Date.now() - failedAt.failedAt < TIMELINE_VIEWPORT_BUDGETS.metadataFailureTtlMs) {
+    failedAt.lastAccess = ++accessSequence;
+    return true;
+  }
+  failed.delete(key);
+  return false;
+}
+
+export async function probeMediaUrl(url: string): Promise<MediaProbeResult | null> {
   const key = normalizeUrl(url);
-  const cached = cache.get(key);
+  const cached = getCachedProbe(key);
   if (cached) return cached;
-  if (failed.has(key)) return null;
+  if (hasFreshFailure(key)) return null;
 
   let pending = inflight.get(key);
   if (pending) return pending;
 
-  pending = probeOne(key).then((result) => {
-    inflight.delete(key);
-    if (result) cache.set(key, result);
-    else failed.add(key);
-    return result;
+  pending = new Promise<MediaProbeResult | null>((resolve) => {
+    probeQueue.push({ key, epoch: registryEpoch, resolve });
+    pumpProbeQueue();
   });
   inflight.set(key, pending);
   return pending;
+}
+
+function pumpProbeQueue(): void {
+  while (activeProbes < TIMELINE_VIEWPORT_BUDGETS.concurrentMetadataJobs) {
+    const queued = probeQueue.shift();
+    if (!queued) return;
+    if (queued.epoch !== registryEpoch) {
+      queued.resolve(null);
+      continue;
+    }
+    activeProbes++;
+    void probeOne(queued.key)
+      .then((result) => {
+        if (queued.epoch !== registryEpoch) return null;
+        inflight.delete(queued.key);
+        if (result) cache.set(queued.key, { result, lastAccess: ++accessSequence });
+        else failed.set(queued.key, { failedAt: Date.now(), lastAccess: ++accessSequence });
+        evictMetadataOverflow();
+        return result;
+      })
+      .then(queued.resolve)
+      .finally(() => {
+        activeProbes--;
+        pumpProbeQueue();
+      });
+  }
+}
+
+export function getMediaProbeDiagnostics() {
+  return { cached: cache.size, failed: failed.size, inflight: inflight.size };
+}
+
+export function resetMediaProbeRegistry(): void {
+  registryEpoch++;
+  for (const queued of probeQueue.splice(0)) queued.resolve(null);
+  cache.clear();
+  failed.clear();
+  inflight.clear();
+  accessSequence = 0;
 }

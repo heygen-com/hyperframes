@@ -5,9 +5,16 @@ description: "Ask for the parts that should change to become named slots, then r
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-[Design systems](/prompting/design-systems) covered the parts of a video that should *never* change per render — the brand. This page covers the parts that should: a card per customer, a stat per quarter, a name per recipient. When you know a composition will be reused, say so in the prompt, and name the parts that change. The agent turns them into declared [variables](/concepts/variables): typed, labeled slots filled at render time instead of hardcoded into the HTML.
+[Design systems](/prompting/design-systems) covered the parts of a video that
+should *never* change per render — the brand. This page covers the parts that
+should. A card per customer. A stat per quarter. A name per recipient.
 
-The trigger phrase is simple — call out the slots:
+When you know a composition will be reused, say so in the prompt. Name the parts
+that change. The agent turns them into declared
+[variables](/concepts/variables) — typed, labeled slots filled at render time
+instead of hardcoded into the HTML.
+
+The trigger phrase is simple. Call out the slots:
 
 > Build a 6-second title card. Make the **name**, the **logo**, and the **accent color** variables; everything else stays fixed.
 
@@ -26,76 +33,156 @@ The trigger phrase is simple — call out the slots:
 
 
 
-The agent declares `data-composition-variables` on the composition root with the right type for each slot — `string` for the name, `color` for the accent, and a `string` URL for the logo (the escape hatch for any media asset — image, video, audio, or logo). A plain `<img>` logo needs no timing attributes; only `<video>`/`<audio>` variables involve the media wiring described in [variables](/concepts/variables). One composition, many fills.
+The agent declares `data-composition-variables` on the composition root, with
+the right type for each slot. The name is a `string`. The accent is a `color`.
+The logo is an `image`, and a plain URL is a valid value for it. A plain `<img>`
+logo needs no timing attributes. Only `<video>` and `<audio>` variables involve
+the media wiring described in [variables](/concepts/variables). One composition,
+many fills.
 
 ## Say what type each slot is
 
-The five variable types (`string`, `number`, `color`, `boolean`, `enum`) each render a different input in [Studio](/packages/studio) and validate differently at render time. You don't write the JSON — but naming the type in the prompt removes a guess:
+There are seven variable types: `string`, `number`, `color`, `boolean`, `enum`,
+`font`, and `image`. Each one validates differently at render time. In
+[Studio](/packages/studio), `boolean`, `enum`, `color`, and `number` each get
+their own control, while `string`, `font`, and `image` use a plain text input.
+
+You don't write the JSON yourself. But naming the type in the prompt removes a
+guess:
 
 > Variables: `plan` (enum: Free / Pro / Enterprise), `price` (number, shown as `$`), `featured` (boolean — toggles the ribbon), `headline` (text).
 
 - ❌ `make the plan and price editable`
 - ✅ `plan is an enum (Free / Pro / Enterprise); price is a number in dollars`
 
-The engine rationale: an `enum` with declared options gets validated against that list at render time (`enum-out-of-range` is caught), and a `number` with a `unit` renders `$` formatting the odometer needs. A vague "editable" leaves the agent to pick a type, and a mistyped value only surfaces later.
+The engine rationale: an `enum` with declared options is checked against that
+list at render time, so `enum-out-of-range` gets caught. A `number` can carry
+`min`, `max`, `step`, and a `unit` label, which is what gives Studio a real
+slider instead of a bare text box. Say "editable" and you leave the agent to
+pick a type. A mistyped value then surfaces much later.
 
 ## Template, then render one per record
 
-Once the varying parts are variables, the same source renders once per data row. This is a real batch mode, not a copy-paste-per-video loop — the composition is authored once and fed a list of value sets:
+Once the varying parts are variables, the same source renders once per data row.
+This is a real batch mode, not a copy-paste-per-video loop. You author the
+composition once and feed it a list of value sets:
 
 > Build this as a template with `name` and `title` variables, then render one video per row of my data — output to `renders/{name}.mp4`.
 
-The agent authors the composition, then runs a [batch render](/concepts/variables#batch-renders): a JSON array where each row is one set of variable values, one output file per row, with `{key}` placeholders in the output path drawn from each row. If your source is a CSV, say so — the agent converts it to the row array the batch expects. Add "fail on any undeclared or mistyped value" and it renders with `--strict-variables`, so a typo in a column name stops the run instead of silently rendering the default.
+The agent authors the composition, then runs a
+[batch render](/concepts/variables#batch-renders). The batch input is a JSON
+array. Each row is one set of variable values, and each row produces one output
+file. `{key}` placeholders in the output path get filled from that row.
 
-Everything shares one composition, so a design fix propagates to every output on the next render — you're not editing a hundred near-duplicate files.
+If your source is a CSV, say so. The agent converts it to the row array the
+batch expects.
+
+Add "fail on any undeclared or mistyped value" and it renders with
+`--strict-variables`. A typo in a column name then stops the run instead of
+silently rendering the default.
+
+Everything shares one composition. So a design fix propagates to every output on
+the next render. You are not editing a hundred near-duplicate files.
 
 ## Personalization asks
 
-Personalized-at-scale videos are the same pattern with the value set coming from your data:
+Personalized-at-scale videos are the same pattern, with the value set coming
+from your data:
 
 > A 10-second welcome clip that greets each new signup by first name and shows their company logo. I'll supply a list of `{ firstName, logoUrl }` records.
 
-The `firstName` is a `string`; the `logoUrl` is a `string` variable your composition assigns to an `<img src>`. Pass assets as **URL references, not inlined data** — URL-shaped values travel cleanly through both the local renderer and distributed [Lambda renders](/deploy/templates-on-lambda). If you're wiring this behind your own product UI or an agent rather than the CLI, the [`@hyperframes/sdk`](/packages/sdk) opens a base template and layers a sparse override set per instance, so the host stores only each record's delta.
+`firstName` is a `string`. `logoUrl` is the image slot your composition binds to
+an `<img src>`.
+
+Pass assets as **URL references, not inlined data**. URL-shaped values travel
+cleanly through both the local renderer and distributed
+[Lambda renders](/deploy/templates-on-lambda).
+
+Wiring this behind your own product UI or an agent instead of the CLI? The
+[`@hyperframes/sdk`](/packages/sdk) opens a base template and layers a sparse
+override set per instance. The host then stores only each record's delta.
 
 ## Declare up front — don't bake values in
 
-The most common miss is describing the finished video with the values already fixed, then asking to "make it reusable" afterward:
+The most common miss is describing the finished video with the values already
+fixed, then asking to "make it reusable" afterward:
 
 - ❌ `Make a card that says "Acme — Pro plan — $49". Later I'll want other companies too.`
 - ✅ `Make a plan card. Variables: company (text), plan (enum), price (number, $). Show "Acme / Pro / 49" as the default.`
 
-The engine rationale: variables are runtime values a script applies to the live DOM, resolved from declared defaults, per-instance overrides, or the CLI in that precedence order. Declaring them up front means the reusable structure exists from the first render and the default is just one more value set. Baking `"Acme — Pro — $49"` into the markup produces a composition with no slots — reuse then means an edit pass over hardcoded text for every variant, which is exactly what variables exist to avoid.
+The engine rationale: variables are runtime values a script applies to the live
+DOM. They resolve from declared defaults first, then per-instance overrides,
+then the CLI.
+
+Declare them up front and the reusable structure exists from the first render.
+The default is then just one more value set. Bake `"Acme — Pro — $49"` into the
+markup and you get a composition with no slots. Reuse then means an edit pass
+over hardcoded text for every variant. That is exactly what variables exist to
+avoid.
 
 ## Prove the template actually re-skins
 
-A template that never re-skins can pass every gate you have. `lint` and `check` verify structure, and `--strict-variables` catches an undeclared or mistyped key — but none of them can tell you whether the values you passed ever reached the DOM. The failure looks like success: the render completes, exits clean, and is **pixel-identical to the default**.
+A template that never re-skins can pass every gate you have. `lint` and `check`
+verify structure. `--strict-variables` catches an undeclared or mistyped key.
+Neither can tell you whether the values you passed ever reached the DOM.
 
-So test it differentially — render twice and compare:
+The failure looks like success. The render completes, exits clean, and is
+**pixel-identical to the default**.
+
+So test it differentially. Render twice and compare:
 
 ```bash
 hyperframes render --output default.mp4
 hyperframes render --variables '{"ground":"#0d1420","ink":"#c8ff3d"}' --strict-variables --output reskin.mp4
 ```
 
-Two identical files mean the override never reached the property you expected. Check that the variable ID is declared, the render command uses that exact ID, and the visible property is actually bound to its CSS custom property or variable value.
+Two identical files mean the override never reached the property you expected.
+Check three things. Is the variable ID declared? Does the render command use
+that exact ID? Is the visible property actually bound to its CSS custom property
+or variable value?
 
-Render-time `--variables` overrides are global by variable ID. The compiler applies a matching override to CSS custom properties declared by the root and by sub-compositions pulled in with `data-composition-src`, while `data-variable-values` remains the per-instance way to give two mounts different values. Scoped JavaScript inside a sub-composition reads its per-instance variable table, so forward values at the mount point when that script calls `getVariables()` instead of reading CSS.
+Render-time `--variables` overrides are global by variable ID. The compiler
+applies a matching override to CSS custom properties on the root and on
+sub-compositions pulled in with `data-composition-src`. `data-variable-values`
+is still the per-instance way to give two mounts different values.
 
-> **Variables:** expose `ground` (default `#0a0a0a`) and `ink` (default `#3CE6AC`) as composition variables on the single root file, bound via CSS custom properties everywhere (including the duotoned mural), so one `--variables` call re-skins the entire journey. It will be rendered twice: the default brand palette, and a second full render with `{"ground":"#0d1420","ink":"#c8ff3d"}`.
+Scoped JavaScript inside a sub-composition reads its own per-instance variable
+table. So forward values at the mount point when that script calls
+`getVariables()` instead of reading CSS.
 
-The [capstone](/prompting/capstone) keeps these variables on one root file for simplicity, not because templates require one file. Sub-compositions work as long as shared CSS-bound IDs are declared consistently; use mount-point values for instance-specific or JavaScript-read inputs.
+The [capstone](/prompting/capstone) keeps its variables on one root file for
+simplicity, not because templates require one file. Sub-compositions work as
+long as shared CSS-bound IDs are declared consistently. Use mount-point values
+for instance-specific or JavaScript-read inputs. Its exact variable clause is
+quoted at the bottom of this page.
 
 ## What can't be a variable
 
-A few inputs are read once at compile time and no variable can move them: composition **dimensions** (`data-width` / `data-height`), the **root composition's total duration**, **frame rate**, and **output format / codec**. So this doesn't do what it reads like:
+A few inputs are read once at compile time, and no variable can move them:
+
+- composition **dimensions** (`data-width` / `data-height`)
+- the **root composition's total duration**
+- **frame rate**
+- **output format, codec, or quality**
+
+So this doesn't do what it reads like:
 
 - ❌ `make the video length a variable so each render can be a different duration`
-- ✅ `author one composition per target length` — or vary a *clip's* duration (that one is re-read from the live DOM)
+- ✅ `author one composition per target length` — or vary a *clip's* duration,
+  which is re-read from the live DOM
 
-If total length must differ per output, that's a different root `data-duration` per render, not a variable. See [what can't be a variable](/concepts/variables#what-cant-be-a-variable) for the full list and the compile-time-vs-live-DOM rule behind it.
+If total length must differ per output, that is a different root `data-duration`
+per render, not a variable. See
+[what can't be a variable](/concepts/variables#what-cant-be-a-variable) for the
+full list and the compile-time-vs-live-DOM rule behind it.
 
 <Note>
-  An authored CSS custom property always wins over a same-named variable. If your composition already defines its own `:root { --accent: ... }` (a hand-written theme token, say), a variable called `accent` never overwrites it — the authored value stands. A render-time `--variables` override still wins over both. If you need to override an authored value per render, use `--variables`, not a same-named declared variable.
+  An authored CSS custom property always wins over a same-named variable. Say
+  your composition already defines its own `:root { --accent: ... }` as a
+  hand-written theme token. A variable called `accent` never overwrites it — the
+  authored value stands. A render-time `--variables` override still wins over
+  both. So when you need to override an authored value per render, use
+  `--variables`, not a same-named declared variable.
 </Note>
 
 ## Related
@@ -116,10 +203,15 @@ If total length must differ per output, that's a different root `data-duration` 
 </CardGroup>
 
 <Note>
-**Capstone thread** — the [Level 7 film](/prompting/capstone) is a working template: one single-file composition, one variable scope, and its second render — navy ground, acid-green ink, every region re-skinned including the generated mural — is nothing but one `--variables` flag. Both full renders are embedded on the capstone page.
+**Capstone thread** — the [Level 7 film](/prompting/capstone) is a working
+template. One single-file composition, one variable scope. Its second render is
+nothing but one `--variables` flag: navy ground, acid-green ink, every region
+re-skinned including the generated mural. Both full renders are embedded on the
+capstone page.
 </Note>
 
-This is the clause in the [full capstone prompt](/prompting/capstone#the-full-prompt-verbatim) that buys the piece — prompt language you can lift for your own video:
+This is the clause in the [full capstone prompt](/prompting/capstone#the-prompt-word-for-word)
+that buys the piece — prompt language you can lift for your own video:
 
 > **Variables:** expose `ground` (default `#0a0a0a`) and `ink` (default `#3CE6AC`) as composition variables on the single root file, bound via CSS custom properties everywhere (including the duotoned mural), so one `--variables` call re-skins the entire journey. It will be rendered twice: the default brand palette, and a second full render with `{"ground":"#0d1420","ink":"#c8ff3d"}`.
 >

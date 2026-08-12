@@ -2,7 +2,8 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { buildCompositionThumbnailUrl, CompositionThumbnail } from "./CompositionThumbnail";
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
@@ -31,12 +32,18 @@ class MockImage {
 
 const originalResizeObserver = globalThis.ResizeObserver;
 const originalImage = globalThis.Image;
+const originalFetch = globalThis.fetch;
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 let host: HTMLDivElement;
 let root: Root | null = null;
 
 beforeEach(() => {
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
   globalThis.Image = MockImage as unknown as typeof Image;
+  globalThis.fetch = vi.fn(async () => new Response(new Blob(["thumbnail"]), { status: 200 }));
+  URL.createObjectURL = vi.fn(() => "blob:composition-thumbnail");
+  URL.revokeObjectURL = vi.fn();
   MockImage.instances = [];
   host = document.createElement("div");
   document.body.append(host);
@@ -45,8 +52,12 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   root = null;
+  thumbnailScheduler.invalidateProject("/api/projects/demo/preview");
   globalThis.ResizeObserver = originalResizeObserver;
   globalThis.Image = originalImage;
+  globalThis.fetch = originalFetch;
+  URL.createObjectURL = originalCreateObjectURL;
+  URL.revokeObjectURL = originalRevokeObjectURL;
   document.body.replaceChildren();
 });
 
@@ -68,9 +79,9 @@ describe("buildCompositionThumbnailUrl", () => {
 });
 
 describe("CompositionThumbnail", () => {
-  function renderThumbnail(): MockImage {
+  async function renderThumbnail(): Promise<MockImage> {
     root = createRoot(host);
-    act(() => {
+    await act(async () => {
       root!.render(
         React.createElement(CompositionThumbnail, {
           previewUrl: "/api/projects/demo/preview",
@@ -78,19 +89,27 @@ describe("CompositionThumbnail", () => {
           labelColor: "#fff",
         }),
       );
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     const probe = MockImage.instances[0];
     if (!probe) throw new Error("Expected an image probe");
     return probe;
   }
 
-  it("renders visible tiles after the off-DOM probe loads", () => {
-    const probe = renderThumbnail();
+  it("renders visible tiles after the scheduled off-DOM probe loads", async () => {
+    const probe = await renderThumbnail();
 
-    act(() => {
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/projects/demo/thumbnail/index.html"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(probe.src).toBe("blob:composition-thumbnail");
+
+    await act(async () => {
       probe.naturalWidth = 1920;
       probe.naturalHeight = 1080;
       probe.onload?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     const tiles = [...host.querySelectorAll("img")];
@@ -98,16 +117,20 @@ describe("CompositionThumbnail", () => {
     expect(tiles.every((tile) => !tile.classList.contains("hidden"))).toBe(true);
   });
 
-  it("aborts its off-DOM image probe when unmounted", () => {
-    const probe = renderThumbnail();
+  it("aborts its scheduled off-DOM image probe when unmounted", async () => {
+    const probe = await renderThumbnail();
     expect(host.querySelector("img")).toBeNull();
-    expect(probe.src).toContain("/api/projects/demo/thumbnail/index.html");
+    expect(probe.src).toBe("blob:composition-thumbnail");
 
-    act(() => root?.unmount());
+    await act(async () => {
+      root?.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     root = null;
 
     expect(probe.onload).toBeNull();
     expect(probe.onerror).toBeNull();
     expect(probe.src).toBe("");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:composition-thumbnail");
   });
 });

@@ -149,6 +149,18 @@ export {
 // CLI / adopter SDKs can derive runtime allowlists from one source.
 export { PlanVideosMetadataError, type DistributedFormat } from "./services/distributed/shared.js";
 
+// ── Plan artifact names ─────────────────────────────────────────────────────
+// The cloud adapters locate and publish the plan's audio artifact by name. Its
+// extension selects the container, so they must read it from here rather than
+// restate it: a literal that drifts from the writer's is a silently missing
+// audio track, not a loud failure.
+export {
+  isPlanAudioArtifactPath,
+  PLAN_AUDIO_LEGACY_RELATIVE_PATH,
+  PLAN_AUDIO_RELATIVE_PATH,
+  resolvePlanAudioPath,
+} from "./services/distributed/shared.js";
+
 // ── Plan-time shared types from `freezePlan` ───────────────────────────────
 // Re-exported so adopters that deserialize a planDir's `meta/encoder.json`
 // or `meta/chunks.json` see the same shapes the producer wrote them as.

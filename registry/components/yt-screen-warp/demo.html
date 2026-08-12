@@ -54,7 +54,12 @@
       #yt-sw-fill {
         position: absolute;
         inset: 0;
-        background: linear-gradient(150deg, #ff8fb8 0%, #7d5cff 60%, #2a7fff 100%);
+        /* Placeholder footage: L3 of the ink over the dark ground, plus a 3px
+           achromatic hatch so the plate reads as a media surface, not an empty box. */
+        background:
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px),
+          rgba(255, 255, 255, 0.18);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
         display: flex;
         align-items: center;
         justify-content: center;

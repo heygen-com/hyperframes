@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { isEditableTarget } from "../../utils/timelineDiscovery";
+import { isTypingTarget } from "../../utils/typingTarget";
 import { acquireCanvasNudgeKeys } from "../../utils/canvasNudgeGate";
 import type { DomEditSelection } from "./domEditing";
 import {
@@ -130,7 +130,7 @@ function resolveSingleNudgeTarget(
 function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): boolean {
   if (!p.allowCanvasMovement || event.defaultPrevented) return true;
   if (p.gestureRef.current || p.groupGestureRef.current || p.blockedMoveRef.current) return true;
-  return isEditableTarget(event.target);
+  return isTypingTarget(event.target);
 }
 
 export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: () => void } {

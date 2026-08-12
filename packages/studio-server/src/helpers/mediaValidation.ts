@@ -33,6 +33,7 @@ export function validateUploadedMedia(
     "stream=codec_type",
     "-of",
     "json",
+    "--",
     filePath,
   ]);
 

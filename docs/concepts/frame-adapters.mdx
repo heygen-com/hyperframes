@@ -14,6 +14,26 @@ Most composition authors do not implement this interface. HyperFrames already se
 
 Use `FrameAdapter` when you are building a custom host around a seekable animation object.
 
+Rendering never plays the animation. It asks for one frame, waits, captures it,
+then asks for the next — so the same frame always comes out the same.
+
+```mermaid
+sequenceDiagram
+    participant R as Renderer
+    participant A as Frame adapter
+    participant T as Your timeline
+    R->>A: getDurationFrames()
+    A-->>R: 120
+    loop every frame, in any order
+        R->>A: seekFrame(90)
+        A->>T: jump to 3.0s and settle
+        T-->>A: state at 3.0s
+        A-->>R: ready
+        R->>R: capture the pixels
+    end
+    R->>A: destroy()
+```
+
 ## Interface
 
 ```ts

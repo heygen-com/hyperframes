@@ -8,6 +8,20 @@ A HyperFrames project is a folder your agent can create and you can keep
 editing. Its HTML is the video: it describes the scenes, timing, motion, media,
 and reusable parts that HyperFrames plays or renders.
 
+One folder of HTML is the whole video. Every tool below reads and writes those
+same files — there is no export step between them and no second version of the
+project.
+
+```mermaid
+flowchart TD
+    S["Your project folder<br/>HTML, CSS, media"]
+    A["Agent<br/>story and structure"] <--> S
+    T["Studio<br/>what you can point at"] <--> S
+    C["CLI<br/>check, preview, render"] <--> S
+    K["SDK and Player<br/>inside your own product"] <--> S
+    S --> R["renders/final.mp4"]
+```
+
 ## The source is the project
 
 The agent, Studio, CLI, SDK, and Player do not create separate versions of the
@@ -60,12 +74,13 @@ A **composition** is a finite, seekable piece of the project. The main
 composition is the complete sequence. Other compositions can be scenes,
 captions, title systems, or visuals reused more than once.
 
-```text
-Main video
-├── Opening
-├── Product demo
-├── Customer proof
-└── Closing
+```mermaid
+flowchart LR
+    M["index.html<br/>the main composition"]
+    M --> O["Opening<br/>0s - 4s"]
+    M --> P["Product demo<br/>4s - 10s<br/>compositions/product-demo.html"]
+    M --> C["Customer proof<br/>10s - 15s"]
+    M --> Z["Closing<br/>15s - 18s"]
 ```
 
 Each part is still HTML. A larger project stays manageable because a scene can

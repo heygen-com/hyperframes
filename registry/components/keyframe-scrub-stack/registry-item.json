@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "keyframe-scrub-stack",
+  "type": "hyperframes:component",
+  "title": "Keyframe Scrub Stack",
+  "description": "A keyframe-sequenced stack of cards with offset timing and easing presets.",
+  "tags": ["advanced-motion", "anime-inspired", "hyperframes-native"],
+  "files": [
+    {
+      "path": "keyframe-scrub-stack.html",
+      "target": "compositions/components/keyframe-scrub-stack.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/keyframe-scrub-stack.png"
+  }
+}

@@ -3,9 +3,21 @@ title: "HTML in Canvas"
 description: "Use live DOM content as a texture for WebGL and canvas effects."
 ---
 
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
 HTML in Canvas uses Chrome's experimental `drawElementImage()` API to copy rendered DOM content into a canvas. That canvas can become a Three.js texture or the input to a shader effect.
 
 Use it when the visual treatment depends on both real HTML and GPU effects—for example, an interface inside a 3D device or a DOM scene passing through a distortion shader. It is an advanced, browser-dependent technique.
+
+<DocsVideo
+  title="Your dashboard, drawn as a live WebGL texture while its numbers keep updating"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/html-in-canvas-demo-v2.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/html-in-canvas-demo-v2.jpg"
+/>
+
+The left panel is ordinary HTML and CSS. The right is the same pixels inside a
+WebGL scene — bent and lit by a shader, while the DOM underneath keeps changing
+and the texture re-captures every frame.
 
 ## Start with a proven block
 

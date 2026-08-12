@@ -1,0 +1,83 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "split-tilt-cards",
+  "type": "hyperframes:component",
+  "title": "Split Tilt Cards",
+  "description": "Two equal-weight cards arrive from opposite wings with mirrored rotateY book-open tilts under one shared perspective, pill badges spring-pop at each inner edge, and the pair holds with a barely-there phase-opposed idle float. Card bodies are content slots with token skeleton defaults.",
+  "tags": ["motion-primitive", "layout", "compare", "holdable", "book-open", "tilt", "slots"],
+  "jobs": ["compare"],
+  "family": "layout",
+  "profile": "holdable",
+  "evidence": "Wave J2 J2-10: the comparison-split blueprint's signature split-tilt entry realized as its own unit, resolving the blueprint name collision",
+  "syncPoints": [
+    { "id": "badge-pop-a", "phase": "in", "offset": 1.85 },
+    { "id": "badge-pop-b", "phase": "in", "offset": 2.15 }
+  ],
+  "files": [
+    {
+      "path": "split-tilt-cards.html",
+      "target": "compositions/components/split-tilt-cards.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "label_a",
+      "type": "string",
+      "role": "content",
+      "label": "Left label",
+      "description": "Mono header on the left card. Blank hides it.",
+      "default": "Before"
+    },
+    {
+      "id": "label_b",
+      "type": "string",
+      "role": "content",
+      "label": "Right label",
+      "description": "Mono header on the right card. Blank hides it.",
+      "default": "After"
+    },
+    {
+      "id": "badge_a",
+      "type": "string",
+      "role": "content",
+      "label": "Left badge",
+      "description": "Pill badge that spring-pops at the left card inner edge. Blank disables it.",
+      "default": "v1"
+    },
+    {
+      "id": "badge_b",
+      "type": "string",
+      "role": "content",
+      "label": "Right badge",
+      "description": "Pill badge that spring-pops at the right card inner edge. Blank disables it.",
+      "default": "v2"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Right-card tint, right badge, and right ambient glow color.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Outgoing transition. None holds the final spread.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

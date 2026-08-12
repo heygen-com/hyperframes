@@ -1,0 +1,170 @@
+<!doctype html>
+<!--
+  grain-field: HyperFrames video primitive (backgrounds / ambient)
+
+  Concept: a fixed repeated dot field drifts slowly across a deep,
+  accent-tinted luminance wash. The dots stay intentionally legible at
+  gallery-card size so the texture reads as a designed surface.
+
+  Variables:
+    - density (fine | coarse, default fine): controls dot size and spacing.
+    - accent (green | blue | violet, default green): colors the dots and wash.
+
+  Envelope: IN = 0, HOLD = the full elastic duration, OUT = 0. A longer mount
+  stretches only the ambient drift cycle.
+
+  Loop invariant: the phase completes one full sine cycle during HOLD. The
+  endpoint is normalized to phase zero before rendering, so t=0 and
+  t=duration have exactly the same transform.
+
+  Sound: none.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the hardcoded grain-field id.
+-->
+<html
+  lang="en"
+  data-composition-id="grain-field"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Dot size and spacing across the grain field.", "default": "fine", "options": [{ "value": "fine", "label": "Fine" }, { "value": "coarse", "label": "Coarse" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family used to color the dots and luminance wash.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Grain Field</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="grain-field" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            pointer-events: none;
+          }
+
+          .gf-clip,
+          .gf-base,
+          .gf-field {
+            position: absolute;
+          }
+
+          .gf-clip,
+          .gf-base {
+            inset: 0;
+          }
+
+          .gf-clip {
+            overflow: hidden;
+          }
+
+          .gf-base {
+            background:
+              radial-gradient(
+                ellipse at 28% 20%,
+                color-mix(in srgb, var(--gf-color) 18%, transparent) 0%,
+                transparent 56%
+              ),
+              linear-gradient(
+                145deg,
+                color-mix(in srgb, var(--gf-base) 90%, var(--gf-color)) 0%,
+                var(--gf-base) 72%
+              );
+          }
+
+          .gf-field {
+            inset: -8cqw;
+            background-image: radial-gradient(
+              circle,
+              color-mix(in srgb, var(--gf-color) 70%, white) 0 var(--gf-dot),
+              transparent calc(var(--gf-dot) + 0.12cqmin)
+            );
+            background-position: 0 0;
+            background-size: var(--gf-cell) var(--gf-cell);
+            opacity: 0.82;
+            will-change: transform;
+          }
+        </style>
+
+        <div
+          id="grain-field-clip"
+          class="gf-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="gf-base"></div>
+          <div class="gf-field"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var field = root.querySelector(".gf-field");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // Invalid enum overrides return to their declared defaults.
+            var accentTokens = {
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
+            };
+            var densityStyles = {
+              fine: { cell: "3.2cqmin", dot: "0.48cqmin" },
+              coarse: { cell: "5.8cqmin", dot: "0.86cqmin" },
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentTokens, vars.accent)
+              ? vars.accent
+              : "green";
+            var density = vars.density === "coarse" ? "coarse" : "fine";
+
+            root.style.setProperty("--gf-color", accentTokens[accent]);
+            root.style.setProperty("--gf-base", "var(--bg, #080a10)");
+            root.style.setProperty("--gf-cell", densityStyles[density].cell);
+            root.style.setProperty("--gf-dot", densityStyles[density].dot);
+
+            var TAU = Math.PI * 2;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var state = { phase: 0 };
+
+            function renderPose() {
+              var phase = state.phase === TAU ? 0 : state.phase;
+              var drift = Math.sin(phase);
+              gsap.set(field, { x: drift * 2.8 + "cqw", y: drift * 2.2 + "cqh" });
+            }
+
+            var tl = gsap.timeline({ paused: true });
+
+            // HOLD: uniform phase travel becomes a smooth sine drift. One full
+            // cycle restores the exact starting pose at the duration boundary.
+            tl.to(state, { phase: TAU, duration: duration, ease: "none", onUpdate: renderPose }, 0);
+
+            renderPose();
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["grain-field"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

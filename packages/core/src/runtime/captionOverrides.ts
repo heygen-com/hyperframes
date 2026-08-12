@@ -38,6 +38,23 @@ interface GsapStatic {
   getTweensOf: (target: Element) => GsapTween[];
 }
 
+/**
+ * The caption state a composition DECLARES for a colour tween, if any.
+ *
+ * Authored as `data: { captionState: "dim" | "active" }` in the tween's vars. GSAP passes unknown
+ * vars through untouched, so this costs a declaring composition nothing at runtime.
+ *
+ * It exists because the fallback below has to GUESS. Classifying by colour equality breaks outright
+ * when a composition's two states share a colour: every tween matches the dim baseline, and the
+ * active override is silently dropped. A declaration is the composition telling us what it built,
+ * rather than us inferring it from what it happens to look like.
+ */
+function declaredCaptionState(tween: GsapTween): "dim" | "active" | undefined {
+  const data = tween.vars.data as { captionState?: unknown } | undefined;
+  const state = data?.captionState;
+  return state === "dim" || state === "active" ? state : undefined;
+}
+
 function resolveCaptionWordElement(el: Element | null): HTMLElement | null {
   if (!(el instanceof HTMLElement)) return null;
   if (el.dataset.captionWrapper !== "true") return el;
@@ -121,30 +138,37 @@ export function applyCaptionOverrides(): void {
         if (override.fontWeight !== undefined) styleProps.fontWeight = override.fontWeight;
         if (override.fontFamily !== undefined) styleProps.fontFamily = override.fontFamily;
 
-        // Replace color values in existing GSAP tweens.
-        // Instead of relying on timeline position order (fragile if custom
-        // color tweens exist), we classify each tween by comparing its
-        // target color to the current computed color of the element.
-        // Tweens that match the current color are "dim" tweens; tweens
-        // with a different color are "active" tweens.
+        // Replace color values in existing GSAP tweens, classified in two layers.
+        //
+        // A tween that DECLARES its state is taken at its word. Anything undeclared falls back to
+        // colour equality against a dim reference — a guess, and the reason the declaration exists:
+        // two states sharing a colour make every tween look dim.
+        //
+        // The reference is drawn only from tweens the guess still applies to (a declared "dim" one
+        // if present, else the first undeclared one). Deriving it from a tween declared "active"
+        // would compare undeclared siblings against a colour that has explicitly said it is not the
+        // dim reference.
         if (override.activeColor || override.dimColor) {
           const allTweens = gsap.getTweensOf(el);
           const colorTweens = allTweens
             .filter((tw) => tw.vars.color !== undefined)
             .sort((a, b) => a.startTime() - b.startTime());
 
-          // Use the first tween's color as the dim baseline — if no tweens,
-          // fall back to computed style.
-          const dimBaseline = colorTweens[0] ? String(colorTweens[0].vars.color) : "";
+          const dimReference =
+            colorTweens.find((tw) => declaredCaptionState(tw) === "dim") ??
+            colorTweens.find((tw) => declaredCaptionState(tw) === undefined);
+          const dimBaseline = dimReference ? String(dimReference.vars.color) : "";
 
           for (const tw of colorTweens) {
-            const tweenColor = String(tw.vars.color);
-            if (tweenColor === dimBaseline) {
-              // This tween targets the dim/inactive color
+            // A declaration wins over the colour guess, per tween, so a composition can declare
+            // some tweens and leave others to the fallback.
+            const state =
+              declaredCaptionState(tw) ??
+              (String(tw.vars.color) === dimBaseline ? "dim" : "active");
+            if (state === "dim") {
               if (override.dimColor) tw.vars.color = override.dimColor;
-            } else {
-              // This tween targets the active/spoken color
-              if (override.activeColor) tw.vars.color = override.activeColor;
+            } else if (override.activeColor) {
+              tw.vars.color = override.activeColor;
             }
           }
 

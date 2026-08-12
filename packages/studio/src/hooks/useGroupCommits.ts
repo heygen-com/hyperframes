@@ -5,6 +5,7 @@ import {
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-side write (the wrapper/unwrap changes
@@ -75,7 +76,7 @@ async function commitStructuralMutation(
     `/api/projects/${pid}/file-mutations/${route}/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
       body: JSON.stringify(body),
     },
   );

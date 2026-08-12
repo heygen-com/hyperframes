@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "streaming-text",
+  "type": "hyperframes:component",
+  "title": "Streaming Text",
+  "description": "Words arrive the way an AI answer streams - in uneven bursts on a measured token rhythm, each word landing grey and inking to full colour - rather than the even tick of a typewriter",
+  "tags": ["video-primitive", "text-effect", "ai", "chat"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Type size of the streamed words.",
+      "default": 27,
+      "min": 18,
+      "max": 64,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Ink pair: dark words on a light ground, or light words on a dark ground.",
+      "default": "dark-on-light",
+      "options": [
+        { "value": "dark-on-light", "label": "Dark on light" },
+        { "value": "light-on-dark", "label": "Light on dark" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "streaming-text.html",
+      "target": "compositions/components/streaming-text.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

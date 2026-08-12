@@ -1,0 +1,97 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-annotate",
+  "type": "hyperframes:component",
+  "title": "Vox Annotate",
+  "description": "The Vox-style annotate gesture: a keyword in a held sentence gets a hand-drawn marker while a thin connector draws up to a mono callout label, all as one choreographed beat on the cue.",
+  "tags": ["motion-primitive", "typography", "annotation", "marker", "deterministic"],
+  "jobs": ["emphasize"],
+  "family": "text-effects",
+  "profile": "emphasis",
+  "evidence": "Wave K K8: absorbs marker-highlight (four stroke styles, getTotalLength dash law) and adds the connector + callout as one gesture, per the X expert study demand slate",
+  "syncPoints": [{ "id": "annotate-draw", "phase": "in", "offset": 0.9 }],
+  "files": [
+    {
+      "path": "vox-annotate.html",
+      "target": "compositions/components/vox-annotate.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Full line of display text.",
+      "default": "Ship the story, not the spec"
+    },
+    {
+      "id": "keyword",
+      "type": "string",
+      "role": "content",
+      "label": "Keyword",
+      "description": "First case-insensitive substring match in text receives the marker and annotation. Empty or unmatched draws nothing.",
+      "default": "story"
+    },
+    {
+      "id": "note",
+      "type": "string",
+      "role": "content",
+      "label": "Note",
+      "description": "Mono callout label at the end of the connector. Empty draws the marker only.",
+      "default": "the annotate beat"
+    },
+    {
+      "id": "style",
+      "type": "enum",
+      "role": "style",
+      "label": "Marker style",
+      "description": "Shape of the hand-drawn marker stroke.",
+      "default": "highlight",
+      "options": [
+        { "value": "highlight", "label": "Highlight" },
+        { "value": "circle", "label": "Circle" },
+        { "value": "underline", "label": "Underline" },
+        { "value": "scribble", "label": "Scribble" }
+      ]
+    },
+    {
+      "id": "draw_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Draw at",
+      "description": "Second (from mount start) the annotate gesture starts. Clamped so the gesture completes before any exit.",
+      "default": 0.9,
+      "min": 0,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Annotation ink color from the contract token map.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the lockup holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

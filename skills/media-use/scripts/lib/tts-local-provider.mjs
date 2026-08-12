@@ -17,7 +17,7 @@ function probeDurationSeconds(file) {
   try {
     const out = execFileSync(
       "ffprobe",
-      ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file],
+      ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", file],
       { encoding: "utf8", timeout: 15000 },
     );
     const d = parseFloat(String(out).trim());

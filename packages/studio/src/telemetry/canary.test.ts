@@ -194,6 +194,8 @@ describe("telemetry", () => {
     expect(canaryEventProperties()).toEqual({
       "$feature/canary-on-everywhere": "true",
       "$feature/canary-off-everywhere": "false",
+      canary_reason_on_everywhere: "in_cohort",
+      canary_reason_off_everywhere: "out_of_cohort",
     });
 
     __resetStudioCanaryCacheForTests();
@@ -235,6 +237,8 @@ describe("telemetry opt-out is canary opt-out", () => {
     expect(canaryEventProperties()).toEqual({
       "$feature/canary-on-everywhere": "false",
       "$feature/canary-off-everywhere": "false",
+      canary_reason_on_everywhere: "telemetry_opt_out",
+      canary_reason_off_everywhere: "telemetry_opt_out",
     });
   });
 });
@@ -321,5 +325,26 @@ describe("CLI-launched Studio adopts the CLI's decisions", () => {
     it("still refuses cohort enrolment with no CLI decision at all", () => {
       expect(resolveCanary("on-everywhere").reason).toBe("telemetry_opt_out");
     });
+  });
+});
+
+// A CLI-launched Studio shares the CLI's bucket seed, so a cohort flip can
+// surface on either surface. Attribution on only one of them makes the two
+// flip counts irreconcilable — which is why this is not a CLI-only property.
+describe("Studio attribution matches the CLI", () => {
+  it("distinguishes a local URL override from a cohort roll at the same value", () => {
+    setSearch("?hf_canary_off_everywhere=on");
+    const props = canaryEventProperties();
+    expect(props["$feature/canary-off-everywhere"]).toBe("true");
+    expect(props["canary_reason_off_everywhere"]).toBe("forced_on");
+    // Same assignment `on-everywhere` reaches by an ordinary roll.
+    expect(props["$feature/canary-on-everywhere"]).toBe("true");
+    expect(props["canary_reason_on_everywhere"]).toBe("in_cohort");
+  });
+
+  it("never puts a reason inside the $feature namespace", () => {
+    for (const [key, value] of Object.entries(canaryEventProperties())) {
+      if (key.startsWith("$feature/")) expect(value).toMatch(/^(true|false)$/);
+    }
   });
 });

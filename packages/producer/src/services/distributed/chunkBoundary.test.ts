@@ -96,7 +96,7 @@ async function planAndAssemble(input: {
     chunkPaths.push(chunkPath);
   }
 
-  const audioPath = join(planDir, "audio.aac");
+  const audioPath = join(planDir, "audio.m4a");
   const audioForAssemble = existsSync(audioPath) ? audioPath : null;
   await assemble(planDir, chunkPaths, audioForAssemble, outputPath);
   return outputPath;
