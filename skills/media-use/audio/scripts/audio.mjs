@@ -23,7 +23,10 @@
 //     "bgm": { "mode": "retrieve", // retrieve|generate|none (override: --bgm-mode / --no-bgm)
 //              "query": "calm cinematic underscore",   // mood for retrieval
 //              "prompt": null,      // full prompt for generation (else inferred)
-//              "blob": "...", "archetype": "...", "arc": "..." }  // optional mood-inference hints
+//              "blob": "...", "archetype": "...", "arc": "...",   // optional mood-inference hints
+//              "model": "music-3.0", "region": "global_en",
+//              "lyrics": "...", "output_format": "hex", "audio_setting": { "format": "wav" },
+//              "audio_url": "...", "audio_base64": "...", "cover_feature_id": "..." }
 //   }
 //
 // ── audio_meta.json (output, id-keyed) ───────────────────────────────────────
@@ -232,6 +235,7 @@ if (only.has("bgm")) {
       durationS: totalDuration || 30,
       hyperframesDir,
       lyriaRecipe: existsSync(lyriaRecipe) ? lyriaRecipe : null,
+      requestPath,
       seedSeconds,
       hasVoice,
       miniMax: {

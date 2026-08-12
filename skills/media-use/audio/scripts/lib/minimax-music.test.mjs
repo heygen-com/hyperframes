@@ -14,10 +14,48 @@ import {
   MINIMAX_MUSIC_URL_TTL_HOURS,
   buildMiniMaxMusicRequest,
   generateMiniMaxMusic,
+  miniMaxMusicOptionsFromRequest,
   parseMiniMaxMusicResponse,
   parseMiniMaxMusicStream,
   writeMiniMaxMusic,
 } from "./minimax-music.mjs";
+
+test("maps every supported BGM request field to the MiniMax client", () => {
+  const audioSetting = { format: "mp3", sample_rate: 44100, bitrate: 256000 };
+  assert.deepEqual(
+    miniMaxMusicOptionsFromRequest({
+      model: "music-cover",
+      region: "cn_zh",
+      prompt: "Cinematic cover",
+      lyrics: "A new day begins",
+      stream: true,
+      output_format: "hex",
+      audio_setting: audioSetting,
+      lyrics_optimizer: true,
+      is_instrumental: false,
+      audio_url: "https://media.example.test/source.wav",
+      audio_base64: "YXVkaW8=",
+      cover_feature_id: "feature-1",
+      aigc_watermark: true,
+    }),
+    {
+      model: "music-cover",
+      region: "cn_zh",
+      prompt: "Cinematic cover",
+      lyrics: "A new day begins",
+      stream: true,
+      outputFormat: "hex",
+      audioSetting,
+      lyricsOptimizer: true,
+      isInstrumental: false,
+      audioUrl: "https://media.example.test/source.wav",
+      audioBase64: "YXVkaW8=",
+      coverFeatureId: "feature-1",
+      aigcWatermark: true,
+    },
+  );
+  assert.equal(miniMaxMusicOptionsFromRequest(null).model, undefined);
+});
 
 test("exports the current endpoints, models, and formats", () => {
   assert.deepEqual(MINIMAX_MUSIC_ENDPOINTS, {

@@ -38,6 +38,7 @@ test("MiniMax BGM options are forwarded to the detached runner", () => {
   const args = miniMaxMusicRunnerArgs({
     outputPath: "/tmp/track.wav",
     prompt: "Bright instrumental",
+    requestPath: "/tmp/audio_request.json",
     options: {
       model: "music-3.0",
       region: "cn_zh",
@@ -52,6 +53,8 @@ test("MiniMax BGM options are forwarded to the detached runner", () => {
     "/tmp/track.wav",
     "--prompt",
     "Bright instrumental",
+    "--request",
+    "/tmp/audio_request.json",
     "--model",
     "music-3.0",
     "--region",

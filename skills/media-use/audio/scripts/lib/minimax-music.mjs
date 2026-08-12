@@ -31,6 +31,25 @@ function requireChoice(value, choices, label) {
   }
 }
 
+export function miniMaxMusicOptionsFromRequest(bgm = {}) {
+  if (!bgm || typeof bgm !== "object") bgm = {};
+  return {
+    model: bgm.model,
+    region: bgm.region,
+    prompt: bgm.prompt,
+    lyrics: bgm.lyrics,
+    stream: bgm.stream,
+    outputFormat: bgm.output_format,
+    audioSetting: bgm.audio_setting,
+    lyricsOptimizer: bgm.lyrics_optimizer,
+    isInstrumental: bgm.is_instrumental,
+    audioUrl: bgm.audio_url,
+    audioBase64: bgm.audio_base64,
+    coverFeatureId: bgm.cover_feature_id,
+    aigcWatermark: bgm.aigc_watermark,
+  };
+}
+
 export function resolveMiniMaxMusicEndpoint(region = "global_en") {
   const endpoint = MINIMAX_MUSIC_ENDPOINTS[region];
   if (!endpoint) throw new Error(`Unsupported MiniMax music region: ${region}`);

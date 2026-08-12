@@ -10,7 +10,7 @@ One music bed per composition, produced by the shared audio engine (`scripts/aud
 
 ## Driving it from the request
 
-`audio_request.json` → `bgm: { mode?, query?, prompt? }`:
+`audio_request.json` → `bgm: { mode?, query?, prompt?, ... }`:
 
 - **`mode`** — `retrieve | generate | none`. Omit for **auto** (retrieve when credentialed, else generate). An **explicit** `retrieve` is strict: no credential ⇒ skip, never a detached generate (so a caller with no `wait-bgm` step, e.g. product-launch, can't get a pending job it won't await).
 - **`query`** — the mood, used for retrieval and as a fallback prompt seed (e.g. a storyboard's `music:` field, falling back to `message` → `arc` → `"calm cinematic underscore"`).
@@ -36,7 +36,9 @@ For short launch videos, do not assume the beginning of the retrieved file is th
 
 ## MiniMax generation
 
-Set `$MINIMAX_API_KEY` and use `bgm.mode: generate`. The optional request fields are `model`, `region`, `prompt`, `lyrics`, `lyrics_optimizer`, `is_instrumental`, and `aigc_watermark`. The last field is sent only for the China endpoint.
+Set `$MINIMAX_API_KEY` and use `bgm.mode: generate`. In addition to `prompt`, the request accepts `model`, `region`, `lyrics`, `stream`, `output_format`, `audio_setting`, `lyrics_optimizer`, `is_instrumental`, `audio_url`, `audio_base64`, `cover_feature_id`, and `aigc_watermark`. The last field is sent only for the China endpoint.
+
+The detached runner reads these values from the same `audio_request.json`; this keeps large base64 cover inputs off the process command line. Explicit runner flags override request-file values.
 
 | Region | Endpoint                                       |
 | ------ | ---------------------------------------------- |

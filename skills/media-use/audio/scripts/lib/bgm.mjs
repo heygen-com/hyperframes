@@ -113,8 +113,9 @@ export function inferBgmPrompt({ blob = "", archetype = "", arc = "", userPrompt
   return `${base}, BPM ${bpm}, MAJOR`;
 }
 
-export function miniMaxMusicRunnerArgs({ outputPath, prompt, options = {} }) {
+export function miniMaxMusicRunnerArgs({ outputPath, prompt, requestPath, options = {} }) {
   const args = [MINIMAX_MUSIC_RUNNER, "--output", outputPath, "--prompt", prompt];
+  if (requestPath) args.push("--request", requestPath);
   const optionalFlags = [
     ["model", options.model],
     ["region", options.region],
@@ -145,6 +146,7 @@ export function generateBgmDetached({
   durationS,
   hyperframesDir,
   lyriaRecipe,
+  requestPath,
   seedSeconds = 28,
   hasVoice,
   miniMax = {},
@@ -160,7 +162,12 @@ export function generateBgmDetached({
   const lyriaConfigured = !!lyriaKey() && !!lyriaRecipe && existsSync(lyriaRecipe);
 
   if (miniMaxConfigured) {
-    const args = miniMaxMusicRunnerArgs({ outputPath: abs, prompt, options: miniMax });
+    const args = miniMaxMusicRunnerArgs({
+      outputPath: abs,
+      prompt,
+      requestPath,
+      options: miniMax,
+    });
 
     const fd = openSync(log, "w");
     const proc = spawn(process.execPath, args, { detached: true, stdio: ["ignore", fd, fd] });
