@@ -1045,4 +1045,167 @@ describe("syncRuntimeMedia", () => {
     });
     expect(clip.el.muted).toBe(true);
   });
+
+  describe("silent-eviction recovery", () => {
+    function evictedClip(networkState: number): RuntimeMediaClip {
+      const clip = createMockClip({ start: 0, end: 10, mediaStart: 2 });
+      clip.el.load = vi.fn();
+      // Browser-evicted shape: resource present, readyState collapsed to
+      // HAVE_NOTHING, not currently fetching, no error.
+      Object.defineProperty(clip.el, "currentSrc", { value: "blob:clip", configurable: true });
+      Object.defineProperty(clip.el, "readyState", { value: 0, writable: true });
+      Object.defineProperty(clip.el, "networkState", {
+        value: networkState,
+        writable: true,
+        configurable: true,
+      });
+      return clip;
+    }
+
+    it("reloads and reseeks an active element whose resource was evicted", () => {
+      const clip = evictedClip(1 /* NETWORK_IDLE */);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.load).toHaveBeenCalledTimes(1);
+      expect(clip.el.currentTime).toBe(7); // (5 - start) * rate + mediaStart
+    });
+
+    it("does not reload an element that is still fetching", () => {
+      const clip = evictedClip(2 /* NETWORK_LOADING */);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.load).not.toHaveBeenCalled();
+    });
+
+    it("rate-limits reloads so a broken source cannot reload-loop", () => {
+      const clip = evictedClip(1);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5.05, playing: true, playbackRate: 1 });
+      expect(clip.el.load).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("upcoming-clip readiness (boundary smoothness)", () => {
+    function setReadyState(el: HTMLMediaElement, value: number): void {
+      Object.defineProperty(el, "readyState", { value, writable: true, configurable: true });
+    }
+
+    function readyClip(overrides?: Partial<RuntimeMediaClip>): RuntimeMediaClip {
+      const clip = createMockClip(overrides);
+      setReadyState(clip.el, 4);
+      return clip;
+    }
+
+    function syncAt(
+      clip: RuntimeMediaClip,
+      timeSeconds: number,
+      extra?: { playing?: boolean; outputMuted?: boolean },
+    ): void {
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: extra?.playing ?? true,
+        playbackRate: 1,
+        outputMuted: extra?.outputMuted,
+      });
+    }
+
+    it("pre-seeks an upcoming clip to its media offset within the lookahead window", () => {
+      const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
+      clip.el.preload = "metadata";
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(30);
+      expect(clip.el.preload).toBe("auto");
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("leaves clips beyond the lookahead window untouched", () => {
+      const clip = readyClip({ start: 20, end: 30, mediaStart: 30 });
+      clip.el.currentTime = 3;
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(3);
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("pre-rolls a mutable upcoming video just before its boundary — playing, muted, not paused", () => {
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 30 });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).toHaveBeenCalled();
+      expect(clip.el.muted).toBe(true);
+      // Rolls in from mediaStart - lead so playback crosses the boundary at
+      // exactly mediaStart — activation then sees ~zero drift (no cold seek).
+      expect(clip.el.currentTime).toBeCloseTo(29.8, 5);
+      expect(clip.el.pause).not.toHaveBeenCalled();
+    });
+
+    it("never pre-rolls a video that would be audible — falls back to pre-seek", () => {
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 30 });
+      syncAt(clip, 5);
+      expect(clip.el.play).not.toHaveBeenCalled();
+      expect(clip.el.currentTime).toBe(30);
+    });
+
+    it("skips the pre-roll when the roll-in would cross media time 0", () => {
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 0.05 });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("skips the pre-roll when the roll-in point sits at/past the media end — play() would rewind to 0", () => {
+      // In-point beyond the source's real duration: the roll-in assignment
+      // clamps to the end, `ended` stays true, and play() would silently seek
+      // back to 0 — the hidden element then plays the source's HEAD and the
+      // boundary flip flashes it (the "frame 0 blink" at every cut of an
+      // over-extended clip). The element must stay parked and paused instead.
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 2.2 });
+      Object.defineProperty(clip.el, "duration", { value: 1.96, configurable: true });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).not.toHaveBeenCalled();
+      // Falls back to the pre-seek stage (assignment clamps in a real browser;
+      // the mock records the raw target — the point is the park, not the roll).
+      expect(clip.el.currentTime).toBe(2.2);
+    });
+
+    it("still pre-rolls when the roll-in lands before the media end", () => {
+      // Safe even on an element parked at the end (`ended`): the roll-in
+      // assignment moves currentTime off the end first, clearing the ended
+      // state before play() runs.
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 1.9 });
+      Object.defineProperty(clip.el, "duration", { value: 1.96, configurable: true });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).toHaveBeenCalled();
+      expect(clip.el.currentTime).toBeCloseTo(1.7, 5);
+    });
+
+    it("retries the pre-seek on a later tick when the first tick is below HAVE_METADATA", () => {
+      const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
+      setReadyState(clip.el, 0 /* HAVE_NOTHING */);
+
+      // Too early to seek: the browser drops a currentTime assignment with no
+      // metadata. The element must NOT be latched as pre-seeked here.
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(0);
+
+      setReadyState(clip.el, 1 /* HAVE_METADATA */);
+      syncAt(clip, 5.1);
+      expect(clip.el.currentTime).toBe(30);
+    });
+
+    it("pre-seeks an upcoming clip only once while it stays parked", () => {
+      const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(30);
+
+      // A user scrub of the underlying element must not be re-corrected every
+      // tick — the latch closed on the first successful seek.
+      clip.el.currentTime = 12;
+      syncAt(clip, 5.1);
+      expect(clip.el.currentTime).toBe(12);
+    });
+
+    it("paused transport leaves upcoming clips untouched", () => {
+      const clip = readyClip({ start: 6, end: 12, mediaStart: 30 });
+      syncAt(clip, 5, { playing: false });
+      expect(clip.el.currentTime).toBe(0);
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+  });
 });

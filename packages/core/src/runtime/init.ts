@@ -174,6 +174,9 @@ export function initSandboxRuntimeModular(): void {
   let webAudioReady = false;
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
+    // Warm the decoded-buffer cache as soon as the transport exists (decode
+    // works on a suspended AudioContext, so no user gesture is needed).
+    if (ok) predecodeAudioClipBuffers();
   });
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
@@ -854,6 +857,26 @@ export function initSandboxRuntimeModular(): void {
     return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
   };
 
+  /**
+   * The MACHINE-CALCULATED composition duration from
+   * `<html data-composition-duration>`, used as a playable-duration CEILING.
+   * Emitters that stamp this attribute (the generator, external compilers)
+   * compute it from the content schedule, so a GSAP master running longer —
+   * one scene component's 20s ambient background drift inside a 12s
+   * composition is enough — must not stretch playback into a blank tail past
+   * the calculated end. A composition HOST's `data-duration` is deliberately
+   * NOT a ceiling: hand/agent-authored documents often declare a stale value
+   * there, and playing the full timeline is the safer default (see the
+   * authored-duration floor above, and the "keeps the timeline duration"
+   * test).
+   */
+  const resolveCalculatedCompositionDurationCeilingSeconds = (): number | null => {
+    const declared = Number.parseFloat(
+      document.documentElement.getAttribute("data-composition-duration") ?? "",
+    );
+    return Number.isFinite(declared) && declared > 0 ? declared : null;
+  };
+
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
@@ -877,6 +900,16 @@ export function initSandboxRuntimeModular(): void {
       safeDuration = Math.max(durationFloor, fallbackDuration);
     } else {
       safeDuration = fallbackDuration;
+    }
+    // The machine-calculated document-level duration is a CEILING. The floor
+    // half already lives in resolveAuthoredCompositionDurationFloorSeconds (a
+    // GSAP timeline ending slightly short must not shrink the playable
+    // window); symmetrically, a timeline running LONGER than the calculated
+    // schedule must not extend playback past it into frames where every clip
+    // has ended.
+    const declaredCeiling = resolveCalculatedCompositionDurationCeilingSeconds();
+    if (isUsableTimelineDuration(declaredCeiling) && safeDuration > declaredCeiling) {
+      safeDuration = declaredCeiling;
     }
     return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
   };
@@ -1808,12 +1841,49 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  // Boundary-readiness telemetry: surface playback stalls (`waiting`/`stalled`
+  // on a timed media element while the transport plays) so cut-boundary tuning
+  // can target the right layer. Bounded per document to avoid diagnostic spam.
+  let mediaStallDiagnosticsPosted = 0;
+  const MAX_MEDIA_STALL_DIAGNOSTICS = 20;
+  const onMediaStallEvent = (event: Event) => {
+    const el = event.currentTarget;
+    if (!(el instanceof HTMLMediaElement)) return;
+    if (!state.isPlaying || state.tornDown) return;
+    if (mediaStallDiagnosticsPosted >= MAX_MEDIA_STALL_DIAGNOSTICS) return;
+    mediaStallDiagnosticsPosted += 1;
+    let bufferedEnd: number | null = null;
+    try {
+      bufferedEnd = el.buffered.length > 0 ? el.buffered.end(el.buffered.length - 1) : null;
+    } catch {
+      // buffered ranges unavailable
+    }
+    postRuntimeMessage({
+      source: "hf-preview",
+      type: "diagnostic",
+      code: "runtime_media_stall",
+      details: {
+        event: event.type,
+        tagName: el.tagName.toLowerCase(),
+        currentSrc: el.currentSrc || null,
+        readyState: el.readyState,
+        networkState: el.networkState,
+        mediaTime: el.currentTime,
+        bufferedEnd,
+        compositionTime: state.currentTime,
+        clipStart: Number.parseFloat(el.dataset.start ?? "") || null,
+      },
+    });
+  };
+
   const unbindMediaMetadataListeners = () => {
     for (const mediaEl of metadataBoundMedia) {
       mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
       mediaEl.removeEventListener("error", onMediaErrorForProxy);
+      mediaEl.removeEventListener("waiting", onMediaStallEvent);
+      mediaEl.removeEventListener("stalled", onMediaStallEvent);
     }
     metadataBoundMedia.clear();
   };
@@ -1821,6 +1891,19 @@ export function initSandboxRuntimeModular(): void {
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
+    // Segment-heavy compositions (editors emit one media element per cut) must
+    // not full-preload EVERYTHING at mount: dozens of parallel fetches contend
+    // for the connection pool and the EARLY segments buffer late. Above the
+    // threshold, far-future timed segments start metadata-only; the sync layer
+    // upgrades them to full preload as the playhead approaches (media.ts
+    // readiness stages set preload="auto" ~3s ahead).
+    const EAGER_PRELOAD_MAX_TIMED_MEDIA = 6;
+    const STAGED_PRELOAD_HORIZON_SECONDS = 10;
+    const timedMediaCount = mediaEls.reduce(
+      (count, el) => count + (el.hasAttribute("data-start") ? 1 : 0),
+      0,
+    );
+    const stagePreload = timedMediaCount > EAGER_PRELOAD_MAX_TIMED_MEDIA;
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;
       metadataBoundMedia.add(mediaEl);
@@ -1835,6 +1918,8 @@ export function initSandboxRuntimeModular(): void {
       // for <audio> — all guarded inside mediaProxy.ts itself.
       mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
       mediaEl.addEventListener("error", onMediaErrorForProxy);
+      mediaEl.addEventListener("waiting", onMediaStallEvent);
+      mediaEl.addEventListener("stalled", onMediaStallEvent);
 
       // Proactive proxy-fallback trigger: consult the codec map and swap
       // BEFORE the eager load() below, so a known-hostile asset never even
@@ -1845,8 +1930,12 @@ export function initSandboxRuntimeModular(): void {
       // Eagerly preload media data so audio/video is buffered before the user
       // clicks play. Without this, the first play() call fires on un-fetched
       // media, producing silence or choppy audio until the browser caches it.
-      if (mediaEl.preload !== "auto") {
-        mediaEl.preload = "auto";
+      // Exception: staged preload for far-future segments (see above).
+      const startAttr = Number.parseFloat(mediaEl.dataset.start ?? "");
+      const farFuture = Number.isFinite(startAttr) && startAttr > STAGED_PRELOAD_HORIZON_SECONDS;
+      const targetPreload = stagePreload && farFuture ? "metadata" : "auto";
+      if (mediaEl.preload !== targetPreload) {
+        mediaEl.preload = targetPreload;
       }
       if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
         mediaEl.load();
@@ -1858,6 +1947,53 @@ export function initSandboxRuntimeModular(): void {
       // the timeline is ready are re-probed the first time bindMediaMetadataListeners
       // fires after the timeline has been captured (every 30 transport ticks).
       probeAndCacheVolumeKeyframes(mediaEl);
+    }
+  };
+
+  // Decode-only warm pass over timed audio sources NEAR THE PLAYHEAD so
+  // WebAudio buffers are ready BEFORE the first play() instead of being decoded
+  // lazily inside it. The lazy path costs a full-file fetch+decodeAudioData per
+  // source at the moment the user hits play — on a freshly (re)loaded document
+  // (every editor edit reloads the preview iframe) that gap plays through the
+  // HTMLMedia fallback, heard as an audio dropout. Pre-decoding overlaps that
+  // work with document load.
+  //
+  // BOUNDED, not exhaustive: a source's fetch pulls the WHOLE file into memory
+  // and the decoded PCM is ~23MB per stereo minute — warming EVERY clip of a
+  // long multi-clip composition on EVERY document load multiplies to gigabytes
+  // (an editor with a standby iframe doubles it again). So each pass only warms
+  // clips whose window is near the current time; the periodic re-run (every 30
+  // transport ticks) slides the window as the playhead moves, and play() still
+  // decodes whatever it needs exactly as before. `decodeAudioElement` dedupes
+  // via its buffer cache and failure blacklist, so repeated calls per element
+  // are cheap map hits.
+  //
+  // Skipped during render capture (the producer mixes audio with ffmpeg) and
+  // when the embedder set `__HF_AUDIO_PREDECODE_DISABLED` — the opt-out for
+  // documents that exist but are never played (e.g. a double-buffered editor
+  // preview's hidden standby iframe).
+  const PREDECODE_BEHIND_SECONDS = 10;
+  const PREDECODE_AHEAD_SECONDS = 45;
+  const predecodeAudioClipBuffers = () => {
+    if (state.tornDown || !webAudioReady) return;
+    if (state.nativeMediaSyncDisabled || state.webAudioMediaDisabled) return;
+    const w = window as Window & {
+      __HF_RENDER_CAPTURE_MODE?: boolean;
+      __HF_AUDIO_PREDECODE_DISABLED?: boolean;
+    };
+    if (w.__HF_RENDER_CAPTURE_MODE || w.__HF_AUDIO_PREDECODE_DISABLED) return;
+    const now = Math.max(0, state.currentTime || 0);
+    const windowStart = now - PREDECODE_BEHIND_SECONDS;
+    const windowEnd = now + PREDECODE_AHEAD_SECONDS;
+    const audioEls = document.querySelectorAll("audio[data-start]");
+    for (const el of audioEls) {
+      if (!(el instanceof HTMLMediaElement) || !el.isConnected) continue;
+      const start = Number.parseFloat(el.dataset.start ?? "");
+      if (!Number.isFinite(start)) continue;
+      const durAttr = Number.parseFloat(el.dataset.duration ?? "");
+      const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+      if (end < windowStart || start > windowEnd) continue;
+      void webAudio.decodeAudioElement(el);
     }
   };
 
@@ -2889,6 +3025,9 @@ export function initSandboxRuntimeModular(): void {
       }
       if (transportTickCount % 30 === 0) {
         bindMediaMetadataListeners();
+        // Also warm decode for audio elements discovered after mount (loaded
+        // sub-compositions) or bound before the async WebAudio init resolved.
+        predecodeAudioClipBuffers();
       }
 
       // Sync clock duration with the resolved timeline each tick (catches async
@@ -2940,6 +3079,15 @@ export function initSandboxRuntimeModular(): void {
               break;
             }
           }
+          // NOTE: an earlier revision also froze the clock here while an ACTIVE
+          // video was buffering (mirroring the audio-buffering freeze above).
+          // That proved hazardous: when the browser silently EVICTS a media
+          // element's resource under memory pressure (readyState collapses to
+          // HAVE_NOTHING with no error and, without recovery, never rises
+          // again), the frozen clock never released — a permanent playback
+          // hang, worse than the transient video lag it was smoothing. Video
+          // stalls now surface via the runtime_media_stall diagnostics and the
+          // eviction-recovery reload in syncRuntimeMedia instead.
           if (!foundActive && clock.hasAudioSource()) {
             clock.detachAudioSource();
           }
@@ -3254,6 +3402,7 @@ export function initSandboxRuntimeModular(): void {
       window.removeEventListener("beforeunload", state.beforeUnloadHandler);
       state.beforeUnloadHandler = null;
     }
+    window.removeEventListener("pagehide", handlePageHide);
     picker.disablePickMode();
     for (const adapter of state.deterministicAdapters) {
       if (!adapter || typeof adapter.revert !== "function") continue;
@@ -3305,7 +3454,27 @@ export function initSandboxRuntimeModular(): void {
       window.__hfRuntimeTeardown = null;
     }
   };
+  // `pagehide` too: in an iframe whose document is replaced (an editor writing
+  // a new `srcdoc` on every edit), pagehide is the dependable unload signal.
+  // Without a teardown there, each discarded document keeps a live
+  // AudioContext + decoded-buffer cache until GC gets around to it — under
+  // rapid edits that transiently stacks hundreds of MB of PCM per reload.
+  // teardown() is idempotent (state.tornDown), so double-firing with
+  // beforeunload is harmless.
+  //
+  // But `pagehide` ALSO fires with `persisted: true` when the document enters
+  // the back-forward cache, and that is not a death — the very same document is
+  // restored by `pageshow` with no re-initialization. Tearing down there would
+  // leave the restored player permanently inert (tornDown latched, listeners and
+  // injected styles gone, AudioContext closed) with nothing to bring it back. A
+  // BFCached document is frozen by the browser, which suspends its AudioContext
+  // and media for us, so skipping teardown costs nothing while it sits there.
+  const handlePageHide = (event: PageTransitionEvent) => {
+    if (event.persisted) return;
+    teardown();
+  };
   window.__hfRuntimeTeardown = teardown;
   state.beforeUnloadHandler = teardown;
   window.addEventListener("beforeunload", state.beforeUnloadHandler);
+  window.addEventListener("pagehide", handlePageHide);
 }

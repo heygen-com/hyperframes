@@ -161,6 +161,97 @@ function isUnplayable(el: HTMLMediaElement): boolean {
 
 const lastRuntimeAppliedVolume = new WeakMap<HTMLMediaElement, number>();
 
+// ── Upcoming-clip readiness (boundary smoothness) ───────────────────────────
+// A clip whose window starts soon is prepared BEFORE it activates, so the
+// boundary doesn't pay a cold seek (decoder reset ≈ ~150ms freeze) or an
+// unbuffered play. Two stages:
+//
+//  1. Pre-seek (UPCOMING_PRESEEK_WINDOW_SECONDS ahead): park el.currentTime at
+//     the clip's media offset so the browser buffers the RIGHT region of the
+//     source. Eager mount-time preload buffers from offset 0 — useless for a
+//     segment trimmed to start at, say, 63s.
+//
+//  2. Pre-roll (PREROLL_WINDOW_SECONDS ahead, muted VIDEO only): start playing
+//     from (mediaStart - lead·rate) while the element is still hidden by the
+//     visibility sync, so its decoder is already running when the window
+//     opens. Activation's first tick then sees near-zero drift → no hard seek,
+//     and the element is already playing → no play() latency. The boundary
+//     becomes a pure visibility flip. Only entered when the element is (or
+//     must be) muted, so the pre-roll can never leak audio.
+const UPCOMING_PRESEEK_WINDOW_SECONDS = 3;
+const PREROLL_WINDOW_SECONDS = 0.35;
+const upcomingPreseeked = new WeakSet<HTMLMediaElement>();
+const prerolling = new WeakSet<HTMLMediaElement>();
+
+// Park an upcoming element at its media offset so the browser buffers the right
+// region of the source. Latched per element to keep repeated readiness ticks
+// from re-issuing the same seek — but the latch closes ONLY once the element is
+// verifiably parked. Below HAVE_METADATA a `currentTime` assignment is dropped
+// by the browser (and can throw), so latching there would burn the element's one
+// chance: every later tick would short-circuit on set membership and the clip
+// would still reach its boundary at the wrong offset, paying the cold seek this
+// whole path exists to avoid. Instead we leave it unlatched and retry on the
+// next tick, once metadata has arrived.
+// HTMLMediaElement.play() on media sitting at its end seeks back to the
+// beginning before playing. A segment whose roll-in point lies at/past the end
+// of its source can't escape that state: the `currentTime` assignment below
+// CLAMPS to `duration`, `ended` stays true, and play() silently rewinds — the
+// hidden element then plays the source's HEAD, and the boundary flip flashes
+// it while the activation seek recovers (a visible "frame 0" blink at every
+// cut of a clip whose in-point outlives its media). Parked at the end IS that
+// element's best readiness: skip the roll and let the active tick hold the
+// last frame. (A roll-in BEFORE the end is safe even on an `ended` element —
+// the assignment clears the ended state before play() runs.)
+function prerollWouldRewind(el: HTMLMediaElement, prerollFrom: number): boolean {
+  const dur = el.duration;
+  return Number.isFinite(dur) && dur > 0 && prerollFrom >= dur - 0.05;
+}
+
+function preseekUpcoming(el: HTMLMediaElement, mediaStart: number): void {
+  if (upcomingPreseeked.has(el)) return;
+  if (el.readyState < HTMLMediaElement.HAVE_METADATA) return;
+  if (Math.abs(el.currentTime - mediaStart) <= 0.25) {
+    upcomingPreseeked.add(el); // already parked — nothing to seek
+    return;
+  }
+  try {
+    el.currentTime = mediaStart;
+    upcomingPreseeked.add(el);
+  } catch (err) {
+    swallow("runtime.media.preseek", err);
+  }
+}
+
+// ── Silent-eviction recovery ────────────────────────────────────────────────
+// Under memory pressure the browser can EVICT a media element's resource with
+// no error and no event: readyState collapses to HAVE_NOTHING, videoWidth
+// drops to 0, and the element never recovers on its own — an active clip goes
+// (and stays) blank. The only way back is an explicit load() + reseek. Guarded
+// to elements that are NOT currently fetching (a load() would abort an
+// in-flight fetch and restart it from zero — the exact bug the play() path
+// comment below describes) and rate-limited per element so a genuinely broken
+// source doesn't reload-loop.
+const EVICTION_RELOAD_MIN_INTERVAL_MS = 4000;
+const lastEvictionReloadAt = new WeakMap<HTMLMediaElement, number>();
+
+function recoverEvictedElement(el: HTMLMediaElement, relTime: number): void {
+  if (el.readyState !== HTMLMediaElement.HAVE_NOTHING) return;
+  if (!el.currentSrc || isUnplayable(el)) return;
+  const NETWORK_LOADING = 2;
+  if (el.networkState === NETWORK_LOADING) return; // still fetching — not evicted
+  const now = Date.now();
+  if (now - (lastEvictionReloadAt.get(el) ?? 0) < EVICTION_RELOAD_MIN_INTERVAL_MS) return;
+  lastEvictionReloadAt.set(el, now);
+  el.load();
+  try {
+    el.currentTime = relTime;
+  } catch (err) {
+    swallow("runtime.media.evictionReload", err);
+  }
+  // Let the normal play-path re-issue play() for the fresh resource.
+  playRequested.delete(el);
+}
+
 function clampVolume(volume: number): number {
   if (!Number.isFinite(volume)) return 1;
   return Math.max(0, Math.min(1, volume));
@@ -257,6 +348,9 @@ export function syncRuntimeMedia(params: {
       relTime >= 0 &&
       (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedVideoBackward);
     if (isActive) {
+      // A fresh activation ends any readiness stage for this element.
+      upcomingPreseeked.delete(el);
+      prerolling.delete(el);
       // Loop wrapping: when media reaches end, restart from mediaStart
       if (clip.loop && clip.sourceDuration != null && clip.sourceDuration > 0) {
         const loopLength = clip.sourceDuration - clip.mediaStart;
@@ -308,6 +402,9 @@ export function syncRuntimeMedia(params: {
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
       if (el.preload !== "auto") el.preload = "auto";
+      // Bring a silently-evicted resource back before any drift math runs on
+      // a dead element (see recoverEvictedElement).
+      recoverEvictedElement(el, relTime);
       try {
         // Per-element rate × global transport rate
         el.playbackRate = clip.playbackRate * params.playbackRate;
@@ -445,6 +542,57 @@ export function syncRuntimeMedia(params: {
       }
       continue;
     }
+    // Inactive but starting soon while the transport plays: run the readiness
+    // stages (see the constants above) instead of the plain evict+pause.
+    const leadSeconds = clip.start - params.timeSeconds;
+    if (
+      params.playing &&
+      leadSeconds > 0 &&
+      leadSeconds <= UPCOMING_PRESEEK_WINDOW_SECONDS &&
+      !isUnplayable(el)
+    ) {
+      if (el.preload !== "auto") el.preload = "auto";
+      const rate = clip.playbackRate * params.playbackRate;
+      // Pre-roll only when the element is already muted or the tick would mute
+      // it anyway (transport-owned output / user mute) — audio can never leak.
+      const mutedThroughPreroll = forceMuteAll || !!params.outputMuted || el.muted;
+      const prerollFrom = clip.mediaStart - leadSeconds * rate;
+      if (
+        el.tagName === "VIDEO" &&
+        mutedThroughPreroll &&
+        leadSeconds <= PREROLL_WINDOW_SECONDS &&
+        prerollFrom >= 0 &&
+        !prerollWouldRewind(el, prerollFrom)
+      ) {
+        if (!prerolling.has(el)) {
+          prerolling.add(el);
+          el.muted = true;
+          try {
+            el.playbackRate = rate;
+            el.currentTime = prerollFrom;
+          } catch (err) {
+            swallow("runtime.media.preroll", err);
+          }
+          if (el.paused && !playRequested.has(el)) {
+            markPlayRequested(el);
+            void el.play().catch(() => {
+              // Muted playback is allowed by every autoplay policy; a rejection
+              // here is transient (element mid-load) — clear the in-flight flag
+              // so a later tick can retry, and let the activation-path play()
+              // remain the authority for surfacing real failures.
+              playRequested.delete(el);
+            });
+          }
+        }
+        continue; // never pause a pre-rolling element
+      }
+      prerolling.delete(el);
+      preseekUpcoming(el, clip.mediaStart);
+      if (!el.paused) el.pause();
+      continue;
+    }
+    prerolling.delete(el);
+    upcomingPreseeked.delete(el);
     // Clip left its active window — drop the offset baseline so the next
     // activation (e.g. re-entering a sub-composition) gets a hard resync.
     evictMediaSyncState(el);
