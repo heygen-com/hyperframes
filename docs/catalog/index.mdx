@@ -3,57 +3,67 @@ title: "Catalog"
 description: "Browse reusable HyperFrames scenes, transitions, captions, overlays, effects, and components."
 ---
 
-The Catalog is a library of visuals you can add to a project instead of building each one from scratch.
+import { CatalogOverviewPlayer } from "/snippets/catalog-overview-player.jsx"
 
-Use a **block** when you want a larger scene or self-contained visual. Use a **component** when you want a smaller effect or behavior inside an existing scene.
+The Catalog gives you reusable visuals you can add to a project instead of building each one from scratch.
 
-## Start with the job
+<CatalogOverviewPlayer title="A fast tour of every HyperFrames Catalog section">
+
+```html catalog-overview-v3.html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #05070b;
+      }
+      hyperframes-player {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"></script>
+  </head>
+  <body>
+    <script type="module">
+      const item = await fetch("/public/catalog/blocks/ai-chat-reveal.json").then((response) =>
+        response.json(),
+      );
+      const player = document.createElement("hyperframes-player");
+      player.setAttribute("srcdoc", item.html);
+      player.setAttribute("controls", "");
+      player.setAttribute("autoplay", "");
+      player.setAttribute("muted", "");
+      player.setAttribute("loop", "");
+      document.body.appendChild(player);
+    </script>
+  </body>
+</html>
+```
+
+</CatalogOverviewPlayer>
 
 <CardGroup cols={2}>
-  <Card title="Code animations" icon="code" href="/catalog/blocks/code-typing">
-    Show code being typed, changed, highlighted, scrolled, or transformed.
+  <Card title="Blocks" icon="objects-column" href="/catalog/blocks/app-showcase">
+    Start with a larger scene or self-contained visual.
   </Card>
-  <Card title="Captions" icon="closed-captioning" href="/catalog/components/caption-highlight">
-    Keep speech readable or emphasize selected words without designing a caption system from zero.
-  </Card>
-  <Card title="Transitions" icon="arrows-left-right" href="/catalog/blocks/cinematic-zoom">
-    Move between scenes with a quiet cut treatment or a more expressive transition.
-  </Card>
-  <Card title="Social overlays" icon="share-nodes" href="/catalog/blocks/x-post">
-    Show posts, follow prompts, notifications, names, roles, and platform-inspired cards.
-  </Card>
-  <Card title="Data and diagrams" icon="chart-column" href="/catalog/blocks/data-chart">
-    Explain a number, comparison, trend, location, or geographic movement.
-  </Card>
-  <Card title="Complete scenes" icon="play" href="/catalog/blocks/app-showcase">
-    Start from a larger scene that already combines design, media, and animation.
+  <Card title="Components" icon="puzzle-piece" href="/catalog/components/caption-kinetic-slam">
+    Add a smaller effect or behavior inside an existing scene.
   </Card>
 </CardGroup>
 
-## Use an item in a real project
+## Use an item
 
 1. Open an item and watch the motion preview.
-2. Check that its communication job matches the scene.
-3. Copy the plain-language request from the item page into your agent chat.
-4. Replace the example content with real project content.
-5. Match the project's type, color, spacing, and motion language.
-6. Review the item inside the complete video, not only in isolation.
+2. Copy its plain-language request into your agent chat.
+3. Replace the example content, then review it inside your complete video.
 
-The terminal command and source details remain available on each item page for people who need them.
-
-## Before you keep it
-
-<Note>
-  A Catalog item is a starting point, not a finished design decision. Keep it only when it makes the scene clearer or faster to understand. Remove decorative motion that competes with the story.
-</Note>
-
-Check:
-
-- Can the viewer understand why the visual is present?
-- Is the real content readable at the final size?
-- Does its timing fit the scenes around it?
-- Does it feel like part of this project rather than a pasted demo?
-- Is a quieter alternative more effective?
+The tour covers Code Animations, Captions, HTML-in-Canvas, Social Overlays, Lower Thirds, Shader Transitions, CSS Transitions, Showcases, Data, Effects, and Blocks.
 
 ## Related topics
 
