@@ -217,6 +217,37 @@ describe("media rules", () => {
     expect(finding?.severity).toBe("error");
   });
 
+  it("accepts <source src> children in place of parent src", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="rec" data-start="0" data-duration="4" muted playsinline>
+      <source src="clip.mp4" type="video/mp4">
+      <source src="clip.webm" type="video/webm">
+    </video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.some((f) => f.code === "media_missing_src")).toBe(false);
+  });
+
+  it("reports error for <source>-only media with no data-start", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="rec" muted playsinline>
+      <source src="clip.mp4" type="video/mp4">
+    </video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_missing_data_start");
+    expect(finding).toBeDefined();
+    expect(finding?.elementId).toBe("rec");
+  });
+
   it("reports error for media with src but no data-start", async () => {
     const html = `
 <html><body>
