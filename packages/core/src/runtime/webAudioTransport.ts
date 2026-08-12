@@ -1,5 +1,10 @@
-import { attachElementFxChain, type ElementFxHandle } from "./audioFx.js";
-import type { AutomationTiming } from "../audio/audioFxAutomation.js";
+import { attachElementFxChain, readElementAutomation, type ElementFxHandle } from "./audioFx.js";
+import {
+  scheduleParamLane,
+  volumeLane,
+  type AutomationTiming,
+} from "../audio/audioFxAutomation.js";
+import { VOLUME_RANGE } from "../audioAutomation.js";
 import { swallow } from "./diagnostics";
 import { getDebugSurface } from "./globals.js";
 
@@ -56,6 +61,20 @@ function startBoundedSource(
   if (hasBound) node.start(scheduledAt + delay, mediaStart, clipSourceLen);
   else node.start(scheduledAt + delay, mediaStart);
   return true;
+}
+
+/**
+ * The volume lane rides the fader, after the effects — where a DAW puts it,
+ * and the order the render bakes it in.
+ */
+function scheduleVolumeLane(
+  el: HTMLMediaElement,
+  gainNode: GainNode,
+  timing: AutomationTiming,
+): void {
+  const lane = volumeLane(readElementAutomation(el));
+  if (!lane) return;
+  scheduleParamLane([{ param: gainNode.gain }], lane, VOLUME_RANGE.scale, timing);
 }
 
 export type ScheduledSource = {
@@ -199,6 +218,8 @@ export class WebAudioTransport {
       // the identical graph builders, so what is heard here is what is written.
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
       gainNode.connect(this._masterGain);
+
+      scheduleVolumeLane(el, gainNode, timing);
 
       this._rate = safeRate;
       this._rateAnchorCtx = scheduledAt;
