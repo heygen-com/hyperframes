@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "swipe-rail",
+  "type": "hyperframes:component",
+  "title": "Swipe Rail",
+  "description": "A contact circle leads a horizontal card rail through a fast drag, momentum carry, and settled snap to the next card.",
+  "tags": ["motion-primitive", "interaction", "gesture", "swipe", "cards", "rail"],
+  "jobs": ["demonstrate"],
+  "family": "interaction",
+  "profile": "gesture",
+  "evidence": "Video Primitives v1 Wave F U2 swipe-rail contract",
+  "files": [
+    {
+      "path": "swipe-rail.html",
+      "target": "compositions/components/swipe-rail.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "card_count",
+      "type": "number",
+      "role": "content",
+      "label": "Card count",
+      "description": "Number of cards rendered in the rail.",
+      "default": 4,
+      "min": 3,
+      "max": 5,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Active color used by the focused card and contact circle.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "card_label_prefix",
+      "type": "string",
+      "role": "content",
+      "label": "Card label prefix",
+      "description": "Text placed before each card number.",
+      "default": "Feature"
+    }
+  ]
+}

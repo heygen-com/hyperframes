@@ -1,0 +1,73 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "message-thread-reveal",
+  "type": "hyperframes:block",
+  "title": "Message Thread Reveal",
+  "description": "A full text conversation plays out on a phone - bubbles popping in, typing indicators, a shared link card, emoji, delivered receipts - with the whole thread scrolling up beat by beat until a closing card lands. The complete chat ad-template, measured message by message",
+  "tags": ["showcase", "mock-ui", "chat", "vertical", "ad-template"],
+  "author": "Miao Yang",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 25.7667,
+  "variables": [
+    {
+      "id": "contactName",
+      "type": "string",
+      "role": "content",
+      "label": "Contact name",
+      "description": "Name pill in the chat header; the avatar shows its first letter.",
+      "default": "Rachel"
+    },
+    {
+      "id": "cardTitle",
+      "type": "string",
+      "role": "content",
+      "label": "Link card title",
+      "description": "Title on the shared link card.",
+      "default": "HyperFrames | Write HTML, render pixel-perfect video"
+    },
+    {
+      "id": "cardDomain",
+      "type": "string",
+      "role": "content",
+      "label": "Link card domain",
+      "description": "Domain line under the card title.",
+      "default": "hyperframes.heygen.com"
+    },
+    {
+      "id": "ecProof",
+      "type": "string",
+      "role": "content",
+      "label": "End-card proof",
+      "description": "Social-proof line under the stars.",
+      "default": "12,000+ creators"
+    },
+    {
+      "id": "ecCta",
+      "type": "string",
+      "role": "content",
+      "label": "End-card CTA",
+      "description": "Label on the closing card button.",
+      "default": "Start rendering free"
+    }
+  ],
+  "files": [
+    {
+      "path": "message-thread-reveal.html",
+      "target": "compositions/message-thread-reveal.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/card-image.jpg",
+      "target": "assets/card-image.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/hyperframes-logo-black.svg",
+      "target": "assets/hyperframes-logo-black.svg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

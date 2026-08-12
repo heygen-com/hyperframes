@@ -10,6 +10,7 @@ import {
 import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
+import { safeLocalStorage } from "../../utils/safeStorage";
 import { BlocksTab, type BlockPreviewInfo } from "./BlocksTab";
 import { FileTree } from "../editor/FileTree";
 import { Tooltip } from "../ui";
@@ -23,8 +24,18 @@ export interface LeftSidebarHandle {
 
 const STORAGE_KEY = "hf-studio-sidebar-tab";
 
-function getPersistedTab(): SidebarTab {
-  const stored = localStorage.getItem(STORAGE_KEY);
+// Both the `localStorage` reference and `getItem` itself can throw when the
+// browsing context is partitioned or site data is blocked — the same case
+// telemetry/config.ts documents. This runs as a `useState` initializer, so an
+// unguarded throw here takes the whole editor to the crash boundary rather
+// than losing one remembered tab.
+export function getPersistedTab(): SidebarTab {
+  let stored: string | null = null;
+  try {
+    stored = safeLocalStorage()?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    /* storage unavailable — fall back to the default tab */
+  }
   if (stored === "assets") return "assets";
   if (stored === "code") return "code";
   if (stored === "blocks") return "blocks";
@@ -104,7 +115,11 @@ export const LeftSidebar = memo(
 
     const selectTab = useCallback((t: SidebarTab) => {
       setTab(t);
-      localStorage.setItem(STORAGE_KEY, t);
+      try {
+        safeLocalStorage()?.setItem(STORAGE_KEY, t);
+      } catch {
+        /* storage unavailable — the tab just won't be remembered */
+      }
       trackStudioEvent("tab_switch", { panel: "left_sidebar", tab: t });
     }, []);
 

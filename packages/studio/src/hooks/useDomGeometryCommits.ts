@@ -4,6 +4,12 @@ import {
   applyStudioPathOffset,
   applyStudioBoxSize,
   applyStudioRotation,
+  captureStudioPathOffset,
+  captureStudioBoxSize,
+  captureStudioRotation,
+  restoreStudioPathOffset,
+  restoreStudioBoxSize,
+  restoreStudioRotation,
   clearStudioPathOffset,
   clearStudioBoxSize,
   clearStudioRotation,
@@ -51,10 +57,14 @@ export function useDomGeometryCommits({
         showToast(error.message, "error");
         return Promise.reject(error);
       }
+      const before = captureStudioPathOffset(selection.element);
       applyStudioPathOffset(selection.element, next);
       return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
         label: "Move layer",
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
+      }).catch((error) => {
+        restoreStudioPathOffset(selection.element, before);
+        throw error;
       });
     },
     [commitPositionPatchToHtml, previewIframeRef, showToast],
@@ -71,6 +81,8 @@ export function useDomGeometryCommits({
         showToast(error.message, "error");
         return Promise.reject(error);
       }
+      const beforeSize = captureStudioBoxSize(selection.element);
+      const beforeOffset = offset ? captureStudioPathOffset(selection.element) : null;
       applyStudioBoxSize(selection.element, next);
       // Anchored-corner resize (NW/NE/SW) also moves the element to keep the
       // opposite corner fixed. Apply the offset and emit BOTH patch sets in a
@@ -86,6 +98,10 @@ export function useDomGeometryCommits({
       return commitPositionPatchToHtml(selection, patches, {
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+      }).catch((error) => {
+        restoreStudioBoxSize(selection.element, beforeSize);
+        if (beforeOffset) restoreStudioPathOffset(selection.element, beforeOffset);
+        throw error;
       });
     },
     [commitPositionPatchToHtml, previewIframeRef, showToast],
@@ -98,10 +114,14 @@ export function useDomGeometryCommits({
         showToast(error.message, "error");
         return Promise.reject(error);
       }
+      const before = captureStudioRotation(selection.element);
       applyStudioRotation(selection.element, next);
       return commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
         label: "Rotate layer",
         coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
+      }).catch((error) => {
+        restoreStudioRotation(selection.element, before);
+        throw error;
       });
     },
     [commitPositionPatchToHtml, previewIframeRef, showToast],

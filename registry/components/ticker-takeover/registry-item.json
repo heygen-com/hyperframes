@@ -1,0 +1,50 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ticker-takeover",
+  "type": "hyperframes:component",
+  "title": "Ticker Takeover",
+  "description": "A mono ticker rolls through options, locks on a final word with an accent flash, and promotes it into a full-frame headline.",
+  "tags": ["motion-primitive", "typography", "ticker", "slot-machine", "headline", "reveal"],
+  "jobs": ["reveal"],
+  "family": "typography",
+  "profile": "kinetic",
+  "evidence": "Wave F U7 ticker-takeover specification",
+  "files": [
+    {
+      "path": "ticker-takeover.html",
+      "target": "compositions/components/ticker-takeover.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "options",
+      "type": "string",
+      "role": "content",
+      "label": "Options",
+      "description": "Comma-separated words shown by the ticker.",
+      "default": "faster,smarter,together,everywhere"
+    },
+    {
+      "id": "final_word",
+      "type": "string",
+      "role": "content",
+      "label": "Final word",
+      "description": "Word the ticker locks on and promotes.",
+      "default": "together"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used for the lock flash and promoted word.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

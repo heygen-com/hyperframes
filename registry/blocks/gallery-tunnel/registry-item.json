@@ -1,0 +1,184 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gallery-tunnel",
+  "type": "hyperframes:block",
+  "title": "Gallery Tunnel",
+  "description": "An infinite corridor of panels: a square tunnel receding to a vanishing point, its floor, ceiling and walls tiled with saturated colour slabs and caller-supplied images that swell toward camera and exit past you, the far end dissolving into fog.",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 12,
+  "tags": ["webgl", "3d", "background", "showcase", "depth", "loop"],
+  "variables": [
+    {
+      "id": "images",
+      "type": "string",
+      "label": "Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png)",
+      "default": "",
+      "placeholder": "assets/shot-1.png,assets/shot-2.png"
+    },
+    {
+      "id": "imageMix",
+      "type": "number",
+      "label": "Image share of filled slots (0 = all colour, 1 = all images)",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "speed",
+      "type": "number",
+      "label": "Flight speed",
+      "default": 3,
+      "min": 0,
+      "max": 8,
+      "step": 0.1,
+      "unit": "segments/s"
+    },
+    {
+      "id": "palette",
+      "type": "string",
+      "label": "Slab palette: comma-separated hex colours",
+      "default": "#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200"
+    },
+    {
+      "id": "grid",
+      "type": "number",
+      "label": "Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment)",
+      "default": 2,
+      "min": 1,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "fill",
+      "type": "number",
+      "label": "Slot fill rate",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "fog",
+      "type": "number",
+      "label": "Fog distance: depth at which the corridor reaches pure backdrop",
+      "default": 14.25,
+      "min": 3,
+      "max": 14.5,
+      "step": 0.25,
+      "unit": "segments"
+    },
+    {
+      "id": "edgeColor",
+      "type": "color",
+      "label": "Edge line colour",
+      "default": "#B0B0B0"
+    },
+    {
+      "id": "edgeOpacity",
+      "type": "number",
+      "label": "Edge line opacity",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "id": "backdrop",
+      "type": "color",
+      "label": "Backdrop and fog colour",
+      "default": "#000000"
+    }
+  ],
+  "files": [
+    {
+      "path": "gallery-tunnel.html",
+      "target": "compositions/gallery-tunnel.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "params": [
+    {
+      "key": "--images",
+      "label": "Image slots: comma-separated paths, tiled into the panels (e.g. assets/shot-1.png,assets/shot-2.png)",
+      "type": "text",
+      "default": ""
+    },
+    {
+      "key": "--imagemix",
+      "label": "Image share of filled slots (0 = all colour, 1 = all images)",
+      "type": "number",
+      "default": "0.5",
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "--speed",
+      "label": "Flight speed (segments per second)",
+      "type": "number",
+      "default": "3",
+      "min": 0,
+      "max": 8,
+      "step": 0.1
+    },
+    {
+      "key": "--palette",
+      "label": "Slab palette: comma-separated hex colours",
+      "type": "text",
+      "default": "#FF6A00,#AB54F7,#EA3737,#0072E3,#00AA3C,#FFB200"
+    },
+    {
+      "key": "--grid",
+      "label": "Grid density: slots per wall face per axis (2 = 4 per face, 16 per segment)",
+      "type": "number",
+      "default": "2",
+      "min": 1,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "key": "--fill",
+      "label": "Slot fill rate",
+      "type": "number",
+      "default": "0.5",
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "--fog",
+      "label": "Fog distance in segments: depth at which the corridor reaches pure backdrop",
+      "type": "number",
+      "default": "14.25",
+      "min": 3,
+      "max": 14.5,
+      "step": 0.25
+    },
+    {
+      "key": "--edgecolor",
+      "label": "Edge line colour",
+      "type": "color",
+      "default": "#B0B0B0"
+    },
+    {
+      "key": "--edgeopacity",
+      "label": "Edge line opacity",
+      "type": "number",
+      "default": "0.5",
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "--backdrop",
+      "label": "Backdrop and fog colour",
+      "type": "color",
+      "default": "#000000"
+    }
+  ]
+}

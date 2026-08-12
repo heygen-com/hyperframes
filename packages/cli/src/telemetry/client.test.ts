@@ -10,6 +10,8 @@ vi.stubEnv("DO_NOT_TRACK", "");
 vi.mock("./config.js", () => ({
   readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
   writeConfig: () => {},
+  getIdentityPersistence: () => "durable",
+  getIdentityWriteOutcome: () => undefined,
 }));
 
 // shouldTrack() short-circuits in dev mode — force production behavior.

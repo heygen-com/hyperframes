@@ -185,6 +185,7 @@ function main() {
             "format=duration",
             "-of",
             "default=nokey=1:noprint_wrappers=1",
+            "--",
             fp,
           ],
           { encoding: "utf8" },

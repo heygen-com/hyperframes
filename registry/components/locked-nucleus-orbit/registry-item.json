@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "locked-nucleus-orbit",
+  "type": "hyperframes:component",
+  "title": "Locked Nucleus Orbit",
+  "description": "A fixed center nucleus anchors deterministic satellite orbits that settle into a composed lockup.",
+  "tags": ["motion-primitive", "intro", "reveal", "orbit", "lockup", "deterministic"],
+  "jobs": ["reveal"],
+  "family": "effects",
+  "profile": "orbit",
+  "evidence": "Wave H U31 locked-nucleus-orbit, inspired by fixed-center orbital lockups",
+  "files": [
+    {
+      "path": "locked-nucleus-orbit.html",
+      "target": "compositions/components/locked-nucleus-orbit.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Nucleus label",
+      "description": "Text displayed inside the fixed center nucleus.",
+      "default": "core"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the nucleus, rings, and satellite markers.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "satellites",
+      "type": "number",
+      "role": "layout",
+      "label": "Satellites",
+      "description": "Number of orbiting copy chips.",
+      "default": 4,
+      "min": 3,
+      "max": 6,
+      "step": 1
+    }
+  ]
+}

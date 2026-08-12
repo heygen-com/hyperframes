@@ -53,6 +53,7 @@ export {
   scaleProtocolTimeoutForComposition,
   shouldClampToScreenshotForConcreteGpu,
   applyConcreteGpuScreenshotClamp,
+  explainDrawElementDisabled,
   resolveExtractCacheDir,
   defaultExtractCacheDir,
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
@@ -120,6 +121,7 @@ export {
   getCapturePerfSummary,
   percentileOf,
   prepareCaptureSessionForReuse,
+  deriveBeginFrameProbeTimeTicks,
   type CaptureSession,
   isTransientBrowserError,
   isMemoryExhaustionError,
@@ -211,7 +213,11 @@ export {
 
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
-export { parseAudioElements, processCompositionAudio } from "./services/audioMixer.js";
+export {
+  MIXED_AUDIO_FILENAME,
+  parseAudioElements,
+  processCompositionAudio,
+} from "./services/audioMixer.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";
 export type {
   AudioElement,
@@ -273,7 +279,26 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
-export { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
+export {
+  NOT_MEDIA_PAYLOAD,
+  NotMediaPayloadError,
+  assertMediaPayload,
+  fingerprintElementId,
+  isNotMediaPayload,
+} from "./utils/notMediaPayload.js";
+
+export {
+  assertPublicHttpsUrl,
+  downloadToTemp,
+  fetchPublicHttpsText,
+  isHttpUrl,
+  safeDownloadUrlIdentity,
+  writeUrlDownloadTelemetry,
+  type SafeDownloadUrlIdentity,
+  type UrlDownloadOptions,
+  type UrlDownloadTelemetry,
+  type PublicHttpsTextOptions,
+} from "./utils/urlDownloader.js";
 export {
   runFfmpeg,
   formatFfmpegError,

@@ -119,6 +119,7 @@ function probeMetadata(outputPath: string): PlanParityStreamMetadata {
     ].join(":"),
     "-of",
     "json",
+    "--",
     outputPath,
   ]);
   return normalizeFfprobeMetadata(JSON.parse(bytes.toString("utf-8")) as unknown);

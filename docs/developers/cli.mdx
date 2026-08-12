@@ -36,18 +36,13 @@ remains authoritative: run `npx hyperframes <command> --help`.
 | Add a Catalog item | `npx hyperframes add <name>` |
 | List compositions | `npx hyperframes compositions` |
 | Inspect keyframe behavior | `npx hyperframes keyframes` |
-| Compare outputs | `npx hyperframes compare` |
+| Compare two or more versions | `npx hyperframes compare v1/ v2/` |
 
 ## Rendering and automation
 
-The CLI also supports:
-
-- batch and variable-driven output;
-- image sequences and several video formats;
-- managed cloud rendering;
-- AWS Lambda and Google Cloud Run workflows;
-- machine-readable JSON output;
-- publishing and shared spaces.
+The CLI also renders in batches and from variables, writes image sequences and
+several video formats, and runs in the cloud — managed, on AWS Lambda, or on
+Google Cloud Run. Most commands take `--json` when you need to read the result from a script.
 
 Start with the simple command, then open the [full reference](/packages/cli) for the exact options needed by automation or infrastructure.
 

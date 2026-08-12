@@ -1,0 +1,104 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "typed-prompt",
+  "type": "hyperframes:component",
+  "title": "Typed Prompt",
+  "description": "A prompt line types itself in chunked human cadence behind a deterministic blinking caret, with optional backspace-and-retype correction of the final word.",
+  "tags": ["motion-primitive", "product-demo", "typing", "prompt", "deterministic"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "typing",
+  "evidence": "Wave J J1-2 typed-prompt specification; discrete-text-sequence mechanic (SEQ table + textAt lookup + integer-cycle caret) generalized from the cohere-north agent-at-work frame",
+  "syncPoints": [{ "id": "typing-complete", "phase": "in", "offset": 2.9 }],
+  "files": [
+    {
+      "path": "typed-prompt.html",
+      "target": "compositions/components/typed-prompt.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "The prompt that gets typed.",
+      "default": "Generate a product launch video"
+    },
+    {
+      "id": "prompt_glyph",
+      "type": "string",
+      "role": "style",
+      "label": "Prompt glyph",
+      "description": "Leading glyph before the typed line. Empty string hides it.",
+      "default": ">"
+    },
+    {
+      "id": "cadence",
+      "type": "enum",
+      "role": "timing",
+      "label": "Cadence",
+      "description": "Keystroke rhythm: uniform fixed steps or seeded human chunks.",
+      "default": "human",
+      "options": [
+        { "value": "uniform", "label": "Uniform" },
+        { "value": "human", "label": "Human" }
+      ]
+    },
+    {
+      "id": "caret",
+      "type": "enum",
+      "role": "style",
+      "label": "Caret",
+      "description": "Blink runs integer sine cycles during typing then goes solid.",
+      "default": "blink",
+      "options": [
+        { "value": "blink", "label": "Blink" },
+        { "value": "solid", "label": "Solid" }
+      ]
+    },
+    {
+      "id": "correction",
+      "type": "string",
+      "role": "content",
+      "label": "Correction",
+      "description": "Mistyped word typed in place of the final word, then backspaced and corrected. Empty disables.",
+      "default": ""
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds relative to mount start; cue N anchors the start of word N. Empty uses the authored rhythm.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color of the prompt glyph and caret.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Outgoing transition. Frame roots own transitions; none holds the end frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

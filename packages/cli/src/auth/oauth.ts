@@ -34,7 +34,13 @@ import { failCommand } from "../utils/commandResult.js";
  * Public client — no `client_secret`.
  */
 
-import { ErrApi, ErrOAuthNotConfigured, ErrRefreshFailed, isAuthError } from "./errors.js";
+import {
+  ErrApi,
+  ErrDeviceAuthFailed,
+  ErrOAuthNotConfigured,
+  ErrRefreshFailed,
+  isAuthError,
+} from "./errors.js";
 import { generatePkcePair, generateState } from "./pkce.js";
 import { startLoopback } from "./loopback.js";
 import { openBrowser } from "./browser.js";
@@ -45,6 +51,7 @@ import {
   writeStore,
   type Credentials,
   type OAuthTokens,
+  type StoredUserInfo,
 } from "./store.js";
 import { c } from "../ui/colors.js";
 
@@ -65,6 +72,13 @@ const DEFAULT_SCOPES = "openid profile email";
 const DEFAULT_AUTHORIZE_URL = "https://app.heygen.com/oauth/authorize";
 const DEFAULT_TOKEN_URL = "https://api2.heygen.com/v1/oauth/token";
 const DEFAULT_REVOKE_URL = "https://api2.heygen.com/v1/oauth/revoke";
+const DEFAULT_DEVICE_AUTHORIZATION_URL = "https://api2.heygen.com/v1/oauth/device_authorization";
+const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+const MAX_DEVICE_FLOW_SECONDS = 30 * 60;
+const MIN_DEVICE_POLL_SECONDS = 5;
+const MAX_DEVICE_POLL_SECONDS = 60;
+const MAX_DEVICE_RESPONSE_BYTES = 64 * 1024;
+const DEVICE_REQUEST_TIMEOUT_MS = 15_000;
 
 function authorizeEndpoint(): string {
   return process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] || DEFAULT_AUTHORIZE_URL;
@@ -74,6 +88,9 @@ function tokenEndpoint(): string {
 }
 function revokeEndpoint(): string {
   return process.env["HYPERFRAMES_OAUTH_REVOKE_URL"] || DEFAULT_REVOKE_URL;
+}
+function deviceAuthorizationEndpoint(): string {
+  return process.env["HYPERFRAMES_OAUTH_DEVICE_URL"] || DEFAULT_DEVICE_AUTHORIZATION_URL;
 }
 
 export interface AuthorizeFlowOptions {
@@ -93,6 +110,27 @@ export interface AuthorizeFlowResult {
 
 export interface RefreshOptions {
   fetchImpl?: typeof fetch;
+}
+
+export interface DeviceAuthorizationChallenge {
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+}
+
+export interface DeviceAuthorizationFlowOptions {
+  /** Override scopes (default `openid profile email`). */
+  scope?: string;
+  /** Inject a custom fetch (used by tests). */
+  fetchImpl?: typeof fetch;
+  /** Inject polling sleep (used by tests). */
+  sleepImpl?: (ms: number) => Promise<void>;
+  /** Inject a monotonic-enough clock in epoch milliseconds (used by tests). */
+  now?: () => number;
+  /** Bound each authorization-server request, including its response body (default 15s). */
+  requestTimeoutMs?: number;
+  /** Present the user code and verification URI without exposing device_code. */
+  onChallenge?: (challenge: DeviceAuthorizationChallenge) => void | Promise<void>;
 }
 
 /** Read the client_id, throwing `ErrOAuthNotConfigured` when unset. */
@@ -169,6 +207,177 @@ export async function startAuthorizationCodeFlow(
   // Fresh login → clean OAuth block (no inherited refresh_token).
   await persistOAuth(tokens, { preserveMissing: false });
   return { tokens };
+}
+
+/**
+ * RFC 8628 attended device flow. This function deliberately returns an
+ * unpersisted token set: the command must verify `/v3/users/me` first and only
+ * then call `persistFreshOAuth`. That ordering prevents a token for the wrong
+ * account/resource from ever becoming the active shared credential.
+ */
+export async function startDeviceAuthorizationFlow(
+  opts: DeviceAuthorizationFlowOptions = {},
+): Promise<OAuthTokens> {
+  const runtime: DeviceFlowRuntime = {
+    clientId: resolveClientId(),
+    fetchImpl: opts.fetchImpl ?? fetch,
+    sleepImpl:
+      opts.sleepImpl ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))),
+    now: opts.now ?? Date.now,
+    requestTimeoutMs: opts.requestTimeoutMs ?? DEVICE_REQUEST_TIMEOUT_MS,
+  };
+  const issuance = await requestDeviceAuthorization(runtime, opts.scope ?? DEFAULT_SCOPES);
+  await opts.onChallenge?.({
+    userCode: issuance.userCode,
+    verificationUri: issuance.verificationUri,
+    ...(issuance.verificationUriComplete
+      ? { verificationUriComplete: issuance.verificationUriComplete }
+      : {}),
+  });
+  return await pollDeviceToken(runtime, issuance);
+}
+
+interface DeviceFlowRuntime {
+  clientId: string;
+  fetchImpl: typeof fetch;
+  sleepImpl: (ms: number) => Promise<void>;
+  now: () => number;
+  requestTimeoutMs: number;
+}
+
+async function requestDeviceAuthorization(
+  runtime: DeviceFlowRuntime,
+  scope: string,
+): Promise<ParsedDeviceAuthorization> {
+  return await withDeviceRequestTimeout(
+    runtime,
+    "could not reach the authorization server",
+    async (signal) => {
+      const response = await runtime.fetchImpl(deviceAuthorizationEndpoint(), {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          accept: "application/json",
+        },
+        body: new URLSearchParams({ client_id: runtime.clientId, scope }).toString(),
+        signal,
+      });
+      if (!response.ok) {
+        throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
+      }
+      return parseDeviceAuthorizationResponse(await readJsonOrDeviceError(response));
+    },
+  );
+}
+
+async function pollDeviceToken(
+  runtime: DeviceFlowRuntime,
+  issuance: ParsedDeviceAuthorization,
+): Promise<OAuthTokens> {
+  const deadline = runtime.now() + Math.min(issuance.expiresIn, MAX_DEVICE_FLOW_SECONDS) * 1000;
+  let intervalSeconds = issuance.interval;
+  while (runtime.now() < deadline) {
+    const remainingMs = deadline - runtime.now();
+    if (remainingMs <= 0) break;
+    await runtime.sleepImpl(Math.min(intervalSeconds * 1000, remainingMs));
+
+    const result = await requestDeviceToken(runtime, issuance.deviceCode);
+    if (result.tokens) return result.tokens;
+    if (result.slowDown) {
+      intervalSeconds = Math.min(
+        Math.max(intervalSeconds + 5, result.retryAfterSeconds ?? 0),
+        MAX_DEVICE_POLL_SECONDS,
+      );
+    }
+  }
+  throw ErrDeviceAuthFailed("the code expired");
+}
+
+async function requestDeviceToken(
+  runtime: DeviceFlowRuntime,
+  deviceCode: string,
+): Promise<DevicePollResult> {
+  return await withDeviceRequestTimeout(
+    runtime,
+    "lost contact with the authorization server",
+    async (signal) => {
+      const response = await runtime.fetchImpl(tokenEndpoint(), {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          accept: "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: DEVICE_CODE_GRANT_TYPE,
+          device_code: deviceCode,
+          client_id: runtime.clientId,
+        }).toString(),
+        signal,
+      });
+      return await evaluateDevicePollResponse(response, runtime.now());
+    },
+  );
+}
+
+interface DevicePollResult {
+  tokens?: OAuthTokens;
+  slowDown?: boolean;
+  retryAfterSeconds?: number;
+}
+
+async function evaluateDevicePollResponse(
+  response: Response,
+  nowMs: number,
+): Promise<DevicePollResult> {
+  if (response.ok) {
+    return { tokens: parseTokenResponse(await readJsonOrDeviceError(response)) };
+  }
+
+  const error = await readDeviceOAuthError(response);
+  switch (error) {
+    case "authorization_pending":
+      return {};
+    case "slow_down":
+      return { slowDown: true, retryAfterSeconds: retryAfterSeconds(response, nowMs) };
+    case "access_denied":
+      throw ErrDeviceAuthFailed("access was denied");
+    case "expired_token":
+      throw ErrDeviceAuthFailed("the code expired");
+    default:
+      if (response.status === 429) {
+        return { slowDown: true, retryAfterSeconds: retryAfterSeconds(response, nowMs) };
+      }
+      throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
+  }
+}
+
+async function withDeviceRequestTimeout<T>(
+  runtime: DeviceFlowRuntime,
+  networkError: string,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), runtime.requestTimeoutMs);
+  try {
+    return await operation(controller.signal);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw ErrDeviceAuthFailed("authorization server request timed out");
+    }
+    if (isAuthError(err)) throw err;
+    throw ErrDeviceAuthFailed(networkError);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function retryAfterSeconds(response: Response, nowMs: number): number | undefined {
+  const value = response.headers.get("retry-after")?.trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Math.min(Number(value), MAX_DEVICE_POLL_SECONDS);
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.min(Math.max(Math.ceil((retryAt - nowMs) / 1000), 0), MAX_DEVICE_POLL_SECONDS);
 }
 
 export async function refreshTokens(
@@ -420,6 +629,201 @@ async function persistOAuth(
   // keys another CLI wrote (carried on a hidden symbol slot by spread).
   // Only the `oauth` block is overwritten here.
   await writeStore({ ...existing, oauth });
+}
+
+/** Persist a verified fresh OAuth login while preserving cross-CLI fields. */
+export async function persistFreshOAuth(tokens: OAuthTokens): Promise<void> {
+  await persistOAuth(tokens, { preserveMissing: false });
+}
+
+/**
+ * Atomically install a verified device session and its identity metadata.
+ *
+ * This is intentionally one credential-file rename: if the write fails, the
+ * previous credential remains intact and the caller can revoke the freshly
+ * minted tokens without leaving a half-installed session or stale identity.
+ */
+export async function persistVerifiedOAuthSession(
+  tokens: OAuthTokens,
+  user: StoredUserInfo,
+): Promise<void> {
+  let credentials: Credentials = {};
+  try {
+    ({ credentials } = await readStore());
+  } catch {
+    // Match the other fresh-login path: a corrupt prior file must not prevent
+    // installing a newly verified session.
+    credentials = {};
+  }
+  const next: Credentials = {
+    ...credentials,
+    oauth: { ...tokens },
+  };
+  if (user.email || user.first_name || user.last_name || user.username) {
+    // Preserve only unknown/foreign user fields from the existing record.
+    // Assigning every known field (including undefined) prevents identity
+    // fields from the previous account surviving when the new response omits
+    // them; serializeUser skips undefined values.
+    next.user = {
+      ...credentials.user,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      username: user.username,
+    };
+  } else {
+    delete next.user;
+  }
+  await writeStore(next);
+}
+
+interface ParsedDeviceAuthorization {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  expiresIn: number;
+  interval: number;
+}
+
+function parseDeviceAuthorizationResponse(payload: unknown): ParsedDeviceAuthorization {
+  const data = requireDeviceAuthorizationRecord(payload);
+  const deviceCode = stringField(data, "device_code");
+  const userCode = stringField(data, "user_code");
+  const verificationUri = requiredSafeVerificationUri(data, "verification_uri");
+  const verificationUriComplete = optionalSafeVerificationUri(data, "verification_uri_complete");
+  const expiresIn = strictNumericField(data, "expires_in");
+  const interval = strictNumericField(data, "interval");
+  requireSafeDeviceCode(deviceCode);
+  requireSafeDeviceCode(userCode);
+  const timing = normalizeDeviceAuthorizationTiming(data, expiresIn, interval);
+  return {
+    deviceCode,
+    userCode,
+    verificationUri,
+    ...(verificationUriComplete ? { verificationUriComplete } : {}),
+    ...timing,
+  };
+}
+
+function requireSafeDeviceCode(value: string | undefined): asserts value is string {
+  if (!value || !isHeaderSafe(value)) {
+    throw ErrDeviceAuthFailed("authorization server returned an invalid response");
+  }
+}
+
+function normalizeDeviceAuthorizationTiming(
+  data: Record<string, unknown>,
+  expiresIn: number | undefined,
+  interval: number | undefined,
+): Pick<ParsedDeviceAuthorization, "expiresIn" | "interval"> {
+  if (
+    !isPositiveNumber(expiresIn) ||
+    (data["interval"] !== undefined && !isPositiveNumber(interval))
+  ) {
+    throw ErrDeviceAuthFailed("authorization server returned invalid timing values");
+  }
+  return {
+    expiresIn,
+    interval: Math.min(
+      Math.max(Math.ceil(interval ?? MIN_DEVICE_POLL_SECONDS), MIN_DEVICE_POLL_SECONDS),
+      MAX_DEVICE_POLL_SECONDS,
+    ),
+  };
+}
+
+function requiredSafeVerificationUri(data: Record<string, unknown>, key: string): string {
+  const value = normalizeSafeVerificationUri(stringField(data, key));
+  if (!value) throw ErrDeviceAuthFailed("authorization server returned an unsafe verification URL");
+  return value;
+}
+
+function optionalSafeVerificationUri(
+  data: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  if (data[key] === undefined) return undefined;
+  return requiredSafeVerificationUri(data, key);
+}
+
+function requireDeviceAuthorizationRecord(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw ErrDeviceAuthFailed("authorization server returned an invalid response");
+  }
+  return payload as Record<string, unknown>;
+}
+
+function isPositiveNumber(value: number | undefined): value is number {
+  return value !== undefined && value > 0;
+}
+
+function normalizeSafeVerificationUri(value: string | undefined): string | undefined {
+  if (!value || !isHeaderSafe(value)) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return undefined;
+    const allowed =
+      url.protocol === "https:" ||
+      (url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname));
+    return allowed ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readJsonOrDeviceError(res: Response): Promise<unknown> {
+  return await readBoundedDeviceJson(res);
+}
+
+async function readDeviceOAuthError(res: Response): Promise<string | undefined> {
+  try {
+    const payload = await readBoundedDeviceJson(res);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+    const error = (payload as Record<string, unknown>)["error"];
+    return typeof error === "string" ? error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function strictNumericField(obj: Record<string, unknown>, key: string): number | undefined {
+  const value = obj[key];
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+async function readBoundedDeviceJson(res: Response): Promise<unknown> {
+  if (!res.body) throw ErrDeviceAuthFailed("authorization server returned no data");
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_DEVICE_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw ErrDeviceAuthFailed("authorization server response was too large");
+      }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(body));
+  } catch (err) {
+    if (isAuthError(err)) throw err;
+    throw ErrDeviceAuthFailed("authorization server returned non-JSON data");
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function readJsonOrThrow(res: Response): Promise<unknown> {

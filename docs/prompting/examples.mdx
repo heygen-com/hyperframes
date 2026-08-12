@@ -1,16 +1,20 @@
 ---
 title: Verified example prompts
-description: "Copy-paste prompts, every one run end-to-end to a finished video that passes check."
+description: "Prompts that produced the videos on this page, plus the shared motion preamble each one was run with."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
 This is the level's gallery, not a new lesson — read these with the vocabulary you just picked up: the [six-part skeleton](/prompting/anatomy), the [specification dial](/prompting/specification-dial), and the [word list](/prompting/vocabulary) or [full visual spec](/prompting/visual-specs) it maps to. Spot the skeleton parts in each prompt below as you read it.
 
-Every prompt below has been run end-to-end and one-shots a finished video that passes `check`. Swap the copy, colors, and inputs for your own.
+Every video below was produced by the prompt beneath it **plus the shared
+preamble in the next paragraph**. Copy both — the preamble first, then the
+prompt — and swap the copy, colors and inputs for your own. Pasting a prompt
+on its own gives you a different video, because the motion grammar lives in
+the preamble rather than in each one.
 
 <Note>
-  **These prompts carry the [Level 3 motion grammar](/prompting/motion), stated once here rather than repeated in all of them.** Every one asks for the density contract (one focal element at display scale, supporting elements on their own cues, permanent chrome), three depth layers with parallax under one continuous non-settling camera, entrances staggered at offsets shorter than the animations they offset, overshoot on transforms only, and an ambient idle instead of a frozen final frame. What each prompt *does* state individually is its **spectacle beat** — the single exaggerated moment, placed where the piece earns it. That clause is load-bearing: an unnamed burst gets dropped, which is exactly what happened to the count-up's confetti before it was written down.
+  **The shared preamble — paste this above any prompt on this page.** It carries the [Level 3 motion grammar](/prompting/motion) so the individual prompts stay readable. Every one asks for the density contract (one focal element at display scale, supporting elements on their own cues, permanent chrome), three depth layers with parallax under one continuous non-settling camera, entrances staggered at offsets shorter than the animations they offset, overshoot on transforms only, and an ambient idle instead of a frozen final frame. What each prompt *does* state individually is its **spectacle beat** — the single exaggerated moment, placed where the piece earns it. That clause is load-bearing: an unnamed burst gets dropped, which is exactly what happened to the count-up's confetti before it was written down.
 </Note>
 
 ### With registry blocks and workflows
@@ -27,7 +31,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
     *Rendered from the prompt above, unedited.*
   </Accordion>
   <Accordion title="Animated social post">
-    > /motion-graphics 7-second 1080x1350 vertical video. A real tweet card (handle @hyperframes, text "we render video from HTML now. no timeline UI. just code.") slides up over a soft animated gradient, likes counter ticks 0→1.2K, then the card tilts in 3D and a highlight sweeps the second sentence. Hold on the card at the end. Use the `x-post` and `vfx-liquid-background` registry blocks. No narration, no image or media files. **Spectacle beat:** When the like count lands, the heart pops to 1.6× with a radial burst of ~24 seeded particles and settles — one moment, nothing else exaggerated.
+    > /motion-graphics 7-second 1080x1350 vertical video. A real tweet card (handle @hyperframes, text "we render video from HTML now. no timeline UI. just code.") slides up over a soft animated gradient, likes counter ticks 0→1.2K, then the card tilts in 3D and a highlight sweeps the second sentence. Hold on the card at the end with a subtle ambient idle (slow breathing scale). Use the `x-post` and `vfx-liquid-background` registry blocks. No narration, no image or media files. **Spectacle beat:** When the like count lands, the heart pops to 1.6× with a radial burst of ~24 seeded particles and settles — one moment, nothing else exaggerated.
 
       <DocsVideo
         title="HyperFrames video: Example Tweet"
@@ -48,7 +52,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
     *Rendered from the prompt above, unedited.*
   </Accordion>
   <Accordion title="Logo sting with shader transition">
-    > /motion-graphics 5-second 1920x1080 logo sting. Beat 1 (0-2s): the word "ACME" assembles from scattered particles. Beat 2 (2-3s): full-frame `swirl-vortex` shader transition. Beat 3 (3-5s): logo lockup + tagline "Ship faster." settles on white, holds. Use `code-particle-assemble` for the assembly. **Spectacle beat:** The particle assembly IS the spectacle — ~1200 seeded particles converging with visible motion trails, and a single bloom flash on the frame the wordmark completes.
+    > /motion-graphics 5-second 1920x1080 logo sting. Beat 1 (0-2s): the word "ACME" assembles from scattered particles. Beat 2 (2-3s): full-frame `swirl-vortex` shader transition. Beat 3 (3-5s): logo lockup + tagline "Ship faster." settles on white and holds with a subtle ambient idle. Use `code-particle-assemble` for the assembly. **Spectacle beat:** The particle assembly IS the spectacle — ~1200 seeded particles converging with visible motion trails, and a single bloom flash on the frame the wordmark completes.
 
       <DocsVideo
         title="HyperFrames video: Example Logo Sting"
@@ -62,7 +66,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
 
       <DocsVideo
         title="HyperFrames video: Example Product Launch"
-        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-product-launch.mp4#t=0.1"
+        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-product-launch-v2.mp4#t=0.1"
         loop
       />
     *Rendered from the prompt above, unedited.*
@@ -73,7 +77,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
     With a verbatim script, final duration follows the narration — ask for "~60 seconds", not exactly 60.
       <DocsVideo
         title="HyperFrames video: Example Explainer"
-        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-explainer.mp4#t=0.1"
+        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-explainer-v2.mp4#t=0.1"
         portrait
         loop
       />
@@ -84,7 +88,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
 
       <DocsVideo
         title="HyperFrames video: Example Pr Video"
-        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-pr-video.mp4#t=0.1"
+        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-pr-video-v2.mp4#t=0.1"
         loop
       />
     *Rendered from the prompt above, unedited.*
@@ -94,7 +98,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
 
       <DocsVideo
         title="HyperFrames video: Example Music Slideshow"
-        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-music-slideshow.mp4#t=0.1"
+        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-music-slideshow-v2.mp4#t=0.1"
         loop
       />
     *Rendered from the prompt above, unedited.*
@@ -109,7 +113,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
 
       <DocsVideo
         title="HyperFrames video: Example Kinetic Quote"
-        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-kinetic-quote.mp4#t=0.1"
+        src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-kinetic-quote-v2.mp4#t=0.1"
         loop
       />
     *Rendered from the prompt above, unedited.*
@@ -145,7 +149,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
     *Rendered from the prompt above, unedited.*
   </Accordion>
   <Accordion title="Loader → reveal">
-    > 7-second 1920x1080 video, black background. A thin white progress ring draws from 0° to 360° over 4s while a percentage counter (0→100) ticks in the center in mono type, matching the arc exactly. Ring and counter fade out fully by 4.2s; at 4.2s the ring bursts outward into short radial dashes and "READY." stamps into the center, then holds. No audio. **Spectacle beat:** The ring's completion at 100% detonates — it flashes white, expands past frame, and the reveal rides that expansion out.
+    > 7-second 1920x1080 video, black background. A thin white progress ring draws from 0° to 360° over 4s while a percentage counter (0→100) ticks in the center in mono type, matching the arc exactly. Ring and counter fade out fully by 4.2s; at 4.2s the ring bursts outward into short radial dashes and "READY." stamps into the center, then holds with a subtle ambient idle (slow breathing scale). No audio. **Spectacle beat:** The ring's completion at 100% detonates — it flashes white, expands past frame, and the reveal rides that expansion out.
 
       <DocsVideo
         title="HyperFrames video: Example Loader Ready"
@@ -155,7 +159,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
     *Rendered from the prompt above, unedited.*
   </Accordion>
   <Accordion title="3D cards (Three.js)">
-    > 9-second 1920x1080 video, light warm cream background. Build the scene in Three.js via the adapter: three rounded card meshes labeled "Design", "Build", "Ship" lie flat on the ground plane, camera at a fixed 3/4 isometric angle, soft directional light + ambient so the cards cast soft shadows. One at a time each card lifts and straightens upright to face the viewer center-frame while the other two slide apart and dim; then it returns. Finish with all three standing upright in a row by 8.5s, hold. All easing power3.inOut. No audio. **Spectacle beat:** As the cards rise into their stack, a single specular sweep rakes across all three faces in sequence, catching each edge.
+    > 9-second 1920x1080 video, light warm cream background. Build the scene in Three.js via the adapter: three rounded card meshes labeled "Design", "Build", "Ship" lie flat on the ground plane, camera at a fixed 3/4 isometric angle, soft directional light + ambient so the cards cast soft shadows. One at a time each card lifts and straightens upright to face the viewer center-frame while the other two slide apart and dim; then it returns. Finish with all three standing upright in a row by 8.5s, hold with a subtle ambient idle. All easing power3.inOut. No audio. **Spectacle beat:** As the cards rise into their stack, a single specular sweep rakes across all three faces in sequence, catching each edge.
 
       <DocsVideo
         title="HyperFrames video: Example 3d Cards"
@@ -165,7 +169,7 @@ Every prompt below has been run end-to-end and one-shots a finished video that p
     *Rendered from the prompt above, unedited.*
   </Accordion>
   <Accordion title="SVG line-draw logo reveal">
-    > 6-second 1920x1080 video, deep green background. A minimal mountain-range logo draws on as an SVG stroke over 2.5s, then the stroke fills with cream, the wordmark "NORTHTRAIL" letterspaces in beneath it, and a thin rule expands from center. Hold the last 1.5s. No audio. **Spectacle beat:** The stroke's completion is the moment — the drawn path flares once along its whole length, then the fill floods from that flare.
+    > 6-second 1920x1080 video, deep green background. A minimal mountain-range logo draws on as an SVG stroke over 2.5s, then the stroke fills with cream, the wordmark "NORTHTRAIL" letterspaces in beneath it, and a thin rule expands from center. Hold the last 1.5s with a subtle ambient idle. No audio. **Spectacle beat:** The stroke's completion is the moment — the drawn path flares once along its whole length, then the fill floods from that flare.
 
       <DocsVideo
         title="HyperFrames video: Example Svg Logo"

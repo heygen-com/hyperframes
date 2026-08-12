@@ -252,7 +252,7 @@ export {
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
-export { redactTelemetryString } from "./telemetryRedaction";
+export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
 export { isSafePath, resolveWithinProject } from "./safePath";
 export type {
   HyperframePickerApi,

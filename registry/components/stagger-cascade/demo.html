@@ -1,0 +1,103 @@
+<!doctype html>
+<!--
+  stagger-cascade demo: standalone 1920x1080 host composition. It mounts the
+  primitive through data-composition-src into a definite card instead of
+  inlining primitive markup or motion. The non-default count, stagger, and
+  direction overrides prove that per-instance variables cross the mount.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Stagger Cascade Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root {
+        --bg: #090d16;
+        --fg: #f4f7fb;
+        --muted: #8d99aa;
+        --surface: #171e2d;
+        --border: rgba(244, 247, 251, 0.14);
+        --brand: #79a8ff;
+        --accent: #8be0c4;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, monospace;
+        --radius: 16px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-body);
+      }
+
+      .mount-card {
+        width: 50%;
+        height: 60%;
+        left: 25%;
+        top: 20%;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        background: var(--surface);
+        box-shadow: 0 40px 100px color-mix(in srgb, var(--fg) 12%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="stagger-cascade-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="stagger-cascade-mount"
+        class="mount-card clip"
+        data-composition-id="stagger-cascade"
+        data-composition-src="./stagger-cascade.html"
+        data-variable-values='{"itemCount":8,"stagger":90,"direction":"left"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="960"
+        data-height="648"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // The mounted primitive owns all visible motion. This standalone host
+      // registers only the empty paused timeline required for its own id.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["stagger-cascade-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -3,48 +3,154 @@ title: "Lower Third — Kicker Name"
 description: "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage"
 ---
 
-`lower-third` `overlay` `podcast` `interview` `bold`
+import { InstallCommand } from "/snippets/install-command.jsx";
 
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-kicker-name.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-kicker-name.png" autoPlay muted loop playsInline />
+<iframe
+  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
+  title="lt-kicker-name preview"
+  loading="lazy"
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/lt-kicker-name.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-kicker-name.png");document.body.appendChild(p)});<\/script></body></html>`}
+/>
 
-## Add it to a project
+## Install
 
-### Ask your agent
+<InstallCommand command="npx hyperframes add lt-kicker-name" item="lt-kicker-name" />
 
-```text
-Add the Lower Third — Kicker Name block from the HyperFrames Catalog to this project.
-Replace the demo content with mine and match the existing design and timing.
+That writes one file: `compositions/lt-kicker-name.html`.
+
+## Source
+
+<Accordion title={`lt-kicker-name.html`}>
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 130px;
+        bottom: 122px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 14px;
+      }
+      #root .lt-kickwrap {
+        overflow: hidden;
+      }
+      #root .lt-kicker {
+        display: inline-block;
+        font-family: "Space Mono", monospace;
+        font-size: 22px;
+        font-weight: 700;
+        color: #141518;
+        background: #46e5b7;
+        padding: 6px 14px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #root .lt-name {
+        font-family: "Archivo Black", sans-serif;
+        font-size: 70px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height: 0.98;
+        letter-spacing: -0.015em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        text-shadow: 0 2px 22px rgba(0, 0, 0, 0.5);
+      }
+      #root .lt-baseline {
+        height: 5px;
+        width: 100%;
+        background: #46e5b7;
+        border-radius: 3px;
+        transform-origin: 0% 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-kicker-name"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div class="lt-kickwrap">
+            <span id="lt-kicker" class="lt-kicker">Episode 47</span>
+          </div>
+          <div id="lt-name" class="lt-name">Maya Chen</div>
+          <div id="lt-baseline" class="lt-baseline"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var kicker = document.getElementById("lt-kicker");
+      var nameEl = document.getElementById("lt-name");
+      var baseline = document.getElementById("lt-baseline");
+
+      // Kicker drops in, name slams up, accent baseline draws.
+      gsap.set(kicker, { y: -40 });
+      gsap.set(nameEl, { y: 34, opacity: 0 });
+      gsap.set(baseline, { scaleX: 0 });
+
+      tl.to(kicker, { y: 0, duration: 0.42, ease: "back.out(2)" }, 0.1);
+      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.45, ease: "back.out(1.5)" }, 0.32);
+      tl.to(baseline, { scaleX: 1, duration: 0.5, ease: "power4.out" }, 0.5);
+
+      // Exit: baseline retracts, text lifts, hard kill.
+      tl.to(baseline, { scaleX: 0, duration: 0.3, ease: "power2.in" }, 4.25);
+      tl.to(nameEl, { y: -16, opacity: 0, duration: 0.32, ease: "power2.in" }, 4.3);
+      tl.to(kicker, { y: -40, duration: 0.3, ease: "power2.in" }, 4.32);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-kicker-name"] = tl;
+    </script>
+  </body>
+</html>
 ```
 
-### Install from the terminal
+</Accordion>
 
-```bash
-npx hyperframes add lt-kicker-name
-```
+## Usage
 
-## Details
-
-| Property | Value |
-| --- | --- |
-| Type | Block |
-| Dimensions | 1920×1080 |
-| Duration | 4.8s |
-
-**Installed files**
-
-| File | Target | Type |
-| --- | --- | --- |
-| `lt-kicker-name.html` | `compositions/lt-kicker-name.html` | hyperframes:composition |
-
-## Use it
-
-Ask your agent to replace the example content, match the project style, and place the block at the right moment in the video.
-
-**Wiring it by hand.** The installed block can be added to a host composition with:
+After installing, add the block to your host composition:
 
 ```html
 <div data-composition-id="lt-kicker-name" data-composition-src="compositions/lt-kicker-name.html" data-start="0" data-duration="4.8" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
+
+{/* hf:generated-footer */}
+
+Tagged `lower-third` `overlay` `podcast` `interview` `bold`.
 
 ## Related topics
 

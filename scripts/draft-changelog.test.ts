@@ -82,7 +82,7 @@ describe("draft changelog rendering", () => {
 
     assert.equal(
       renderCommitBullet(parsed),
-      `- **CLI:** Add render hints ([1234567](${REPO_URL}/commit/1234567890abcdef1234567890abcdef12345678), [#42](${REPO_URL}/pull/42))`,
+      `- **CLI:** Add render hints ([1234567](${REPO_URL}/commit/1234567890abcdef1234567890abcdef12345678), [#42](${REPO_URL}/pull/42)).`,
     );
   });
 
@@ -91,7 +91,7 @@ describe("draft changelog rendering", () => {
 
     assert.equal(
       renderCommitBullet(parsed),
-      `- Repair playback ([1234567](${REPO_URL}/commit/1234567890abcdef1234567890abcdef12345678))`,
+      `- Repair playback ([1234567](${REPO_URL}/commit/1234567890abcdef1234567890abcdef12345678)).`,
     );
   });
 

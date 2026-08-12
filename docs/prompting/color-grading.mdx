@@ -35,7 +35,7 @@ This is not cosmetic. A global `saturation: -0.9` in `adjust` runs *before* `sec
 
 ## Grading qualifies by value, never by position
 
-Selections key on hue, saturation, and luma. There are no masks, shapes, or tracked regions, and the one spatially-varying control — `vignette` — is locked to the frame centre. To treat *part* of a frame you split that part into its own layer and grade the layer. That pattern, with worked markup, is in [Limiting a Grade to Part of the Frame](/guides/color-grading#limiting-a-grade-to-part-of-the-frame).
+Selections key on hue, saturation, and luma. There are no masks, shapes, or tracked regions, and the one spatially-varying control — `vignette` — is locked to the frame centre. To treat *part* of a frame you split that part into its own layer and grade the layer. That pattern, with worked markup, is in [Limiting a Grade to Part of the Frame](/reference/color-grading#limit-a-grade-to-part-of-the-frame).
 
 ---
 
@@ -107,7 +107,7 @@ Three ways to take the image apart, each saying something different. Pixelation 
 
 <DocsVideo
   title="HyperFrames video: Grade Painterly Ffd5c0f9"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-painterly-ffd5c0f9.mp4#t=0.1"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-painterly-ffd5c0f9-v2.mp4#t=0.1"
   loop
 />
 *Kuwahara at full strength, on a subject with enough edges to be worth preserving.*
@@ -122,7 +122,7 @@ Three ways to take the image apart, each saying something different. Pixelation 
 
 <DocsVideo
   title="HyperFrames video: Grade Two Ink Press 3c5662f1"
-  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-two-ink-press-3c5662f1.mp4#t=0.1"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/grade-two-ink-press-3c5662f1-v2.mp4#t=0.1"
   loop
 />
 *Ten hue families collapsing to three. Dense type is the harshest test of a two-ink reduction.*
@@ -193,7 +193,7 @@ If you composite a subject into the shot, do it **before** grading. A CRT warps 
 />
 *The footage degrades; the HUD does not. It is an overlay, composed above the media canvas.*
 
-The HUD in that shot is not part of the grade. It is a [`camcorder-hud`](/guides/media-overlays) registry block — real HTML, CSS, and a paused GSAP timeline composed *above* the media canvas. Grading never touches it, which is exactly what you want: burn a timestamp into the source pixels and it degrades with them; put it in an overlay and it stays crisp, editable, and timeline-driven while the footage falls apart underneath.
+The HUD in that shot is not part of the grade. It is a [`camcorder-hud`](/catalog) registry block — real HTML, CSS, and a paused GSAP timeline composed *above* the media canvas. Grading never touches it, which is exactly what you want: burn a timestamp into the source pixels and it degrades with them; put it in an overlay and it stays crisp, editable, and timeline-driven while the footage falls apart underneath.
 
 ## Animating a grade
 
@@ -202,7 +202,7 @@ Nine properties expose a CSS custom property and tween directly — `ascii`, `bl
 Two caveats worth knowing before you promise a client a ramp:
 
 - **`--hf-color-grading-intensity` scales the primary grade only** — `adjust`, `wheels`, `curves`, `hueCurves`, `secondaries` and the LUT. `details` and `effects` sit outside that mix and it scales neither: some shape the sampled media before it, others run after it. So it will not ramp grain, halftone, bloom, or the tape and CRT families. Reach for the specific effect instead of treating it as a master dial.
-- **Everything else has no custom property.** Some of those can still be animated by rewriting the `data-color-grading` payload from the timeline, and some cannot — the verified list of which is which lives in the guide's [Animating a Grade](/guides/color-grading#animating-a-grade), so it only has to be maintained in one place. Measure the effect you intend to animate before you promise a ramp, and fall back to a static treatment if it does not move.
+- **Everything else has no custom property.** Some of those can still be animated by rewriting the `data-color-grading` payload from the timeline, and some cannot — the verified list of which is which lives in the guide's [Animating a Grade](/reference/color-grading#animate-a-supported-property), so it only has to be maintained in one place. Measure the effect you intend to animate before you promise a ramp, and fall back to a static treatment if it does not move.
 
 ## Next steps
 

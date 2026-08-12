@@ -352,8 +352,8 @@ else
 fi
 
 # Probe render dims for ffmpeg scale
-W="$(ffprobe -v error -select_streams v:0 -show_entries stream=width  -of default=nw=1:nk=1 "$BG")"
-H="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 "$BG")"
+W="$(ffprobe -v error -select_streams v:0 -show_entries stream=width  -of default=nw=1:nk=1 -- "$BG")"
+H="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 -- "$BG")"
 
 # Clamp every composite to the matte (= source-video) length. The render uses
 # plan.duration / data-duration, which can exceed the source (e.g. Whisper word
@@ -365,7 +365,7 @@ H="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of defaul
 # the a-roll stream ends). The true a-roll duration is authoritative: clamp to
 # min(matte frames / fps, source duration).
 MATTE_DUR="$(awk "BEGIN{printf \"%.3f\", $(ls "$PROJECT/frames_fg" | wc -l)/$FPS}")"
-SRC_DUR="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$PROJECT/source.mp4" 2>/dev/null || true)"
+SRC_DUR="$(ffprobe -v error -show_entries format=duration -of csv=p=0 -- "$PROJECT/source.mp4" 2>/dev/null || true)"
 if [[ -n "${SRC_DUR:-}" ]]; then
   MATTE_DUR="$(awk "BEGIN{m=$MATTE_DUR; s=$SRC_DUR; printf \"%.3f\", (s>0 && s<m) ? s : m}")"
 fi
@@ -378,7 +378,7 @@ echo "[render] clamp output to source/matte length: ${MATTE_DUR}s"
 # last-caption time instead of the clip length. Clamp to the bg length so we never
 # ship the only-foreground tail, and tell the author the real fix.
 if [[ -f "$BG" ]]; then
-  BG_DUR="$(ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 "$BG" 2>/dev/null | tr -dc '0-9.')"
+  BG_DUR="$(ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 -- "$BG" 2>/dev/null | tr -dc '0-9.')"
   if [[ -n "$BG_DUR" ]] && awk "BEGIN{exit !($BG_DUR < $MATTE_DUR - 0.3)}"; then
     echo "[render] ⚠ background plate is ${BG_DUR}s but the clip is ${MATTE_DUR}s — the composition is shorter than the footage." >&2
     echo "         The tail would show ONLY the foreground subject on black. FIX: set the composition" >&2

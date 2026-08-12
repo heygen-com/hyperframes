@@ -1,0 +1,73 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "rgb-glitch-text",
+  "type": "hyperframes:component",
+  "title": "RGB Glitch Text",
+  "description": "RGB-offset text copies jitter briefly for a controlled glitch window.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "rgb-glitch-text.html",
+      "target": "compositions/components/rgb-glitch-text.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "The word shown on all three stacked copies.",
+      "default": "GLITCH",
+      "maxLength": 24
+    },
+    {
+      "id": "intensity",
+      "type": "enum",
+      "role": "motion",
+      "label": "Intensity",
+      "description": "Scales the red and cyan offsets the timeline drives, so the split reads as a hairline or a hard tear.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "subtle",
+          "label": "Subtle"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "extreme",
+          "label": "Extreme"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Colour of the solid copy the two ghosts split away from: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rgb-glitch-text.png"
+  }
+}

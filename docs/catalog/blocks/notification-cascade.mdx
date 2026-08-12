@@ -1,0 +1,1121 @@
+---
+title: "Notification Cascade"
+description: "Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/blocks/notification-cascade.json"
+  compositionId="notification-cascade"
+  compositionSrc="compositions/notification-cascade.html"
+  variables={[{"id":"notifTitle","type":"string","role":"content","label":"Notification title","description":"Bold first line on every banner.","default":"New render"},{"id":"message1","type":"string","role":"content","label":"Message 1","description":"Subtitle of the first banner to land.","default":"Launch video is ready."},{"id":"message2","type":"string","role":"content","label":"Message 2","description":"Subtitle of the second banner.","default":"All checks passed."},{"id":"message3","type":"string","role":"content","label":"Message 3","description":"Subtitle of the third banner.","default":"4K render done in 92s."},{"id":"message4","type":"string","role":"content","label":"Message 4","description":"Subtitle of the fourth banner.","default":"Published to the catalog."},{"id":"appName","type":"string","role":"content","label":"App name","description":"Small credit in the corner of every banner.","default":"HyperFrames"},{"id":"headlineTop","type":"string","role":"content","label":"End-card line 1","description":"First line of the closing card.","default":"SHIP VIDEO"},{"id":"headlineAccent","type":"string","role":"content","label":"End-card line 2","description":"Accented second line of the closing card.","default":"FROM HTML"},{"id":"footerText","type":"string","role":"content","label":"End-card footer","description":"URL or call to action under the headline.","default":"hyperframes.heygen.com"}]}
+>
+
+```html notification-cascade.html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "notifTitle", "type": "string", "role": "content", "label": "Notification title", "description": "Bold first line on every banner.", "default": "New render" },
+    { "id": "message1", "type": "string", "role": "content", "label": "Message 1", "description": "Subtitle of the first banner to land.", "default": "Launch video is ready." },
+    { "id": "message2", "type": "string", "role": "content", "label": "Message 2", "description": "Subtitle of the second banner.", "default": "All checks passed." },
+    { "id": "message3", "type": "string", "role": "content", "label": "Message 3", "description": "Subtitle of the third banner.", "default": "4K render done in 92s." },
+    { "id": "message4", "type": "string", "role": "content", "label": "Message 4", "description": "Subtitle of the fourth banner.", "default": "Published to the catalog." },
+    { "id": "appName", "type": "string", "role": "content", "label": "App name", "description": "Small credit in the corner of every banner.", "default": "HyperFrames" },
+    { "id": "headlineTop", "type": "string", "role": "content", "label": "End-card line 1", "description": "First line of the closing card.", "default": "SHIP VIDEO" },
+    { "id": "headlineAccent", "type": "string", "role": "content", "label": "End-card line 2", "description": "Accented second line of the closing card.", "default": "FROM HTML" },
+    { "id": "footerText", "type": "string", "role": "content", "label": "End-card footer", "description": "URL or call to action under the headline.", "default": "hyperframes.heygen.com" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Notification Cascade</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+      }
+      #nc-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+        /* palette: warm glass banners over a bright soft backdrop, dark scrim under the end card */
+        --nc-glass: var(--hf-ui-surface-raised, rgba(250, 246, 241, 0.94));
+        --nc-ink-strong: var(--hf-ui-text-strong, #1c1c1e);
+        --nc-ink: var(--hf-ui-text, #464040);
+        --nc-ink-faint: var(--hf-ui-text-faint, #5a5450);
+        --nc-accent: var(--hf-ui-accent, #0a9c6b);
+        --nc-endcard-ink: #f7ece5;
+        --nc-endcard-accent: #3ce6ac;
+      }
+      #nc-stage-ground {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---------------- backdrop plate ---------------- */
+      /* a real photograph, like the footage it stands in for, pushed in slowly
+         by the timeline */
+      #nc-backdrop {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        object-fit: cover;
+      }
+      #nc-vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 120% 90% at 50% 42%,
+          rgba(0, 0, 0, 0) 58%,
+          rgba(50, 25, 8, 0.18) 100%
+        );
+      }
+
+      /* ---------------- notification stack ---------------- */
+      /* geometry measured from the reference: 810px banners on a 214px pitch,
+         entries every 2.000s, expo.out restack (spec provenance: measured) */
+      #nc-stack-inner {
+        position: absolute;
+        inset: 0;
+      }
+      .nc-banner {
+        position: absolute;
+        left: 135px;
+        width: 810px;
+        height: 176px;
+        border-radius: 26px;
+        background: var(--nc-glass);
+        box-shadow: 0 10px 26px rgba(50, 25, 8, 0.18);
+      }
+      .nc-banner .nc-icon {
+        position: absolute;
+        left: 23px;
+        top: 38px;
+        width: 100px;
+        height: 100px;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #5ae458 0%, #1fc83f 100%);
+      }
+      .nc-banner .nc-icon svg {
+        position: absolute;
+        left: 18px;
+        top: 20px;
+      }
+      .nc-banner .nc-title {
+        position: absolute;
+        left: 148px;
+        top: 37px;
+        font-size: 35px;
+        font-weight: 700;
+        color: var(--nc-ink-strong);
+        letter-spacing: 0.25px;
+      }
+      .nc-banner .nc-subtitle {
+        position: absolute;
+        left: 148px;
+        top: 85px;
+        font-size: 33px;
+        font-weight: 400;
+        color: var(--nc-ink);
+        letter-spacing: -0.75px;
+      }
+      .nc-banner .nc-now {
+        position: absolute;
+        right: 26px;
+        top: 32px;
+        font-size: 22px;
+        font-weight: 400;
+        color: var(--nc-ink-faint);
+        letter-spacing: 1px;
+      }
+      .nc-banner .nc-credit {
+        position: absolute;
+        right: 26px;
+        bottom: 10px;
+        font-size: 24px;
+        font-style: italic;
+        color: var(--nc-ink-faint);
+      }
+      #nc-pill-row {
+        position: absolute;
+        left: 0;
+        top: 1164px;
+        width: 1080px;
+        height: 72px;
+      }
+      #nc-pill {
+        position: absolute;
+        left: 615px;
+        width: 241px;
+        height: 72px;
+        border-radius: 36px;
+        background: rgba(250, 246, 242, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding-left: 20px;
+        gap: 9px;
+        font-size: 27px;
+        font-weight: 500;
+        color: #3f3a38;
+        box-shadow: 0 8px 20px rgba(50, 25, 8, 0.14);
+      }
+      #nc-pill-x {
+        position: absolute;
+        left: 873px;
+        width: 73px;
+        height: 72px;
+        border-radius: 50%;
+        background: rgba(250, 246, 242, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 8px 20px rgba(50, 25, 8, 0.14);
+      }
+
+      /* ---------------- end card ---------------- */
+      /* the source cut to dark footage under its card; the scrim below is that
+         ground, faded in on the same beat */
+      #nc-endcard-scrim {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, #14110e 0%, #221b13 100%);
+      }
+      #nc-endcard-inner {
+        position: absolute;
+        inset: 0;
+        text-align: center;
+      }
+      #nc-ec-top {
+        position: absolute;
+        left: 0;
+        top: 662px;
+        width: 1080px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        font-size: 93px;
+        letter-spacing: 4px;
+        color: var(--nc-endcard-ink);
+        text-shadow: 2.5px 3px 1px rgba(0, 0, 0, 0.66);
+      }
+      #nc-ec-accent {
+        position: absolute;
+        left: 0;
+        top: 784px;
+        width: 1080px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        font-size: 67px;
+        letter-spacing: 3px;
+        color: var(--nc-endcard-accent);
+        text-shadow: 2.5px 3px 1px rgba(0, 0, 0, 0.64);
+      }
+      #nc-ec-mark {
+        position: absolute;
+        left: 277px;
+        top: 990px;
+        width: 526px;
+        height: 158px;
+      }
+      #nc-ec-footer {
+        position: absolute;
+        left: 0;
+        top: 1190px;
+        width: 1080px;
+        font-size: 35px;
+        font-weight: 600;
+        color: var(--nc-endcard-accent);
+      }
+
+      #nc-black-fade {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="nc-root"
+      data-composition-id="notification-cascade"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="14"
+    >
+      <div id="nc-stage-ground"></div>
+
+      <!-- backdrop plate: slow push-in added in the timeline -->
+      <section id="nc-base" class="clip" data-start="0" data-duration="14" data-track-index="1">
+        <img id="nc-backdrop" src="assets/desk-backdrop.jpg" alt="" />
+        <div id="nc-vignette"></div>
+      </section>
+
+      <!-- notification stack -->
+      <section
+        id="nc-stack"
+        class="clip"
+        data-start="1.59"
+        data-duration="8.03"
+        data-track-index="2"
+      >
+        <div id="nc-stack-inner">
+          <div id="nc-pill-row">
+            <div id="nc-pill">
+              <svg width="25" height="25" viewBox="0 0 26 26" fill="none">
+                <path
+                  d="M4 8 L13 18 L22 8"
+                  stroke="#3f3a38"
+                  stroke-width="3.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>Show less</span>
+            </div>
+            <div id="nc-pill-x">
+              <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                <path
+                  d="M6 6 L28 28 M28 6 L6 28"
+                  stroke="#4a4442"
+                  stroke-width="4.2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </div>
+          </div>
+
+          <div class="nc-banner" id="nc-banner-1" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">Launch video is ready.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+          <div class="nc-banner" id="nc-banner-2" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">All checks passed.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+          <div class="nc-banner" id="nc-banner-3" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">4K render done in 92s.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+          <div class="nc-banner" id="nc-banner-4" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">Published to the catalog.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- end card -->
+      <section
+        id="nc-endcard"
+        class="clip"
+        data-start="9.89"
+        data-duration="4.11"
+        data-track-index="3"
+      >
+        <div id="nc-endcard-scrim"></div>
+        <div id="nc-endcard-inner">
+          <div id="nc-ec-top">SHIP VIDEO</div>
+          <div id="nc-ec-accent">FROM HTML</div>
+          <img id="nc-ec-mark" src="assets/hyperframes-logo-white.svg" alt="HyperFrames" />
+          <div id="nc-ec-footer">hyperframes.heygen.com</div>
+        </div>
+      </section>
+
+      <!-- opening fade from black -->
+      <section id="nc-fade" class="clip" data-start="0" data-duration="0.7" data-track-index="4">
+        <div id="nc-black-fade"></div>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        /* -------- variables: every override falls back to its declared default -------- */
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        function text(value, fallback) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > 80 ? t.slice(0, 80) : t;
+        }
+
+        function setAll(selector, value) {
+          document.querySelectorAll(selector).forEach(function (el) {
+            el.textContent = value;
+          });
+        }
+
+        setAll(".nc-title", text(vars.notifTitle, "New render"));
+        setAll(".nc-credit", text(vars.appName, "HyperFrames"));
+        var messages = [
+          text(vars.message1, "Launch video is ready."),
+          text(vars.message2, "All checks passed."),
+          text(vars.message3, "4K render done in 92s."),
+          text(vars.message4, "Published to the catalog."),
+        ];
+        document.querySelectorAll(".nc-subtitle").forEach(function (el, i) {
+          el.textContent = messages[i] || messages[messages.length - 1];
+        });
+        document.getElementById("nc-ec-top").textContent = text(vars.headlineTop, "SHIP VIDEO");
+        document.getElementById("nc-ec-accent").textContent = text(
+          vars.headlineAccent,
+          "FROM HTML",
+        );
+        document.getElementById("nc-ec-footer").textContent = text(
+          vars.footerText,
+          "hyperframes.heygen.com",
+        );
+
+        /* -------- timeline: every decisive number is measured from the reference -------- */
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var PITCH = 214; /* banner-to-banner spacing, px */
+        var ENTRY = [1.6033, 3.6033, 5.6033, 7.6033]; /* one arrival every 2.000s */
+        var FADE_D = 0.3333; /* linear alpha ramp */
+        var RISE = 22; /* entry micro-rise, px */
+        var RESTACK_D = 1.0; /* expo.out slide when the stack makes room */
+        var EXIT_T = 9.2033; /* group exit */
+        var ENDCARD_T = 9.9033;
+        var ENDCARD_D = 0.5667;
+
+        /* baselines at t=0.001 so every span is covered at any seek */
+        tl.set(
+          ["#nc-banner-1", "#nc-banner-2", "#nc-banner-3", "#nc-banner-4", "#nc-pill-row"],
+          { autoAlpha: 0 },
+          0.001,
+        );
+        tl.set(["#nc-endcard-inner", "#nc-endcard-scrim"], { autoAlpha: 0 }, 0.001);
+
+        /* opening fade from black */
+        tl.fromTo(
+          "#nc-black-fade",
+          { autoAlpha: 1 },
+          { autoAlpha: 0, duration: 0.5, ease: "none" },
+          0,
+        );
+
+        /* backdrop push-in: linear, scale 1 -> 1.105 across the piece */
+        tl.fromTo(
+          "#nc-backdrop",
+          { scale: 1.0, transformOrigin: "525px 950px" },
+          { scale: 1.105, duration: 13.4667, ease: "none" },
+          0.5333,
+        );
+
+        /* banner entries: linear fade + expo micro-rise */
+        var banners = ["#nc-banner-1", "#nc-banner-2", "#nc-banner-3", "#nc-banner-4"];
+        banners.forEach(function (sel, i) {
+          tl.fromTo(
+            sel,
+            { autoAlpha: 0 },
+            { autoAlpha: 1, duration: FADE_D, ease: "none" },
+            ENTRY[i],
+          );
+          tl.fromTo(sel, { y: RISE }, { y: 0, duration: 0.9, ease: "expo.out" }, ENTRY[i]);
+        });
+        /* pill + X appear with banner 1 */
+        tl.fromTo(
+          "#nc-pill-row",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: FADE_D, ease: "none" },
+          ENTRY[0],
+        );
+
+        /* restacks: existing banners + pill slide up one pitch in lockstep */
+        tl.to(
+          ["#nc-banner-1", "#nc-pill-row"],
+          { y: -PITCH, duration: RESTACK_D, ease: "expo.out" },
+          ENTRY[1],
+        );
+        tl.to(
+          ["#nc-banner-1", "#nc-pill-row"],
+          { y: -2 * PITCH, duration: RESTACK_D, ease: "expo.out" },
+          ENTRY[2],
+        );
+        tl.to("#nc-banner-2", { y: -PITCH, duration: RESTACK_D, ease: "expo.out" }, ENTRY[2]);
+        tl.to(
+          ["#nc-banner-1", "#nc-pill-row"],
+          { y: -3 * PITCH, duration: RESTACK_D, ease: "expo.out" },
+          ENTRY[3],
+        );
+        tl.to("#nc-banner-2", { y: -2 * PITCH, duration: RESTACK_D, ease: "expo.out" }, ENTRY[3]);
+        tl.to("#nc-banner-3", { y: -PITCH, duration: RESTACK_D, ease: "expo.out" }, ENTRY[3]);
+
+        /* group exit: rise + fade */
+        tl.to("#nc-stack-inner", { y: -560, duration: 0.5, ease: "expo.out" }, EXIT_T);
+        tl.to("#nc-stack-inner", { autoAlpha: 0, duration: 0.37, ease: "none" }, EXIT_T);
+
+        /* end card: dark scrim and card fade in together, then hold */
+        tl.fromTo(
+          "#nc-endcard-scrim",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.2, ease: "none" },
+          ENDCARD_T,
+        );
+        tl.fromTo(
+          "#nc-endcard-inner",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: ENDCARD_D, ease: "none" },
+          ENDCARD_T,
+        );
+
+        window.__timelines["notification-cascade"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add notification-cascade" item="notification-cascade" />
+
+That writes `compositions/notification-cascade.html`, plus 2 supporting files under `assets/`.
+
+## Add it to your video
+
+It runs for 14 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="notification-cascade"
+  data-composition-src="compositions/notification-cascade.html"
+  data-start="0"
+  data-duration="14"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `notifTitle` | `New render` | string | Bold first line on every banner. |
+| `message1` | `Launch video is ready.` | string | Subtitle of the first banner to land. |
+| `message2` | `All checks passed.` | string | Subtitle of the second banner. |
+| `message3` | `4K render done in 92s.` | string | Subtitle of the third banner. |
+| `message4` | `Published to the catalog.` | string | Subtitle of the fourth banner. |
+| `appName` | `HyperFrames` | string | Small credit in the corner of every banner. |
+| `headlineTop` | `SHIP VIDEO` | string | First line of the closing card. |
+| `headlineAccent` | `FROM HTML` | string | Accented second line of the closing card. |
+| `footerText` | `hyperframes.heygen.com` | string | URL or call to action under the headline. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="notification-cascade"
+  data-composition-src="compositions/notification-cascade.html"
+  data-variable-values='{"notifTitle":"New render","message1":"Launch video is ready.","message2":"All checks passed.","message3":"4K render done in 92s.","message4":"Published to the catalog.","appName":"HyperFrames","headlineTop":"SHIP VIDEO","headlineAccent":"FROM HTML","footerText":"hyperframes.heygen.com"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`notification-cascade.html`}>
+
+```html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "notifTitle", "type": "string", "role": "content", "label": "Notification title", "description": "Bold first line on every banner.", "default": "New render" },
+    { "id": "message1", "type": "string", "role": "content", "label": "Message 1", "description": "Subtitle of the first banner to land.", "default": "Launch video is ready." },
+    { "id": "message2", "type": "string", "role": "content", "label": "Message 2", "description": "Subtitle of the second banner.", "default": "All checks passed." },
+    { "id": "message3", "type": "string", "role": "content", "label": "Message 3", "description": "Subtitle of the third banner.", "default": "4K render done in 92s." },
+    { "id": "message4", "type": "string", "role": "content", "label": "Message 4", "description": "Subtitle of the fourth banner.", "default": "Published to the catalog." },
+    { "id": "appName", "type": "string", "role": "content", "label": "App name", "description": "Small credit in the corner of every banner.", "default": "HyperFrames" },
+    { "id": "headlineTop", "type": "string", "role": "content", "label": "End-card line 1", "description": "First line of the closing card.", "default": "SHIP VIDEO" },
+    { "id": "headlineAccent", "type": "string", "role": "content", "label": "End-card line 2", "description": "Accented second line of the closing card.", "default": "FROM HTML" },
+    { "id": "footerText", "type": "string", "role": "content", "label": "End-card footer", "description": "URL or call to action under the headline.", "default": "hyperframes.heygen.com" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Notification Cascade</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+      }
+      #nc-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+        /* palette: warm glass banners over a bright soft backdrop, dark scrim under the end card */
+        --nc-glass: var(--hf-ui-surface-raised, rgba(250, 246, 241, 0.94));
+        --nc-ink-strong: var(--hf-ui-text-strong, #1c1c1e);
+        --nc-ink: var(--hf-ui-text, #464040);
+        --nc-ink-faint: var(--hf-ui-text-faint, #5a5450);
+        --nc-accent: var(--hf-ui-accent, #0a9c6b);
+        --nc-endcard-ink: #f7ece5;
+        --nc-endcard-accent: #3ce6ac;
+      }
+      #nc-stage-ground {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---------------- backdrop plate ---------------- */
+      /* a real photograph, like the footage it stands in for, pushed in slowly
+         by the timeline */
+      #nc-backdrop {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        object-fit: cover;
+      }
+      #nc-vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 120% 90% at 50% 42%,
+          rgba(0, 0, 0, 0) 58%,
+          rgba(50, 25, 8, 0.18) 100%
+        );
+      }
+
+      /* ---------------- notification stack ---------------- */
+      /* geometry measured from the reference: 810px banners on a 214px pitch,
+         entries every 2.000s, expo.out restack (spec provenance: measured) */
+      #nc-stack-inner {
+        position: absolute;
+        inset: 0;
+      }
+      .nc-banner {
+        position: absolute;
+        left: 135px;
+        width: 810px;
+        height: 176px;
+        border-radius: 26px;
+        background: var(--nc-glass);
+        box-shadow: 0 10px 26px rgba(50, 25, 8, 0.18);
+      }
+      .nc-banner .nc-icon {
+        position: absolute;
+        left: 23px;
+        top: 38px;
+        width: 100px;
+        height: 100px;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #5ae458 0%, #1fc83f 100%);
+      }
+      .nc-banner .nc-icon svg {
+        position: absolute;
+        left: 18px;
+        top: 20px;
+      }
+      .nc-banner .nc-title {
+        position: absolute;
+        left: 148px;
+        top: 37px;
+        font-size: 35px;
+        font-weight: 700;
+        color: var(--nc-ink-strong);
+        letter-spacing: 0.25px;
+      }
+      .nc-banner .nc-subtitle {
+        position: absolute;
+        left: 148px;
+        top: 85px;
+        font-size: 33px;
+        font-weight: 400;
+        color: var(--nc-ink);
+        letter-spacing: -0.75px;
+      }
+      .nc-banner .nc-now {
+        position: absolute;
+        right: 26px;
+        top: 32px;
+        font-size: 22px;
+        font-weight: 400;
+        color: var(--nc-ink-faint);
+        letter-spacing: 1px;
+      }
+      .nc-banner .nc-credit {
+        position: absolute;
+        right: 26px;
+        bottom: 10px;
+        font-size: 24px;
+        font-style: italic;
+        color: var(--nc-ink-faint);
+      }
+      #nc-pill-row {
+        position: absolute;
+        left: 0;
+        top: 1164px;
+        width: 1080px;
+        height: 72px;
+      }
+      #nc-pill {
+        position: absolute;
+        left: 615px;
+        width: 241px;
+        height: 72px;
+        border-radius: 36px;
+        background: rgba(250, 246, 242, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding-left: 20px;
+        gap: 9px;
+        font-size: 27px;
+        font-weight: 500;
+        color: #3f3a38;
+        box-shadow: 0 8px 20px rgba(50, 25, 8, 0.14);
+      }
+      #nc-pill-x {
+        position: absolute;
+        left: 873px;
+        width: 73px;
+        height: 72px;
+        border-radius: 50%;
+        background: rgba(250, 246, 242, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 8px 20px rgba(50, 25, 8, 0.14);
+      }
+
+      /* ---------------- end card ---------------- */
+      /* the source cut to dark footage under its card; the scrim below is that
+         ground, faded in on the same beat */
+      #nc-endcard-scrim {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, #14110e 0%, #221b13 100%);
+      }
+      #nc-endcard-inner {
+        position: absolute;
+        inset: 0;
+        text-align: center;
+      }
+      #nc-ec-top {
+        position: absolute;
+        left: 0;
+        top: 662px;
+        width: 1080px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        font-size: 93px;
+        letter-spacing: 4px;
+        color: var(--nc-endcard-ink);
+        text-shadow: 2.5px 3px 1px rgba(0, 0, 0, 0.66);
+      }
+      #nc-ec-accent {
+        position: absolute;
+        left: 0;
+        top: 784px;
+        width: 1080px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        font-size: 67px;
+        letter-spacing: 3px;
+        color: var(--nc-endcard-accent);
+        text-shadow: 2.5px 3px 1px rgba(0, 0, 0, 0.64);
+      }
+      #nc-ec-mark {
+        position: absolute;
+        left: 277px;
+        top: 990px;
+        width: 526px;
+        height: 158px;
+      }
+      #nc-ec-footer {
+        position: absolute;
+        left: 0;
+        top: 1190px;
+        width: 1080px;
+        font-size: 35px;
+        font-weight: 600;
+        color: var(--nc-endcard-accent);
+      }
+
+      #nc-black-fade {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="nc-root"
+      data-composition-id="notification-cascade"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="14"
+    >
+      <div id="nc-stage-ground"></div>
+
+      <!-- backdrop plate: slow push-in added in the timeline -->
+      <section id="nc-base" class="clip" data-start="0" data-duration="14" data-track-index="1">
+        <img id="nc-backdrop" src="assets/desk-backdrop.jpg" alt="" />
+        <div id="nc-vignette"></div>
+      </section>
+
+      <!-- notification stack -->
+      <section
+        id="nc-stack"
+        class="clip"
+        data-start="1.59"
+        data-duration="8.03"
+        data-track-index="2"
+      >
+        <div id="nc-stack-inner">
+          <div id="nc-pill-row">
+            <div id="nc-pill">
+              <svg width="25" height="25" viewBox="0 0 26 26" fill="none">
+                <path
+                  d="M4 8 L13 18 L22 8"
+                  stroke="#3f3a38"
+                  stroke-width="3.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>Show less</span>
+            </div>
+            <div id="nc-pill-x">
+              <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                <path
+                  d="M6 6 L28 28 M28 6 L6 28"
+                  stroke="#4a4442"
+                  stroke-width="4.2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </div>
+          </div>
+
+          <div class="nc-banner" id="nc-banner-1" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">Launch video is ready.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+          <div class="nc-banner" id="nc-banner-2" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">All checks passed.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+          <div class="nc-banner" id="nc-banner-3" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">4K render done in 92s.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+          <div class="nc-banner" id="nc-banner-4" style="top: 1260px">
+            <div class="nc-icon">
+              <svg width="64" height="60" viewBox="0 0 64 60" fill="none">
+                <path
+                  d="M32 2 C15 2 2 13 2 27 c0 8 4.6 15 12 19.6 -0.7 3.6 -2.9 7.4 -6.4 10.2 5.8 -0.6 10.9 -2.8 14.6 -5.5 3.1 0.8 6.4 1.2 9.8 1.2 17 0 30 -11 30 -25.5 S49 2 32 2 Z"
+                  fill="#fff"
+                />
+              </svg>
+            </div>
+            <div class="nc-title">New render</div>
+            <div class="nc-subtitle">Published to the catalog.</div>
+            <div class="nc-now">NOW</div>
+            <div class="nc-credit">HyperFrames</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- end card -->
+      <section
+        id="nc-endcard"
+        class="clip"
+        data-start="9.89"
+        data-duration="4.11"
+        data-track-index="3"
+      >
+        <div id="nc-endcard-scrim"></div>
+        <div id="nc-endcard-inner">
+          <div id="nc-ec-top">SHIP VIDEO</div>
+          <div id="nc-ec-accent">FROM HTML</div>
+          <img id="nc-ec-mark" src="assets/hyperframes-logo-white.svg" alt="HyperFrames" />
+          <div id="nc-ec-footer">hyperframes.heygen.com</div>
+        </div>
+      </section>
+
+      <!-- opening fade from black -->
+      <section id="nc-fade" class="clip" data-start="0" data-duration="0.7" data-track-index="4">
+        <div id="nc-black-fade"></div>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        /* -------- variables: every override falls back to its declared default -------- */
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        function text(value, fallback) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > 80 ? t.slice(0, 80) : t;
+        }
+
+        function setAll(selector, value) {
+          document.querySelectorAll(selector).forEach(function (el) {
+            el.textContent = value;
+          });
+        }
+
+        setAll(".nc-title", text(vars.notifTitle, "New render"));
+        setAll(".nc-credit", text(vars.appName, "HyperFrames"));
+        var messages = [
+          text(vars.message1, "Launch video is ready."),
+          text(vars.message2, "All checks passed."),
+          text(vars.message3, "4K render done in 92s."),
+          text(vars.message4, "Published to the catalog."),
+        ];
+        document.querySelectorAll(".nc-subtitle").forEach(function (el, i) {
+          el.textContent = messages[i] || messages[messages.length - 1];
+        });
+        document.getElementById("nc-ec-top").textContent = text(vars.headlineTop, "SHIP VIDEO");
+        document.getElementById("nc-ec-accent").textContent = text(
+          vars.headlineAccent,
+          "FROM HTML",
+        );
+        document.getElementById("nc-ec-footer").textContent = text(
+          vars.footerText,
+          "hyperframes.heygen.com",
+        );
+
+        /* -------- timeline: every decisive number is measured from the reference -------- */
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var PITCH = 214; /* banner-to-banner spacing, px */
+        var ENTRY = [1.6033, 3.6033, 5.6033, 7.6033]; /* one arrival every 2.000s */
+        var FADE_D = 0.3333; /* linear alpha ramp */
+        var RISE = 22; /* entry micro-rise, px */
+        var RESTACK_D = 1.0; /* expo.out slide when the stack makes room */
+        var EXIT_T = 9.2033; /* group exit */
+        var ENDCARD_T = 9.9033;
+        var ENDCARD_D = 0.5667;
+
+        /* baselines at t=0.001 so every span is covered at any seek */
+        tl.set(
+          ["#nc-banner-1", "#nc-banner-2", "#nc-banner-3", "#nc-banner-4", "#nc-pill-row"],
+          { autoAlpha: 0 },
+          0.001,
+        );
+        tl.set(["#nc-endcard-inner", "#nc-endcard-scrim"], { autoAlpha: 0 }, 0.001);
+
+        /* opening fade from black */
+        tl.fromTo(
+          "#nc-black-fade",
+          { autoAlpha: 1 },
+          { autoAlpha: 0, duration: 0.5, ease: "none" },
+          0,
+        );
+
+        /* backdrop push-in: linear, scale 1 -> 1.105 across the piece */
+        tl.fromTo(
+          "#nc-backdrop",
+          { scale: 1.0, transformOrigin: "525px 950px" },
+          { scale: 1.105, duration: 13.4667, ease: "none" },
+          0.5333,
+        );
+
+        /* banner entries: linear fade + expo micro-rise */
+        var banners = ["#nc-banner-1", "#nc-banner-2", "#nc-banner-3", "#nc-banner-4"];
+        banners.forEach(function (sel, i) {
+          tl.fromTo(
+            sel,
+            { autoAlpha: 0 },
+            { autoAlpha: 1, duration: FADE_D, ease: "none" },
+            ENTRY[i],
+          );
+          tl.fromTo(sel, { y: RISE }, { y: 0, duration: 0.9, ease: "expo.out" }, ENTRY[i]);
+        });
+        /* pill + X appear with banner 1 */
+        tl.fromTo(
+          "#nc-pill-row",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: FADE_D, ease: "none" },
+          ENTRY[0],
+        );
+
+        /* restacks: existing banners + pill slide up one pitch in lockstep */
+        tl.to(
+          ["#nc-banner-1", "#nc-pill-row"],
+          { y: -PITCH, duration: RESTACK_D, ease: "expo.out" },
+          ENTRY[1],
+        );
+        tl.to(
+          ["#nc-banner-1", "#nc-pill-row"],
+          { y: -2 * PITCH, duration: RESTACK_D, ease: "expo.out" },
+          ENTRY[2],
+        );
+        tl.to("#nc-banner-2", { y: -PITCH, duration: RESTACK_D, ease: "expo.out" }, ENTRY[2]);
+        tl.to(
+          ["#nc-banner-1", "#nc-pill-row"],
+          { y: -3 * PITCH, duration: RESTACK_D, ease: "expo.out" },
+          ENTRY[3],
+        );
+        tl.to("#nc-banner-2", { y: -2 * PITCH, duration: RESTACK_D, ease: "expo.out" }, ENTRY[3]);
+        tl.to("#nc-banner-3", { y: -PITCH, duration: RESTACK_D, ease: "expo.out" }, ENTRY[3]);
+
+        /* group exit: rise + fade */
+        tl.to("#nc-stack-inner", { y: -560, duration: 0.5, ease: "expo.out" }, EXIT_T);
+        tl.to("#nc-stack-inner", { autoAlpha: 0, duration: 0.37, ease: "none" }, EXIT_T);
+
+        /* end card: dark scrim and card fade in together, then hold */
+        tl.fromTo(
+          "#nc-endcard-scrim",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.2, ease: "none" },
+          ENDCARD_T,
+        );
+        tl.fromTo(
+          "#nc-endcard-inner",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: ENDCARD_D, ease: "none" },
+          ENDCARD_T,
+        );
+
+        window.__timelines["notification-cascade"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `showcase` `mock-ui` `notification` `vertical` `ad-template`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

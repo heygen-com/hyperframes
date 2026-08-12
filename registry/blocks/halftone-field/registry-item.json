@@ -1,0 +1,197 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "halftone-field",
+  "type": "hyperframes:block",
+  "title": "Halftone Field",
+  "description": "A full-bleed halftone light field: a grid of dots whose size and colour track a slow flowing simplex-noise field, so broad bands of light sweep across a mostly-black frame like a giant LED wall showing a plasma. Built to run under type.",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "tags": ["webgl", "shader", "background", "texture", "halftone"],
+  "variables": [
+    {
+      "id": "frequency",
+      "type": "number",
+      "label": "Field frequency",
+      "default": 2,
+      "min": 1,
+      "max": 10,
+      "step": 0.1
+    },
+    {
+      "id": "speed",
+      "type": "number",
+      "label": "Flow speed",
+      "default": 5,
+      "min": 0,
+      "max": 10,
+      "step": 0.1
+    },
+    {
+      "id": "cellSize",
+      "type": "number",
+      "label": "Cell size",
+      "default": 54,
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "id": "gamma",
+      "type": "number",
+      "label": "Gamma (midtone crush)",
+      "default": 12,
+      "min": 1,
+      "max": 20,
+      "step": 0.1
+    },
+    {
+      "id": "paletteBias",
+      "type": "number",
+      "label": "Palette bias",
+      "default": 2,
+      "min": 0,
+      "max": 20,
+      "step": 0.5
+    },
+    {
+      "id": "palette1",
+      "type": "color",
+      "label": "Palette stop 1 (lows)",
+      "default": "#00AAFF"
+    },
+    {
+      "id": "palette2",
+      "type": "color",
+      "label": "Palette stop 2",
+      "default": "#C2FF67"
+    },
+    {
+      "id": "palette3",
+      "type": "color",
+      "label": "Palette stop 3",
+      "default": "#6600FF"
+    },
+    {
+      "id": "palette4",
+      "type": "color",
+      "label": "Palette stop 4 (crests)",
+      "default": "#000000"
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "Background",
+      "default": "#000000"
+    },
+    {
+      "id": "quantize",
+      "type": "boolean",
+      "label": "Quantise to 30fps (stepped)",
+      "default": false
+    }
+  ],
+  "files": [
+    {
+      "path": "halftone-field.html",
+      "target": "compositions/halftone-field.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "params": [
+    {
+      "key": "--frequency",
+      "label": "Field frequency (1 = broad swells, 10 = fine mottle)",
+      "type": "number",
+      "default": "2",
+      "min": 1,
+      "max": 10,
+      "step": 0.1
+    },
+    {
+      "key": "--speed",
+      "label": "Flow speed (0 freezes the field)",
+      "type": "number",
+      "default": "5",
+      "min": 0,
+      "max": 10,
+      "step": 0.1
+    },
+    {
+      "key": "--cellsize",
+      "label": "Cell size (dot pitch, 1 = 6px, 100 = 60px)",
+      "type": "number",
+      "default": "54",
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "key": "--gamma",
+      "label": "Gamma: midtone crush, the whole look. Low values flatten it to an even grey dot field",
+      "type": "number",
+      "default": "12",
+      "min": 1,
+      "max": 20,
+      "step": 0.1
+    },
+    {
+      "key": "--palettebias",
+      "label": "Palette bias: floor under every dot's size and palette position. 0 lets the darks go fully black",
+      "type": "number",
+      "default": "2",
+      "min": 0,
+      "max": 20,
+      "step": 0.5
+    },
+    {
+      "key": "--palette1",
+      "label": "Palette stop 1 (lows)",
+      "type": "color",
+      "default": "#00AAFF"
+    },
+    {
+      "key": "--palette2",
+      "label": "Palette stop 2",
+      "type": "color",
+      "default": "#C2FF67"
+    },
+    {
+      "key": "--palette3",
+      "label": "Palette stop 3",
+      "type": "color",
+      "default": "#6600FF"
+    },
+    {
+      "key": "--palette4",
+      "label": "Palette stop 4 (crests)",
+      "type": "color",
+      "default": "#000000"
+    },
+    {
+      "key": "--background",
+      "label": "Background",
+      "type": "color",
+      "default": "#000000"
+    },
+    {
+      "key": "--quantize",
+      "label": "Quantise to 30fps for a stepped LED-wall look",
+      "type": "select",
+      "default": "false",
+      "options": [
+        {
+          "label": "Smooth",
+          "value": "false"
+        },
+        {
+          "label": "Stepped 30fps",
+          "value": "true"
+        }
+      ]
+    }
+  ]
+}
