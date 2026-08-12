@@ -28,7 +28,7 @@ Three attributes carry everything, all on the audio/video element itself:
 | Attribute         | Holds                                                     |
 | ----------------- | --------------------------------------------------------- |
 | `data-fx-chain`   | the effects, in signal order                              |
-| `data-automation` | envelopes on this track's volume or its effect parameters  |
+| `data-automation` | envelopes on this track's volume or its effect parameters |
 | `data-fx-carve`   | the carve's own settings, so it can be re-derived         |
 
 Exact JSON for each, and the rules a lane must satisfy: `references/attributes.md`.
@@ -144,18 +144,18 @@ before diagnosing a file nobody has described.
 Once you know the band and the kind, name what is wrong with the audio. Most bad audio is
 one or two of these, and each has a shipped answer:
 
-| It sounds like | Reach for |
-| --- | --- |
-| Hum or thump underneath | `rumble-cut`, or a `highpass` at 80 Hz |
-| Boomy, chesty | **Tame Boominess** job (200 Hz) |
-| Muffled, behind cardboard | **Reduce Mud** job (250 Hz) |
-| Words hard to make out | **Add Clarity** job (3 kHz), or carve the bed |
-| Harsh and tiring | **Soften Harshness** job (3.2 kHz) |
-| Some words much louder than others | **Evenness** on a compressor, or Even Out Levels |
-| Room tone between sentences | `room-gate` |
-| Voice and music fighting | **Voiceover carve** — not an EQ on either |
-| Dry, recorded nowhere | `room-tight` or `room-natural` |
-| Just "amateur" | `voice-clean`, which is four of the above in order |
+| It sounds like                     | Reach for                                          |
+| ---------------------------------- | -------------------------------------------------- |
+| Hum or thump underneath            | `rumble-cut`, or a `highpass` at 80 Hz             |
+| Boomy, chesty                      | **Tame Boominess** job (200 Hz)                    |
+| Muffled, behind cardboard          | **Reduce Mud** job (250 Hz)                        |
+| Words hard to make out             | **Add Clarity** job (3 kHz), or carve the bed      |
+| Harsh and tiring                   | **Soften Harshness** job (3.2 kHz)                 |
+| Some words much louder than others | **Evenness** on a compressor, or Even Out Levels   |
+| Room tone between sentences        | `room-gate`                                        |
+| Voice and music fighting           | **Voiceover carve** — not an EQ on either          |
+| Dry, recorded nowhere              | `room-tight` or `room-natural`                     |
+| Just "amateur"                     | `voice-clean`, which is four of the above in order |
 
 Full catalogue, what each preset contains, the band vocabulary, and what is
 deliberately NOT covered (de-essing, noise removal, tone match):
@@ -189,7 +189,7 @@ source denser, not cleaner.
 **Time** (`delay`, `reverb`, `chorus`, `phaser`) puts a track in a space or gives
 it width. These are the ones that most easily wreck a mix, because a tail or a
 detuned copy occupies the same room a voice needs. Use them on the thing that
-should sit *behind* something else, and keep the wet amount lower than sounds
+should sit _behind_ something else, and keep the wet amount lower than sounds
 right in isolation.
 
 The chain is serial: each effect processes what the one before it produced. So
@@ -205,7 +205,7 @@ not need the whole spectrum. It needs the few bands it actually occupies. Carve
 takes only those, and the bed keeps its low end and its top, so it is still music
 while the voice is still intelligible.
 
-**It is a relationship, not an effect.** The settings live on the *bed* — the
+**It is a relationship, not an effect.** The settings live on the _bed_ — the
 track that gets processed — and they name the voices to listen to, exactly as a
 sidechain compressor does: you select the track that gets quieter and pick what
 makes it quieter. **Never put a carve on a voice track.** A voice carved against

@@ -1,6 +1,6 @@
 # The casual author's view of the FX rack
 
-The schematic direction won because it *adds information* — signal order,
+The schematic direction won because it _adds information_ — signal order,
 routing, what is driven versus set. But information a casual author cannot read
 is decoration, and the rack speaks entirely in Hz, dB and ratios. So the drawing
 stays and the **language changes**.
@@ -39,11 +39,11 @@ one ruler. Naming them once makes the whole rack legible.
 ## What laying it all out exposed
 
 **A preset can use the same module twice for different jobs.** "Clean Voice"
-runs *Shape One Range* at node 02 (cutting mud at 250 Hz) and again at node 04
+runs _Shape One Range_ at node 02 (cutting mud at 250 Hz) and again at node 04
 (adding clarity at 3 kHz). Read down the rack, an author sees the same words
 twice and cannot tell them apart.
 
-So one plain name per *effect* is not enough: a preset's node needs its own
+So one plain name per _effect_ is not enough: a preset's node needs its own
 **role label** — "Reduce Mud", "Add Clarity" — which means copy belongs on the
 preset node as well as on the effect. This is invisible in a catalogue of cards
 and obvious the moment every preset is drawn as the chain it actually builds.
@@ -56,13 +56,13 @@ same condensed caps. It is back, inside the schematic skeleton rather than
 instead of it. You can tell what KIND of module you are looking at with the
 label out of focus, before the word registers.
 
-| Family | Treatment | Why |
-| --- | --- | --- |
-| Filter | condensed caps, wide tracking, light | measuring instruments |
-| Dynamics | condensed caps, tight, heavy | grips the signal |
-| Nonlinear | **italic serif** | the only generative family — it should not look like the others |
-| Time | condensed caps, very wide, thin | atmosphere, not control |
-| Smart | monospace, medium | it measures; it reads as a readout |
+| Family    | Treatment                            | Why                                                             |
+| --------- | ------------------------------------ | --------------------------------------------------------------- |
+| Filter    | condensed caps, wide tracking, light | measuring instruments                                           |
+| Dynamics  | condensed caps, tight, heavy         | grips the signal                                                |
+| Nonlinear | **italic serif**                     | the only generative family — it should not look like the others |
+| Time      | condensed caps, very wide, thin      | atmosphere, not control                                         |
+| Smart     | monospace, medium                    | it measures; it reads as a readout                              |
 
 Two faces, as budgeted. The condensed sans carries four families apart by
 weight, case, tracking and size; the serif is spent on the single family that
@@ -102,18 +102,18 @@ literal; keep it that way, and use HTML entities for typographic characters.
 ## The hole in the single-knob rule: picking the range
 
 `Shape One Range` has three controls — where, how much, how wide — and the
-copy nominated *how much* as the one that matters. That is incoherent, and it
+copy nominated _how much_ as the one that matters. That is incoherent, and it
 took someone asking to see it: boosting an unspecified frequency means nothing.
 **The range is the first decision, not the second.**
 
 Two ways out:
 
-**A — two controls.** Keep the module generic and make *where* a word from the
+**A — two controls.** Keep the module generic and make _where_ a word from the
 shared vocabulary rather than a frequency field. Honest, and the ruler does the
 teaching, but it is still two decisions and the first is jargon in a friendly
 coat.
 
-**B — the range IS the module.** The add menu offers *jobs* — Reduce Mud, Add
+**B — the range IS the module.** The add menu offers _jobs_ — Reduce Mud, Add
 Clarity, Tame Harshness — each a peaking node with its frequency already
 chosen. Picking the module is picking the range, so one knob is honest rather
 than a simplification hiding the real choice.
@@ -121,8 +121,8 @@ than a simplification hiding the real choice.
 **B is the answer**, and it is the same insight as the EQ: an author does not
 want a parametric equaliser, they want to fix a thing. It also dissolves the
 duplicate-name problem at the root rather than papering it with a role label —
-`Clean Voice` reads *Remove Rumble · Reduce Mud · Even Out Loudness · Add
-Clarity · Peak Ceiling*, and nothing repeats.
+`Clean Voice` reads _Remove Rumble · Reduce Mud · Even Out Loudness · Add
+Clarity · Peak Ceiling_, and nothing repeats.
 
 Option A is not wasted: its band picker is exactly the right control for moving
 the frequency under **Details**, for the author who wants to.
@@ -132,10 +132,10 @@ named jobs, and `EFFECT_COPY.peaking` stops being one entry.
 
 ## Shipped: a multi-band EQ ("Tone")
 
-*Built in `e984a9e62` / `2eaa71cac`. The design below is what was built.*
+_Built in `e984a9e62` / `2eaa71cac`. The design below is what was built._
 
-The clearest failure this exercise surfaced is a rack holding two *Shape One
-Range* modules doing different jobs. A multi-band EQ is the answer, and it is a
+The clearest failure this exercise surfaced is a rack holding two _Shape One
+Range_ modules doing different jobs. A multi-band EQ is the answer, and it is a
 better one than a role label because an author already understands it: bass,
 middle, treble is the most widely used audio control there is.
 
@@ -152,7 +152,7 @@ in the render, nothing new in the graph, and the nodes stay ordinary, so an
 author who opens the details finds exactly the filters they could have added by
 hand.
 
-The registry's parameter model is flat key/value, so an `eq` effect *type* with
+The registry's parameter model is flat key/value, so an `eq` effect _type_ with
 N bands would need array-shaped params it does not support. The composite-module
 route avoids that entirely and is the pattern this codebase already proved.
 
@@ -207,23 +207,23 @@ arrives after the pointer has gone.
 Three things that took a second pass, all worth knowing before touching this
 again. An audition has to survive the panel re-rendering under it — the group
 re-renders every playhead tick, so anything keyed on its inline callbacks tears
-down thirty times a second. Applying must NOT revert, since the audition *was*
+down thirty times a second. Applying must NOT revert, since the audition _was_
 the thing applied. And moving between two entries in a shelf is not leaving it,
 so each entry has to call its neighbours' auditions off itself.
 
 **The three rules are built too**, and so is the visual direction:
 
-- *Two faces.* A module opens on its name, what it is for, and the one control
+- _Two faces._ A module opens on its name, what it is for, and the one control
   that carries it — `EFFECT_COPY.primary`, with `primaryEnds` saying what its
   two ends sound like. Everything else is behind a Details disclosure, which is
   also where the DSP name lives. Ten of fifteen effects; the five whose primary
   is "strength" open on all their controls until `PROFILES` ships, which is
   honest — inventing one knob for them now would be a knob that lies.
-- *One knob that matters.* `packages/core/src/audioFxProfiles.ts`. Five effects
+- _One knob that matters._ `packages/core/src/audioFxProfiles.ts`. Five effects
   get a derived control over several parameters, continuous rather than the
   three-point tables proposed here. **Three of the five figures were wrong** and
   only rendering showed it — the write-up is `~/audio-fx-profiles-ab/README.md`.
-- *Name the outcome.* Modules, knobs, the add menu and the preset shelf.
+- _Name the outcome._ Modules, knobs, the add menu and the preset shelf.
 
 - **The range IS the module.** The add menu offers five named jobs — Tame
   Boominess, Reduce Mud, Reduce Boxiness, Add Clarity, Soften Harshness — and

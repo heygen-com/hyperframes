@@ -43,7 +43,7 @@ its own row.
   selection moves.
 - **Gestures stay per clip.** Each clip keeps its own SVG, its own
   `useAutomationLaneGestures`, and its own selection box; a shared row is a shared
-  *lane track*, not a shared envelope. Two clips' envelopes in one row must not be
+  _lane track_, not a shared envelope. Two clips' envelopes in one row must not be
   draggable as one thing.
 - **Row height** is `AUTOMATION_LANE_H` per grouped lane, not per clip-lane, so
   `getTimelineLaneTop` and the header's row positions follow the grouped count.
@@ -53,6 +53,6 @@ its own row.
 
 ## Worth deciding while implementing
 
-A clip on the row that does *not* automate a grouped property has empty space in
+A clip on the row that does _not_ automate a grouped property has empty space in
 that row. Leave it empty (the envelope is simply absent there) rather than drawing a
 flat line at the stored value — a flat line would claim an envelope exists.

@@ -17,33 +17,33 @@ deliberate nodes.
 Work from the symptom, not from the effect list. Most bad audio is one or two of
 these, and the fix is usually a job rather than a whole preset.
 
-| It sounds like | Where it lives | Reach for |
-| --- | --- | --- |
-| Hum, rumble, traffic, footsteps, handling | 20–80 Hz | `rumble-cut` preset, or a `highpass` at 80 Hz |
-| Boomy, chesty, too close to the mic | 80–250 Hz | **Tame Boominess** job (200 Hz, −4 dB) |
-| Muffled, like it is behind cardboard | 250–600 Hz | **Reduce Mud** job (250 Hz, −3 dB) |
-| Boxy, like a small room | ~400 Hz | **Reduce Boxiness** job (400 Hz, −3 dB) |
-| Words hard to make out, sits behind the music | 2–5 kHz | **Add Clarity** job (3 kHz, +2.5 dB), or carve the bed |
-| Harsh, brittle, tiring over a whole listen | 3–5 kHz | **Soften Harshness** job (3.2 kHz, −3 dB) |
-| Sibilant — `s` sounds spitting | 5–10 kHz | Nothing shipped does this properly; see "Not covered" below |
-| Dull, closed-in, lifeless | 10–20 kHz | `highshelf` lift, or `voice-broadcast` which includes one |
-| Some words much louder than others | not a band | **Evenness** profile on a `compressor`, or `levellingResult` |
-| Room tone audible between sentences | not a band | `room-gate` preset (**Tightness** profile) |
-| Peaks clipping or spiking | not a band | `limiter` last in the chain — every voice preset ends in one |
-| Voice and music fighting each other | 1–3 kHz mostly | **Voiceover carve**, not an EQ on either track |
-| Dry, stuck to the speaker, recorded nowhere | not a band | `room-tight` or `room-natural` |
+| It sounds like                                | Where it lives | Reach for                                                    |
+| --------------------------------------------- | -------------- | ------------------------------------------------------------ |
+| Hum, rumble, traffic, footsteps, handling     | 20–80 Hz       | `rumble-cut` preset, or a `highpass` at 80 Hz                |
+| Boomy, chesty, too close to the mic           | 80–250 Hz      | **Tame Boominess** job (200 Hz, −4 dB)                       |
+| Muffled, like it is behind cardboard          | 250–600 Hz     | **Reduce Mud** job (250 Hz, −3 dB)                           |
+| Boxy, like a small room                       | ~400 Hz        | **Reduce Boxiness** job (400 Hz, −3 dB)                      |
+| Words hard to make out, sits behind the music | 2–5 kHz        | **Add Clarity** job (3 kHz, +2.5 dB), or carve the bed       |
+| Harsh, brittle, tiring over a whole listen    | 3–5 kHz        | **Soften Harshness** job (3.2 kHz, −3 dB)                    |
+| Sibilant — `s` sounds spitting                | 5–10 kHz       | Nothing shipped does this properly; see "Not covered" below  |
+| Dull, closed-in, lifeless                     | 10–20 kHz      | `highshelf` lift, or `voice-broadcast` which includes one    |
+| Some words much louder than others            | not a band     | **Evenness** profile on a `compressor`, or `levellingResult` |
+| Room tone audible between sentences           | not a band     | `room-gate` preset (**Tightness** profile)                   |
+| Peaks clipping or spiking                     | not a band     | `limiter` last in the chain — every voice preset ends in one |
+| Voice and music fighting each other           | 1–3 kHz mostly | **Voiceover carve**, not an EQ on either track               |
+| Dry, stuck to the speaker, recorded nowhere   | not a band     | `room-tight` or `room-natural`                               |
 
 **The band vocabulary** these map onto — the same names the rack shows:
 
-| Range | Name | What lives there |
-| --- | --- | --- |
-| 20–80 Hz | Rumble | traffic, footsteps, handling |
-| 80–250 Hz | Weight | chest, body, warmth |
-| 250–600 Hz | Mud | boxy, muffled, cardboard |
-| 600–2000 Hz | Middle | the body of a voice |
-| 2000–5000 Hz | Presence | consonants, intelligibility |
-| 5000–10000 Hz | Edge | sibilance, harshness |
-| 10000–20000 Hz | Air | sparkle, openness |
+| Range          | Name     | What lives there             |
+| -------------- | -------- | ---------------------------- |
+| 20–80 Hz       | Rumble   | traffic, footsteps, handling |
+| 80–250 Hz      | Weight   | chest, body, warmth          |
+| 250–600 Hz     | Mud      | boxy, muffled, cardboard     |
+| 600–2000 Hz    | Middle   | the body of a voice          |
+| 2000–5000 Hz   | Presence | consonants, intelligibility  |
+| 5000–10000 Hz  | Edge     | sibilance, harshness         |
+| 10000–20000 Hz | Air      | sparkle, openness            |
 
 ### Order of operations
 
@@ -51,7 +51,7 @@ Diagnose in this order, because each step changes what the next one hears:
 
 1. **Subtract before you add.** Cut rumble and mud first. A voice that sounds
    dull often has too much low-mid, not too little top — lifting the top of a
-   muddy voice makes it muddy *and* harsh.
+   muddy voice makes it muddy _and_ harsh.
 2. **Level after you filter.** A compressor reacts to whatever is loudest, and
    a rumble it can no longer see is a rumble it stops chasing.
 3. **Relationships after level.** Carve a bed against a voice once the voice
@@ -71,11 +71,11 @@ is signal order.
 
 ### Voice — make a real voice sound like its better self
 
-| Preset | Answers | Chain |
-| --- | --- | --- |
-| `voice-clean` | "My voice sounds amateur" | Remove Rumble → Reduce Mud → Even Out Loudness → Add Clarity → Peak Ceiling |
+| Preset            | Answers                         | Chain                                                                                               |
+| ----------------- | ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `voice-clean`     | "My voice sounds amateur"       | Remove Rumble → Reduce Mud → Even Out Loudness → Add Clarity → Peak Ceiling                         |
 | `voice-broadcast` | "I want it to sound like radio" | Remove Rumble → Reduce Boxiness → Even Out Loudness → Add Clarity → Add Air → Warmth → Peak Ceiling |
-| `voice-warm` | "I want it intimate and close" | Remove Rumble → Add Weight → Even Out Loudness → Add Clarity → Peak Ceiling |
+| `voice-warm`      | "I want it intimate and close"  | Remove Rumble → Add Weight → Even Out Loudness → Add Clarity → Peak Ceiling                         |
 
 `voice-clean` is the default answer to "fix this voiceover". The other two are
 the same idea pushed in one direction: broadcast is denser and more forward,
@@ -83,12 +83,12 @@ warm has body added rather than cut.
 
 ### Repair — one problem, one node
 
-| Preset | Answers | Does |
-| --- | --- | --- |
-| `rumble-cut` | "There's a hum or thump underneath" | High-pass under the voice |
-| `room-gate` | "I can hear the room between sentences" | Closes the pauses. **Does not remove noise** — room tone under speech stays |
-| `boom-tame` | "My voice sounds boomy" | Cuts the chestiness of a too-close mic |
-| `harsh-tame` | "It's harsh and tiring to listen to" | Rounds a brittle upper-mid, broad and always-on |
+| Preset       | Answers                                 | Does                                                                        |
+| ------------ | --------------------------------------- | --------------------------------------------------------------------------- |
+| `rumble-cut` | "There's a hum or thump underneath"     | High-pass under the voice                                                   |
+| `room-gate`  | "I can hear the room between sentences" | Closes the pauses. **Does not remove noise** — room tone under speech stays |
+| `boom-tame`  | "My voice sounds boomy"                 | Cuts the chestiness of a too-close mic                                      |
+| `harsh-tame` | "It's harsh and tiring to listen to"    | Rounds a brittle upper-mid, broad and always-on                             |
 
 ### Character — deliberate, not corrective
 
@@ -105,7 +105,7 @@ a log sweep, no two sit closer than the signal itself. Do not stack two.
 than nowhere), `hall` (far back and big), `slap-echo` (one quick repeat),
 `dub-throw` (repeats trailing well behind).
 
-Use these on whatever should sit *behind* something else, and keep the wet amount
+Use these on whatever should sit _behind_ something else, and keep the wet amount
 lower than sounds right in isolation — a tail occupies the room a voice needs.
 
 ### The whole preset as one control
@@ -123,13 +123,13 @@ bitcrush) expose no automatable parameters at all.
 Five named peaking filters with the frequency already chosen. Picking the job is
 picking the range, which is what makes a single "how much" knob honest.
 
-| Job | Symptom | Sets |
-| --- | --- | --- |
-| Tame Boominess | Too much chest — it booms | 200 Hz, −4 dB, Q 1.4 |
-| Reduce Mud | Muffled, like it is behind cardboard | 250 Hz, −3 dB, Q 1.2 |
-| Reduce Boxiness | Sounds like a small room, or a box | 400 Hz, −3 dB, Q 1.4 |
-| Add Clarity | Words are hard to make out | 3 kHz, +2.5 dB, Q 1 |
-| Soften Harshness | Harsh and tiring to listen to | 3.2 kHz, −3 dB, Q 1.6 |
+| Job              | Symptom                              | Sets                  |
+| ---------------- | ------------------------------------ | --------------------- |
+| Tame Boominess   | Too much chest — it booms            | 200 Hz, −4 dB, Q 1.4  |
+| Reduce Mud       | Muffled, like it is behind cardboard | 250 Hz, −3 dB, Q 1.2  |
+| Reduce Boxiness  | Sounds like a small room, or a box   | 400 Hz, −3 dB, Q 1.4  |
+| Add Clarity      | Words are hard to make out           | 3 kHz, +2.5 dB, Q 1   |
+| Soften Harshness | Harsh and tiring to listen to        | 3.2 kHz, −3 dB, Q 1.6 |
 
 Each is an ordinary `peaking` node underneath — the frequency is a starting
 point, not a cage. Prefer a job to a bare `peaking` when one matches: it arrives
@@ -142,7 +142,7 @@ shows the author three identical rows, which is the exact problem jobs exist to
 dissolve.
 
 **Every job also ships inside a preset, at identical settings** — that is where
-the five came from. `boom-tame` *is* Tame Boominess; `harsh-tame` *is* Soften
+the five came from. `boom-tame` _is_ Tame Boominess; `harsh-tame` _is_ Soften
 Harshness; `voice-clean` contains Reduce Mud and Add Clarity; `voice-broadcast`
 contains Reduce Boxiness. So check what a preset already contains before adding
 a job on top of it, or the cut lands twice — `voice-clean` plus a Reduce Mud job
@@ -157,18 +157,18 @@ Five effects have no single parameter that can honestly be their face — a
 compressor's threshold means nothing without its ratio. They get a derived
 control instead, 0..1, which sets several parameters together.
 
-| Effect | Knob | 0 → 1 | Sets |
-| --- | --- | --- | --- |
-| `compressor` | Evenness | Barely touched → Very even, quite squashed | threshold, ratio, attack, release, makeup |
-| `gate` | Tightness | Only true silence → Cuts quiet words too | threshold, range, release |
-| `saturate` | Warmth | Just a sheen → Openly distorted | threshold, output |
-| `reverb` | Space | A small tight room → A big open hall | size, wet, dry |
-| `bitcrush` | Crush | Slightly gritty → Destroyed | bits, samples, mix |
+| Effect       | Knob      | 0 → 1                                      | Sets                                      |
+| ------------ | --------- | ------------------------------------------ | ----------------------------------------- |
+| `compressor` | Evenness  | Barely touched → Very even, quite squashed | threshold, ratio, attack, release, makeup |
+| `gate`       | Tightness | Only true silence → Cuts quiet words too   | threshold, range, release                 |
+| `saturate`   | Warmth    | Just a sheen → Openly distorted            | threshold, output                         |
+| `reverb`     | Space     | A small tight room → A big open hall       | size, wet, dry                            |
+| `bitcrush`   | Crush     | Slightly gritty → Destroyed                | bits, samples, mix                        |
 
 **Evenness, Warmth and Space are level-matched** — the make-up gain, the output
 trim and the dry leg move with the drive, so turning the knob up does not also
 turn the track up or down. Those figures were solved by measurement, not chosen:
-the compressor originally left a track 2.5 dB *quieter* at full evenness, and
+the compressor originally left a track 2.5 dB _quieter_ at full evenness, and
 saturation's trim ran the wrong way entirely.
 
 Tightness and Crush are not level-matched, because neither has a trim to move —
@@ -205,11 +205,11 @@ true and handed nothing. Say what it is, say what it costs, apply it.
 
 - **De-essing.** `harsh-tame` is a broad always-on cut centred a band too low,
   not a de-esser. A real one needs a detector faster than the analysis hop
-  available here. *Fallback:* a narrow `peaking` cut in the Edge band — sweep
+  available here. _Fallback:_ a narrow `peaking` cut in the Edge band — sweep
   5–9 kHz to find where this voice actually spits, Q 3–4, −3 to −5 dB. It is
   always on, so it costs a little air on every word; that trade is usually worth
   it and is the author's to reject.
-- **Tone matching** one track to another. *Fallback:* the Tone EQ by hand, which
+- **Tone matching** one track to another. _Fallback:_ the Tone EQ by hand, which
   is predictable in a way a match curve derived from two takes would not be.
 - **Noise removal.** `room-gate` closes the gaps; the noise under speech is
   untouched. There is no fallback for hiss beneath the words — a source with

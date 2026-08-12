@@ -16,7 +16,7 @@ Two facts make this cheaper here than in most editors:
 1. **Web Audio has native envelope playback.** `AudioParam` scheduling
    (`linearRampToValueAtTime`, `setValueCurveAtTime`) is sample-accurate and
    runs on the audio thread. No per-frame JS evaluates the envelope; the studio
-   only *schedules* it.
+   only _schedules_ it.
 2. **Preview and render share one graph.** The render runs the same builders in
    an `OfflineAudioContext`, so an envelope scheduled the same way in both
    places is identical by construction. No parity harness needed.
@@ -50,16 +50,16 @@ panel).
 
 ## 3. UX spec (Ableton mapping)
 
-| Ableton | Here |
-| --- | --- |
-| Automation triangle on track header | Expand toggle on audio track rows in the timeline gutter |
+| Ableton                                       | Here                                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Automation triangle on track header           | Expand toggle on audio track rows in the timeline gutter                                               |
 | One parameter per lane, selector at lane left | Same. Selector lists `Volume` + every automatable param of every chain node (`Compressor · Threshold`) |
-| Breakpoint envelope over the clip | SVG envelope drawn over the existing waveform, clip-local |
-| Double-click segment → add point | Same |
-| Drag point (value tooltip) | Same; tooltip shows value + unit from the registry |
-| Drag segment vertically → bend curvature | Same (Phase 2; format supports it from v1) |
-| Delete key / right-click → remove point | Same |
-| Dimmed line when no automation | Flat line at the current static value; first edit creates the lane |
+| Breakpoint envelope over the clip             | SVG envelope drawn over the existing waveform, clip-local                                              |
+| Double-click segment → add point              | Same                                                                                                   |
+| Drag point (value tooltip)                    | Same; tooltip shows value + unit from the registry                                                     |
+| Drag segment vertically → bend curvature      | Same (Phase 2; format supports it from v1)                                                             |
+| Delete key / right-click → remove point       | Same                                                                                                   |
+| Dimmed line when no automation                | Flat line at the current static value; first edit creates the lane                                     |
 
 Lane height ~48 px expanded. Multiple lanes per track may be open at once
 (one per parameter), matching Ableton's "+" lanes — Phase 2; V1 shows one lane
@@ -75,7 +75,10 @@ coalesced per gesture — free.
 Serialised on the element, versioned, same pattern as `data-fx-chain`:
 
 ```html
-<audio id="music" src="..." data-volume="0.55"
+<audio
+  id="music"
+  src="..."
+  data-volume="0.55"
   data-fx-chain='{"version":1,"nodes":[{"id":"n1","type":"peaking",...}]}'
   data-automation='{
     "version": 1,
@@ -85,7 +88,8 @@ Serialised on the element, versioned, same pattern as `data-fx-chain`:
       { "target": "fx.n1.frequency",
         "points": [ {"t":0,"v":200}, {"t":4,"v":8000} ] }
     ]
-  }'>
+  }'
+></audio>
 ```
 
 - **`t`** — seconds, **clip-local** (relative to the element's `data-start`).
@@ -96,7 +100,7 @@ Serialised on the element, versioned, same pattern as `data-fx-chain`:
   (dB for a compressor threshold, Hz for a cutoff). Volume is **linear 0..1**,
   consistent with `data-volume` and the existing linear-domain envelope
   machinery — no dB conversion enters the volume path.
-- **`curve`** — optional, `-1..1`, curvature of the segment *leaving* this
+- **`curve`** — optional, `-1..1`, curvature of the segment _leaving_ this
   point. `0`/absent = linear. Power-curve bend, Ableton-style.
 - **`target`** — `"volume"` or `"fx.<nodeId>.<paramKey>"`.
 
@@ -106,6 +110,7 @@ so reordering the chain never re-targets a lane. Chains without ids stay
 valid — they just can't be automation targets until the panel touches them.
 
 **Normalization** (`normalizeAutomation`, mirrors `normalizeAudioFxParams`):
+
 - points sorted by `t`; duplicate `t` keeps the later point
 - `v` clamped to the target's registry range; non-finite → point dropped
 - lanes targeting a node id that no longer exists in the chain are **dropped**
@@ -143,6 +148,7 @@ play / seek / rate change with the clip's `elapsed` offset:
   (§8) of the chain instance spliced for this source.
 
 Mechanics per lane, at schedule time:
+
 1. Convert clip-local envelope → context-time segments starting at
    `scheduledAt`, offset by `elapsed`, scaled by playback rate.
 2. Linear segments → `setValueAtTime` + `linearRampToValueAtTime` (log-domain
@@ -180,17 +186,18 @@ mid-playback without rescheduling the source.
 
 **Automatable in V1** (param maps to a real AudioParam):
 
-| Effect | Params |
-| --- | --- |
-| Peaking / shelves | frequency, gain, Q |
-| High/low-pass (2-pole) | frequency, Q |
-| Delay | time (delayTime), feedback, mix |
-| Chorus | rate, depth, mix |
-| Phaser | rate, wet/dry gains |
-| Reverb | wet, dry |
-| *Volume* | (transport gainNode) |
+| Effect                 | Params                          |
+| ---------------------- | ------------------------------- |
+| Peaking / shelves      | frequency, gain, Q              |
+| High/low-pass (2-pole) | frequency, Q                    |
+| Delay                  | time (delayTime), feedback, mix |
+| Chorus                 | rate, depth, mix                |
+| Phaser                 | rate, wet/dry gains             |
+| Reverb                 | wet, dry                        |
+| _Volume_               | (transport gainNode)            |
 
 **Not automatable in V1**, greyed out in the selector, with reasons:
+
 - **Worklet effects** (compressor, limiter, gate, bitcrush): params travel by
   `postMessage`, not AudioParams. V2 path: declare
   `parameterDescriptors` in the processors and read `parameters` in
@@ -227,14 +234,14 @@ mid-playback without rescheduling the source.
 
 ## 11. PR breakdown (all < 1000 LOC)
 
-| PR | Scope | Est. LOC |
-| --- | --- | --- |
-| A `wa-10-automation-model` | core: types, parse/normalize/serialize, `sampleAutomationLane`, curvature math, chain node ids, lint rule | ~450 |
-| B `wa-11-param-exposure` | core: `automatable` flags, `FxNodeHandle.params`, invariant test | ~350 |
-| C `wa-12-preview-scheduling` | core: transport + attach-path scheduling, cancel/re-schedule on live edit | ~400 |
-| D `wa-13-render-scheduling` | core/engine: offline scheduling in runtime entry, volume→bake bridge, sweep fixture test | ~350 |
-| E `wa-14-lane-ui` | studio: lane component, expand toggle, selector, point editing, orphan cleanup | ~800 |
-| F `wa-15-curvature` (Phase 2) | studio: segment-bend drag; worklet `parameterDescriptors` migration | ~300+ |
+| PR                            | Scope                                                                                                     | Est. LOC |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------- | -------- |
+| A `wa-10-automation-model`    | core: types, parse/normalize/serialize, `sampleAutomationLane`, curvature math, chain node ids, lint rule | ~450     |
+| B `wa-11-param-exposure`      | core: `automatable` flags, `FxNodeHandle.params`, invariant test                                          | ~350     |
+| C `wa-12-preview-scheduling`  | core: transport + attach-path scheduling, cancel/re-schedule on live edit                                 | ~400     |
+| D `wa-13-render-scheduling`   | core/engine: offline scheduling in runtime entry, volume→bake bridge, sweep fixture test                  | ~350     |
+| E `wa-14-lane-ui`             | studio: lane component, expand toggle, selector, point editing, orphan cleanup                            | ~800     |
+| F `wa-15-curvature` (Phase 2) | studio: segment-bend drag; worklet `parameterDescriptors` migration                                       | ~300+    |
 
 A→B→C→D are dependency-ordered; E needs A+B (draws and writes) and benefits
 from C (audible while editing). F is optional polish.
@@ -243,13 +250,13 @@ from C (audible while editing). F is optional polish.
 
 1. **Volume lane display unit** — data stays linear either way; show the axis
    as % (matches `data-volume`) or dB (matches DAW muscle memory)?
-   *Default if unanswered: %.*
+   _Default if unanswered: %._
 2. **Curvature in V1?** Format supports it from day one regardless. Building
-   the bend-drag in V1 adds ~2 days to E. *Default: defer to F, straight lines
-   first.*
+   the bend-drag in V1 adds ~2 days to E. _Default: defer to F, straight lines
+   first._
 3. **Worklet-param automation deferral acceptable?** Compressor threshold
-   automation is the notable absence. *Default: defer; it's a self-contained
-   follow-up.*
+   automation is the notable absence. _Default: defer; it's a self-contained
+   follow-up._
 4. **Clip-envelope semantics confirmed?** Automation travels with the clip.
-   If you expected Ableton *arrangement* behaviour (stays put), say so now —
+   If you expected Ableton _arrangement_ behaviour (stays put), say so now —
    it changes the data model (composition-global times, stored off-element).

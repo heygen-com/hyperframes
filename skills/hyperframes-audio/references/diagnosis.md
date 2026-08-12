@@ -27,7 +27,7 @@ Ranked by how much they can tell you. Prefer the highest one available.
 ### 1. The clean original, if it exists
 
 If the undamaged take is on disk, this is the whole job — measure both, subtract,
-and the difference *is* the defect. Nothing below is as good. Look for it before
+and the difference _is_ the defect. Nothing below is as good. Look for it before
 anything else.
 
 ### 2. The pauses
@@ -48,12 +48,12 @@ quantisation floor, it leaves them at the quantisation floor: near-silence times
 anything is still near-silence. So the pause carries no trace of it. Measured on
 one take with a −9 dB shelf above 2.5 kHz applied to the whole file:
 
-| | 1 kHz | 5 kHz | tilt |
-| --- | --- | --- | --- |
-| pause, undamaged | −91.0 | −91.0 | +0.0 |
-| pause, shelved | −91.0 | −91.0 | **+0.0** |
-| speech, undamaged | −34.7 | −42.8 | −8.1 |
-| speech, shelved | −35.4 | −48.5 | **−13.1** |
+|                   | 1 kHz | 5 kHz | tilt      |
+| ----------------- | ----- | ----- | --------- |
+| pause, undamaged  | −91.0 | −91.0 | +0.0      |
+| pause, shelved    | −91.0 | −91.0 | **+0.0**  |
+| speech, undamaged | −34.7 | −42.8 | −8.1      |
+| speech, shelved   | −35.4 | −48.5 | **−13.1** |
 
 The defect is a clear 5 dB in the speech and **exactly zero** in the pause.
 
@@ -63,7 +63,7 @@ that did exactly that — measured the pause, found it smooth, and concluded
 −72 dBFS rumble as the defect and shipped a high-pass for a file whose actual
 problem was that it had no top end.
 
-The pause spectrum *is* a transfer function only when the gaps carry a real
+The pause spectrum _is_ a transfer function only when the gaps carry a real
 recorded noise floor that passed through the same filter. A room-tone bed does;
 a digitally clean take does not. Check which you have before trusting it: if the
 gaps are within a few dB of the quantisation floor, this reference can find
@@ -127,7 +127,7 @@ under-determined, the instinct is to invent a cleverer measurement and escape
 it — and something will always be found, because a single voice's spectrum is
 full of peaks and valleys that survive any amount of statistical rigour. An
 elaborate novel method reaching a confident conclusion, on a file where the two
-reliable references were both unavailable, is the *signature* of this failure,
+reliable references were both unavailable, is the _signature_ of this failure,
 not evidence against it. If you notice yourself building one, stop and report
 the ambiguity instead.
 
@@ -166,7 +166,7 @@ ffmpeg -hide_banner -i voice.wav -af astats=metadata=1 -f null - 2>&1 | grep -i 
 
 `-inf` means digital silence in the gaps: no additive noise, so rumble, hiss and
 room tone are all ruled out in one command. A real number is the level of
-whatever is sitting under the voice. To see its *shape*, cut a pause out with
+whatever is sitting under the voice. To see its _shape_, cut a pause out with
 `-ss`/`-t` and run the band recipe on that slice alone.
 
 ### Level over time
@@ -208,7 +208,7 @@ So the rule is symmetric, and the dangerous half is the second one:
 - **Do not dismiss one either.** "The peak is at 200 Hz, F0 is 185 Hz, therefore
   it is the fundamental" is not a diagnosis — it is the same observation
   restated, and it discards the one candidate most likely to be real. Boominess
-  *is* excess energy at the bottom of a voice; that is what the word means.
+  _is_ excess energy at the bottom of a voice; that is what the word means.
 
 What you can do is measure how much, against the same file's midrange:
 

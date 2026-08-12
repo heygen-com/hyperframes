@@ -12,9 +12,24 @@ that sounds plausible and is wrong.
 {
   "version": 1,
   "nodes": [
-    { "type": "highpass", "id": "n1", "label": "Remove Rumble", "params": { "frequency": 120, "q": 0.707, "poles": "2" } },
-    { "type": "peaking", "id": "n2", "fromCarve": true, "params": { "frequency": 1600, "gain": -6, "q": 1.4 } },
-    { "type": "limiter", "id": "n3", "enabled": false, "params": { "limit": -1, "attack": 5, "release": 50, "level_out": 0 } }
+    {
+      "type": "highpass",
+      "id": "n1",
+      "label": "Remove Rumble",
+      "params": { "frequency": 120, "q": 0.707, "poles": "2" }
+    },
+    {
+      "type": "peaking",
+      "id": "n2",
+      "fromCarve": true,
+      "params": { "frequency": 1600, "gain": -6, "q": 1.4 }
+    },
+    {
+      "type": "limiter",
+      "id": "n3",
+      "enabled": false,
+      "params": { "limit": -1, "attack": 5, "release": 50, "level_out": 0 }
+    }
   ]
 }
 ```
@@ -52,8 +67,20 @@ escaping.
 {
   "version": 1,
   "lanes": [
-    { "target": "volume", "points": [{ "t": 0, "v": 1 }, { "t": 2.5, "v": 0.4 }] },
-    { "target": "fx.n2.gain", "points": [{ "t": 0, "v": 0 }, { "t": 1, "v": -6, "curve": 0.4 }] }
+    {
+      "target": "volume",
+      "points": [
+        { "t": 0, "v": 1 },
+        { "t": 2.5, "v": 0.4 }
+      ]
+    },
+    {
+      "target": "fx.n2.gain",
+      "points": [
+        { "t": 0, "v": 0 },
+        { "t": 1, "v": -6, "curve": 0.4 }
+      ]
+    }
   ]
 }
 ```
@@ -66,7 +93,7 @@ escaping.
 - A lane holds its first value backwards to the start of its clip and its last
   value forward to the end. So a bed that begins before the voice needs an
   explicit "no cut" point at `t: 0`, or it starts out already ducked.
-- `curve` (-1..1) bends the segment *leaving* a point: positive holds low then
+- `curve` (-1..1) bends the segment _leaving_ a point: positive holds low then
   rises late. `viaX`/`viaY` name an interior point the segment passes through
   (progress 0..1, value travelled 0..1) and supersede `curve` when both are
   present — that is what the timeline writes when a bend is dragged.
