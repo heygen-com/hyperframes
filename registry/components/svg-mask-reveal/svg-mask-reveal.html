@@ -1,0 +1,316 @@
+<!doctype html>
+<!--
+  svg-mask-reveal -- HyperFrames video primitive (effects / burst / exhibit)
+
+  Concept: token-colored media is visible only through an SVG wordmark mask.
+  A soft alpha band crosses the mask from left to right, making the wordmark
+  act as a window into the fill beneath it. One mechanic, one job: exhibiting
+  a wordmark through a vector mask reveal.
+
+  Compiled-from evidence: hyperframes-research-css-masks.md, SvgMaskReveal and
+  "SVG text as mask over image or video". The implementation follows its
+  inline SVG, explicit user-space bounds, namespaced fragment IDs, and soft
+  reveal geometry guidance.
+
+  Use when: a logo, product name, or short title should reveal a branded fill
+  inside its glyphs. Use a path-based sibling when exact brand glyph outlines
+  matter more than editable text.
+
+  Variables (declared in data-composition-variables below):
+    - text (string, default "REVEAL"): the wordmark used as the SVG mask.
+    - revealProgress (number, default 100): final revealed width, 0 to 100%.
+    - featherPx (number, default 24): softness of the traveling mask edge.
+
+  Envelope (burst profile, fixed IN/OUT, elastic HOLD):
+    IN_BASE  = 0.90s  the soft band sweeps across the wordmark
+    HOLD     = max(0, D - (IN_BASE + OUT_BASE)); final state stays readable
+    OUT_BASE = 0.45s  the complete wordmark fades cleanly
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Sync point: SWEEP_LANDS = 0.80s into an uncompressed IN. It scales with IN
+  only when the envelope is compressed and never moves into the elastic HOLD.
+
+  Sound: none. The sweep is designed to accept scene-level sound if desired.
+
+  Mount contract: this is a template-wrapped sub-composition. The root has no
+  data-width or data-height, fills the host with inset:0, establishes cqw/cqh
+  sizing with container-type:size, and registers one paused GSAP timeline under
+  the hardcoded composition id "svg-mask-reveal". The demo mounts this file via
+  data-composition-src so it exercises the real transport path.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Wordmark", "description": "Text used as the SVG mask window.", "default": "REVEAL", "maxLength": 16 },
+    { "id": "revealProgress", "type": "number", "role": "content", "label": "Reveal progress", "description": "Final revealed width of the wordmark.", "default": 100, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "featherPx", "type": "number", "role": "style", "label": "Edge feather", "description": "Softness of the traveling reveal edge.", "default": 24, "min": 0, "max": 120, "step": 1, "unit": "px" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>SVG Mask Reveal</title>
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="svg-mask-reveal"
+        data-start="0"
+        data-duration="4"
+        data-fps="30"
+      >
+        <style>
+          @property --svg-mask-reveal-sweep-x {
+            syntax: "<percentage>";
+            inherits: false;
+            initial-value: -10%;
+          }
+
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* INVARIANT: the host owns dimensions. All visible layout derives
+             from this size container, and the root is styled only by #root. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: var(--font-body);
+          }
+
+          .smr-clip,
+          .smr-stage {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .smr-stage {
+            display: grid;
+            place-items: center;
+          }
+
+          /* EDIT ZONE: presentation scale. The SVG keeps its 12:5 viewBox
+             while these container-relative limits make it fit wide and tall
+             hosts without stage-pixel assumptions. */
+          .smr-svg {
+            display: block;
+            width: min(92cqw, 168cqh);
+            height: auto;
+            overflow: visible;
+          }
+
+          .smr-media-start {
+            stop-color: var(--brand);
+          }
+
+          .smr-media-middle {
+            stop-color: var(--accent);
+          }
+
+          .smr-media-end {
+            stop-color: var(--fg);
+          }
+
+          .smr-mask-text {
+            fill: var(--fg);
+            font-family: var(--font-display);
+            font-size: 240px;
+            font-weight: 850;
+            letter-spacing: 0.02em;
+          }
+
+          .smr-media {
+            mask-mode: alpha, alpha;
+            mask-composite: intersect;
+          }
+
+          .smr-outline {
+            fill: none;
+            stroke: var(--border);
+            stroke-width: 2;
+            font-family: var(--font-display);
+            font-size: 240px;
+            font-weight: 850;
+            letter-spacing: 0.02em;
+          }
+        </style>
+
+        <div
+          id="svg-mask-reveal-clip"
+          class="smr-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="smr-stage">
+            <svg
+              class="smr-svg"
+              viewBox="0 0 1200 500"
+              role="img"
+              aria-label="REVEAL"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <defs>
+                <!-- IDs carry the full primitive prefix so fragment URLs do
+                     not collide with sibling compositions after assembly. -->
+                <linearGradient
+                  id="svg-mask-reveal-media-gradient"
+                  gradientUnits="userSpaceOnUse"
+                  x1="80"
+                  y1="420"
+                  x2="1120"
+                  y2="80"
+                >
+                  <stop class="smr-media-start" offset="0" />
+                  <stop class="smr-media-middle" offset="0.52" />
+                  <stop class="smr-media-end" offset="1" />
+                </linearGradient>
+
+                <!-- The word mask owns only the vector silhouette. The media
+                     rect independently intersects it with the CSS sweep. -->
+                <mask
+                  id="svg-mask-reveal-word-mask"
+                  mask-type="alpha"
+                  maskUnits="userSpaceOnUse"
+                  maskContentUnits="userSpaceOnUse"
+                  x="0"
+                  y="0"
+                  width="1200"
+                  height="500"
+                >
+                  <text
+                    id="svg-mask-reveal-text"
+                    class="smr-mask-text"
+                    x="600"
+                    y="260"
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    textLength="1000"
+                    lengthAdjust="spacingAndGlyphs"
+                  >
+                    REVEAL
+                  </text>
+                </mask>
+              </defs>
+
+              <!-- The outline stays quiet and complete while the token-colored
+                   media itself remains visible only through the word mask. -->
+              <text
+                id="svg-mask-reveal-outline"
+                class="smr-outline"
+                x="600"
+                y="260"
+                text-anchor="middle"
+                dominant-baseline="middle"
+                textLength="1000"
+                lengthAdjust="spacingAndGlyphs"
+              >
+                REVEAL
+              </text>
+              <rect
+                class="smr-media"
+                x="0"
+                y="0"
+                width="1200"
+                height="500"
+                fill="url(#svg-mask-reveal-media-gradient)"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var compositionId = "svg-mask-reveal";
+            var stage = root.querySelector(".smr-stage");
+            var svg = root.querySelector(".smr-svg");
+            var maskText = root.querySelector("#svg-mask-reveal-text");
+            var outlineText = root.querySelector("#svg-mask-reveal-outline");
+            var mediaRect = root.querySelector(".smr-media");
+
+            // EDIT ZONE: declared defaults are merged with per-instance host
+            // overrides by the runtime. Missing and zero are distinct here.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            var textValue = vars.text == null ? "REVEAL" : String(vars.text);
+            var progressValue = vars.revealProgress == null ? NaN : Number(vars.revealProgress);
+            var revealProgress = Number.isFinite(progressValue)
+              ? Math.max(0, Math.min(100, progressValue))
+              : 100;
+            var featherValue = vars.featherPx == null ? NaN : Number(vars.featherPx);
+            var featherPx = Number.isFinite(featherValue)
+              ? Math.max(0, Math.min(120, featherValue))
+              : 24;
+
+            maskText.textContent = textValue;
+            outlineText.textContent = textValue;
+            svg.setAttribute("aria-label", textValue);
+
+            // INVARIANT: the word and sweep masks are independent layers on
+            // the media rect. This initialization owns their feather geometry.
+            var VIEW_WIDTH = 1200;
+            var featherPercent = (featherPx / VIEW_WIDTH) * 100;
+            var hiddenSweepPercent = -featherPercent;
+            mediaRect.style.maskImage =
+              "url(#svg-mask-reveal-word-mask), linear-gradient(to right, black var(--svg-mask-reveal-sweep-x, -10%), transparent calc(var(--svg-mask-reveal-sweep-x, -10%) + " +
+              featherPercent +
+              "%))";
+
+            // RETIME RANGE: IN_BASE and OUT_BASE define the burst envelope.
+            // The sweep uses --ease-standard's GSAP owner, power2.out.
+            var IN_BASE = 0.9;
+            var OUT_BASE = 0.45;
+            var SWEEP_START_BASE = 0.08;
+            var SWEEP_LANDS_BASE = 0.8;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var envelopeBase = IN_BASE + OUT_BASE;
+            var scale = duration < envelopeBase ? duration / envelopeBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+            var SWEEP_START = SWEEP_START_BASE * scale;
+            var SWEEP_DURATION = (SWEEP_LANDS_BASE - SWEEP_START_BASE) * scale;
+            var targetSweepPercent = revealProgress === 0 ? hiddenSweepPercent : revealProgress;
+
+            gsap.set(stage, { opacity: 1 });
+            gsap.set(mediaRect, {
+              "--svg-mask-reveal-sweep-x": hiddenSweepPercent + "%",
+            });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.to(
+              mediaRect,
+              {
+                "--svg-mask-reveal-sweep-x": targetSweepPercent + "%",
+                duration: SWEEP_DURATION,
+                ease: "power2.out",
+              },
+              SWEEP_START,
+            );
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

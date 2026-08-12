@@ -14,8 +14,11 @@ import {
   createAutomationSelectionSlice,
   type AutomationSelectionSlice,
 } from "./automationSelectionSlice";
+import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
+import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
+export { liveTime } from "./liveTime";
 
 import type { TimelineElement } from "./timelineElement";
 
@@ -44,7 +47,7 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState extends KeyframeSlice, AutomationSelectionSlice {
+interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -163,15 +166,10 @@ interface PlayerState extends KeyframeSlice, AutomationSelectionSlice {
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
 
-  /**
-   * Request the timeline to scroll a clip into view (e.g. clicking an
-   * already-added asset card in the sidebar). Consumed and cleared by
-   * useTimelineRevealClip. The nonce makes repeat requests for the same
-   * clip observable so a second click re-reveals after the user scrolls away.
-   */
-  clipRevealRequest: { elementId: string; nonce: number } | null;
-  requestClipReveal: (elementId: string) => void;
-  clearClipRevealRequest: () => void;
+  timelineFocus: TimelineFocusRequest | null;
+  timelineFocusNonce: number;
+  requestTimelineFocus: (id: string) => void;
+  clearTimelineFocus: (nonce: number) => void;
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
   setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
@@ -222,19 +220,6 @@ interface BeatHistoryEntry {
   label: string;
 }
 
-// Lightweight pub-sub for current time during playback.
-// Bypasses React state so the RAF loop can update the playhead/time display
-// without triggering re-renders on every frame.
-type TimeListener = (time: number) => void;
-const _timeListeners = new Set<TimeListener>();
-export const liveTime = {
-  notify: (t: number) => _timeListeners.forEach((cb) => cb(t)),
-  subscribe: (cb: TimeListener) => {
-    _timeListeners.add(cb);
-    return () => _timeListeners.delete(cb);
-  },
-};
-
 export function createTimelineResetState() {
   return {
     isPlaying: false,
@@ -260,8 +245,8 @@ export function createTimelineResetState() {
     focusedEaseSegment: null,
     selectedElementIds: new Set<string>(),
     requestedSeekTime: null,
-    clipRevealRequest: null,
     lintFindingsByElement: new Map<string, { count: number; messages: string[] }>(),
+    timelineFocus: null,
     keyframeCache: new Map<string, KeyframeCacheEntry>(),
     gsapAnimations: new Map<string, GsapAnimation[]>(),
     beatAnalysis: null,
@@ -303,6 +288,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     timelineProjectId: get().timelineProjectId,
     timelineSessionEpoch: get().timelineSessionEpoch,
   })),
+  ...createThumbnailSlice(set),
 
   ...createAutomationSelectionSlice(set),
 
@@ -336,12 +322,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
 
-  clipRevealRequest: null,
-  requestClipReveal: (elementId) =>
-    set((s) => ({
-      clipRevealRequest: { elementId, nonce: (s.clipRevealRequest?.nonce ?? 0) + 1 },
-    })),
-  clearClipRevealRequest: () => set({ clipRevealRequest: null }),
+  timelineFocus: null,
+  timelineFocusNonce: 0,
+  requestTimelineFocus: (id) =>
+    set((s) => {
+      const nonce = s.timelineFocusNonce + 1;
+      return {
+        timelineFocusNonce: nonce,
+        timelineFocus: createTimelineFocusRequest(
+          id,
+          s.timelineProjectId,
+          s.timelineSessionEpoch,
+          nonce,
+        ),
+      };
+    }),
+  clearTimelineFocus: (nonce) =>
+    set((s) => (s.timelineFocus?.nonce === nonce ? { timelineFocus: null } : s)),
 
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),

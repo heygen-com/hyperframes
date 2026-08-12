@@ -1,33 +1,18 @@
 // Resize/gesture diagnostics — grep [hf-resize]. Off by default; opt in per
 // session with `localStorage.setItem("hf-resize-debug", "1")` (then reload).
-// Granular per-move/per-gesture tracing that complements the always-on
-// [hf-commit] transaction telemetry in gestureTransaction.ts.
+// Granular per-move/per-gesture tracing for resize investigation.
+import { makeStudioDebugLogger } from "./studioDebug";
+
+export const logResize = makeStudioDebugLogger("resize");
+
 let moveN = 0;
-let enabled: boolean | null = null;
-
-function isEnabled(): boolean {
-  if (enabled === null) {
-    try {
-      enabled = localStorage.getItem("hf-resize-debug") === "1";
-    } catch {
-      enabled = false;
-    }
-  }
-  return enabled;
-}
-
-export function logResize(stage: string, data: Record<string, unknown>): void {
-  if (!isEnabled()) return;
-  console.log(
-    `[hf-resize] ${JSON.stringify({ stage, t: Math.round(performance.now()), ...data })}`,
-  );
-}
 
 /** Per-pointermove logging, throttled: first move then every 8th. */
 export function logResizeMove(data: Record<string, unknown>): void {
-  if (!isEnabled()) return;
-  moveN += 1;
-  if (moveN % 8 === 1) logResize("move", { n: moveN, ...data });
+  logResize("move", () => {
+    moveN += 1;
+    return moveN % 8 === 1 ? { n: moveN, ...data } : null;
+  });
 }
 
 export function resetResizeMoveLog(): void {
@@ -36,11 +21,10 @@ export function resetResizeMoveLog(): void {
 
 /** Snapshot the element's live geometry now and again after 200ms (jump detector). */
 export function logResizeSettle(el: HTMLElement, tag: string): void {
-  if (!isEnabled()) return;
-  const snap = (phase: string) => {
+  const snapshot = (phase: string) => {
     const r = el.getBoundingClientRect();
     const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
-    logResize("settle", {
+    return {
       tag,
       phase,
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
@@ -48,8 +32,14 @@ export function logResizeSettle(el: HTMLElement, tag: string): void {
       cssH: cs?.height,
       transform: cs?.transform,
       inlineStyle: el.getAttribute("style"),
-    });
+    };
   };
-  snap("t0");
-  setTimeout(() => snap("t200"), 200);
+  logResize("settle", () => {
+    const current = snapshot("t0");
+    el.ownerDocument.defaultView?.setTimeout(
+      () => logResize("settle", () => snapshot("t200")),
+      200,
+    );
+    return current;
+  });
 }

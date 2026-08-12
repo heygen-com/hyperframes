@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Avatar Group Hover - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale-only fix — GSAP animates the spans inside, not this wrapper */
+        transform: scale(3.5);
+      }
+      .hf-transition-avatar-group-hover {
+        display: inline-flex;
+        align-items: center;
+        padding-left: 18px;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-transition-avatar-group-hover span {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        margin-left: -18px;
+        border: 3px solid #fff;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #111827, #0ea5e9);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        box-shadow: 0 12px 30px rgba(24, 24, 27, 0.18);
+        transform: translateY(var(--hf-avatar-y, 0px));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="avatar-group-hover-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-transition-avatar-group-hover">
+          <span>A</span><span>B</span><span>C</span><span>D</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.to(
+          ".hf-transition-avatar-group-hover span",
+          {
+            "--hf-avatar-y": "-18px",
+            duration: 0.28,
+            stagger: { each: 0.035, from: "center" },
+            ease: "back.out(1.8)",
+          },
+          startTime,
+        );
+        tl.to(
+          ".hf-transition-avatar-group-hover span",
+          {
+            "--hf-avatar-y": "0px",
+            duration: 0.42,
+            stagger: { each: 0.035, from: "center" },
+            ease: "bounce.out",
+          },
+          startTime + 0.36,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["avatar-group-hover-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

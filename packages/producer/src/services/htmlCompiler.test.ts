@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { defaultLogger } from "../logger.js";
+import { NotMediaPayloadError } from "@hyperframes/engine";
 import {
   collectExternalAssets,
   compileForRender,
@@ -84,6 +85,22 @@ describe("discoverMediaFromBrowser", () => {
     });
   });
 });
+
+function validTestMediaResponse(): Response {
+  const bytes = new Uint8Array([
+    0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 0x69, 0x73, 0x6f, 0x6d,
+    0x6d, 0x70, 0x34, 0x32,
+  ]);
+  return new Response(bytes, { status: 200 });
+}
+
+function validTestImageResponse(): Response {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  return new Response(png, { status: 200 });
+}
 
 describe("injectSdkPositionEditsRenderScript", () => {
   it("injects before </body> when SDK position-edit markers are present", () => {
@@ -1424,7 +1441,7 @@ describe("localizeRemoteMediaSources", () => {
   it("rewrites remote <video> src to _remote_media path when download succeeds", async () => {
     const orig = globalThis.fetch;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    (globalThis as any).fetch = async () => validTestMediaResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-dl-ok-"));
       const html = `<video id="v1" src="https://media-ok.example.com/a/clip.mp4" data-start="0" data-end="10" muted></video>`;
@@ -1447,13 +1464,42 @@ describe("localizeRemoteMediaSources", () => {
     expect(remoteMediaAssets.size).toBe(0);
   });
 
+  it("logs only a safe fingerprint and host for a signed-URL media failure", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalWarn = defaultLogger.warn;
+    const warnings: unknown[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () =>
+      new Response("<!doctype html><html><body>expired</body></html>", { status: 200 });
+    defaultLogger.warn = (message, meta) => warnings.push({ message, meta });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-safe-log-"));
+      const url = "https://cdn.example/private/customer.mp4?X-Amz-Signature=super-secret-signature";
+      const html = `<video id="v1" src="${url}" data-start="0" data-end="10"></video>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+
+      expect(result).toContain(url);
+      expect(remoteMediaAssets.size).toBe(0);
+      expect(warnings).toHaveLength(1);
+      const serialized = JSON.stringify(warnings);
+      expect(serialized).toContain("cdn.example");
+      expect(serialized).toContain("urlFingerprint");
+      expect(serialized).not.toContain("customer.mp4");
+      expect(serialized).not.toContain("super-secret-signature");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = originalFetch;
+      defaultLogger.warn = originalWarn;
+    }
+  });
+
   it("deduplicates: two tags with the same src URL → one download", async () => {
     const orig = globalThis.fetch;
     let fetchCount = 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).fetch = async () => {
       fetchCount++;
-      return new Response(new Uint8Array(100), { status: 200 });
+      return validTestMediaResponse();
     };
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-dl-dedup-"));
@@ -1479,7 +1525,7 @@ describe("localizeRemoteMediaSources", () => {
   it("rewrites src in both double-quoted and single-quoted attributes", async () => {
     const orig = globalThis.fetch;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    (globalThis as any).fetch = async () => validTestMediaResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-dl-quotes-"));
       const html = `<video id="v1" src="https://q.example.com/c/dq.mp4" data-start="0" data-end="10" muted></video>
@@ -1520,7 +1566,7 @@ describe("localizeRemoteImageSources", () => {
   it("rewrites remote <img> src to _remote_media path when download succeeds", async () => {
     const orig = globalThis.fetch;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    (globalThis as any).fetch = async () => validTestImageResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-ok-"));
       const html = `<img class="hero" src="https://img-ok.example.com/photo.png" />`;
@@ -1549,7 +1595,7 @@ describe("localizeRemoteImageSources", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).fetch = async () => {
       fetchCount++;
-      return new Response(new Uint8Array(100), { status: 200 });
+      return validTestImageResponse();
     };
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-dedup-"));
@@ -1583,7 +1629,7 @@ describe("localizeRemoteImageSources", () => {
   it("rewrites both double-quoted and single-quoted src attributes", async () => {
     const orig = globalThis.fetch;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    (globalThis as any).fetch = async () => validTestImageResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-quotes-"));
       const html = `<img src="https://q-img.example.com/dq.png" />
@@ -1607,7 +1653,7 @@ describe("localizeRemoteImageSources", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).fetch = async () => {
       fetchCount++;
-      return new Response(new Uint8Array(100), { status: 200 });
+      return validTestImageResponse();
     };
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-datasrc-"));
@@ -1628,7 +1674,7 @@ describe("localizeRemoteImageSources", () => {
     // <img> tags with `class` before `src`. Regex must not assume src position.
     const orig = globalThis.fetch;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    (globalThis as any).fetch = async () => validTestImageResponse();
     try {
       const dl = mkdtempSync(join(tmpdir(), "hf-img-attr-order-"));
       const html = `<img class="kobe-cutout" alt="kobe" src="https://astral.example.com/d828bca.png" />`;
@@ -1798,6 +1844,7 @@ h1 { font-size: 2rem; }`;
       const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
       // The <link> tag should be replaced with an inline <style> containing the @font-face
       expect(result).not.toContain(`href="${STYLESHEET_URL}"`);
+      expect(result).not.toContain(STYLESHEET_URL);
       expect(result).not.toContain("<link");
       expect(result).toContain("@font-face");
       expect(result).toContain("CustomFont");
@@ -1825,6 +1872,57 @@ h1 { font-size: 2rem; }`;
       expect(remoteMediaAssets.size).toBe(0);
     } finally {
       globalThis.fetch = orig;
+    }
+  });
+
+  it("rejects a stylesheet redirect to a private host before the second request", async () => {
+    const STYLESHEET_URL = "https://styles.example.com/fonts.css";
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://169.254.169.254/latest/meta-data/" },
+      });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-private-redirect-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+
+      expect(fetchCount).toBe(1);
+      expect(result).toBe(html);
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("does not log a signed stylesheet path or query on failure", async () => {
+    const STYLESHEET_URL =
+      "https://styles.example.com/private/customer.css?X-Amz-Signature=super-secret";
+    const originalFetch = globalThis.fetch;
+    const originalWarn = defaultLogger.warn;
+    const warnings: unknown[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () =>
+      new Response(null, { status: 503, statusText: STYLESHEET_URL });
+    defaultLogger.warn = (message, meta) => warnings.push({ message, meta });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-safe-style-log-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      await localizeRemoteFontFaces(html, dl);
+
+      const serialized = JSON.stringify(warnings);
+      expect(serialized).toContain("styles.example.com");
+      expect(serialized).toContain("urlFingerprint");
+      expect(serialized).not.toContain("customer.css");
+      expect(serialized).not.toContain("super-secret");
+    } finally {
+      globalThis.fetch = originalFetch;
+      defaultLogger.warn = originalWarn;
     }
   });
 
@@ -2265,5 +2363,96 @@ describe("sub-composition variable injection (render path, #2064)", () => {
     );
     const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     expect(compiled.html).not.toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+  });
+});
+
+// ── Markup payload sniff (STUDIO-5433) ─────────────────────────────────────
+//
+// Producer's `resolveMediaDuration` is a two-step pipeline (download → probe)
+// that runs on every media element without an authored duration. Before this
+// defense, an authoring bug that handed a `.html` payload through as a video
+// src produced an opaque `[mov,mp4,m4a,3gp,3g2,mj2 @ ...] moov atom not found`
+// from ffprobe — the `mov,mp4,…` prefix is ffprobe's demuxer probe order, NOT
+// the file's true format, so every alert routed as a codec/ffmpeg bug. The
+// byte-level sniff itself is unit-tested in
+// `engine/src/utils/notMediaPayload.test.ts`; what is pinned here is the
+// compiler's handling of the verdict, which differs by element type.
+
+describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
+  function writeProject(mediaTag: string): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-payload-sniff-e2e-"));
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(
+      join(projectDir, "assets", "nested.html"),
+      "<!DOCTYPE html>\n<html><head><title>streamed-preview</title></head><body></body></html>",
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-start="0" data-duration="4">
+      ${mediaTag}
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("aborts with NotMediaPayloadError before ffprobe when a <video> src is an HTML payload", async () => {
+    // Mimics STUDIO-5433: an a-roll element whose src points at a legitimate
+    // 6.5 KB `<!DOCTYPE html>` preview page instead of the rendered MP4.
+    const projectDir = writeProject(
+      '<video id="v1" src="assets/nested.html" data-start="0" muted></video>',
+    );
+
+    let caught: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(NotMediaPayloadError);
+    const err = caught as NotMediaPayloadError;
+    // Routing metadata, not just a readable string: these are what the server's
+    // SAFE_RENDER_ERROR_CODES allowlist and the distributed retry sets key off.
+    expect(err.code).toBe("NOT_MEDIA_PAYLOAD");
+    expect(err.owner).toBe("user");
+    expect(err.retryable).toBe(false);
+    // Correlation is the hashed element id — the authored src never reaches a
+    // message that producer forwards to API clients.
+    expect(err.elementFingerprints).toHaveLength(1);
+    expect(err.message).not.toContain("assets/nested.html");
+    // Also the ordering pin: this fixture is an input ffprobe rejects, so if
+    // the sniff ran after the probe the rejection would be ffprobe's untyped
+    // error and this assertion would fail.
+  });
+
+  it("drops an <audio> document payload to duration 0 and warns instead of failing the render", async () => {
+    // The audio/video split is the compiler's contract: an unprobeable audio
+    // src is excluded from the render, and only video surfaces its probe
+    // failure. A hard abort here would take down renders that used to succeed
+    // without the offending audio.
+    const projectDir = writeProject(
+      '<audio id="a1" src="assets/nested.html" data-start="0"></audio>',
+    );
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+    const compiled = await compileForRender(
+      projectDir,
+      join(projectDir, "index.html"),
+      projectDir,
+      { log },
+    );
+
+    expect(compiled.html).not.toContain('id="a1" src="assets/nested.html" data-end');
+    expect(warnings.join("\n")).toContain("text document");
+    expect(warnings.join("\n")).toContain("a1");
   });
 });

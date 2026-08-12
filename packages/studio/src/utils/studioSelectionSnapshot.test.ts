@@ -39,7 +39,7 @@ describe("buildStudioSelectionSnapshot", () => {
       currentTime: 1.25,
       target: { hfId: "hero-title", selector: ".title", selectorIndex: 0 },
       thumbnailUrl:
-        "/api/projects/demo/thumbnail/index.html?t=1.25&format=png&selector=.title&selectorIndex=0",
+        "/api/projects/demo/thumbnail/index.html?t=1.25&format=png&output=source&selector=.title&selectorIndex=0",
     });
     expect(JSON.stringify(snapshot)).not.toContain("HTMLElement");
     expect(snapshot).not.toHaveProperty("element");

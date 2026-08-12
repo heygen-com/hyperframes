@@ -11,7 +11,7 @@ import { useTimelinePlayer, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { useCompositionStack } from "./useCompositionStack";
-import { MIN_TIMELINE_H, MIN_PREVIEW_H } from "./TimelineResizeDivider";
+import { MIN_TIMELINE_H, fitTimelineHeight } from "../../utils/fitPanels";
 import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
@@ -273,13 +273,22 @@ export function NLEProvider({
   }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   // A height persisted on a tall window can exceed this window's container and
-  // collapse the flex-1 preview to 0px — clamp once the container is measurable
-  // (the drag/keyboard paths already clamp; the restore path must too).
+  // collapse the flex-1 preview to 0px. Observing the container rather than
+  // clamping once at mount is what makes a window RESIZED after load behave the
+  // same as one loaded at that size: dragging 760 -> 520 tall used to leave the
+  // timeline at its stored 429px and the preview at 47px.
   useEffect(() => {
-    const containerH = containerRef.current?.getBoundingClientRect().height;
-    if (!containerH) return;
-    const max = containerH - MIN_PREVIEW_H;
-    setTimelineH((prev) => (prev > max ? Math.max(MIN_TIMELINE_H, max) : prev));
+    const element = containerRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const reconcile = () => {
+      const containerH = element.getBoundingClientRect().height;
+      if (!containerH) return;
+      setTimelineH((prev) => fitTimelineHeight(containerH, prev));
+    };
+    reconcile();
+    const observer = new ResizeObserver(reconcile);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
   const hasLoadedOnceRef = useRef(false);

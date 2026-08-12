@@ -33,7 +33,7 @@ function makeInput(overrides: Partial<AssembleStageInput> = {}): AssembleStageIn
       duration: 1,
     },
     videoOnlyPath: "/tmp/video-only.mp4",
-    audioOutputPath: "/tmp/audio.aac",
+    audioOutputPath: "/tmp/audio.m4a",
     outputPath: "/tmp/output.mp4",
     hasAudio: true,
     abortSignal: undefined,
@@ -61,7 +61,7 @@ describe("runAssembleStage audio duration parity", () => {
 
     expect(padOrTrimAudioMock).toHaveBeenCalledWith({
       videoPath: "/tmp/video-only.mp4",
-      audioPath: "/tmp/audio.aac",
+      audioPath: "/tmp/audio.m4a",
       outputPath: "/tmp/audio.duration-normalized.m4a",
     });
     expect(muxVideoWithAudioMock).toHaveBeenCalledWith(

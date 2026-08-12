@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "focus-blur-resolve",
+  "type": "hyperframes:component",
+  "title": "Focus Blur Resolve",
+  "description": "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "focus-blur-resolve.html",
+      "target": "compositions/components/focus-blur-resolve.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "enum",
+      "role": "style",
+      "label": "Size",
+      "description": "Type size of the words, from a caption-scale line to a full display card.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "compact",
+          "label": "Compact"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "display",
+          "label": "Display"
+        }
+      ]
+    },
+    {
+      "id": "blur",
+      "type": "enum",
+      "role": "style",
+      "label": "Blur",
+      "description": "Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "soft",
+          "label": "Soft"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "heavy",
+          "label": "Heavy"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-blur-resolve.png"
+  }
+}

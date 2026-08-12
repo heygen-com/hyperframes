@@ -9,14 +9,14 @@ import {
   STUDIO_ORIGINAL_HEIGHT_ATTR,
 } from "../components/editor/manualEditsTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
-import { computeElementPercentage, idSelector, writeTargetSelector } from "./gsapShared";
+import { computeElementPercentage, writeTargetSelector } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
 import { setPatchFromUpdateProperty } from "./gsapDragStaticSetHelpers";
+import { GsapEditBlockedError } from "./gsapEditOutcome";
 export {
   findExistingPositionWrite,
   findRotationSetAnimation,
@@ -87,7 +87,7 @@ async function replaceKeyframedPositionHold(
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
 ): Promise<void> {
   const target = newTweenTarget(selection);
-  if (!target) return;
+  if (!target) throw new GsapEditBlockedError("no-selector");
   const persist = async (commit: GsapDragCommitCallbacks["commitMutation"]) => {
     await commit(
       selection,
@@ -130,40 +130,12 @@ export async function materializeIfDynamic(
   selection: DomEditSelection,
 ): Promise<string | void> {
   if (!anim.hasUnresolvedKeyframes && !anim.hasUnresolvedSelector) return;
-
-  if (anim.hasUnresolvedSelector) {
-    const allScanned = scanAllRuntimeKeyframes(iframe);
-    if (allScanned.size === 0) return;
-    const allElements = Array.from(allScanned.entries()).map(([id, data]) => ({
-      selector: idSelector(id),
-      keyframes: data.keyframes,
-      easeEach: data.easeEach,
-    }));
-    await commitMutation(
-      selection,
-      {
-        type: "materialize-keyframes",
-        animationId: anim.id,
-        keyframes: allScanned.get(selection.id ?? "")?.keyframes ?? [],
-        allElements,
-      },
-      { label: "Unroll dynamic animations", skipReload: true },
-    );
-    return `${anim.targetSelector}-to-0`;
-  }
-
-  const runtime = readRuntimeKeyframes(iframe, anim.targetSelector);
-  if (!runtime || runtime.keyframes.length === 0) return;
-  await commitMutation(
-    selection,
-    {
-      type: "materialize-keyframes",
-      animationId: anim.id,
-      keyframes: runtime.keyframes,
-      easeEach: runtime.easeEach,
-    },
-    { label: "Materialize dynamic keyframes", skipReload: true },
-  );
+  // Geometry commits must never rewrite runtime/computed source implicitly.
+  // The explicit Unroll action owns that source-destructive transition.
+  void iframe;
+  void commitMutation;
+  void selection;
+  throw new GsapEditBlockedError("source-uneditable");
 }
 
 // ── Drag → GSAP position math ──────────────────────────────────────────────
@@ -219,7 +191,7 @@ export async function commitStaticGsapPosition(
   // The patch reuses the WRITTEN target so the runtime moves exactly the element
   // the source write names.
   const target = newTweenTarget(selection);
-  if (!target) return;
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await callbacks.commitMutation(
     selection,
     {
@@ -277,7 +249,7 @@ export async function commitStaticGsapRotation(
   }
   // New static hold → off-timeline `gsap.set` (no 0% keyframe marker) + instant patch.
   const target = newTweenTarget(selection);
-  if (!target) return;
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await callbacks.commitMutation(
     selection,
     {
@@ -331,7 +303,7 @@ export async function commitStaticGsapSize(
     return;
   }
   const target = newTweenTarget(selection);
-  if (!target) return;
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await callbacks.commitMutation(
     selection,
     {

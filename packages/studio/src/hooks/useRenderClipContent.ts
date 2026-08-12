@@ -2,9 +2,12 @@ import { useCallback, type ReactNode } from "react";
 import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import type { TimelineElement } from "../player";
+import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
+import { usePlayerStore } from "../player/store/playerStore";
+import { effectiveThumbnailMode } from "../player/lib/thumbnailPolicy";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -24,12 +27,21 @@ export function normalizeCompositionSrc(
 }
 
 /** Resolve a media src to its project-relative preview path, or null. */
-function resolvePreviewRelative(src: string | undefined, pid: string): string | null {
+function resolvePreviewRelative(
+  src: string | undefined,
+  pid: string,
+  origin: string,
+): string | null {
   if (!src) return null;
-  if (!src.startsWith("http")) return src;
-  const base = `/api/projects/${pid}/preview/`;
-  const idx = src.indexOf(base);
-  return idx !== -1 ? decodeURIComponent(src.slice(idx + base.length)) : null;
+  try {
+    const parsed = new URL(src, origin);
+    const base = new URL(`/api/projects/${pid}/preview/`, origin).pathname;
+    return parsed.pathname.startsWith(base)
+      ? decodeURIComponent(parsed.pathname.slice(base.length))
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -51,15 +63,19 @@ function trimFractions(el: TimelineElement): { start?: number; end?: number } {
  * Build the waveform element for an audio clip, windowing the rendered peaks to
  * the trimmed source slice so the bars track the clip edges.
  */
-function renderAudioClip(el: TimelineElement, pid: string, labelColor: string): ReactNode {
-  const srcRelative = resolvePreviewRelative(el.src, pid);
+function renderAudioClip(
+  el: TimelineElement,
+  pid: string,
+  sessionEpoch: number,
+  labelColor: string,
+  context: TimelineClipRenderContext,
+): ReactNode {
+  const audioUrl = resolveMediaPreviewUrl(el.src ?? "", pid, window.location.origin);
+  const srcRelative = resolvePreviewRelative(audioUrl, pid, window.location.origin);
   // Encode each path segment (spaces, parens, U+202F, unicode) so the URL matches
   // what the assets panel loads — a raw segment 404s. resolvePreviewRelative
   // returns the DECODED path, so it must be re-encoded here.
   const encodedRelative = srcRelative ? encodePreviewPath(srcRelative) : null;
-  const audioUrl = encodedRelative
-    ? `/api/projects/${pid}/preview/${encodedRelative}`
-    : (el.src ?? "");
   const waveformUrl = encodedRelative
     ? `/api/projects/${pid}/waveform/${encodedRelative}`
     : undefined;
@@ -71,6 +87,9 @@ function renderAudioClip(el: TimelineElement, pid: string, labelColor: string): 
     labelColor,
     trimStartFraction: start,
     trimEndFraction: end,
+    projectId: pid,
+    sessionEpoch,
+    priority: context.priority,
   });
 }
 
@@ -87,12 +106,28 @@ export function useRenderClipContent({
   activePreviewUrl,
   effectiveTimelineDuration,
 }: UseRenderClipContentOptions) {
+  // Self-sourced so the adaptive policy gates thumbnail generation without App plumbing.
+  const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
+  const effectiveMode = effectiveThumbnailMode(thumbnailMode);
+  const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
     // fallow-ignore-next-line complexity
-    (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
+    (
+      el: TimelineElement,
+      style: { clip: string; label: string },
+      context: TimelineClipRenderContext = { priority: "visible", rich: false },
+    ): ReactNode => {
       const pid = projectIdRef.current;
       if (!pid) return null;
+
+      // Thumbnail generation disabled (perf) -> plain clip bars. Audio still shows
+      // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
+      if (effectiveMode === "hidden") {
+        return el.tag === "audio"
+          ? renderAudioClip(el, pid, sessionEpoch, style.label, context)
+          : null;
+      }
 
       let compSrc = el.compositionSrc;
       if (compSrc) {
@@ -116,6 +151,10 @@ export function useRenderClipContent({
 
           seekTime: 0,
           duration: el.duration,
+          projectId: pid,
+          sessionEpoch,
+          priority: context.priority,
+          rich: context.rich,
         });
       }
 
@@ -123,7 +162,7 @@ export function useRenderClipContent({
       // activePreviewUrl thumbnail branch; audio rows need waveform data, not a
       // captured frame from the currently drilled composition preview.
       if (el.tag === "audio") {
-        return renderAudioClip(el, pid, style.label);
+        return renderAudioClip(el, pid, sessionEpoch, style.label, context);
       }
 
       // When drilled into a composition, render all inner elements via
@@ -138,6 +177,10 @@ export function useRenderClipContent({
           selectorIndex: el.selectorIndex,
           seekTime: el.start,
           duration: el.duration,
+          projectId: pid,
+          sessionEpoch,
+          priority: context.priority,
+          rich: context.rich,
         });
       }
 
@@ -148,7 +191,7 @@ export function useRenderClipContent({
         !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {
-        const mediaSrc = resolveMediaPreviewUrl(el.src, pid);
+        const mediaSrc = resolveMediaPreviewUrl(el.src, pid, window.location.origin);
         // Still images can't be decoded by VideoThumbnail's <video> extractor
         // (the error event fires and the shimmer never resolves) — render the
         // image itself as the strip.
@@ -157,6 +200,10 @@ export function useRenderClipContent({
             imageSrc: mediaSrc,
             label: "",
             labelColor: style.label,
+            projectId: pid,
+            sessionEpoch,
+            priority: context.priority,
+            rich: context.rich,
           });
         }
         return createElement(VideoThumbnail, {
@@ -164,6 +211,12 @@ export function useRenderClipContent({
           label: "",
           labelColor: style.label,
           duration: el.duration,
+          sourceStart: el.playbackStart,
+          sourceRangeDuration: el.duration * (el.playbackRate ?? 1),
+          projectId: pid,
+          sessionEpoch,
+          priority: context.priority,
+          rich: context.rich,
         });
       }
 
@@ -177,11 +230,22 @@ export function useRenderClipContent({
           selectorIndex: el.selectorIndex,
           seekTime: el.start,
           duration: el.duration,
+          projectId: pid,
+          sessionEpoch,
+          priority: context.priority,
+          rich: context.rich,
         });
       }
 
       return null;
     },
-    [projectIdRef, compIdToSrc, activePreviewUrl, effectiveTimelineDuration],
+    [
+      projectIdRef,
+      compIdToSrc,
+      activePreviewUrl,
+      effectiveTimelineDuration,
+      effectiveMode,
+      sessionEpoch,
+    ],
   );
 }

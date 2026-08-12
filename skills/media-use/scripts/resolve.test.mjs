@@ -962,8 +962,11 @@ test("identical grade resolve hits the project cache without re-freezing", () =>
 // resolve that reaches track("media_use_resolve", ...) with tracking allowed
 // posts to a local HTTP server instead of production, and the server actually
 // receives it (not just "nothing happened because nothing was listening").
-test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real interception", async () => {
-  setup();
+// Spawns a real resolve that hits the manifest for `provider`, intercepts the
+// telemetry POST it makes, and hands back the media_use_resolve event actually
+// sent. Nothing is stubbed: the CLI runs as its own process, telemetry.mjs builds
+// the URL, and a local server reads the payload off the wire.
+async function captureResolveEvent({ provider, type = "bgm", intent }) {
   const received = [];
   const server = createServer((req, res) => {
     let body = "";
@@ -972,7 +975,7 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
       try {
         received.push(JSON.parse(body));
       } catch {
-        // ignore malformed body; assertions below fail on empty `received`
+        // ignore malformed body; callers assert on empty `received`
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("{}");
@@ -983,8 +986,14 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
   const sandboxHome = mkdtempSync(join(tmpdir(), "mu-resolve-telemetry-home-"));
 
   try {
+    // The record's type must match the --type below, otherwise the manifest
+    // never matches, the cascade calls a live provider, and the run fails for
+    // reasons that have nothing to do with the tier.
     const record = makeRecord({
-      provenance: { prompt: "telemetry seam test", provider: "test" },
+      id: `${type}_tier_001`,
+      type,
+      path: `.media/audio/${type}/${type}_tier_001.wav`,
+      provenance: { prompt: intent, provider },
     });
     appendRecord(tmp, record);
     const filePath = join(tmp, record.path);
@@ -1000,7 +1009,7 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
     // their real email into this test's local-server payload despite HOME
     // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
     // path). Every other test in this file keeps its untouched default env.
-    runResolve(["--type", "bgm", "--intent", "telemetry seam test", "--project", tmp, "--json"], {
+    runResolve(["--type", type, "--intent", intent, "--project", tmp, "--json"], {
       env: {
         DO_NOT_TRACK: "0",
         HYPERFRAMES_NO_TELEMETRY: "0",
@@ -1013,7 +1022,7 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
     });
 
     // runResolve blocks synchronously (execFileSync) until the child exits, which
-    // pauses this process's own event loop for that whole span — the child's
+    // pauses this process's own event loop for that whole span -- the child's
     // request to our local server sits accepted-but-unprocessed in the kernel
     // backlog until control returns here. Poll briefly to let the event loop
     // drain it rather than asserting before the server has had a turn to run.
@@ -1023,15 +1032,69 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
   } finally {
     await new Promise((resolve) => server.close(resolve));
     rmSync(sandboxHome, { recursive: true, force: true });
-    cleanup();
   }
 
   assert.ok(received.length > 0, "expected the local telemetry server to receive a POST");
-  const resolveEvent = received[0].batch.find((event) => event.event === "media_use_resolve");
-  assert.ok(resolveEvent, "expected a media_use_resolve event in the intercepted batch");
-  assert.equal(resolveEvent.properties.provider, "test");
-  assert.equal(resolveEvent.properties.type, "bgm");
+  const event = received[0].batch.find((e) => e.event === "media_use_resolve");
+  assert.ok(event, "expected a media_use_resolve event in the intercepted batch");
+  return event;
+}
+
+test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real interception", async () => {
+  setup();
+  try {
+    const event = await captureResolveEvent({ provider: "test", intent: "telemetry seam test" });
+    assert.equal(event.properties.provider, "test");
+    assert.equal(event.properties.type, "bgm");
+    // "test" is not a declared registry provider, so the tier is absent rather
+    // than guessed, the same sparseness rule auth_method follows.
+    assert.equal(
+      "provider_tier" in event.properties && event.properties.provider_tier !== undefined,
+      false,
+      "an undeclared provider must not be assigned a cost tier",
+    );
+  } finally {
+    cleanup();
+  }
 });
+
+// The registry-derived tier has to survive the whole path -- registry lookup,
+// result(), track(), JSON body -- not just a unit call to providerTierFor. Each
+// case names a provider the registry declares at a different tier and asserts the
+// tier that actually reaches the wire.
+for (const [provider, type, expected] of [
+  ["heygen.tts", "voice", "network_paid"],
+  ["heygen.audio.sounds", "bgm", "network_free"],
+  ["bundled.sfx", "sfx", "local"],
+]) {
+  test(`a resolve won by ${provider} sends provider_tier: ${expected}`, async () => {
+    setup();
+    try {
+      const event = await captureResolveEvent({
+        provider,
+        type,
+        intent: `tier seam ${provider}`,
+      });
+      assert.equal(event.properties.provider, provider);
+      assert.equal(
+        event.properties.provider_tier,
+        expected,
+        `${provider} must reach the wire as ${expected}`,
+      );
+      // The tier is derived from the registry and the auth method from the
+      // credential state; they must not become entangled. A non-heygen provider
+      // carries a tier and no auth method, whatever credentials exist locally.
+      if (!provider.startsWith("heygen."))
+        assert.equal(
+          event.properties.auth_method,
+          undefined,
+          "a non-heygen provider must carry a tier without an auth method",
+        );
+    } finally {
+      cleanup();
+    }
+  });
+}
 
 // --- run ---
 

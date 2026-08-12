@@ -1,0 +1,99 @@
+<!doctype html>
+<!--
+  beat-timeline demo. Standalone 1920x1080 host that mounts the primitive via
+  data-composition-src. The mount uses non-default values for all variables:
+  five rows, a 0.5s interval, and custom titles. Its definite percentage-sized
+  card proves the primitive resolves cqw/cqh from the host box without
+  shrink-to-fit collapse. This demo is not installed by hyperframes add.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Beat Timeline - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        --bg: #070b14;
+        --fg: #f7f9fc;
+        --muted: #91a0b8;
+        --surface: #111a2b;
+        --border: rgba(145, 160, 184, 0.22);
+        --brand: #7dd3fc;
+        --accent: #c4b5fd;
+        --font-display: Inter, ui-sans-serif, system-ui, sans-serif;
+        --font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+        --radius: 18px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 42%, var(--surface), var(--bg) 66%);
+        color: var(--fg);
+        font-family: var(--font-body);
+      }
+
+      /* Definite percentages resolve against #root's fixed pixel box. This
+         avoids the shrink-to-fit feedback collapse of a size-contained mount. */
+      .mount-card {
+        width: 50%;
+        height: 70%;
+        left: 25%;
+        top: 15%;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        box-shadow: 0 48px 120px rgba(0, 0, 0, 0.48);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="beat-timeline-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5.5"
+      data-fps="30"
+    >
+      <div
+        id="beat-timeline-mount"
+        class="mount-card clip"
+        data-composition-id="beat-timeline"
+        data-composition-src="./beat-timeline.html"
+        data-variable-values='{"beatCount":5,"interval":0.5,"labels":"Capture,Draft,Review,Ship,Iterate"}'
+        data-start="0"
+        data-duration="5.5"
+        data-track-index="0"
+        data-width="960"
+        data-height="756"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // The mounted primitive owns all visible motion. This empty paused host
+      // timeline satisfies the standalone composition registry contract.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["beat-timeline-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
+import { isTypingTarget } from "../utils/typingTarget";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -196,7 +197,7 @@ export function dispatchModifierKey(
     return true;
   }
 
-  if (key === "g" && !event.altKey && !isEditableTarget(event.target)) {
+  if (key === "g" && !event.altKey && !isTypingTarget(event.target)) {
     event.preventDefault();
     if (event.shiftKey) cb.onUngroupSelection?.();
     else cb.onGroupSelection?.();
@@ -480,7 +481,7 @@ export function useAppHotkeys({
       dispatchModifierKey(event, key, cb);
       return;
     }
-    if (!isEditableTarget(event.target)) dispatchPlainKey(event, key, cb);
+    if (!isTypingTarget(event.target)) dispatchPlainKey(event, key, cb);
   }, []);
 
   // eslint-disable-next-line no-restricted-syntax

@@ -1,66 +1,86 @@
 ---
 title: "Apply media effects"
 sidebarTitle: "Media effects"
-description: "Apply editable blur, bloom, retro, print, glitch, and art treatments to images and video."
+description: "Turn an image or video into ASCII, halftone print, tape damage, CRT, painted art, and more — without touching the original file."
 ---
 
-Media effects transform a selected image or video without baking a new source
-file. They stay editable in Studio and render from the same project data.
+import { DocsVideo } from "/snippets/docs-video.jsx";
 
-<Frame caption="Four current HyperFrames renders from one source. Effects stay on the media element, so the original file remains unchanged.">
+An effect changes how a photo or video **looks**, not what it is. The file on
+disk never changes. You can adjust the effect later, animate it, or take it off
+entirely.
+
+Here is the whole range on real footage:
+
+<DocsVideo
+  title="Every media effect family, applied to real sources"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/media-effects-showcase-v2.mp4"
+  poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/media-effects-showcase-v2.jpg"
+/>
+
+Eighteen effects, sixteen color looks and four LUT paths — all on a single media
+layer, and all still editable afterwards.
+
+## What each family is for
+
+**Essentials — Blur, Pixelate, Bloom.**
+Hide something, pull focus onto something else, or make bright areas glow.
+
+**Retro and glitch — Tape Damage, Film Artifacts, Scanlines, CRT Curvature,
+Channel Separation, Digital Glitch, Chroma Softening.**
+Make footage look like old tape, old film, an old monitor, or a broken signal.
+The damage is built to behave like the real thing — tracking wobble, color
+bleed and tearing — not random colored noise.
+
+**Print — Halftone, Two-Ink Print, Ordered Dither, Mono Screen.**
+Turn the picture into printed dots or a two-color poster.
+
+**Art — ASCII, Engraving, Crosshatch, Kuwahara Paint.**
+Redraw the picture as text characters, engraved lines, hatching or paint. ASCII
+alone has eight styles, not one switch.
+
+<Frame caption="One source, four finishes: original, pixelated, two-ink print, and ASCII.">
   <img
     src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/media-effects-grid-v1.png"
     alt="One presenter frame shown as the original, pixelated, two-ink print, and ASCII treatments"
   />
 </Frame>
 
-## Choose the effect
+For grain and darkened edges, use Grain and Vignette in
+[Color grading](/guides/color-grading). For a HUD, light leak or flash, use a
+[Catalog overlay](/catalog).
 
-| Intent                                                  | Start with                         |
-| ------------------------------------------------------- | ---------------------------------- |
-| Soften, conceal, or lift bright areas                   | Blur, Pixelate, or Bloom           |
-| Add tape, film, CRT, or digital damage                  | Retro & Glitch                     |
-| Turn media into dots, ink, or a limited palette         | Print                              |
-| Create ASCII, engraving, crosshatch, or painted media   | Art                                |
-| Add grain or darkened edges                             | Grain or Vignette in Color Grading |
-| Add a HUD, light leak, flash, or freeze-frame treatment | A [Catalog](/catalog) overlay      |
+## Try one in Studio
 
-Effects apply to the complete selected media element. They do not track a face,
-screen, or object. Isolate a region into its own cropped or masked media layer
-when only that region should change.
+Select an image or video, then open **Effects** in the Inspector. Pick one
+effect, adjust it, and play the clip all the way through — some effects only
+look wrong once things move.
 
-## Try effects in Studio
+An effect covers the whole media layer. It does not follow a face, a screen or
+an object. If only part of the frame should change, crop or mask that part into
+its own layer first.
 
-Select an image or video and open **Effects** in the Inspector. The effect
-browser is grouped into:
+Blur, Bloom and Kuwahara Paint are the expensive ones. Several of them stacked
+across large layers will slow down both preview and rendering.
 
-- **Essentials:** Blur, Pixelate, Bloom
-- **Retro & Glitch:** Chroma Softening, Tape Damage, Film Artifacts, Scanlines,
-  CRT Curvature, Channel Separation, Digital Glitch
-- **Print:** Halftone, Two-Ink Print, Ordered Dither, Mono Screen
-- **Art:** ASCII, Engraving, Crosshatch, Kuwahara Paint
+## Or just ask the agent
 
-Choose one effect for the job, adjust its controls, then play or scrub the
-beginning, middle, and end. Some effects are much more expensive to render than
-others, especially Blur, Bloom, and Kuwahara Paint across large media layers.
-
-## Ask the agent
-
-Describe the result instead of guessing control values:
+Describe what you want it to look like. You do not need to know the control
+names:
 
 ```text
 Make this product clip feel like a clean two-ink editorial print.
 Keep the product shape and label readable.
 ```
 
-The agent can inspect the live capability catalog before editing:
+The agent can look up what is available before it changes anything:
 
 ```bash
 npx hyperframes media-treatment --capabilities --json
 npx hyperframes media-treatment --capability twoInkPrint --json
 ```
 
-Then it can apply a validated patch:
+Then apply it:
 
 ```bash
 npx hyperframes media-treatment \
@@ -69,37 +89,31 @@ npx hyperframes media-treatment \
   --apply --json
 ```
 
-Use `--dry-run` to inspect the exact mutation without writing, `--analyze` for
-bounded source measurements and a suggested primary correction, or `--clear`
-to remove the selected treatment. The command writes the same
-`data-color-grading` contract that Studio uses.
+Add `--dry-run` to see the change without writing it, `--analyze` to measure the
+source first, or `--clear` to take an effect off. This writes the same
+`data-color-grading` data that Studio reads, so the two never disagree.
 
-## Keep the treatment useful
+## Keeping it useful
 
-- Use blur or pixelation for a real reveal, focus shift, or privacy need.
-- Use a named stylization strongly enough to read; keep ordinary correction
-  restrained.
-- Compare against the original and inspect representative rendered frames.
-- Remove the treatment when it competes with the story.
+Use blur or pixelation when you actually mean to hide or reveal something. If
+you pick a strong look, commit to it — a half-strength ASCII just reads as a
+mistake. Compare against the original, and take the effect off when it starts
+competing with the story.
 
-## Performance and delivery
+## Two limits worth knowing
 
-Several overlapping, full-frame treated layers can slow preview and rendering,
-especially at 4K. Simplify the stack or pre-render a finished layer when
-playback drops frames.
+**HDR.** Effects run on the standard (SDR) pipeline. A native HDR layer keeps
+its HDR pixels through a separate path, so these effects will not appear on it.
+Convert to SDR if the effect has to survive into the final file.
 
-Effects use the SDR/Rec.709 shader pipeline. Native HDR delivery preserves HDR
-source pixels through a separate path, so these SDR effects do not appear on
-native HDR layers. Convert or tone-map to SDR when the effect must appear in
-the final result.
+**Remote files.** Keep media inside the project. A file loaded from another
+server only works if that server sends the right CORS headers, and it can
+disappear between now and render time.
 
-Project-local media is the reliable default. Remote media must allow browser
-pixel access through compatible CORS headers.
-
-The [Color Grading guide](/guides/color-grading) covers correction, wheels,
-curves, selective color, finishing, and LUTs. The [HTML
-schema](/reference/html-schema#color-grading-and-media-effects) contains the
-persistence contract.
+The [Color grading guide](/guides/color-grading) covers correction, curves,
+selective color and LUTs. The
+[HTML schema](/reference/html-schema#color-grading-and-media-effects) has the
+exact data format.
 
 ## Related topics
 

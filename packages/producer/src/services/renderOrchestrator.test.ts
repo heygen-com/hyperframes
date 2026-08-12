@@ -36,6 +36,7 @@ import {
   shouldRetryViaPinnedFallback,
   countElementTags,
   envInt,
+  isDeParallelRouterEnabled,
   mergeWorkerInitObservability,
   resolveCompositionElementCount,
   resolveDeShortBand,
@@ -43,6 +44,8 @@ import {
   shouldPreferSingleWorkerDrawElement,
   shouldStreamParallelCapture,
   shouldUseStreamingEncode,
+  resolveObservedCaptureMode,
+  createCaptureObservabilityUpdater,
 } from "./renderOrchestrator.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -2266,6 +2269,27 @@ describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
   });
 });
 
+describe("isDeParallelRouterEnabled (kill switch parsing)", () => {
+  it("defaults ON when unset or set-but-empty", () => {
+    expect(isDeParallelRouterEnabled({})).toBe(true);
+    expect(isDeParallelRouterEnabled({ HF_DE_PARALLEL_ROUTER: "" })).toBe(true);
+    expect(isDeParallelRouterEnabled({ HF_DE_PARALLEL_ROUTER: "   " })).toBe(true);
+  });
+
+  it("honours every conventional spelling of off — an opt-out must never fail OPEN", () => {
+    // A naive `!== "false"` would enable the router for all of these, handing
+    // 3-worker parallel DE to a user who explicitly asked for none.
+    for (const v of ["false", "FALSE", "False", "0", "off", "OFF", "no", "No", " false "]) {
+      expect(isDeParallelRouterEnabled({ HF_DE_PARALLEL_ROUTER: v })).toBe(false);
+    }
+  });
+
+  it("treats any other value as enabled", () => {
+    expect(isDeParallelRouterEnabled({ HF_DE_PARALLEL_ROUTER: "true" })).toBe(true);
+    expect(isDeParallelRouterEnabled({ HF_DE_PARALLEL_ROUTER: "1" })).toBe(true);
+  });
+});
+
 describe("shouldPreferParallelDrawElement (DE parallel router)", () => {
   const eligible = {
     workerCount: 5,
@@ -2636,5 +2660,73 @@ describe("closeOrphanedProbeForRetry (probe cleanup before verify-triggered retr
 
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect((log.warn.mock.calls[0][1] as { error: string }).error).toBe("string-only rejection");
+  });
+});
+
+// BeginFrame is Linux-only in both real entry points, but the observability
+// field derived its mode from `forceScreenshot` alone. That mislabelled 30,625
+// Windows renders as `beginframe` over 14 days — a fifth of the fast-capture
+// dashboard's capture-mode data — for captures that were really screenshot.
+describe("resolveObservedCaptureMode", () => {
+  it("only ever reports beginframe on linux", () => {
+    expect(resolveObservedCaptureMode(false, "linux")).toBe("beginframe");
+    expect(resolveObservedCaptureMode(false, "win32")).toBe("screenshot");
+    expect(resolveObservedCaptureMode(false, "darwin")).toBe("screenshot");
+  });
+
+  // The case the old code got right, kept so a future simplification back to
+  // a bare boolean fails here rather than in production telemetry.
+  it("reports screenshot whenever screenshot was forced, linux included", () => {
+    expect(resolveObservedCaptureMode(true, "linux")).toBe("screenshot");
+    expect(resolveObservedCaptureMode(true, "win32")).toBe("screenshot");
+  });
+});
+
+// The blocker found in review: seeding `captureMode` at construction is not
+// enough. `updateCaptureObservability` fires at 23 sites, and the post-compile
+// `{ forceScreenshot }` patch runs on EVERY render — the old closure re-derived
+// from `forceScreenshot` alone and put `beginframe` back before capture began,
+// so both telemetry emits read the reverted value. These go through the closure
+// rather than the helper, which is the only way to catch that.
+describe("createCaptureObservabilityUpdater", () => {
+  const seed = (platform: NodeJS.Platform, forceScreenshot: boolean) => {
+    const observability = {
+      forceScreenshot,
+      captureMode: resolveObservedCaptureMode(forceScreenshot, platform),
+      browserGpuMode: "hardware" as const,
+    } as Parameters<typeof createCaptureObservabilityUpdater>[0];
+    return { observability, update: createCaptureObservabilityUpdater(observability, platform) };
+  };
+
+  // The exact production case: Windows, hardware GPU, screenshot not forced.
+  it("keeps screenshot on win32 across an unrelated patch", () => {
+    const { observability, update } = seed("win32", false);
+    expect(observability.captureMode).toBe("screenshot");
+    update({ transientRetries: 1 });
+    expect(observability.captureMode).toBe("screenshot");
+  });
+
+  // The unconditional post-compile patch — the one that guaranteed the revert.
+  it("keeps screenshot on win32 when forceScreenshot is re-patched false", () => {
+    const { observability, update } = seed("win32", false);
+    update({ forceScreenshot: false });
+    expect(observability.captureMode).toBe("screenshot");
+  });
+
+  // Linux must still be able to report beginframe, or the fix would have
+  // silently disabled the field everywhere instead of correcting it.
+  it("still reports beginframe on linux, and honours a later force", () => {
+    const { observability, update } = seed("linux", false);
+    expect(observability.captureMode).toBe("beginframe");
+    update({ transientRetries: 2 });
+    expect(observability.captureMode).toBe("beginframe");
+    update({ forceScreenshot: true });
+    expect(observability.captureMode).toBe("screenshot");
+  });
+
+  it("applies the patch itself, not only the derived mode", () => {
+    const { observability, update } = seed("win32", false);
+    update({ workerCount: 4 });
+    expect(observability.workerCount).toBe(4);
   });
 });

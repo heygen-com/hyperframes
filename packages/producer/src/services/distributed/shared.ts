@@ -10,7 +10,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Fps } from "@hyperframes/core";
-import { type VideoElement, type VideoFrameFormat, type VideoMetadata } from "@hyperframes/engine";
+import {
+  MIXED_AUDIO_FILENAME,
+  type VideoElement,
+  type VideoFrameFormat,
+  type VideoMetadata,
+} from "@hyperframes/engine";
 import { type RenderConfig, type RenderJob, createRenderJob } from "../renderOrchestrator.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 
@@ -35,8 +40,42 @@ export const PLAN_VIDEOS_META_RELATIVE_PATH = "meta/videos.json";
  * Relative path of the normalized audio artifact written into a distributed
  * plan. Keep writers and transport readers coupled through this contract
  * rather than duplicating a filename literal.
+ *
+ * Derived from the engine's filename rather than restated, because the
+ * extension selects the muxer: the plan artifact is the mix moved into place,
+ * so if the two ever disagreed the plan would claim a container the file
+ * doesn't have.
  */
-export const PLAN_AUDIO_RELATIVE_PATH = "audio.aac";
+export const PLAN_AUDIO_RELATIVE_PATH = MIXED_AUDIO_FILENAME;
+
+/**
+ * Name the audio artifact carried before it moved to an MP4-family container.
+ *
+ * COMPATIBILITY SHIM, remove one release after the container change ships.
+ * `plan` and `assemble` are separate invocations bridged by object storage, so
+ * a rolling deploy can pair a pre-rollout planner with a post-rollout
+ * assembler. Both readers locate the artifact by existence alone, which makes
+ * that pairing a silently muted video rather than an error, so reads accept the
+ * old name for one release while writes only ever emit the new one.
+ */
+export const PLAN_AUDIO_LEGACY_RELATIVE_PATH = "audio.aac";
+
+/** True for either the current or the legacy plan-audio artifact name. */
+export function isPlanAudioArtifactPath(path: string): boolean {
+  return path === PLAN_AUDIO_RELATIVE_PATH || path === PLAN_AUDIO_LEGACY_RELATIVE_PATH;
+}
+
+/**
+ * Locate a plan's audio artifact on disk, preferring the current name and
+ * falling back to the legacy one. Returns `null` when the plan has no audio.
+ */
+export function resolvePlanAudioPath(planDir: string): string | null {
+  for (const name of [PLAN_AUDIO_RELATIVE_PATH, PLAN_AUDIO_LEGACY_RELATIVE_PATH]) {
+    const candidate = join(planDir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
 
 /**
  * On-disk shape of `<planDir>/meta/videos.json`. The engine's

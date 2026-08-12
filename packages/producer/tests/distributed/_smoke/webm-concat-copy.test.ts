@@ -213,6 +213,7 @@ describe("webm VP9 concat-copy smoke", () => {
       "stream=codec_name,width,height,pix_fmt,r_frame_rate",
       "-of",
       "default=noprint_wrappers=1",
+      "--",
       outputPath,
     ]);
     if (result.exitCode !== 0) {
@@ -268,6 +269,7 @@ describe("webm VP9 concat-copy smoke", () => {
       "stream=nb_read_frames",
       "-of",
       "default=noprint_wrappers=1:nokey=1",
+      "--",
       outputPath,
     ]);
     if (result.exitCode !== 0) {
@@ -423,6 +425,7 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
         "-select_streams",
         "v:0",
         "-show_streams",
+        "--",
         alphaOutputPath,
       ]);
       expect(probeResult.exitCode).toBe(0);

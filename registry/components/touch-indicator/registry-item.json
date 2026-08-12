@@ -1,0 +1,71 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "touch-indicator",
+  "type": "hyperframes:component",
+  "title": "Touch Indicator",
+  "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass, causes a same-frame response, and lifts. Tap or swipe, picked by variable.",
+  "tags": ["motion-primitive", "mobile", "gesture", "touch", "pointer"],
+  "variables": [
+    {
+      "id": "gesture",
+      "type": "enum",
+      "label": "Gesture",
+      "default": "tap",
+      "options": [
+        {
+          "value": "tap",
+          "label": "Tap"
+        },
+        {
+          "value": "swipe",
+          "label": "Swipe"
+        }
+      ]
+    },
+    {
+      "id": "polarity",
+      "type": "enum",
+      "label": "Polarity",
+      "default": "light",
+      "options": [
+        {
+          "value": "light",
+          "label": "Light (on dark UI)"
+        },
+        {
+          "value": "dark",
+          "label": "Dark (on light UI)"
+        }
+      ]
+    },
+    {
+      "id": "targetX",
+      "type": "number",
+      "label": "Target X",
+      "default": 50,
+      "min": 0,
+      "max": 100,
+      "unit": "%"
+    },
+    {
+      "id": "targetY",
+      "type": "number",
+      "label": "Target Y",
+      "default": 55,
+      "min": 0,
+      "max": 100,
+      "unit": "%"
+    }
+  ],
+  "files": [
+    {
+      "path": "touch-indicator.html",
+      "target": "compositions/components/touch-indicator.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "evidence": "spec ready (gesture-actor-spec.md)"
+}

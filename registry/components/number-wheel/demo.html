@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Number Wheel - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #071b16;
+        color: #ecfff8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .metric {
+        text-align: center;
+        /* ponytail: zoom scales the non-animated wrapper; GSAP owns .label and .hf-number-wheel-strip transforms */
+        zoom: 2.8;
+      }
+      .label {
+        color: #68d8b5;
+        font-size: 38px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .hf-number-wheel {
+        margin-top: 36px;
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.02em;
+        font-size: 172px;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+      }
+      .hf-number-wheel-digit {
+        display: inline-block;
+        height: 1em;
+        overflow: hidden;
+      }
+      .hf-number-wheel-strip {
+        display: grid;
+        transform: translateY(0em);
+        will-change: transform;
+      }
+      .hf-number-wheel-strip span {
+        height: 1em;
+        line-height: 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="number-wheel-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="metric">
+        <div class="label">GitHub stars</div>
+        <span class="hf-number-wheel" data-value="30222"></span>
+      </div>
+      <script>
+        document.querySelectorAll(".hf-number-wheel").forEach((el) => {
+          const value = el.dataset.value || "0";
+          el.textContent = "";
+          for (const char of value) {
+            if (!/\d/.test(char)) {
+              el.append(document.createTextNode(char));
+              continue;
+            }
+            const digit = Number(char);
+            const frame = document.createElement("span");
+            frame.className = "hf-number-wheel-digit";
+            const strip = document.createElement("span");
+            strip.className = "hf-number-wheel-strip";
+            strip.style.setProperty("--hf-number-target-y", `${-digit}em`);
+            for (let i = 0; i <= digit; i++) {
+              const step = document.createElement("span");
+              step.textContent = String(i);
+              strip.appendChild(step);
+            }
+            frame.appendChild(strip);
+            el.appendChild(frame);
+          }
+        });
+        const tl = gsap.timeline({ paused: true });
+        tl.from(".label", { opacity: 0, y: 18, duration: 0.5, ease: "power3.out" }, 0.2);
+        tl.to(
+          ".hf-number-wheel-strip",
+          {
+            y: (_, strip) => strip.style.getPropertyValue("--hf-number-target-y"),
+            duration: 1.2,
+            ease: "power3.out",
+            stagger: 0.06,
+          },
+          0.65,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["number-wheel-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

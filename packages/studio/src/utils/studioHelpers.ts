@@ -1,3 +1,4 @@
+import { isTypingTarget } from "./typingTarget";
 import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { TimelineAssetKind } from "./timelineAssetDrop";
@@ -114,11 +115,7 @@ export function getEventTargetElement(target: EventTarget | null): HTMLElement |
 }
 
 export function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean {
-  const el = getEventTargetElement(target);
-  if (!el) return false;
-  return Boolean(
-    el.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], .cm-editor"),
-  );
+  return isTypingTarget(target);
 }
 
 export function getHistoryShortcutLabel(action: "undo" | "redo"): string {

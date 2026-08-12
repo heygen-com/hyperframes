@@ -25,6 +25,12 @@
       "types": "./dist/adapters/headless.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./adapters/iframe": {
+      "source": "./src/adapters/iframe.ts",
+      "runtime": "./dist/adapters/iframe.js",
+      "types": "./dist/adapters/iframe.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./editing": {
       "source": "./src/editing/affordances.ts",
       "runtime": "./dist/editing/affordances.js",

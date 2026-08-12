@@ -1,0 +1,72 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "morph-swap",
+  "type": "hyperframes:component",
+  "title": "Morph Swap",
+  "description": "Two slotted siblings stacked at one shared center: A holds, then condenses or reshapes into B on a shared 50% 50% transform origin. Condense shrink-fades A exactly as B scales up; reshape morphs the silhouette on scaleX/scaleY, never width or height tweens. Token card defaults render when a slot is left empty.",
+  "tags": ["transition", "morph", "swap", "condense", "reshape", "holdable", "slots"],
+  "jobs": ["bridge"],
+  "family": "transitions",
+  "profile": "holdable",
+  "evidence": "Wave J2-4: flagship close condense morph (07-close) and problem reshape morph (02-problem) generalized onto content slots",
+  "syncPoints": [{ "id": "morph-land", "phase": "in", "offset": 2.15 }],
+  "files": [
+    {
+      "path": "morph-swap.html",
+      "target": "compositions/components/morph-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "swap_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Swap start",
+      "description": "Seconds after mount start when the morph begins.",
+      "default": 1.4,
+      "min": 0.1,
+      "max": 8,
+      "step": 0.05,
+      "unit": "s"
+    },
+    {
+      "id": "register",
+      "type": "enum",
+      "role": "style",
+      "label": "Register",
+      "description": "Morph mechanic: condense shrink-fades A into B at center; reshape morphs the silhouette on scaleX/scaleY.",
+      "default": "condense",
+      "options": [
+        { "value": "condense", "label": "Condense" },
+        { "value": "reshape", "label": "Reshape" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Incoming card accent color.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Outgoing transition. None holds the final frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

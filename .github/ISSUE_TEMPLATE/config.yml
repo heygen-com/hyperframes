@@ -1,1 +1,5 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Talk with the HyperFrames team
+    url: https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ2cSpKoDgmcmRrgekrnrgqmvPT8W6F2Zg6e7MY7IJqaZKwpn_I0NdTHkN390iguMepE_NVg8ezb?gv=true
+    about: Share what you are building and help us improve the developer experience in a casual 30-minute conversation.

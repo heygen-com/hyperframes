@@ -277,12 +277,16 @@ function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
 /**
  * Edit one tween in `window.__timelines` in place + re-seek to the current playhead.
  * Returns `true` on a confident patch, `false` otherwise (caller soft-reloads).
+ *
+ * `deferSeek` skips the re-render, for a caller patching several tweens in a row
+ * that will render once after the last one.
  */
 export function patchRuntimeTweenInPlace(
   iframe: HTMLIFrameElement | null,
   selector: string,
   change: RuntimeTweenChange,
   compositionId?: string,
+  deferSeek = false,
 ): boolean {
   if (!iframe) return false;
   // A base `gsap.set` has no timeline tween to resolve — apply the value straight
@@ -312,7 +316,13 @@ export function patchRuntimeTweenInPlace(
     if (change.kind !== "keyframe-rebuild") {
       tween.invalidate?.();
     }
-    seekToCurrent(iframe, timeline);
+    // A seek re-renders the WHOLE timeline, not just the tween we patched. Under a
+    // multi-element commit that is a visible jump: the members still queued behind
+    // this one get repainted from their un-patched tweens, back to where they were
+    // before the gesture, and stay there until their own patch lands. Deferring
+    // leaves them showing the gesture's own transform, and the caller's last patch
+    // seeks once for the whole group.
+    if (!deferSeek) seekToCurrent(iframe, timeline);
     return true;
   } catch {
     return false;

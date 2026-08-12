@@ -1,0 +1,96 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "native-notification-pop",
+  "type": "hyperframes:component",
+  "title": "Native Notification Pop",
+  "description": "One system-faithful notification banner (iOS or macOS) drops in over any scene on an accurate interruptible spring: fast arrival, soft overshoot, settled mass, backdrop blur, app dot, title, one body line. Holds; tucks away only via exit.",
+  "tags": ["motion-primitive", "product-demo", "overlay", "notification", "spring"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "holdable",
+  "evidence": "Wave K K5 native-notification-pop specification; closed-form underdamped spring sampled from a linear driver for seek-safe, interruptible native banner motion (L1)",
+  "syncPoints": [{ "id": "banner-land", "phase": "in", "offset": 0.61 }],
+  "files": [
+    {
+      "path": "native-notification-pop.html",
+      "target": "compositions/components/native-notification-pop.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "type": "string",
+      "role": "content",
+      "label": "Title",
+      "description": "The notification title line.",
+      "default": "Render complete"
+    },
+    {
+      "id": "body",
+      "type": "string",
+      "role": "content",
+      "label": "Body",
+      "description": "One body line. Long lines truncate with an ellipsis.",
+      "default": "launch-cut.mp4 is ready to preview"
+    },
+    {
+      "id": "app_label",
+      "type": "string",
+      "role": "content",
+      "label": "App label",
+      "description": "Small-caps app name row beside the app dot.",
+      "default": "HyperFrames"
+    },
+    {
+      "id": "os",
+      "type": "enum",
+      "role": "style",
+      "label": "OS",
+      "description": "Banner geometry and placement: wide centered iOS or compact top-right macOS.",
+      "default": "ios",
+      "options": [
+        { "value": "ios", "label": "iOS" },
+        { "value": "macos", "label": "macOS" }
+      ]
+    },
+    {
+      "id": "at",
+      "type": "number",
+      "role": "timing",
+      "label": "Drop start",
+      "description": "Seconds after mount start when the banner drops in.",
+      "default": 0.3,
+      "min": 0,
+      "max": 8,
+      "step": 0.05,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "App dot color.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "None holds the banner; up tucks it back off the top; fade fades it in place.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

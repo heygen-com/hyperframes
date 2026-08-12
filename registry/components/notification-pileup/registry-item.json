@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "notification-pileup",
+  "type": "hyperframes:component",
+  "title": "Notification Pileup",
+  "description": "Mobile notification cards arrive faster and faster, each new alert pushing the existing stack downward into a dense, anxious tower.",
+  "tags": ["notification", "mobile", "ui-props", "overload", "pileup", "loop", "agitate"],
+  "jobs": ["agitate"],
+  "family": "ui-props",
+  "profile": "loop",
+  "evidence": "fixture; mobile mechanics inventory",
+  "files": [
+    {
+      "path": "notification-pileup.html",
+      "target": "compositions/components/notification-pileup.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "count",
+      "type": "number",
+      "role": "content",
+      "label": "Notification count",
+      "description": "Number of notification cards in the final pile.",
+      "default": 7,
+      "min": 4,
+      "max": 10,
+      "step": 1
+    },
+    {
+      "id": "speed",
+      "type": "number",
+      "role": "timing",
+      "label": "Arrival speed",
+      "description": "Pacing multiplier for the accelerating notification arrivals.",
+      "default": 1,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.1
+    },
+    {
+      "id": "showBadges",
+      "type": "enum",
+      "role": "content",
+      "label": "Unread badges",
+      "description": "Show or hide unread count badges on the notification cards.",
+      "default": "yes",
+      "options": [
+        { "value": "yes", "label": "Show badges" },
+        { "value": "no", "label": "Hide badges" }
+      ]
+    }
+  ]
+}

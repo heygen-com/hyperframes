@@ -146,6 +146,16 @@ function directFetch(completeData?: Record<string, unknown>) {
     .mockResolvedValueOnce(publishedResponse(completeData));
 }
 
+function networkFailure(
+  code: string,
+  message: string,
+  metadata: Record<string, unknown> = {},
+): TypeError {
+  return new TypeError("fetch failed", {
+    cause: Object.assign(new Error(message), { code, ...metadata }),
+  });
+}
+
 /** Asserts the Nth fetch call, always requiring an AbortSignal alongside the given init. */
 function expectFetchCall(
   fetchMock: ReturnType<typeof vi.fn>,
@@ -541,7 +551,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-const jsonHeaders = { "content-type": "application/json", heygen_route: "canary" };
+const jsonHeaders = { "content-type": "application/json" };
 const signedStagedS3Url =
   "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption";
 
@@ -652,7 +662,7 @@ describe("publishProjectArchive", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expectFetchCall(fetchMock, 2, "https://api2.heygen.com/v1/hyperframes/projects/publish", {
         method: "POST",
-        headers: { heygen_route: "canary" },
+        headers: {},
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -725,6 +735,190 @@ describe("publishProjectArchive", () => {
 
       await expect(publishProjectArchive(dir)).rejects.toThrow("Failed to upload project archive");
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries a transient presigned upload network failure once", async () => {
+    const dir = makeProjectDir();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(uploadResponse())
+      .mockRejectedValueOnce(networkFailure("ECONNRESET", "socket disconnected"))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(publishedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      const result = await publishProjectArchive(dir);
+
+      expect(result.projectId).toBe("hfp_123");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(fetchMock.mock.calls[1]![0]).toBe("https://s3.example.com/upload");
+      expect(fetchMock.mock.calls[2]![0]).toBe("https://s3.example.com/upload");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("waits briefly before retrying a transport failure", async () => {
+    vi.useFakeTimers();
+    const dir = makeProjectDir();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(uploadResponse())
+      .mockRejectedValueOnce(networkFailure("EAI_AGAIN", "temporary DNS failure"))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(publishedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      const publish = publishProjectArchive(dir);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(199);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(publish).resolves.toMatchObject({ projectId: "hfp_123" });
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      await vi.runAllTimersAsync();
+      vi.useRealTimers();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports the upload stage and transport cause after the retry is exhausted", async () => {
+    const dir = makeProjectDir();
+    const signedUrl =
+      "https://s3.example.com/upload?X-Amz-Credential=secret&X-Amz-Signature=do-not-print";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(uploadResponse({ upload_url: signedUrl }))
+      .mockRejectedValueOnce(
+        networkFailure("EAI_AGAIN", "getaddrinfo EAI_AGAIN s3.example.com", {
+          errno: -3001,
+          syscall: "getaddrinfo",
+        }),
+      )
+      .mockRejectedValueOnce(
+        networkFailure("EAI_AGAIN", "getaddrinfo EAI_AGAIN s3.example.com", {
+          errno: -3001,
+          syscall: "getaddrinfo",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      const promise = publishProjectArchive(dir);
+      await expect(promise).rejects.toThrow(
+        "Failed to upload project archive after 2 attempts: fetch failed (EAI_AGAIN, syscall=getaddrinfo, errno=-3001: getaddrinfo EAI_AGAIN s3.example.com)",
+      );
+      await expect(promise).rejects.not.toThrow("do-not-print");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports the prepare stage and explains disabled Node proxy support", async () => {
+    const dir = makeProjectDir();
+    vi.stubEnv("HTTPS_PROXY", "http://proxy.example.com:8080");
+    vi.stubEnv("NODE_USE_ENV_PROXY", "");
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(networkFailure("ENETUNREACH", "network is unreachable"))
+      .mockRejectedValueOnce(networkFailure("ENETUNREACH", "network is unreachable"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "Failed to prepare project upload after 2 attempts: fetch failed (ENETUNREACH: network is unreachable). Proxy variables are set but ignored by Node fetch; if this network requires them, retry with NODE_USE_ENV_PROXY=1",
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries a transient prepare-upload network failure once", async () => {
+    const dir = makeProjectDir();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(networkFailure("EAI_AGAIN", "temporary DNS failure"))
+      .mockResolvedValueOnce(uploadResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(publishedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      const result = await publishProjectArchive(dir);
+
+      expect(result.projectId).toBe("hfp_123");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(fetchMock.mock.calls[0]![0]).toBe(
+        "https://api2.heygen.com/v1/hyperframes/projects/publish/upload",
+      );
+      expect(fetchMock.mock.calls[1]![0]).toBe(
+        "https://api2.heygen.com/v1/hyperframes/projects/publish/upload",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retry a request that reached its timeout", async () => {
+    const dir = makeProjectDir();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      )
+      .mockResolvedValueOnce(uploadResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(publishedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "Failed to prepare project upload: The operation was aborted due to timeout",
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports the finalize stage and transport cause", async () => {
+    const dir = makeProjectDir();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(uploadResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockRejectedValueOnce(networkFailure("ECONNRESET", "socket disconnected"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "Failed to finalize project publish: fetch failed (ECONNRESET: socket disconnected)",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

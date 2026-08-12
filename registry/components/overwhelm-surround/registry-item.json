@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "overwhelm-surround",
+  "type": "hyperframes:component",
+  "title": "Overwhelm Surround",
+  "description": "Tasks, tabs, pings, and notification bubbles accelerate inward around a calm central subject, turning overload into visible spatial pressure.",
+  "tags": ["effects", "agitate", "overwhelm", "pressure", "notifications"],
+  "jobs": ["agitate"],
+  "family": "effects",
+  "profile": "holdable",
+  "evidence": "SIM fixture; CORPUS blueprint",
+  "files": [
+    {
+      "path": "overwhelm-surround.html",
+      "target": "compositions/components/overwhelm-surround.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "count",
+      "type": "number",
+      "role": "content",
+      "label": "Chip count",
+      "description": "Number of tasks and notifications crowding the center.",
+      "default": 16,
+      "min": 8,
+      "max": 24,
+      "step": 1
+    },
+    {
+      "id": "centerLabel",
+      "type": "string",
+      "role": "content",
+      "label": "Center label",
+      "description": "Text inside the calm central subject. Blank hides the text.",
+      "default": "You"
+    },
+    {
+      "id": "intensity",
+      "type": "number",
+      "role": "layout",
+      "label": "Intensity",
+      "description": "How tightly and quickly the chips crowd the center.",
+      "default": 1,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.1
+    }
+  ]
+}

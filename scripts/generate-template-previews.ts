@@ -2,7 +2,7 @@
 /**
  * Generate Template Preview Images + Videos
  *
- * Uses @hyperframes/producer to render PNG thumbnails and short MP4 preview
+ * Uses the producer package to render PNG thumbnails and short MP4 preview
  * videos of each built-in template.
  *
  * Output: docs/images/templates/<id>.png + <id>.mp4
@@ -24,19 +24,18 @@ import {
   cpSync,
   rmSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+// Import from source — scripts are typechecked before workspace packages are built.
 import {
-  createFileServer,
-  createCaptureSession,
-  initializeSession,
   captureFrame,
-  getCompositionDuration,
   closeCaptureSession,
   createRenderJob,
   executeRenderJob,
-} from "@hyperframes/producer";
+} from "../packages/producer/src/index.js";
+import { openOpaqueCapture } from "./preview-capture.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -58,11 +57,12 @@ const TEMPLATE_CONFIG: Record<string, { width: number; height: number; captureTi
 };
 
 function patchTemplateHtml(dir: string, durationSeconds: number): void {
-  const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".html"))
-    .map((e) => join(e.parentPath ?? e.path, e.name));
+  const htmlEntries = readdirSync(dir, { withFileTypes: true, recursive: true }).filter(
+    (e) => e.isFile() && e.name.endsWith(".html"),
+  );
 
-  for (const file of htmlFiles) {
+  for (const entry of htmlEntries) {
+    const file = join(entry.parentPath, entry.name);
     let content = readFileSync(file, "utf-8");
     content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/video>/g, "");
     content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
@@ -139,32 +139,19 @@ async function generateThumbnail(templateId: string, projectDir: string): Promis
   const config = TEMPLATE_CONFIG[templateId] ?? DEFAULT_CONFIG;
 
   const framesDir = join(projectDir, "_thumb_frames");
-  mkdirSync(framesDir, { recursive: true });
-
-  const fileServer = await createFileServer({
+  const { fileServer, session, duration } = await openOpaqueCapture({
     projectDir,
-    port: 0,
-    fps: { num: 30, den: 1 },
+    width: config.width,
+    height: config.height,
   });
   try {
-    const session = await createCaptureSession(fileServer.url, framesDir, {
-      width: config.width,
-      height: config.height,
-      fps: 30,
-      format: "png",
-    });
-    await initializeSession(session);
-
-    let duration: number;
-    try {
-      duration = await getCompositionDuration(session);
-    } catch {
-      duration = 5;
-    }
-
     const t = Math.min(config.captureTime, duration * 0.8);
     const result = await captureFrame(session, 0, t);
-    cpSync(result.path, join(outputDir, `${templateId}.png`));
+    execFileSync(
+      "ffmpeg",
+      ["-v", "error", "-y", "-i", result.path, join(outputDir, `${templateId}.png`)],
+      { stdio: "inherit" },
+    );
     console.log(`  ✓ ${templateId}.png (${result.captureTimeMs}ms)`);
 
     await closeCaptureSession(session);

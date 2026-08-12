@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { classifyFfmpegSpawnError } from "./videoFrameExtractor.js";
+import { UrlDownloadError } from "../utils/urlDownloader.js";
+import { classifyFfmpegSpawnError, classifyVideoExtractionError } from "./videoFrameExtractor.js";
 
 describe("classifyFfmpegSpawnError", () => {
   it.each(["ENOENT", "EACCES", "ENOEXEC", "UNKNOWN"])(
@@ -17,4 +18,22 @@ describe("classifyFfmpegSpawnError", () => {
       retryable: true,
     });
   });
+});
+
+describe("classifyVideoExtractionError download integrity", () => {
+  it("keeps deterministic HTML payloads non-retryable and user-owned as invalid media", () => {
+    const classified = classifyVideoExtractionError(
+      new UrlDownloadError("invalid_payload", false, "HTML payload"),
+    );
+    expect(classified).toMatchObject({ kind: "invalid_media", retryable: false });
+  });
+
+  it.each(["range_protocol", "length_mismatch", "hash_mismatch"] as const)(
+    "keeps %s retryable after the downloader's one clean refetch is exhausted",
+    (kind) => {
+      expect(
+        classifyVideoExtractionError(new UrlDownloadError(kind, true, "integrity failure")),
+      ).toMatchObject({ kind: "download_transient", retryable: true });
+    },
+  );
 });

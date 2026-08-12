@@ -257,12 +257,22 @@ export function isCanaryEnabled(name: string): boolean {
 }
 
 /**
- * Canary assignments as PostHog flag properties (`$feature/canary-<name>`),
- * attached to every Studio event so any metric can be split by cohort —
- * identical shape to the CLI, so a rollout spanning both reads as one flag.
+ * Canary assignments as PostHog flag properties (`$feature/canary-<name>`)
+ * plus their `canary_reason_<name>`, attached to every Studio event so any
+ * metric can be split by cohort — identical shape to the CLI, so a rollout
+ * spanning both reads as one flag.
+ *
+ * The reason has to be here too, not just CLI-side. A CLI-launched Studio
+ * adopts the CLI's decisions and shares its bucket seed, so a cohort flip can
+ * surface on either surface; emitting attribution on only one of them makes
+ * the two flip counts irreconcilable and leaves Studio-observed flips
+ * unattributable — the exact ambiguity this property exists to remove.
  */
 export function canaryEventProperties(): Record<string, string> {
   return canaryFeatureProperties(
-    CANARIES.map((c) => ({ name: c.name, enabled: resolveCanary(c.name).enabled })),
+    CANARIES.map((c) => {
+      const { enabled, reason } = resolveCanary(c.name);
+      return { name: c.name, enabled, reason };
+    }),
   );
 }

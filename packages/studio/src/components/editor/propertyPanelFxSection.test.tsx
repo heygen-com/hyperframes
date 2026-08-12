@@ -121,6 +121,11 @@ function openDetails(host: HTMLElement, index = 0): void {
 const byText = (host: HTMLElement, sel: string, text: string) =>
   Array.from(host.querySelectorAll(sel)).find((e) => e.textContent?.trim() === text);
 
+const openAddMenuItems = (host: HTMLElement) => {
+  click(host.querySelector(".hf-fx-add"));
+  return Array.from(host.querySelectorAll(".hf-fx-add-item")).map((e) => e.textContent?.trim());
+};
+
 /**
  * A preset button, found by the preset it applies rather than by its words.
  *
@@ -163,10 +168,7 @@ describe("FxSection chain", () => {
     // The add menu is generated, so a new effect upstream appears here with no
     // change to the panel.
     const { host } = mount();
-    click(host.querySelector(".hf-fx-add"));
-    const items = Array.from(host.querySelectorAll(".hf-fx-add-item")).map((e) =>
-      e.textContent?.trim(),
-    );
+    const items = openAddMenuItems(host);
     // Every effect is reachable, but not every one under its own name: the jobs
     // stand in for the effect they are made of, because picking `peaking` is
     // picking a machine and leaving the real decision for afterwards.
@@ -1229,10 +1231,7 @@ describe("FxSection carve", () => {
   it("is off by default and is not an entry in the chain", () => {
     const { host } = mount();
     expect(host.querySelector(".hf-fx-carve")).toBeTruthy();
-    click(host.querySelector(".hf-fx-add"));
-    const items = Array.from(host.querySelectorAll(".hf-fx-add-item")).map((e) =>
-      e.textContent?.trim(),
-    );
+    const items = openAddMenuItems(host);
     expect(items).not.toContain("Voiceover carve");
   });
 

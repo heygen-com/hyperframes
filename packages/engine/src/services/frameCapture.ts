@@ -632,6 +632,101 @@ export function warmupFrameTimeTicks(state: WarmupTickState, intervalMs: number)
   return state.ticks * intervalMs;
 }
 
+const BEGIN_FRAME_CAPTURE_HEADROOM_INTERVALS = 10;
+const BEGIN_FRAME_COMMIT_LEAD_INTERVALS = 6;
+const BEGIN_FRAME_PROBE_LEAD_INTERVALS = 5;
+
+export interface BeginFrameTimelineTicks {
+  capture: number;
+  commit: number;
+  probe: number;
+}
+
+export interface PreparedBeginFrameTimeline {
+  commitParams: {
+    frameTimeTicks: number;
+    interval: number;
+    noDisplayUpdates: false;
+  };
+  timeline: BeginFrameTimelineTicks;
+}
+
+/**
+ * Place frame zero after the warmup clock while retaining capture-rate-sized
+ * headroom for the visual commit and liveness probe ticks that precede it.
+ *
+ * The warmup and capture intervals can differ (warmup currently runs at a
+ * fixed 33ms). Basing both clocks on the capture interval would move time
+ * backwards whenever the output frame rate is faster than the warmup rate.
+ */
+export function deriveBeginFrameTimeTicks(
+  state: WarmupTickState,
+  warmupIntervalMs: number,
+  captureIntervalMs: number,
+): number {
+  const legacyCaptureTimeTicks =
+    (state.ticks + BEGIN_FRAME_CAPTURE_HEADROOM_INTERVALS) * captureIntervalMs;
+  const legacyCommitTimeTicks = deriveBeginFrameCommitTimeTicks(
+    legacyCaptureTimeTicks,
+    captureIntervalMs,
+  );
+  const lastWarmupTimeTicks = Math.max(0, state.ticks - 1) * warmupIntervalMs;
+  if (legacyCommitTimeTicks > lastWarmupTimeTicks) return legacyCaptureTimeTicks;
+
+  const monotonicCaptureTimeTicks =
+    warmupFrameTimeTicks(state, warmupIntervalMs) +
+    BEGIN_FRAME_CAPTURE_HEADROOM_INTERVALS * captureIntervalMs;
+  return monotonicCaptureTimeTicks;
+}
+
+function deriveBeginFrameCommitTimeTicks(
+  captureTimeTicks: number,
+  captureIntervalMs: number,
+): number {
+  return captureTimeTicks - BEGIN_FRAME_COMMIT_LEAD_INTERVALS * captureIntervalMs;
+}
+
+export function deriveBeginFrameProbeTimeTicks(
+  captureTimeTicks: number,
+  captureIntervalMs: number,
+): number {
+  return Math.max(0, captureTimeTicks - BEGIN_FRAME_PROBE_LEAD_INTERVALS * captureIntervalMs);
+}
+
+export function deriveBeginFrameTimelineTicks(
+  state: WarmupTickState,
+  warmupIntervalMs: number,
+  captureIntervalMs: number,
+): BeginFrameTimelineTicks {
+  const capture = deriveBeginFrameTimeTicks(state, warmupIntervalMs, captureIntervalMs);
+  return {
+    capture,
+    commit: deriveBeginFrameCommitTimeTicks(capture, captureIntervalMs),
+    probe: deriveBeginFrameProbeTimeTicks(capture, captureIntervalMs),
+  };
+}
+
+export function prepareBeginFrameTimeline(
+  session: Pick<CaptureSession, "beginFrameIntervalMs" | "beginFrameTimeTicks">,
+  state: WarmupTickState,
+  warmupIntervalMs: number,
+): PreparedBeginFrameTimeline {
+  const timeline = deriveBeginFrameTimelineTicks(
+    state,
+    warmupIntervalMs,
+    session.beginFrameIntervalMs,
+  );
+  session.beginFrameTimeTicks = timeline.capture;
+  return {
+    timeline,
+    commitParams: {
+      frameTimeTicks: timeline.commit,
+      interval: session.beginFrameIntervalMs,
+      noDisplayUpdates: false,
+    },
+  };
+}
+
 export async function driveWarmupTicks(
   options: WarmupTickOptions,
   state: WarmupTickState,
@@ -2277,10 +2372,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   warmupState.running = false;
   await warmupLoopPromise.catch(() => {});
 
-  // Set base frame time ticks past warmup range. Locked mode pins to the
-  // constant so chunk workers on different hosts compute the same baseline.
-  const baseTickCount = lockWarmupTicks ? LOCKED_WARMUP_TICKS : warmupState.ticks;
-  session.beginFrameTimeTicks = (baseTickCount + 10) * session.beginFrameIntervalMs;
+  // Preserve the legacy baseline when it is already safe. Otherwise continue
+  // from the clock actually used by warmup, then reserve capture-rate headroom
+  // for the commit and probe ticks below. Locked mode still produces an
+  // identical timeline on every host because its driver ends at exactly
+  // LOCKED_WARMUP_TICKS.
+  const preparedBeginFrameTimeline = prepareBeginFrameTimeline(
+    session,
+    warmupState,
+    warmupIntervalMs,
+  );
 
   // drawElement or transparent-background init — runs after page is fully ready.
   // IMPORTANT: must stay after beginFrameTimeTicks is set above. The per-frame
@@ -2318,11 +2419,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // `-6·interval` the order stays warmup < commit < probe < capture.
   await ensureRenderFrameSiblings(page);
   const commitCdp = await getCdpSession(page);
-  await commitCdp.send("HeadlessExperimental.beginFrame", {
-    frameTimeTicks: session.beginFrameTimeTicks - 6 * session.beginFrameIntervalMs,
-    interval: session.beginFrameIntervalMs,
-    noDisplayUpdates: false,
-  });
+  await commitCdp.send("HeadlessExperimental.beginFrame", preparedBeginFrameTimeline.commitParams);
 
   session.isInitialized = true;
 }

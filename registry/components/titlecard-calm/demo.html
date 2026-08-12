@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  titlecard-calm demo. This standalone composition mounts titlecard-calm.html
+  through data-composition-src. Non-default copy proves that both variables
+  flow through the mount while the primitive remains sized by its host box.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Titlecard Calm Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f7f7f2;
+        --muted: #aeb6c2;
+        --surface: #111318;
+        --border: #292d35;
+        --font-display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 45%, #12151a 0%, var(--bg) 72%);
+      }
+
+      .mount-card {
+        width: 78%;
+        height: 62%;
+        left: 11%;
+        top: 19%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(247, 247, 242, 0.08);
+        border-radius: 28px;
+        background: var(--surface);
+        box-shadow: 0 36px 90px rgba(0, 0, 0, 0.32);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="titlecard-calm-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="titlecard-calm-mount"
+        class="mount-card clip"
+        data-composition-id="titlecard-calm"
+        data-composition-src="./titlecard-calm.html"
+        data-variable-values='{"headline":"Clarity over noise","kicker":"QUIET CONFIDENCE"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1498"
+        data-height="670"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["titlecard-calm-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
