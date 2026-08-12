@@ -492,8 +492,8 @@ describe("plan() — golden planDir + planHash determinism", () => {
       expect(existsSync(join(planDir, "plan.json"))).toBe(true);
       expect(existsSync(join(planDir, "compiled", "index.html"))).toBe(true);
       expect(existsSync(join(planDir, "video-frames"))).toBe(true);
-      // No audio in the fixture — audio.aac must NOT exist.
-      expect(existsSync(join(planDir, "audio.aac"))).toBe(false);
+      // No audio in the fixture — audio.m4a must NOT exist.
+      expect(existsSync(join(planDir, "audio.m4a"))).toBe(false);
       expect(existsSync(join(planDir, "meta", "composition.json"))).toBe(true);
       expect(existsSync(join(planDir, "meta", "encoder.json"))).toBe(true);
       expect(existsSync(join(planDir, "meta", "chunks.json"))).toBe(true);
@@ -718,7 +718,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
       // Verify the audio stage actually fired (otherwise the test
       // pins the wrong path — the same false-pass mode as the
       // no-audio variant above).
-      expect(existsSync(join(planDir, "audio.aac"))).toBe(true);
+      expect(existsSync(join(planDir, "audio.m4a"))).toBe(true);
     },
     TIMEOUT_MS,
   );

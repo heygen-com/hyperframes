@@ -4,6 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
+import { logReload } from "../../utils/reloadDebug";
 
 export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
@@ -86,6 +87,7 @@ export function useTimelinePlayer() {
             state.duration,
             resolvedDuration,
           ),
+          state.timelineProjectId,
         ),
       );
 
@@ -105,15 +107,19 @@ export function useTimelinePlayer() {
 
       // Asynchronously enrich media elements still missing sourceDuration
       // (header-only probe, cheap), applying each resolved value to the store.
-      void probeMissingSourceDurations(mergedElements, (key, durationSeconds) => {
-        usePlayerStore.setState((state) => {
-          const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
-          if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
-          const patched = state.elements.slice();
-          patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
-          return { elements: patched };
-        });
-      });
+      void probeMissingSourceDurations(
+        mergedElements,
+        state.timelineProjectId,
+        (key, durationSeconds) => {
+          usePlayerStore.setState((state) => {
+            const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
+            if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
+            const patched = state.elements.slice();
+            patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
+            return { elements: patched };
+          });
+        },
+      );
     },
     [setElements, setTimelineReady, setDuration],
   );
@@ -452,6 +458,7 @@ export function useTimelinePlayer() {
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
     saveSeekPosition();
     // Hide the iframe across the full reload so the user never sees the reloading
     // document's RAW DOM (every clip stacked and visible) in the window between the

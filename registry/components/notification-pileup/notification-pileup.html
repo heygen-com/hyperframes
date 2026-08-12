@@ -1,0 +1,463 @@
+<!doctype html>
+<!--
+  notification-pileup, HyperFrames video primitive (ui-props / loop / agitate)
+
+  Concept: mobile notification cards arrive faster than they can be read.
+  Every new card lands at the top and pushes the existing stack downward,
+  building an anxious but legible tower.
+
+  Compiled-from evidence: fixture; mobile mechanics inventory.
+
+  Use when: a scene needs a mobile-native shorthand for interruption,
+  overload, mounting demand, or attention pressure.
+
+  Variables (declared in data-composition-variables below):
+    - count (number, default 7, range 4 to 10): cards in the final pile.
+    - speed (number, default 1, range 0.5 to 2): authored arrival pacing.
+    - showBadges ("yes" | "no", default "yes"): unread badge visibility.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 3.30s  stage settles and every card arrives with accelerating
+               gaps, each new arrival pushing the existing pile downward
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); the complete stack
+               remains dense and breathes on a finite sine.inOut cycle
+    OUT_BASE = 0.50s  the complete stack accelerates into a clean fade
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so their sum
+    equals D and HOLD becomes zero.
+
+  Sync points: each notification arrival is a deterministic offset into IN,
+  stored once in arrivalTimes. The first is at 0.16s in an uncompressed IN;
+  later offsets follow max(floorGap, baseGap * decay^(n - 1) / speed), then
+  scale together only if needed to stay inside IN. No cue enters HOLD.
+
+  Sound cue: every card arrival dispatches an hf:sfx CustomEvent with id
+  "notification-soft" and its resolved fixed IN offset. The primitive only
+  dispatches cues, it never plays audio.
+
+  Mount contract: this is a mountable sub-composition. The runtime clones
+  only <template> contents. #root fills the host box, owns no width or height
+  metadata, and establishes the container query basis. Variables come only
+  from window.__hyperframes.getVariables(). The hardcoded timeline key stays
+  "notification-pileup" after mount flattening strips data-composition-id.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "count", "type": "number", "role": "content", "label": "Notification count", "description": "Number of notification cards in the final pile.", "default": 7, "min": 4, "max": 10, "step": 1 },
+    { "id": "speed", "type": "number", "role": "timing", "label": "Arrival speed", "description": "Pacing multiplier for the accelerating notification arrivals.", "default": 1, "min": 0.5, "max": 2, "step": 0.1 },
+    { "id": "showBadges", "type": "enum", "role": "content", "label": "Unread badges", "description": "Show or hide unread count badges on the notification cards.", "default": "yes", "options": [{ "value": "yes", "label": "Show badges" }, { "value": "no", "label": "Hide badges" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Notification Pileup</title>
+    <!-- Metadata only. Mounting discards everything outside <template>. -->
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="notification-pileup" data-duration="8" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #0b1120);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .np-clip,
+          .np-backdrop,
+          .np-stage {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .np-clip {
+            overflow: hidden;
+          }
+
+          .np-backdrop {
+            background:
+              radial-gradient(
+                circle at 50% 12%,
+                color-mix(in srgb, var(--accent, #38bdf8) 16%, transparent),
+                transparent 38%
+              ),
+              linear-gradient(
+                to bottom,
+                color-mix(in srgb, var(--surface, #1e293b) 28%, var(--bg, #0b1120)),
+                var(--bg, #0b1120)
+              );
+          }
+
+          .np-stage {
+            transform-origin: 50% 45%;
+            will-change: transform, opacity;
+          }
+
+          /* EDIT ZONE: stack geometry only. The card height and computed JS
+             step share this 79.5cqh safe region, including count 10. */
+          .np-stack {
+            position: absolute;
+            top: 8cqh;
+            left: 12cqw;
+            width: 76cqw;
+            height: 82cqh;
+          }
+
+          /* INVARIANT: each card is a sized block. GSAP owns only x, y,
+             rotation, scale, and opacity, so direct seeks stay deterministic. */
+          .np-card {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: grid;
+            grid-template-columns: 6.8cqh minmax(0, 1fr) auto;
+            align-items: center;
+            gap: var(--space-2, 1.5cqw);
+            width: 100%;
+            height: 11.5cqh;
+            overflow: hidden;
+            padding: var(--space-1, 1.3cqh) var(--space-2, 1.8cqw);
+            border: 0.14cqmin solid color-mix(in srgb, var(--border, #334155) 78%, transparent);
+            border-radius: var(--radius, 2.2cqmin);
+            background: color-mix(in srgb, var(--surface, #1e293b) 92%, var(--bg, #0b1120));
+            box-shadow:
+              0 1.1cqh 2.8cqh color-mix(in srgb, var(--bg, #0b1120) 42%, transparent),
+              inset 0 0.1cqmin 0 color-mix(in srgb, var(--fg, #f8fafc) 12%, transparent);
+            transform-origin: 50% 18%;
+            will-change: transform, opacity;
+          }
+
+          .np-icon {
+            display: grid;
+            place-items: center;
+            width: 6.8cqh;
+            height: 6.8cqh;
+            border-radius: calc(var(--radius, 2.2cqmin) * 0.72);
+            background: var(--np-icon-bg, var(--brand, #22c55e));
+            color: var(--bg, #0b1120);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(2.25cqw, 4cqh);
+            font-weight: 780;
+            line-height: 1;
+            box-shadow: inset 0 0.1cqmin 0 color-mix(in srgb, var(--fg, #f8fafc) 24%, transparent);
+          }
+
+          .np-card[data-tone="1"] {
+            --np-icon-bg: var(--accent, #38bdf8);
+          }
+
+          .np-card[data-tone="2"] {
+            --np-icon-bg: color-mix(in srgb, var(--brand, #22c55e) 58%, var(--accent, #38bdf8));
+          }
+
+          .np-card[data-tone="3"] {
+            --np-icon-bg: color-mix(in srgb, var(--accent, #38bdf8) 62%, var(--fg, #f8fafc));
+          }
+
+          .np-copy {
+            min-width: 0;
+            overflow: hidden;
+          }
+
+          .np-title,
+          .np-body {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .np-title {
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(2.15cqw, 3.8cqh);
+            font-weight: 720;
+            line-height: 1.12;
+            letter-spacing: -0.01em;
+          }
+
+          .np-body {
+            margin-top: var(--space-1, 0.6cqh);
+            color: var(--muted, #94a3b8);
+            font-size: min(1.55cqw, 2.85cqh);
+            font-weight: 520;
+            line-height: 1.12;
+          }
+
+          .np-badge {
+            display: grid;
+            place-items: center;
+            min-width: 3.6cqh;
+            height: 3.6cqh;
+            padding-inline: var(--space-1, 0.65cqw);
+            border-radius: var(--radius, 999cqmin);
+            background: var(--accent, #38bdf8);
+            color: var(--bg, #0b1120);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(1.3cqw, 2.3cqh);
+            font-weight: 780;
+            line-height: 1;
+          }
+        </style>
+
+        <div
+          id="notification-pileup-clip"
+          class="np-clip clip"
+          data-start="0"
+          data-duration="8"
+          data-track-index="0"
+        >
+          <div class="np-backdrop" aria-hidden="true"></div>
+          <div class="np-stage" aria-label="A rapidly growing stack of mobile notifications">
+            <div class="np-stack"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.currentScript.closest("#root") || document.getElementById("root");
+            // Literal by contract: mount flattening strips data-composition-id
+            // before the runtime consumes this timeline registration.
+            var compositionId = "notification-pileup";
+            var stage = root.querySelector(".np-stage");
+            var stack = root.querySelector(".np-stack");
+
+            // EDIT ZONE: defaults mirror the outer variable declarations.
+            // getVariables owns the declared-defaults-plus-host-overrides merge.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // INVARIANT: count is always an integer in the declared 4 to 10 range.
+            var rawCount = Number(vars.count);
+            var count = Math.max(
+              4,
+              Math.min(10, Number.isFinite(rawCount) ? Math.round(rawCount) : 7),
+            );
+            // INVARIANT: speed remains finite and inside the declared 0.5 to 2 range.
+            var rawSpeed = Number(vars.speed);
+            var speed = Math.max(0.5, Math.min(2, Number.isFinite(rawSpeed) ? rawSpeed : 1));
+            // INVARIANT: malformed enum overrides resolve to the documented default.
+            var showBadges = vars.showBadges === "no" ? "no" : "yes";
+
+            // One ordered source owns content, icon tone, and badge copy.
+            var NOTIFICATIONS = [
+              { icon: "M", title: "Messages", body: "Can you take a quick look?", badge: "3" },
+              { icon: "C", title: "Calendar", body: "Stand-up moved to 10:30", badge: "1" },
+              { icon: "@", title: "Mail", body: "Five new replies in your thread", badge: "5" },
+              { icon: "U", title: "Updates", body: "A new version is ready", badge: "2" },
+              { icon: "T", title: "Tasks", body: "Deadline changed to today", badge: "7" },
+              { icon: "D", title: "Drive", body: "Someone requested access", badge: "4" },
+              { icon: "S", title: "Security", body: "New sign-in needs review", badge: "1" },
+              { icon: "#", title: "Social", body: "You have twelve new mentions", badge: "12" },
+              { icon: "N", title: "Notes", body: "Shared checklist was updated", badge: "6" },
+              { icon: "R", title: "Reminders", body: "Follow up before end of day", badge: "9" },
+            ];
+            var cards = [];
+
+            for (var index = 0; index < count; index += 1) {
+              var item = NOTIFICATIONS[index];
+              var card = document.createElement("article");
+              card.className = "np-card";
+              card.dataset.tone = String(index % 4);
+              card.style.zIndex = String(index + 1);
+
+              var icon = document.createElement("span");
+              icon.className = "np-icon";
+              icon.setAttribute("aria-hidden", "true");
+              icon.textContent = item.icon;
+
+              var copy = document.createElement("span");
+              copy.className = "np-copy";
+              var title = document.createElement("span");
+              title.className = "np-title";
+              title.textContent = item.title;
+              var body = document.createElement("span");
+              body.className = "np-body";
+              body.textContent = item.body;
+              copy.appendChild(title);
+              copy.appendChild(body);
+
+              card.appendChild(icon);
+              card.appendChild(copy);
+
+              if (showBadges === "yes") {
+                var badge = document.createElement("span");
+                badge.className = "np-badge";
+                badge.setAttribute("aria-label", item.badge + " unread");
+                badge.textContent = item.badge;
+                card.appendChild(badge);
+              }
+
+              stack.appendChild(card);
+              cards.push(card);
+            }
+
+            // RETIME RANGE: tune only these envelope and cadence values.
+            // speed scales authored gaps and entrance lengths directly. HOLD
+            // alone expands, and no branch uses gsap.timeScale().
+            var IN_BASE = 3.3;
+            var OUT_BASE = 0.5;
+            var STAGE_IN_BASE = 0.34;
+            var ARRIVAL_START_BASE = 0.16;
+            var ENTRY_DURATION_BASE = 0.38;
+            var PUSH_DURATION_BASE = 0.24;
+            var BASE_GAP = 0.78;
+            var GAP_DECAY = 0.78;
+            var FLOOR_GAP = 0.09;
+            var beat = parseFloat(getComputedStyle(root).getPropertyValue("--dur-beat")) || 0.5;
+            var BREATH_HALF = Math.max(0.65, beat * 1.8);
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "8"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var STAGE_IN = STAGE_IN_BASE * envelopeScale;
+            var ARRIVAL_START = ARRIVAL_START_BASE * envelopeScale;
+            var ENTRY_DURATION =
+              Math.max(0.18, Math.min(0.5, ENTRY_DURATION_BASE / speed)) * envelopeScale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var STACK_STEP = Math.min(9.6, 68 / Math.max(1, count - 1));
+
+            // The same resolved array owns both animation and cue timing.
+            var rawGaps = [];
+            var rawGapTotal = 0;
+            for (var gapIndex = 1; gapIndex < count; gapIndex += 1) {
+              var gap = Math.max(FLOOR_GAP, (BASE_GAP * Math.pow(GAP_DECAY, gapIndex - 1)) / speed);
+              rawGaps.push(gap);
+              rawGapTotal += gap;
+            }
+            var availableGapWindow = Math.max(0, IN - ARRIVAL_START - ENTRY_DURATION);
+            var gapScale = rawGapTotal > availableGapWindow ? availableGapWindow / rawGapTotal : 1;
+            var arrivalTimes = [ARRIVAL_START];
+            for (var timeIndex = 0; timeIndex < rawGaps.length; timeIndex += 1) {
+              arrivalTimes.push(
+                arrivalTimes[arrivalTimes.length - 1] + rawGaps[timeIndex] * gapScale,
+              );
+            }
+
+            function fireSfx(index, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", {
+                  detail: { id: "notification-soft", index: index, t: t },
+                  bubbles: true,
+                }),
+              );
+            }
+
+            // Explicit t=0 endpoints. Cards begin above the stack at a visible
+            // near-rest scale, never scale(0), and the complete stage is hidden.
+            gsap.set(stage, { opacity: 0, y: "1.2cqh", scale: 0.985 });
+            cards.forEach(function (card) {
+              gsap.set(card, { opacity: 0, y: "-14cqh", scale: 0.94, rotation: -1.2 });
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: standard stage settle, accelerating pileup, subtle overshoot.
+            tl.to(
+              stage,
+              { opacity: 1, y: "0cqh", scale: 1, duration: STAGE_IN, ease: "power2.out" },
+              0,
+            );
+
+            cards.forEach(function (card, cardIndex) {
+              var arrivalAt = arrivalTimes[cardIndex];
+              var untilNext =
+                cardIndex < cards.length - 1
+                  ? arrivalTimes[cardIndex + 1] - arrivalAt
+                  : ENTRY_DURATION;
+              var entryDuration = Math.max(0.05, Math.min(ENTRY_DURATION, untilNext * 0.78));
+              var pushDuration = Math.max(
+                0.04,
+                Math.min((PUSH_DURATION_BASE * envelopeScale) / speed, untilNext * 0.72),
+              );
+
+              for (var existingIndex = 0; existingIndex < cardIndex; existingIndex += 1) {
+                tl.to(
+                  cards[existingIndex],
+                  {
+                    y: (cardIndex - existingIndex) * STACK_STEP + "cqh",
+                    duration: pushDuration,
+                    ease: "power2.out",
+                  },
+                  arrivalAt,
+                );
+              }
+
+              tl.to(
+                card,
+                {
+                  opacity: 1,
+                  y: "0cqh",
+                  scale: 1,
+                  rotation: 0,
+                  duration: entryDuration,
+                  ease: "back.out(1.7)",
+                },
+                arrivalAt,
+              );
+              tl.call(
+                function () {
+                  fireSfx(cardIndex, arrivalAt);
+                },
+                [],
+                arrivalAt,
+              );
+            });
+
+            // HOLD: finite slow sine breathing exactly inside the elastic phase.
+            if (HOLD >= BREATH_HALF) {
+              var breathRepeat = Math.max(0, Math.floor(HOLD / BREATH_HALF) - 1);
+              tl.fromTo(
+                stage,
+                { y: "0cqh", scale: 1 },
+                {
+                  y: "-0.42cqh",
+                  scale: 1.004,
+                  duration: BREATH_HALF,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: breathRepeat,
+                  immediateRender: false,
+                },
+                HOLD_START,
+              );
+            }
+
+            // OUT: asymmetric accelerated release and fade.
+            tl.to(
+              stage,
+              { opacity: 0, y: "1.2cqh", scale: 0.985, duration: OUT, ease: "power2.in" },
+              OUT_START,
+            );
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

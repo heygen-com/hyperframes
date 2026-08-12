@@ -36,7 +36,6 @@ describeE2E("publish stable-URL round trip (live server)", () => {
   async function fetchPublicProject(projectId: string): Promise<Record<string, unknown>> {
     const response = await fetch(
       `${getPublishApiBaseUrl()}/v1/hyperframes/projects/${projectId}/public`,
-      { headers: { heygen_route: "canary" } },
     );
     expect(response.ok).toBe(true);
     const payload = (await response.json()) as { data: Record<string, unknown> };

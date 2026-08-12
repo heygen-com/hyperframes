@@ -36,7 +36,7 @@ export function StudioLeftSidebar({
   onAddCompositionToTimeline,
 }: StudioLeftSidebarProps) {
   const {
-    leftCollapsed,
+    effectiveLeftCollapsed,
     leftWidth,
     adjustPanelWidth,
     toggleLeftSidebar,
@@ -71,7 +71,7 @@ export function StudioLeftSidebar({
     [renderQueue, waitForPendingDomEditSaves],
   );
 
-  if (leftCollapsed) {
+  if (effectiveLeftCollapsed) {
     return (
       <div className="mr-0.5 flex w-10 flex-shrink-0 flex-col items-center rounded-lg border border-neutral-800/50 bg-neutral-950 pt-1">
         <button

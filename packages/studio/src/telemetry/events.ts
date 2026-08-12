@@ -1,4 +1,5 @@
 import { trackEvent } from "./client";
+import { breadcrumbTrail } from "./breadcrumbs";
 
 // Studio frontend events. The corresponding `render_complete` / `render_error`
 // events are emitted server-side by `packages/cli/src/server/studioServer.ts`
@@ -94,14 +95,94 @@ export function trackStudioSegmentEaseEdit(props: {
   trackEvent("studio_segment_ease_edit", { action: props.action, ease: props.ease });
 }
 
-export function trackStudioFeedback(props: { rating: number; comment?: string }): void {
+/**
+ * Context shared by every event in the feedback funnel, so `shown` →
+ * `dismissed` / `studio_feedback` can be read as one funnel broken down by the
+ * moment that triggered it. Without `shown` there is no way to tell a prompt
+ * nobody answers from a prompt that never renders.
+ */
+interface StudioFeedbackContext {
+  /** What the prompt is about: "render_complete" | "render_failed". */
+  reason: string;
+  /** Render job the prompt followed — joins the response to that render. */
+  render_id?: string;
+}
+
+export function trackStudioFeedbackShown(ctx: StudioFeedbackContext): void {
+  trackEvent("studio_feedback_shown", {
+    reason: ctx.reason,
+    render_id: ctx.render_id,
+    source: "studio",
+  });
+}
+
+export function trackStudioFeedbackDismissed(
+  ctx: StudioFeedbackContext & {
+    /** "close" | "escape" | "timeout" — separates rejection from inattention. */
+    via: string;
+    /** A dismiss after picking a rating is an abandon, not a refusal. */
+    had_rating: boolean;
+  },
+): void {
+  trackEvent("studio_feedback_dismissed", {
+    reason: ctx.reason,
+    render_id: ctx.render_id,
+    via: ctx.via,
+    had_rating: ctx.had_rating,
+    source: "studio",
+  });
+}
+
+/**
+ * The booking link offered after a response. Its own event because the thing
+ * worth measuring is the click, and a link is otherwise invisible to us.
+ */
+export function trackStudioFeedbackInterviewClick(ctx: { reason: string }): void {
+  trackEvent("studio_feedback_interview_click", {
+    reason: ctx.reason,
+    source: "studio",
+  });
+}
+
+export function trackStudioFeedback(
+  props: StudioFeedbackContext & {
+    /**
+     * Absent on the failure prompt, which asks what broke instead of scoring a
+     * render the user never got. A fabricated rating would poison the average.
+     */
+    rating?: number;
+    comment?: string;
+    /**
+     * Which follow-up the comment answers ("remove" | "borrow" | "fix" |
+     * "detractor" | "failure"). One card asks one question, rotated across
+     * users, so this is what makes the free text separable.
+     */
+    question: string;
+    /** "preset" (a tapped chip) or "typed". Never mix them when counting. */
+    answer_kind: string;
+    /**
+     * Reproduction context from whatever produced the prompt: render settings,
+     * outcome, counts. Flattened onto the event so each key is filterable in
+     * PostHog rather than buried in a JSON blob nobody can group by.
+     */
+    context?: Record<string, string | number | boolean | undefined>;
+  },
+): void {
   // Plain product event, not a PostHog survey response: nothing here is served
   // by the surveys product (no survey definition, no targeting, no popover).
   trackEvent("studio_feedback", {
-    rating: props.rating,
-    rating_scale: 10,
+    ...(props.rating === undefined ? {} : { rating: props.rating, rating_scale: 10 }),
     ...(props.comment ? { comment: props.comment } : {}),
+    ...props.context,
+    reason: props.reason,
+    render_id: props.render_id,
+    question: props.question,
+    answer_kind: props.answer_kind,
     doctor_summary: getBrowserDoctorSummary(),
+    // What the user did in the run-up. A comment says what broke; this says
+    // how to get there, which is the half a bug report is usually missing.
+    // Read AFTER the context spread so no caller can shadow it.
+    breadcrumbs: breadcrumbTrail(),
     source: "studio",
   });
 }

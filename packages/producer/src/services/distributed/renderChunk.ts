@@ -51,6 +51,7 @@ import {
   createCaptureSession,
   createFrameLookupTable,
   createVideoFrameInjector,
+  deriveBeginFrameProbeTimeTicks,
   type EngineConfig,
   type ExtractedFrames,
   type FrameLookupTable,
@@ -316,7 +317,10 @@ export async function beginFrameSessionNeedsScreenshotFallback(
     Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS) > 0
       ? Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS)
       : 30_000;
-  const probeTick = Math.max(0, session.beginFrameTimeTicks - 5 * session.beginFrameIntervalMs);
+  const probeTick = deriveBeginFrameProbeTimeTicks(
+    session.beginFrameTimeTicks,
+    session.beginFrameIntervalMs,
+  );
   return !(await probe(session.page, timeoutMs, probeTick, session.beginFrameIntervalMs));
 }
 

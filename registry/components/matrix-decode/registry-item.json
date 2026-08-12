@@ -1,0 +1,84 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "matrix-decode",
+  "type": "hyperframes:component",
+  "title": "Matrix Decode",
+  "description": "Random scramble resolves left-to-right into the target text.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "matrix-decode.html",
+      "target": "compositions/components/matrix-decode.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Target text",
+      "description": "Word the scramble resolves into. One scrambling cell per character, up to 32.",
+      "default": "HYPERFRAMES"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the cells and their glow.",
+      "default": "green",
+      "options": [
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Type size of the cells in pixels. Cell width follows it.",
+      "default": 64,
+      "min": 24,
+      "max": 160,
+      "step": 4,
+      "unit": "px"
+    },
+    {
+      "id": "glow",
+      "type": "enum",
+      "role": "style",
+      "label": "Glow",
+      "description": "Strength of the halo behind the cells, from none to a heavy bloom.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "strong",
+          "label": "Strong"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/matrix-decode.png"
+  }
+}

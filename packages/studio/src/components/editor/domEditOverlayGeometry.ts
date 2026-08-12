@@ -1,6 +1,7 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
+import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
 
 export interface OverlayRect {
   left: number;
@@ -117,6 +118,28 @@ interface ElementTransformSnapshot {
   cs: CSSStyleDeclaration;
 }
 
+/**
+ * The transform from the element's own box to the composition's, ACCUMULATED
+ * over its ancestors rather than read from the element alone.
+ *
+ * What the user sees is the product of every transform between the element and
+ * the composition root, and an element is routinely a child of something
+ * scaled or rotated. Reading only its own transform drew the selection box at
+ * the element's untransformed size: a text layer inside a card carrying
+ * `scale(1.2)` got a box at 1/1.2 of the text, with the top-left correct (the
+ * caller anchors that to the real bounding rect) and the right and bottom
+ * edges falling short. The same read decides whether to draw the box rotated,
+ * so an element inside a rotated parent got an upright box too.
+ *
+ * Only the linear part matters here. Each transform's origin contributes
+ * translation, and the caller discards translation by matching the corners'
+ * bounding box to the element's real one, so composing the matrices alone is
+ * enough and there is no per-ancestor origin to unpick.
+ *
+ * The walk stops at the composition document's root. The canvas zoom lives on
+ * the iframe element in Studio's own document and is applied separately by
+ * `computeOverlayRootScale`; including it here would count it twice.
+ */
 function readElementTransformSnapshot(
   win: Window,
   element: HTMLElement,
@@ -124,9 +147,19 @@ function readElementTransformSnapshot(
   const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
   if (!DOMMatrixCtor) return null;
   const cs = win.getComputedStyle(element);
+  // The corner math transforms points, so this algebra keeps the full matrix,
+  // translation included, where the crop frame's keeps only 2D components.
+  const ops: PlanarTransformOps<DOMMatrix> = {
+    identity: () => new DOMMatrixCtor(),
+    fromTransform: (value) => new DOMMatrixCtor(value),
+    fromRotate: (degrees) => new DOMMatrixCtor().rotateSelf(degrees),
+    compose: (outer, inner) => outer.multiply(inner),
+  };
   try {
-    const matrix = new DOMMatrixCtor(cs.transform === "none" ? "" : cs.transform);
-    return { matrix, cs };
+    const matrix = composeElementTransform(element, ops, (node) =>
+      node === element ? cs : win.getComputedStyle(node),
+    );
+    return matrix ? { matrix, cs } : null;
   } catch {
     return null;
   }
@@ -141,7 +174,16 @@ function readElementTransformSnapshot(
 function rotationDegreesFromMatrix(matrix: DOMMatrix): number {
   const a = Number.isFinite(matrix.a) ? matrix.a : 1;
   const b = Number.isFinite(matrix.b) ? matrix.b : 0;
-  const deg = (Math.atan2(b, a) * 180) / Math.PI;
+  const c = Number.isFinite(matrix.c) ? matrix.c : 0;
+  const d = Number.isFinite(matrix.d) ? matrix.d : 1;
+  const fromX = (Math.atan2(b, a) * 180) / Math.PI;
+  const determinant = a * d - b * c;
+  // A reflection makes one basis direction read 180° away from the authored
+  // rotation. For cursor/handle orientation those directions are equivalent;
+  // choose the representative nearest zero instead of drawing a pure mirror's
+  // rotate handle on the opposite side of the element.
+  const fromY = (Math.atan2(-c, d) * 180) / Math.PI;
+  const deg = determinant < 0 && Math.abs(fromY) < Math.abs(fromX) ? fromY : fromX;
   return Number.isFinite(deg) ? deg : 0;
 }
 
@@ -389,6 +431,24 @@ export function orientedOverlayRect(
     editScaleY: base.editScaleY,
     angle,
   };
+}
+
+/**
+ * `toVisibleOverlayRect`'s oriented twin: the element's crop-hugged box plus its
+ * live rotation, for chrome that has to sit on a rotated element rather than
+ * around it. Rendering the result with `transform: rotate(angle)` about its
+ * centre lands it on the element's real corners.
+ *
+ * At angle 0 `orientedOverlayRect` returns the plain AABB, so an unrotated
+ * element measures exactly as it did before.
+ */
+export function orientedVisibleOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): OverlayRect | null {
+  const rect = orientedOverlayRect(overlayEl, iframe, element);
+  return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
 const OVERLAY_RECT_EPSILON_PX = 0.5;

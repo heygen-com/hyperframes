@@ -1,0 +1,104 @@
+<!--
+  Dynamic Grid - animated background primitive.
+
+  Paste the grid as the first child of a scene. Animate --hf-grid-x,
+  --hf-grid-y, and --hf-grid-opacity from your paused GSAP timeline.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS consumes. The timeline recipe below is untouched by them: it keeps
+  driving the scroll offset and the opacity.
+
+    - density (fine | standard | coarse, default standard): cell size of the
+      grid, 44px, 72px or 112px. fine reads as graph paper, coarse as a few
+      large panels.
+    - weight (hairline | standard | bold, default hairline): line thickness,
+      1px, 2px or 3px.
+    - tone (neutral | green | blue | violet, default neutral): line colour.
+      neutral is the translucent white the original ships with, and the three
+      accents ride --brand, --accent and --accent-2.
+
+  On every default the result is identical to the original: 72px cells drawn
+  in 1px translucent white lines.
+-->
+
+<div
+  class="hf-dynamic-grid"
+  aria-hidden="true"
+  data-composition-variables='[
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Cell size of the grid: fine reads as graph paper, coarse as a few large panels.", "default": "standard", "options": [{ "value": "fine", "label": "Fine" }, { "value": "standard", "label": "Standard" }, { "value": "coarse", "label": "Coarse" }] },
+    { "id": "weight", "type": "enum", "role": "style", "label": "Weight", "description": "Thickness of the grid lines, from a hairline rule to a bold structural grid.", "default": "hairline", "options": [{ "value": "hairline", "label": "Hairline" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: neutral is the translucent white the original ships with, and the accents ride --brand, --accent and --accent-2.", "default": "neutral", "options": [{ "value": "neutral", "label": "Neutral" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+></div>
+
+<style>
+  .hf-dynamic-grid {
+    --hf-grid-size: 72px;
+    --hf-grid-line: 1px;
+    --hf-grid-color: rgba(255, 255, 255, 0.16);
+    --hf-grid-x: 0px;
+    --hf-grid-y: 0px;
+    --hf-grid-opacity: 1;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-grid-opacity);
+    background-image:
+      linear-gradient(var(--hf-grid-color) var(--hf-grid-line), transparent var(--hf-grid-line)),
+      linear-gradient(
+        90deg,
+        var(--hf-grid-color) var(--hf-grid-line),
+        transparent var(--hf-grid-line)
+      );
+    background-size: var(--hf-grid-size) var(--hf-grid-size);
+    background-position: var(--hf-grid-x) var(--hf-grid-y);
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var sizes = { fine: "44px", standard: "72px", coarse: "112px" };
+    var weights = { hairline: "1px", standard: "2px", bold: "3px" };
+    var tones = {
+      neutral: "rgba(255, 255, 255, 0.16)",
+      green: "color-mix(in srgb, var(--brand, #34d399) 34%, transparent)",
+      blue: "color-mix(in srgb, var(--accent, #38bdf8) 34%, transparent)",
+      violet: "color-mix(in srgb, var(--accent-2, #a78bfa) 34%, transparent)",
+    };
+
+    var size = sizes[pick(sizes, vars.density, "standard")];
+    var line = weights[pick(weights, vars.weight, "hairline")];
+    var color = tones[pick(tones, vars.tone, "neutral")];
+
+    var roots = document.querySelectorAll(".hf-dynamic-grid");
+    for (var i = 0; i < roots.length; i += 1) {
+      roots[i].style.setProperty("--hf-grid-size", size);
+      roots[i].style.setProperty("--hf-grid-line", line);
+      roots[i].style.setProperty("--hf-grid-color", color);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-dynamic-grid", {
+    "--hf-grid-x": "72px",
+    "--hf-grid-y": "-72px",
+    duration: 6,
+    ease: "none",
+  }, 0);
+-->

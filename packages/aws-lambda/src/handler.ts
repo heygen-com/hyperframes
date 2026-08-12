@@ -24,6 +24,9 @@ import {
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   plan,
+  isPlanAudioArtifactPath,
+  PLAN_AUDIO_RELATIVE_PATH,
+  resolvePlanAudioPath,
   planV2WithPublisher,
   type PlanResult,
   type PlanV2Artifact,
@@ -152,6 +155,7 @@ function normalizeTerminalErrorName(error: unknown): void {
     candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE" ||
     candidate.code === "FONT_FETCH_FAILED" ||
     candidate.code === "FONT_FETCH_UNAVAILABLE" ||
+    candidate.code === "NOT_MEDIA_PAYLOAD" ||
     candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
     candidate.code === "VIDEO_EXTRACTION_FAILED" ||
     candidate.code === "INVALID_VIDEO_METADATA"
@@ -317,9 +321,11 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
     const planTar = join(work, "plan.tar.gz");
     await tarDirectory(planDir, planTar);
     const planTarUri = `${trimTrailingSlash(event.PlanOutputS3Prefix)}/plan.tar.gz`;
-    const audioPath = join(planDir, "audio.aac");
+    const audioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
     const hasAudio = existsSync(audioPath) && statSync(audioPath).size > 0;
-    const audioUri = hasAudio ? `${trimTrailingSlash(event.PlanOutputS3Prefix)}/audio.aac` : null;
+    const audioUri = hasAudio
+      ? `${trimTrailingSlash(event.PlanOutputS3Prefix)}/${PLAN_AUDIO_RELATIVE_PATH}`
+      : null;
     // Plan and audio are independent S3 PUTs; run them in parallel so
     // the response returns as soon as the slower of the two completes.
     await Promise.all([
@@ -389,7 +395,7 @@ async function handlePlanV2(
       Width: manifest.width,
       Height: manifest.height,
       Format: manifest.format,
-      HasAudio: manifest.artifacts.some((artifact) => artifact.path === "audio.aac"),
+      HasAudio: manifest.artifacts.some((artifact) => isPlanAudioArtifactPath(artifact.path)),
       AudioS3Uri: null,
       FfmpegVersion: manifest.ffmpegVersion,
       ProducerVersion: manifest.producerVersion,
@@ -567,7 +573,7 @@ async function handleAssemble(
 
     let audioPath: string | null = null;
     if (event.AudioS3Uri) {
-      audioPath = join(planDir, "audio.aac");
+      audioPath = resolvePlanAudioPath(planDir) ?? join(planDir, PLAN_AUDIO_RELATIVE_PATH);
       await downloadS3ObjectToFile(s3, event.AudioS3Uri, audioPath);
     }
 
@@ -615,7 +621,7 @@ async function handleAssembleV2(
     const planDir = await downloadAndMaterializePlanV2(s3, event, { role: "assembler" }, work);
     // `downloadAndMaterializePlanV2` materializes atomically. Audio is
     // assembler-only and lives at the familiar v1-compatible location.
-    const audioPath = existsSync(join(planDir, "audio.aac")) ? join(planDir, "audio.aac") : null;
+    const audioPath = resolvePlanAudioPath(planDir);
     const chunkPaths = await downloadChunkObjects(s3, event.ChunkS3Uris, work, event.Format);
     const finalOutput =
       event.Format === "png-sequence"

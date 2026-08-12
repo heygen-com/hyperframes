@@ -21,6 +21,10 @@ export {
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
 export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screenshotClip.js";
 export {
+  thumbnailDeviceScaleFactor,
+  type ThumbnailOutputDimensions,
+} from "./helpers/thumbnailOutput.js";
+export {
   createBackgroundRemovalJob,
   type BackgroundRemovalRender,
 } from "./helpers/backgroundRemovalJob.js";

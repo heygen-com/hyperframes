@@ -1,0 +1,64 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "facet-morph",
+  "type": "hyperframes:component",
+  "title": "Facet Morph",
+  "description": "A faceted low-poly mass of 36 triangles continuously reshapes between three authored silhouettes (blob, mark, badge) with per-facet flat shading that recomputes as the vertices move. Light reads from the upper left; lit facets lift toward a pale accent-tinted tone while turned-away facets fall toward near-black. One calm continuous morph, then a settled hold.",
+  "tags": ["motion-primitive", "intro", "morph", "low-poly", "svg", "deterministic"],
+  "jobs": ["reveal"],
+  "family": "intros-reveals",
+  "profile": "holdable",
+  "evidence": "Wave L2 frame study: ordinaryfolkco 2001090228958752945 sheet-02, the continuously reshaping faceted mass under a traveling light band",
+  "syncPoints": [{ "id": "form-lock", "phase": "in", "offset": 3.95 }],
+  "files": [
+    {
+      "path": "facet-morph.html",
+      "target": "compositions/components/facet-morph.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "forms",
+      "type": "string",
+      "role": "content",
+      "label": "Forms",
+      "description": "Comma-separated silhouette sequence from blob, mark, badge.",
+      "default": "blob,mark,badge"
+    },
+    {
+      "id": "hold_last",
+      "type": "boolean",
+      "role": "timing",
+      "label": "Hold last",
+      "description": "True settles dead still on the final silhouette; false keeps the mass slowly breathing through the hold.",
+      "default": true
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Tint of the lit facets.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Outgoing transition. None holds the settled mass.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

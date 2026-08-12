@@ -202,13 +202,102 @@ function rangeOf(node: Node): [number, number] | undefined {
     : undefined;
 }
 
-/** Plain identifier params + block body (shape we can inline). Timeline content checked separately. */
+interface SupportedParam {
+  name: string;
+  defaultExpression?: Node;
+}
+
+const SAFE_DEFAULT_NODES = new Set([
+  "ArrayExpression",
+  "BinaryExpression",
+  "ChainExpression",
+  "ConditionalExpression",
+  "Identifier",
+  "Literal",
+  "LogicalExpression",
+  "MemberExpression",
+  "ObjectExpression",
+  "Property",
+  "SpreadElement",
+  "TemplateElement",
+  "TemplateLiteral",
+  "UnaryExpression",
+]);
+
+// ponytail: This allowlist is intentionally load-bearing. Defaults are evaluated
+// while deciding whether a helper declaration can be erased, so admitting calls,
+// assignments, updates, or constructors here could execute author code at a
+// different time (or more than once). Add syntax only with negative-path tests.
+
+/**
+ * A default expression is safe only when evaluating it cannot execute author
+ * code and every value identifier refers to an earlier parameter. This mirrors
+ * JavaScript's left-to-right default binding while keeping the static parser
+ * deliberately narrower than a JavaScript interpreter.
+ */
+function isSafeDefaultExpression(node: Node, earlierParams: ReadonlySet<string>): boolean {
+  let safe = true;
+  // fallow-ignore-next-line complexity
+  const visit = (current: Node, parent?: Node, key?: string): void => {
+    if (!isNode(current) || !safe) return;
+    if (!SAFE_DEFAULT_NODES.has(current.type)) {
+      safe = false;
+      return;
+    }
+    if (current.type === "UnaryExpression" && current.operator === "delete") {
+      safe = false;
+      return;
+    }
+    if (current.type === "Identifier") {
+      const nonValue = parent && key ? isNonValueIdentifierSlot(parent, key) : false;
+      if (!nonValue && current.name !== "undefined" && !earlierParams.has(current.name)) {
+        safe = false;
+      }
+      return;
+    }
+    for (const childKey of Object.keys(current)) {
+      if (SKIP_KEYS.has(childKey)) continue;
+      const child = current[childKey];
+      if (Array.isArray(child)) {
+        for (const item of child) visit(item, current, childKey);
+      } else {
+        visit(child, current, childKey);
+      }
+    }
+  };
+  visit(node);
+  return safe;
+}
+
+const SUPPORTED_PARAMS_CACHE = new WeakMap<object, SupportedParam[] | null>();
+
+function supportedParam(param: Node, earlier: ReadonlySet<string>): SupportedParam | null {
+  if (param.type === "Identifier") return { name: param.name };
+  if (param.type !== "AssignmentPattern" || param.left?.type !== "Identifier") return null;
+  if (!isSafeDefaultExpression(param.right, earlier)) return null;
+  return { name: param.left.name, defaultExpression: param.right };
+}
+
+function supportedParams(fn: Node): SupportedParam[] | null {
+  if (SUPPORTED_PARAMS_CACHE.has(fn)) return SUPPORTED_PARAMS_CACHE.get(fn) ?? null;
+  const params: SupportedParam[] = [];
+  const earlier = new Set<string>();
+  for (const param of fn.params ?? []) {
+    const parsed = supportedParam(param, earlier);
+    if (!parsed) {
+      SUPPORTED_PARAMS_CACHE.set(fn, null);
+      return null;
+    }
+    params.push(parsed);
+    earlier.add(parsed.name);
+  }
+  SUPPORTED_PARAMS_CACHE.set(fn, params);
+  return params;
+}
+
+/** Identifier/default params + block body (shape we can inline). Timeline content checked separately. */
 function isShapeEligible(fn: Node): boolean {
-  return (
-    isFunctionNode(fn) &&
-    fn.body?.type === "BlockStatement" &&
-    !(fn.params ?? []).some((p: Node) => p.type !== "Identifier")
-  );
+  return isFunctionNode(fn) && fn.body?.type === "BlockStatement" && supportedParams(fn) !== null;
 }
 
 /** True if the subtree calls any function named in `names`. */
@@ -274,6 +363,51 @@ function bump(counts: Map<string, number>, key: string): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
+function undefinedIdentifier(): Node {
+  return { type: "Identifier", name: "undefined" };
+}
+
+function isExplicitUndefined(node: Node | undefined): boolean {
+  return (
+    (node?.type === "Identifier" && node.name === "undefined") ||
+    (node?.type === "UnaryExpression" &&
+      node.operator === "void" &&
+      node.argument?.type === "Literal" &&
+      node.argument.value === 0)
+  );
+}
+
+/** Resolve one call exactly as JavaScript binds identifier/default parameters. */
+function resolveHelperBindings(call: Node, params: SupportedParam[]): Map<string, Node> | null {
+  if (call.arguments?.some((arg: Node) => arg?.type === "SpreadElement")) return null;
+
+  const bindings = new Map<string, Node>();
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]!;
+    const arg = call.arguments?.[i];
+    if (arg && !isExplicitUndefined(arg)) {
+      bindings.set(param.name, arg);
+    } else if (param.defaultExpression) {
+      bindings.set(param.name, substituteParams(cloneNode(param.defaultExpression), bindings));
+    } else {
+      // Omitted required parameters are still bound by JavaScript. Keeping an
+      // explicit undefined node prevents a dropped helper declaration from
+      // leaving its parameter identifier dangling in the synthetic AST.
+      bindings.set(param.name, undefinedIdentifier());
+    }
+  }
+  return bindings;
+}
+
+function statementHelperCall(node: Node, names: ReadonlySet<string>): Node | undefined {
+  if (node.type !== "ExpressionStatement") return undefined;
+  const expression = node.expression;
+  if (expression?.type !== "CallExpression" || expression.callee?.type !== "Identifier") {
+    return undefined;
+  }
+  return names.has(expression.callee.name) ? expression : undefined;
+}
+
 /**
  * Keep only candidates safe to drop: every reference to the name is its
  * declaration or a statement-level call. (1 decl id + 1 callee id per
@@ -283,20 +417,21 @@ function safelyDroppable(program: Node, candidates: Map<string, Node>): Map<stri
   const names = new Set(candidates.keys());
   const totalIds = new Map<string, number>();
   const stmtCalls = new Map<string, number>();
+  const unbindable = new Set<string>();
   walkNodes(program, (n) => {
     if (n.type === "Identifier" && names.has(n.name)) bump(totalIds, n.name);
-    const e = n.type === "ExpressionStatement" ? n.expression : undefined;
-    if (
-      e?.type === "CallExpression" &&
-      e.callee?.type === "Identifier" &&
-      names.has(e.callee.name)
-    ) {
-      bump(stmtCalls, e.callee.name);
-    }
+    const call = statementHelperCall(n, names);
+    if (!call) return;
+    bump(stmtCalls, call.callee.name);
+    const fn = candidates.get(call.callee.name);
+    const params = fn && supportedParams(fn);
+    if (!params || !resolveHelperBindings(call, params)) unbindable.add(call.callee.name);
   });
   const safe = new Map<string, Node>();
   for (const [name, fn] of candidates) {
-    if ((totalIds.get(name) ?? 0) === 1 + (stmtCalls.get(name) ?? 0)) safe.set(name, fn);
+    if (!unbindable.has(name) && (totalIds.get(name) ?? 0) === 1 + (stmtCalls.get(name) ?? 0)) {
+      safe.set(name, fn);
+    }
   }
   return safe;
 }
@@ -354,13 +489,13 @@ function expandBody(
   return [block];
 }
 
-function inlineHelper(call: Node, ctx: ExpandCtx): Node[] {
+function inlineHelper(call: Node, ctx: ExpandCtx): Node[] | null {
   const fn = ctx.helpers.get(call.callee.name);
-  const bindings = new Map<string, Node>();
-  (fn.params ?? []).forEach((p: Node, i: number) => {
-    const arg = call.arguments?.[i];
-    if (arg) bindings.set(p.name, arg);
-  });
+  if (!fn) return null;
+  const params = supportedParams(fn);
+  if (!params) return null;
+  const bindings = resolveHelperBindings(call, params);
+  if (!bindings) return null;
   const prov: GsapProvenance = {
     kind: "helper",
     fn: call.callee.name,

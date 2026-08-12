@@ -425,9 +425,38 @@ describe("hyperframes skills", () => {
 
     await runSkillsUpdate();
 
-    // The update engine's own check (first call) must ask for canonical;
-    // the prune's check (last call, tested separately) intentionally doesn't.
+    // The update engine's own check (first call) must ask for canonical. So
+    // must the prune's (see the GH #3111 regression below) — every caller that
+    // decides what is "still published" resolves the same way.
     expect(checkSkills).toHaveBeenNthCalledWith(1, expect.objectContaining({ canonical: true }));
+  });
+
+  // GH #3111 — silent, permanent data loss. The prune deletes; its notion of
+  // "no longer published" must therefore come from the canonical repo, never
+  // from resolveLatestManifest's findRepoManifest shortcut, which accepts any
+  // `skills-manifest.json` within 16 parent directories of cwd. HyperFrames'
+  // own manifest declares `source: heygen-com/hyperframes`, so such a file
+  // matches lock attribution, and every published skill missing from it is
+  // removed from every agent dir on the machine.
+  //
+  // Reproduced on the pre-fix build: running `skills update` from a hyperframes
+  // checkout whose manifest listed 19 of the 25 published skills printed
+  // "Removing 6 skill(s) no longer published: captions-overlay, changelog-video,
+  // cut-the-curve, motion-doctrine, oversized-cursor, seam-craft" and deleted
+  // all six — every one of them currently published.
+  it("resolves the prune's manifest canonically, so a local manifest can never drive deletion", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+
+    await runSkillsUpdate();
+
+    // The prune's check is the LAST call; assert on every call so a future
+    // caller can't reintroduce a non-canonical deletion path.
+    const calls = vi.mocked(checkSkills).mock.calls;
+    expect(calls.length).toBeGreaterThan(1);
+    for (const [arg] of calls) {
+      expect(arg).toEqual(expect.objectContaining({ canonical: true }));
+    }
   });
 
   // Retired-skill regression (variant 2): `skills remove` is a silent no-op
@@ -496,9 +525,14 @@ describe("hyperframes skills", () => {
     await runSkillsUpdate({ source: "owner/repo", dir: "/custom/skills" });
 
     // The last checkSkills call is the prune's — the update engine's own check
-    // (first call) intentionally uses default detection, matching where the
-    // install actually lands.
-    expect(checkSkills).toHaveBeenLastCalledWith({ source: "owner/repo", dir: "/custom/skills" });
+    // (first call) doesn't take --source/--dir, matching where the install
+    // actually lands. `canonical` rides along on every call (GH #3111); an
+    // explicit --source still wins over it inside resolveLatestManifest.
+    expect(checkSkills).toHaveBeenLastCalledWith({
+      source: "owner/repo",
+      dir: "/custom/skills",
+      canonical: true,
+    });
   });
 
   // Skill names come from lock-file JSON keys; a flag-like / shell-special name

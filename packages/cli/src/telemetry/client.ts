@@ -1,4 +1,10 @@
-import { readConfig, writeConfig } from "./config.js";
+import {
+  getIdentityPersistence,
+  getIdentityWriteOutcome,
+  readConfig,
+  writeConfig,
+} from "./config.js";
+import { getInvocationId } from "./runId.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
@@ -101,6 +107,19 @@ export function trackEvent(
       // could not read. Without it a partial disk write is indistinguishable
       // from a genuinely fresh install. Absent in the normal case.
       install_state_file_corrupt: readConfig().stateFileCorrupt,
+      // Whether this process's anonymousId can be trusted to survive to the
+      // next run: `durable` (loaded from a preexisting config), `unknown`
+      // (minted+persisted this run — an ephemeral HOME is indistinguishable
+      // from a genuine first run), `process_only` (not persisted). Install-
+      // grain metrics should count only durable identities; the identity-
+      // churn workloads (fresh id per run) are never durable.
+      identity_persistence: getIdentityPersistence(),
+      // Outcome of the identity-establishing config write; absent when that
+      // path did not write (including a durable id loaded from disk).
+      config_write_outcome: getIdentityWriteOutcome(),
+      // Groups one invocation's events even when the install identity is
+      // untrustworthy. Always present, unlike the orchestrator-set run_id.
+      invocation_id: getInvocationId(),
       // Canary assignments as `$feature/canary-<name>` — PostHog's native flag
       // property shape, so breakdowns and experiment analysis work on a canary
       // with nothing configured server-side. On EVERY event, not just renders:

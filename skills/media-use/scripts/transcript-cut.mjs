@@ -209,6 +209,7 @@ function probeDuration(filePath) {
       "format=duration",
       "-of",
       "default=noprint_wrappers=1:nokey=1",
+      "--",
       filePath,
     ],
     { encoding: "utf8" },

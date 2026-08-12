@@ -9,7 +9,13 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeF
 import { join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
-import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
+import { isNotMediaPayload } from "../utils/notMediaPayload.js";
+import {
+  downloadToTemp,
+  isHttpUrl,
+  UrlDownloadError,
+  writeUrlDownloadTelemetry,
+} from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
@@ -37,6 +43,21 @@ import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
+
+/**
+ * Filename every caller must use for the mixed-audio artifact.
+ *
+ * The extension is load-bearing, not cosmetic: FFmpeg picks the muxer from it,
+ * and the mix is AAC-encoded. A raw ADTS `.aac` stream has nowhere to record
+ * the encoder's priming delay, so those leading samples decode as real silence
+ * and shift the whole track ~1024 samples (21.33 ms at 48 kHz) late against a
+ * frame-accurate video track. An MP4-family container carries the delay as an
+ * edit list, which every decoder then strips, so the mix lands on its authored
+ * start. Keep the choice here rather than at each call site: the same file is
+ * muxed into the video, shipped in a distributed plan, and handed to users as
+ * the PNG-sequence sidecar, and all three have to agree.
+ */
+export const MIXED_AUDIO_FILENAME = "audio.m4a";
 
 function clampVolume(volume: number): number {
   if (!Number.isFinite(volume)) return 1;
@@ -253,16 +274,23 @@ function probeFailure(message: string, elementId: string): AudioProcessingFailur
   };
 }
 
-function downloadFailure(message: string, elementId: string): AudioProcessingFailure {
+function downloadFailure(error: unknown, elementId: string): AudioProcessingFailure {
+  const message = error instanceof Error ? error.message : String(error);
   const invalidSource =
-    /(?:invalid URL|only HTTPS|private\/reserved|HTTP (?:400|401|403|404|405|410|422)\b)/i.test(
-      message,
-    );
+    error instanceof UrlDownloadError
+      ? error.kind === "http_not_found" ||
+        error.kind === "http_rejected" ||
+        error.kind === "invalid_payload" ||
+        error.kind === "cancelled"
+      : /(?:invalid URL|only HTTPS|private\/reserved|HTTP (?:400|401|403|404|405|410|422)\b)/i.test(
+          message,
+        );
+  const retryable = error instanceof UrlDownloadError ? error.retryable : !invalidSource;
   return {
     stage: "download",
     reason: "download_failed",
     owner: invalidSource ? "user" : "system",
-    retryable: !invalidSource,
+    retryable,
     elementId,
     detail: boundedDetail(`Download failed for audio element ${elementId}: ${message}`),
   };
@@ -801,11 +829,18 @@ export async function processCompositionAudio(
 
         if (isHttpUrl(srcPath)) {
           try {
-            srcPath = await downloadToTemp(srcPath, workDir, undefined, effectiveSignal);
-          } catch (err: unknown) {
-            failures.push(
-              downloadFailure(err instanceof Error ? err.message : String(err), element.id),
+            srcPath = await downloadToTemp(
+              srcPath,
+              workDir,
+              undefined,
+              effectiveSignal,
+              undefined,
+              {
+                onTelemetry: writeUrlDownloadTelemetry,
+              },
             );
+          } catch (err: unknown) {
+            failures.push(downloadFailure(err, element.id));
             return;
           }
         }
@@ -818,6 +853,26 @@ export async function processCompositionAudio(
             retryable: false,
             elementId: element.id,
             detail: boundedDetail(`Source not found for audio element ${element.id}`),
+          });
+          return;
+        }
+
+        // STUDIO-5433: an audio src that resolved to a text document (an
+        // unresolved nested-composition preview URL, or a 403/404 body served
+        // with a 200) never reaches the probe below when the element carries an
+        // authored duration or `loop`. It then fails inside ffmpeg as
+        // `prepare/ffmpeg_failed` with owner "system" — an authoring bug paged
+        // as a platform fault, after every frame has already been captured.
+        if (await isNotMediaPayload(srcPath)) {
+          failures.push({
+            stage: "source",
+            reason: "invalid_media",
+            owner: "user",
+            retryable: false,
+            elementId: element.id,
+            detail: boundedDetail(
+              `Audio element ${element.id} source is a text document (HTML/XML/JSON), not media`,
+            ),
           });
           return;
         }

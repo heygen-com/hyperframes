@@ -1,0 +1,108 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "marker-checklist-card",
+  "type": "hyperframes:component",
+  "title": "Marker Checklist Card",
+  "description": "A hand-lettered paper card: marker headline with an underline and a drawn ellipse around one word, then three checklist rows whose checks draw themselves on - typewriter labels, marker values. The paper-and-marker sibling of mk-specs-list's clean professional rows",
+  "tags": ["motion-primitive", "handwritten", "checklist", "paper", "marker"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "top",
+      "type": "string",
+      "role": "content",
+      "label": "Headline top",
+      "description": "First marker line.",
+      "default": "THE POWER"
+    },
+    {
+      "id": "mid",
+      "type": "string",
+      "role": "content",
+      "label": "Headline middle",
+      "description": "Small connecting word under the underline.",
+      "default": "OF"
+    },
+    {
+      "id": "circled",
+      "type": "string",
+      "role": "content",
+      "label": "Circled word",
+      "description": "The word the marker ellipse draws around.",
+      "default": "ONE"
+    },
+    {
+      "id": "rest",
+      "type": "string",
+      "role": "content",
+      "label": "Headline rest",
+      "description": "The rest of the bottom line.",
+      "default": "FILE"
+    },
+    {
+      "id": "l1",
+      "type": "string",
+      "role": "content",
+      "label": "Row 1 label",
+      "description": "Typewriter label of row 1.",
+      "default": "WRITE"
+    },
+    {
+      "id": "v1",
+      "type": "string",
+      "role": "content",
+      "label": "Row 1 value",
+      "description": "Marker value of row 1.",
+      "default": "HTML"
+    },
+    {
+      "id": "l2",
+      "type": "string",
+      "role": "content",
+      "label": "Row 2 label",
+      "description": "Typewriter label of row 2.",
+      "default": "RENDER"
+    },
+    {
+      "id": "v2",
+      "type": "string",
+      "role": "content",
+      "label": "Row 2 value",
+      "description": "Marker value of row 2.",
+      "default": "IN 4K"
+    },
+    {
+      "id": "l3",
+      "type": "string",
+      "role": "content",
+      "label": "Row 3 label",
+      "description": "Typewriter label of row 3.",
+      "default": "SHIP"
+    },
+    {
+      "id": "v3",
+      "type": "string",
+      "role": "content",
+      "label": "Row 3 value",
+      "description": "Marker value of row 3.",
+      "default": "TODAY"
+    }
+  ],
+  "files": [
+    {
+      "path": "marker-checklist-card.html",
+      "target": "compositions/components/marker-checklist-card.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "assets/fonts/permanent-marker-400.woff2",
+      "target": "assets/fonts/permanent-marker-400.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/courier-prime-700.woff2",
+      "target": "assets/fonts/courier-prime-700.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

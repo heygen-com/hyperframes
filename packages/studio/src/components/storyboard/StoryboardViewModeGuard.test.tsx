@@ -26,6 +26,7 @@ vi.mock("./FramePoster", () => ({
 }));
 
 const onSelectComposition = vi.fn();
+const onNavigate = vi.fn();
 
 function TestApp() {
   const viewMode = useViewModeState();
@@ -48,9 +49,9 @@ function TestApp() {
             narrative: "",
             extra: {},
           }}
-          frameCount={1}
+          frameCount={2}
           onBack={vi.fn()}
-          onNavigate={vi.fn()}
+          onNavigate={onNavigate}
           onSaved={vi.fn()}
           onSelectComposition={onSelectComposition}
           scriptExists={false}
@@ -109,6 +110,7 @@ beforeEach(() => {
   window.history.replaceState({ entry: "timeline" }, "", "/");
   window.history.pushState({ entry: "storyboard" }, "", "/?view=storyboard");
   onSelectComposition.mockReset();
+  onNavigate.mockReset();
 });
 
 afterEach(() => {
@@ -165,6 +167,21 @@ describe("dirty storyboard voiceover view-mode guard", () => {
     expect(host.querySelector("[data-view-mode]")?.textContent).toBe("timeline");
     expect(window.location.search).toBe("");
     expect(window.history.state).toEqual({ entry: "timeline" });
+    act(() => root.unmount());
+  });
+});
+
+describe("storyboard frame keyboard navigation", () => {
+  it("leaves arrow keys with contenteditable text", () => {
+    const { host, root } = renderApp();
+    const editor = document.createElement("div");
+    editor.contentEditable = "true";
+    host.append(editor);
+    editor.focus();
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" })));
+
+    expect(onNavigate).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });

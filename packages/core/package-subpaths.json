@@ -38,6 +38,12 @@
       "types": "./dist/utils/htmlAttrSafety.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./rich-text-sanitize": {
+      "source": "./src/utils/richTextSanitize.ts",
+      "runtime": "./dist/utils/richTextSanitize.js",
+      "types": "./dist/utils/richTextSanitize.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./composition-contract": {
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",

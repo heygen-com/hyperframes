@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "x-follow-card",
+  "type": "hyperframes:component",
+  "title": "X Follow Card",
+  "description": "A social follow card with avatar, handle, and follower motion.",
+  "tags": ["social-overlay", "remocn-port"],
+  "files": [
+    {
+      "path": "x-follow-card.html",
+      "target": "compositions/components/x-follow-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-follow-card.png"
+  }
+}

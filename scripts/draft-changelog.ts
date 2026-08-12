@@ -11,6 +11,14 @@ import {
   validateCliVersion,
   type InlineValueOption,
 } from "./cli-options.ts";
+import { CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE } from "./set-version.ts";
+
+/**
+ * The generator only ever produces mechanical bullets from commit subjects. The
+ * human-written summary is the one place it controls the *shape* of the prose,
+ * so the placeholder carries the writing bar rather than a bare TODO.
+ */
+const REVIEW_SUMMARY_BLOCK = [CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE].join("\n");
 
 const ROOT = join(import.meta.dirname, "..");
 const REPO_URL = "https://github.com/heygen-com/hyperframes";
@@ -265,12 +273,8 @@ export function parseConventionalSubject(subject: string): ParsedSubject {
     };
   }
 
-  return {
-    type: match[1],
-    scope: match[2],
-    summary: match[4],
-    breaking: match[3] === "!",
-  };
+  const [, type = "other", scope, breaking, summary = subject] = match;
+  return { type, scope, summary, breaking: breaking === "!" };
 }
 
 function extractPrNumber(subject: string) {
@@ -327,7 +331,7 @@ function renderReleaseNotes(version: string, date: string, from: string, commits
     "",
     `Released on ${date}.`,
     "",
-    "<!-- TODO: write a 1-2 sentence release summary here. -->",
+    REVIEW_SUMMARY_BLOCK,
     "",
     sections,
     "",
@@ -348,7 +352,7 @@ function renderDocsUpdate(version: string, date: string, from: string, commits: 
     `  description="Released - ${date}"`,
     `  tags={${renderTagsLiteral(tags)}}`,
     ">",
-    "<!-- TODO: write a 1-2 sentence release summary here. -->",
+    REVIEW_SUMMARY_BLOCK,
     "",
     sections,
     "",
@@ -381,7 +385,7 @@ export function renderCommitBullet(commit: ParsedCommit) {
     links.push(`[#${commit.prNumber}](${REPO_URL}/pull/${commit.prNumber})`);
   }
 
-  return `- ${scope}${capitalize(commit.summary)} (${links.join(", ")})`;
+  return `- ${scope}${capitalize(commit.summary)} (${links.join(", ")}).`;
 }
 
 export function renderMdxCommitBullet(commit: ParsedCommit) {
@@ -391,7 +395,7 @@ export function renderMdxCommitBullet(commit: ParsedCommit) {
     links.push(`[#${commit.prNumber}](${REPO_URL}/pull/${commit.prNumber})`);
   }
 
-  return `- ${scope}${escapeForMdx(capitalize(commit.summary))} (${links.join(", ")})`;
+  return `- ${scope}${escapeForMdx(capitalize(commit.summary))} (${links.join(", ")}).`;
 }
 
 function renderTags(commits: ParsedCommit[]) {
@@ -436,7 +440,7 @@ function capitalize(value: string) {
   if (!value) {
     return value;
   }
-  return value[0].toUpperCase() + value.slice(1);
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function renderTagsLiteral(tags: string[]) {
