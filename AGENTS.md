@@ -66,7 +66,7 @@ packages/
   player/               → Embeddable <hyperframes-player> web component
   producer/             → Full rendering pipeline (capture + encode + audio mix)
   shader-transitions/   → WebGL shader transitions for compositions
-  studio/               → Browser-based composition editor UI
+  studio/               → Browser-based composition editor UI (read packages/studio/AGENTS.md first)
 registry/
   blocks/               → Installable sub-composition scenes (50+)
   components/           → Installable effects and snippets

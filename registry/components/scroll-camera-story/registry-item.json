@@ -1,0 +1,79 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "scroll-camera-story",
+  "type": "hyperframes:component",
+  "title": "Scroll Camera Story",
+  "description": "A compressed forced-scroll cinematic pass: a tall scene of slotted sections travels past the camera top to bottom, depth layers parallax at different rates, each section rises as the camera reaches it, and the pass decelerates into a held final section.",
+  "tags": ["camera", "scroll", "parallax", "story", "sections", "slot", "servo"],
+  "jobs": ["demonstrate"],
+  "family": "camera",
+  "profile": "camera",
+  "evidence": "Wave K K1: X expert study demand slate, forced-scroll cinematic pass; camera-servo law (one state object, one writer, integer-cycle drift ending at zero)",
+  "syncPoints": [{ "id": "final-section", "phase": "in", "offset": 4.2 }],
+  "files": [
+    {
+      "path": "scroll-camera-story.html",
+      "target": "compositions/components/scroll-camera-story.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "sections",
+      "type": "number",
+      "role": "content",
+      "label": "Sections",
+      "description": "How many skeleton sections ride the pass. A sections slot overrides this with its own child count.",
+      "default": 3,
+      "min": 2,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "travel",
+      "type": "number",
+      "role": "content",
+      "label": "Travel",
+      "description": "Total camera travel in cqh. The world is 100 + travel cqh tall.",
+      "default": 220,
+      "min": 100,
+      "max": 400,
+      "step": 10,
+      "unit": "cqh"
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds: arrival times for the sections after the first. Empty keeps the authored default rhythm.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Token the skeleton accents and foreground motes ride.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "Optional departure. None holds the final section.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

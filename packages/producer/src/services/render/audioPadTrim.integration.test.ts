@@ -67,6 +67,7 @@ describe.skipIf(!hasFfmpeg)("audio pad real-media packet contract", () => {
           "packet=duration_time",
           "-of",
           "json",
+          "--",
           output,
         ],
         { encoding: "utf8" },

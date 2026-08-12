@@ -1,0 +1,792 @@
+---
+title: "Share-Sheet Carousel"
+description: "A share sheet springs up from the bottom of the phone and cycles previews inside its card on a fast cut rhythm while the blurred ground swaps behind it, ending on an accept tap"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/blocks/share-sheet-carousel.json"
+  compositionId="share-sheet-carousel"
+  compositionSrc="compositions/share-sheet-carousel.html"
+  variables={[{"id":"shareTitle","type":"string","role":"content","label":"Sheet title","description":"Heading at the top of the share sheet.","default":"Share"},{"id":"senderName","type":"string","role":"content","label":"Sender","description":"Bold name in the sheet subtitle.","default":"HyperFrames"},{"id":"itemLabel","type":"string","role":"content","label":"Item","description":"What the sender is offering, completing the sentence \"… would like to share …\".","default":"a video"},{"id":"stripText","type":"string","role":"content","label":"Brand strip","description":"Small-caps line under the preview, beside the logo.","default":"OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML"},{"id":"acceptLabel","type":"string","role":"content","label":"Accept label","description":"Right-hand action button.","default":"Accept"},{"id":"declineLabel","type":"string","role":"content","label":"Decline label","description":"Left-hand action button.","default":"Decline"}]}
+>
+
+```html share-sheet-carousel.html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "shareTitle", "type": "string", "role": "content", "label": "Sheet title", "description": "Heading at the top of the share sheet.", "default": "Share" },
+    { "id": "senderName", "type": "string", "role": "content", "label": "Sender", "description": "Bold name in the sheet subtitle.", "default": "HyperFrames" },
+    { "id": "itemLabel", "type": "string", "role": "content", "label": "Item", "description": "What the sender is offering, completing the sentence \"… would like to share …\".", "default": "a video" },
+    { "id": "stripText", "type": "string", "role": "content", "label": "Brand strip", "description": "Small-caps line under the preview, beside the logo.", "default": "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML" },
+    { "id": "acceptLabel", "type": "string", "role": "content", "label": "Accept label", "description": "Right-hand action button.", "default": "Accept" },
+    { "id": "declineLabel", "type": "string", "role": "content", "label": "Decline label", "description": "Left-hand action button.", "default": "Decline" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Share-Sheet Carousel</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+      }
+      #ssc-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      }
+      #ssc-scene {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---------------- fullscreen grounds ---------------- */
+      /* the ground behind the sheet is the current slide blown up and blurred,
+         exactly as the source footage was */
+      .ssc-bg {
+        position: absolute;
+        left: -80px;
+        top: -80px;
+        width: 1240px;
+        height: 2080px;
+        object-fit: cover;
+        filter: blur(46px) saturate(1.1) brightness(0.88);
+      }
+
+      /* ---------------- the share sheet ---------------- */
+      /* geometry measured from the reference: 668x974 card at (206,473),
+         spring entry sampled frame-by-frame (spec provenance: measured) */
+      #ssc-card {
+        position: absolute;
+        left: 206px;
+        top: 473px;
+        width: 668px;
+        height: 974px;
+        background: #f9f9f9;
+        border-radius: 34px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        opacity: 0;
+      }
+      #ssc-cardclipper {
+        position: absolute;
+        inset: 0;
+        border-radius: 34px;
+        overflow: hidden;
+      }
+      #ssc-title {
+        position: absolute;
+        top: 49px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 44px;
+        font-weight: 600;
+        color: #101010;
+        line-height: 44px;
+        letter-spacing: 0.2px;
+      }
+      #ssc-subtitle {
+        position: absolute;
+        top: 117px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 29px;
+        font-weight: 400;
+        color: #313131;
+        line-height: 29px;
+      }
+      #ssc-subtitle b {
+        font-weight: 700;
+      }
+      #ssc-imagebox {
+        position: absolute;
+        left: 43px;
+        top: 191px;
+        width: 582px;
+        height: 632px;
+        border-radius: 24px;
+        overflow: hidden;
+      }
+      .ssc-slide {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 582px;
+        height: 476px;
+        object-fit: cover;
+      }
+      /* the brand strip riding the bottom of the preview, as the reference had */
+      #ssc-strip {
+        position: absolute;
+        left: 0;
+        top: 476px;
+        width: 582px;
+        height: 156px;
+        background: #f2ecdf;
+        display: grid;
+        place-items: center;
+        align-content: center;
+        gap: 14px;
+      }
+      #ssc-strip img {
+        height: 38px;
+        display: block;
+      }
+      #ssc-strip-text {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 2.4px;
+        color: #4a4438;
+        text-transform: uppercase;
+      }
+      #ssc-hdivider {
+        position: absolute;
+        left: 0;
+        top: 859px;
+        width: 100%;
+        height: 1.5px;
+        background: #dfdfdf;
+      }
+      #ssc-vdivider {
+        position: absolute;
+        left: 333px;
+        top: 861px;
+        width: 1.5px;
+        bottom: 0;
+        background: #dfdfdf;
+      }
+      #ssc-presscell {
+        position: absolute;
+        left: 335px;
+        top: 861px;
+        right: 0;
+        bottom: 0;
+        background: #e9e9e9;
+        border-radius: 0 0 34px 0;
+        opacity: 0;
+      }
+      .ssc-btn {
+        position: absolute;
+        top: 861px;
+        bottom: 0;
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+      }
+      #ssc-decline {
+        left: 0;
+        width: 333px;
+        color: #6f6f73;
+        font-weight: 400;
+      }
+      #ssc-accept {
+        left: 335px;
+        right: 0;
+        color: var(--hf-ui-accent, #087a57);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="ssc-root"
+      data-composition-id="share-sheet-carousel"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="7.2333"
+      data-fps="30"
+    >
+      <section
+        id="ssc-scene"
+        class="clip"
+        data-start="0"
+        data-duration="7.2333"
+        data-track-index="1"
+      >
+        <img class="ssc-bg" id="ssc-bg-1" src="assets/slide-01.jpg" alt="" style="opacity: 1" />
+        <img class="ssc-bg" id="ssc-bg-2" src="assets/slide-02.jpg" alt="" style="opacity: 0" />
+        <img class="ssc-bg" id="ssc-bg-3" src="assets/slide-03.jpg" alt="" style="opacity: 0" />
+        <img class="ssc-bg" id="ssc-bg-4" src="assets/slide-04.jpg" alt="" style="opacity: 0" />
+        <div id="ssc-card">
+          <div id="ssc-cardclipper">
+            <div id="ssc-title">Share</div>
+            <div id="ssc-subtitle"><b>HyperFrames</b>&nbsp;would like to share a video</div>
+            <div id="ssc-imagebox">
+              <img
+                class="ssc-slide"
+                id="ssc-slide-1"
+                src="assets/slide-01.jpg"
+                alt=""
+                style="opacity: 1"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-2"
+                src="assets/slide-02.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-3"
+                src="assets/slide-03.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-4"
+                src="assets/slide-04.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <div id="ssc-strip">
+                <img src="assets/hyperframes-logo-black.svg" alt="HyperFrames" />
+                <div id="ssc-strip-text">OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML</div>
+              </div>
+            </div>
+            <div id="ssc-hdivider"></div>
+            <div id="ssc-presscell"></div>
+            <div id="ssc-vdivider"></div>
+            <div id="ssc-decline" class="ssc-btn">Decline</div>
+            <div id="ssc-accept" class="ssc-btn">Accept</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      (function () {
+        "use strict";
+
+        /* -------- variables -------- */
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        function text(value, fallback) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > 60 ? t.slice(0, 60) : t;
+        }
+
+        document.getElementById("ssc-title").textContent = text(vars.shareTitle, "Share");
+        var subtitle = document.getElementById("ssc-subtitle");
+        subtitle.innerHTML = "";
+        var sender = document.createElement("b");
+        sender.textContent = text(vars.senderName, "HyperFrames");
+        subtitle.appendChild(sender);
+        subtitle.appendChild(
+          document.createTextNode(" would like to share " + text(vars.itemLabel, "a video")),
+        );
+        document.getElementById("ssc-strip-text").textContent = text(
+          vars.stripText,
+          "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML",
+        );
+        document.getElementById("ssc-decline").textContent = text(vars.declineLabel, "Decline");
+        document.getElementById("ssc-accept").textContent = text(vars.acceptLabel, "Accept");
+
+        /* -------- timeline: spring entry and cut rhythm measured from the reference -------- */
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        tl.set("#ssc-card", { y: 1450, autoAlpha: 0 }, 0.001);
+        tl.set("#ssc-presscell", { autoAlpha: 0 }, 0.001);
+
+        /* sheet spring-up: frame-sampled from the reference, kept verbatim */
+        var SPRING = [
+          [0.056667, 1198, 0.13],
+          [0.09, 903, 0.21],
+          [0.123333, 648, 0.36],
+          [0.156667, 437, 0.43],
+          [0.19, 262, 0.5],
+          [0.223333, 120, 0.62],
+          [0.256667, 8, 0.78],
+          [0.29, -76, 0.89],
+          [0.323333, -138, 1.0],
+          [0.356667, -175, null],
+          [0.39, -191, null],
+          [0.423333, -192, null],
+          [0.456667, -181, null],
+          [0.49, -159, null],
+          [0.523333, -131, null],
+          [0.556667, -100, null],
+          [0.59, -68, null],
+          [0.623333, -41, null],
+          [0.656667, -18, null],
+          [0.69, -5, null],
+          [0.723333, 0, null],
+        ];
+        SPRING.forEach(function (step) {
+          var props = { y: step[1] };
+          if (step[2] !== null) props.autoAlpha = step[2];
+          tl.set("#ssc-card", props, step[0]);
+        });
+
+        /* cut rhythm: fourteen swaps, cycling the four stills */
+        var SLIDE_COUNT = 4;
+        var CUTS = [
+          0.99, 1.356667, 1.69, 2.023333, 2.356667, 2.69, 3.09, 3.456667, 3.79, 4.123333, 4.456667,
+          4.79, 5.156667,
+        ];
+        var current = 0;
+        CUTS.forEach(function (t, i) {
+          var next = (i + 1) % SLIDE_COUNT;
+          tl.set(["#ssc-bg-" + (current + 1), "#ssc-slide-" + (current + 1)], { autoAlpha: 0 }, t);
+          tl.set(["#ssc-bg-" + (next + 1), "#ssc-slide-" + (next + 1)], { autoAlpha: 1 }, t);
+          current = next;
+        });
+
+        /* accept press: cell highlights and the card dips, then releases */
+        tl.set("#ssc-card", { y: 3 }, 6.323333);
+        tl.set("#ssc-presscell", { autoAlpha: 1 }, 6.323333);
+        tl.set("#ssc-card", { y: 0 }, 6.656667);
+        tl.set("#ssc-presscell", { autoAlpha: 0 }, 6.656667);
+        tl.set({}, {}, 7.2333);
+
+        window.__timelines["share-sheet-carousel"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add share-sheet-carousel" item="share-sheet-carousel" />
+
+That writes `compositions/share-sheet-carousel.html`, plus 5 supporting files under `assets/`.
+
+## Add it to your video
+
+It runs for 7.2333 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="share-sheet-carousel"
+  data-composition-src="compositions/share-sheet-carousel.html"
+  data-start="0"
+  data-duration="7.2333"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `shareTitle` | `Share` | string | Heading at the top of the share sheet. |
+| `senderName` | `HyperFrames` | string | Bold name in the sheet subtitle. |
+| `itemLabel` | `a video` | string | What the sender is offering, completing the sentence "… would like to share …". |
+| `stripText` | `OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML` | string | Small-caps line under the preview, beside the logo. |
+| `acceptLabel` | `Accept` | string | Right-hand action button. |
+| `declineLabel` | `Decline` | string | Left-hand action button. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="share-sheet-carousel"
+  data-composition-src="compositions/share-sheet-carousel.html"
+  data-variable-values='{"shareTitle":"Share","senderName":"HyperFrames","itemLabel":"a video","stripText":"OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML","acceptLabel":"Accept","declineLabel":"Decline"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`share-sheet-carousel.html`}>
+
+```html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "shareTitle", "type": "string", "role": "content", "label": "Sheet title", "description": "Heading at the top of the share sheet.", "default": "Share" },
+    { "id": "senderName", "type": "string", "role": "content", "label": "Sender", "description": "Bold name in the sheet subtitle.", "default": "HyperFrames" },
+    { "id": "itemLabel", "type": "string", "role": "content", "label": "Item", "description": "What the sender is offering, completing the sentence \"… would like to share …\".", "default": "a video" },
+    { "id": "stripText", "type": "string", "role": "content", "label": "Brand strip", "description": "Small-caps line under the preview, beside the logo.", "default": "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML" },
+    { "id": "acceptLabel", "type": "string", "role": "content", "label": "Accept label", "description": "Right-hand action button.", "default": "Accept" },
+    { "id": "declineLabel", "type": "string", "role": "content", "label": "Decline label", "description": "Left-hand action button.", "default": "Decline" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Share-Sheet Carousel</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+      }
+      #ssc-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      }
+      #ssc-scene {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ---------------- fullscreen grounds ---------------- */
+      /* the ground behind the sheet is the current slide blown up and blurred,
+         exactly as the source footage was */
+      .ssc-bg {
+        position: absolute;
+        left: -80px;
+        top: -80px;
+        width: 1240px;
+        height: 2080px;
+        object-fit: cover;
+        filter: blur(46px) saturate(1.1) brightness(0.88);
+      }
+
+      /* ---------------- the share sheet ---------------- */
+      /* geometry measured from the reference: 668x974 card at (206,473),
+         spring entry sampled frame-by-frame (spec provenance: measured) */
+      #ssc-card {
+        position: absolute;
+        left: 206px;
+        top: 473px;
+        width: 668px;
+        height: 974px;
+        background: #f9f9f9;
+        border-radius: 34px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        opacity: 0;
+      }
+      #ssc-cardclipper {
+        position: absolute;
+        inset: 0;
+        border-radius: 34px;
+        overflow: hidden;
+      }
+      #ssc-title {
+        position: absolute;
+        top: 49px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 44px;
+        font-weight: 600;
+        color: #101010;
+        line-height: 44px;
+        letter-spacing: 0.2px;
+      }
+      #ssc-subtitle {
+        position: absolute;
+        top: 117px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 29px;
+        font-weight: 400;
+        color: #313131;
+        line-height: 29px;
+      }
+      #ssc-subtitle b {
+        font-weight: 700;
+      }
+      #ssc-imagebox {
+        position: absolute;
+        left: 43px;
+        top: 191px;
+        width: 582px;
+        height: 632px;
+        border-radius: 24px;
+        overflow: hidden;
+      }
+      .ssc-slide {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 582px;
+        height: 476px;
+        object-fit: cover;
+      }
+      /* the brand strip riding the bottom of the preview, as the reference had */
+      #ssc-strip {
+        position: absolute;
+        left: 0;
+        top: 476px;
+        width: 582px;
+        height: 156px;
+        background: #f2ecdf;
+        display: grid;
+        place-items: center;
+        align-content: center;
+        gap: 14px;
+      }
+      #ssc-strip img {
+        height: 38px;
+        display: block;
+      }
+      #ssc-strip-text {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 2.4px;
+        color: #4a4438;
+        text-transform: uppercase;
+      }
+      #ssc-hdivider {
+        position: absolute;
+        left: 0;
+        top: 859px;
+        width: 100%;
+        height: 1.5px;
+        background: #dfdfdf;
+      }
+      #ssc-vdivider {
+        position: absolute;
+        left: 333px;
+        top: 861px;
+        width: 1.5px;
+        bottom: 0;
+        background: #dfdfdf;
+      }
+      #ssc-presscell {
+        position: absolute;
+        left: 335px;
+        top: 861px;
+        right: 0;
+        bottom: 0;
+        background: #e9e9e9;
+        border-radius: 0 0 34px 0;
+        opacity: 0;
+      }
+      .ssc-btn {
+        position: absolute;
+        top: 861px;
+        bottom: 0;
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+      }
+      #ssc-decline {
+        left: 0;
+        width: 333px;
+        color: #6f6f73;
+        font-weight: 400;
+      }
+      #ssc-accept {
+        left: 335px;
+        right: 0;
+        color: var(--hf-ui-accent, #087a57);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="ssc-root"
+      data-composition-id="share-sheet-carousel"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="7.2333"
+      data-fps="30"
+    >
+      <section
+        id="ssc-scene"
+        class="clip"
+        data-start="0"
+        data-duration="7.2333"
+        data-track-index="1"
+      >
+        <img class="ssc-bg" id="ssc-bg-1" src="assets/slide-01.jpg" alt="" style="opacity: 1" />
+        <img class="ssc-bg" id="ssc-bg-2" src="assets/slide-02.jpg" alt="" style="opacity: 0" />
+        <img class="ssc-bg" id="ssc-bg-3" src="assets/slide-03.jpg" alt="" style="opacity: 0" />
+        <img class="ssc-bg" id="ssc-bg-4" src="assets/slide-04.jpg" alt="" style="opacity: 0" />
+        <div id="ssc-card">
+          <div id="ssc-cardclipper">
+            <div id="ssc-title">Share</div>
+            <div id="ssc-subtitle"><b>HyperFrames</b>&nbsp;would like to share a video</div>
+            <div id="ssc-imagebox">
+              <img
+                class="ssc-slide"
+                id="ssc-slide-1"
+                src="assets/slide-01.jpg"
+                alt=""
+                style="opacity: 1"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-2"
+                src="assets/slide-02.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-3"
+                src="assets/slide-03.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <img
+                class="ssc-slide"
+                id="ssc-slide-4"
+                src="assets/slide-04.jpg"
+                alt=""
+                style="opacity: 0"
+              />
+              <div id="ssc-strip">
+                <img src="assets/hyperframes-logo-black.svg" alt="HyperFrames" />
+                <div id="ssc-strip-text">OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML</div>
+              </div>
+            </div>
+            <div id="ssc-hdivider"></div>
+            <div id="ssc-presscell"></div>
+            <div id="ssc-vdivider"></div>
+            <div id="ssc-decline" class="ssc-btn">Decline</div>
+            <div id="ssc-accept" class="ssc-btn">Accept</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      (function () {
+        "use strict";
+
+        /* -------- variables -------- */
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        function text(value, fallback) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > 60 ? t.slice(0, 60) : t;
+        }
+
+        document.getElementById("ssc-title").textContent = text(vars.shareTitle, "Share");
+        var subtitle = document.getElementById("ssc-subtitle");
+        subtitle.innerHTML = "";
+        var sender = document.createElement("b");
+        sender.textContent = text(vars.senderName, "HyperFrames");
+        subtitle.appendChild(sender);
+        subtitle.appendChild(
+          document.createTextNode(" would like to share " + text(vars.itemLabel, "a video")),
+        );
+        document.getElementById("ssc-strip-text").textContent = text(
+          vars.stripText,
+          "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML",
+        );
+        document.getElementById("ssc-decline").textContent = text(vars.declineLabel, "Decline");
+        document.getElementById("ssc-accept").textContent = text(vars.acceptLabel, "Accept");
+
+        /* -------- timeline: spring entry and cut rhythm measured from the reference -------- */
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        tl.set("#ssc-card", { y: 1450, autoAlpha: 0 }, 0.001);
+        tl.set("#ssc-presscell", { autoAlpha: 0 }, 0.001);
+
+        /* sheet spring-up: frame-sampled from the reference, kept verbatim */
+        var SPRING = [
+          [0.056667, 1198, 0.13],
+          [0.09, 903, 0.21],
+          [0.123333, 648, 0.36],
+          [0.156667, 437, 0.43],
+          [0.19, 262, 0.5],
+          [0.223333, 120, 0.62],
+          [0.256667, 8, 0.78],
+          [0.29, -76, 0.89],
+          [0.323333, -138, 1.0],
+          [0.356667, -175, null],
+          [0.39, -191, null],
+          [0.423333, -192, null],
+          [0.456667, -181, null],
+          [0.49, -159, null],
+          [0.523333, -131, null],
+          [0.556667, -100, null],
+          [0.59, -68, null],
+          [0.623333, -41, null],
+          [0.656667, -18, null],
+          [0.69, -5, null],
+          [0.723333, 0, null],
+        ];
+        SPRING.forEach(function (step) {
+          var props = { y: step[1] };
+          if (step[2] !== null) props.autoAlpha = step[2];
+          tl.set("#ssc-card", props, step[0]);
+        });
+
+        /* cut rhythm: fourteen swaps, cycling the four stills */
+        var SLIDE_COUNT = 4;
+        var CUTS = [
+          0.99, 1.356667, 1.69, 2.023333, 2.356667, 2.69, 3.09, 3.456667, 3.79, 4.123333, 4.456667,
+          4.79, 5.156667,
+        ];
+        var current = 0;
+        CUTS.forEach(function (t, i) {
+          var next = (i + 1) % SLIDE_COUNT;
+          tl.set(["#ssc-bg-" + (current + 1), "#ssc-slide-" + (current + 1)], { autoAlpha: 0 }, t);
+          tl.set(["#ssc-bg-" + (next + 1), "#ssc-slide-" + (next + 1)], { autoAlpha: 1 }, t);
+          current = next;
+        });
+
+        /* accept press: cell highlights and the card dips, then releases */
+        tl.set("#ssc-card", { y: 3 }, 6.323333);
+        tl.set("#ssc-presscell", { autoAlpha: 1 }, 6.323333);
+        tl.set("#ssc-card", { y: 0 }, 6.656667);
+        tl.set("#ssc-presscell", { autoAlpha: 0 }, 6.656667);
+        tl.set({}, {}, 7.2333);
+
+        window.__timelines["share-sheet-carousel"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `showcase` `mock-ui` `share-sheet` `vertical` `ad-template`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

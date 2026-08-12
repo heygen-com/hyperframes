@@ -32,6 +32,7 @@ const runFfmpegMock = mock(async () => ({
 }));
 
 mock.module("@hyperframes/engine", () => ({
+  MIXED_AUDIO_FILENAME: "audio.m4a",
   DEFAULT_CONFIG: { ffmpegEncodeTimeout: 600_000 },
   encodeFramesChunkedConcat: encodeFramesChunkedConcatMock,
   encodeFramesFromDir: encodeFramesFromDirMock,

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ai-generation-canvas",
+  "type": "hyperframes:component",
+  "title": "AI Generation Canvas",
+  "description": "A prompt composer expands into a generated dashboard preview.",
+  "tags": ["showcase", "remocn-port", "ai"],
+  "files": [
+    {
+      "path": "ai-generation-canvas.html",
+      "target": "compositions/components/ai-generation-canvas.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ai-generation-canvas.png"
+  }
+}

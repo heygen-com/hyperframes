@@ -53,7 +53,7 @@ probe = subprocess.run(
     ["ffprobe", "-v", "error", "-select_streams", "v:0",
      "-show_entries", "stream=r_frame_rate,nb_read_frames,duration",
      "-show_entries", "format=duration",
-     "-of", "json", "-count_frames", baseline],
+     "-of", "json", "-count_frames", "--", baseline],
     check=True, capture_output=True, text=True,
 )
 data = json.loads(probe.stdout)

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "match-cut",
+  "type": "hyperframes:component",
+  "title": "Match Cut",
+  "description": "A circle accelerates into a hard single-frame scene swap, matches the incoming circle exactly, and continues into a smaller resting pose.",
+  "tags": ["motion-primitive", "transition", "match-cut", "hard-cut", "continuity"],
+  "jobs": ["connect"],
+  "family": "transitions",
+  "profile": "transition",
+  "evidence": "Video Primitives Wave F U12 match-cut contract",
+  "syncPoints": [{ "id": "hard-cut", "phase": "in", "offset": 1.4 }],
+  "files": [
+    {
+      "path": "match-cut.html",
+      "target": "compositions/components/match-cut.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color shared by the matched circles.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "label_a",
+      "type": "string",
+      "role": "content",
+      "label": "Scene A label",
+      "description": "Text inside the outgoing button.",
+      "default": "Start"
+    },
+    {
+      "id": "label_b",
+      "type": "string",
+      "role": "content",
+      "label": "Scene B label",
+      "description": "Result text revealed after the cut.",
+      "default": "Done"
+    }
+  ]
+}

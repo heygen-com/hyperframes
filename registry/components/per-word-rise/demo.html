@@ -1,0 +1,103 @@
+<!doctype html>
+<!--
+  per-word-rise demo. This standalone composition mounts per-word-rise.html
+  through data-composition-src. Non-default text, split, and accent values
+  prove the variable path while the primitive remains elastic to its host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Per Word Rise Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 3cqmin;
+        --space-1: 1.8cqw;
+        --space-2: 2.8cqh;
+        --space-3: 4cqh;
+        --dur-beat: 0.5s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          color-mix(in srgb, var(--surface) 88%, var(--accent-2)) 0%,
+          var(--bg) 72%
+        );
+      }
+
+      .mount-card {
+        width: 76%;
+        height: 50%;
+        left: 12%;
+        top: 25%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+        border-radius: calc(var(--radius) * 1.3);
+        background: var(--bg);
+        box-shadow: 0 4cqh 12cqh color-mix(in srgb, var(--bg) 68%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="per-word-rise-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="per-word-rise-mount"
+        class="mount-card clip"
+        data-composition-id="per-word-rise"
+        data-composition-src="./per-word-rise.html"
+        data-variable-values='{"text":"EVERY FRAME MATTERS","split":"char","accent":"violet"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1459"
+        data-height="540"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.seek(0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["per-word-rise-demo"] = tl;
+    </script>
+  </body>
+</html>

@@ -37,7 +37,7 @@ afterAll(() => {
 /**
  * Build a synthetic planDir whose `meta/chunks.json` declares N chunks of
  * `framesPerChunk` frames each. Does NOT materialize compiled/, video-frames/,
- * audio.aac — assemble only reads `plan.json` + `meta/chunks.json`, and we
+ * audio.m4a — assemble only reads `plan.json` + `meta/chunks.json`, and we
  * pass chunk paths explicitly. Keeping the dir lean speeds up the test
  * loop.
  */
@@ -150,6 +150,7 @@ function probeStream(
       "-count_packets",
       "-of",
       "json",
+      "--",
       outputPath,
     ],
     { stdio: "pipe" },
@@ -286,7 +287,7 @@ describe("assemble()", () => {
   );
 
   it(
-    "muxes audio with frame-count-derived duration when audio.aac is present",
+    "muxes audio with frame-count-derived duration when audio.m4a is present",
     async () => {
       if (!hasFfmpeg) return;
 
@@ -300,7 +301,7 @@ describe("assemble()", () => {
 
       const chunkAPath = join(planDir, "chunk-0.mp4");
       const chunkBPath = join(planDir, "chunk-1.mp4");
-      const audioPath = join(planDir, "audio.aac");
+      const audioPath = join(planDir, "audio.m4a");
       makeMp4Chunk(chunkAPath, 6);
       makeMp4Chunk(chunkBPath, 6);
       // Audio is half a second longer than the video — `padOrTrimAudioToVideoFrameCount`
@@ -345,7 +346,7 @@ describe("assemble()", () => {
 
       const chunkAPath = join(planDir, "chunk-0.mp4");
       const chunkBPath = join(planDir, "chunk-1.mp4");
-      const audioPath = join(planDir, "audio.aac");
+      const audioPath = join(planDir, "audio.m4a");
       makeMp4Chunk(chunkAPath, 6);
       makeMp4Chunk(chunkBPath, 6);
       // Audio is shorter than the video, forcing the distributed pad branch.
@@ -418,6 +419,7 @@ describe("assemble()", () => {
           "stream=r_frame_rate,avg_frame_rate,duration",
           "-of",
           "json",
+          "--",
           outputPath,
         ],
         { stdio: "pipe" },

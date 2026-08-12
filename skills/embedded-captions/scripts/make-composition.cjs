@@ -50,6 +50,7 @@ function sourceDurationSec(project) {
             "format=duration",
             "-of",
             "default=nokey=1:noprint_wrappers=1",
+            "--",
             p,
           ],
           { encoding: "utf8" },

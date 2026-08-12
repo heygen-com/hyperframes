@@ -422,7 +422,25 @@ export const _probeBeginFrameSupportForTests = probeBeginFrameSupport;
 export const _closeBrowserAfterFailedProbeForTests = closeBrowserAfterFailedProbe;
 
 /**
- * Cached *in-flight or resolved* probe Promise for `resolveBrowserGpuMode("auto", ...)`.
+ * Outcome of the one-shot WebGL probe.
+ *
+ * `cause` distinguishes the two ways a probe lands on `"software"`, because
+ * they need OPPOSITE remediation:
+ *   - `"no-gpu"`  — the probe ran and Chrome reported a software renderer
+ *                   (SwiftShader / llvmpipe). Remediation: GPU passthrough.
+ *   - `"probe-error"` — the probe itself failed (Chrome couldn't launch, bad
+ *                   executable path, sandbox denied). We have NO evidence
+ *                   about the GPU either way; telling the operator to fix GPU
+ *                   passthrough would send them chasing the wrong problem.
+ */
+interface GpuProbeOutcome {
+  mode: "software" | "hardware";
+  cause?: "no-gpu" | "probe-error";
+}
+
+/**
+ * Cached *in-flight or resolved* probe Promise, shared by BOTH the `"auto"`
+ * and explicit `"hardware"` entry points of `resolveBrowserGpuMode`.
  *
  * Caching the Promise (rather than the resolved value) deduplicates concurrent
  * callers — the parallel coordinator runs N workers via `Promise.all`, so a
@@ -430,14 +448,13 @@ export const _closeBrowserAfterFailedProbeForTests = closeBrowserAfterFailedProb
  * simultaneous probe Chromes. The first call assigns the Promise and every
  * other concurrent caller awaits the same one, paying the ~240 ms probe cost
  * exactly once per process lifetime.
- *
- * Exported for tests; production callers go through `resolveBrowserGpuMode`.
  */
-let _autoBrowserGpuModeCache: Promise<"software" | "hardware"> | undefined;
+let _autoBrowserGpuModeCache: Promise<GpuProbeOutcome> | undefined;
 
 /** Test-only: reset the cached probe result. */
 export function _resetAutoBrowserGpuModeCacheForTests(): void {
   _autoBrowserGpuModeCache = undefined;
+  _unverifiedHardwareGpuWarned = false;
 }
 
 async function getPuppeteerOrNull(): Promise<PuppeteerNode | null> {
@@ -478,7 +495,7 @@ async function probeAutoBrowserGpuMode(options: {
   chromePath?: string;
   browserTimeout?: number;
   platform?: NodeJS.Platform;
-}): Promise<"software" | "hardware"> {
+}): Promise<GpuProbeOutcome> {
   const platform = options.platform ?? process.platform;
   const browserTimeout = options.browserTimeout ?? DEFAULT_CONFIG.browserTimeout;
   const executablePath = options.chromePath ?? resolveHeadlessShellPath({});
@@ -486,7 +503,7 @@ async function probeAutoBrowserGpuMode(options: {
 
   if (ppt === null) {
     logResolvedBrowserGpuMode("software", "puppeteer unavailable");
-    return "software";
+    return { mode: "software", cause: "probe-error" };
   }
 
   try {
@@ -497,24 +514,35 @@ async function probeAutoBrowserGpuMode(options: {
     });
     const resolved = resolveWebGlProbeMode(info);
     logResolvedBrowserGpuMode(resolved, describeWebGlProbe(info));
-    return resolved;
+    return resolved === "hardware" ? { mode: "hardware" } : { mode: "software", cause: "no-gpu" };
   } catch (err) {
     logResolvedBrowserGpuMode("software", formatProbeFailure(err));
-    return "software";
+    return { mode: "software", cause: "probe-error" };
   }
 }
 
 /**
  * Resolve `browserGpuMode` to a concrete `"software" | "hardware"` answer.
  *
- * For `"software"` / `"hardware"` this is a pure pass-through. For `"auto"`
- * it launches a tiny Chrome with the platform's hardware GPU args, runs a
- * one-shot WebGL availability probe, and falls back to `"software"` if
- * hardware-mode WebGL is unavailable. The Promise is cached for the process
- * lifetime, so concurrent callers (parallel workers) share the same probe.
+ * For `"software"` this is a pure pass-through. For `"auto"` it launches a
+ * tiny Chrome with the platform's hardware GPU args, runs a one-shot WebGL
+ * availability probe, and falls back to `"software"` if hardware-mode WebGL
+ * is unavailable. The Promise is cached for the process lifetime, so
+ * concurrent callers (parallel workers) share the same probe.
  *
- * Any failure (Chrome launch error, navigation timeout, missing canvas API,
- * etc.) is treated as a `"software"` fallback. The render path with
+ * `"hardware"` (an explicit `--browser-gpu` / `PRODUCER_BROWSER_GPU_MODE=
+ * hardware`) is honoured verbatim — the operator asked for it — but runs the
+ * SAME probe to VERIFY it, because Chrome's hardware GL args are advisory:
+ * with no usable GPU in the sandbox (no `/dev/dri`, no NVIDIA container
+ * runtime, missing EGL/driver libraries) Chrome silently falls back to
+ * software WebGL and the render just runs at CPU speed. Without this check
+ * the only trace is a buried `Automatic fallback to software WebGL` browser
+ * warning — heygen-com/hyperframes#2967 rendered 19186 frames on CPU while
+ * `--browser-gpu` was set and nothing said so. The probe result never
+ * changes the returned mode; it only makes the fallback loud.
+ *
+ * Any probe failure (Chrome launch error, navigation timeout, missing canvas
+ * API, etc.) is treated as a `"software"` result. The render path with
  * SwiftShader always works, so a misclassification toward software is the
  * safe failure mode; misclassifying toward hardware would error on the real
  * render.
@@ -527,21 +555,84 @@ export function resolveBrowserGpuMode(
     platform?: NodeJS.Platform;
   } = {},
 ): Promise<"software" | "hardware"> {
-  if (mode !== "auto") return Promise.resolve(mode);
-  if (_autoBrowserGpuModeCache) return _autoBrowserGpuModeCache;
+  if (mode === "software") return Promise.resolve(mode);
 
-  _autoBrowserGpuModeCache = probeAutoBrowserGpuMode(options);
-  return _autoBrowserGpuModeCache;
+  _autoBrowserGpuModeCache ??= probeAutoBrowserGpuMode(options);
+  if (mode === "auto") return _autoBrowserGpuModeCache.then((probed) => probed.mode);
+
+  return _autoBrowserGpuModeCache.then((probed) => {
+    // Warn once per cache lifetime, not once per caller: `createCaptureSession`
+    // resolves the mode for the probe browser AND every parallel worker, so
+    // an un-deduplicated warning prints N+1 times and buries itself.
+    if (probed.mode === "software" && !_unverifiedHardwareGpuWarned) {
+      _unverifiedHardwareGpuWarned = true;
+      console.warn(
+        buildUnverifiedHardwareGpuWarning(options.platform ?? process.platform, probed.cause),
+      );
+    }
+    return "hardware";
+  });
 }
 
 /**
- * Single observability surface for the auto-detect outcome. Logged exactly
+ * Latch for the explicit-hardware-probed-to-software warning: fires once per
+ * cache lifetime (re-armed by `_resetAutoBrowserGpuModeCacheForTests`).
+ */
+let _unverifiedHardwareGpuWarned = false;
+
+/**
+ * Warning text for "you asked for hardware GPU and we could not confirm it".
+ *
+ * Splits on `cause` because the two failure shapes need opposite remediation.
+ * A probe that RAN and saw SwiftShader is a GPU-passthrough problem. A probe
+ * that could not run tells us nothing about the GPU — pointing that operator
+ * at `--gpus all` would send them chasing a phantom while their Chrome
+ * install is the actual fault.
+ */
+function buildUnverifiedHardwareGpuWarning(
+  platform: NodeJS.Platform | string,
+  cause: GpuProbeOutcome["cause"],
+): string {
+  if (cause === "probe-error") {
+    return (
+      "[hyperframes] browserGpuMode=hardware was requested, but the GPU probe could not run, " +
+      "so hardware acceleration is UNVERIFIED — if Chrome falls back to software WebGL the " +
+      "capture will run at CPU speed. Honouring the explicit request anyway.\n" +
+      "  This is a probe failure, not evidence of a missing GPU: see the " +
+      "`browserGpuMode probe → software (probe failed ...)` line above for the underlying " +
+      "error, which usually means Chrome could not launch (bad HYPERFRAMES_BROWSER_PATH, " +
+      "missing shared libraries, or a denied sandbox) rather than a GPU problem.\n" +
+      "  Run `hyperframes doctor` to check the Chrome install."
+    );
+  }
+  const remediation =
+    platform === "linux"
+      ? "Inside Docker, the container needs GPU passthrough: `--gpus all` with the NVIDIA " +
+        "Container Toolkit installed, or `--device /dev/dri` for Mesa/AMD/Intel. The image " +
+        "also needs the matching userspace driver + libEGL. Verify with " +
+        "`hyperframes render --browser-gpu` and watch for this warning disappearing."
+      : "Check that the host exposes a GPU to this process and that the graphics drivers are " +
+        "installed.";
+  return (
+    "[hyperframes] browserGpuMode=hardware was requested, but the WebGL probe found no " +
+    "hardware GPU — Chrome will silently fall back to software WebGL and the capture will " +
+    "run at CPU speed. Honouring the explicit request anyway.\n" +
+    `  ${remediation}\n` +
+    "  Pass --no-browser-gpu to select deterministic SwiftShader instead of waiting on a " +
+    "hardware path that is not there."
+  );
+}
+
+/**
+ * Single observability surface for the GPU probe outcome. Logged exactly
  * once per process (the probe runs once); without this line, a regression
  * to "always software even with a GPU present" would be invisible in
- * production. Goes to stderr to stay out of stdout pipelines.
+ * production. Goes to stderr to stay out of stdout pipelines. Says "probe"
+ * rather than "auto" because explicit `browserGpuMode=hardware` runs the
+ * same probe to verify itself.
  */
 function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: string): void {
-  console.error(`[hyperframes] browserGpuMode auto → ${resolved} (${reason})`);
+  console.error(`[hyperframes] browserGpuMode probe → ${resolved} (${reason})`);
 }
 
 function createBrowserLaunchFingerprint(
@@ -819,20 +910,33 @@ export function buildChromeArgs(
     chromeArgs.push(WEBGPU_FLAG);
   }
 
+  // SwiftShader's GPU compositor can retain a transformed layer for several
+  // sequential frames after a GSAP yoyo/reversal, and it re-presents stale
+  // raster for a partially invalidated layer: content already drawn in an
+  // earlier seek is never cleared, so successive captures accumulate copies of
+  // it (HF#3049 — a moving SVG group smears wider on every frame, and static
+  // siblings appear duplicated one band lower). The DOM and timeline are
+  // already at the requested time; the defect is in the compositor surface both
+  // BeginFrame and Page.captureScreenshot read, so it is not specific to a
+  // capture mode — it is specific to compositing on SwiftShader.
+  //
+  // Routing compositing through Chrome's software path is the only mitigation
+  // that holds: capture-side changes (fromSurface, captureBeyondViewport, a
+  // second capture, extra rAF ticks, a 250ms settle) and every raster/tiling
+  // flag (--disable-partial-raster, --disable-checker-imaging, --disable-zero-copy,
+  // forced tile sizes) leave the accumulation untouched. The cost is that
+  // SwiftShader rasterizes thin strokes and glyph edges slightly differently
+  // (antialiased edges only — measured on HF#3049's frame 0: 96 opaque pixels
+  // differ, by 1/255). Duplicated content in 68% of frames is the worse defect.
+  //
+  // Remove this workaround once the pinned chrome-headless-shell includes
+  // https://issues.chromium.org/issues/535256667.
+  if (browserGpuMode === "software") {
+    chromeArgs.push("--disable-gpu-compositing");
+  }
+
   // BeginFrame flags — only when using chrome-headless-shell on Linux
   if (options.captureMode !== "screenshot") {
-    // SwiftShader's GPU compositor can retain a transformed layer for several
-    // sequential frames after a GSAP yoyo/reversal. The DOM and timeline are
-    // already at the requested time, but both BeginFrame and
-    // Page.captureScreenshot read the stale surface (the duplicate is present
-    // in the raw JPEG before encoding). Keep deterministic BeginFrame capture,
-    // but route compositing through Chrome's software path when the browser is
-    // already in software-GPU mode. Hardware-GPU and screenshot captures keep
-    // their existing compositor paths. Remove this workaround once the pinned
-    // chrome-headless-shell includes https://issues.chromium.org/issues/535256667.
-    if (browserGpuMode === "software") {
-      chromeArgs.push("--disable-gpu-compositing");
-    }
     chromeArgs.push(
       "--deterministic-mode",
       "--enable-begin-frame-control",

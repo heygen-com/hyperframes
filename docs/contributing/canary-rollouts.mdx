@@ -3,26 +3,20 @@ title: "Canary rollouts"
 description: "Ship a change to a percentage of installs instead of all-or-nothing."
 ---
 
-Most flags in this repo are binary: a feature is off (and therefore never
-exercised on real traffic) or on for everyone (and therefore a fleet-wide
-bet). A canary is the rung in between — the same change, enabled for a stable
-slice of installs, ramped as the signal holds.
+Most flags in this repo are binary: a change is off, or on for everyone. A
+canary is the rung in between — the same change, enabled for a stable slice of
+installs, ramped as the signal holds.
 
 <Note>
-  **Canaries are part of telemetry, not a separate system.** A canary is a
-  *measured* rollout: a slice is enrolled specifically so it can be compared
-  against everyone else, and the comparison is what makes ramping safe. An
-  install that reports nothing cannot be compared, so **opting out of telemetry
-  opts you out of canaries** — via `hyperframes telemetry disable`,
-  `HYPERFRAMES_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, a dev build, or Studio's
-  `hyperframes-studio:telemetryDisabled`. See the
-  [`telemetry` command](/packages/cli#telemetry) for what is collected and how
-  to turn it off; everything on this page sits behind that switch.
+  A canary is a *measured* rollout: a slice is enrolled so it can be compared
+  against everyone else. So **opting out of telemetry opts you out of
+  canaries** — an opted-out install is never bucketed at all. See the
+  [`telemetry` command](/packages/cli#telemetry) for the opt-out routes.
 </Note>
 
 ## Add one
 
-**1. Register it at 0%.** In `packages/core/src/canaryRegistry.ts`:
+**1. Register it at 0%** in `packages/core/src/canaryRegistry.ts`:
 
 ```ts
 {
@@ -48,232 +42,40 @@ if (isCanaryEnabled("my-feature")) {
 }
 ```
 
-That is the whole API. The percentage lives in the registry, never at the
-call site.
+That is the whole API. The percentage lives in the registry, never at the call
+site.
 
 **3. Ramp it** by editing `percentage` in a patch release: `0 → 5 → 25 → 100`.
+Widening is inclusive — everyone already in the 10 stays in the 25, so a
+before/after comparison survives the ramp. Do not rename a live canary: the
+name is part of the bucket hash, so renaming reshuffles the cohort mid-rollout.
 
-**4. Delete it** once it is at 100 and holding — both the registry entry and
-the branch it guarded. `sunsetAfter` exists to force this: the scheduled
-**Canary sunset** workflow runs weekly and fails once the date passes, naming
-the overdue rollout and its owner in the run log. It does not notify anyone —
-watch the workflow if you own a canary.
+**4. Delete it** at 100 and holding — the registry entry *and* the branch it
+guarded. The scheduled **Canary sunset** workflow enforces this: it runs weekly
+and fails once `sunsetAfter` passes, naming the overdue rollout and its owner in
+the run log. It notifies nobody, so watch it if you own a canary. Run it
+yourself with `bun scripts/check-canary-sunset.ts`.
 
-It is a scheduled job rather than a PR check on purpose. A current-date
-assertion in the unit suite would redden builds for authors who changed
-nothing related, on a calendar date, with no fix available to them — so the
-failure is routed to the person who can actually ramp or remove the canary.
-Run it yourself with `bun scripts/check-canary-sunset.ts`.
-
-## Overriding
+## Override one
 
 ```bash
 HF_CANARY_MY_FEATURE=on   # or off / true / false / 1 / 0 / yes / no
 ```
 
-Upper-snake-case the name. An override always wins over the percentage, in
-both directions — use it for support escalations, dogfooding, bisects, or a
-panic-off.
+Upper-snake-case the name. In Studio, use `?hf_canary_my_feature=on`. An
+override always wins over the percentage, in both directions — escalations,
+dogfooding, bisects, a panic-off. It is also the way to exercise a canary with
+telemetry off.
 
-## Measuring
+Everything else fails closed below 100%: no bucket seed, an unregistered name,
+or a CI machine all resolve to *not enrolled*. At exactly 100% those exclusions
+stop applying, so nothing takes the new path for the first time at deletion.
 
-Every telemetry event carries the assignment as a flag-shaped property:
+## Remove one from your machine
 
-```
-$feature/canary-my-feature: "true" | "false"
-```
-
-`$feature/<key>` is the de-facto flag-property convention in analytics
-tooling, so whoever operates the telemetry backend can split any metric by
-cohort with **nothing configured server-side** — while the decision itself
-still happens locally and offline, which the render path requires.
-(Assignments ride the same anonymous, opt-out telemetry pipeline as every
-other event — and disabling telemetry disables the **enrolment**, not just the
-reporting: an opted-out install is never bucketed at all. See the note at the
-top of this page.)
-
-Two details worth knowing:
-
-- **Both arms are emitted.** A non-enrolled install reports `"false"`, not a
-  missing property. Absent means *this build predates the canary*, which is a
-  different fact from *this install is control* — collapsing them makes a ramp
-  unreadable.
-- **Keys are namespaced with `canary-`.** The `$feature/` namespace is shared
-  with real product feature flags elsewhere in the analytics pipeline. The
-  infix guarantees a canary can never alias one and fight it for the same
-  property.
-
-## Cumulative exposure — the number that actually bounds blast radius
-
-The instantaneous share holds at the target forever: enrolment is a pure
-function of `(feature, installId, percentage)` and fresh ids are uniformly
-random, so ~10% of active installs and ~10% of renders are enrolled on any
-given day. That part does not drift.
-
-**The cumulative set does grow.** Install ids churn — measured on the desktop
-render population, there are ~25× more distinct ids over 30 days than in any
-single day. Ten percent of a pool that keeps turning over is a steadily larger
-group of installs that have been enrolled *at some point*. If a single person
-cycles through N ids during a rollout, their chance of having been exposed is
-`1 − (1 − p)^N`, so at 10%: 19% after two ids, 41% after five.
-
-So the number that bounds blast radius is *distinct installs ever enrolled
-during the window*, not the instantaneous rate. Two practical consequences:
-
-- **Keep canaries short.** Drift compounds with time; a 5-day window at 10% is
-  far tighter than a 60-day one.
-- **The percentage is not the safety mechanism.** It bounds *initial* exposure
-  and decays from there. Per-render verification and per-install circuit
-  breakers are what actually bound harm. A breaker's tripped state lives in
-  `install-state.json`, separate from `config.json` and merged back in on every
-  read, so a `config.json` re-mint cannot re-enrol an install into a path that
-  already failed it. Deleting `~/.hyperframes` clears both, deliberately —
-  that is the user's reset.
-
-For *measurement* — "is this feature better?" — churn is harmless: re-bucketing
-is random, so it adds noise, not bias. It is specifically the blast-radius
-guarantee that degrades.
-
-## Calibration: validating the mechanism in the wild
-
-Two inert canaries — `calibration-10` (10%) and `calibration-50` (50%) — gate
-nothing and exist only to prove the mechanism behaves as designed on real
-traffic. Their percentages stay FIXED for the whole window, which is what
-makes check 3 below meaningful: while a percentage is constant, a cohort flip
-is a bug, whereas during a real ramp a `false → true` flip is correct and
-expected.
-
-Four checks, written down before the data arrives so the read is not post-hoc.
-(The maintainers monitor these on an internal dashboard; the definitions live
-here so the experiment's terms are public and fixed.)
-
-**1. Accuracy — does 10% mean 10%?** Measured install-weighted AND
-event-weighted separately: render volume is heavily skewed toward a few heavy
-installs, so the two can differ even when bucketing is perfect. Install share
-is the one that must land on target.
-
-**2. Drift — does cumulative exposure climb?** Measured over widening windows
-(1/7/14/30 days). The instantaneous share should stay flat at 10%; the
-cumulative enrolled-install count should grow with id churn.
-
-**3. Stability — does any install ever change cohort?** MUST be zero. A single
-id reporting both `true` and `false` at a fixed percentage means something is
-broken: memoization, a registry edit mid-window, or two code paths
-disagreeing. One innocent explanation to rule out first on a small-nonzero
-read: events carry the assignment but not the decision *reason*, so a dev
-toggling `HF_CANARY_CALIBRATION_10=on/off` mid-window is indistinguishable
-from a real flip. Emitting a reason property is deliberately skipped — add it
-only if this check comes back dirty.
-
-**4. Cross-surface agreement — do CLI and Studio agree for the same install?**
-A CLI-launched Studio adopts the CLI's id, so the same install must report the
-same cohort on both. Disagreement means the two bindings have diverged. This
-compares the *value reported per surface* — any disagreement here is also a
-check-3 flip, so this check's job is attribution: it isolates the flips that
-are binding divergence rather than within-surface instability.
-
-**Independence bonus:** overlap between `calibration-10` and `calibration-50`
-should be ~5% of installs (p1 x p2), not ~10% (which would mean the slices are
-correlated and every canary hits the same unlucky cohort).
-
-### What passing looks like, and what cannot be fixed
-
-Checks 1, 3 and 4 should pass outright — they are properties of the design,
-and failing any of them is a bug to fix before shipping a real rollout.
-
-Check 2 will NOT come back flat, and that is expected rather than a defect.
-Per-install cohorts never flip, but a *person* who wipes their config gets a
-new id and a fresh roll of the dice. Preventing that entirely needs a stable
-identity across resets, and both candidates were rejected: hardware
-fingerprinting correlates the cohort with hardware (fatal for a rendering
-experiment, and it survives uninstall), and account identity covers only
-~3.6% of local rendering installs. So the drift itself stands as a measured,
-accepted limit — but its worst consequence is mitigated, and its size is now
-directly measurable rather than inferred:
-
-- **Cohorts survive a config re-mint.** Canaries bucket on a dedicated
-  `bucketSeed` — not the telemetry id — held in `install-state.json` beside
-  `config.json` and write-once (the first install's seed wins forever). This
-  matters because `config.json` is rewritten on every command and every
-  render, and any parse/permission/IO failure makes the CLI mint a fresh
-  identity. The seed is never emitted, so it does not link the old id to the
-  new one.
-- **Deleting `~/.hyperframes` clears the cohort too, deliberately.** The seed
-  does not live outside the config directory, so the user's reset is a real
-  reset. A seed that outlived it would be a persistent identifier defeating
-  the only lever they have — see [the removal path](#removing-your-canary-state).
-- **A re-minted install cannot re-enter a path that already failed on that
-  machine.** The circuit breaker's tripped state is mirrored to the same
-  state file.
-- **`install_predecessor_found`** on every event says whether this install's
-  mint found a previous install's state marker — i.e. `config.json` was lost
-  while `install-state.json` survived. Its true-share is the re-mint rate
-  directly; drift from a deliberate reset, a fresh machine, a container, or a
-  new user is not linkable by any local mechanism and is not counted.
-
-With the seed carryover, check 2's residual drift comes from the
-unrecoverable buckets only — deliberate resets, fresh machines, containers,
-and genuinely new users — and canary window lengths get picked from that
-residual, not the raw turnover.
-
-## Behaviour worth knowing
-
-**Ramping is inclusive.** Widening `10 → 25` keeps everyone who was already
-in the 10. Cohorts never reshuffle, so a before/after comparison stays valid
-across a ramp.
-
-**Slices are independent per feature.** The bucket hashes `feature:seed`,
-not the seed alone — two canaries at 10% select two different 10%s. If
-they shared a slice, one unlucky cohort would receive every experiment at
-once and no two rollouts could be read apart.
-
-**Cohorts are keyed to the install directory, not to `config.json`.** The
-bucketing unit is a dedicated seed in `install-state.json`, inherited across
-`config.json` re-mints (see the calibration section) — distinct from the
-telemetry id and never emitted. It does not outlive `~/.hyperframes`.
-
-**A CLI-launched Studio adopts the CLI's decisions rather than re-deriving
-them.** The CLI publishes `window.__HF_CLI_CANARY_DECISIONS` — a
-`{ name: { enabled, forced } }` map. Re-deriving cannot agree in the cases
-that matter: telemetry off (the CLI resolves `telemetry_opt_out`, but Studio's
-opt-out is a separate localStorage flag it cannot see), an `HF_CANARY_*`
-override (env vars never cross into the browser), or no seed injected (Studio
-falls back to a different unit, so a different bucket). One render spanning
-both surfaces must not run half-enrolled.
-
-`forced` carries the provenance, and the precedence follows from it — highest
-first:
-
-1. A **forced** CLI decision (`HF_CANARY_*`). Wins outright, including over
-   this profile's opt-out, exactly as a local URL override does.
-2. A local `?hf_canary_*=` override, same reasoning.
-3. **This profile's telemetry opt-out.** Checked before any percentage
-   decision: the two surfaces have independent opt-outs, and CLI telemetry
-   being on says nothing about whether this browser profile agreed to be
-   measured. A cohort roll must never enrol an opted-out profile.
-4. The CLI's percentage decision.
-5. Local evaluation (standalone Studio, or a canary the CLI did not publish).
-
-Identity is treated differently from decisions. `__HF_CLI_DISTINCT_ID` and
-`__HF_CLI_BUCKET_SEED` are injected only for a `Host` this server can vouch
-for — a page that rebinds its hostname to `127.0.0.1` would otherwise read
-them as same-origin. That means loopback by default, and on an explicit LAN
-bind (`HYPERFRAMES_PREVIEW_HOST=0.0.0.0`) a `Host` naming an address or
-hostname this machine actually answers on. Setting the variable does not
-disable the check; a hostile `Host` is refused in either mode.
-
-The decisions map is not identifying, so it is published regardless, which
-keeps a LAN preview in agreement with the CLI instead of silently
-re-deriving.
-
-The decisions map is published even when telemetry is off — that is the case
-it exists for. It is safe to expose where the seed is not: booleans about
-features, not the value cohorts are derived from. Studio still evaluates
-locally when opened standalone, or for any canary the CLI did not publish.
-
-## Removing your canary state
-
-Both `config.json` and `install-state.json` live in `~/.hyperframes`, so:
+Cohorts bucket on a seed in `install-state.json`, which sits beside
+`config.json` in `~/.hyperframes` — not on the telemetry id. So a full reset is
+one command:
 
 ```bash
 rm -rf ~/.hyperframes    # clears telemetry id, canary cohorts, and breaker state
@@ -282,48 +84,24 @@ rm -rf ~/.hyperframes    # clears telemetry id, canary cohorts, and breaker stat
 `hyperframes telemetry status` prints both paths if you want to inspect or
 delete them individually. Nothing canary-related is stored anywhere else.
 
-**Opting out of telemetry opts you out of canaries.** A canary is a *measured*
-rollout — we enrol a slice precisely so it can be compared against everyone
-else. An install that sends nothing can't be compared, so enrolling it buys no
-signal and only changes that user's code path, on an experimental feature,
-without their knowledge. Every opt-out route counts: the persisted preference
-(`hyperframes telemetry disable`), the runtime env vars
-(`HYPERFRAMES_NO_TELEMETRY`, `DO_NOT_TRACK`), dev/telemetry-disabled builds,
-and Studio's `hyperframes-studio:telemetryDisabled`. The decision resolves to
-`telemetry_opt_out` *before* bucketing, so no cohort is assigned at all.
-
-An explicit `HF_CANARY_<FEATURE>` (or `?hf_canary_<feature>=` in Studio)
-override still wins — that is a deliberate local choice, and it stays the way
-to exercise a canary with telemetry off.
-
-**It fails closed below 100%.** No install id, an unregistered name, or a CI
-machine all resolve to *not enrolled*. A canary exists to bound blast radius,
-so "we don't know who this is" must never mean "enrol everyone". CI is
-excluded because its config is regenerated per run, so its ids are ephemeral
-and would hop cohorts between runs — an explicit override still reaches it,
-which is how you test a canary in CI.
-
-At exactly 100% those exclusions stop applying, deliberately. 100% is the step
-before deleting the entry and the guard, so anything still resolving false
-there would take the new path for the FIRST time at deletion, unstaged — and
-CI and seedless installs are precisely the populations a dashboard cannot see,
-so "100% and holding" would look green while they were never exercised.
-
-**Decisions are stable and memoized.** The same install always resolves the
-same way, and the answer is fixed for the life of a process — a render that
-starts enrolled finishes enrolled, and its telemetry agrees with what ran.
-
-**Do not rename a live canary.** The name is part of the hash, so renaming
-reshuffles the cohort mid-rollout and invalidates the comparison.
-
 ## Where it lives
 
 | File | Role |
 | --- | --- |
-| `packages/core/src/canary.ts` | Pure evaluator — no fs, no network, browser-safe |
 | `packages/core/src/canaryRegistry.ts` | Every rollout, with owner and sunset date |
-| `packages/cli/src/telemetry/canary.ts` | CLI binding: install id, env override, CI detection |
+| `packages/core/src/canary.ts` | Pure evaluator — no fs, no network, browser-safe |
+| `packages/cli/src/telemetry/canary.ts` | CLI binding: bucket seed, env override, CI detection |
+| `packages/studio/src/telemetry/canary.ts` | Studio binding: adopts the CLI's published decisions |
 
-The evaluator is deliberately dependency-free so studio and the embeddable
-player can use it too; those surfaces need their own thin binding to supply an
-id, since only the CLI has `anonymousId`.
+The evaluator is dependency-free so Studio and the embeddable player can use it
+too; each surface supplies its own unit id through a thin binding. Studio
+adopts the CLI's decisions rather than re-deriving them, so one render spanning
+both surfaces never runs half-enrolled.
+
+## Related topics
+
+- [Testing local changes](/contributing/testing-local-changes) — exercise your
+  canary before anyone else gets it.
+- [Release channels](/contributing/release-channels) — which branch a ramp belongs on.
+- [`telemetry` command](/packages/cli#telemetry) — what is collected, and how a
+  user turns it off.

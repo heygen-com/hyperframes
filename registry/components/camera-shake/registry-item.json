@@ -1,0 +1,58 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "camera-shake",
+  "type": "hyperframes:component",
+  "title": "Camera Shake",
+  "description": "Procedural handheld, telephoto and rig camera shake for any wrapper: nine measured profiles with per-lens projection, closed-form and seek-safe",
+  "tags": ["camera", "shake", "handheld", "effect", "cinematic"],
+  "variables": [
+    {
+      "id": "shakeProfile",
+      "type": "enum",
+      "label": "Shake profile",
+      "default": "handheld-normal-mild",
+      "options": [
+        { "value": "handheld-normal-mild", "label": "Handheld - normal lens, mild" },
+        { "value": "handheld-normal-strong", "label": "Handheld - normal lens, strong" },
+        { "value": "handheld-normal-extreme", "label": "Handheld - normal lens, extreme" },
+        { "value": "handheld-wideangle-mild", "label": "Handheld - wide angle, mild" },
+        { "value": "handheld-wideangle-strong", "label": "Handheld - wide angle, strong" },
+        { "value": "handheld-tele-mild", "label": "Handheld - telephoto, mild" },
+        { "value": "handheld-tele-strong", "label": "Handheld - telephoto, strong" },
+        { "value": "rig-6d-shake", "label": "Rig - 6D shake (engine buzz)" },
+        { "value": "rig-6d-wobble", "label": "Rig - 6D wobble" }
+      ]
+    },
+    {
+      "id": "shakeIntensity",
+      "type": "number",
+      "label": "Intensity multiplier",
+      "default": 1,
+      "min": 0,
+      "max": 3,
+      "step": 0.05
+    },
+    {
+      "id": "shakeFrequency",
+      "type": "number",
+      "label": "Frequency multiplier",
+      "default": 1,
+      "min": 0.1,
+      "max": 4,
+      "step": 0.05
+    },
+    {
+      "id": "shakeRotation",
+      "type": "boolean",
+      "label": "Include rotation (roll + tilt/pan)",
+      "default": true
+    }
+  ],
+  "files": [
+    {
+      "path": "camera-shake.html",
+      "target": "compositions/components/camera-shake.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

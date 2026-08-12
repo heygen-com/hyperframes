@@ -1,0 +1,83 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "radial-surround",
+  "type": "hyperframes:component",
+  "title": "Radial Surround",
+  "description": "Labeled hairline chips assemble around a centered subject on an elliptical ring, then optionally converge inward with a subtle edge dim. The center never moves: surrounded, not zoomed.",
+  "tags": ["motion-primitive", "problem-setup", "radial", "ring", "surround", "converge"],
+  "jobs": ["agitate"],
+  "family": "layout",
+  "profile": "surround",
+  "evidence": "Wave J J2-6: flagship frame 02-problem elliptical ring math (FAR/NEAR radii, per-chip cos/sin angles) generalized to a slotted primitive",
+  "syncPoints": [
+    { "id": "ring-assembled", "phase": "in", "offset": 2.95 },
+    { "id": "surround-closed", "phase": "in", "offset": 4.5 }
+  ],
+  "files": [
+    {
+      "path": "radial-surround.html",
+      "target": "compositions/components/radial-surround.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "center_label",
+      "type": "string",
+      "role": "content",
+      "label": "Center label",
+      "description": "Label on the default center token card.",
+      "default": "Your team"
+    },
+    {
+      "id": "chips",
+      "type": "string",
+      "role": "content",
+      "label": "Chips",
+      "description": "Comma-separated chip labels that surround the center (up to 12).",
+      "default": "Docs,Tickets,Dashboards,Inbox,Chat,Sheets"
+    },
+    {
+      "id": "close_in",
+      "type": "boolean",
+      "role": "timing",
+      "label": "Close in",
+      "description": "Converge the ring inward with a subtle edge dim after assembly. The center never moves.",
+      "default": true
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated per-chip entrance times in seconds. Blank entries use the default cascade.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used by the center card tint.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the surrounded stage leaves the frame. Default none: the crowded hold ends the film.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

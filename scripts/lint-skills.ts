@@ -225,7 +225,7 @@ export function lintFrontmatter(content: string): LineViolation[] {
       violation(1, `Missing SKILL.md YAML frontmatter (must start with '---').`, "<top of file>"),
     ];
   }
-  const parsed = parseFrontmatterYaml(match[1]);
+  const parsed = parseFrontmatterYaml(match[1] ?? "");
   const preflightError = parsedDataError(parsed);
   if (preflightError) return [preflightError];
   return validateShape(parsed.data as Record<string, unknown>);

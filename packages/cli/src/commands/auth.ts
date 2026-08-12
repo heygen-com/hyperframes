@@ -17,6 +17,7 @@ import { c } from "../ui/colors.js";
 
 export const examples: Example[] = [
   ["Sign in via browser (OAuth)", "hyperframes auth login"],
+  ["Sign in from SSH/headless terminal", "hyperframes auth login --device"],
   ["Save an API key (interactive)", "hyperframes auth login --api-key"],
   ["Save an API key from stdin", "echo $HEYGEN_API_KEY | hyperframes auth login --api-key"],
   ["Check who you're signed in as", "hyperframes auth status"],
@@ -31,7 +32,7 @@ Manage HeyGen credentials. Credentials live in
 ${c.accent("~/.heygen/credentials")} and are shared with heygen-cli.
 
 ${c.bold("SUBCOMMANDS:")}
-  ${c.accent("login")}    ${c.dim("Sign in via browser (default) or --api-key for a long-lived key.")}
+  ${c.accent("login")}    ${c.dim("Sign in via browser, --device for SSH, or --api-key for a long-lived key.")}
   ${c.accent("status")}   ${c.dim("Show the active credential's source, type, and identity.")}
   ${c.accent("refresh")}  ${c.dim("Force-refresh the OAuth access token.")}
   ${c.accent("logout")}   ${c.dim("Remove the stored credential (--keep-api-key for OAuth-only).")}
@@ -42,6 +43,7 @@ ${c.bold("ENV VARS:")}
   ${c.accent("HEYGEN_API_URL")}              Override the API base URL (default https://api.heygen.com).
   ${c.accent("HEYGEN_CONFIG_DIR")}           Override the credentials directory (default ~/.heygen).
   ${c.accent("HYPERFRAMES_OAUTH_CLIENT_ID")} Override the OAuth client_id (for dev/test).
+  ${c.accent("HYPERFRAMES_OAUTH_DEVICE_URL")} Override the RFC 8628 device endpoint (for dev/test).
 `;
 
 export default defineCommand({

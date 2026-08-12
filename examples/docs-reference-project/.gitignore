@@ -1,8 +1,0 @@
-.work/
-.hyperframes/
-.transcode-cache/
-node_modules/
-renders/
-capture/
-live/
-snapshots/

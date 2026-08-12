@@ -7,6 +7,7 @@ import {
   buildStudioHash,
   parseStudioUrlStateFromHash,
   type StudioUrlSelectionState,
+  type StudioUrlSelectionTarget,
   type StudioUrlState,
 } from "../utils/studioUrlState";
 
@@ -22,6 +23,8 @@ interface UseStudioUrlStateParams {
   rightCollapsed: boolean;
   activeCompPathHydrated: boolean;
   domEditSelection: DomEditSelection | null;
+  domEditGroupSelections: DomEditSelection[];
+  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
@@ -38,8 +41,7 @@ interface UseStudioUrlStateParams {
   initialState: StudioUrlState;
 }
 
-function toPersistedSelection(selection: DomEditSelection | null): StudioUrlSelectionState | null {
-  if (!selection) return null;
+function toPersistedTarget(selection: DomEditSelection): StudioUrlSelectionTarget | null {
   if (!selection.id && !selection.selector) return null;
   return {
     sourceFile: selection.sourceFile || undefined,
@@ -49,10 +51,107 @@ function toPersistedSelection(selection: DomEditSelection | null): StudioUrlSele
   };
 }
 
+function selectionTargetKey(selection: StudioUrlSelectionTarget): string {
+  return [
+    selection.sourceFile ?? "",
+    selection.id ?? "",
+    selection.selector ?? "",
+    selection.selectorIndex ?? "",
+  ].join("|");
+}
+
+function toPersistedSelection(
+  selection: DomEditSelection | null,
+  // Optional: a caller that only ever has one selection has nothing to add, and
+  // the URL must still carry that one rather than throwing on the way out.
+  group: DomEditSelection[] = [],
+): StudioUrlSelectionState | null {
+  if (!selection) return null;
+  const primary = toPersistedTarget(selection);
+  if (!primary) return null;
+  // The primary is already carried by the top-level fields; the rest ride along so the link
+  // reopens the same multi-selection instead of a single element.
+  const primaryKey = selectionTargetKey(primary);
+  const members = new Map<string, StudioUrlSelectionTarget>();
+  for (const member of group) {
+    const target = toPersistedTarget(member);
+    if (!target) continue;
+    const key = selectionTargetKey(target);
+    if (key !== primaryKey) members.set(key, target);
+  }
+  return {
+    ...primary,
+    group: members.size > 0 ? [...members.values()] : undefined,
+  };
+}
+
 function replaceHash(nextHash: string) {
   if (typeof window === "undefined") return;
   if (window.location.hash === nextHash) return;
   window.history.replaceState(null, "", nextHash);
+}
+
+interface ResolveUrlSelectionsParams {
+  doc: Document;
+  primaryElement: HTMLElement;
+  selection: StudioUrlSelectionState;
+  group: StudioUrlSelectionTarget[];
+  activeCompPath: string | null;
+  isCurrent: () => boolean;
+  buildDomSelection: UseStudioUrlStateParams["buildDomSelectionFromTarget"];
+}
+
+function findUrlSelectionElement(
+  doc: Document,
+  target: StudioUrlSelectionTarget,
+  fallbackSourceFile: string,
+  activeCompPath: string | null,
+): HTMLElement | null {
+  return findElementForSelection(
+    doc,
+    {
+      sourceFile: target.sourceFile ?? fallbackSourceFile,
+      id: target.id,
+      selector: target.selector,
+      selectorIndex: target.selectorIndex,
+    },
+    activeCompPath,
+  );
+}
+
+async function buildOptionalDomSelection(
+  element: HTMLElement | null,
+  buildDomSelection: UseStudioUrlStateParams["buildDomSelectionFromTarget"],
+): Promise<DomEditSelection | null> {
+  if (!element) return null;
+  return buildDomSelection(element, { preferClipAncestor: false });
+}
+
+async function resolveUrlSelections({
+  doc,
+  primaryElement,
+  selection,
+  group,
+  activeCompPath,
+  isCurrent,
+  buildDomSelection,
+}: ResolveUrlSelectionsParams): Promise<DomEditSelection[] | null> {
+  const primary = await buildDomSelection(primaryElement, { preferClipAncestor: false });
+  if (!isCurrent()) return null;
+  if (!primary) return [];
+  const members = [primary];
+  for (const member of group) {
+    const element = findUrlSelectionElement(
+      doc,
+      member,
+      selection.sourceFile ?? "",
+      activeCompPath,
+    );
+    const resolved = await buildOptionalDomSelection(element, buildDomSelection);
+    if (!isCurrent()) return null;
+    if (resolved) members.push(resolved);
+  }
+  return members;
 }
 
 export function useStudioUrlState({
@@ -67,6 +166,8 @@ export function useStudioUrlState({
   rightCollapsed,
   activeCompPathHydrated,
   domEditSelection,
+  domEditGroupSelections,
+  applyMarqueeSelection,
   buildDomSelectionFromTarget,
   applyDomSelection,
   setRightPanelTab,
@@ -82,6 +183,7 @@ export function useStudioUrlState({
   const [selectionHydrated, setSelectionHydrated] = useState(initialState.selection == null);
   const pendingSelectionRef = useRef(initialState.selection);
   const stableTimeRef = useRef<number | null>(initialState.currentTime);
+  const selectionApplySeqRef = useRef(0);
 
   const buildUrlState = useCallback(
     (): StudioUrlState => ({
@@ -91,10 +193,10 @@ export function useStudioUrlState({
       rightCollapsed,
       timelineVisible: null,
       selection: hydratedSelectionRef.current
-        ? toPersistedSelection(domEditSelection)
+        ? toPersistedSelection(domEditSelection, domEditGroupSelections)
         : pendingSelectionRef.current,
     }),
-    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab],
+    [activeCompPath, domEditGroupSelections, domEditSelection, rightCollapsed, rightPanelTab],
   );
 
   // Resolve a URL selection to a live element and apply it. Shared by the initial
@@ -103,6 +205,7 @@ export function useStudioUrlState({
   // a missing element or null selection clears the selection and returns true.
   const applyUrlSelection = useCallback(
     (selection: StudioUrlSelectionState | null): boolean => {
+      const applySeq = ++selectionApplySeqRef.current;
       if (!selection) {
         applyDomSelection(null, { revealPanel: false });
         return true;
@@ -128,12 +231,32 @@ export function useStudioUrlState({
         applyDomSelection(null, { revealPanel: false });
         return true;
       }
-      void buildDomSelectionFromTarget(element, { preferClipAncestor: false }).then((resolved) => {
-        applyDomSelection(resolved, { revealPanel: false });
+      const group = selection.group ?? [];
+      void resolveUrlSelections({
+        doc,
+        primaryElement: element,
+        selection,
+        group,
+        activeCompPath,
+        isCurrent: () => applySeq === selectionApplySeqRef.current,
+        buildDomSelection: buildDomSelectionFromTarget,
+      }).then((members) => {
+        if (!members) return;
+        const primary = members[0];
+        if (!primary) return applyDomSelection(null, { revealPanel: false });
+        if (group.length === 0) return applyDomSelection(primary, { revealPanel: false });
+        // Missing group members are dropped without failing the rest.
+        applyMarqueeSelection(members, false);
       });
       return true;
     },
-    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
+    [
+      activeCompPath,
+      applyDomSelection,
+      applyMarqueeSelection,
+      buildDomSelectionFromTarget,
+      previewIframeRef,
+    ],
   );
 
   useEffect(() => {

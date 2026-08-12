@@ -143,3 +143,41 @@ export function OffCanvasIndicators({
     </>
   );
 }
+
+/**
+ * The dashed outlines around a selected element's children.
+ *
+ * Extracted from the canvas overlay, which is at its 600-line limit, and it
+ * sits here rather than in its own file because it is the same kind of thing:
+ * a passive, non-interactive mark the overlay draws over the composition.
+ */
+export function ChildRectOutlines({
+  rects,
+}: {
+  rects: ReadonlyArray<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    angle?: number;
+  }>;
+}) {
+  return (
+    <>
+      {rects.map((rect, index) => (
+        <div
+          key={index}
+          className="pointer-events-none absolute border border-dashed border-white/20 rounded-sm"
+          style={{
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            // A child outline is drawn ON the child, so it rotates with it.
+            transform: rect.angle ? `rotate(${rect.angle}deg)` : undefined,
+          }}
+        />
+      ))}
+    </>
+  );
+}

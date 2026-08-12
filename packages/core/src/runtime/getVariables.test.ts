@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getVariables, readDeclaredDefaults } from "./getVariables";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { getVariables, readDeclaredDefaults, resetUnknownEnumWarnings } from "./getVariables";
 
 const VARIABLES_ATTR = "data-composition-variables";
 
@@ -201,6 +201,140 @@ describe("readDeclaredDefaults", () => {
     const b = document.createElement("html");
     b.setAttribute("data-composition-variables", JSON.stringify({ title: "x" }));
     expect(readDeclaredDefaults(b)).toEqual({});
+  });
+});
+
+describe("out-of-set enum values (observability only — never changes the returned map)", () => {
+  // One enum plus a number and a string, so "only enums are inspected" is
+  // pinned by the same declaration the warning reads.
+  const DECLARED = JSON.stringify([
+    {
+      id: "accent",
+      type: "enum",
+      label: "Accent",
+      default: "green",
+      options: [
+        { value: "green", label: "Green" },
+        { value: "blue", label: "Blue" },
+        { value: "violet", label: "Violet" },
+      ],
+    },
+    { id: "swap_at", type: "number", label: "Swap at", default: 0.5 },
+    { id: "title", type: "string", label: "Title", default: "Hello" },
+  ]);
+  const DEFAULTS = { accent: "green", swap_at: 0.5, title: "Hello" };
+
+  let warnings: string[];
+
+  beforeEach(() => {
+    resetUnknownEnumWarnings();
+    document.body.innerHTML = "";
+    setDeclared(DECLARED);
+    document.documentElement.setAttribute("data-composition-id", "morph-swap");
+    setOverrides(undefined);
+    warnings = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.documentElement.removeAttribute("data-composition-id");
+    setDeclared(null);
+    setOverrides(undefined);
+    resetUnknownEnumWarnings();
+  });
+
+  it("a declared option warns nothing", () => {
+    setOverrides({ accent: "violet" });
+    expect(getVariables()).toEqual({ ...DEFAULTS, accent: "violet" });
+    expect(warnings).toEqual([]);
+  });
+
+  it("an absent value warns nothing — absent is the normal case", () => {
+    expect(getVariables()).toEqual(DEFAULTS);
+    expect(warnings).toEqual([]);
+  });
+
+  it("an enum declared without a default and never set warns nothing", () => {
+    setDeclared(
+      JSON.stringify([
+        { id: "accent", type: "enum", label: "Accent", options: [{ value: "green" }] },
+      ]),
+    );
+    expect(getVariables()).toEqual({});
+    expect(warnings).toEqual([]);
+  });
+
+  it("an out-of-set value warns once, naming composition, variable, value and fallback", () => {
+    setOverrides({ accent: "orange" });
+    expect(getVariables()).toEqual({ ...DEFAULTS, accent: "orange" });
+    expect(warnings).toHaveLength(1);
+    const message = warnings[0] ?? "";
+    expect(message).toContain("runtime_unknown_enum_value");
+    expect(message).toContain("morph-swap");
+    expect(message).toContain('"accent"');
+    expect(message).toContain('got "orange"');
+    expect(message).toContain("green, blue, violet");
+    expect(message).toContain('Rendering "green" instead');
+  });
+
+  it("falls back to the root composition id when the declarer carries none", () => {
+    // The real top-level shape: <html> declares, the root <div> has the id.
+    document.documentElement.removeAttribute("data-composition-id");
+    document.body.innerHTML = '<div data-composition-id="hero-scene"></div>';
+    setOverrides({ accent: "orange" });
+    getVariables();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("hero-scene");
+  });
+
+  it("the same bad value twice warns once; a different bad value warns again", () => {
+    setOverrides({ accent: "orange" });
+    getVariables();
+    getVariables();
+    expect(warnings).toHaveLength(1);
+
+    setOverrides({ accent: "puce" });
+    getVariables();
+    expect(warnings).toHaveLength(2);
+    expect(warnings[1]).toContain('got "puce"');
+  });
+
+  it("non-enum variables are never inspected (any number or string is legal)", () => {
+    setOverrides({ swap_at: 9.9, title: "anything at all" });
+    expect(getVariables()).toEqual({ ...DEFAULTS, swap_at: 9.9, title: "anything at all" });
+    expect(warnings).toEqual([]);
+  });
+
+  it("does not warn when the declared default is itself out of set — nothing fell back", () => {
+    setDeclared(
+      JSON.stringify([
+        {
+          id: "accent",
+          type: "enum",
+          label: "Accent",
+          default: "orange",
+          options: [{ value: "green" }, { value: "blue" }],
+        },
+      ]),
+    );
+    expect(getVariables()).toEqual({ accent: "orange" });
+    expect(warnings).toEqual([]);
+  });
+
+  it("returns byte-identical values whether the value is in set or not", () => {
+    setOverrides({ accent: "violet" });
+    const good = getVariables();
+    setOverrides({ accent: "orange" });
+    const bad = getVariables();
+    expect(warnings).toHaveLength(1);
+    // Same keys, same non-enum values, and the bad value passed through
+    // untouched — the composition's own guard still owns the coercion.
+    expect(Object.keys(bad)).toEqual(Object.keys(good));
+    expect(bad).toEqual({ ...good, accent: "orange" });
+    expect(bad.accent).toBe("orange");
   });
 });
 

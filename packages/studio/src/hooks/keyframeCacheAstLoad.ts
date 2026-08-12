@@ -42,7 +42,35 @@ function hasAnimations(value: unknown): value is ParsedGsapAnimations {
   );
 }
 
-export async function fetchParsedAnimations(
+/**
+ * Requests for the same file that overlap in time, keyed `projectId|sourceFile`.
+ *
+ * Every parse re-reads and re-parses the whole composition server-side, and a
+ * multi-element action asks for the same file once per element. Sharing the
+ * in-flight promise makes that one request. Only OVERLAPPING calls share: the
+ * entry is dropped the moment it settles, so a call made after a write still
+ * gets a fresh parse.
+ */
+const inFlightParses = new Map<string, Promise<ParsedGsapAnimations | null>>();
+
+export function fetchParsedAnimations(
+  projectId: string,
+  sourceFile: string,
+  options: { fresh?: boolean } = {},
+): Promise<ParsedGsapAnimations | null> {
+  const key = `${projectId}|${sourceFile}`;
+  if (options.fresh) inFlightParses.delete(key);
+  const inFlight = inFlightParses.get(key);
+  if (inFlight) return inFlight;
+  const request = requestParsedAnimations(projectId, sourceFile).finally(() => {
+    // A superseded pre-write request must not evict the fresh post-write one.
+    if (inFlightParses.get(key) === request) inFlightParses.delete(key);
+  });
+  inFlightParses.set(key, request);
+  return request;
+}
+
+async function requestParsedAnimations(
   projectId: string,
   sourceFile: string,
 ): Promise<ParsedGsapAnimations | null> {

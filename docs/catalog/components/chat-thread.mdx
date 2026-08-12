@@ -1,0 +1,1402 @@
+---
+title: "Chat Thread"
+description: "The measured conversation as one mountable scene at full fidelity: status bar, back badge, avatar and name pill, bubbles with real iMessage tails, a Delivered receipt, large emoji rows, a media placeholder, a link card, and typing dots holding the beat. Every message picks its type by prefix - recv:/sent: text, emoji: a large row, img media, card:Title~domain a link card - and heights are measured at mount so any thread fits"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/components/chat-thread.json"
+  compositionId="chat-thread"
+  compositionSrc="compositions/components/chat-thread.html"
+  variables={[{"id":"contact","type":"string","role":"content","label":"Contact","description":"Name in the thread header; the avatar shows its first letter.","default":"Rachel"},{"id":"unread","type":"number","role":"content","label":"Unread badge","description":"Count in the back-button badge. 0 hides it.","default":12,"min":0,"max":99,"step":1},{"id":"messages","type":"string","role":"content","label":"Messages","description":"Pipe-separated thread. Each entry picks its type by prefix: recv: or sent: for a text bubble, emoji: for a large emoji row, img for a media placeholder, card:Title~domain for a link card. Example: recv:hey|sent:look 👀|card:HyperFrames~hyperframes.heygen.com|emoji:🤯🤯🤯","default":"recv:what r u using for the launch video??|sent:wait look 👀|card:HyperFrames — Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT&#39;S HTML|emoji:🤯🤯🤯|sent:renders in 4K. no editor"},{"id":"beat","type":"number","role":"timing","label":"Beat","description":"Seconds between message arrivals.","default":1.7,"min":0.8,"max":3,"step":0.1},{"id":"dots","type":"enum","role":"timing","label":"Typing dots","description":"Show the three-dot indicator before received messages.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"receipt","type":"enum","role":"content","label":"Delivered receipt","description":"Show Delivered under the last sent bubble, as iMessage does.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
+>
+
+```html chat-thread.html
+<!doctype html>
+<!--
+  chat-thread: HyperFrames motion primitive (scene)
+
+  The measured conversation from message-thread-reveal, as one mountable
+  scene at full fidelity: status bar, back badge, avatar and name pill,
+  bubbles with real iMessage tails, a Delivered receipt, large emoji rows,
+  a media placeholder, a link card with title and domain, and typing dots
+  that hold the beat before replies.
+
+  Every message picks its TYPE by prefix, the way marker-highlight picks a
+  style: recv:/sent: text bubbles, emoji: a large emoji row, img a media
+  placeholder, card:Title~domain a link card. Heights are measured at mount
+  and the scroll choreography is generated from them, so any thread fits.
+
+  Relates to thread-message-stack (#3046): that item is a caller-payload
+  message stack; this is the conversation as a scene.
+
+  #root only, container-type: size, one paused timeline registered under
+  the literal "chat-thread" key. Deterministic: layout measured at mount.
+-->
+<html
+  lang="en"
+  data-composition-id="chat-thread"
+  data-composition-duration="12"
+  data-composition-variables='[{"id": "contact", "type": "string", "role": "content", "label": "Contact", "description": "Name in the thread header; the avatar shows its first letter.", "default": "Rachel"}, {"id": "unread", "type": "number", "role": "content", "label": "Unread badge", "description": "Count in the back-button badge. 0 hides it.", "default": 12, "min": 0, "max": 99, "step": 1}, {"id": "messages", "type": "string", "role": "content", "label": "Messages", "description": "Pipe-separated thread. Each entry picks its type by prefix: recv: or sent: for a text bubble, emoji: for a large emoji row, img for a media placeholder, card:Title~domain for a link card. Example: recv:hey|sent:look 👀|card:HyperFrames~hyperframes.heygen.com|emoji:🤯🤯🤯", "default": "recv:what r u using for the launch video??|sent:wait look 👀|card:HyperFrames — Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT&#39;S HTML|emoji:🤯🤯🤯|sent:renders in 4K. no editor"}, {"id": "beat", "type": "number", "role": "timing", "label": "Beat", "description": "Seconds between message arrivals.", "default": 1.7, "min": 0.8, "max": 3, "step": 0.1}, {"id": "dots", "type": "enum", "role": "timing", "label": "Typing dots", "description": "Show the three-dot indicator before received messages.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}, {"id": "receipt", "type": "enum", "role": "content", "label": "Delivered receipt", "description": "Show Delivered under the last sent bubble, as iMessage does.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Thread</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chat-thread" data-duration="12" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #000;
+            font-family: var(
+              --font-body,
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              sans-serif
+            );
+            pointer-events: none;
+          }
+          /* status bar */
+          .cht-sbtime {
+            position: absolute;
+            left: 8cqw;
+            top: 2.6cqh;
+            color: #fff;
+            font-size: 3.2cqmin;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+          }
+          .cht-sbicons {
+            position: absolute;
+            right: 7cqw;
+            top: 3cqh;
+            width: 11cqw;
+          }
+          /* header */
+          .cht-back {
+            position: absolute;
+            left: 4.4cqw;
+            top: 7.4cqh;
+            width: 2.6cqw;
+            height: 4.4cqw;
+          }
+          .cht-badge {
+            position: absolute;
+            left: 9.5cqw;
+            top: 7.6cqh;
+            height: 4cqmin;
+            padding: 0 2cqmin;
+            background: #262628;
+            border-radius: 2cqmin;
+            color: #fff;
+            font-size: 2.6cqmin;
+            line-height: 4cqmin;
+          }
+          .cht-avatar {
+            position: absolute;
+            left: 50%;
+            top: 5.6cqh;
+            transform: translateX(-50%);
+            width: 8cqmin;
+            height: 8cqmin;
+            border-radius: 50%;
+            background: #9ce474;
+            color: #12300c;
+            font-size: 4cqmin;
+            font-weight: 600;
+            display: grid;
+            place-items: center;
+          }
+          .cht-name {
+            position: absolute;
+            left: 50%;
+            top: 10.6cqh;
+            transform: translateX(-50%);
+            height: 4.2cqmin;
+            padding: 0 1.9cqmin;
+            background: #232325;
+            border-radius: 2.1cqmin;
+            color: #fff;
+            font-size: 2.7cqmin;
+            line-height: 4.2cqmin;
+            white-space: nowrap;
+          }
+          .cht-name .chev {
+            color: #8e8e93;
+            font-size: 2.4cqmin;
+            margin-left: 0.7cqmin;
+          }
+          .cht-cam {
+            position: absolute;
+            right: 5cqw;
+            top: 7.8cqh;
+            width: 4.8cqw;
+          }
+          /* thread viewport */
+          .cht-view {
+            position: absolute;
+            left: 0;
+            top: 15.5cqh;
+            width: 100cqw;
+            bottom: 11cqh;
+            overflow: hidden;
+          }
+          .cht-item {
+            position: absolute;
+            left: 4cqw;
+            width: 92cqw;
+            visibility: hidden;
+          }
+          .cht-item.sent {
+            text-align: right;
+          }
+          .cht-pop {
+            display: inline-block;
+            transform-origin: left bottom;
+            text-align: left;
+          }
+          .cht-item.sent .cht-pop {
+            transform-origin: right bottom;
+          }
+          .cht-bubble {
+            display: inline-block;
+            position: relative;
+            max-width: 72cqw;
+            padding: 1.2cqh 3.4cqw;
+            border-radius: 4.6cqmin;
+            font-size: 3.3cqmin;
+            line-height: 1.35;
+            color: #fff;
+          }
+          .cht-bubble.recv {
+            background: #242428;
+          }
+          .cht-bubble.sent {
+            background: #0a80f8;
+          }
+          /* iMessage tails: cover-circle trick against the #000 screen */
+          .cht-tail-recv::before {
+            content: "";
+            position: absolute;
+            left: -1.1cqmin;
+            bottom: 0;
+            width: 2.9cqmin;
+            height: 2.9cqmin;
+            background: #242428;
+            border-bottom-right-radius: 2.2cqmin 2cqmin;
+          }
+          .cht-tail-recv::after {
+            content: "";
+            position: absolute;
+            left: -2.9cqmin;
+            bottom: -0.2cqmin;
+            width: 2.2cqmin;
+            height: 3.3cqmin;
+            background: #000;
+            border-bottom-right-radius: 1.8cqmin;
+          }
+          .cht-tail-sent::before {
+            content: "";
+            position: absolute;
+            right: -1.1cqmin;
+            bottom: 0;
+            width: 2.9cqmin;
+            height: 2.9cqmin;
+            background: #0a80f8;
+            border-bottom-left-radius: 2.2cqmin 2cqmin;
+          }
+          .cht-tail-sent::after {
+            content: "";
+            position: absolute;
+            right: -2.9cqmin;
+            bottom: -0.2cqmin;
+            width: 2.2cqmin;
+            height: 3.3cqmin;
+            background: #000;
+            border-bottom-left-radius: 1.8cqmin;
+          }
+          .cht-delivered {
+            color: #8e8e93;
+            font-size: 2.7cqmin;
+            margin-top: 0.8cqh;
+            padding-right: 0.7cqw;
+            text-align: right;
+          }
+          .cht-emoji {
+            font-size: 10cqmin;
+            line-height: 1.3;
+            letter-spacing: 0.02em;
+            margin-left: 1cqw;
+            white-space: nowrap;
+            color: #fff;
+          }
+          /* media placeholder */
+          .cht-media {
+            display: inline-block;
+            width: 52cqw;
+            aspect-ratio: 4 / 3;
+            border-radius: 4cqmin;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cht-play {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 10cqmin;
+            height: 10cqmin;
+            border-radius: 50%;
+            background: rgba(253, 253, 253, 0.94);
+          }
+          .cht-play::before {
+            content: "";
+            position: absolute;
+            left: 38%;
+            top: 30%;
+            border-left: 3.4cqmin solid #0d0d0d;
+            border-top: 2cqmin solid transparent;
+            border-bottom: 2cqmin solid transparent;
+          }
+          /* link card */
+          .cht-card {
+            display: inline-block;
+            width: 55cqw;
+            border-radius: 4cqmin;
+            overflow: hidden;
+            text-align: left;
+          }
+          .cht-cardimg {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1.02;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cht-cardmeta {
+            background: #28282c;
+            display: flex;
+            align-items: center;
+            padding: 1.4cqh 2cqw 1.4cqh 3cqw;
+          }
+          .cht-cardtxt {
+            flex: 1;
+            min-width: 0;
+          }
+          .cht-cardtitle {
+            color: #fff;
+            font-size: 2.6cqmin;
+            font-weight: 600;
+            line-height: 1.3;
+          }
+          .cht-carddomain {
+            color: #8e8e93;
+            font-size: 2.3cqmin;
+            margin-top: 0.4cqh;
+          }
+          .cht-cardchev {
+            color: #8e8e93;
+            font-size: 4.6cqmin;
+            padding-left: 1cqw;
+          }
+          /* typing dots with tail circles */
+          .cht-dotswrap {
+            position: relative;
+            display: inline-block;
+          }
+          .cht-dots {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1cqmin;
+            width: 12cqmin;
+            height: 6.5cqmin;
+            background: #242428;
+            border-radius: 3.4cqmin;
+          }
+          .cht-dots span {
+            width: 1.7cqmin;
+            height: 1.7cqmin;
+            border-radius: 50%;
+            background: #8e8e93;
+          }
+          .cht-dtail1 {
+            position: absolute;
+            left: -0.2cqmin;
+            bottom: -0.4cqmin;
+            width: 1.8cqmin;
+            height: 1.8cqmin;
+            border-radius: 50%;
+            background: #242428;
+          }
+          .cht-dtail2 {
+            position: absolute;
+            left: -1.4cqmin;
+            bottom: -1.4cqmin;
+            width: 0.9cqmin;
+            height: 0.9cqmin;
+            border-radius: 50%;
+            background: #242428;
+          }
+          /* composer */
+          .cht-plus {
+            position: absolute;
+            left: 3cqw;
+            bottom: 2.6cqh;
+            width: 8cqmin;
+            height: 8cqmin;
+            border-radius: 50%;
+            background: #262628;
+            color: #8e8e93;
+            font-size: 4.6cqmin;
+            font-weight: 300;
+            display: grid;
+            place-items: center;
+          }
+          .cht-composer {
+            position: absolute;
+            left: 13cqw;
+            bottom: 2.8cqh;
+            width: 83cqw;
+            height: 7.6cqmin;
+            border: 0.35cqmin solid #202022;
+            border-radius: 100cqmin;
+          }
+          .cht-ph {
+            position: absolute;
+            left: 17cqw;
+            bottom: 4.4cqh;
+            color: #8e8e93;
+            font-size: 3.1cqmin;
+          }
+          .cht-mic {
+            position: absolute;
+            right: 6cqw;
+            bottom: 4.2cqh;
+            width: 2.4cqw;
+          }
+        </style>
+        <div class="cht-sbtime">9:41</div>
+        <svg class="cht-sbicons" viewBox="0 0 86 30">
+          <rect x="0" y="16" width="5" height="9" rx="1.5" fill="#fff" />
+          <rect x="8" y="12" width="5" height="13" rx="1.5" fill="#fff" />
+          <rect x="16" y="8" width="5" height="17" rx="1.5" fill="#fff" />
+          <rect x="24" y="4" width="5" height="21" rx="1.5" fill="#fff" />
+          <g transform="translate(44,2)">
+            <path
+              d="M18 21.5 L21.5 25 L25 21.5 A5 5 0 0 0 18 21.5"
+              fill="#fff"
+              transform="translate(-10,-2)"
+            />
+            <path
+              d="M4 13 A14 14 0 0 1 23 13"
+              stroke="#fff"
+              stroke-width="4"
+              fill="none"
+              transform="translate(-2,-2)"
+            />
+            <path
+              d="M8.5 17.5 A8 8 0 0 1 18.5 17.5"
+              stroke="#fff"
+              stroke-width="4"
+              fill="none"
+              transform="translate(-2,-2)"
+            />
+          </g>
+        </svg>
+        <svg class="cht-back" viewBox="0 0 26 48">
+          <path
+            d="M23 3 L4 24 L23 45"
+            stroke="#e4e4e4"
+            stroke-width="6"
+            fill="none"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <div class="cht-badge" id="cht-badge">12</div>
+        <div class="cht-avatar" id="cht-avatar">R</div>
+        <div class="cht-name" id="cht-name">Rachel<span class="chev">&#8250;</span></div>
+        <svg class="cht-cam" viewBox="0 0 52 34">
+          <rect x="0" y="1" width="36" height="32" rx="9" fill="#fff" />
+          <path d="M38 12 L50 4 V30 L38 22 Z" fill="#fff" />
+        </svg>
+        <div class="cht-view" id="cht-view"></div>
+        <div class="cht-plus">+</div>
+        <div class="cht-composer"></div>
+        <div class="cht-ph">Message</div>
+        <svg class="cht-mic" viewBox="0 0 26 42">
+          <rect x="8" y="0" width="10" height="22" rx="5" fill="#8e8e93" />
+          <path
+            d="M2 16 A11 11 0 0 0 24 16"
+            stroke="#8e8e93"
+            stroke-width="3.5"
+            fill="none"
+            transform="translate(0,2)"
+          />
+          <line x1="13" y1="30" x2="13" y2="38" stroke="#8e8e93" stroke-width="3.5" />
+          <line x1="6" y1="39" x2="20" y2="39" stroke="#8e8e93" stroke-width="3.5" />
+        </svg>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "chat-thread";
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            function clampNumber(v, min, max, fb) {
+              var n = typeof v === "number" ? v : parseFloat(v);
+              if (!isFinite(n)) return fb;
+              return Math.min(max, Math.max(min, n));
+            }
+            var contact = text(vars.contact, "Rachel", 16);
+            document.getElementById("cht-avatar").textContent = contact.charAt(0).toUpperCase();
+            var namePill = document.getElementById("cht-name");
+            namePill.innerHTML = "";
+            namePill.appendChild(document.createTextNode(contact));
+            var chev = document.createElement("span");
+            chev.className = "chev";
+            chev.textContent = "\u203a";
+            namePill.appendChild(chev);
+            var unread = Math.round(clampNumber(vars.unread, 0, 99, 12));
+            var badge = document.getElementById("cht-badge");
+            if (unread === 0) badge.style.display = "none";
+            else badge.textContent = String(unread);
+            var beat = clampNumber(vars.beat, 0.8, 3, 1.7);
+            var dotsOn = vars.dots !== "off";
+            var receiptOn = vars.receipt !== "off";
+
+            var DEFAULT_THREAD =
+              "recv:what r u using for the launch video??|sent:wait look \ud83d\udc40|card:HyperFrames \u2014 Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT'S HTML|emoji:\ud83e\udd2f\ud83e\udd2f\ud83e\udd2f|sent:renders in 4K. no editor";
+            var raw = text(vars.messages, DEFAULT_THREAD, 800);
+            var entries = raw
+              .split("|")
+              .map(function (t) {
+                return t.trim();
+              })
+              .filter(Boolean)
+              .slice(0, 12);
+            if (entries.length === 0) entries = ["recv:hey"];
+
+            var view = document.getElementById("cht-view");
+            var A = [
+              "data-layout-allow-overflow",
+              "data-layout-allow-overlap",
+              "data-layout-allow-occlusion",
+            ];
+            function mark(el) {
+              A.forEach(function (a) {
+                el.setAttribute(a, "");
+              });
+              return el;
+            }
+
+            /* each entry picks its type by prefix, like a style switch */
+            var lastSentIndex = -1;
+            var items = entries.map(function (entry, idx) {
+              var kind = "recv",
+                body = entry;
+              if (entry.indexOf("recv:") === 0) {
+                kind = "recv";
+                body = entry.slice(5);
+              } else if (entry.indexOf("sent:") === 0) {
+                kind = "sent";
+                body = entry.slice(5);
+                lastSentIndex = idx;
+              } else if (entry.indexOf("emoji:") === 0) {
+                kind = "emoji";
+                body = entry.slice(6);
+              } else if (entry.indexOf("card:") === 0) {
+                kind = "card";
+                body = entry.slice(5);
+                lastSentIndex = idx;
+              } else if (entry === "img") {
+                kind = "img";
+                body = "";
+              }
+              var side = kind === "sent" || kind === "card" || kind === "img" ? "sent" : "recv";
+              var item = mark(document.createElement("div"));
+              item.className = "cht-item " + side;
+              var pop = document.createElement("div");
+              pop.className = "cht-pop";
+              if (kind === "img") {
+                pop.innerHTML = '<span class="cht-media"><span class="cht-play"></span></span>';
+              } else if (kind === "emoji") {
+                var row = document.createElement("div");
+                row.className = "cht-emoji";
+                row.textContent = body.trim();
+                pop.appendChild(row);
+              } else if (kind === "card") {
+                var parts = body.split("~");
+                var card = document.createElement("span");
+                card.className = "cht-card";
+                card.innerHTML = '<span class="cht-cardimg"><span class="cht-play"></span></span>';
+                var meta = document.createElement("span");
+                meta.className = "cht-cardmeta";
+                meta.style.display = "flex";
+                var txt = document.createElement("span");
+                txt.className = "cht-cardtxt";
+                var title = document.createElement("span");
+                title.className = "cht-cardtitle";
+                title.style.display = "block";
+                title.textContent = (parts[0] || "Shared link").trim();
+                txt.appendChild(title);
+                var domain = document.createElement("span");
+                domain.className = "cht-carddomain";
+                domain.style.display = "block";
+                domain.textContent = (parts[1] || "").trim();
+                txt.appendChild(domain);
+                meta.appendChild(txt);
+                var chv = document.createElement("span");
+                chv.className = "cht-cardchev";
+                chv.textContent = "\u203a";
+                meta.appendChild(chv);
+                card.appendChild(meta);
+                pop.appendChild(card);
+              } else {
+                var bubble = document.createElement("div");
+                bubble.className = "cht-bubble " + side + " cht-tail-" + side;
+                bubble.textContent = body.trim();
+                pop.appendChild(bubble);
+              }
+              item.appendChild(pop);
+              view.appendChild(item);
+              return { el: item, pop: pop, kind: kind, side: side };
+            });
+            /* Delivered rides the last sent bubble, as iMessage does */
+            if (receiptOn && lastSentIndex >= 0) {
+              var receipt = document.createElement("div");
+              receipt.className = "cht-delivered";
+              receipt.textContent = "Delivered";
+              items[lastSentIndex].pop.appendChild(receipt);
+            }
+            var dotsItem = null;
+            if (dotsOn) {
+              dotsItem = mark(document.createElement("div"));
+              dotsItem.className = "cht-item recv";
+              dotsItem.innerHTML =
+                '<div class="cht-pop"><span class="cht-dotswrap"><span class="cht-dots"><span></span><span></span><span></span></span><span class="cht-dtail1"></span><span class="cht-dtail2"></span></span></div>';
+              view.appendChild(dotsItem);
+            }
+
+            var tl = gsap.timeline({ paused: true });
+            function build() {
+              tl.clear();
+              var viewH = view.offsetHeight || 1;
+              var gap = viewH * 0.018;
+              var heights = items.map(function (item) {
+                return item.el.offsetHeight;
+              });
+              var dotsH = dotsItem ? dotsItem.offsetHeight : 0;
+              var starts = [];
+              var t = 0.4;
+              items.forEach(function (item, i) {
+                if (i > 0) t += beat;
+                starts.push(t);
+              });
+              var duration = 12;
+              var last = starts[starts.length - 1];
+              if (last > duration - 1.2) {
+                var k = (duration - 1.6) / last;
+                starts = starts.map(function (s) {
+                  return 0.4 + (s - 0.4) * k;
+                });
+              }
+              items.forEach(function (item) {
+                gsap.set(item.el, { autoAlpha: 0, y: 0 });
+              });
+              if (dotsItem) gsap.set(dotsItem, { autoAlpha: 0 });
+              items.forEach(function (item, k2) {
+                var at = starts[k2];
+                var bottom = viewH;
+                var yK = [];
+                for (var j = k2; j >= 0; j -= 1) {
+                  bottom -= heights[j];
+                  yK[j] = bottom;
+                  bottom -= gap;
+                }
+                for (var i = 0; i <= k2; i += 1) {
+                  if (i === k2) {
+                    tl.set(item.el, { y: yK[i] }, at);
+                    tl.set(item.el, { autoAlpha: 1 }, at);
+                    tl.fromTo(
+                      item.pop,
+                      { scale: 0.75, autoAlpha: 0.6 },
+                      { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+                      at,
+                    );
+                  } else {
+                    tl.to(items[i].el, { y: yK[i], duration: 1.0, ease: "expo.out" }, at);
+                  }
+                }
+                if (dotsItem && item.side === "recv" && item.kind !== "emoji" && k2 > 0) {
+                  var dAt = Math.max(starts[k2 - 1] + 0.35, at - beat * 0.55);
+                  tl.set(dotsItem, { y: viewH - dotsH }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 1 }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 0 }, at);
+                }
+              });
+              tl.set({}, {}, duration);
+              tl.seek(0);
+            }
+            build();
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function () {
+                build();
+                tl.pause(0);
+              });
+            }
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add chat-thread" item="chat-thread" />
+
+That writes one file: `compositions/components/chat-thread.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/chat-thread.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `contact` | `Rachel` | string | Name in the thread header; the avatar shows its first letter. |
+| `unread` | `12` | 0 to 99, step 1 | Count in the back-button badge. 0 hides it. |
+| `messages` | `recv:what r u using for the launch video??|sent:wait look 👀|card:HyperFrames — Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT&#39;S HTML|emoji:🤯🤯🤯|sent:renders in 4K. no editor` | string | Pipe-separated thread. Each entry picks its type by prefix: recv: or sent: for a text bubble, emoji: for a large emoji row, img for a media placeholder, card:Title~domain for a link card. Example: recv:hey|sent:look 👀|card:HyperFrames~hyperframes.heygen.com|emoji:🤯🤯🤯 |
+| `beat` | `1.7` | 0.8 to 3, step 0.1 | Seconds between message arrivals. |
+| `dots` | `on` | `on`, `off` | Show the three-dot indicator before received messages. |
+| `receipt` | `on` | `on`, `off` | Show Delivered under the last sent bubble, as iMessage does. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="chat-thread"
+  data-composition-src="compositions/components/chat-thread.html"
+  data-variable-values='{"contact":"Rachel","unread":12,"messages":"recv:what r u using for the launch video??|sent:wait look 👀|card:HyperFrames — Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT&#39;S HTML|emoji:🤯🤯🤯|sent:renders in 4K. no editor","beat":1.7,"dots":"on","receipt":"on"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`chat-thread.html`}>
+
+```html
+<!doctype html>
+<!--
+  chat-thread: HyperFrames motion primitive (scene)
+
+  The measured conversation from message-thread-reveal, as one mountable
+  scene at full fidelity: status bar, back badge, avatar and name pill,
+  bubbles with real iMessage tails, a Delivered receipt, large emoji rows,
+  a media placeholder, a link card with title and domain, and typing dots
+  that hold the beat before replies.
+
+  Every message picks its TYPE by prefix, the way marker-highlight picks a
+  style: recv:/sent: text bubbles, emoji: a large emoji row, img a media
+  placeholder, card:Title~domain a link card. Heights are measured at mount
+  and the scroll choreography is generated from them, so any thread fits.
+
+  Relates to thread-message-stack (#3046): that item is a caller-payload
+  message stack; this is the conversation as a scene.
+
+  #root only, container-type: size, one paused timeline registered under
+  the literal "chat-thread" key. Deterministic: layout measured at mount.
+-->
+<html
+  lang="en"
+  data-composition-id="chat-thread"
+  data-composition-duration="12"
+  data-composition-variables='[{"id": "contact", "type": "string", "role": "content", "label": "Contact", "description": "Name in the thread header; the avatar shows its first letter.", "default": "Rachel"}, {"id": "unread", "type": "number", "role": "content", "label": "Unread badge", "description": "Count in the back-button badge. 0 hides it.", "default": 12, "min": 0, "max": 99, "step": 1}, {"id": "messages", "type": "string", "role": "content", "label": "Messages", "description": "Pipe-separated thread. Each entry picks its type by prefix: recv: or sent: for a text bubble, emoji: for a large emoji row, img for a media placeholder, card:Title~domain for a link card. Example: recv:hey|sent:look 👀|card:HyperFrames~hyperframes.heygen.com|emoji:🤯🤯🤯", "default": "recv:what r u using for the launch video??|sent:wait look 👀|card:HyperFrames — Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT&#39;S HTML|emoji:🤯🤯🤯|sent:renders in 4K. no editor"}, {"id": "beat", "type": "number", "role": "timing", "label": "Beat", "description": "Seconds between message arrivals.", "default": 1.7, "min": 0.8, "max": 3, "step": 0.1}, {"id": "dots", "type": "enum", "role": "timing", "label": "Typing dots", "description": "Show the three-dot indicator before received messages.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}, {"id": "receipt", "type": "enum", "role": "content", "label": "Delivered receipt", "description": "Show Delivered under the last sent bubble, as iMessage does.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Thread</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chat-thread" data-duration="12" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #000;
+            font-family: var(
+              --font-body,
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              sans-serif
+            );
+            pointer-events: none;
+          }
+          /* status bar */
+          .cht-sbtime {
+            position: absolute;
+            left: 8cqw;
+            top: 2.6cqh;
+            color: #fff;
+            font-size: 3.2cqmin;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+          }
+          .cht-sbicons {
+            position: absolute;
+            right: 7cqw;
+            top: 3cqh;
+            width: 11cqw;
+          }
+          /* header */
+          .cht-back {
+            position: absolute;
+            left: 4.4cqw;
+            top: 7.4cqh;
+            width: 2.6cqw;
+            height: 4.4cqw;
+          }
+          .cht-badge {
+            position: absolute;
+            left: 9.5cqw;
+            top: 7.6cqh;
+            height: 4cqmin;
+            padding: 0 2cqmin;
+            background: #262628;
+            border-radius: 2cqmin;
+            color: #fff;
+            font-size: 2.6cqmin;
+            line-height: 4cqmin;
+          }
+          .cht-avatar {
+            position: absolute;
+            left: 50%;
+            top: 5.6cqh;
+            transform: translateX(-50%);
+            width: 8cqmin;
+            height: 8cqmin;
+            border-radius: 50%;
+            background: #9ce474;
+            color: #12300c;
+            font-size: 4cqmin;
+            font-weight: 600;
+            display: grid;
+            place-items: center;
+          }
+          .cht-name {
+            position: absolute;
+            left: 50%;
+            top: 10.6cqh;
+            transform: translateX(-50%);
+            height: 4.2cqmin;
+            padding: 0 1.9cqmin;
+            background: #232325;
+            border-radius: 2.1cqmin;
+            color: #fff;
+            font-size: 2.7cqmin;
+            line-height: 4.2cqmin;
+            white-space: nowrap;
+          }
+          .cht-name .chev {
+            color: #8e8e93;
+            font-size: 2.4cqmin;
+            margin-left: 0.7cqmin;
+          }
+          .cht-cam {
+            position: absolute;
+            right: 5cqw;
+            top: 7.8cqh;
+            width: 4.8cqw;
+          }
+          /* thread viewport */
+          .cht-view {
+            position: absolute;
+            left: 0;
+            top: 15.5cqh;
+            width: 100cqw;
+            bottom: 11cqh;
+            overflow: hidden;
+          }
+          .cht-item {
+            position: absolute;
+            left: 4cqw;
+            width: 92cqw;
+            visibility: hidden;
+          }
+          .cht-item.sent {
+            text-align: right;
+          }
+          .cht-pop {
+            display: inline-block;
+            transform-origin: left bottom;
+            text-align: left;
+          }
+          .cht-item.sent .cht-pop {
+            transform-origin: right bottom;
+          }
+          .cht-bubble {
+            display: inline-block;
+            position: relative;
+            max-width: 72cqw;
+            padding: 1.2cqh 3.4cqw;
+            border-radius: 4.6cqmin;
+            font-size: 3.3cqmin;
+            line-height: 1.35;
+            color: #fff;
+          }
+          .cht-bubble.recv {
+            background: #242428;
+          }
+          .cht-bubble.sent {
+            background: #0a80f8;
+          }
+          /* iMessage tails: cover-circle trick against the #000 screen */
+          .cht-tail-recv::before {
+            content: "";
+            position: absolute;
+            left: -1.1cqmin;
+            bottom: 0;
+            width: 2.9cqmin;
+            height: 2.9cqmin;
+            background: #242428;
+            border-bottom-right-radius: 2.2cqmin 2cqmin;
+          }
+          .cht-tail-recv::after {
+            content: "";
+            position: absolute;
+            left: -2.9cqmin;
+            bottom: -0.2cqmin;
+            width: 2.2cqmin;
+            height: 3.3cqmin;
+            background: #000;
+            border-bottom-right-radius: 1.8cqmin;
+          }
+          .cht-tail-sent::before {
+            content: "";
+            position: absolute;
+            right: -1.1cqmin;
+            bottom: 0;
+            width: 2.9cqmin;
+            height: 2.9cqmin;
+            background: #0a80f8;
+            border-bottom-left-radius: 2.2cqmin 2cqmin;
+          }
+          .cht-tail-sent::after {
+            content: "";
+            position: absolute;
+            right: -2.9cqmin;
+            bottom: -0.2cqmin;
+            width: 2.2cqmin;
+            height: 3.3cqmin;
+            background: #000;
+            border-bottom-left-radius: 1.8cqmin;
+          }
+          .cht-delivered {
+            color: #8e8e93;
+            font-size: 2.7cqmin;
+            margin-top: 0.8cqh;
+            padding-right: 0.7cqw;
+            text-align: right;
+          }
+          .cht-emoji {
+            font-size: 10cqmin;
+            line-height: 1.3;
+            letter-spacing: 0.02em;
+            margin-left: 1cqw;
+            white-space: nowrap;
+            color: #fff;
+          }
+          /* media placeholder */
+          .cht-media {
+            display: inline-block;
+            width: 52cqw;
+            aspect-ratio: 4 / 3;
+            border-radius: 4cqmin;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cht-play {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 10cqmin;
+            height: 10cqmin;
+            border-radius: 50%;
+            background: rgba(253, 253, 253, 0.94);
+          }
+          .cht-play::before {
+            content: "";
+            position: absolute;
+            left: 38%;
+            top: 30%;
+            border-left: 3.4cqmin solid #0d0d0d;
+            border-top: 2cqmin solid transparent;
+            border-bottom: 2cqmin solid transparent;
+          }
+          /* link card */
+          .cht-card {
+            display: inline-block;
+            width: 55cqw;
+            border-radius: 4cqmin;
+            overflow: hidden;
+            text-align: left;
+          }
+          .cht-cardimg {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1.02;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cht-cardmeta {
+            background: #28282c;
+            display: flex;
+            align-items: center;
+            padding: 1.4cqh 2cqw 1.4cqh 3cqw;
+          }
+          .cht-cardtxt {
+            flex: 1;
+            min-width: 0;
+          }
+          .cht-cardtitle {
+            color: #fff;
+            font-size: 2.6cqmin;
+            font-weight: 600;
+            line-height: 1.3;
+          }
+          .cht-carddomain {
+            color: #8e8e93;
+            font-size: 2.3cqmin;
+            margin-top: 0.4cqh;
+          }
+          .cht-cardchev {
+            color: #8e8e93;
+            font-size: 4.6cqmin;
+            padding-left: 1cqw;
+          }
+          /* typing dots with tail circles */
+          .cht-dotswrap {
+            position: relative;
+            display: inline-block;
+          }
+          .cht-dots {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1cqmin;
+            width: 12cqmin;
+            height: 6.5cqmin;
+            background: #242428;
+            border-radius: 3.4cqmin;
+          }
+          .cht-dots span {
+            width: 1.7cqmin;
+            height: 1.7cqmin;
+            border-radius: 50%;
+            background: #8e8e93;
+          }
+          .cht-dtail1 {
+            position: absolute;
+            left: -0.2cqmin;
+            bottom: -0.4cqmin;
+            width: 1.8cqmin;
+            height: 1.8cqmin;
+            border-radius: 50%;
+            background: #242428;
+          }
+          .cht-dtail2 {
+            position: absolute;
+            left: -1.4cqmin;
+            bottom: -1.4cqmin;
+            width: 0.9cqmin;
+            height: 0.9cqmin;
+            border-radius: 50%;
+            background: #242428;
+          }
+          /* composer */
+          .cht-plus {
+            position: absolute;
+            left: 3cqw;
+            bottom: 2.6cqh;
+            width: 8cqmin;
+            height: 8cqmin;
+            border-radius: 50%;
+            background: #262628;
+            color: #8e8e93;
+            font-size: 4.6cqmin;
+            font-weight: 300;
+            display: grid;
+            place-items: center;
+          }
+          .cht-composer {
+            position: absolute;
+            left: 13cqw;
+            bottom: 2.8cqh;
+            width: 83cqw;
+            height: 7.6cqmin;
+            border: 0.35cqmin solid #202022;
+            border-radius: 100cqmin;
+          }
+          .cht-ph {
+            position: absolute;
+            left: 17cqw;
+            bottom: 4.4cqh;
+            color: #8e8e93;
+            font-size: 3.1cqmin;
+          }
+          .cht-mic {
+            position: absolute;
+            right: 6cqw;
+            bottom: 4.2cqh;
+            width: 2.4cqw;
+          }
+        </style>
+        <div class="cht-sbtime">9:41</div>
+        <svg class="cht-sbicons" viewBox="0 0 86 30">
+          <rect x="0" y="16" width="5" height="9" rx="1.5" fill="#fff" />
+          <rect x="8" y="12" width="5" height="13" rx="1.5" fill="#fff" />
+          <rect x="16" y="8" width="5" height="17" rx="1.5" fill="#fff" />
+          <rect x="24" y="4" width="5" height="21" rx="1.5" fill="#fff" />
+          <g transform="translate(44,2)">
+            <path
+              d="M18 21.5 L21.5 25 L25 21.5 A5 5 0 0 0 18 21.5"
+              fill="#fff"
+              transform="translate(-10,-2)"
+            />
+            <path
+              d="M4 13 A14 14 0 0 1 23 13"
+              stroke="#fff"
+              stroke-width="4"
+              fill="none"
+              transform="translate(-2,-2)"
+            />
+            <path
+              d="M8.5 17.5 A8 8 0 0 1 18.5 17.5"
+              stroke="#fff"
+              stroke-width="4"
+              fill="none"
+              transform="translate(-2,-2)"
+            />
+          </g>
+        </svg>
+        <svg class="cht-back" viewBox="0 0 26 48">
+          <path
+            d="M23 3 L4 24 L23 45"
+            stroke="#e4e4e4"
+            stroke-width="6"
+            fill="none"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <div class="cht-badge" id="cht-badge">12</div>
+        <div class="cht-avatar" id="cht-avatar">R</div>
+        <div class="cht-name" id="cht-name">Rachel<span class="chev">&#8250;</span></div>
+        <svg class="cht-cam" viewBox="0 0 52 34">
+          <rect x="0" y="1" width="36" height="32" rx="9" fill="#fff" />
+          <path d="M38 12 L50 4 V30 L38 22 Z" fill="#fff" />
+        </svg>
+        <div class="cht-view" id="cht-view"></div>
+        <div class="cht-plus">+</div>
+        <div class="cht-composer"></div>
+        <div class="cht-ph">Message</div>
+        <svg class="cht-mic" viewBox="0 0 26 42">
+          <rect x="8" y="0" width="10" height="22" rx="5" fill="#8e8e93" />
+          <path
+            d="M2 16 A11 11 0 0 0 24 16"
+            stroke="#8e8e93"
+            stroke-width="3.5"
+            fill="none"
+            transform="translate(0,2)"
+          />
+          <line x1="13" y1="30" x2="13" y2="38" stroke="#8e8e93" stroke-width="3.5" />
+          <line x1="6" y1="39" x2="20" y2="39" stroke="#8e8e93" stroke-width="3.5" />
+        </svg>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "chat-thread";
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            function clampNumber(v, min, max, fb) {
+              var n = typeof v === "number" ? v : parseFloat(v);
+              if (!isFinite(n)) return fb;
+              return Math.min(max, Math.max(min, n));
+            }
+            var contact = text(vars.contact, "Rachel", 16);
+            document.getElementById("cht-avatar").textContent = contact.charAt(0).toUpperCase();
+            var namePill = document.getElementById("cht-name");
+            namePill.innerHTML = "";
+            namePill.appendChild(document.createTextNode(contact));
+            var chev = document.createElement("span");
+            chev.className = "chev";
+            chev.textContent = "\u203a";
+            namePill.appendChild(chev);
+            var unread = Math.round(clampNumber(vars.unread, 0, 99, 12));
+            var badge = document.getElementById("cht-badge");
+            if (unread === 0) badge.style.display = "none";
+            else badge.textContent = String(unread);
+            var beat = clampNumber(vars.beat, 0.8, 3, 1.7);
+            var dotsOn = vars.dots !== "off";
+            var receiptOn = vars.receipt !== "off";
+
+            var DEFAULT_THREAD =
+              "recv:what r u using for the launch video??|sent:wait look \ud83d\udc40|card:HyperFrames \u2014 Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT'S HTML|emoji:\ud83e\udd2f\ud83e\udd2f\ud83e\udd2f|sent:renders in 4K. no editor";
+            var raw = text(vars.messages, DEFAULT_THREAD, 800);
+            var entries = raw
+              .split("|")
+              .map(function (t) {
+                return t.trim();
+              })
+              .filter(Boolean)
+              .slice(0, 12);
+            if (entries.length === 0) entries = ["recv:hey"];
+
+            var view = document.getElementById("cht-view");
+            var A = [
+              "data-layout-allow-overflow",
+              "data-layout-allow-overlap",
+              "data-layout-allow-occlusion",
+            ];
+            function mark(el) {
+              A.forEach(function (a) {
+                el.setAttribute(a, "");
+              });
+              return el;
+            }
+
+            /* each entry picks its type by prefix, like a style switch */
+            var lastSentIndex = -1;
+            var items = entries.map(function (entry, idx) {
+              var kind = "recv",
+                body = entry;
+              if (entry.indexOf("recv:") === 0) {
+                kind = "recv";
+                body = entry.slice(5);
+              } else if (entry.indexOf("sent:") === 0) {
+                kind = "sent";
+                body = entry.slice(5);
+                lastSentIndex = idx;
+              } else if (entry.indexOf("emoji:") === 0) {
+                kind = "emoji";
+                body = entry.slice(6);
+              } else if (entry.indexOf("card:") === 0) {
+                kind = "card";
+                body = entry.slice(5);
+                lastSentIndex = idx;
+              } else if (entry === "img") {
+                kind = "img";
+                body = "";
+              }
+              var side = kind === "sent" || kind === "card" || kind === "img" ? "sent" : "recv";
+              var item = mark(document.createElement("div"));
+              item.className = "cht-item " + side;
+              var pop = document.createElement("div");
+              pop.className = "cht-pop";
+              if (kind === "img") {
+                pop.innerHTML = '<span class="cht-media"><span class="cht-play"></span></span>';
+              } else if (kind === "emoji") {
+                var row = document.createElement("div");
+                row.className = "cht-emoji";
+                row.textContent = body.trim();
+                pop.appendChild(row);
+              } else if (kind === "card") {
+                var parts = body.split("~");
+                var card = document.createElement("span");
+                card.className = "cht-card";
+                card.innerHTML = '<span class="cht-cardimg"><span class="cht-play"></span></span>';
+                var meta = document.createElement("span");
+                meta.className = "cht-cardmeta";
+                meta.style.display = "flex";
+                var txt = document.createElement("span");
+                txt.className = "cht-cardtxt";
+                var title = document.createElement("span");
+                title.className = "cht-cardtitle";
+                title.style.display = "block";
+                title.textContent = (parts[0] || "Shared link").trim();
+                txt.appendChild(title);
+                var domain = document.createElement("span");
+                domain.className = "cht-carddomain";
+                domain.style.display = "block";
+                domain.textContent = (parts[1] || "").trim();
+                txt.appendChild(domain);
+                meta.appendChild(txt);
+                var chv = document.createElement("span");
+                chv.className = "cht-cardchev";
+                chv.textContent = "\u203a";
+                meta.appendChild(chv);
+                card.appendChild(meta);
+                pop.appendChild(card);
+              } else {
+                var bubble = document.createElement("div");
+                bubble.className = "cht-bubble " + side + " cht-tail-" + side;
+                bubble.textContent = body.trim();
+                pop.appendChild(bubble);
+              }
+              item.appendChild(pop);
+              view.appendChild(item);
+              return { el: item, pop: pop, kind: kind, side: side };
+            });
+            /* Delivered rides the last sent bubble, as iMessage does */
+            if (receiptOn && lastSentIndex >= 0) {
+              var receipt = document.createElement("div");
+              receipt.className = "cht-delivered";
+              receipt.textContent = "Delivered";
+              items[lastSentIndex].pop.appendChild(receipt);
+            }
+            var dotsItem = null;
+            if (dotsOn) {
+              dotsItem = mark(document.createElement("div"));
+              dotsItem.className = "cht-item recv";
+              dotsItem.innerHTML =
+                '<div class="cht-pop"><span class="cht-dotswrap"><span class="cht-dots"><span></span><span></span><span></span></span><span class="cht-dtail1"></span><span class="cht-dtail2"></span></span></div>';
+              view.appendChild(dotsItem);
+            }
+
+            var tl = gsap.timeline({ paused: true });
+            function build() {
+              tl.clear();
+              var viewH = view.offsetHeight || 1;
+              var gap = viewH * 0.018;
+              var heights = items.map(function (item) {
+                return item.el.offsetHeight;
+              });
+              var dotsH = dotsItem ? dotsItem.offsetHeight : 0;
+              var starts = [];
+              var t = 0.4;
+              items.forEach(function (item, i) {
+                if (i > 0) t += beat;
+                starts.push(t);
+              });
+              var duration = 12;
+              var last = starts[starts.length - 1];
+              if (last > duration - 1.2) {
+                var k = (duration - 1.6) / last;
+                starts = starts.map(function (s) {
+                  return 0.4 + (s - 0.4) * k;
+                });
+              }
+              items.forEach(function (item) {
+                gsap.set(item.el, { autoAlpha: 0, y: 0 });
+              });
+              if (dotsItem) gsap.set(dotsItem, { autoAlpha: 0 });
+              items.forEach(function (item, k2) {
+                var at = starts[k2];
+                var bottom = viewH;
+                var yK = [];
+                for (var j = k2; j >= 0; j -= 1) {
+                  bottom -= heights[j];
+                  yK[j] = bottom;
+                  bottom -= gap;
+                }
+                for (var i = 0; i <= k2; i += 1) {
+                  if (i === k2) {
+                    tl.set(item.el, { y: yK[i] }, at);
+                    tl.set(item.el, { autoAlpha: 1 }, at);
+                    tl.fromTo(
+                      item.pop,
+                      { scale: 0.75, autoAlpha: 0.6 },
+                      { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+                      at,
+                    );
+                  } else {
+                    tl.to(items[i].el, { y: yK[i], duration: 1.0, ease: "expo.out" }, at);
+                  }
+                }
+                if (dotsItem && item.side === "recv" && item.kind !== "emoji" && k2 > 0) {
+                  var dAt = Math.max(starts[k2 - 1] + 0.35, at - beat * 0.55);
+                  tl.set(dotsItem, { y: viewH - dotsH }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 1 }, dAt);
+                  tl.set(dotsItem, { autoAlpha: 0 }, at);
+                }
+              });
+              tl.set({}, {}, duration);
+              tl.seek(0);
+            }
+            build();
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function () {
+                build();
+                tl.pause(0);
+              });
+            }
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `chat` `mock-ui` `conversation` `vertical`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

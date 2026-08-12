@@ -117,14 +117,6 @@ function stubPatchFetch(
   return fetchMock;
 }
 
-function stubUnexpectedPersistFetch() {
-  const fetchMock = vi.fn(async (): Promise<Response> => {
-    throw new Error("persist should not run");
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
 async function flushAsyncWork(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
     await Promise.resolve();
@@ -812,14 +804,26 @@ function renderStyleCommitWithFetch(fetchHandler: FetchHandler) {
   };
 }
 
-async function expectRejectedTextStructureEdit(
+/**
+ * Adding or removing a text layer, which no per-child operation can express.
+ *
+ * Both used to be refused outright — the panel offered the buttons and neither
+ * could ever save — so this asserts the opposite of what it used to: one
+ * `rich-text` operation carrying the element's new markup, and no complaint.
+ */
+async function expectPersistedTextStructureEdit(
   commit: (hook: ReturnType<typeof useDomEditCommits>) => Promise<unknown>,
+  expectedMarkup: (markup: string) => void,
 ): Promise<void> {
-  const fetchMock = stubUnexpectedPersistFetch();
+  const fetchMock = stubPatchFetch({
+    ok: true,
+    changed: true,
+    matched: true,
+    content: '<div data-hf-id="hf-card"><span>First</span></div>',
+  });
   const { iframe, element } = createPreviewElement(
     '<div data-hf-id="hf-card"><span>First</span><span>Second</span></div>',
   );
-  const originalInnerHtml = element.innerHTML;
   const selection = createSelection(element, {
     textFields: [
       textField({ key: "first", value: "First", source: "child" }),
@@ -833,17 +837,81 @@ async function expectRejectedTextStructureEdit(
       await commit(rendered.hook);
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(rendered.showToast).toHaveBeenCalledWith(
-      expect.stringContaining("text structure change"),
-      "error",
+    const patchPost = fetchMock.mock.calls.find((call) =>
+      requestUrl(call[0]).includes("/file-mutations/patch-element/"),
     );
-    expect(element.innerHTML).toBe(originalInnerHtml);
-    expect(rendered.recordEdit).not.toHaveBeenCalled();
+    expect(patchPost).toBeDefined();
+    const body = JSON.parse(String(patchPost?.[1]?.body)) as {
+      operations: Array<{ type: string; value?: string }>;
+    };
+    expect(body.operations).toHaveLength(1);
+    expect(body.operations[0]?.type).toBe("rich-text");
+    expectedMarkup(body.operations[0]?.value ?? "");
+    expect(rendered.showToast).not.toHaveBeenCalled();
   } finally {
     rendered.cleanup();
   }
 }
+
+describe("useDomEditCommits rich-text persist handling", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it("restores the session snapshot when rich-text persistence fails", async () => {
+    stubPatchFetch({ ok: true, changed: false, matched: false });
+    const previousHtml = '<span style="color: red">Before</span>';
+    const html = '<span style="color: blue">After</span>';
+    const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomRichTextCommit({ element, html, previousHtml });
+      });
+
+      expect(element.innerHTML).toBe(previousHtml);
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Couldn't save "Hero title"/),
+        "error",
+      );
+    } finally {
+      warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("does not retarget a commit onto a replacement preview node", async () => {
+    const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const html = '<span style="color: blue">After</span>';
+    const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    const replacement = document.createElement("div");
+    replacement.dataset.hfId = "hf-card";
+    replacement.innerHTML = "Reloaded elsewhere";
+    element.replaceWith(replacement);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomRichTextCommit({
+          element,
+          html,
+          previousHtml: "Before",
+        });
+      });
+
+      expect(replacement.innerHTML).toBe("Reloaded elsewhere");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rendered.showToast).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+});
 
 describe("useDomEditCommits style persist handling", () => {
   beforeEach(() => {
@@ -1146,12 +1214,26 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("refuses added child text fields without persisting serialized markup", async () => {
-    await expectRejectedTextStructureEdit((hook) => hook.handleDomAddTextField("first"));
+  it("persists an added child text field as the element's new markup", async () => {
+    await expectPersistedTextStructureEdit(
+      (hook) => hook.handleDomAddTextField("first"),
+      (markup) => {
+        expect(markup).toContain("First");
+        expect(markup).toContain("Second");
+        // The layer that was added, between the two that were there.
+        expect(markup.match(/<span/g) ?? []).toHaveLength(3);
+      },
+    );
   });
 
-  it("refuses removed child text fields without persisting serialized markup", async () => {
-    await expectRejectedTextStructureEdit((hook) => hook.handleDomRemoveTextField("first"));
+  it("persists a removed child text field as the element's new markup", async () => {
+    await expectPersistedTextStructureEdit(
+      (hook) => hook.handleDomRemoveTextField("first"),
+      (markup) => {
+        expect(markup).not.toContain("First");
+        expect(markup).toContain("Second");
+      },
+    );
   });
 
   it("keeps single self text commits on the text-content path", async () => {

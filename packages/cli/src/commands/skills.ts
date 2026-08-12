@@ -727,7 +727,17 @@ const updateCommand = defineCommand({
     // failure doesn't fail the update — the install the CI contract gates on
     // already succeeded.
     try {
-      const { skills, scope } = await checkSkills({ dir, source });
+      // `canonical: true` for the same reason the install's target selection
+      // uses it (see updateSkills) — and more urgently, because this branch
+      // DELETES. Without it, resolveLatestManifest takes the findRepoManifest
+      // shortcut: any `skills-manifest.json` within 16 parent dirs of cwd
+      // becomes "latest". HyperFrames' own repo manifest declares
+      // `source: heygen-com/hyperframes`, so a checkout (or any project
+      // carrying a copy) matches attribution and every published skill absent
+      // from that local file is deleted globally as "no longer published".
+      // An explicit `--source` still wins — canonical only decides what
+      // "latest" means when no source was given. GH #3111.
+      const { skills, scope } = await checkSkills({ dir, source, canonical: true });
       const removed = skills.filter((s) => s.status === "removed").map((s) => s.name);
       if (removed.length) {
         console.log();

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spring-stack-shuffle",
+  "type": "hyperframes:component",
+  "title": "Spring Stack Shuffle",
+  "description": "A stack of 3 to 5 slotted cards reshuffles on cues: the back card throws over the top and lands at the front with real mass, the rest compress and resettle; cues that land mid-flight redirect the moving cards with velocity preserved.",
+  "tags": ["motion-primitive", "product-demo", "physics", "stack", "interruptible-spring"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "stack",
+  "evidence": "Wave K K7: interruptible-spring stack from the X expert study demand slate; L1 redirect authored into the default cue rhythm",
+  "syncPoints": [{ "id": "first-landing", "phase": "in", "offset": 1.75 }],
+  "files": [
+    {
+      "path": "spring-stack-shuffle.html",
+      "target": "compositions/components/spring-stack-shuffle.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "cards",
+      "type": "number",
+      "role": "content",
+      "label": "Cards",
+      "description": "Number of cards in the stack, 3 to 5.",
+      "default": 4,
+      "min": 3,
+      "max": 5,
+      "step": 1
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Shuffle cues",
+      "description": "Comma-separated seconds from mount start; each cue throws the back card to the front. Cues inside a running throw redirect it mid-flight, velocity preserved. Empty keeps the default rhythm.",
+      "default": "0.9, 1.7, 1.95"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Active-card ring color from the contract token map.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the settled stack holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

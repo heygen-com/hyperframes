@@ -16,7 +16,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #fdfefe;
+        background: var(--bg, #fdfefe);
       }
 
       #root {
@@ -24,16 +24,23 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #fdfefe;
-        color: #111315;
-        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg, #fdfefe);
+        color: var(--fg, #111315);
+        font-family: var(
+          --font-display,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Helvetica Neue",
+          Arial,
+          sans-serif
+        );
       }
 
       .green-flash {
         position: absolute;
         inset: 0;
         z-index: 1;
-        background: #30d158;
+        background: var(--accent, #30d158);
         opacity: 0;
       }
 
@@ -45,7 +52,7 @@
         height: 100%;
         align-items: center;
         justify-content: center;
-        padding: 120px 160px;
+        padding: var(--space-3, 120px) var(--space-3, 160px);
       }
 
       .amount-wrap {
@@ -59,7 +66,7 @@
 
       .amount {
         position: relative;
-        color: #111315;
+        color: var(--fg, #111315);
         font-size: 190px;
         font-weight: 900;
         line-height: 0.9;
@@ -68,9 +75,9 @@
         text-align: center;
         white-space: nowrap;
         text-shadow:
-          0 3px 0 rgba(255, 255, 255, 0.58),
-          0 18px 36px rgba(17, 19, 21, 0.14),
-          0 42px 92px rgba(17, 19, 21, 0.1);
+          0 3px 0 var(--bg, rgba(255, 255, 255, 0.58)),
+          0 18px 36px var(--fg, rgba(17, 19, 21, 0.14)),
+          0 42px 92px var(--fg, rgba(17, 19, 21, 0.1));
         will-change: transform, color, opacity, text-shadow;
       }
 
@@ -88,26 +95,26 @@
         display: grid;
         place-items: center;
         opacity: 0;
-        filter: drop-shadow(0 20px 24px rgba(7, 84, 31, 0.2));
+        filter: drop-shadow(0 20px 24px var(--brand, rgba(7, 84, 31, 0.2)));
         will-change: transform, opacity, filter;
       }
 
       .money-icon.bill {
         width: 96px;
         height: 52px;
-        border-radius: 10px;
-        background: #30d158;
+        border-radius: var(--radius, 10px);
+        background: var(--accent, #30d158);
         box-shadow:
-          inset 0 0 0 3px rgba(7, 84, 31, 0.2),
-          inset 0 -10px 18px rgba(7, 84, 31, 0.1),
-          0 16px 26px rgba(7, 84, 31, 0.2),
-          0 34px 64px rgba(7, 84, 31, 0.16);
+          inset 0 0 0 3px var(--brand, rgba(7, 84, 31, 0.2)),
+          inset 0 -10px 18px var(--brand, rgba(7, 84, 31, 0.1)),
+          0 16px 26px var(--brand, rgba(7, 84, 31, 0.2)),
+          0 34px 64px var(--brand, rgba(7, 84, 31, 0.16));
       }
 
       .money-icon.bill::before {
         position: absolute;
-        inset: 9px 16px;
-        border: 2px solid rgba(7, 84, 31, 0.28);
+        inset: var(--space-1, 9px) var(--space-2, 16px);
+        border: 2px solid var(--border, rgba(7, 84, 31, 0.28));
         border-radius: 999px;
         content: "";
       }
@@ -116,25 +123,30 @@
         width: 64px;
         height: 64px;
         border-radius: 50%;
-        background: radial-gradient(circle at 34% 30%, #fff7a6 0%, #ffd54f 40%, #d9a514 100%);
+        background: radial-gradient(
+          circle at 34% 30%,
+          var(--accent-2, #fff7a6) 0%,
+          var(--accent, #ffd54f) 40%,
+          var(--brand, #d9a514) 100%
+        );
         box-shadow:
-          inset 0 0 0 4px rgba(111, 76, 0, 0.12),
-          inset 0 -8px 14px rgba(111, 76, 0, 0.1),
-          0 16px 30px rgba(111, 76, 0, 0.18),
-          0 34px 58px rgba(111, 76, 0, 0.12);
+          inset 0 0 0 4px var(--brand, rgba(111, 76, 0, 0.12)),
+          inset 0 -8px 14px var(--brand, rgba(111, 76, 0, 0.1)),
+          0 16px 30px var(--brand, rgba(111, 76, 0, 0.18)),
+          0 34px 58px var(--brand, rgba(111, 76, 0, 0.12));
       }
 
       .money-icon .mark {
         position: relative;
         z-index: 1;
-        color: #07541f;
+        color: var(--fg, #07541f);
         font-size: 30px;
         font-weight: 900;
         line-height: 1;
       }
 
       .money-icon.coin .mark {
-        color: #6f4c00;
+        color: var(--fg, #6f4c00);
         font-size: 28px;
       }
     </style>
@@ -258,9 +270,9 @@
       tl.to(
         "#amount",
         {
-          color: "#30d158",
+          color: "var(--accent, #30d158)",
           textShadow:
-            "0 3px 0 rgba(255,255,255,0.52), 0 18px 40px rgba(48,209,88,0.3), 0 46px 96px rgba(7,84,31,0.2)",
+            "0 3px 0 var(--bg, rgba(255,255,255,0.52)), 0 18px 40px var(--accent, rgba(48,209,88,0.3)), 0 46px 96px var(--brand, rgba(7,84,31,0.2))",
           duration: 0.18,
         },
         3.16,

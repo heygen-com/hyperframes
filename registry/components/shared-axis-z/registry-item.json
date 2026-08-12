@@ -1,0 +1,82 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shared-axis-z",
+  "type": "hyperframes:component",
+  "title": "Shared Axis Z",
+  "description": "Scale-based shared-axis transition for focus shifts and context depth.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "shared-axis-z.html",
+      "target": "compositions/components/shared-axis-z.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Which way the words travel along the z axis: in swells up from small, out settles down from large.",
+      "default": "in",
+      "options": [
+        {
+          "value": "in",
+          "label": "In"
+        },
+        {
+          "value": "out",
+          "label": "Out"
+        }
+      ]
+    },
+    {
+      "id": "depth",
+      "type": "enum",
+      "role": "motion",
+      "label": "Depth",
+      "description": "Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "shallow",
+          "label": "Shallow"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "deep",
+          "label": "Deep"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-z.png"
+  }
+}
