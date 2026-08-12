@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import {
   clearKeyframeCacheForElement,
+  elementCacheKeys,
   pruneKeyframeCacheToFiles,
   replaceKeyframeCacheForFile,
   updateKeyframeCacheFromParsed,
 } from "./gsapKeyframeCacheHelpers";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const entry = (): KeyframeCacheEntry => ({
   format: "percentage",
@@ -30,6 +34,48 @@ const animWithKeyframes = (id: string): GsapAnimation => ({
 
 beforeEach(() => {
   usePlayerStore.setState({ keyframeCache: new Map(), gsapAnimations: new Map(), elements: [] });
+  vi.mocked(trackStudioEvent).mockClear();
+});
+
+describe("non-string cache keys", () => {
+  // `s.indexOf is not a function` in pruneKeyframeCacheToFiles, decoded from the
+  // released 0.7.90 bundle. Some producer reaches elementCacheKeys with a
+  // non-string id; the bare-id key was written through raw, so both maps ended
+  // up holding a key that prune's `key.indexOf("#")` cannot handle.
+  const badId = 42 as unknown as string;
+
+  it("keeps every written key a string", () => {
+    expect(elementCacheKeys("comp.html", badId).every((k) => typeof k === "string")).toBe(true);
+  });
+
+  it("reports the offending value instead of swallowing it", () => {
+    elementCacheKeys("comp.html", badId);
+
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "cache_key_non_string",
+      expect.objectContaining({
+        value_type: "number",
+        constructor_name: "Number",
+        source_file: "comp.html",
+      }),
+    );
+  });
+
+  it("stays silent on the normal string path", () => {
+    elementCacheKeys("comp.html", "box");
+
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+  });
+
+  it("survives a prune after a write with a non-string id", () => {
+    replaceKeyframeCacheForFile(
+      "stale.html",
+      new Map([[badId, entry()]]),
+      new Map([[badId, [animWithKeyframes("box")]]]),
+    );
+
+    expect(() => pruneKeyframeCacheToFiles(["kept.html"])).not.toThrow();
+  });
 });
 
 describe("clearKeyframeCacheForElement", () => {

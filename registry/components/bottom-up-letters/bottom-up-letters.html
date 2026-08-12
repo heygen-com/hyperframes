@@ -1,0 +1,105 @@
+<!--
+  Bottom Up Letters - deterministic text splitter.
+
+  Add class="hf-bottom-up-letters" to a plain text element. This script wraps
+  each character in a span so your paused GSAP timeline can stagger the reveal.
+
+  Variables. This fragment has no markup of its own, so the declaration rides
+  the <style> element below; the runtime collects every element carrying
+  data-composition-variables, not just the document root. The script reads each
+  value, falls back to the declared default on anything missing or
+  unrecognised, and either changes how the text is split or writes a custom
+  property the CSS consumes. The timeline recipe below is untouched by them: it
+  still tweens opacity and y back to rest, and these decide what a single
+  stagger step covers and where rest is travelled from.
+
+    - unit (letter | word, default letter): what each animated span holds.
+      letter staggers glyph by glyph; word keeps whole words intact, so a long
+      line reads instead of shimmers.
+    - direction (up | down, default up): where the spans start. up starts
+      below the baseline and rises into place, down starts above and drops.
+    - travel (close | standard | far, default standard): how far each span
+      starts from rest, from 0.45em through 0.85em to 1.5em.
+
+  On every default the result is identical to the original: one span per
+  character, each starting 0.85em below the baseline.
+-->
+
+<style
+  data-composition-variables='[
+  { "id": "unit", "type": "enum", "role": "content", "label": "Split unit", "description": "What each animated span holds. Letter staggers glyph by glyph, word keeps whole words intact.", "default": "letter", "options": [{ "value": "letter", "label": "Letter" }, { "value": "word", "label": "Word" }] },
+  { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Where each span starts. Up starts below the baseline and rises, down starts above and drops.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+  { "id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "How far each span starts from its resting position, from 0.45em to 1.5em.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] }
+]'
+>
+  .hf-bottom-up-letters {
+    display: inline-block;
+  }
+  .hf-bottom-up-letters-char {
+    display: inline-block;
+    opacity: 0;
+    transform: translate3d(
+      0,
+      calc(var(--hf-letters-travel, 0.85em) * var(--hf-letters-direction, 1)),
+      0
+    );
+    will-change: transform, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var travels = { close: "0.45em", standard: "0.85em", far: "1.5em" };
+    var directions = { up: "1", down: "-1" };
+    var units = { letter: true, word: true };
+
+    var travel = travels[pick(travels, vars.travel, "standard")];
+    var direction = directions[pick(directions, vars.direction, "up")];
+    var unit = pick(units, vars.unit, "letter");
+
+    document.querySelectorAll(".hf-bottom-up-letters").forEach((el) => {
+      el.style.setProperty("--hf-letters-travel", travel);
+      el.style.setProperty("--hf-letters-direction", direction);
+      if (el.dataset.hfLettersReady === "1") return;
+      const text = el.textContent || "";
+      el.textContent = "";
+      const parts = unit === "word" ? text.split(/(\s+)/) : Array.from(text);
+      for (const part of parts) {
+        if (part === "") continue;
+        if (unit === "word" && /^\s+$/.test(part)) {
+          el.appendChild(document.createTextNode(part));
+          continue;
+        }
+        const span = document.createElement("span");
+        span.className = "hf-bottom-up-letters-char";
+        span.textContent = part === " " ? "\u00a0" : part;
+        el.appendChild(span);
+      }
+      el.dataset.hfLettersReady = "1";
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-bottom-up-letters-char", {
+    opacity: 1,
+    y: 0,
+    duration: 0.48,
+    ease: "back.out(1.7)",
+    stagger: 0.025,
+  }, startTime);
+-->

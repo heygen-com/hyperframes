@@ -117,7 +117,7 @@ interface AssembleEventBase {
   Action: "assemble";
   /** S3 URIs of every chunk, ordered by chunk index. Length must equal `chunkCount`. */
   ChunkS3Uris: string[];
-  /** S3 URI of the planDir's `audio.aac` if the composition has audio; `null` otherwise. */
+  /** S3 URI of the planDir's audio artifact if the composition has audio; `null` otherwise. */
   AudioS3Uri: string | null;
   /** Final output S3 URI (`s3://bucket/key.mp4`). */
   OutputS3Uri: string;

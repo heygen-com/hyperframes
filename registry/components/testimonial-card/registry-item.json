@@ -1,0 +1,60 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "testimonial-card",
+  "type": "hyperframes:component",
+  "title": "Testimonial Card",
+  "description": "Reveals a customer quote at reading pace, then settles its avatar, author name, and handle beneath as a clean proof beat.",
+  "tags": ["prop", "ui-props", "testimonial", "social-proof", "quote", "prove"],
+  "jobs": ["prove"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "fixture social-proof shelf, GAP A1+A2 convergent miss: both consumer simulations needed a testimonial proof beat, with reading-pace discipline as the frozen law.",
+  "syncPoints": [
+    { "id": "quote-readable", "phase": "in", "offset": 0.82 },
+    { "id": "attribution-settled", "phase": "in", "offset": 1.5 }
+  ],
+  "files": [
+    {
+      "path": "testimonial-card.html",
+      "target": "compositions/components/testimonial-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "quote",
+      "type": "string",
+      "role": "content",
+      "label": "Quote",
+      "description": "Customer testimonial copy revealed at reading pace.",
+      "default": "This changed how we ship."
+    },
+    {
+      "id": "author",
+      "type": "string",
+      "role": "content",
+      "label": "Author",
+      "description": "Name attributed to the testimonial.",
+      "default": "Ken Tanaka"
+    },
+    {
+      "id": "handle",
+      "type": "string",
+      "role": "content",
+      "label": "Handle",
+      "description": "Role or social handle shown beneath the author name.",
+      "default": "@ken"
+    },
+    {
+      "id": "rating",
+      "type": "number",
+      "role": "content",
+      "label": "Rating",
+      "description": "Visible customer rating from zero to five stars.",
+      "default": 5,
+      "min": 0,
+      "max": 5,
+      "step": 0.1
+    }
+  ]
+}

@@ -385,6 +385,7 @@ describe("TimelineTrackHeader", () => {
       act(() => {
         lanesRoot.render(
           <TimelinePropertyLanes
+            id="timeline-property-lanes-alignment-test"
             animations={animations}
             clipStart={0}
             clipDuration={2}

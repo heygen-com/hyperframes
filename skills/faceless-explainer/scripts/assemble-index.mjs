@@ -81,7 +81,7 @@ function ensureBgmCovers(relPath, hyperframesDir, total) {
   const abs = join(hyperframesDir, relPath);
   const probe = spawnSync(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", abs],
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", abs],
     { encoding: "utf8" },
   );
   if (probe.status !== 0) return { looped: false, short: false, reason: "ffprobe unavailable" };

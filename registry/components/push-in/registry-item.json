@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "push-in",
+  "type": "hyperframes:component",
+  "title": "Push In",
+  "description": "A centered headline gains focus through one slow, continuous camera push and a gentle fade out.",
+  "tags": ["motion-primitive", "camera", "push-in", "focus", "emphasize", "holdable"],
+  "jobs": ["emphasize"],
+  "family": "camera",
+  "profile": "holdable",
+  "evidence": "Wave F U5 push-in specification",
+  "files": [
+    {
+      "path": "push-in.html",
+      "target": "compositions/components/push-in.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Text centered in the camera frame.",
+      "default": "Focus"
+    },
+    {
+      "id": "intensity",
+      "type": "enum",
+      "role": "motion",
+      "label": "Push intensity",
+      "description": "Final camera scale reached by the push.",
+      "default": "standard",
+      "options": [
+        { "value": "subtle", "label": "Subtle" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "bold", "label": "Bold" }
+      ]
+    }
+  ]
+}

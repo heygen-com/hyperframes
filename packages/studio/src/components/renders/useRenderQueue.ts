@@ -4,6 +4,7 @@ import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
 import { browserTelemetryAllowed } from "../../telemetry/policy";
 import { generateId } from "../../utils/generateId";
+import { requestStudioFeedback, type FeedbackContext } from "../feedback/feedbackTrigger";
 
 export interface RenderJob {
   id: string;
@@ -72,6 +73,23 @@ export function useRenderQueue(projectId: string | null) {
   const [actionError, setActionError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const activeJobRef = useRef<string | null>(null);
+  // Renders started in THIS tab, mapped to the settings they ran with.
+  // `loadRenders` also injects finished jobs from disk history, and those must
+  // never trigger a feedback prompt — the user did not just watch them happen.
+  const sessionJobs = useRef(new Map<string, FeedbackContext>());
+  const promptedJobIds = useRef(new Set<string>());
+
+  /**
+   * The one way a render started here enters the list. Every start path — the
+   * happy one and all three failure shortcuts — goes through here, so both
+   * "this render belongs to this session" and "these are the settings it ran
+   * with" have a single owner. A report about a render is only actionable if
+   * it arrives with the settings that produced it.
+   */
+  const addSessionJob = useCallback((job: RenderJob, settings: FeedbackContext) => {
+    sessionJobs.current.set(job.id, settings);
+    setJobs((prev) => [...prev, job]);
+  }, []);
 
   const closeActiveEventSource = useCallback((jobId?: string) => {
     if (jobId && activeJobRef.current !== jobId) return;
@@ -148,6 +166,16 @@ export function useRenderQueue(projectId: string | null) {
       });
 
       const startTime = Date.now();
+      // Travels with any feedback about this render. Settings only: the
+      // composition path is a name the user chose, not file contents.
+      const settings: FeedbackContext = {
+        render_format: format,
+        render_quality: quality,
+        render_fps: fps,
+        render_resolution: resolution ?? "auto",
+        render_composition: composition ?? "index.html",
+        render_has_variables: Boolean(opts.variables && Object.keys(opts.variables).length > 0),
+      };
       // "auto" / undefined means "render at the composition's authored size".
       // Omit the field entirely — sending "auto" would trip the route's
       // enum validation set.
@@ -201,7 +229,7 @@ export function useRenderQueue(projectId: string | null) {
           filename: "Export failed",
           createdAt: startTime,
         };
-        setJobs((prev) => [...prev, failedJob]);
+        addSessionJob(failedJob, settings);
         return;
       }
       if (!res.ok) {
@@ -213,7 +241,7 @@ export function useRenderQueue(projectId: string | null) {
           filename: "Export failed",
           createdAt: startTime,
         };
-        setJobs((prev) => [...prev, failedJob]);
+        addSessionJob(failedJob, settings);
         return;
       }
       const { jobId } = await res.json();
@@ -227,7 +255,7 @@ export function useRenderQueue(projectId: string | null) {
         filename: `${jobId}${ext}`,
         createdAt: startTime,
       };
-      setJobs((prev) => [...prev, job]);
+      addSessionJob(job, settings);
       activeJobRef.current = jobId;
 
       // Track progress via SSE
@@ -279,7 +307,7 @@ export function useRenderQueue(projectId: string | null) {
 
       return jobId;
     },
-    [projectId, closeActiveEventSource],
+    [projectId, closeActiveEventSource, addSessionJob],
   );
 
   // Cancel an in-flight render. The job row stays (as "cancelled") so the
@@ -351,6 +379,36 @@ export function useRenderQueue(projectId: string | null) {
   }, [projectId]);
 
   const dismissActionError = useCallback(() => setActionError(null), []);
+
+  // Ask for feedback the moment a render this tab started reaches its outcome.
+  // Watching the list (rather than each of the four places a job can finish)
+  // keeps one trigger for every path, including SSE drops and cancels-that-
+  // finished-anyway. `requestStudioFeedback` decides whether to actually ask.
+  useEffect(() => {
+    for (const job of jobs) {
+      if (job.status === "rendering" || job.status === "cancelled") continue;
+      const settings = sessionJobs.current.get(job.id);
+      if (!settings || promptedJobIds.current.has(job.id)) continue;
+      promptedJobIds.current.add(job.id);
+      requestStudioFeedback({
+        reason: job.status === "complete" ? "render_complete" : "render_failed",
+        renderId: job.id,
+        detail: job.error,
+        context: {
+          ...settings,
+          // How far it got and how long it took separate "died on frame one"
+          // from "died during encode", which need different fixes.
+          render_progress: job.progress,
+          render_duration_ms: job.durationMs ?? Date.now() - job.createdAt,
+          render_stage: job.stage,
+          render_error: job.error,
+          // Earlier renders this session: a first-render failure and a
+          // failure after nine successes are different bugs.
+          renders_this_session: sessionJobs.current.size,
+        },
+      });
+    }
+  }, [jobs]);
 
   // Clean up EventSource on unmount or projectId change
   useEffect(() => {

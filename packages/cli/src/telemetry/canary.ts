@@ -9,7 +9,7 @@
  *
  * ```ts
  * import { isCanaryEnabled } from "../telemetry/canary.js";
- * if (isCanaryEnabled("de-parallel-router")) { ...ramped path... }
+ * if (isCanaryEnabled("your-feature")) { ...ramped path... }
  * ```
  *
  * That is the whole API. Percentage lives in the registry, not at the call
@@ -180,13 +180,22 @@ export function canaryDecisionsForStudio(): Record<string, CliCanaryDecision> {
 
 /**
  * Canary assignments as PostHog flag properties — `$feature/canary-<name>`
- * set to `"true"` / `"false"` for every registered canary. Spread onto every
- * event so any metric can be broken down by cohort using PostHog's native
- * flag tooling, with nothing configured server-side. See
- * `canaryFeatureProperties` for why non-enrolled canaries are emitted too.
+ * set to `"true"` / `"false"` for every registered canary, each paired with a
+ * `canary_reason_<name>`. Spread onto every event so any metric can be broken
+ * down by cohort using PostHog's native flag tooling, with nothing configured
+ * server-side. See `canaryFeatureProperties` for why non-enrolled canaries are
+ * emitted too, and why the reason has to ride along.
+ *
+ * The reason is what makes a cohort flip attributable. `resolveCanary` has
+ * computed it all along and this function used to drop it, so an install
+ * reporting both values looked identical whether a developer had toggled
+ * `HF_CANARY_*` or the bucketer had genuinely disagreed with itself.
  */
 export function canaryEventProperties(): Record<string, string> {
   return canaryFeatureProperties(
-    CANARIES.map((c) => ({ name: c.name, enabled: resolveCanary(c.name).enabled })),
+    CANARIES.map((c) => {
+      const { enabled, reason } = resolveCanary(c.name);
+      return { name: c.name, enabled, reason };
+    }),
   );
 }

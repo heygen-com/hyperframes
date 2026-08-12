@@ -2,7 +2,13 @@ import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
+import {
+  EXCLUDED_TAGS,
+  ensureHfIds,
+  mintHfId,
+  walkCompositionDescendants,
+} from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
@@ -136,7 +142,7 @@ export function isHTMLElement(el: Node): el is HTMLElement {
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "html-attribute" | "text-content";
+  type: "inline-style" | "attribute" | "html-attribute" | "text-content" | "rich-text";
   property: string;
   value: string | null;
   childSelector?: string;
@@ -155,6 +161,36 @@ function resolveOperationTarget(parent: HTMLElement, op: PatchOperation): HTMLEl
     return child && isHTMLElement(child) ? child : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Give the elements a rich-text patch just introduced their stable ids, here,
+ * in the bytes about to be written and handed back.
+ *
+ * Otherwise the next preview request mints them and writes the file a second
+ * time, after Studio has already recorded the edit in its history. The recorded
+ * "after" stops matching disk, the content check refuses, and undo reports the
+ * file as changed outside Studio — for every colour applied to a run of
+ * characters and every text layer added. The clip split stamps its own clone
+ * for exactly this reason.
+ *
+ * Minted one element at a time with the same function `ensureHfIds` uses, so
+ * these ids are the ones the next pass would have assigned. Not `ensureHfIds`
+ * itself: it takes a whole document, and handing it this element's markup would
+ * put the markup back as one.
+ */
+function stampNewChildIds(parent: Element): void {
+  const assigned = new Set<string>();
+  const root = parent.ownerDocument?.body ?? parent;
+  walkCompositionDescendants(root, (el) => {
+    const id = el.getAttribute("data-hf-id");
+    if (id) assigned.add(id);
+  });
+  for (const el of parent.querySelectorAll("*")) {
+    if (el.getAttribute("data-hf-id")) continue;
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
 }
 
@@ -213,6 +249,17 @@ export function patchElementInHtml(
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
           const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
           textTarget.textContent = op.value;
+        }
+        break;
+      // The one operation that can write markup, so the one that has to check
+      // it. Assigned first and sanitised after, rather than sanitising a
+      // string: parsing is what turns a payload into the tree the allowlist
+      // can actually judge, and linkedom never runs anything it parses.
+      case "rich-text":
+        if (op.value != null) {
+          opTarget.innerHTML = op.value;
+          sanitizeRichTextChildren(opTarget);
+          stampNewChildIds(opTarget);
         }
         break;
     }

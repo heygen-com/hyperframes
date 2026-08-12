@@ -1,0 +1,80 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "text-stagger",
+  "type": "hyperframes:component",
+  "title": "Text Stagger",
+  "description": "A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words",
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "text", "stagger"],
+  "files": [
+    {
+      "path": "text-stagger.html",
+      "target": "compositions/components/text-stagger.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Headline copy. Every whitespace-separated word becomes one staggered span.",
+      "default": "Build motion systems fast"
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "role": "layout",
+      "label": "Size",
+      "description": "Type size of every word in pixels, clamped to 24-160. Line height stays proportional.",
+      "default": 74,
+      "min": 24,
+      "max": 160,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Base word colour: ink for light frames, paper for dark ones.",
+      "default": "ink",
+      "options": [
+        {
+          "value": "ink",
+          "label": "Ink"
+        },
+        {
+          "value": "paper",
+          "label": "Paper"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour of the shimmer the second timeline step sweeps across the words.",
+      "default": "blue",
+      "options": [
+        {
+          "value": "blue",
+          "label": "Blue"
+        },
+        {
+          "value": "green",
+          "label": "Green"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-stagger.png"
+  }
+}

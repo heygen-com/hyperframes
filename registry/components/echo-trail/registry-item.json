@@ -1,0 +1,77 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "echo-trail",
+  "type": "hyperframes:component",
+  "title": "Echo Trail",
+  "description": "A moving element renders with N ghosted copies of itself at t minus i times delta, opacity stepped down per ghost; one traversal, echoes collapsing into the settled element at rest.",
+  "tags": ["motion-primitive", "demonstrate", "trail", "onion-skin", "ghosts", "deterministic"],
+  "jobs": ["demonstrate"],
+  "family": "demonstrate",
+  "profile": "onion-skin",
+  "evidence": "Wave L5 frame study: generalized onion skin from the trails contact sheets",
+  "syncPoints": [{ "id": "travel-complete", "phase": "in", "offset": 2.1 }],
+  "files": [
+    {
+      "path": "echo-trail.html",
+      "target": "compositions/components/echo-trail.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "echoes",
+      "type": "number",
+      "role": "style",
+      "label": "Echoes",
+      "description": "Ghost copy count, clamped 2 to 6.",
+      "default": 4
+    },
+    {
+      "id": "delta",
+      "type": "number",
+      "role": "timing",
+      "label": "Delta",
+      "description": "Lag between successive ghosts in seconds, clamped 0.03 to 0.3.",
+      "default": 0.09
+    },
+    {
+      "id": "path",
+      "type": "enum",
+      "role": "timing",
+      "label": "Path",
+      "description": "Authored traversal preset.",
+      "default": "sweep",
+      "options": [
+        { "value": "sweep", "label": "Sweep" },
+        { "value": "rise", "label": "Rise" },
+        { "value": "arc", "label": "Arc" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Subject accent color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the settled element holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

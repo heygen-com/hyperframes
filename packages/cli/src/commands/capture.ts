@@ -250,14 +250,11 @@ export default defineCommand({
       }
     } catch (err) {
       const errMsg = normalizeErrorMessage(err);
-      // Write BLOCKED.md so the user/agent knows the capture failed
       try {
         const { mkdirSync, writeFileSync } = await import("node:fs");
+        const { formatCaptureFailureReason } = await import("../capture/captureTimeout.js");
         mkdirSync(outputDir, { recursive: true });
-        const isTimeout = /timeout|timed out/i.test(errMsg);
-        const reason = isTimeout
-          ? "Page navigation timed out — the site may be blocking headless browsers or requires authentication."
-          : `Capture failed: ${errMsg}`;
+        const reason = formatCaptureFailureReason(errMsg);
         writeFileSync(
           `${outputDir}/BLOCKED.md`,
           `# Capture Failed\n\n${reason}\n\nURL: ${url}\n\n## What to try\n\n- Re-run with a longer timeout: \`--timeout 60000\`\n- The site may block headless browsers (anti-bot protection)\n- Try capturing a different page on the same domain\n`,

@@ -10,7 +10,7 @@
  *   npx tsx scripts/backfill-block-previews.ts --dry-run  # preview changes only
  */
 
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, type Dirent } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,7 +44,7 @@ function writeManifest(manifestPath: string, manifest: Record<string, unknown>):
 
 function backfillBlocks() {
   const blocksDir = join(registryDir, "blocks");
-  let entries: ReturnType<typeof readdirSync<string>>;
+  let entries: Dirent[];
   try {
     entries = readdirSync(blocksDir, { withFileTypes: true });
   } catch {
@@ -81,7 +81,7 @@ function backfillBlocks() {
 
 function normalizeComponents() {
   const componentsDir = join(registryDir, "components");
-  let entries: ReturnType<typeof readdirSync<string>>;
+  let entries: Dirent[];
   try {
     entries = readdirSync(componentsDir, { withFileTypes: true });
   } catch {

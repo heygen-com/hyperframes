@@ -6,6 +6,7 @@ import { usePlayerStore } from "../../player/store/playerStore";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
+import { timelineClipFocusId } from "../../player/components/timelineNavigationIdentity";
 
 export function AudioRow({
   projectId,
@@ -43,7 +44,7 @@ export function AudioRow({
   // CapCut-style click behavior: drag-threshold gate.
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
-  const requestClipReveal = usePlayerStore((s) => s.requestClipReveal);
+  const requestTimelineFocus = usePlayerStore((s) => s.requestTimelineFocus);
   const elements = usePlayerStore((s) => s.elements);
   const setPreviewAsset = useAssetPreviewStore((s) => s.setPreviewAsset);
   const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
@@ -67,7 +68,7 @@ export function AudioRow({
           const clipKey = clip.key ?? clip.id;
           setSelectedElementId(clipKey);
           // Scroll the timeline so the selected clip is actually visible.
-          requestClipReveal(clipKey);
+          requestTimelineFocus(timelineClipFocusId(clipKey));
           return;
         }
       }
@@ -80,7 +81,7 @@ export function AudioRow({
       asset,
       projectId,
       setSelectedElementId,
-      requestClipReveal,
+      requestTimelineFocus,
       setPreviewAsset,
       clearPreviewAsset,
     ],

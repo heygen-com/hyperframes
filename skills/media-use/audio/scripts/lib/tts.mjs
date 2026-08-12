@@ -109,7 +109,7 @@ function ffmpegDurationFallback(absPath) {
 export function ffprobeDuration(absPath) {
   const r = spawnSync(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", absPath],
+    ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", "--", absPath],
     { encoding: "utf8" },
   );
   if (r.error?.code === "ENOENT") return ffmpegDurationFallback(absPath);

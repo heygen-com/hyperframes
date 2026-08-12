@@ -8,6 +8,7 @@ import {
   resolveCropInsetFromMoveDrag,
   rotateDeltaIntoFrame,
 } from "./domEditOverlayCrop";
+import { individualRotateDegrees } from "./domEditOverlayTransform";
 
 describe("resolveCropInsetFromEdgeDrag", () => {
   const startInsets = { top: 10, right: 20, bottom: 30, left: 40 };
@@ -160,10 +161,15 @@ describe("readElementCropInsets tri-state", () => {
 describe("readElementCropFrame", () => {
   const overlayRect = { left: 100, top: 50, width: 220, height: 130, editScaleX: 1, editScaleY: 1 };
 
+  // Models an element well enough for the ancestor walk: it reports its own
+  // transform, claims no composition-root attribute, and has no parent, so the
+  // walk composes exactly one node.
   const fakeEl = (transform: string, offsetWidth = 200, offsetHeight = 100) =>
     ({
       offsetWidth,
       offsetHeight,
+      parentElement: null,
+      hasAttribute: () => false,
       ownerDocument: { defaultView: { getComputedStyle: () => ({ transform }) } },
     }) as unknown as HTMLElement;
 
@@ -205,9 +211,43 @@ describe("readElementCropFrame", () => {
     expect(frame.height).toBeCloseTo(200, 3);
   });
 
-  it("3D transform falls back to the axis-aligned frame", () => {
+  /**
+   * A 3D matrix is not automatically unmeasurable. GSAP writes one for an
+   * ordinary 2D move or spin (force3D), so refusing every `matrix3d` drew the
+   * crop outline square on elements the rest of the chrome drew rotated.
+   * The identity here is a 2D transform written the long way.
+   */
+  it("reads a planar matrix3d rather than giving up on it", () => {
+    // scale(1.5, 2) written the long way — planar, and not the identity.
     const frame = readElementCropFrame(
-      fakeEl("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"),
+      fakeEl("matrix3d(1.5,0,0,0,0,2,0,0,0,0,1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame.scaleX).toBeCloseTo(1.5, 3);
+    expect(frame.scaleY).toBeCloseTo(2, 3);
+  });
+
+  it("reads a 2D rotation written as matrix3d", () => {
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(0.866025,0.5,0,0,-0.5,0.866025,0,0,0,0,1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
+  });
+
+  it("reads a flipped element, which still has a real size", () => {
+    // Negative z scale — a composition that mirrors an element writes this.
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(-0.866025,-0.5,0,0,-0.5,0.866025,0,0,0,0,-1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame.width).toBeGreaterThan(0);
+    expect(frame.height).toBeGreaterThan(0);
+  });
+
+  it("still falls back on a perspective transform, which no single angle describes", () => {
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(1,0,0,0.002,0,1,0,0,0,0,1,0,0,0,0,1)"),
       overlayRect,
     );
     expect(frame).toEqual({
@@ -239,5 +279,99 @@ describe("rotateDeltaIntoFrame", () => {
     const back = rotateDeltaIntoFrame(local.deltaX, local.deltaY, -30);
     expect(back.deltaX).toBeCloseTo(7, 6);
     expect(back.deltaY).toBeCloseTo(-3, 6);
+  });
+});
+
+describe("individualRotateDegrees", () => {
+  /**
+   * Studio's rotate handle writes the CSS `rotate` property, not `transform`.
+   * Everything that measured an element's angle read `transform` alone, so a
+   * turned element reported upright and the selection box, crop outline and
+   * child outlines all drew square across it.
+   */
+  it("reads a plain angle", () => {
+    expect(individualRotateDegrees("-22deg")).toBeCloseTo(-22, 6);
+    expect(individualRotateDegrees("45deg")).toBeCloseTo(45, 6);
+  });
+
+  it("reads an explicit z-axis rotation, honouring the axis sign", () => {
+    expect(individualRotateDegrees("0 0 1 30deg")).toBeCloseTo(30, 6);
+    expect(individualRotateDegrees("0 0 -1 30deg")).toBeCloseTo(-30, 6);
+  });
+
+  it("reports nothing for a rotation that leaves the overlay's plane", () => {
+    // A 3D turn has no single in-plane angle. Reporting one would draw the
+    // chrome at a plausible-looking wrong angle instead of falling back square.
+    expect(individualRotateDegrees("1 0 0 45deg")).toBe(0);
+    expect(individualRotateDegrees("0 1 0 45deg")).toBe(0);
+  });
+
+  it("reports nothing when the property is absent or unparseable", () => {
+    expect(individualRotateDegrees("none")).toBe(0);
+    expect(individualRotateDegrees(undefined)).toBe(0);
+    expect(individualRotateDegrees("")).toBe(0);
+    expect(individualRotateDegrees("12")).toBe(0);
+  });
+});
+
+describe("readElementCropFrame — the composed walk", () => {
+  /**
+   * The case the crop outline got wrong: a text layer inside a rotated card.
+   * The layer carries its own spin and its parent turns it again, so the box
+   * belongs at the combination. Reading the element alone drew it across the
+   * text at roughly a right angle.
+   */
+  const nested = (childTransform: string, parentTransform: string) => {
+    const style = (transform: string) => ({ transform }) as CSSStyleDeclaration;
+    const parent = {
+      offsetWidth: 400,
+      offsetHeight: 300,
+      parentElement: null,
+      hasAttribute: (name: string) => name === "data-composition-id",
+      ownerDocument: { defaultView: { getComputedStyle: () => style(parentTransform) } },
+    };
+    return {
+      offsetWidth: 200,
+      offsetHeight: 100,
+      parentElement: parent,
+      hasAttribute: () => false,
+      ownerDocument: {
+        defaultView: {
+          getComputedStyle: (node: unknown) =>
+            node === parent ? style(parentTransform) : style(childTransform),
+        },
+      },
+    } as unknown as HTMLElement;
+  };
+
+  const overlayRect = { left: 100, top: 50, width: 220, height: 130, editScaleX: 1, editScaleY: 1 };
+
+  it("adds the parent's rotation to the child's", () => {
+    // child 30deg inside a parent turned 60deg → the layer paints at 90.
+    const frame = readElementCropFrame(
+      nested(
+        "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)",
+        "matrix(0.5, 0.8660254, -0.8660254, 0.5, 0, 0)",
+      ),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(90, 3);
+  });
+
+  it("takes the parent's rotation when the child has none of its own", () => {
+    const frame = readElementCropFrame(
+      nested("none", "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
+  });
+
+  it("stops at the composition root rather than walking the whole document", () => {
+    // The root itself is marked, so its own transform is the last one counted.
+    const frame = readElementCropFrame(
+      nested("none", "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)"),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
   });
 });

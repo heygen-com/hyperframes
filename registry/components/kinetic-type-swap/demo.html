@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  kinetic-type-swap demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default prefix, options, suffix, and
+  accent values prove the variable path and the widest-option slot contract.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Kinetic Type Swap Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #15181e;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 2.4cqmin;
+        --space-1: 1.2cqmin;
+        --space-2: 2.4cqmin;
+        --space-3: 4cqmin;
+        --dur-beat: 0.5s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          color-mix(in srgb, var(--surface) 72%, var(--accent-2)) 0%,
+          var(--bg) 70%
+        );
+      }
+
+      .mount-card {
+        width: 82%;
+        height: 42%;
+        left: 9%;
+        top: 29%;
+        container-type: size;
+        overflow: hidden;
+        border: 0.12cqmin solid color-mix(in srgb, var(--border) 74%, transparent);
+        border-radius: calc(var(--radius) * 1.3);
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+        box-shadow: 0 4cqh 10cqh color-mix(in srgb, var(--bg) 60%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="kinetic-type-swap-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="kinetic-type-swap-mount"
+        class="mount-card clip"
+        data-composition-id="kinetic-type-swap"
+        data-composition-src="./kinetic-type-swap.html"
+        data-variable-values='{"prefix":"Make","options":"motion,meaning,momentum","suffix":"visible","accent":"violet"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1574"
+        data-height="454"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["kinetic-type-swap-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

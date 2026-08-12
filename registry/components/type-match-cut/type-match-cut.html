@@ -1,0 +1,407 @@
+<!doctype html>
+<!--
+  type-match-cut: HyperFrames video primitive
+
+  A headline splits into upper and lower word groups. An incoming editor
+  panel appears in the negative space between them, holds there as a visible
+  geometric match, then grows to fill the frame while the words arc through
+  the top and bottom edges.
+
+  Variables:
+    text: headline copy
+    accent: green, blue, or violet incoming-scene accent
+
+  Envelope, fixed IN and OUT with elastic HOLD:
+    IN_BASE  = 1.05s, words separate and expose the matched panel slot
+    HOLD     = max(0, D - IN - OUT), the slot breathes almost imperceptibly
+    OUT_BASE = 1.15s, the panel takes the frame while both word groups exit
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, and has no data-width or
+  data-height. One paused timeline registers under the literal type-match-cut
+  key.
+-->
+<html
+  lang="en"
+  data-composition-id="type-match-cut"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Headline", "description": "Text split around the incoming panel.", "default": "Meet the new editor" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent color used by the incoming editor scene.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Type Match Cut</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="type-match-cut" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f7f8fa);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .tmc-clip,
+          .tmc-panel,
+          .tmc-copy {
+            position: absolute;
+            inset: 0;
+            width: 100cqw;
+            height: 100cqh;
+          }
+
+          .tmc-clip {
+            overflow: hidden;
+          }
+
+          .tmc-panel {
+            z-index: 1;
+            overflow: hidden;
+            background: linear-gradient(145deg, #f8fafc 0%, #e8edf5 100%);
+            box-shadow: 0 4cqh 12cqh color-mix(in srgb, #000 45%, transparent);
+            transform-origin: 50% 50%;
+            will-change: transform, border-radius;
+          }
+
+          .tmc-editor {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 22cqw 1fr;
+            grid-template-rows: 11cqh 1fr;
+            color: #111827;
+          }
+
+          .tmc-toolbar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 1.1cqw;
+            padding: 0 4cqw;
+            border-bottom: 0.16cqmin solid #cbd5e1;
+            background: rgba(255, 255, 255, 0.72);
+          }
+
+          .tmc-mark {
+            width: 2.4cqmin;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: var(--tmc-accent, #34d399);
+            box-shadow: 0 0 2cqmin color-mix(in srgb, var(--tmc-accent, #34d399) 46%, transparent);
+          }
+
+          .tmc-title {
+            font-size: 2.4cqmin;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+          }
+
+          .tmc-status {
+            margin-left: auto;
+            padding: 1.1cqh 1.4cqw;
+            border-radius: 999px;
+            background: var(--tmc-accent, #34d399);
+            color: #07110d;
+            font-size: 1.7cqmin;
+            font-weight: 800;
+          }
+
+          .tmc-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 2.4cqh;
+            padding: 5cqh 3cqw;
+            border-right: 0.16cqmin solid #cbd5e1;
+            background: #eef2f7;
+          }
+
+          .tmc-nav {
+            height: 1.5cqh;
+            border-radius: 999px;
+            background: #cbd5e1;
+          }
+
+          .tmc-nav:first-child {
+            width: 76%;
+            background: var(--tmc-accent, #34d399);
+          }
+
+          .tmc-nav:nth-child(2) {
+            width: 58%;
+          }
+
+          .tmc-nav:nth-child(3) {
+            width: 82%;
+          }
+
+          .tmc-canvas {
+            display: grid;
+            place-items: center;
+            padding: 7cqh 8cqw;
+            background: #dfe5ee;
+          }
+
+          .tmc-preview {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            border: 0.18cqmin solid #c2cad6;
+            border-radius: 3cqmin;
+            background: radial-gradient(
+              circle at 50% 42%,
+              color-mix(in srgb, var(--tmc-accent, #34d399) 32%, #1f2937) 0%,
+              #111827 68%
+            );
+            box-shadow: 0 3cqh 8cqh rgba(15, 23, 42, 0.2);
+          }
+
+          .tmc-play {
+            width: 12cqmin;
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--tmc-accent, #34d399);
+            color: #07110d;
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 4.2cqmin;
+            font-weight: 900;
+          }
+
+          .tmc-copy {
+            z-index: 2;
+            overflow: hidden;
+            text-shadow: 0 1.4cqh 4.8cqh rgba(0, 0, 0, 0.72);
+          }
+
+          .tmc-half {
+            position: absolute;
+            top: calc(50% - 0.44em);
+            display: block;
+            width: 40cqw;
+            color: var(--fg, #f7f8fa);
+            font-size: var(--tmc-font-size, 10.5cqw);
+            font-weight: 900;
+            line-height: 0.88;
+            letter-spacing: -0.045em;
+            white-space: nowrap;
+            will-change: transform;
+          }
+
+          .tmc-top {
+            right: 52cqw;
+            text-align: right;
+          }
+
+          .tmc-bottom {
+            left: 52cqw;
+            text-align: left;
+          }
+        </style>
+
+        <div
+          id="type-match-cut-clip"
+          class="tmc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <section class="tmc-panel" aria-label="Incoming editor scene">
+            <div class="tmc-editor">
+              <div class="tmc-toolbar">
+                <span class="tmc-mark" aria-hidden="true"></span>
+                <span class="tmc-title">New editor</span>
+                <span class="tmc-status">Ready</span>
+              </div>
+              <div class="tmc-sidebar" aria-hidden="true">
+                <span class="tmc-nav"></span>
+                <span class="tmc-nav"></span>
+                <span class="tmc-nav"></span>
+              </div>
+              <div class="tmc-canvas">
+                <div class="tmc-preview">
+                  <span class="tmc-play" aria-hidden="true">▶</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="tmc-copy" role="heading" aria-level="1">
+            <span class="tmc-half tmc-top" aria-hidden="true"></span>
+            <span class="tmc-half tmc-bottom" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var panel = root.querySelector(".tmc-panel");
+            var copy = root.querySelector(".tmc-copy");
+            var topWords = root.querySelector(".tmc-top");
+            var bottomWords = root.querySelector(".tmc-bottom");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "Meet the new editor" : String(vars.text);
+            var accentName =
+              vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
+            var accents = { green: "#34d399", blue: "#60a5fa", violet: "#a78bfa" };
+            var words = text.trim() === "" ? [""] : text.trim().split(/\s+/);
+            var splitAt = Math.ceil(words.length / 2);
+            var topText = words.slice(0, splitAt).join(" ");
+            var bottomText = words.slice(splitAt).join(" ");
+
+            root.style.setProperty("--tmc-accent", accents[accentName]);
+            copy.setAttribute("aria-label", text);
+            topWords.textContent = topText;
+            bottomWords.textContent = bottomText;
+
+            // Deterministic fit from character count. Layout measurement is
+            // zero while the mounted template is being constructed, so each
+            // half is sized against its authored 40cqw box instead. One em per
+            // character is the conservative ceiling, so even wide glyph runs
+            // remain inside the box.
+            var longestHalf = Math.max(1, topText.length, bottomText.length);
+            var fittedSize = Math.min(10.5, 40 / longestHalf);
+            root.style.setProperty("--tmc-font-size", fittedSize.toFixed(2) + "cqw");
+
+            var IN_BASE = 1.05;
+            var OUT_BASE = 1.15;
+            var SPLIT_AT_BASE = 0.14;
+            var SPLIT_DURATION_BASE = 0.58;
+            var PANEL_AT_BASE = 0.58;
+            var PANEL_DURATION_BASE = 0.47;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var fixedTotal = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var SPLIT_AT = SPLIT_AT_BASE * phaseScale;
+            var SPLIT_DURATION = SPLIT_DURATION_BASE * phaseScale;
+            var PANEL_AT = PANEL_AT_BASE * phaseScale;
+            var PANEL_DURATION = PANEL_DURATION_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var ARC_FIRST = OUT * 0.42;
+            var ARC_SECOND = OUT - ARC_FIRST;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.set(panel, { scaleX: 0.02, scaleY: 0.02, borderRadius: "12cqmin" }, 0);
+            tl.set(topWords, { x: 0, y: 0 }, 0);
+            tl.set(bottomWords, { x: 0, y: 0 }, 0);
+
+            tl.to(
+              topWords,
+              { y: "-20cqh", duration: SPLIT_DURATION, ease: "power3.out" },
+              SPLIT_AT,
+            );
+            tl.to(
+              bottomWords,
+              { y: "20cqh", duration: SPLIT_DURATION, ease: "power3.out" },
+              SPLIT_AT,
+            );
+            tl.to(
+              panel,
+              {
+                scaleX: 0.46,
+                scaleY: 0.14,
+                borderRadius: "6cqmin",
+                duration: PANEL_DURATION,
+                ease: "power3.out",
+              },
+              PANEL_AT,
+            );
+
+            if (HOLD > 0) {
+              tl.to(
+                panel,
+                {
+                  scaleX: 0.47,
+                  scaleY: 0.145,
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            tl.to(
+              panel,
+              {
+                scaleX: 1,
+                scaleY: 1,
+                borderRadius: 0,
+                duration: OUT,
+                ease: "power4.out",
+              },
+              OUT_START,
+            );
+
+            // Two authored segments create an arc instead of a straight exit.
+            tl.to(
+              topWords,
+              { x: "3cqw", y: "-42cqh", duration: ARC_FIRST, ease: "power2.in" },
+              OUT_START,
+            );
+            tl.to(
+              topWords,
+              {
+                x: "-5cqw",
+                y: "-125cqh",
+                duration: ARC_SECOND,
+                ease: "power2.in",
+              },
+              OUT_START + ARC_FIRST,
+            );
+            tl.to(
+              bottomWords,
+              { x: "-3cqw", y: "42cqh", duration: ARC_FIRST, ease: "power2.in" },
+              OUT_START,
+            );
+            tl.to(
+              bottomWords,
+              {
+                x: "5cqw",
+                y: "125cqh",
+                duration: ARC_SECOND,
+                ease: "power2.in",
+              },
+              OUT_START + ARC_FIRST,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["type-match-cut"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

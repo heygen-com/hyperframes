@@ -519,12 +519,13 @@ export function buildDomEditTextPatchOperation(
   value: string,
   childLocator?: DomEditChildLocator,
 ): PatchOperation {
-  return {
-    type: "text-content",
-    property: "text",
-    value,
-    ...childLocator,
-  };
+  return { type: "text-content", property: "text", value, ...childLocator };
+}
+
+/** Replace an element's contents with markup, for a change no per-child operation
+ * can express (a text layer added, removed or reordered). Sanitized at both ends. */
+export function buildDomEditRichTextPatchOperation(value: string): PatchOperation {
+  return { type: "rich-text", property: "", value };
 }
 
 // ─── Non-editable reason ─────────────────────────────────────────────────────

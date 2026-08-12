@@ -169,6 +169,26 @@ describe("parseFontFamilyValue", () => {
     expect(parseFontFamilyValue(`'My Custom Font', serif`)).toEqual(["My Custom Font", "serif"]);
   });
 
+  it("keeps a comma inside a quoted family name", () => {
+    expect(parseFontFamilyValue(`"Display, Condensed", serif`)).toEqual([
+      "Display, Condensed",
+      "serif",
+    ]);
+  });
+
+  it("keeps a var() fallback in a single token", () => {
+    expect(parseFontFamilyValue(`var(--brand-font, inherit), sans-serif`)).toEqual([
+      "var(--brand-font, inherit)",
+      "sans-serif",
+    ]);
+  });
+
+  it("keeps a nested var() fallback in a single token", () => {
+    expect(
+      parseFontFamilyValue(`var(--brand-font, var(--fallback-font, "Inter")), sans-serif`),
+    ).toEqual([`var(--brand-font, var(--fallback-font, "Inter"))`, "sans-serif"]);
+  });
+
   it("ignores empty entries (trailing commas)", () => {
     expect(parseFontFamilyValue(`Inter,,sans-serif`)).toEqual(["Inter", "sans-serif"]);
   });

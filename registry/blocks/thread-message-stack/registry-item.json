@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "thread-message-stack",
+  "type": "hyperframes:block",
+  "title": "Thread Message Stack",
+  "description": "A source-owned editable conversation stack with arbitrary incoming and outgoing messages",
+  "tags": ["social", "conversation", "messages"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "files": [
+    {
+      "path": "thread-message-stack.html",
+      "target": "compositions/thread-message-stack.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

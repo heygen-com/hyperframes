@@ -24,7 +24,13 @@ hyperframes cloud render . \
   --output renders/intro.mp4
 ```
 
-For CI or another headless environment, save a long-lived API key instead:
+From an attended SSH or headless terminal, use the device flow. Open the displayed URL in any browser and enter the one-time code:
+
+```bash
+hyperframes auth login --device
+```
+
+Device login requires a TTY and is refused in CI. For unattended agents and CI, save a long-lived API key instead:
 
 ```bash
 echo "$HEYGEN_API_KEY" | hyperframes auth login --api-key
