@@ -21,7 +21,7 @@ export function CommitField({
   liveCommit?: boolean;
   align?: "left" | "right";
   onPreview?: (nextValue: string) => void;
-  onCommit: (nextValue: string) => void;
+  onCommit: (nextValue: string) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState(value);
   const valueRef = useRef(value);
@@ -29,6 +29,19 @@ export function CommitField({
   const inputRef = useRef<HTMLInputElement>(null);
   const focusedRef = useRef(false);
   const dirtyRef = useRef(false);
+  const commitGenerationRef = useRef(0);
+  const pendingCommitRef = useRef<{
+    baseline: string;
+    optimistic: string;
+  } | null>(null);
+  const lastValueRef = useRef(value);
+  if (!Object.is(lastValueRef.current, value)) {
+    lastValueRef.current = value;
+    if (!Object.is(pendingCommitRef.current?.optimistic, value)) {
+      commitGenerationRef.current += 1;
+      pendingCommitRef.current = null;
+    }
+  }
   valueRef.current = value;
   draftRef.current = draft;
 
@@ -67,14 +80,34 @@ export function CommitField({
     }, 250);
   };
   const cancelGesture = () => {
+    commitGenerationRef.current += 1;
     clearGestureSettleTimer();
     gestureActiveRef.current = false;
     gestureTransaction.cancel();
   };
   const commitDraft = (nextValue: string) => {
+    const generation = ++commitGenerationRef.current;
     setDraft(nextValue);
     onPreview?.(nextValue);
-    if (nextValue !== valueRef.current) onCommit(nextValue);
+    if (nextValue !== valueRef.current) {
+      const baseline = valueRef.current;
+      pendingCommitRef.current = { baseline, optimistic: nextValue };
+      const rollback = () => {
+        if (generation !== commitGenerationRef.current) return;
+        pendingCommitRef.current = null;
+        // The source write is authoritative. A rejected mutation must not leave
+        // the field showing an optimistic value that will disappear on seek.
+        setDraft(baseline);
+        onPreview?.(baseline);
+      };
+      try {
+        void Promise.resolve(onCommit(nextValue)).then(() => {
+          if (generation === commitGenerationRef.current) pendingCommitRef.current = null;
+        }, rollback);
+      } catch {
+        rollback();
+      }
+    }
   };
   const cancelGestureFromKeyEvent = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (!gestureActiveRef.current) return false;
@@ -89,6 +122,7 @@ export function CommitField({
     const nextDraft = adjustNumericToken(draftRef.current, direction, event);
     if (!nextDraft) return;
     event.preventDefault();
+    commitGenerationRef.current += 1;
     dirtyRef.current = false;
     gestureActiveRef.current = true;
     gestureTransaction.preview(nextDraft);
@@ -148,6 +182,7 @@ export function CommitField({
         focusedRef.current = true;
       }}
       onChange={(event) => {
+        commitGenerationRef.current += 1;
         settleGesture();
         dirtyRef.current = true;
         setDraft(event.target.value);

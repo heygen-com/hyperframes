@@ -10,6 +10,7 @@ import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
+import { logSelect } from "../../utils/selectDebug";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
@@ -110,6 +111,47 @@ export type FocusableDomEditOverlay = {
 
 export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | null): void {
   element?.focus({ preventScroll: true });
+}
+
+/**
+ * Whether the hover cache may stand in for a hit-test at this point.
+ *
+ * The cache is filled asynchronously as the pointer moves, so it can describe an
+ * element the pointer has already left. That is harmless for drawing a hover
+ * outline and wrong for a shift-click, which would add the stale element to the
+ * selection instead of the one under the pointer. True only when the cached
+ * element IS the element at the point, or contains it — the resolver is allowed
+ * to hand back a clip ancestor of the raw target, and that still describes the
+ * same click.
+ */
+export function hoverCacheDescribesPoint(
+  cachedElement: Element | null | undefined,
+  elementAtPoint: Element | null | undefined,
+): boolean {
+  if (!cachedElement || !elementAtPoint) return false;
+  return cachedElement === elementAtPoint || cachedElement.contains(elementAtPoint);
+}
+
+/**
+ * The element a shift-click should add, or null to let the slower path resolve it.
+ *
+ * Reading the hover cache without checking is safe for a hover outline and wrong
+ * for a shift-click: the click silently adds whatever the pointer last passed
+ * over instead of the element under it, which reads as multi-select picking
+ * things at random. Returning null means "not confident", and the caller must
+ * then fall through untouched so the mousedown path resolves the point properly.
+ */
+export function resolveShiftClickCandidate<T extends { element: Element }>(input: {
+  cached: T | null;
+  elementAtPoint: Element | null;
+}): T | null {
+  const describes = hoverCacheDescribesPoint(input.cached?.element, input.elementAtPoint);
+  logSelect("shift-pointerdown", {
+    candidate: input.cached ? ((input.cached as { selector?: string }).selector ?? null) : null,
+    pointTarget: input.elementAtPoint?.id ?? input.elementAtPoint?.tagName ?? null,
+    cacheIsAboutThisPoint: describes,
+  });
+  return describes ? input.cached : null;
 }
 
 /**

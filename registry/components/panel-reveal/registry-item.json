@@ -1,0 +1,65 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "panel-reveal",
+  "type": "hyperframes:component",
+  "title": "Panel Reveal",
+  "description": "A panel reveal primitive with height expansion and content fade",
+  "tags": ["transition-primitive", "transitions-dev-port", "panel", "reveal"],
+  "files": [
+    {
+      "path": "panel-reveal.html",
+      "target": "compositions/components/panel-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "type": "string",
+      "role": "content",
+      "label": "Title",
+      "description": "The header line that sits above the folded body.",
+      "default": "Motion tokens"
+    },
+    {
+      "id": "width",
+      "type": "enum",
+      "role": "layout",
+      "label": "Width",
+      "description": "How wide the panel sits, 280, 360 or 480 px.",
+      "default": "standard",
+      "options": [
+        { "value": "narrow", "label": "Narrow" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "wide", "label": "Wide" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Surface family: paper is the white card for light frames, ink inverts it for dark frames.",
+      "default": "paper",
+      "options": [
+        { "value": "paper", "label": "Paper" },
+        { "value": "ink", "label": "Ink" }
+      ]
+    },
+    {
+      "id": "reveal",
+      "type": "enum",
+      "role": "motion",
+      "label": "Reveal",
+      "description": "Whether the body fades in with the height. fade is the shipped motion, solid opens the height only.",
+      "default": "fade",
+      "options": [
+        { "value": "fade", "label": "Fade" },
+        { "value": "solid", "label": "Solid" }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/panel-reveal.png"
+  }
+}

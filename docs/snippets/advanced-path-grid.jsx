@@ -36,7 +36,7 @@ export const AdvancedPathGrid = () => {
         "Validate the project, render through Studio, an agent, or the CLI, and review the file.",
       action: "Finish the project",
       href: "/guides/export-and-share",
-      video: `${CDN}/studio-check-render-loop-v2.mp4`,
+      video: `${CDN}/studio-check-render-loop-v5.mp4`,
       poster: `${CDN}/studio-check-render-loop-v2.jpg`,
     },
   ];

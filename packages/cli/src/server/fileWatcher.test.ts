@@ -1,12 +1,21 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type WatchCallback = (eventType: string, filename: string | Buffer | null) => void;
 
 const mockWatcher = new EventEmitter() as EventEmitter & { close: () => void };
 mockWatcher.close = vi.fn();
 
-vi.mock("node:fs", () => ({
-  watch: vi.fn(() => mockWatcher),
-}));
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...original,
+    watch: vi.fn((_path: string, _options: unknown, onChange: WatchCallback) => {
+      mockWatcher.on("change", onChange);
+      return mockWatcher;
+    }),
+  };
+});
 
 const { shouldWatchProjectFile, createProjectWatcher } = await import("./fileWatcher.js");
 
@@ -30,6 +39,27 @@ describe("shouldWatchProjectFile", () => {
 });
 
 describe("createProjectWatcher", () => {
+  beforeEach(() => {
+    mockWatcher.removeAllListeners();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("notifies once for every file changed in one debounce burst", () => {
+    vi.useFakeTimers();
+    const projectWatcher = createProjectWatcher("/fake/project/dir");
+    const listener = vi.fn();
+    projectWatcher.addListener(listener);
+
+    mockWatcher.emit("change", "change", "scene-a.html");
+    mockWatcher.emit("change", "change", "scene-b.html");
+    mockWatcher.emit("change", "change", "scene-a.html");
+    vi.advanceTimersByTime(300);
+
+    expect(listener.mock.calls).toEqual([["scene-a.html"], ["scene-b.html"]]);
+    projectWatcher.close();
+  });
+
   // Regression: fs.watch can fail asynchronously (e.g. EMFILE from exhausted
   // OS watch handles) via an 'error' event, not a thrown exception. An
   // EventEmitter 'error' with no listener crashes the whole process — this

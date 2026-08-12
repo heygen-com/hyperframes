@@ -5,74 +5,103 @@ description: "Point the agent at a source of brand truth — a design spec, a si
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Everything so far was one scene at a time. This level is about videos as systems — design that persists across scenes, edits that don't regress, output that ships. It starts with the most systemic thing a video has: its brand.
+Everything so far was one scene at a time. This level is about videos as systems. Design that persists across scenes. Edits that don't regress. Output that ships. It starts with the most systemic thing a video has: its brand.
 
-"Make it on-brand" is the single vaguest thing you can ask. The agent has no way to know what your brand *is*, so it invents one. The fix is always the same: give it a **source of brand truth** — a design spec, a live site, or a Figma file — and name it in the prompt. Everything on this page is a way to do that.
+"Make it on-brand" is the vaguest thing you can ask. The agent has no way to know what your brand *is*, so it invents one.
+
+The fix never changes. Give the agent a **source of brand truth**, and name it in the prompt. That source is a design spec, a live site, or a Figma file. Every section below is one way to do it.
 
 ## Point at a spec, don't describe a vibe
 
-HyperFrames projects can carry a design spec — `frame.md` — whose frontmatter tokens are the machine-readable brand: exact hex values, font families, weight relationships, and the brand's Do's and Don'ts. When one exists, name it:
+A HyperFrames project can carry a design spec: `frame.md`. Its frontmatter holds the machine-readable brand — exact hex values, font families, weight relationships. The prose below the frontmatter carries intent and the brand's Do's and Don'ts.
+
+When a spec exists, name it:
 
 > Use the palette and type from `frame.md`. Build a 15-second feature announcement.
 
 - ❌ `make it feel on-brand and premium`
 - ✅ `pull colors and fonts from frame.md; premium means generous spacing and one restrained accent`
 
-The engine rationale: `on-brand` is a mood the agent guesses at. A spec's frontmatter is normative — the agent quotes the hex and font family verbatim instead of approximating, and reads the prose sections for intent. If your brand lives somewhere else (a PDF brand guide, a screenshot, pasted hex codes), attach it — attachments and pasted tokens are read more reliably than a described impression.
+Why this works: `on-brand` is a mood the agent has to guess at. A spec's frontmatter is normative. The agent quotes your hex and font family verbatim instead of approximating, then reads the prose for intent.
+
+If your brand lives somewhere else, attach it. A PDF brand guide, a screenshot, or pasted hex codes all read more reliably than a described impression.
 
 ## Brand is truth for color and type — not for layout
 
-A design spec tells the agent what the brand *looks like*; it does **not** dictate how to compose a video frame. Say what's sacred and let the agent stage the rest:
+A design spec says what the brand *looks like*. It does **not** say how to compose a video frame. Name what's sacred and let the agent stage the rest:
 
 > Colors and fonts are locked to the brand — keep the exact hexes and the display/body pairing. Layout, spacing, and motion are yours to compose for video.
 
-The engine rationale: web-scale brand values don't survive video. A `1px` border with a `0.06`-opacity shadow is invisible after H.264 compression; a web body size vanishes on a 1080p frame. The brand color, background choice (if the brand is a light canvas, keep it light), fonts, and weight relationships are strict — but type sizes, decorative opacity, and border weight get scaled up for the medium. Over-specifying layout from a web design system fights this; pin the palette and typography, delegate the frame.
+Why this works: web-scale brand values don't survive video. A `1px` border with a `0.06`-opacity shadow is invisible after H.264 compression. A web body size vanishes on a 1080p frame.
+
+So treat the spec in two halves:
+
+- **Strict** — brand colors, fonts, weight relationships, and the background choice. If the brand is a light canvas, keep it light.
+- **Scaled up for the medium** — type sizes, decorative opacity, border weight.
+
+Over-specifying layout from a web design system fights this. Pin the palette and typography. Delegate the frame.
 
 ## Use the site's own palette and fonts
 
-When there's no spec but there is a brand out there, point at it and let the agent extract:
+When there's no spec but the brand is out there, point at it and let the agent extract:
 
 > Match this site's look — pull its palette and fonts — and make a 20-second launch clip: `https://…`
 
-For a well-known brand, naming it is often enough for the agent to research the palette and typography. One caveat worth stating: a single-page-app homepage often returns a near-empty shell, so if the palette comes back thin, point the agent at a blog, press, or docs page instead. This is the same brand-truth move — the *site* is the source instead of a file.
+For a well-known brand, naming it is often enough. The agent researches the palette and typography itself.
+
+One caveat is worth stating. A single-page-app homepage often returns a near-empty shell. If the palette comes back thin, point the agent at a blog, press, or docs page instead.
+
+This is the same brand-truth move. The *site* is the source instead of a file.
 
 ## Bringing in a Figma frame, brand, or logo
 
-If the brand lives in Figma, ask for it directly — the agent imports it rather than eyeballing a screenshot:
+If the brand lives in Figma, ask for it directly. The agent imports it rather than eyeballing a screenshot:
 
 > Bring in the brand tokens from this Figma file, then build the intro: `https://figma.com/…`
 
 > Import this Figma frame as the opening scene and this logo as an SVG: `<links>`
 
-The [Figma import](/guides/figma) path freezes each import as a local asset with recorded provenance (so renders stay deterministic) and imports brand variables as composition brand tokens. Two things worth knowing when you phrase the ask:
+[Figma import](/guides/figma) freezes each import as a local file with recorded provenance. Renders never call Figma, so they stay deterministic. Brand variables come in as composition brand tokens.
 
-- **Import tokens before components.** Say "brand tokens first, then the components" — that's what lets imported component colors link to your brand variables instead of baking in duplicate hexes.
-- **Storyboard frames are states, not slides.** If you point at a strip of scene frames, ask the agent to *reconstruct the motion between them* — a frame showing an element at four positions is one element animating, not four stills to flip through.
+Two things are worth knowing when you phrase the ask:
+
+- **Import tokens before components.** Say "brand tokens first, then the components." That's what lets imported component colors link to your brand variables instead of baking in duplicate hexes.
+- **Storyboard frames are states, not slides.** If you point at a strip of scene frames, ask the agent to *reconstruct the motion between them*. A frame showing an element at four positions is one element animating, not four stills to flip through.
 
 ## Keeping a multi-video series consistent
 
-For a series — a launch set, a weekly clip, a per-region cut — consistency comes from a **shared source of truth**, not from re-describing the brand each time:
+A series is a launch set, a weekly clip, or a per-region cut. Consistency comes from a **shared source of truth**, not from re-describing the brand each time:
 
 > All four videos share `frame.md` for palette and type. Only the headline and the stat change per video.
 
-The parts that stay constant come from the one authoring spec (or one set of imported Figma tokens), and the parts that vary become [variables](/prompting/variables-and-templating). When `frame.md` changes, rerun the workflow steps that generate or assemble the affected compositions so the authored HTML picks up the new brand value. For existing compositions that must re-skin at render time, declare the shared brand tokens as composition variables and bind them through CSS custom properties. This is where design systems and templating meet: the brand is shared, the content is parameterized.
+The constant parts come from that one authoring spec, or from one set of imported Figma tokens. The parts that vary become [variables](/prompting/variables-and-templating).
+
+When `frame.md` changes, rerun the workflow steps that generate or assemble the affected compositions. That's how the authored HTML picks up the new brand value.
+
+Some compositions already exist and have to re-skin at render time. Declare the shared brand tokens as composition variables instead. Every scalar variable is applied as a `--{id}` CSS custom property on the composition root, so `var(--id)` in your CSS follows the override.
+
+This is where design systems and templating meet. The brand is shared. The content is parameterized.
 
 ## Supplying brand assets by path
 
-Logos, fonts, textures, and product shots are inputs — hand the agent the path, don't ask it to draw them:
+Logos, fonts, textures, and product shots are inputs. Hand the agent the path — don't ask it to draw them:
 
 > Logo at `assets/logo.svg`, brand font files in `assets/fonts/`, product shot at `assets/hero.png`. Use them; don't invent placeholders.
 
-Prefer an SVG logo (scalable, animatable) over a raster one. State the paths explicitly so the agent wires the real assets instead of generating stand-ins — and so the render is deterministic, with every asset present locally before it starts.
+Prefer an SVG logo over a raster one. It scales and it animates.
+
+State the paths explicitly. That way the agent wires up the real assets instead of generating stand-ins. It also keeps the render deterministic, because every asset is present locally before the render starts.
 
 ## Supply inputs a workflow accepts — don't fight its preset
 
-The creation workflows (`/product-launch-video`, `/faceless-explainer`, and the rest) each come with a designed look. The productive move is to feed that look your brand inputs, not to override its composition after the fact:
+Each creation workflow comes with a designed look — `/product-launch-video`, `/faceless-explainer`, and the rest. Feed that look your brand inputs. Don't override its composition after the fact.
 
 - ❌ `run /product-launch-video, then restyle every scene to my colors afterward`
 - ✅ `run /product-launch-video with my palette, fonts, and logo as inputs up front`
 
-The engine rationale: a workflow's preset is a coherent, tested system — colors, spacing, motion, and component treatments that hang together. Supplying brand inputs at the start lets it apply your palette and type *within* that system. Restyling scene-by-scene afterward pulls threads out of a design that was balanced as a whole, and you spend more effort fighting the preset than you'd have spent handing it a spec.
+Why this works: a workflow's preset is a coherent, tested system. Its colors, spacing, motion, and component treatments hang together. Supply your brand inputs at the start and it applies your palette and type *within* that system.
+
+Restyling scene by scene afterward pulls threads out of a design that was balanced as a whole. You spend more effort fighting the preset than handing it a spec would have cost.
 
 ## Related
 
@@ -86,16 +115,16 @@ The engine rationale: a workflow's preset is a coherent, tested system — color
   <Card title="The specification dial" icon="gauge" href="/prompting/specification-dial">
     How pinning exact hexes and type direction removes drift.
   </Card>
-  <Card title="Claude Design" icon="message" href="/guides/claude-design">
+  <Card title="Claude Design" icon="message" href="/guides/design-tools">
     Attach a brand guide or screenshot to seed a first draft from your look.
   </Card>
 </CardGroup>
 
 <Note>
-**Capstone thread** — the entire [Level 7 film](/prompting/capstone) obeys a supplied `frame.md` — the real HyperFrames brand. The closing lockup is where the system shows most: ABC Solar Display for the display type and the mint→cyan CTA gradient in its single sanctioned appearance (cut from the film, below).
+**Capstone thread** — the entire [Level 7 film](/prompting/capstone) obeys a supplied `frame.md`: the real HyperFrames brand. The closing lockup is where the system shows most. ABC Solar Display carries the display type, and the mint→cyan CTA gradient makes its single sanctioned appearance (cut from the film, below).
 </Note>
 
-This is the clause in the [full capstone prompt](/prompting/capstone#the-full-prompt-verbatim) that buys the piece — prompt language you can lift for your own video:
+This is the clause in the [full capstone prompt](/prompting/capstone#the-prompt-word-for-word) that buys the piece. It's prompt language you can lift for your own video:
 
 > **Design system: the provided `frame.md` is the single source of brand truth — read it first and obey it exactly.** It is the real HyperFrames brand (by HeyGen), dark-first: flat near-black ground […] **mint `#3CE6AC` used sparingly as the single accent — mint means go / primary / active**. The mint→cyan gradient (`#3CE6AC → #00E3FF`) appears in exactly one place in the whole film: the final CTA lockup.
 
@@ -104,6 +133,6 @@ This is the clause in the [full capstone prompt](/prompting/capstone#the-full-pr
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-render.mp4#t=0.1"
   loop
 />
-*That clause paying off, rendered — the closing lockup, where the brand file's display face and its one sanctioned gradient finally appear together.*
+*That clause paying off, rendered. The closing lockup is where the brand file's display face and its one sanctioned gradient finally appear together.*
 
 *Next: [Variables and templating](/prompting/variables-and-templating) — turn the brand tokens that repeat across a series into named slots you fill per render.*

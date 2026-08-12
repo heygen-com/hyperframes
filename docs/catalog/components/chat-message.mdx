@@ -1,0 +1,686 @@
+---
+title: "Chat Message"
+description: "One message arrives on the measured entry - scale 0.75, 0.12s, growing from its sender's corner. The type is an enum switched like marker-highlight's style: a received or sent bubble with a real tail, a large emoji row, an image, or a link card with title and domain. The atom that chat-thread builds conversations from"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
+
+<VariablesExplorer
+  previewSrc="/public/catalog/components/chat-message.json"
+  compositionId="chat-message"
+  compositionSrc="compositions/components/chat-message.html"
+  variables={[{"id":"type","type":"enum","role":"content","label":"Type","description":"Which message form arrives.","default":"sent","options":[{"value":"recv","label":"Received"},{"value":"sent","label":"Sent"},{"value":"emoji","label":"Emoji"},{"value":"img","label":"Image"},{"value":"card","label":"Link card"}]},{"id":"text","type":"string","role":"content","label":"Text","description":"Bubble text, or the emoji row for the Emoji type.","default":"wait look 👀"},{"id":"cardTitle","type":"string","role":"content","label":"Card title","description":"Link-card title (Link card type only).","default":"HyperFrames — Write HTML, render pixel-perfect video"},{"id":"cardDomain","type":"string","role":"content","label":"Card domain","description":"Link-card domain line (Link card type only).","default":"hyperframes.heygen.com"},{"id":"tail","type":"enum","role":"style","label":"Tail","description":"The bubble tail anchoring the message to its side.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"delivered","type":"enum","role":"content","label":"Delivered","description":"The receipt under a sent message.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
+>
+
+```html chat-message.html
+<!doctype html>
+<!--
+  chat-message: HyperFrames video primitive (atomic move)
+
+  ONE message arrives, on the measured entry: scale 0.75, alpha 0.6 to 1,
+  0.12s power2.out, growing from the corner nearest its sender. The TYPE is
+  an enum - Received, Sent, Emoji, Image, Link card - switched the way
+  marker-highlight switches its style. This is the atom; chat-thread is the
+  conversation built from arrivals like this one, and message-thread-reveal
+  is the finished film.
+
+  #root only, container-type: size, one paused timeline registered under the
+  literal "chat-message" key. Deterministic.
+-->
+<html
+  lang="en"
+  data-composition-id="chat-message"
+  data-composition-duration="3"
+  data-composition-variables='[{"id": "type", "type": "enum", "role": "content", "label": "Type", "description": "Which message form arrives.", "default": "sent", "options": [{"value": "recv", "label": "Received"}, {"value": "sent", "label": "Sent"}, {"value": "emoji", "label": "Emoji"}, {"value": "img", "label": "Image"}, {"value": "card", "label": "Link card"}]}, {"id": "text", "type": "string", "role": "content", "label": "Text", "description": "Bubble text, or the emoji row for the Emoji type.", "default": "wait look 👀"}, {"id": "cardTitle", "type": "string", "role": "content", "label": "Card title", "description": "Link-card title (Link card type only).", "default": "HyperFrames — Write HTML, render pixel-perfect video"}, {"id": "cardDomain", "type": "string", "role": "content", "label": "Card domain", "description": "Link-card domain line (Link card type only).", "default": "hyperframes.heygen.com"}, {"id": "tail", "type": "enum", "role": "style", "label": "Tail", "description": "The bubble tail anchoring the message to its side.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}, {"id": "delivered", "type": "enum", "role": "content", "label": "Delivered", "description": "The receipt under a sent message.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Message</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chat-message" data-duration="3" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #000;
+            font-family: var(
+              --font-body,
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              sans-serif
+            );
+            pointer-events: none;
+          }
+          .cm-slot {
+            position: absolute;
+            left: 6cqw;
+            right: 6cqw;
+            bottom: 10cqh;
+          }
+          .cm-slot.sent {
+            text-align: right;
+          }
+          .cm-pop {
+            display: inline-block;
+            transform-origin: left bottom;
+            text-align: left;
+          }
+          .cm-slot.sent .cm-pop {
+            transform-origin: right bottom;
+          }
+          .cm-bubble {
+            display: inline-block;
+            position: relative;
+            max-width: 78cqw;
+            padding: 2cqh 5cqw;
+            border-radius: 6.4cqmin;
+            font-size: 4.6cqmin;
+            line-height: 1.35;
+            color: #fff;
+          }
+          .cm-bubble.recv {
+            background: #242428;
+          }
+          .cm-bubble.sent {
+            background: #0a80f8;
+          }
+          .cm-tail-recv::before {
+            content: "";
+            position: absolute;
+            left: -1.5cqmin;
+            bottom: 0;
+            width: 4cqmin;
+            height: 4cqmin;
+            background: #242428;
+            border-bottom-right-radius: 3cqmin 2.8cqmin;
+          }
+          .cm-tail-recv::after {
+            content: "";
+            position: absolute;
+            left: -4cqmin;
+            bottom: -0.3cqmin;
+            width: 3cqmin;
+            height: 4.6cqmin;
+            background: #000;
+            border-bottom-right-radius: 2.4cqmin;
+          }
+          .cm-tail-sent::before {
+            content: "";
+            position: absolute;
+            right: -1.5cqmin;
+            bottom: 0;
+            width: 4cqmin;
+            height: 4cqmin;
+            background: #0a80f8;
+            border-bottom-left-radius: 3cqmin 2.8cqmin;
+          }
+          .cm-tail-sent::after {
+            content: "";
+            position: absolute;
+            right: -4cqmin;
+            bottom: -0.3cqmin;
+            width: 3cqmin;
+            height: 4.6cqmin;
+            background: #000;
+            border-bottom-left-radius: 2.4cqmin;
+          }
+          .cm-delivered {
+            color: #8e8e93;
+            font-size: 3.4cqmin;
+            margin-top: 1.2cqh;
+            padding-right: 1cqw;
+            text-align: right;
+          }
+          .cm-emoji {
+            font-size: 15cqmin;
+            line-height: 1.25;
+            letter-spacing: 0.02em;
+            color: #fff;
+            white-space: nowrap;
+          }
+          .cm-media {
+            display: inline-block;
+            width: 66cqw;
+            aspect-ratio: 4 / 3;
+            border-radius: 5cqmin;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cm-play {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 13cqmin;
+            height: 13cqmin;
+            border-radius: 50%;
+            background: rgba(253, 253, 253, 0.94);
+          }
+          .cm-play::before {
+            content: "";
+            position: absolute;
+            left: 38%;
+            top: 30%;
+            border-left: 4.4cqmin solid #0d0d0d;
+            border-top: 2.6cqmin solid transparent;
+            border-bottom: 2.6cqmin solid transparent;
+          }
+          .cm-card {
+            display: inline-block;
+            width: 70cqw;
+            border-radius: 5cqmin;
+            overflow: hidden;
+            text-align: left;
+          }
+          .cm-cardimg {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1.02;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cm-cardmeta {
+            background: #28282c;
+            display: flex;
+            align-items: center;
+            padding: 1.8cqh 3cqw 1.8cqh 4cqw;
+          }
+          .cm-cardtxt {
+            flex: 1;
+            min-width: 0;
+          }
+          .cm-cardtitle {
+            display: block;
+            color: #fff;
+            font-size: 3.5cqmin;
+            font-weight: 600;
+            line-height: 1.3;
+          }
+          .cm-carddomain {
+            display: block;
+            color: #8e8e93;
+            font-size: 3cqmin;
+            margin-top: 0.6cqh;
+          }
+          .cm-cardchev {
+            color: #8e8e93;
+            font-size: 6cqmin;
+            padding-left: 1.4cqw;
+          }
+        </style>
+        <div class="cm-slot" id="cm-slot" data-layout-allow-overflow data-layout-allow-overlap>
+          <div class="cm-pop" id="cm-pop"></div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "chat-message";
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            function pick(table, value, fallback) {
+              return table.indexOf(value) >= 0 ? value : fallback;
+            }
+            var type = pick(["recv", "sent", "emoji", "img", "card"], vars.type, "sent");
+            var body = text(vars.text, "wait look \ud83d\udc40", 140);
+            var tailOn = vars.tail !== "off";
+            var deliveredOn = vars.delivered !== "off";
+
+            var side = type === "sent" || type === "img" || type === "card" ? "sent" : "recv";
+            var slot = document.getElementById("cm-slot");
+            var pop = document.getElementById("cm-pop");
+            slot.classList.add(side);
+            if (type === "recv" || type === "sent") {
+              var bubble = document.createElement("div");
+              bubble.className = "cm-bubble " + type + (tailOn ? " cm-tail-" + type : "");
+              bubble.textContent = body;
+              pop.appendChild(bubble);
+            } else if (type === "emoji") {
+              var row = document.createElement("div");
+              row.className = "cm-emoji";
+              row.textContent = body;
+              pop.appendChild(row);
+            } else if (type === "img") {
+              pop.innerHTML = '<span class="cm-media"><span class="cm-play"></span></span>';
+            } else {
+              var card = document.createElement("span");
+              card.className = "cm-card";
+              card.innerHTML = '<span class="cm-cardimg"><span class="cm-play"></span></span>';
+              var meta = document.createElement("span");
+              meta.className = "cm-cardmeta";
+              meta.style.display = "flex";
+              var txt = document.createElement("span");
+              txt.className = "cm-cardtxt";
+              var title = document.createElement("span");
+              title.className = "cm-cardtitle";
+              title.textContent = text(
+                vars.cardTitle,
+                "HyperFrames \u2014 Write HTML, render pixel-perfect video",
+                80,
+              );
+              txt.appendChild(title);
+              var domain = document.createElement("span");
+              domain.className = "cm-carddomain";
+              domain.textContent = text(vars.cardDomain, "hyperframes.heygen.com", 40);
+              txt.appendChild(domain);
+              meta.appendChild(txt);
+              var chev = document.createElement("span");
+              chev.className = "cm-cardchev";
+              chev.textContent = "\u203a";
+              meta.appendChild(chev);
+              card.appendChild(meta);
+              pop.appendChild(card);
+            }
+            if (deliveredOn && (type === "sent" || type === "card" || type === "img")) {
+              var receipt = document.createElement("div");
+              receipt.className = "cm-delivered";
+              receipt.textContent = "Delivered";
+              pop.appendChild(receipt);
+            }
+
+            var tl = gsap.timeline({ paused: true });
+            /* the measured arrival, then hold */
+            tl.set("#cm-slot", { autoAlpha: 0 }, 0.001);
+            tl.set("#cm-slot", { autoAlpha: 1 }, 0.4);
+            tl.fromTo(
+              "#cm-pop",
+              { scale: 0.75, autoAlpha: 0.6 },
+              { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+              0.4,
+            );
+            tl.set({}, {}, 3);
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</VariablesExplorer>
+
+## Install
+
+<InstallCommand command="npx hyperframes add chat-message" item="chat-message" />
+
+That writes one file: `compositions/components/chat-message.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/chat-message.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `type` | `sent` | `recv`, `sent`, `emoji`, `img`, `card` | Which message form arrives. |
+| `text` | `wait look 👀` | string | Bubble text, or the emoji row for the Emoji type. |
+| `cardTitle` | `HyperFrames — Write HTML, render pixel-perfect video` | string | Link-card title (Link card type only). |
+| `cardDomain` | `hyperframes.heygen.com` | string | Link-card domain line (Link card type only). |
+| `tail` | `on` | `on`, `off` | The bubble tail anchoring the message to its side. |
+| `delivered` | `on` | `on`, `off` | The receipt under a sent message. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="chat-message"
+  data-composition-src="compositions/components/chat-message.html"
+  data-variable-values='{"type":"sent","text":"wait look 👀","cardTitle":"HyperFrames — Write HTML, render pixel-perfect video","cardDomain":"hyperframes.heygen.com","tail":"on","delivered":"on"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`chat-message.html`}>
+
+```html
+<!doctype html>
+<!--
+  chat-message: HyperFrames video primitive (atomic move)
+
+  ONE message arrives, on the measured entry: scale 0.75, alpha 0.6 to 1,
+  0.12s power2.out, growing from the corner nearest its sender. The TYPE is
+  an enum - Received, Sent, Emoji, Image, Link card - switched the way
+  marker-highlight switches its style. This is the atom; chat-thread is the
+  conversation built from arrivals like this one, and message-thread-reveal
+  is the finished film.
+
+  #root only, container-type: size, one paused timeline registered under the
+  literal "chat-message" key. Deterministic.
+-->
+<html
+  lang="en"
+  data-composition-id="chat-message"
+  data-composition-duration="3"
+  data-composition-variables='[{"id": "type", "type": "enum", "role": "content", "label": "Type", "description": "Which message form arrives.", "default": "sent", "options": [{"value": "recv", "label": "Received"}, {"value": "sent", "label": "Sent"}, {"value": "emoji", "label": "Emoji"}, {"value": "img", "label": "Image"}, {"value": "card", "label": "Link card"}]}, {"id": "text", "type": "string", "role": "content", "label": "Text", "description": "Bubble text, or the emoji row for the Emoji type.", "default": "wait look 👀"}, {"id": "cardTitle", "type": "string", "role": "content", "label": "Card title", "description": "Link-card title (Link card type only).", "default": "HyperFrames — Write HTML, render pixel-perfect video"}, {"id": "cardDomain", "type": "string", "role": "content", "label": "Card domain", "description": "Link-card domain line (Link card type only).", "default": "hyperframes.heygen.com"}, {"id": "tail", "type": "enum", "role": "style", "label": "Tail", "description": "The bubble tail anchoring the message to its side.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}, {"id": "delivered", "type": "enum", "role": "content", "label": "Delivered", "description": "The receipt under a sent message.", "default": "on", "options": [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Message</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chat-message" data-duration="3" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: #000;
+            font-family: var(
+              --font-body,
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              sans-serif
+            );
+            pointer-events: none;
+          }
+          .cm-slot {
+            position: absolute;
+            left: 6cqw;
+            right: 6cqw;
+            bottom: 10cqh;
+          }
+          .cm-slot.sent {
+            text-align: right;
+          }
+          .cm-pop {
+            display: inline-block;
+            transform-origin: left bottom;
+            text-align: left;
+          }
+          .cm-slot.sent .cm-pop {
+            transform-origin: right bottom;
+          }
+          .cm-bubble {
+            display: inline-block;
+            position: relative;
+            max-width: 78cqw;
+            padding: 2cqh 5cqw;
+            border-radius: 6.4cqmin;
+            font-size: 4.6cqmin;
+            line-height: 1.35;
+            color: #fff;
+          }
+          .cm-bubble.recv {
+            background: #242428;
+          }
+          .cm-bubble.sent {
+            background: #0a80f8;
+          }
+          .cm-tail-recv::before {
+            content: "";
+            position: absolute;
+            left: -1.5cqmin;
+            bottom: 0;
+            width: 4cqmin;
+            height: 4cqmin;
+            background: #242428;
+            border-bottom-right-radius: 3cqmin 2.8cqmin;
+          }
+          .cm-tail-recv::after {
+            content: "";
+            position: absolute;
+            left: -4cqmin;
+            bottom: -0.3cqmin;
+            width: 3cqmin;
+            height: 4.6cqmin;
+            background: #000;
+            border-bottom-right-radius: 2.4cqmin;
+          }
+          .cm-tail-sent::before {
+            content: "";
+            position: absolute;
+            right: -1.5cqmin;
+            bottom: 0;
+            width: 4cqmin;
+            height: 4cqmin;
+            background: #0a80f8;
+            border-bottom-left-radius: 3cqmin 2.8cqmin;
+          }
+          .cm-tail-sent::after {
+            content: "";
+            position: absolute;
+            right: -4cqmin;
+            bottom: -0.3cqmin;
+            width: 3cqmin;
+            height: 4.6cqmin;
+            background: #000;
+            border-bottom-left-radius: 2.4cqmin;
+          }
+          .cm-delivered {
+            color: #8e8e93;
+            font-size: 3.4cqmin;
+            margin-top: 1.2cqh;
+            padding-right: 1cqw;
+            text-align: right;
+          }
+          .cm-emoji {
+            font-size: 15cqmin;
+            line-height: 1.25;
+            letter-spacing: 0.02em;
+            color: #fff;
+            white-space: nowrap;
+          }
+          .cm-media {
+            display: inline-block;
+            width: 66cqw;
+            aspect-ratio: 4 / 3;
+            border-radius: 5cqmin;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cm-play {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 13cqmin;
+            height: 13cqmin;
+            border-radius: 50%;
+            background: rgba(253, 253, 253, 0.94);
+          }
+          .cm-play::before {
+            content: "";
+            position: absolute;
+            left: 38%;
+            top: 30%;
+            border-left: 4.4cqmin solid #0d0d0d;
+            border-top: 2.6cqmin solid transparent;
+            border-bottom: 2.6cqmin solid transparent;
+          }
+          .cm-card {
+            display: inline-block;
+            width: 70cqw;
+            border-radius: 5cqmin;
+            overflow: hidden;
+            text-align: left;
+          }
+          .cm-cardimg {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1.02;
+            position: relative;
+            background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+          }
+          .cm-cardmeta {
+            background: #28282c;
+            display: flex;
+            align-items: center;
+            padding: 1.8cqh 3cqw 1.8cqh 4cqw;
+          }
+          .cm-cardtxt {
+            flex: 1;
+            min-width: 0;
+          }
+          .cm-cardtitle {
+            display: block;
+            color: #fff;
+            font-size: 3.5cqmin;
+            font-weight: 600;
+            line-height: 1.3;
+          }
+          .cm-carddomain {
+            display: block;
+            color: #8e8e93;
+            font-size: 3cqmin;
+            margin-top: 0.6cqh;
+          }
+          .cm-cardchev {
+            color: #8e8e93;
+            font-size: 6cqmin;
+            padding-left: 1.4cqw;
+          }
+        </style>
+        <div class="cm-slot" id="cm-slot" data-layout-allow-overflow data-layout-allow-overlap>
+          <div class="cm-pop" id="cm-pop"></div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+            var compositionId = "chat-message";
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            function text(v, fb, mx) {
+              if (typeof v !== "string") return fb;
+              var t = v.trim();
+              if (!t) return fb;
+              return t.length > mx ? t.slice(0, mx) : t;
+            }
+            function pick(table, value, fallback) {
+              return table.indexOf(value) >= 0 ? value : fallback;
+            }
+            var type = pick(["recv", "sent", "emoji", "img", "card"], vars.type, "sent");
+            var body = text(vars.text, "wait look \ud83d\udc40", 140);
+            var tailOn = vars.tail !== "off";
+            var deliveredOn = vars.delivered !== "off";
+
+            var side = type === "sent" || type === "img" || type === "card" ? "sent" : "recv";
+            var slot = document.getElementById("cm-slot");
+            var pop = document.getElementById("cm-pop");
+            slot.classList.add(side);
+            if (type === "recv" || type === "sent") {
+              var bubble = document.createElement("div");
+              bubble.className = "cm-bubble " + type + (tailOn ? " cm-tail-" + type : "");
+              bubble.textContent = body;
+              pop.appendChild(bubble);
+            } else if (type === "emoji") {
+              var row = document.createElement("div");
+              row.className = "cm-emoji";
+              row.textContent = body;
+              pop.appendChild(row);
+            } else if (type === "img") {
+              pop.innerHTML = '<span class="cm-media"><span class="cm-play"></span></span>';
+            } else {
+              var card = document.createElement("span");
+              card.className = "cm-card";
+              card.innerHTML = '<span class="cm-cardimg"><span class="cm-play"></span></span>';
+              var meta = document.createElement("span");
+              meta.className = "cm-cardmeta";
+              meta.style.display = "flex";
+              var txt = document.createElement("span");
+              txt.className = "cm-cardtxt";
+              var title = document.createElement("span");
+              title.className = "cm-cardtitle";
+              title.textContent = text(
+                vars.cardTitle,
+                "HyperFrames \u2014 Write HTML, render pixel-perfect video",
+                80,
+              );
+              txt.appendChild(title);
+              var domain = document.createElement("span");
+              domain.className = "cm-carddomain";
+              domain.textContent = text(vars.cardDomain, "hyperframes.heygen.com", 40);
+              txt.appendChild(domain);
+              meta.appendChild(txt);
+              var chev = document.createElement("span");
+              chev.className = "cm-cardchev";
+              chev.textContent = "\u203a";
+              meta.appendChild(chev);
+              card.appendChild(meta);
+              pop.appendChild(card);
+            }
+            if (deliveredOn && (type === "sent" || type === "card" || type === "img")) {
+              var receipt = document.createElement("div");
+              receipt.className = "cm-delivered";
+              receipt.textContent = "Delivered";
+              pop.appendChild(receipt);
+            }
+
+            var tl = gsap.timeline({ paused: true });
+            /* the measured arrival, then hold */
+            tl.set("#cm-slot", { autoAlpha: 0 }, 0.001);
+            tl.set("#cm-slot", { autoAlpha: 1 }, 0.4);
+            tl.fromTo(
+              "#cm-pop",
+              { scale: 0.75, autoAlpha: 0.6 },
+              { scale: 1, autoAlpha: 1, duration: 0.12, ease: "power2.out" },
+              0.4,
+            );
+            tl.set({}, {}, 3);
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `video-primitive` `chat` `mock-ui` `message`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

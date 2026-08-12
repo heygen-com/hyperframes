@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it } from "vitest";
-import { probeAndCacheElementVolume, probeElementVolumeKeyframes } from "./mediaVolumeEnvelope";
+import {
+  interpolateVolumeGain,
+  probeAndCacheElementVolume,
+  probeElementVolumeKeyframes,
+} from "./mediaVolumeEnvelope";
 
 describe("probeElementVolumeKeyframes", () => {
   it("retains the last plateau sample before a short volume change", () => {
@@ -142,5 +146,41 @@ describe("probeAndCacheElementVolume", () => {
     expect(cache.get(audio)).toEqual(
       expect.arrayContaining([expect.objectContaining({ volume: 0 })]),
     );
+  });
+
+  it("caches a track-relative envelope for a clip that starts after t=0", () => {
+    // The probe stamps timeline seek times. A clip starting at 2s therefore
+    // yields keyframes at 2.0+, and reading them with track-relative time landed
+    // before the first keyframe and clamped to its volume — 0 for a fade-in, so
+    // the preview stayed silent for the whole clip while the render was correct.
+    const audio = document.createElement("audio");
+    audio.dataset.start = "2";
+    audio.dataset.duration = "1";
+    audio.dataset.volume = "1";
+    document.body.append(audio);
+
+    const timeline = {
+      totalTime(next?: number) {
+        if (next !== undefined) {
+          // 0.05s linear fade-in at the clip's start (timeline t=2).
+          audio.volume = Math.max(0, Math.min(1, (next - 2) / 0.05));
+        }
+        return 0;
+      },
+    };
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    probeAndCacheElementVolume(audio, timeline, 3, cache);
+
+    const envelope = cache.get(audio);
+    if (!envelope) throw new Error("Expected a cached envelope");
+    expect(envelope[0]).toEqual({ time: 0, volume: 0 });
+    expect(envelope.at(-1)?.time).toBeCloseTo(1, 5);
+
+    // Silent at the clip's start, full once the fade is done, and it stays there.
+    expect(interpolateVolumeGain(envelope, 0)).toBeCloseTo(0, 5);
+    expect(interpolateVolumeGain(envelope, 0.05)).toBeCloseTo(1, 5);
+    expect(interpolateVolumeGain(envelope, 0.5)).toBeCloseTo(1, 5);
+    expect(interpolateVolumeGain(envelope, 1)).toBeCloseTo(1, 5);
   });
 });

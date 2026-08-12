@@ -11,6 +11,7 @@
     "node_modules/",
     "playground/",
     "packages/producer/tests/**/src/vendor/**",
+    "docs/public/catalog/",
     "registry/blocks/**/lib/*.iife.js",
     "chrome/"
   ],
@@ -34,6 +35,9 @@
     },
     {
       "files": ["docs/snippets/**/*.jsx", "docs/snippets/**/*.tsx"],
+      "globals": {
+        "CodeBlock": "readonly"
+      },
       "rules": {
         "react-hooks/rules-of-hooks": "error",
         "react-hooks/exhaustive-deps": "warn"

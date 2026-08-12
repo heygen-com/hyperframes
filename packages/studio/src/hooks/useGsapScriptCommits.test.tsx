@@ -73,12 +73,157 @@ describe("applyPreviewSync", () => {
 
     syncDragPreview(result(), reloadPreview);
 
-    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
-      kind: "set",
-      props: { x: 10 },
-    });
+    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(
+      FAKE_IFRAME,
+      "#a",
+      {
+        kind: "set",
+        props: { x: 10 },
+      },
+      undefined,
+      false,
+    );
     expect(applySoftReload).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("instantPatches: patches every element the batch wrote, rendering once at the end", () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result(),
+      {
+        label: "Move animated layer (group)",
+        softReload: true,
+        instantPatches: [
+          { selector: "#a", change: { kind: "set" as const, props: { x: 1 } } },
+          { selector: "#b", change: { kind: "set" as const, props: { x: 2 } } },
+          { selector: "#c", change: { kind: "set" as const, props: { x: 3 } } },
+        ],
+      },
+      reloadPreview,
+    );
+
+    // Only the last patch re-renders — the earlier two defer their seek, so the
+    // group repaints once instead of once per member.
+    expect(patchRuntimeTweenInPlace.mock.calls.map((call) => [call[1], call[4]])).toEqual([
+      ["#a", true],
+      ["#b", true],
+      ["#c", false],
+    ]);
+    expect(applySoftReload).not.toHaveBeenCalled();
+    expect(reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("applies both plural and singular patches when a caller supplies both", () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result(),
+      {
+        label: "mixed patch contract",
+        instantPatches: [
+          { selector: "#group-a", change: { kind: "set" as const, props: { x: 1 } } },
+        ],
+        instantPatch: {
+          selector: "#single-b",
+          change: { kind: "set" as const, props: { x: 2 } },
+        },
+      },
+      vi.fn(),
+    );
+
+    expect(patchRuntimeTweenInPlace.mock.calls.map((call) => [call[1], call[4]])).toEqual([
+      ["#group-a", true],
+      ["#single-b", false],
+    ]);
+  });
+
+  it("instantPatches: one patch that misses falls the whole batch back to the reload", () => {
+    patchRuntimeTweenInPlace.mockImplementation((_iframe, selector) => selector !== "#b");
+    applySoftReload.mockReturnValue("applied");
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      {
+        label: "Move animated layer (group)",
+        softReload: true,
+        instantPatches: [
+          { selector: "#a", change: { kind: "set" as const, props: { x: 1 } } },
+          { selector: "#b", change: { kind: "set" as const, props: { x: 2 } } },
+        ],
+      },
+      reloadPreview,
+    );
+
+    // A half-patched preview is worse than a reloaded one: "#a" landed, "#b" did
+    // not, so the reload repaints both from the written source.
+    expect(applySoftReload).toHaveBeenCalled();
+    expect(trackStudioEvent).toHaveBeenCalledWith("gsap_instant_patch_fallback", {
+      selector: "#b",
+    });
+  });
+
+  it("carries a deferred patch miss into the final batch render", () => {
+    const previewFallbackLatch = { pending: false };
+    applySoftReload.mockReturnValue("applied");
+    const reloadPreview = vi.fn();
+    patchRuntimeTweenInPlace.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      {
+        label: "Move animated layer (group)",
+        softReload: true,
+        deferPreviewSync: true,
+        previewFallbackLatch,
+        instantPatch: { selector: "#missed", change: { kind: "set", props: { x: 1 } } },
+      },
+      reloadPreview,
+    );
+
+    expect(previewFallbackLatch.pending).toBe(true);
+    expect(applySoftReload).not.toHaveBeenCalled();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      {
+        label: "Move animated layer (group)",
+        softReload: true,
+        previewFallbackLatch,
+        instantPatch: { selector: "#final", change: { kind: "set", props: { x: 2 } } },
+      },
+      reloadPreview,
+    );
+
+    expect(previewFallbackLatch.pending).toBe(false);
+    expect(applySoftReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back immediately when a deferred patch miss has no final-render latch", () => {
+    patchRuntimeTweenInPlace.mockReturnValue(false);
+    applySoftReload.mockReturnValue("applied");
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      {
+        label: "Deferred standalone write",
+        softReload: true,
+        deferPreviewSync: true,
+        instantPatch: { selector: "#missed", change: { kind: "set", props: { x: 1 } } },
+      },
+      vi.fn(),
+    );
+
+    expect(applySoftReload).toHaveBeenCalledTimes(1);
   });
 
   it("instantPatch + patch fails: falls back to the soft reload, passing onAsyncFailure", () => {
@@ -338,10 +483,51 @@ describe("runCommit — instantPatch wiring", () => {
 
     // The file already matched (changed:false) but the runtime patch deferred
     // from the paired first commit must still land.
-    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
-      kind: "set",
-      props: { x: 485, y: 311 },
+    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(
+      FAKE_IFRAME,
+      "#a",
+      {
+        kind: "set",
+        props: { x: 485, y: 311 },
+      },
+      undefined,
+      false,
+    );
+    expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("no-op batch still applies every plural instant patch", async () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+    mockFetchResult({ changed: false });
+    const deps = renderCommitHook();
+    const batch = deps.api.commitMutation.batch;
+    if (!batch) throw new Error("batch capability missing");
+
+    await act(async () => {
+      await batch(
+        [
+          {
+            selection,
+            mutation: { type: "update-property", property: "x", value: 10 },
+            options: {
+              label: "Move layer",
+              instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
+            },
+          },
+          {
+            selection: { ...selection, id: "b", selector: "#b" },
+            mutation: { type: "update-property", property: "x", value: 20 },
+            options: {
+              label: "Move layer",
+              instantPatch: { selector: "#b", change: { kind: "set", props: { x: 20 } } },
+            },
+          },
+        ],
+        { label: "Move animated layer (group)" },
+      );
     });
+
+    expect(patchRuntimeTweenInPlace.mock.calls.map((call) => call[1])).toEqual(["#a", "#b"]);
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 

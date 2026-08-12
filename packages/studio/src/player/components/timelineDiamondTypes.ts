@@ -29,7 +29,7 @@ export interface TimelineClipDiamondsProps {
   keyframesData: KeyframeCacheEntry;
   clipWidthPx: number;
   clipHeightPx: number;
-  /** Needed to compare the playhead to keyframes in output-frame time. */
+  /** Needed to compare the playhead to keyframes and voice their absolute time. */
   clipDuration: number;
   /** Beat-dot strip is shown on this track → shrink diamonds + drop them into
    *  the bottom half so they clear the strip at the top. */
@@ -38,7 +38,11 @@ export interface TimelineClipDiamondsProps {
   isSelected: boolean;
   currentPercentage: number;
   elementId: string;
+  /** Absolute clip start, used only to voice a keyframe's time in its label. */
+  clipStart?: number;
   selectedKeyframes: ReadonlySet<string>;
+  /** Focus id of the one timeline control currently in the tab order. */
+  rovingTargetId?: string | null;
   onClickKeyframe?: (elementId: string, keyframe: TimelineKeyframeTarget) => void;
   onShiftClickKeyframe?: (elementId: string, keyframe: TimelineKeyframeTarget) => void;
   onContextMenuKeyframe?: (
@@ -86,12 +90,15 @@ export interface TimelineDiamondLaneProps extends Omit<
 }
 
 export const DIAMOND_RATIO = 0.8;
-// Percentage tolerance for rendering keyframes near clip boundaries. Keyframes
-// slightly outside [0, 100] (from rounding or stale cache during the async
-// persist → reload cycle) are still rendered (the clip is overflow-visible) at
-// their true position rather than hidden.
-export const KF_MIN_PCT = -5;
-export const KF_MAX_PCT = 105;
+
+/** Absolute time of a keyframe, for the screen-reader label. */
+export function keyframeTimeLabel(
+  clipStart: number,
+  clipDuration: number,
+  percentage: number,
+): string {
+  return `${Number((clipStart + (clipDuration * percentage) / 100).toFixed(2))}s`;
+}
 
 /**
  * The full identity of a diamond, used by every callback and by the selection

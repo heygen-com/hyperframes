@@ -1,0 +1,84 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "titlecard-lockup",
+  "type": "hyperframes:component",
+  "title": "Titlecard Lockup",
+  "description": "The calm breather titlecard: an optional mono kicker fades up, the wordmark settles dead-center with one restrained move, a hairline rule draws left to right, a mono label fades beneath, and the lockup holds truly still.",
+  "tags": ["motion-primitive", "typography", "title-card", "lockup", "breather", "orient"],
+  "jobs": ["orient"],
+  "family": "typography",
+  "profile": "calm",
+  "evidence": "Wave J J1-3 titlecard-lockup specification",
+  "syncPoints": [{ "id": "lockup-settled", "phase": "in", "offset": 1.8 }],
+  "files": [
+    {
+      "path": "titlecard-lockup.html",
+      "target": "compositions/components/titlecard-lockup.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "wordmark",
+      "type": "string",
+      "role": "content",
+      "label": "Wordmark",
+      "description": "Display wordmark that settles dead-center.",
+      "default": "HYPERFRAMES"
+    },
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Label",
+      "description": "Mono caption under the rule. Empty hides it.",
+      "default": "WRITE HTML. RENDER VIDEO."
+    },
+    {
+      "id": "kicker",
+      "type": "string",
+      "role": "content",
+      "label": "Kicker",
+      "description": "Small mono label above the wordmark. Empty hides it.",
+      "default": "INTRODUCING"
+    },
+    {
+      "id": "rule",
+      "type": "enum",
+      "role": "style",
+      "label": "Rule",
+      "description": "Hairline rule drawn left to right under the wordmark.",
+      "default": "show",
+      "options": [
+        { "value": "show", "label": "Show" },
+        { "value": "hide", "label": "Hide" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Contract color carried by the hairline rule.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "Optional departure. Frame roots own transitions, so none is the default.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

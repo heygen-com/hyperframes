@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Notes Typing</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
+      }
+      .spec-phone {
+        position: absolute;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+        container-type: size;
+      }
+      .spec-paper {
+        position: absolute;
+        left: 330px;
+        top: 90px;
+        width: 640px;
+        height: 900px;
+        container-type: size;
+        background: #ece1d5;
+        background-image: radial-gradient(
+          circle,
+          rgba(178, 150, 138, 0.18) 1.4px,
+          transparent 1.8px
+        );
+        background-size: 26px 26px;
+        border-radius: 10px;
+        box-shadow: 0 34px 80px rgba(0, 0, 0, 0.5);
+      }
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
+        top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
+        display: grid;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      #root {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        container-type: size;
+        isolation: isolate;
+        background: #fefefe;
+        font-family: var(--font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        pointer-events: none;
+      }
+      .nty-nav {
+        position: absolute;
+        left: 4cqw;
+        top: 3.5cqh;
+        width: 10cqmin;
+        height: 10cqmin;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 0.4cqmin 1.4cqmin rgba(0, 0, 0, 0.07);
+      }
+      .nty-nav svg {
+        position: absolute;
+        left: 32%;
+        top: 30%;
+        width: 36%;
+        height: 40%;
+      }
+      .nty-check {
+        position: absolute;
+        right: 4cqw;
+        top: 3.5cqh;
+        width: 10cqmin;
+        height: 10cqmin;
+        border-radius: 50%;
+        background: #fec909;
+      }
+      .nty-check svg {
+        position: absolute;
+        left: 26%;
+        top: 30%;
+        width: 50%;
+        height: 42%;
+      }
+      .nty-body {
+        position: absolute;
+        left: 6cqw;
+        right: 6cqw;
+        top: 16cqh;
+      }
+      .nty-title {
+        font-size: 8.4cqmin;
+        font-weight: 700;
+        letter-spacing: -0.005em;
+        color: #191919;
+        line-height: 1.15;
+        margin: 0 0 3.4cqh;
+      }
+      .nty-line {
+        font-size: 4.9cqmin;
+        color: #191919;
+        line-height: 1.5;
+        margin: 0 0 2.6cqh;
+        white-space: pre-wrap;
+        min-height: 1.5em;
+      }
+      .nty-ch {
+        opacity: 0;
+      }
+      #nty-caret {
+        position: absolute;
+        width: 0.42cqmin;
+        height: 5.2cqmin;
+        background: #ffca00;
+        border-radius: 0.2cqmin;
+        left: 0;
+        top: 0;
+        will-change: transform;
+      }
+      .nty-fmt {
+        position: absolute;
+        left: 4cqw;
+        right: 4cqw;
+        bottom: 4cqh;
+        height: 8.5cqh;
+        background: #fdfdfd;
+        border-radius: 100cqmin;
+        box-shadow: 0 0.4cqmin 1.6cqmin rgba(0, 0, 0, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+      }
+      .nty-fmt .aa {
+        font-size: 4.6cqmin;
+        font-weight: 700;
+        color: #111;
+      }
+      .nty-fmt .aa small {
+        font-size: 0.65em;
+        font-weight: 400;
+      }
+      .nty-fmt svg {
+        width: 5.6cqmin;
+        height: 5.6cqmin;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      class="hf-ui-demo-canvas"
+      data-composition-id="notes-typing-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+    >
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div id="root" style="position: relative; width: 100%; height: 100%; overflow: hidden">
+              <div class="nty-nav">
+                <svg viewBox="0 0 40 40">
+                  <path
+                    d="M26 4 L10 20 L26 36"
+                    fill="none"
+                    stroke="#111"
+                    stroke-width="4.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </div>
+              <div class="nty-check">
+                <svg viewBox="0 0 56 46">
+                  <path
+                    d="M6 24 L21 38 L50 6"
+                    fill="none"
+                    stroke="#fff"
+                    stroke-width="7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </div>
+              <div class="nty-body" id="nty-body">
+                <div class="nty-title" id="nty-title" data-layout-allow-overlap>
+                  Things nobody told me<br />about video.
+                </div>
+                <div id="nty-lines"></div>
+                <div id="nty-caret"></div>
+              </div>
+              <div class="nty-fmt">
+                <span class="aa">A<small>a</small></span>
+                <svg viewBox="0 0 64 54">
+                  <circle cx="10" cy="12" r="9" fill="none" stroke="#111" stroke-width="4" />
+                  <path
+                    d="M6 12 l3 3 6 -7"
+                    fill="none"
+                    stroke="#111"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="28"
+                    y1="12"
+                    x2="60"
+                    y2="12"
+                    stroke="#111"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                  <circle cx="10" cy="42" r="9" fill="none" stroke="#111" stroke-width="4" />
+                  <line
+                    x1="28"
+                    y1="42"
+                    x2="52"
+                    y2="42"
+                    stroke="#111"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <svg viewBox="0 0 62 62">
+                  <rect
+                    x="3"
+                    y="3"
+                    width="56"
+                    height="56"
+                    rx="8"
+                    fill="none"
+                    stroke="#111"
+                    stroke-width="4"
+                  />
+                  <line x1="3" y1="22" x2="59" y2="22" stroke="#111" stroke-width="4" />
+                  <line x1="22" y1="3" x2="22" y2="59" stroke="#111" stroke-width="4" />
+                </svg>
+                <svg viewBox="0 0 46 70">
+                  <path
+                    d="M33 14 v34 a11 11 0 0 1 -22 0 V16 a8 8 0 0 1 16 0 v30 a4 4 0 0 1 -8 0 V20"
+                    fill="none"
+                    stroke="#111"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <svg viewBox="0 0 62 62">
+                  <circle cx="31" cy="31" r="27" fill="none" stroke="#111" stroke-width="4" />
+                  <path d="M22 40 L36 18 a5 5 0 0 1 8 6 L30 46 l-10 4 z" fill="#111" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-cap">
+          <div class="name">notes-typing</div>
+          <div class="rule"></div>
+          <div class="desc">
+            The notes-app confession: body lines typed on the measured human keystroke rhythm, the
+            caret riding every landed character.
+          </div>
+          <div class="stats">
+            <div class="stat"><b>30-gap table</b> — the measured keystroke rhythm</div>
+            <div class="stat"><b>0.85s</b> — the breath before a new thought</div>
+            <div class="stat"><b>caret</b> — measured at mount, rides every char</div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      (function () {
+        "use strict";
+        var compositionId = "notes-typing-demo";
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+        function text(v, fb, mx) {
+          if (typeof v !== "string") return fb;
+          var t = v.trim();
+          if (!t) return fb;
+          return t.length > mx ? t.slice(0, mx) : t;
+        }
+        function clampNumber(v, min, max, fb) {
+          var n = typeof v === "number" ? v : parseFloat(v);
+          if (!isFinite(n)) return fb;
+          return Math.min(max, Math.max(min, n));
+        }
+        var titleEl = document.getElementById("nty-title");
+        titleEl.innerHTML = "";
+        text(vars.title, "Things nobody told me|about video.", 60)
+          .split("|")
+          .forEach(function (line, i) {
+            if (i > 0) titleEl.appendChild(document.createElement("br"));
+            titleEl.appendChild(document.createTextNode(line));
+          });
+        var lines = text(
+          vars.lines,
+          "my videos sucked|my tools cost $$$|and re-edits never end.",
+          240,
+        )
+          .split("|")
+          .map(function (l) {
+            return l.trim();
+          })
+          .filter(Boolean)
+          .slice(0, 6);
+        if (lines.length === 0) lines = ["my videos sucked"];
+        var speed = clampNumber(vars.speed, 0.5, 2, 1);
+
+        var linesEl = document.getElementById("nty-lines");
+        var chars = [];
+        lines.forEach(function (line, li) {
+          var p = document.createElement("div");
+          p.className = "nty-line";
+          p.setAttribute("data-layout-allow-overlap", "");
+          p.setAttribute("data-layout-allow-occlusion", "");
+          line.split("").forEach(function (ch) {
+            var s = document.createElement("span");
+            s.className = "nty-ch";
+            s.textContent = ch;
+            p.appendChild(s);
+            chars.push({ el: s, line: li });
+          });
+          linesEl.appendChild(p);
+        });
+
+        /* the measured human keystroke rhythm, cycled */
+        var KEY_GAPS = [
+          0.1, 0.033, 0.2, 0.133, 0.2, 0.033, 0.067, 0.033, 0.1, 0.067, 0.033, 0.067, 0.067, 0.067,
+          0.133, 0.067, 0.033, 0.067, 0.1, 0.1, 0.067, 0.133, 0.1, 0.033, 0.1, 0.033, 0.167, 0.033,
+          0.1, 0.1,
+        ];
+        var LINE_PAUSE = 0.85; /* the measured breath before a new thought */
+
+        var caret = document.getElementById("nty-caret");
+        var body = document.getElementById("nty-body");
+        var tl = gsap.timeline({ paused: true });
+        function build() {
+          tl.clear();
+          var bodyRect = body.getBoundingClientRect();
+          var scale = bodyRect.width / body.offsetWidth || 1;
+          gsap.set(caret, { autoAlpha: 0 });
+          var t = 0.5;
+          var lastLine = -1;
+          chars.forEach(function (c, i) {
+            if (c.line !== lastLine) {
+              if (lastLine >= 0) t += LINE_PAUSE / speed;
+              lastLine = c.line;
+            }
+            var r = c.el.getBoundingClientRect();
+            var x = (r.right - bodyRect.left) / scale;
+            var y = (r.top - bodyRect.top) / scale;
+            tl.set(c.el, { opacity: 1 }, t);
+            tl.set(caret, { x: x + 2, y: y, autoAlpha: 1 }, t);
+            t += KEY_GAPS[i % KEY_GAPS.length] / speed;
+          });
+          /* settle blink, then rest */
+          for (var b = 0; b < 4; b += 1) {
+            tl.set(caret, { autoAlpha: b % 2 === 0 ? 0 : 1 }, t + 0.4 + b * 0.5333);
+          }
+          tl.set({}, {}, 10);
+          tl.seek(0);
+        }
+        build();
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(function () {
+            build();
+            tl.pause(0);
+          });
+        }
+        window.__timelines = window.__timelines || {};
+        window.__timelines[compositionId] = tl;
+      })();
+    </script>
+  </body>
+</html>

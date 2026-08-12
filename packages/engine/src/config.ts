@@ -741,6 +741,39 @@ export function resolveDefaultDrawElement(args: {
   return args.workerEncode;
 }
 
+/**
+ * Why {@link resolveDefaultDrawElement} said no. Call ONLY when the resolved
+ * `useDrawElement` is false — the branches mirror that resolver's, in order.
+ *
+ * Every branch there returns a bare `false` and records nothing, so a render
+ * that never became a drawElement candidate reaches telemetry with no
+ * `de_compile_gate`, no `de_clamp_reason` and no `de_gate_reason`. Those land
+ * in the "Why not drawElement" dashboard's catch-all `other` bucket, which
+ * measured 56,507 renders over 14 days — its second-largest bar, explaining
+ * nothing. The orchestrator's own clamp only fires while `useDrawElement` is
+ * still true, so it cannot cover a config-time refusal by construction.
+ *
+ * Takes only the environmental inputs on purpose: the caller holds the
+ * POST-resolution `useDrawElement`, from which the pre-resolution request is
+ * no longer recoverable. So "none of these three explain it" is itself the
+ * answer — the feature was switched off explicitly.
+ *
+ * Kept separate from the resolver rather than widening its return type: it sits
+ * on the config hot path and several call sites want a plain boolean. Mirror
+ * any branch change in both.
+ */
+export function explainDrawElementDisabled(args: {
+  platform: NodeJS.Platform;
+  browserGpuMode: EngineConfig["browserGpuMode"];
+  workerEncode: boolean;
+}): "unsupported_platform" | "software_gpu" | "worker_encode_off" | "disabled" {
+  // Platform first: on an unsupported host the GPU mode is beside the point.
+  if (!isDrawElementPlatform(args.platform)) return "unsupported_platform";
+  if (args.browserGpuMode === "software") return "software_gpu";
+  if (!args.workerEncode) return "worker_encode_off";
+  return "disabled";
+}
+
 export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   const env = (key: string): string | undefined => process.env[key];
   const envNum = (key: string, fallback: number): number => {

@@ -41,9 +41,44 @@ describe("computeThumbnailStrip", () => {
   it("honors a custom clip height", () => {
     expect(computeThumbnailStrip(300, 2, 40).frameW).toBe(80);
   });
+
+  it("keeps narrow tiles above a caller-owned minimum", () => {
+    expect(computeThumbnailStrip(300, 0.25, 40, 48)).toEqual({
+      frameW: 48,
+      frameCount: 7,
+    });
+  });
 });
 
 describe("resolveMediaPreviewUrl", () => {
+  it("reroutes same-origin root media resolved by the preview iframe", () => {
+    expect(
+      resolveMediaPreviewUrl(
+        "http://localhost:5190/assets/clip.mp4",
+        "proj-1",
+        "http://localhost:5190",
+      ),
+    ).toBe("/api/projects/proj-1/preview/assets/clip.mp4");
+  });
+
+  it("preserves empty, canonical preview, and same-origin API sources", () => {
+    expect(resolveMediaPreviewUrl("", "proj-1", "http://localhost:5190")).toBe("");
+    expect(
+      resolveMediaPreviewUrl(
+        "http://localhost:5190/api/projects/proj-1/preview/assets/clip.mp4",
+        "proj-1",
+        "http://localhost:5190",
+      ),
+    ).toBe("http://localhost:5190/api/projects/proj-1/preview/assets/clip.mp4");
+    expect(
+      resolveMediaPreviewUrl(
+        "http://localhost:5190/api/media/clip.mp4",
+        "proj-1",
+        "http://localhost:5190",
+      ),
+    ).toBe("http://localhost:5190/api/media/clip.mp4");
+  });
+
   it("routes composition-relative paths through the project preview endpoint", () => {
     expect(resolveMediaPreviewUrl("assets/image.png", "proj-1")).toBe(
       "/api/projects/proj-1/preview/assets/image.png",

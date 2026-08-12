@@ -28,6 +28,26 @@ function expectDistinctProxyIdentities(script: string): void {
 }
 
 describe("parseGsapScriptAcorn — computed timelines", () => {
+  it("parses the common helper default-parameter shape with JS default semantics", () => {
+    const script = `
+      const tl = gsap.timeline();
+      function slam(selector, at, opts = {}) {
+        tl.from(selector, { y: opts.y, duration: 0.4 }, at);
+      }
+      slam("#a", 1, { y: 18 });
+      slam("#b", 2, undefined);
+      slam("#c", 3, null);
+    `;
+    const { animations } = parseGsapScriptAcorn(script);
+    expect(animations.map((animation) => animation.targetSelector)).toEqual(["#a", "#b", "#c"]);
+    expect(animations.map((animation) => animation.resolvedStart)).toEqual([1, 2, 3]);
+    expect(animations.map((animation) => animation.provenance?.kind)).toEqual([
+      "helper",
+      "helper",
+      "helper",
+    ]);
+  });
+
   it("resolves an add-to-basket helper called twice (the reported case)", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });

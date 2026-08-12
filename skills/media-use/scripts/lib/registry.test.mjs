@@ -8,6 +8,8 @@ import {
   providerNamesFor,
   runProviders,
   runCapability,
+  providerTierFor,
+  buildProviderTierIndex,
 } from "./registry.mjs";
 
 // --- registry shape -------------------------------------------------------
@@ -183,6 +185,60 @@ test("runProviders returns null when no provider yields a result", async () => {
 
 test("runCapability('bgm','process') is null — process slot is graceful when unfilled", async () => {
   assert.equal(await runCapability("bgm", "process", "x", {}), null);
+});
+
+// --- provider cost tier (telemetry) ---------------------------------------
+
+test("providerTierFor reports the registry's own A/N/P declaration", () => {
+  assert.equal(providerTierFor("heygen.tts"), "network_paid");
+  assert.equal(providerTierFor("heygen.video"), "network_paid");
+  assert.equal(providerTierFor("heygen.audio.sounds"), "network_free");
+  assert.equal(providerTierFor("heygen.asset.search"), "network_free");
+  assert.equal(providerTierFor("codex.image_gen"), "network_free");
+  assert.equal(providerTierFor("bundled.sfx"), "local");
+  assert.equal(providerTierFor("kokoro.local"), "local");
+});
+
+test("providerTierFor agrees across every type that declares the same name", () => {
+  // heygen.audio.sounds serves both bgm and sfx; heygen.asset.search serves both
+  // image and icon. A name whose tier depended on the media type would make the
+  // telemetry property meaningless.
+  const byName = new Map();
+  for (const type of listTypes()) {
+    for (const name of providerNamesFor(type)) {
+      const tier = providerTierFor(name);
+      assert.ok(tier, `every declared provider has a tier (${type}/${name})`);
+      const prior = byName.get(name);
+      if (prior) assert.equal(tier, prior, `${name} must carry one tier across types`);
+      byName.set(name, tier);
+    }
+  }
+});
+
+test("providerTierFor returns undefined for a name the registry does not declare", () => {
+  assert.equal(providerTierFor("does.not.exist"), undefined);
+  assert.equal(providerTierFor(undefined), undefined);
+  assert.equal(providerTierFor(null), undefined);
+  assert.equal(providerTierFor(""), undefined);
+});
+
+test("buildProviderTierIndex throws when one name carries two tiers", () => {
+  assert.throws(
+    () =>
+      buildProviderTierIndex([
+        [{ name: "dual", network: true }],
+        [{ name: "dual", network: true, paid: true }],
+      ]),
+    /declared network_free under one media type and network_paid under another/,
+  );
+});
+
+test("buildProviderTierIndex accepts the same name repeated at the same tier", () => {
+  const index = buildProviderTierIndex([
+    [{ name: "same", network: true }],
+    [{ name: "same", network: true }],
+  ]);
+  assert.equal(index.get("same"), "network_free");
 });
 
 test("--local-only skips every network provider (even free remote ones)", async () => {

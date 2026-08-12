@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "typing-indicator",
+  "type": "hyperframes:component",
+  "title": "Typing Indicator",
+  "description": "The three-dot chat bubble that says someone is writing: it pops in at the thread's edge exactly as messaging apps do, holds while the reply is coming, and vanishes when the message lands",
+  "tags": ["video-primitive", "chat", "mock-ui", "overlay"],
+  "author": "Miao Yang",
+  "variables": [
+    {
+      "id": "size",
+      "type": "number",
+      "role": "style",
+      "label": "Size",
+      "description": "Bubble width in pixels; dots and tail scale with it.",
+      "default": 124,
+      "min": 80,
+      "max": 220,
+      "step": 2,
+      "unit": "px"
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Dark is the reference iOS bubble; light suits bright chat grounds.",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Dark" },
+        { "value": "light", "label": "Light" }
+      ]
+    },
+    {
+      "id": "tail",
+      "type": "enum",
+      "role": "style",
+      "label": "Tail",
+      "description": "The two shrinking circles anchoring the bubble to the sender side.",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On" },
+        { "value": "off", "label": "Off" }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "typing-indicator.html",
+      "target": "compositions/components/typing-indicator.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

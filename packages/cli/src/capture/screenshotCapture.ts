@@ -6,6 +6,7 @@
  */
 
 import type { Page } from "puppeteer-core";
+import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -197,7 +198,11 @@ export async function captureScrollScreenshots(
           node = walker.nextNode();
         }
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (isDegradableEvaluateTimeoutError(err)) {
+          throw err;
+        }
+      });
     await new Promise((r) => setTimeout(r, 400));
 
     const scrollHeight = (await page.evaluate(
@@ -257,7 +262,10 @@ export async function captureScrollScreenshots(
       const plate = await captureFullPagePlate(page, screenshotsDir, budget);
       if (plate) filePaths.push(plate);
     }
-  } catch {
+  } catch (err) {
+    if (isDegradableEvaluateTimeoutError(err)) {
+      throw err;
+    }
     /* scroll screenshots are non-critical */
   }
 

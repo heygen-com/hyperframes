@@ -1,0 +1,576 @@
+<!doctype html>
+<!--
+  screen-flow-carousel -- HyperFrames video primitive (product demo / feature tour)
+
+  Two to five app screens ride a horizontal rail. One screen is primary at
+  center while its neighbors recede (smaller and dimmer). On each cue the
+  whole rail advances one screen with a velocity-matched throw: a fast
+  lateral translate that loses speed quickly, then a smooth long-tail catch
+  onto the next center. This is the velocity-throw-snap motion law with the
+  snap softened to the smooth register: no overshoot, no back ease, both
+  sides of the rail always moving the same direction. A mono caption under
+  the rail swaps with each advance.
+
+  Screens are SLOTS. Callers supply content by placing inert templates
+  anywhere in the HOST page (templates never render, and the runtime wipes
+  the host clip's own children on mount, so slots live at document level):
+
+    <template data-slot="screen-flow-carousel-screen-1"> ... </template>
+    <template data-slot="screen-flow-carousel-screen-2"> ... </template>
+    ... up to screen-5.
+
+  Slot content may be an <img>, a muted <video>, or arbitrary HTML; direct
+  img/video children are stretched to cover the screen. Any screen without a
+  slot renders a token-styled skeleton; the four skeleton variants (list,
+  cards, chart, detail) cycle by index so adjacent defaults never repeat.
+
+  Variables (declared in data-composition-variables below):
+    - screens (number 2 to 5, default 3): how many screens ride the rail.
+    - captions (string, default ""): comma-separated caption per screen.
+      Blank entries fall back to the authored defaults.
+    - cues (string, default ""): comma-separated advance times in seconds
+      relative to mount start (screens - 1 advances). Blank or invalid
+      entries use the authored even rhythm. Values are clamped inside the
+      hold and kept far enough apart that throws never overlap.
+    - accent (green | blue | violet, default green): green rides --brand,
+      blue rides --accent, violet rides --accent-2.
+    - exit (none | fade | up, default none): frame roots own transitions;
+      the default holds the final screen to the last pixel.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN_BASE  = 0.90s  one stage settle (rise + fade), screen 1 primary
+    HOLD     = max(0, D - IN - OUT); all advances live here, clamped so the
+               last throw lands with stillness left before the cut
+    OUT_BASE = 0.45s  only when exit is fade or up
+    If D < IN_BASE + OUT_BASE, IN and OUT compress together. The advance
+    rhythm re-spaces itself from whatever hold remains.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cq units), is
+  styled via #root only, and registers one paused timeline under the LITERAL
+  "screen-flow-carousel" key. Rail position is CSS-owned through the numeric
+  --sfc-pos custom property; GSAP tweens only that number plus
+  per-screen scale/opacity with explicit endpoints, so any seek order lands
+  identical frames.
+-->
+<html
+  lang="en"
+  data-composition-id="screen-flow-carousel"
+  data-composition-duration="5"
+  data-composition-variables='[
+    { "id": "screens", "type": "number", "role": "content", "label": "Screens", "description": "How many screens ride the rail.", "default": 3, "min": 2, "max": 5, "step": 1 },
+    { "id": "captions", "type": "string", "role": "content", "label": "Captions", "description": "Comma-separated caption per screen. Blank entries use the authored defaults.", "default": "" },
+    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated advance times in seconds from mount start. Blank entries use the authored even rhythm.", "default": "" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Token the active ring, caption dot, and skeleton accents ride.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the final screen holds until the cut.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Screen Flow Carousel</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="screen-flow-carousel" data-duration="5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            --sfc-w: 44;
+            --sfc-gap: 4;
+            --sfc-pos: 0;
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, ui-sans-serif, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .sfc-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .sfc-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          /* The rail: one flex row, position owned by the numeric custom
+             property --sfc-pos (fractional index of the centered screen).
+             GSAP tweens that number; CSS does all the geometry in cqw. */
+          .sfc-rail {
+            position: absolute;
+            top: 9cqh;
+            left: 0;
+            display: flex;
+            align-items: stretch;
+            gap: calc(var(--sfc-gap) * 1cqw);
+            width: max-content;
+            height: 64cqh;
+            transform: translateX(
+              calc(
+                (50 - var(--sfc-w) / 2 - var(--sfc-pos) * (var(--sfc-w) + var(--sfc-gap))) * 1cqw
+              )
+            );
+            will-change: transform;
+          }
+
+          .sfc-screen {
+            position: relative;
+            flex: 0 0 calc(var(--sfc-w) * 1cqw);
+            overflow: hidden;
+            border: 0.16cqmin solid color-mix(in srgb, var(--border, #475569) 70%, transparent);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #0f141b) 94%, var(--bg, #05070c));
+            box-shadow: 0 2.6cqh 7cqh color-mix(in srgb, var(--bg, #000000) 42%, transparent);
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .sfc-body {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .sfc-body > img,
+          .sfc-body > video {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          /* Active ring: opacity-only accent border so no var() color is
+             ever GSAP-tweened. */
+          .sfc-ring {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            border: 0.24cqmin solid color-mix(in srgb, var(--sfc-accent) 78%, transparent);
+            border-radius: inherit;
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          /* Caption band: absolutely stacked mono captions, one visible. */
+          .sfc-captions {
+            position: absolute;
+            top: 78cqh;
+            left: 10cqw;
+            right: 10cqw;
+            height: 12cqh;
+          }
+
+          .sfc-caption {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-1, 1.4cqmin);
+            overflow: hidden;
+            color: var(--muted, #8b93a3);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: 2.7cqmin;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            white-space: nowrap;
+            will-change: transform, opacity;
+          }
+
+          .sfc-caption::before {
+            content: "";
+            flex: 0 0 auto;
+            width: 1.1cqmin;
+            height: 1.1cqmin;
+            border-radius: 50%;
+            background: var(--sfc-accent);
+          }
+
+          /* Skeleton furniture: pure token surfaces, no branding, weights
+             stay in the register (blocks, no bold type). */
+          .sfc-skel {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2, 2cqmin);
+            padding: var(--space-3, 2.8cqmin);
+          }
+
+          .sfc-skel-heading {
+            flex: 0 0 auto;
+            width: 38%;
+            height: 2.3cqmin;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 22%, transparent);
+          }
+
+          .sfc-skel-line {
+            flex: 0 0 auto;
+            height: 1.2cqmin;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 11%, transparent);
+          }
+
+          .sfc-skel-row {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: var(--space-1, 1.6cqmin);
+          }
+
+          .sfc-skel-row .sfc-skel-line {
+            flex: 1 1 auto;
+          }
+
+          .sfc-skel-dot {
+            flex: 0 0 auto;
+            width: 1.7cqmin;
+            height: 1.7cqmin;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 16%, transparent);
+          }
+
+          .sfc-skel-row:first-of-type .sfc-skel-dot {
+            background: color-mix(in srgb, var(--sfc-accent) 78%, transparent);
+          }
+
+          .sfc-skel-grid {
+            display: grid;
+            flex: 1;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: var(--space-2, 2cqmin);
+            min-height: 0;
+          }
+
+          .sfc-skel-card {
+            display: flex;
+            flex-direction: column;
+            gap: 1.4cqmin;
+            min-height: 0;
+            padding: 2cqmin;
+            border: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 60%, transparent);
+            border-radius: calc(var(--radius, 2cqmin) * 0.7);
+            background: color-mix(in srgb, var(--bg, #05070c) 30%, transparent);
+          }
+
+          .sfc-skel-card .sfc-skel-line {
+            width: 60%;
+          }
+
+          .sfc-skel-block {
+            flex: 1;
+            min-height: 2.6cqmin;
+            border-radius: calc(var(--radius, 2cqmin) * 0.5);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 7%, transparent);
+          }
+
+          .sfc-skel-card:first-child .sfc-skel-block {
+            background: color-mix(in srgb, var(--sfc-accent) 17%, transparent);
+          }
+
+          .sfc-skel-bars {
+            display: flex;
+            flex: 1;
+            align-items: flex-end;
+            gap: var(--space-2, 2cqmin);
+            min-height: 0;
+            padding-top: 1cqmin;
+          }
+
+          .sfc-skel-bar {
+            flex: 1;
+            border-radius: 0.8cqmin 0.8cqmin 0 0;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 13%, transparent);
+          }
+
+          .sfc-skel-bar.sfc-skel-accent {
+            background: color-mix(in srgb, var(--sfc-accent) 62%, transparent);
+          }
+
+          .sfc-skel-chip {
+            flex: 0 0 auto;
+            width: 11cqmin;
+            height: 2.6cqmin;
+            border: 0.14cqmin solid color-mix(in srgb, var(--sfc-accent) 55%, transparent);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--sfc-accent) 24%, transparent);
+          }
+        </style>
+
+        <div
+          id="screen-flow-carousel-clip"
+          class="sfc-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <div class="sfc-stage">
+            <div class="sfc-rail" role="list" aria-label="App screens"></div>
+            <div class="sfc-captions" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".sfc-stage");
+            var rail = root.querySelector(".sfc-rail");
+            var captionsBand = root.querySelector(".sfc-captions");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var screensValue = Number(vars.screens);
+            var count = Number.isFinite(screensValue)
+              ? Math.max(2, Math.min(5, Math.round(screensValue)))
+              : 3;
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exitMode = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+            root.style.setProperty("--sfc-accent", accentColors[accent]);
+
+            var captionDefaults = ["Overview", "Details", "Insights", "Activity", "Settings"];
+            var captionList = String(vars.captions == null ? "" : vars.captions).split(",");
+
+            // SLOTS. Caller templates live at HOST DOCUMENT level (the mount
+            // wipes host-clip children, and templates never render). The
+            // scoped `document` proxy filters queries to this composition's
+            // subtree, so the lookup deliberately goes through ownerDocument.
+            var hostDoc = root.ownerDocument;
+            function slotContent(name) {
+              var tpl = null;
+              try {
+                tpl = hostDoc.querySelector(
+                  'template[data-slot="screen-flow-carousel-' + name + '"]',
+                );
+              } catch (error) {
+                tpl = null;
+              }
+              return tpl ? hostDoc.importNode(tpl.content, true) : null;
+            }
+
+            // Skeleton defaults cycle four variants so adjacent screens read
+            // as different app states. Pure token furniture, no branding.
+            var lines = function (widths) {
+              return widths
+                .map(function (width) {
+                  return '<span class="sfc-skel-line" style="width:' + width + '"></span>';
+                })
+                .join("");
+            };
+            var listRows = ["86%", "72%", "80%", "64%", "76%", "58%"]
+              .map(function (width) {
+                return (
+                  '<span class="sfc-skel-row"><span class="sfc-skel-dot"></span>' +
+                  '<span class="sfc-skel-line" style="max-width:' +
+                  width +
+                  '"></span></span>'
+                );
+              })
+              .join("");
+            var card =
+              '<span class="sfc-skel-card"><span class="sfc-skel-line"></span><span class="sfc-skel-block"></span></span>';
+            var bars = ["34%", "58%", "42%", "76%", "50%", "64%"]
+              .map(function (height, index) {
+                return (
+                  '<span class="sfc-skel-bar' +
+                  (index === 3 ? " sfc-skel-accent" : "") +
+                  '" style="height:' +
+                  height +
+                  '"></span>'
+                );
+              })
+              .join("");
+            var skeletons = [
+              '<div class="sfc-skel"><span class="sfc-skel-heading"></span>' +
+                listRows +
+                '<span class="sfc-skel-block"></span></div>',
+              '<div class="sfc-skel"><span class="sfc-skel-heading"></span><span class="sfc-skel-grid">' +
+                card +
+                card +
+                card +
+                card +
+                "</span></div>",
+              '<div class="sfc-skel"><span class="sfc-skel-heading"></span><span class="sfc-skel-bars">' +
+                bars +
+                "</span>" +
+                lines(["46%"]) +
+                "</div>",
+              '<div class="sfc-skel"><span class="sfc-skel-chip"></span><span class="sfc-skel-heading" style="width:56%"></span>' +
+                lines(["84%", "72%", "64%"]) +
+                '<span class="sfc-skel-block"></span></div>',
+            ];
+
+            var screens = [];
+            var rings = [];
+            var captions = [];
+            for (var i = 0; i < count; i += 1) {
+              var screen = hostDoc.createElement("article");
+              screen.className = "sfc-screen";
+              screen.setAttribute("role", "listitem");
+              var body = hostDoc.createElement("div");
+              body.className = "sfc-body";
+              var slot = slotContent("screen-" + (i + 1));
+              if (slot) {
+                body.appendChild(slot);
+              } else {
+                body.innerHTML = skeletons[i % skeletons.length];
+              }
+              var ring = hostDoc.createElement("span");
+              ring.className = "sfc-ring";
+              screen.appendChild(body);
+              screen.appendChild(ring);
+              rail.appendChild(screen);
+              screens.push(screen);
+              rings.push(ring);
+
+              var caption = hostDoc.createElement("span");
+              caption.className = "sfc-caption";
+              var captionText = (captionList[i] || "").trim();
+              caption.textContent = captionText !== "" ? captionText : captionDefaults[i];
+              captionsBand.appendChild(caption);
+              captions.push(caption);
+            }
+            screens[0].setAttribute("aria-current", "true");
+
+            // Envelope: fixed IN/OUT, elastic HOLD, never time-scaled. All
+            // advances live inside the hold; spacing re-derives from whatever
+            // hold the host duration leaves so throws can never overlap.
+            var IN_BASE = 0.9;
+            var OUT_BASE = exitMode === "none" ? 0 : 0.45;
+            var ADV_BASE = 0.84;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var OUT_START = duration - OUT;
+            var advanceCount = count - 1;
+            var TAIL = Math.min(0.4, Math.max(0, duration - IN - OUT) * 0.12);
+            var span = Math.max(0.05, duration - IN - OUT - TAIL);
+            var spacing = span / (advanceCount + 1);
+            var ADV = Math.min(ADV_BASE, spacing);
+            var latest = Math.max(IN, duration - OUT - ADV - 0.05);
+
+            var cueList = String(vars.cues == null ? "" : vars.cues).split(",");
+            var starts = [];
+            for (var k = 0; k < advanceCount; k += 1) {
+              var raw = (cueList[k] || "").trim();
+              var cue = Number(raw);
+              var wanted = raw !== "" && Number.isFinite(cue) ? cue : IN + (k + 1) * spacing;
+              var lower = k === 0 ? IN : starts[k - 1] + ADV;
+              var upper = Math.max(lower, latest - (advanceCount - 1 - k) * ADV);
+              starts.push(Math.min(Math.max(wanted, lower), upper));
+            }
+
+            // Explicit both-endpoint state so a seek to t=0 is always correct.
+            gsap.set(stage, { opacity: 0, y: "4cqh" });
+            gsap.set(rail, { "--sfc-pos": 0 });
+            screens.forEach(function (element, index) {
+              gsap.set(
+                element,
+                index === 0 ? { scale: 1, opacity: 1 } : { scale: 0.94, opacity: 0.62 },
+              );
+            });
+            rings.forEach(function (element, index) {
+              gsap.set(element, { opacity: index === 0 ? 1 : 0 });
+            });
+            captions.forEach(function (element, index) {
+              gsap.set(
+                element,
+                index === 0 ? { opacity: 1, y: "0cqh" } : { opacity: 0, y: "1.2cqh" },
+              );
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: one stage settle, screen 1 already primary.
+            tl.to(stage, { opacity: 1, duration: IN * 0.7, ease: "power2.out" }, 0);
+            tl.to(stage, { y: "0cqh", duration: IN, ease: "power3.out" }, 0);
+
+            // Advances: the softened throw law. Fast travel sheds most of its
+            // velocity under the whip-out ease, then a smooth long-tail catch
+            // lands the exact next center. No overshoot, no back ease.
+            var THROW_PART = 0.42;
+            starts.forEach(function (at, index) {
+              var target = index + 1;
+              var THROW = ADV * THROW_PART;
+              var CATCH = ADV - THROW;
+              tl.to(rail, { "--sfc-pos": target - 0.14, duration: THROW, ease: "power4.out" }, at);
+              tl.to(rail, { "--sfc-pos": target, duration: CATCH, ease: "power2.out" }, at + THROW);
+
+              tl.to(
+                screens[index],
+                { scale: 0.94, opacity: 0.62, duration: ADV, ease: "power2.out" },
+                at,
+              );
+              tl.to(
+                screens[target],
+                { scale: 1, opacity: 1, duration: ADV, ease: "power2.out" },
+                at,
+              );
+              tl.to(rings[index], { opacity: 0, duration: ADV * 0.5, ease: "power1.out" }, at);
+              tl.to(
+                rings[target],
+                { opacity: 1, duration: ADV * 0.6, ease: "power2.out" },
+                at + ADV * 0.4,
+              );
+
+              tl.to(
+                captions[index],
+                { opacity: 0, y: "-1.2cqh", duration: ADV * 0.4, ease: "power1.in" },
+                at,
+              );
+              tl.fromTo(
+                captions[target],
+                { opacity: 0, y: "1.2cqh" },
+                { opacity: 1, y: "0cqh", duration: ADV * 0.55, ease: "power2.out" },
+                at + ADV * 0.35,
+              );
+              tl.set(screens[index], { attr: { "aria-current": "false" } }, at);
+              tl.set(screens[target], { attr: { "aria-current": "true" } }, at);
+            });
+
+            // OUT: only when exit != none; the default holds the last frame.
+            if (exitMode !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exitMode === "up") {
+                tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["screen-flow-carousel"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

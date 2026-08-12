@@ -1,0 +1,50 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "focus-rack",
+  "type": "hyperframes:component",
+  "title": "Focus Rack",
+  "description": "Focus shifts once between two cards at different apparent depths through synchronized blur, dimming, scale, and parallax.",
+  "tags": ["motion-primitive", "camera", "focus", "focus-rack", "depth", "parallax", "emphasize"],
+  "jobs": ["emphasize"],
+  "family": "camera",
+  "profile": "holdable",
+  "evidence": "Wave G U17 focus-rack specification",
+  "files": [
+    {
+      "path": "focus-rack.html",
+      "target": "compositions/components/focus-rack.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "label_a",
+      "type": "string",
+      "role": "content",
+      "label": "Card A label",
+      "description": "Label on the card that begins in focus.",
+      "default": "Draft"
+    },
+    {
+      "id": "label_b",
+      "type": "string",
+      "role": "content",
+      "label": "Card B label",
+      "description": "Label on the card that receives focus.",
+      "default": "Published"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Highlight color shared by both cards.",
+      "default": "blue",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

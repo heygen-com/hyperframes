@@ -11,6 +11,7 @@ import {
 } from "./AgentChatMessageButton";
 import { FRAME_STATUS_META } from "./frameStatus";
 import type { CommentsSubmitState } from "./useFrameComments";
+import { isTypingTarget } from "../../utils/typingTarget";
 
 export interface StoryboardFrameFocusProps {
   projectId: string;
@@ -140,8 +141,7 @@ export function StoryboardFrameFocus({
   useEffect(() => {
     // fallow-ignore-next-line complexity
     const onKey = (e: KeyboardEvent) => {
-      const el = document.activeElement;
-      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return;
+      if (isTypingTarget(document.activeElement)) return;
       if (e.key === "Escape") handleBack();
       else if (e.key === "ArrowLeft" && frame.index > 1) handleNavigate(-1);
       else if (e.key === "ArrowRight" && frame.index < frameCount) handleNavigate(1);

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "tilt-card",
+  "type": "hyperframes:component",
+  "title": "Tilt Card",
+  "description": "A transitions.dev-inspired tilt card primitive with depth layers and hover-style parallax",
+  "tags": ["video-primitive", "transition-primitive", "transitions-dev-port", "card", "tilt"],
+  "files": [
+    {
+      "path": "tilt-card.html",
+      "target": "compositions/components/tilt-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "eyebrow",
+      "type": "string",
+      "role": "content",
+      "label": "Eyebrow",
+      "description": "Small uppercase kicker above the headline.",
+      "default": "Primitive"
+    },
+    {
+      "id": "headline",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Large card headline.",
+      "default": "Agent-ready motion"
+    },
+    {
+      "id": "glow",
+      "type": "enum",
+      "role": "motion",
+      "label": "Glow",
+      "description": "How far the corner glow reaches past the card edges, which sets both its spread at rest and how far the timeline drift carries it.",
+      "default": "standard",
+      "options": [
+        {
+          "value": "tight",
+          "label": "Tight"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "wide",
+          "label": "Wide"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Colour family of the card gradient, corner glow, eyebrow and drop shadow.",
+      "default": "indigo",
+      "options": [
+        {
+          "value": "indigo",
+          "label": "Indigo"
+        },
+        {
+          "value": "emerald",
+          "label": "Emerald"
+        },
+        {
+          "value": "violet",
+          "label": "Violet"
+        }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tilt-card.png"
+  }
+}

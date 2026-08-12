@@ -4,16 +4,32 @@
 // in the browser.
 type BpmDetect = (buffer: AudioBuffer) => number;
 let bpmDetectivePromise: Promise<BpmDetect | null> | null = null;
-function loadBpmDetective(): Promise<BpmDetect | null> {
-  if (!bpmDetectivePromise) {
-    bpmDetectivePromise = import(
-      // @ts-ignore -- no type declarations for bpm-detective
-      "bpm-detective"
-    )
-      .then((m) => ((m as { default?: BpmDetect }).default ?? (m as unknown as BpmDetect)) || null)
-      .catch(() => null);
+
+const defaultBpmDetectiveImport = () =>
+  // @ts-ignore -- no type declarations for bpm-detective
+  import("bpm-detective");
+
+export function loadBpmDetective(
+  importFn: () => Promise<unknown> = defaultBpmDetectiveImport,
+): Promise<BpmDetect | null> {
+  const useCache = importFn === defaultBpmDetectiveImport;
+  if (useCache && bpmDetectivePromise) {
+    return bpmDetectivePromise;
   }
-  return bpmDetectivePromise;
+
+  const promise = importFn()
+    .then((m) => ((m as { default?: BpmDetect }).default ?? (m as unknown as BpmDetect)) || null)
+    .catch(() => {
+      // Reset the cached promise so a transient import failure can be retried
+      // on the next call instead of being cached as null for the session.
+      if (useCache) bpmDetectivePromise = null;
+      return null;
+    });
+
+  if (useCache) {
+    bpmDetectivePromise = promise;
+  }
+  return promise;
 }
 
 const WINDOW_SIZE = 1024;

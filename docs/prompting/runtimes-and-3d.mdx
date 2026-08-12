@@ -1,17 +1,27 @@
 ---
 title: Runtimes and 3D
-description: "GSAP is the default and you rarely name it — but real 3D, existing animation files, and scene transitions each have a runtime worth pinning in the prompt."
+description: "GSAP is the default and you rarely name it. Real 3D, existing animation files, and scene transitions each have a runtime worth pinning in the prompt."
 ---
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-Level 2's copy-paste examples include an isometric-cards prompt that asks to "Build the scene in Three.js via the adapter" — this chapter is why that line is there, and the rest of the runtime map for when GSAP, the default, isn't the right tool.
+Level 2's copy-paste examples include an isometric-cards prompt that asks to
+"Build the scene in Three.js via the adapter." This chapter is why that line is
+there. It's also the rest of the runtime map, for the cases where GSAP isn't the
+right tool.
 
-HyperFrames animates through the [frame-adapter](/concepts/frame-adapters) pattern: any runtime that can answer "what should the screen look like at frame N?" plugs in and renders deterministically. [GSAP](/guides/gsap-animation) is the default adapter and covers most motion — you rarely need to name it. The cases below are the ones where the default choice can go wrong, so the prompt should pick the runtime for you.
+HyperFrames animates through the
+[frame-adapter](/concepts/frame-adapters) pattern. Any runtime that can answer
+"what should the screen look like at frame N?" plugs in and renders
+deterministically. [GSAP](/guides/gsap-animation) is the default adapter and
+covers most motion, so you rarely need to name it. The cases below are the ones
+where the default can go wrong. There, the prompt should pick the runtime.
 
 ## Real 3D → Three.js via the adapter
 
-This is the one pin to state every time. For anything with genuine **depth, lighting, or a camera** — a rotating product, a scene you move through, surfaces that catch light — ask for Three.js explicitly:
+This is the one pin to state every time. Ask for Three.js explicitly for
+anything with genuine **depth, lighting, or a camera** — a rotating product, a
+scene you move through, surfaces that catch light:
 
 > Build the scene in **Three.js via the adapter**: a product model on a turntable, one key light and a soft fill, slow rotation.
 
@@ -25,82 +35,107 @@ This is the one pin to state every time. For anything with genuine **depth, ligh
 />
 *The Three.js version of the isometric-cards prompt — real shadows and lighting, one-shot.*
 
+The engine rationale is simple. CSS `perspective` transforms skew flat planes.
+There is no light source and no camera, only projected rectangles, so they read
+flat the moment lighting or parallax matters.
 
-The engine rationale: CSS `perspective` transforms skew flat planes — they read flat the moment lighting or parallax matters, because there is no light source and no camera, only projected rectangles. Three.js is a first-party seek-safe runtime (`hf-seek` events plus `window.__hfThreeTime`), so a real 3D scene renders frame-accurately like everything else. This is a validated default, not a preference — treat "real 3D" as "Three.js" unless you specifically want a flat, stylized fake-3D look.
+Three.js is a first-party seek-safe runtime. The adapter publishes HyperFrames
+time as `window.__hfThreeTime` and dispatches an `hf-seek` event on each seek, so
+a real 3D scene renders frame-accurately like everything else.
 
-Camera moves are part of the same rule. A "drone orbit", dolly, or push-in only exists where there's an actual camera:
+Treat "real 3D" as "Three.js." This is a validated default, not a preference.
+The exception is when you specifically want a flat, stylized fake-3D look.
+
+Camera moves are part of the same rule. A drone orbit, a dolly, or a push-in
+only exists where there's an actual camera:
 
 <DocsVideo
   title="HyperFrames video: Camera Orbit"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-orbit.mp4#t=0.1"
   loop
 />
-*A seek-driven Three.js drone orbit — the camera sweeps a continuous arc; impossible with CSS transforms.*
+*A seek-driven Three.js drone orbit. The camera sweeps a continuous arc, which CSS transforms cannot do.*
 
-
-- ❌ `a drone-orbit camera move around the logo` (with no runtime named — CSS has no camera to orbit)
+- ❌ `a drone-orbit camera move around the logo` with no runtime named — CSS has no camera to orbit
 - ✅ `orbit the camera around the logo — Three.js via the adapter`
 
 ## Existing animation files → Lottie
 
-If you already have a designed animation — an After Effects export, a `.json` or `.lottie` file, an icon animation from a designer — don't ask the agent to redraw it. Point at the file and ask for Lottie:
+You may already have a designed animation: an After Effects export, a `.json` or
+`.lottie` file, an icon animation from a designer. Don't ask the agent to redraw
+it. Point at the file and ask for Lottie:
 
 > Play this Lottie file (`assets/loader.lottie`) centered, then fade to the title.
 
-The Lottie adapter seeks the existing animation frame-by-frame, so the designer's work renders exactly as authored. Asking the agent to recreate it in GSAP throws away the source and lands somewhere approximate.
+The Lottie adapter seeks the existing animation frame by frame, so the
+designer's work renders exactly as authored. Asking the agent to recreate it in
+GSAP throws away the source and lands somewhere approximate.
 
 ## Simple UI and text motion → the default
 
-Fades, slides, staggers, counters, kinetic type, hover-style reveals — the everyday motion — is what GSAP does natively, and it's already the default. You don't name a runtime here; you describe the motion (see [Premium motion](/prompting/motion)):
+Fades, slides, staggers, counters, kinetic type, hover-style reveals — the
+everyday motion — is what GSAP does natively. It's already the default. Don't
+name a runtime here. Describe the motion instead. See [Motion that reads
+premium](/prompting/motion):
 
 > The headline slides up per word, staggered 0.1s apart, easing out as it lands.
 
-CSS keyframes and the Web Animations API are also supported adapters, worth naming only when you're bringing existing CSS `@keyframes` or WAAPI code you want kept as-is. For a fresh ask, let the default handle it.
+CSS keyframes and the Web Animations API are supported adapters too. Name them
+only when you're bringing existing CSS `@keyframes` or WAAPI code you want kept
+as-is. For a fresh ask, let the default handle it.
 
-An SVG "line draws itself" effect (animated `strokeDasharray` / `strokeDashoffset`) is also GSAP-default territory — see the appendix's [SVG draw-on rows](/prompting/rules-and-anti-patterns#svg-draw-on) for two lint gotchas worth knowing before you ask for one.
+An SVG "line draws itself" effect (animated `strokeDasharray` /
+`strokeDashoffset`) is also GSAP-default territory. See the appendix's [SVG
+draw-on rows](/prompting/rules-and-anti-patterns#svg-draw-on) for two lint
+gotchas worth knowing before you ask for one.
 
 ## Scene-to-scene → shader transitions
 
-Motion *within* a scene is one thing; the handoff *between* scenes is another. For a designed transition — a wipe, a glitch, a liquid dissolve — ask for a shader transition at that specific moment:
+Motion *within* a scene is one thing. The handoff *between* scenes is another.
+For a designed transition — a wipe, a glitch, a liquid dissolve — ask for a
+shader transition at that specific moment:
 
 > Hard-cut between the first three scenes; use a **shader transition** (glitch) into the final logo scene.
 
-Name the moments — shader transitions are for the two or three beats that deserve them, not every cut. See [Transitions](/prompting/transitions) for the vocabulary.
+Name the moments. Shader transitions are for the two or three beats that deserve
+them, not every cut. See [Transitions](/prompting/transitions) for the
+vocabulary.
 
 ## Determinism surfaces in the prompt
 
-Every runtime renders under the same [determinism](/concepts/determinism) contract: the frame clock is `t = frame / fps`, and there is **no wall clock, no live network at render time, and no unseeded randomness**. Two asks bump into this, so phrase them accordingly:
+Every runtime renders under the same [determinism](/concepts/determinism)
+contract. The frame clock is `t = frame / fps`. There is **no wall clock, no live
+network at render time, and no unseeded randomness**.
 
-- ❌ `fetch the current BTC price and count up to it` — a render-time fetch isn't allowed; the render must be reproducible
-- ✅ `count up to $67,400` (a fixed value baked in), or `read the target from a variable I pass at render time`
+Two asks bump into this, so phrase them accordingly.
 
-- ❌ `scatter 200 particles randomly` — unseeded randomness renders differently each frame and breaks reproducibility
-- ✅ `scatter 200 particles from a seeded random layout` — say **seeded** and the positions are stable across frames and re-renders
+Live data can't be fetched at render time, because the render must be
+reproducible:
 
-The rule of thumb: anything the video needs to *know* must be present before rendering starts — baked in, or passed as a [variable](/prompting/variables-and-templating). Anything random must be seeded.
+- ❌ `fetch the current BTC price and count up to it`
+- ✅ `count up to $67,400` with a fixed value baked in, or `read the target from a variable I pass at render time`
 
-## Related
+Unseeded randomness renders differently each frame and breaks reproducibility:
 
-<CardGroup cols={2}>
-  <Card title="Frame adapters (concept)" icon="plug" href="/concepts/frame-adapters">
-    The seek-by-frame contract and the full list of supported runtimes.
-  </Card>
-  <Card title="Deterministic rendering" icon="lock" href="/concepts/determinism">
-    Why no live data and no unseeded randomness — the reproducibility guarantee.
-  </Card>
-  <Card title="Premium motion" icon="wand-magic-sparkles" href="/prompting/motion">
-    Describing everyday GSAP motion so it doesn't read as cheap.
-  </Card>
-  <Card title="Transitions" icon="film" href="/prompting/transitions">
-    Naming the scene-to-scene handoffs worth a shader transition.
-  </Card>
-</CardGroup>
+- ❌ `scatter 200 particles randomly`
+- ✅ `scatter 200 particles from a seeded random layout` — say **seeded** and the positions stay stable across frames and re-renders
+
+The rule of thumb: anything the video needs to *know* must be present before
+rendering starts, baked in or passed as a
+[variable](/prompting/variables-and-templating). Anything random must be seeded.
+
+## The capstone thread
 
 <Note>
-**Capstone thread** — the [Level 7 film](/prompting/capstone)'s Depth region is real Three.js through the frame adapter: the timeline wire coils around a rim-lit faceted form, and the protagonist chip threads the coil's loops and passes behind the form with true depth occlusion (cut from the film, below).
+**Capstone thread** — the [Level 7 film](/prompting/capstone)'s Depth region is
+real Three.js through the frame adapter. The timeline wire coils around a rim-lit
+faceted form, and the protagonist chip threads the coil's loops and passes behind
+the form with true depth occlusion (cut from the film, below).
 </Note>
 
-This is the clause in the [full capstone prompt](/prompting/capstone#the-full-prompt-verbatim) that buys the piece — prompt language you can lift for your own video:
+This is the clause in the [full capstone
+prompt](/prompting/capstone#the-prompt-word-for-word) that buys the piece. It's
+prompt language you can lift for your own video:
 
 > **Depth (52–56s).** The wire spirals off the flat plane into real 3D — a **Three.js scene via the frame adapter** (never CSS fake-3D): the camera descends following the wire as it coils around a rim-lit faceted form (ink material on charcoal), mono axis readouts landing on cue, then rises back to the plane with the wire leading the way out. The coil winds up out of the wire and collapses back onto it — its ends never float cut off in mid-air — and the protagonist chip joins the 3D scene for the crossing: it rides the wire straight through the coil's loops and passes behind the form with true depth occlusion, never floating over the geometry as a flat overlay.
 
@@ -111,4 +146,13 @@ This is the clause in the [full capstone prompt](/prompting/capstone#the-full-pr
 />
 *That clause, rendered — the region cut from the finished film.*
 
-*Next: [Media and audio](/prompting/media-and-audio) — precise phrasing for voiceover, music, sound, and assets, instead of motion and rendering.*
+*Next: [Media and audio](/prompting/media-and-audio) — precise phrasing for
+voiceover, music, sound, and assets, instead of motion and rendering.*
+
+## Related topics
+
+- [Frame adapters](/concepts/frame-adapters) — the seek-by-frame contract and the full list of supported runtimes
+- [Deterministic Rendering](/concepts/determinism) — why no live data and no unseeded randomness
+- [Motion that reads premium](/prompting/motion) — describing everyday GSAP motion so it doesn't read as cheap
+- [Transitions](/prompting/transitions) — naming the scene-to-scene handoffs worth a shader transition
+- [Animate with GSAP](/guides/gsap-animation) — the default adapter in detail

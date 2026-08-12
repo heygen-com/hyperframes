@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
@@ -9,6 +9,7 @@ import {
   commitStaticGsapRotation,
   commitStaticGsapSize,
   findExistingPositionWrite,
+  materializeIfDynamic,
   parkPlayheadOnKeyframe,
   type GsapDragCommitCallbacks,
 } from "./gsapDragCommit";
@@ -26,6 +27,43 @@ const selection = (): DomEditSelection =>
       getBoundingClientRect: () => ({ top: 0, left: 0 }),
     },
   }) as unknown as DomEditSelection;
+
+function selectorlessSelection(): DomEditSelection {
+  return {
+    selector: ".shared",
+    element: document.createElement("div"),
+  } as unknown as DomEditSelection;
+}
+
+describe("lower GSAP commit helpers fail closed", () => {
+  it("rejects instead of silently dropping a static position write without a stable selector", async () => {
+    const commitMutation = vi.fn();
+    await expect(
+      commitStaticGsapPosition(
+        selectorlessSelection(),
+        { x: 10, y: 20 },
+        { x: 0, y: 0 },
+        ".shared",
+        null,
+        { commitMutation },
+      ),
+    ).rejects.toMatchObject({ name: "GsapEditBlockedError", reason: "no-selector" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects runtime-dynamic materialization instead of rewriting source during a gesture", async () => {
+    const commitMutation = vi.fn();
+    await expect(
+      materializeIfDynamic(
+        { ...flatTween(), hasUnresolvedKeyframes: true },
+        null,
+        commitMutation,
+        selection(),
+      ),
+    ).rejects.toMatchObject({ name: "GsapEditBlockedError", reason: "source-uneditable" });
+    expect(commitMutation).not.toHaveBeenCalled();
+  });
+});
 
 const flatTween = (): GsapAnimation =>
   ({

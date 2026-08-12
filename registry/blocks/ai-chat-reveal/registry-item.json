@@ -1,0 +1,124 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ai-chat-reveal",
+  "type": "hyperframes:block",
+  "title": "AI Chat Reveal",
+  "description": "A question is typed on a rising keyboard, sent, and answered by an AI that streams its reply word by word on a measured token rhythm - thinking dot, uneven bursts, bulleted list - before the app cuts to a branded closing card",
+  "tags": ["showcase", "mock-ui", "ai", "chat", "vertical", "ad-template"],
+  "author": "Miao Yang",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 19.3333,
+  "variables": [
+    {
+      "id": "botName",
+      "type": "string",
+      "role": "content",
+      "label": "Assistant name",
+      "description": "Title in the chat header.",
+      "default": "Assistant"
+    },
+    {
+      "id": "userMessage",
+      "type": "string",
+      "role": "content",
+      "label": "User message",
+      "description": "The question typed on the keyboard and sent. Around 40 characters keeps the measured pacing.",
+      "default": "How do I turn my HTML into real video?"
+    },
+    {
+      "id": "answer1",
+      "type": "string",
+      "role": "content",
+      "label": "Answer paragraph 1",
+      "description": "First streamed paragraph.",
+      "default": "You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video."
+    },
+    {
+      "id": "answer2",
+      "type": "string",
+      "role": "content",
+      "label": "Answer paragraph 2",
+      "description": "Short second beat.",
+      "default": "It is markup, not magic."
+    },
+    {
+      "id": "answer3",
+      "type": "string",
+      "role": "content",
+      "label": "Answer paragraph 3",
+      "description": "Lead-in to the list.",
+      "default": "What you get out of the box:"
+    },
+    {
+      "id": "bullet1",
+      "type": "string",
+      "role": "content",
+      "label": "Bullet 1",
+      "description": "First list item.",
+      "default": "A catalog of motion primitives you install and own"
+    },
+    {
+      "id": "bullet2",
+      "type": "string",
+      "role": "content",
+      "label": "Bullet 2",
+      "description": "Second list item.",
+      "default": "GSAP timelines that seek to any frame"
+    },
+    {
+      "id": "bullet3",
+      "type": "string",
+      "role": "content",
+      "label": "Bullet 3",
+      "description": "Third list item.",
+      "default": "4K renders from a single CLI command"
+    },
+    {
+      "id": "ecHeadline",
+      "type": "string",
+      "role": "content",
+      "label": "End-card headline",
+      "description": "Closing card headline. A | breaks the line.",
+      "default": "It's not magic.|It's HTML."
+    },
+    {
+      "id": "ecSub",
+      "type": "string",
+      "role": "content",
+      "label": "End-card subline",
+      "description": "Supporting sentence on the closing card.",
+      "default": "Open-source video rendering — write HTML, ship pixel-perfect video."
+    },
+    {
+      "id": "ecCta",
+      "type": "string",
+      "role": "content",
+      "label": "End-card CTA",
+      "description": "Label on the closing card button.",
+      "default": "Try HyperFrames"
+    },
+    {
+      "id": "ecFooter",
+      "type": "string",
+      "role": "content",
+      "label": "End-card footer",
+      "description": "Letter-spaced line at the very bottom.",
+      "default": "HYPERFRAMES.HEYGEN.COM"
+    }
+  ],
+  "files": [
+    {
+      "path": "ai-chat-reveal.html",
+      "target": "compositions/ai-chat-reveal.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/hyperframes-logo-white.svg",
+      "target": "assets/hyperframes-logo-white.svg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

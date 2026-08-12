@@ -286,6 +286,61 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     });
   });
 
+  it("collects an inline <head> script instead of discarding it", () => {
+    // The <head> loop had a `src` branch and no else, so an inline <head>
+    // script was silently dropped on render while the mount path executed it.
+    const subCompWithHeadScript = `<!doctype html>
+<html><head>
+  <script>window.__headScriptRan = true;</script>
+</head><body>
+  <div data-composition-id="intro" data-width="1920" data-height="1080"><span>Hi</span></div>
+</body></html>`;
+
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => subCompWithHeadScript,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.scripts.join("\n")).toContain("window.__headScriptRan = true;");
+    expect(result.scriptItems).toContainEqual({
+      kind: "inline",
+      content: expect.stringContaining("window.__headScriptRan = true;"),
+    });
+  });
+
+  it("hoists a <link> from a TEMPLATED sub-composition's head", () => {
+    // Hoisting used to be gated on the composition being non-templated, so a
+    // templated composition's webfont link was kept in preview (the mount path
+    // hoists unconditionally) and dropped from the render.
+    const templatedSubCompWithLink = `<!doctype html>
+<html><head>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat">
+</head><body>
+  <template id="intro-template">
+    <div data-composition-id="intro" data-width="1920" data-height="1080"><span>Hi</span></div>
+  </template>
+</body></html>`;
+
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => templatedSubCompWithLink,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.externalLinks).toEqual([
+      {
+        href: "https://fonts.googleapis.com/css2?family=Montserrat",
+        rel: "stylesheet",
+        crossorigin: undefined,
+      },
+    ]);
+  });
+
   it("deduplicates link hrefs across multiple sub-compositions", () => {
     const subComp = `<!doctype html>
 <html><head>
