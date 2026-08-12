@@ -1,8 +1,9 @@
-import { isProtocolEvaluateTimeoutError } from "./captureTimeout.js";
+import { isDegradableEvaluateTimeoutError, withRemainingBudget } from "./captureTimeout.js";
 
 const LAZY_SCROLL_STEP_DELAY_MS = 400;
 const LAZY_SCROLL_MAX_IMAGE_WAIT_MS = 5_000;
 const LAZY_SCROLL_BOTTOM_SETTLE_MS = 800;
+const LAZY_SCROLL_IMAGE_POLL_MS = 250;
 
 export interface LazyScrollPage {
   evaluate(pageFunction: string): Promise<unknown>;
@@ -14,6 +15,15 @@ export interface LazyScrollResult {
   degraded: boolean;
 }
 
+async function evaluateWithinBudget(
+  page: LazyScrollPage,
+  expression: string,
+  deadline: number,
+  label: string,
+): Promise<unknown> {
+  return withRemainingBudget(page.evaluate(expression), deadline - Date.now(), label);
+}
+
 async function settleAfterScroll(
   page: LazyScrollPage,
   deadline: number,
@@ -21,23 +31,39 @@ async function settleAfterScroll(
 ): Promise<void> {
   const bottomSettleMs = Math.min(LAZY_SCROLL_BOTTOM_SETTLE_MS, Math.max(0, deadline - Date.now()));
   if (bottomSettleMs > 0) {
-    await page.evaluate(`window.scrollTo(0, document.body.scrollHeight)`);
+    await evaluateWithinBudget(
+      page,
+      `window.scrollTo(0, document.body.scrollHeight)`,
+      deadline,
+      "lazy-scroll-bottom",
+    );
     await sleep(bottomSettleMs);
   }
 
-  const imageWaitMs = Math.min(LAZY_SCROLL_MAX_IMAGE_WAIT_MS, Math.max(0, deadline - Date.now()));
-  if (imageWaitMs > 0) {
-    const pending = (await page.evaluate(
+  const imageDeadline = Math.min(deadline, Date.now() + LAZY_SCROLL_MAX_IMAGE_WAIT_MS);
+  while (Date.now() < imageDeadline) {
+    const pending = (await evaluateWithinBudget(
+      page,
       `Array.from(document.images).filter(function(img) { return !img.complete; }).length`,
+      imageDeadline,
+      "lazy-scroll-image-pending",
     )) as number;
-    if (pending > 0) {
-      await sleep(imageWaitMs);
+    if (!(pending > 0)) {
+      break;
     }
+    const waitMs = Math.min(LAZY_SCROLL_IMAGE_POLL_MS, imageDeadline - Date.now());
+    if (waitMs <= 0) {
+      break;
+    }
+    await sleep(waitMs);
   }
 
-  await page.evaluate(`window.scrollTo(0, 0)`);
+  if (deadline - Date.now() > 0) {
+    await evaluateWithinBudget(page, `window.scrollTo(0, 0)`, deadline, "lazy-scroll-reset");
+  }
 }
 
+// fallow-ignore-next-line complexity
 export async function lazyScrollForCapture(
   page: LazyScrollPage,
   budgetMs: number,
@@ -60,7 +86,9 @@ export async function lazyScrollForCapture(
 
   try {
     while (Date.now() < deadline) {
-      const state = (await page.evaluate(`(() => {
+      const state = (await evaluateWithinBudget(
+        page,
+        `(() => {
         var y = window.scrollY || window.pageYOffset || 0;
         var view = window.innerHeight || 0;
         var height = document.body ? document.body.scrollHeight : 0;
@@ -68,7 +96,10 @@ export async function lazyScrollForCapture(
         var atBottom = height <= view + 2 || next <= y + 1;
         window.scrollTo(0, atBottom ? height : next);
         return { atBottom: atBottom };
-      })()`)) as { atBottom: boolean };
+      })()`,
+        deadline,
+        "lazy-scroll-step",
+      )) as { atBottom: boolean };
 
       steps += 1;
       if (state.atBottom) {
@@ -87,18 +118,22 @@ export async function lazyScrollForCapture(
       timedOut = true;
     }
 
-    await settleAfterScroll(page, deadline, sleep);
+    if (deadline - Date.now() > 0) {
+      await settleAfterScroll(page, deadline, sleep);
+    }
   } catch (err) {
-    if (!isProtocolEvaluateTimeoutError(err)) {
+    if (!isDegradableEvaluateTimeoutError(err)) {
       throw err;
     }
     degraded = true;
     timedOut = true;
     opts.onWarning?.("lazy-scroll evaluate timed out; continuing with current page state");
-    try {
-      await page.evaluate(`window.scrollTo(0, 0)`);
-    } catch {
-      /* page may be wedged */
+    if (deadline - Date.now() > 0) {
+      try {
+        await evaluateWithinBudget(page, `window.scrollTo(0, 0)`, deadline, "lazy-scroll-recovery");
+      } catch {
+        /* page may be wedged; do not spend another unbounded protocol wait */
+      }
     }
   }
 

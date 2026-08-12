@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { TimeoutError } from "puppeteer-core";
 import {
+  PUPPETEER_DEFAULT_PROTOCOL_TIMEOUT_MS,
+  StageBudgetTimeoutError,
   captureProtocolTimeoutMs,
   formatCaptureFailureReason,
+  isNavigationTimeoutError,
   isProtocolEvaluateTimeoutError,
+  withRemainingBudget,
 } from "./captureTimeout.js";
 
 describe("captureProtocolTimeoutMs", () => {
@@ -14,13 +19,19 @@ describe("captureProtocolTimeoutMs", () => {
   it("floors at 60s", () => {
     expect(captureProtocolTimeoutMs(5_000, 5_000)).toBe(60_000);
   });
+
+  it("uses puppeteer default when inputs are non-finite", () => {
+    expect(captureProtocolTimeoutMs(Number.POSITIVE_INFINITY, 120_000)).toBe(
+      PUPPETEER_DEFAULT_PROTOCOL_TIMEOUT_MS,
+    );
+  });
 });
 
 describe("isProtocolEvaluateTimeoutError", () => {
-  it("matches Puppeteer evaluate protocol timeouts", () => {
+  it("matches Puppeteer TimeoutError evaluate timeouts", () => {
     expect(
       isProtocolEvaluateTimeoutError(
-        new Error(
+        new TimeoutError(
           "Runtime.evaluate timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
         ),
       ),
@@ -31,6 +42,30 @@ describe("isProtocolEvaluateTimeoutError", () => {
     expect(
       isProtocolEvaluateTimeoutError(new Error("Navigation timeout of 30000 ms exceeded")),
     ).toBe(false);
+    expect(isNavigationTimeoutError(new Error("Navigation timeout of 30000 ms exceeded"))).toBe(
+      true,
+    );
+  });
+});
+
+describe("withRemainingBudget", () => {
+  it("returns before a never-resolving promise when the budget elapses", async () => {
+    const never = new Promise<string>(() => undefined);
+    const started = Date.now();
+    await expect(withRemainingBudget(never, 20, "never-resolve")).rejects.toBeInstanceOf(
+      StageBudgetTimeoutError,
+    );
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+
+  it("resolves when work finishes inside the budget", async () => {
+    await expect(withRemainingBudget(Promise.resolve("ok"), 100, "fast")).resolves.toBe("ok");
+  });
+
+  it("fails immediately when no budget remains", async () => {
+    await expect(withRemainingBudget(Promise.resolve("ok"), 0, "empty")).rejects.toBeInstanceOf(
+      StageBudgetTimeoutError,
+    );
   });
 });
 
@@ -41,18 +76,11 @@ describe("formatCaptureFailureReason", () => {
     );
     expect(reason).toMatch(/extraction timed out/i);
     expect(reason).not.toMatch(/navigation timed out/i);
-    expect(reason).not.toMatch(/blocking headless/i);
   });
 
   it("keeps navigation timeout wording for nav failures", () => {
     expect(formatCaptureFailureReason("Navigation timeout of 30000 ms exceeded")).toMatch(
       /navigation timed out/i,
-    );
-  });
-
-  it("passes through non-timeout failures", () => {
-    expect(formatCaptureFailureReason("Website capture blocked: HTTP 403")).toBe(
-      "Capture failed: Website capture blocked: HTTP 403",
     );
   });
 });

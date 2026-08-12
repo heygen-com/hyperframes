@@ -1,3 +1,7 @@
+import { isNavigationTimeoutError } from "./captureTimeout.js";
+
+export { isNavigationTimeoutError };
+
 export const NETWORK_IDLE_ATTEMPT_MS = 30_000;
 
 export type CaptureGotoWaitUntil = "networkidle2" | "domcontentloaded";
@@ -20,11 +24,6 @@ export interface NavigateForCaptureResult<TResponse = unknown> {
 
 export function networkIdleAttemptTimeoutMs(totalTimeoutMs: number): number {
   return Math.min(NETWORK_IDLE_ATTEMPT_MS, Math.max(0, totalTimeoutMs));
-}
-
-export function isNavigationTimeoutError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /navigation timeout/i.test(msg);
 }
 
 export async function navigateForCapture<TResponse>(

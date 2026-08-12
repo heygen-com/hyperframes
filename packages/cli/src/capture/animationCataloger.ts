@@ -16,7 +16,7 @@
  */
 
 import type { Page, CDPSession } from "puppeteer-core";
-import { isProtocolEvaluateTimeoutError } from "./captureTimeout.js";
+import { isDegradableEvaluateTimeoutError, withRemainingBudget } from "./captureTimeout.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 
 export interface AnimationCatalog {
@@ -136,18 +136,26 @@ const EMPTY_ANIMATION_SCAN = {
   canvasCount: 0,
 };
 
+export interface CollectAnimationCatalogOutcome {
+  catalog: AnimationCatalog;
+  timedOut: boolean;
+}
+
 export async function collectAnimationCatalog(
   page: Page,
   cdpAnimations: CdpAnimationEntry[],
   cdp: CDPSession,
-  opts: { scrollBudgetMs?: number } = {},
-): Promise<AnimationCatalog> {
+  opts: { scrollBudgetMs?: number; evaluateBudgetMs?: number } = {},
+): Promise<CollectAnimationCatalogOutcome> {
   const scrollBudgetMs = opts.scrollBudgetMs ?? 8_000;
-  await lazyScrollForCapture(page, scrollBudgetMs);
+  const evaluateBudgetMs = opts.evaluateBudgetMs ?? 15_000;
+  const scroll = await lazyScrollForCapture(page, scrollBudgetMs);
+  let timedOut = scroll.degraded || scroll.timedOut;
 
   let result = EMPTY_ANIMATION_SCAN;
   try {
-    result = (await page.evaluate(`(() => {
+    result = (await withRemainingBudget(
+      page.evaluate(`(() => {
     var webAnimations = [];
     var cssDeclarations = [];
 
@@ -206,11 +214,15 @@ export async function collectAnimationCatalog(
     var canvasCount = document.querySelectorAll('canvas').length;
 
     return { webAnimations: webAnimations, cssDeclarations: cssDeclarations, scrollTargets: scrollTargets, canvasCount: canvasCount };
-  })()`)) as typeof EMPTY_ANIMATION_SCAN;
+  })()`),
+      evaluateBudgetMs,
+      "animation-catalog",
+    )) as typeof EMPTY_ANIMATION_SCAN;
   } catch (err) {
-    if (!isProtocolEvaluateTimeoutError(err)) {
+    if (!isDegradableEvaluateTimeoutError(err)) {
       throw err;
     }
+    timedOut = true;
   }
 
   try {
@@ -220,16 +232,19 @@ export async function collectAnimationCatalog(
   }
 
   return {
-    webAnimations: result.webAnimations,
-    cssDeclarations: result.cssDeclarations,
-    scrollTargets: result.scrollTargets,
-    cdpAnimations,
-    summary: {
-      webAnimations: result.webAnimations.length,
-      cssDeclarations: result.cssDeclarations.length,
-      scrollTargets: result.scrollTargets.length,
-      cdpAnimations: cdpAnimations.length,
-      canvases: result.canvasCount,
+    catalog: {
+      webAnimations: result.webAnimations,
+      cssDeclarations: result.cssDeclarations,
+      scrollTargets: result.scrollTargets,
+      cdpAnimations,
+      summary: {
+        webAnimations: result.webAnimations.length,
+        cssDeclarations: result.cssDeclarations.length,
+        scrollTargets: result.scrollTargets.length,
+        cdpAnimations: cdpAnimations.length,
+        canvases: result.canvasCount,
+      },
     },
+    timedOut,
   };
 }

@@ -43,7 +43,11 @@ import type { VisionCaptionOutcome } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
 import { detectBlockedPage } from "./pageBlockDetection.js";
 import { navigateForCapture } from "./navigateForCapture.js";
-import { captureProtocolTimeoutMs, isProtocolEvaluateTimeoutError } from "./captureTimeout.js";
+import {
+  captureProtocolTimeoutMs,
+  isDegradableEvaluateTimeoutError,
+  withRemainingBudget,
+} from "./captureTimeout.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
 
@@ -269,43 +273,42 @@ export async function captureWebsite(
     };
     let contentCheckTimedOut = false;
     try {
-      pageContentCheck = (await page1.evaluate(`(() => {
+      pageContentCheck = (await withRemainingBudget(
+        page1.evaluate(`(() => {
+      var text = (document.body && document.body.innerText || "").trim();
       var title = document.title || "";
-      var body = document.body;
-      var bodyChildCount = body ? body.children.length : 0;
-      var text = "";
-      if (body) {
-        var walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null);
-        var node;
-        var guard = 0;
-        while ((node = walk.nextNode()) && text.length < 800 && guard < 300) {
-          guard++;
-          text += node.nodeValue || "";
-        }
-      }
       var hasCfTurnstile = !!document.querySelector('.cf-turnstile, [data-sitekey], iframe[src*="challenges.cloudflare.com"], #challenge-running, #challenge-form');
-      return { textLength: text.trim().length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
-    })()`)) as typeof pageContentCheck;
+      var bodyChildCount = document.body ? document.body.children.length : 0;
+      return { textLength: text.length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
+    })()`),
+        Math.min(5_000, remainingMs()),
+        "content-check",
+      )) as typeof pageContentCheck;
     } catch (err) {
-      if (!isProtocolEvaluateTimeoutError(err)) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
         throw err;
       }
       contentCheckTimedOut = true;
       const message =
-        "post-navigation content check timed out; skipping blocked-page detection and continuing";
+        "post-navigation content check timed out; continuing with HTTP-status blocked-page detection only";
       warnings.push(message);
       progress("warn", message);
     }
 
-    if (!contentCheckTimedOut) {
-      const blockedReason = detectBlockedPage({
-        httpStatus: navigationResponse?.status() ?? null,
-        ...pageContentCheck,
-      });
-      if (blockedReason) {
-        phase("navigation", "degraded", "blocked");
-        throw new Error(blockedReason);
-      }
+    const blockedReason = detectBlockedPage({
+      httpStatus: navigationResponse?.status() ?? null,
+      ...(contentCheckTimedOut
+        ? {
+            title: "",
+            textLength: 0,
+            bodyChildCount: 0,
+            hasChallengeElement: false,
+          }
+        : pageContentCheck),
+    });
+    if (blockedReason) {
+      phase("navigation", "degraded", "blocked");
+      throw new Error(blockedReason);
     }
 
     phase("navigation", "completed");
@@ -440,11 +443,19 @@ export async function captureWebsite(
 
     progress("animations", "Cataloging animations...");
     try {
-      animationCatalog = await collectAnimationCatalog(page1, cdpAnims, cdp, {
+      const animationOutcome = await collectAnimationCatalog(page1, cdpAnims, cdp, {
         scrollBudgetMs: Math.min(8_000, remainingMs()),
+        evaluateBudgetMs: Math.min(15_000, remainingMs()),
       });
+      animationCatalog = animationOutcome.catalog;
+      if (animationOutcome.timedOut) {
+        const message =
+          "animation catalog evaluate timed out; continuing without animation catalog";
+        warnings.push(message);
+        progress("warn", message);
+      }
     } catch (err) {
-      if (!isProtocolEvaluateTimeoutError(err)) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
         throw err;
       }
       const message = "animation catalog evaluate timed out; continuing without animation catalog";
@@ -464,7 +475,7 @@ export async function captureWebsite(
       screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
       progress("screenshots", `${screenshots.length} scroll screenshots captured`);
     } catch (err) {
-      if (!isProtocolEvaluateTimeoutError(err)) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
         throw err;
       }
       const message = "scroll screenshots timed out; continuing without screenshots";
