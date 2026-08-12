@@ -168,6 +168,12 @@ function mixTargets(wet: AudioParam, dry: AudioParam): FxParamTarget[] {
   return [{ param: wet }, { param: dry, map: (v) => 1 - v }];
 }
 
+/** Linear crossfade: dry falls as wet rises, in lockstep. */
+function setWetDryMix(wet: GainNode, dry: GainNode, mix: number): void {
+  wet.gain.value = mix;
+  dry.gain.value = 1 - mix;
+}
+
 /** A node that is its own input and output and has nothing to tear down. */
 function simple(
   node: AudioNode,
@@ -327,8 +333,7 @@ const delayFeedback: Builder = (ctx, p) => {
   const apply = (v: HfAudioFxParamValues): void => {
     dl.delayTime.value = Math.min(5, n(v.time) / 1000);
     fb.gain.value = n(v.feedback);
-    wet.gain.value = n(v.mix);
-    dry.gain.value = 1 - n(v.mix);
+    setWetDryMix(wet, dry, n(v.mix));
   };
   apply(p);
   return {
@@ -359,8 +364,7 @@ const chorusLfo: Builder = (ctx, p, elapsed) => {
     dl.delayTime.value = n(v.delay) / 1000;
     depth.gain.value = n(v.depth) / 1000;
     lfo.playbackRate.value = n(v.speed);
-    wet.gain.value = n(v.mix);
-    dry.gain.value = 1 - n(v.mix);
+    setWetDryMix(wet, dry, n(v.mix));
   };
   apply(p);
   return {
