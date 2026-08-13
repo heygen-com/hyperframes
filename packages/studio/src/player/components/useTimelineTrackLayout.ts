@@ -42,7 +42,7 @@ export function trackShowsBeatStrip(
  * counts toward whether a track has anything to disclose. A function rather than
  * a map so every caller reads the same cached parse and none can drift.
  */
-export function automationLaneCountOf(element: TimelineElement): number {
+function automationLaneCountOf(element: TimelineElement): number {
   return isAudioTimelineElement(element) ? elementAutomationLanes(element).length : 0;
 }
 
@@ -51,7 +51,7 @@ export function automationLaneCountOf(element: TimelineElement): number {
  * clips on one row share a lane row per property. Counting only the active clip's
  * lanes reserved a height that changed with the selection.
  */
-export function trackAutomationLaneCount(elements: readonly TimelineElement[]): number {
+function trackAutomationLaneCount(elements: readonly TimelineElement[]): number {
   return groupAutomationLanes(elements).length;
 }
 
