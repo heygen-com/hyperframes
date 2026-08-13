@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
@@ -94,8 +94,9 @@ export async function generateWaveformCache(projectDir: string, assetPath: strin
   const audioPath = join(projectDir, assetPath);
   if (!existsSync(audioPath)) return;
 
+  const stats = statSync(audioPath);
   const cacheDir = join(projectDir, ".waveform-cache");
-  const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath));
+  const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath, stats));
   if (existsSync(cachePath)) return;
 
   const peaks = await decodeAudioPeaks(audioPath);
