@@ -1124,6 +1124,17 @@ describe("AudioFxGroup carve by default", () => {
     expect(carve.strength).toBe(0.25);
   });
 
+  it("applies the default carve exactly once for a single candidate", () => {
+    // The regression: the multi-candidate effect and the single-candidate effect
+    // both passed their guards for exactly one candidate (the first only checks
+    // sourceOptions.length === 0, not === 1), so a bed with one narrator above it
+    // fired two identical setCarve calls — two decodes, two FFT runs, two
+    // concurrent attribute writes.
+    const { onSetAttributeQuiet } = mount({ "fx-chain": "" }, false, 1);
+    const carveWrites = onSetAttributeQuiet.mock.calls.filter((c) => c[0] === "data-fx-carve");
+    expect(carveWrites).toHaveLength(1);
+  });
+
   it("makes room for every voice above the bed, not one of them", () => {
     // A bed usually runs under a whole sequence. Carving against one speaker leaves
     // the others fighting it, and choosing between them was never the question — so
