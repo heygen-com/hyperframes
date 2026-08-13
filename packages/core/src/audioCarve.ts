@@ -526,6 +526,34 @@ const SNAP_DB = 0.2;
  */
 const STEP_DB = 0.5;
 
+/**
+ * Thin a raw per-frame envelope down to the points where its value actually
+ * moved by `stepDb`, anchoring the run each drop ends.
+ *
+ * Segments interpolate, so dropping a run of equal values does not hold them —
+ * it draws a straight line from wherever the last kept point was, which turned
+ * a silent stretch before the run into a slow slide into it. Keeping the last
+ * value of the run pins the plateau flat and puts the whole move where it
+ * belongs. Shared by the two envelope builders below, which differ only in how
+ * `raw` gets built.
+ */
+function simplifyStepPoints(
+  raw: readonly { t: number; v: number }[],
+  stepDb: number,
+): { t: number; v: number }[] {
+  const points: { t: number; v: number }[] = [{ t: 0, v: 0 }];
+  let lastKept = 0;
+  let keptIndex = -1;
+  raw.forEach((pt, i) => {
+    if (i !== raw.length - 1 && Math.abs(pt.v - lastKept) < stepDb) return;
+    if (i > 0 && keptIndex !== i - 1) points.push(raw[i - 1]!);
+    points.push(pt);
+    lastKept = pt.v;
+    keptIndex = i;
+  });
+  return points;
+}
+
 export interface HfCarveDynamics {
   /** The band this envelope drives, matching a band from `analyseCarveBands`. */
   freq: number;
@@ -588,8 +616,6 @@ export function analyseCarveDynamics(
     const powers = perBand[b]!;
     const peak = Math.max(...powers);
     let level = 0;
-    const points: { t: number; v: number }[] = [{ t: 0, v: 0 }];
-    let lastKept = 0;
     const raw: { t: number; v: number }[] = [];
     powers.forEach((p, i) => {
       // Relative to this band's own loudest moment, so a quiet band still gets a
@@ -601,19 +627,7 @@ export function analyseCarveDynamics(
       const v = Math.abs(scaled) < SNAP_DB ? 0 : Number(scaled.toFixed(1));
       raw.push({ t: Number(times[i]!.toFixed(3)), v });
     });
-    let keptIndex = -1;
-    raw.forEach((pt, i) => {
-      if (i !== raw.length - 1 && Math.abs(pt.v - lastKept) < STEP_DB) return;
-      // Anchor the run this point ends. Segments interpolate, so dropping a run
-      // of equal values does not hold them — it draws a straight line from
-      // wherever the last kept point was, which turned a silent stretch before
-      // the first word into a slow 2 dB slide into it. Keeping the last value of
-      // the run pins the plateau flat and puts the whole move where it belongs.
-      if (i > 0 && keptIndex !== i - 1) points.push(raw[i - 1]!);
-      points.push(pt);
-      lastKept = pt.v;
-      keptIndex = i;
-    });
+    const points = simplifyStepPoints(raw, STEP_DB);
     // The last point's value is held for the rest of the bed, so it has to be
     // no cut and it has to be at the end of the voice.
     points.push({ t: Number(Math.max(duration, points.at(-1)!.t).toFixed(3)), v: 0 });
@@ -708,16 +722,7 @@ export function analyseCarveDuck(
     });
   }
 
-  const points: { t: number; v: number }[] = [{ t: 0, v: 0 }];
-  let lastKept = 0;
-  let keptIndex = -1;
-  raw.forEach((pt, i) => {
-    if (i !== raw.length - 1 && Math.abs(pt.v - lastKept) < STEP_DB) return;
-    if (i > 0 && keptIndex !== i - 1) points.push(raw[i - 1]!);
-    points.push(pt);
-    lastKept = pt.v;
-    keptIndex = i;
-  });
+  const points = simplifyStepPoints(raw, STEP_DB);
   // Pin the end at no cut, unless the release already got there — a second point
   // at the same time and value is just noise in the lane.
   const duration = voice.length / sampleRate;

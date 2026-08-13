@@ -76,6 +76,22 @@ function pointInBox(point: HfAutomationPoint, box: SelectionBox | null | undefin
   return !!box && pointInSelection(point, box);
 }
 
+/** A breakpoint's drawn radius and stroke, pulled out of the render loop so the
+ *  map callback stays a single JSX return — the ternaries below are what pushed
+ *  it over the complexity budget when they lived inline. */
+function pointCircleStyle(
+  inRange: boolean,
+  dragging: boolean,
+): { radius: number; stroke: string; strokeWidth: number } {
+  return {
+    radius: POINT_R * (dragging ? 1.3 : inRange ? 1.15 : 1),
+    // A white ring rather than a different fill: the fill is the parameter's
+    // own colour, and a lane with two envelopes on it is read by colour first.
+    stroke: inRange ? "#fff" : "rgba(0,0,0,0.5)",
+    strokeWidth: inRange ? 1.5 : 1,
+  };
+}
+
 /** Pointer shape: a read-only lane can only be selected, a live one edited. */
 function laneCursor(readOnly: boolean | undefined, dragging: boolean, stretching: boolean): string {
   // A stretch handle wins over everything it might also sit above: the handle is
@@ -412,6 +428,7 @@ export function TimelineAutomationLane({
           // the range is exactly what the range will remove. The tinted rectangle
           // says where the selection is; this says which points it has.
           const inRange = pointInBox(p, rangeSelection);
+          const { radius, stroke, strokeWidth } = pointCircleStyle(inRange, i === dragIndex);
           return (
             <circle
               key={`${i}-${p.t}`}
@@ -419,13 +436,10 @@ export function TimelineAutomationLane({
               {...(inRange ? { "data-automation-point-in-range": "" } : {})}
               cx={xOf(p.t)}
               cy={yOf(p.v)}
-              r={POINT_R * (i === dragIndex ? 1.3 : inRange ? 1.15 : 1)}
+              r={radius}
               fill={accentColor}
-              // A white ring rather than a different fill: the fill is the
-              // parameter's own colour, and a lane with two envelopes on it is read
-              // by colour before anything else.
-              stroke={inRange ? "#fff" : "rgba(0,0,0,0.5)"}
-              strokeWidth={inRange ? 1.5 : 1}
+              stroke={stroke}
+              strokeWidth={strokeWidth}
               // Hidden rather than unmounted, so the hit area survives: a point
               // dragged past the lane's edge fires pointerleave mid-gesture, and a
               // handle that vanishes then would drop the drag. A drag in progress
