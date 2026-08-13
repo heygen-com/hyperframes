@@ -105,11 +105,26 @@ export type HfAudioNameKind = "voice" | "music" | "sfx" | "unknown";
 /** Short, deliberately dull effects. Nothing here is ever a voiceover. */
 const SFX_NAME =
   /sfx|foley|whoosh|impact|riser|stinger|swoosh|thud|boom|click|ding|beep|ambien|room[-_ ]?tone/i;
+// `\b` treats `_` as a word character, so `\bbed\b` does not match `bed_01`
+// or `music_bed_loop` — exactly the separator an asset name is likely to use.
+// These short words need a boundary that actually excludes letters and
+// digits on both sides; everything else here is long enough that a
+// substring match is already the intent (`music` inside `bgmusic` is fine).
+const NOT_WORD = "(?<![a-z0-9])";
+const NOT_WORD_END = "(?![a-z0-9])";
+const wordish = (term: string): string => `${NOT_WORD}${term}${NOT_WORD_END}`;
+
 /** A bed, which is the thing being carved rather than the thing carving it. */
-const MUSIC_NAME = /music|bgm|\bbed\b|soundtrack|score|\bsong\b|theme|instrumental|track\d/i;
+const MUSIC_NAME = new RegExp(
+  `music|bgm|${wordish("bed")}|soundtrack|score|${wordish("song")}|theme|instrumental|track\\d`,
+  "i",
+);
 /** Speech. */
-const VOICE_NAME =
-  /voice|\bvo\b|\bvox\b|narrat|speech|dialog|monolog|announce|\btts\b|talk|interview|podcast|recap|script/i;
+const VOICE_NAME = new RegExp(
+  `voice|${wordish("vo")}|${wordish("vox")}|narrat|speech|dialog|monolog|announce|` +
+    `${wordish("tts")}|talk|interview|podcast|recap|script`,
+  "i",
+);
 
 /**
  * Classify a track from its id and filename together.
@@ -152,7 +167,11 @@ export interface HfClipSpan {
 export function clipsOverlap(a: HfClipSpan, b: HfClipSpan): boolean {
   const end = (clip: HfClipSpan): number =>
     typeof clip.duration === "number" && Number.isFinite(clip.duration)
-      ? clip.start + clip.duration
+      ? // Negative is clamped to zero-length rather than passed through: a
+        // clip cannot un-play time, and letting it through inverts the
+        // interval (end before start), which reads as overlapping everything
+        // it is nowhere near.
+        clip.start + Math.max(0, clip.duration)
       : Number.POSITIVE_INFINITY;
   return a.start < end(b) && b.start < end(a);
 }
