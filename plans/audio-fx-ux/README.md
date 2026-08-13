@@ -1,17 +1,14 @@
 # The casual author's view of the FX rack
 
-The schematic direction won because it *adds information* — signal order,
+The schematic direction won because it _adds information_ — signal order,
 routing, what is driven versus set. But information a casual author cannot read
 is decoration, and the rack speaks entirely in Hz, dB and ratios. So the drawing
 stays and the **language changes**.
 
-The plain-language layer over every effect in the registry now ships as
-`packages/core/src/audioFxCopy.ts`, with the coverage that used to gate this
-page — every effect, parameter and preset must have copy — as
-`audioFxCopy.test.ts`. `build-preview.mts` renders the review page from it
-**plus the real registry and preset catalogue**, including the shipped one-knob
-profiles — sampled off their real curves, so the page cannot disagree with what
-the knob does.
+`copy.mts` is the design work: a plain-language layer over every effect in the
+registry. `build-preview.mts` renders the review page from it **plus the real
+registry and preset catalogue**, and **fails** if any effect, parameter or
+preset lacks copy — so the page cannot quietly omit something that ships.
 
 ```bash
 bun plans/audio-fx-ux/build-preview.mts /tmp/rack-ux.html
@@ -40,11 +37,11 @@ one ruler. Naming them once makes the whole rack legible.
 ## What laying it all out exposed
 
 **A preset can use the same module twice for different jobs.** "Clean Voice"
-runs *Shape One Range* at node 02 (cutting mud at 250 Hz) and again at node 04
+runs _Shape One Range_ at node 02 (cutting mud at 250 Hz) and again at node 04
 (adding clarity at 3 kHz). Read down the rack, an author sees the same words
 twice and cannot tell them apart.
 
-So one plain name per *effect* is not enough: a preset's node needs its own
+So one plain name per _effect_ is not enough: a preset's node needs its own
 **role label** — "Reduce Mud", "Add Clarity" — which means copy belongs on the
 preset node as well as on the effect. This is invisible in a catalogue of cards
 and obvious the moment every preset is drawn as the chain it actually builds.
@@ -57,13 +54,13 @@ same condensed caps. It is back, inside the schematic skeleton rather than
 instead of it. You can tell what KIND of module you are looking at with the
 label out of focus, before the word registers.
 
-| Family | Treatment | Why |
-| --- | --- | --- |
-| Filter | condensed caps, wide tracking, light | measuring instruments |
-| Dynamics | condensed caps, tight, heavy | grips the signal |
-| Nonlinear | **italic serif** | the only generative family — it should not look like the others |
-| Time | condensed caps, very wide, thin | atmosphere, not control |
-| Smart | monospace, medium | it measures; it reads as a readout |
+| Family    | Treatment                            | Why                                                             |
+| --------- | ------------------------------------ | --------------------------------------------------------------- |
+| Filter    | condensed caps, wide tracking, light | measuring instruments                                           |
+| Dynamics  | condensed caps, tight, heavy         | grips the signal                                                |
+| Nonlinear | **italic serif**                     | the only generative family — it should not look like the others |
+| Time      | condensed caps, very wide, thin      | atmosphere, not control                                         |
+| Smart     | monospace, medium                    | it measures; it reads as a readout                              |
 
 Two faces, as budgeted. The condensed sans carries four families apart by
 weight, case, tracking and size; the serif is spent on the single family that
@@ -103,18 +100,18 @@ literal; keep it that way, and use HTML entities for typographic characters.
 ## The hole in the single-knob rule: picking the range
 
 `Shape One Range` has three controls — where, how much, how wide — and the
-copy nominated *how much* as the one that matters. That is incoherent, and it
+copy nominated _how much_ as the one that matters. That is incoherent, and it
 took someone asking to see it: boosting an unspecified frequency means nothing.
 **The range is the first decision, not the second.**
 
 Two ways out:
 
-**A — two controls.** Keep the module generic and make *where* a word from the
+**A — two controls.** Keep the module generic and make _where_ a word from the
 shared vocabulary rather than a frequency field. Honest, and the ruler does the
 teaching, but it is still two decisions and the first is jargon in a friendly
 coat.
 
-**B — the range IS the module.** The add menu offers *jobs* — Reduce Mud, Add
+**B — the range IS the module.** The add menu offers _jobs_ — Reduce Mud, Add
 Clarity, Tame Harshness — each a peaking node with its frequency already
 chosen. Picking the module is picking the range, so one knob is honest rather
 than a simplification hiding the real choice.
@@ -122,8 +119,8 @@ than a simplification hiding the real choice.
 **B is the answer**, and it is the same insight as the EQ: an author does not
 want a parametric equaliser, they want to fix a thing. It also dissolves the
 duplicate-name problem at the root rather than papering it with a role label —
-`Clean Voice` reads *Remove Rumble · Reduce Mud · Even Out Loudness · Add
-Clarity · Peak Ceiling*, and nothing repeats.
+`Clean Voice` reads _Remove Rumble · Reduce Mud · Even Out Loudness · Add
+Clarity · Peak Ceiling_, and nothing repeats.
 
 Option A is not wasted: its band picker is exactly the right control for moving
 the frequency under **Details**, for the author who wants to.
@@ -131,12 +128,10 @@ the frequency under **Details**, for the author who wants to.
 This changes the catalogue, not just the copy: the presets should reference
 named jobs, and `EFFECT_COPY.peaking` stops being one entry.
 
-## Shipped: a multi-band EQ ("Tone")
+## Proposed: a multi-band EQ ("Tone")
 
-*Built in `e984a9e62` / `2eaa71cac`. The design below is what was built.*
-
-The clearest failure this exercise surfaced is a rack holding two *Shape One
-Range* modules doing different jobs. A multi-band EQ is the answer, and it is a
+The clearest failure this exercise surfaced is a rack holding two _Shape One
+Range_ modules doing different jobs. A multi-band EQ is the answer, and it is a
 better one than a role label because an author already understands it: bass,
 middle, treble is the most widely used audio control there is.
 
@@ -153,7 +148,7 @@ in the render, nothing new in the graph, and the nodes stay ordinary, so an
 author who opens the details finds exactly the filters they could have added by
 hand.
 
-The registry's parameter model is flat key/value, so an `eq` effect *type* with
+The registry's parameter model is flat key/value, so an `eq` effect _type_ with
 N bands would need array-shaped params it does not support. The composite-module
 route avoids that entirely and is the pattern this codebase already proved.
 
@@ -162,99 +157,24 @@ detent is what an equaliser looks like to everyone who has met one. Collapsed,
 it reads like every other module: "Bass +3, Middle −2, Treble +2", or "Flat"
 when nothing has been touched.
 
-## Decided (2026-08-10)
+## What still needs deciding
 
-All three were open until now, and the first was blocking the wiring.
-
-**The plain name replaces the DSP name; the DSP name lives under Details.**
-The rack reads plain top to bottom — `Remove Rumble`, not `highpass` — and the
-header stays narrow, which matters because it already carries a summary, a
-bypass, two arrows and a delete. Nothing is lost: opening a module shows the
-DSP name beside its real parameters, so the author who wants the mapping finds
-it exactly where the mechanism is, and the author who does not never meets it.
-
-**Presets sort by complaint; the effect list stays in signal order.**
-The two menus stop competing to be the same thing. Presets are the casual
-author's door and `PRESET_PROBLEM` already carries the line for all 18 of them,
-so this costs no new writing. The effect list stays Filters / Dynamics /
-Non-linear / Time — it is the expert's tool, and that grouping teaches the
-signal path the rack itself is ordered by.
-
-**Everything auditions on hover, with a spinner for the ones that measure.**
-Static presets apply to the playing audio and revert on leave, which the graph
-rebuild path already supports. A carve or an Even Out Levels analyses first and
-says so while it does — the same spinner the carve module already shows. This
-is the expensive answer of the three: analysis is seconds, and a hover that
-takes seconds is one the author has often already left, so whatever gets built
-needs a cancel on leave and must not apply a result that arrives late.
+- Does the plain name **replace** the DSP name or sit beside it? Replacing is
+  friendlier but strands what the author learns.
+- Should the **menus** be organised by complaint ("my voice sounds boomy")
+  rather than by effect family? The rack itself must stay in signal order,
+  because order is audible — but the menus have no such constraint, and the
+  preset section of the preview is written that way to show the difference.
+- How much should **hover audition**? Hearing a preset before committing is the
+  single strongest affordance here. Cheap for static presets; a measuring script
+  has to analyse first and cannot preview instantly.
 
 ## Status
 
-The EQ, the named jobs and the levelling script are **built**, and the copy
-layer has now landed as `packages/core/src/audioFxCopy.ts` — `EFFECT_COPY`,
-`BANDS`, `PRESET_PROBLEM` and `SUMMARY`, with the completeness check as a test
-beside it rather than a build step.
+`copy.mts` is a proposal, not shipped code. When it lands it wants to be
+`packages/core/src/audioFxCopy.ts` beside the registry, with the completeness
+check as a test rather than a build step.
 
-**It is wired.** `propertyPanelFxNodeRow.tsx` takes the name from `EFFECT_COPY`,
-the sentence under it from `SUMMARY`, and every knob's name from the same place
-via `plainDef` — which writes the words over the registry's def and leaves range,
-step, unit and automatability alone. The DSP name sits above the knobs as
-`Details — High-pass`. The preset shelf leads with `PRESET_PROBLEM` and follows
-with the preset's own name. Hover and focus both audition, through the same
-preview channel a slider drag uses; the leveller measures first, says
-"measuring…" while it does, caches the decode per `src`, and drops a result that
-arrives after the pointer has gone.
-
-Three things that took a second pass, all worth knowing before touching this
-again. An audition has to survive the panel re-rendering under it — the group
-re-renders every playhead tick, so anything keyed on its inline callbacks tears
-down thirty times a second. Applying must NOT revert, since the audition *was*
-the thing applied. And moving between two entries in a shelf is not leaving it,
-so each entry has to call its neighbours' auditions off itself.
-
-**The three rules are built too**, and so is the visual direction:
-
-- *Two faces.* A module opens on its name, what it is for, and the one control
-  that carries it — `EFFECT_COPY.primary`, with `primaryEnds` saying what its
-  two ends sound like. Everything else is behind a Details disclosure, which is
-  also where the DSP name lives. Ten of fifteen effects; the five whose primary
-  is "strength" open on all their controls until `PROFILES` ships, which is
-  honest — inventing one knob for them now would be a knob that lies.
-- *One knob that matters.* `packages/core/src/audioFxProfiles.ts`. Five effects
-  get a derived control over several parameters, continuous rather than the
-  three-point tables proposed here. **Three of the five figures were wrong** and
-  only rendering showed it — the write-up is `~/audio-fx-profiles-ab/README.md`.
-- *Name the outcome.* Modules, knobs, the add menu and the preset shelf.
-
-- **The range IS the module.** The add menu offers five named jobs — Tame
-  Boominess, Reduce Mud, Reduce Boxiness, Add Clarity, Soften Harshness — and
-  `peaking` is not offered as itself. `packages/core/src/audioFxJobs.ts`. Every
-  one is a job the preset catalogue already ships, at the settings it ships it
-  with, so the list names the vocabulary the presets were written in rather than
-  inventing a second one.
-- **The shared ruler.** Every spectral module shows where it acts across the
-  seven named ranges, log-spaced, with the range it is in named underneath.
-- **Family lettering and the tint step.** Four families told apart by the sans,
-  the serif spent on non-linear, monospace for the measuring modules, and a
-  lightness step per module derived from registry position.
-- **The schematic**, translated to one column: IN and OUT terminals, every step
-  numbered over what the rack shows, and a preset's consecutive nodes bracketed
-  as the one thing that was added.
-
-Everything in this document is now built.
-
-It has no entry for Tone or for the levelling module, because both carry their
-own copy in core (`audioEqSummary`, `levellingSummary`). That is the right home
-for it: a summary that has to read the chain belongs beside the code that
-writes it.
-
-The `PROFILES` figures — what one knob derives at gentle/middle/strong — have
-**shipped and been corrected**. They are `HF_AUDIO_FX_PROFILES` in
-`packages/core/src/audioFxProfiles.ts`, continuous rather than three-point, and
-three of the five were wrong as proposed: the compressor's make-up left the
-track quieter at full evenness, saturation's trim went the wrong way and made
-"Warmth" mean "much quieter", and the gate did essentially nothing because
-`release` was not in the profile at all. Measurements, method and the sweep that
-found the last one are in `~/audio-fx-profiles-ab/README.md`.
-
-The stub that used to hold them, `plans/audio-fx-ux/copy.mts`, is gone.
+The `PROFILES` figures — what one knob derives at gentle/middle/strong — are
+proposed values, not measured ones. They want the same before/after listen the
+clip-before-duck fix got.
