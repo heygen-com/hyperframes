@@ -28,7 +28,7 @@ Three attributes carry everything, all on the audio/video element itself:
 | Attribute         | Holds                                                     |
 | ----------------- | --------------------------------------------------------- |
 | `data-fx-chain`   | the effects, in signal order                              |
-| `data-automation` | envelopes on this track's volume or its effect parameters  |
+| `data-automation` | envelopes on this track's volume or its effect parameters |
 | `data-fx-carve`   | the carve's own settings, so it can be re-derived         |
 
 Exact JSON for each, and the rules a lane must satisfy: `references/attributes.md`.
@@ -133,7 +133,7 @@ source denser, not cleaner.
 **Time** (`delay`, `reverb`, `chorus`, `phaser`) puts a track in a space or gives
 it width. These are the ones that most easily wreck a mix, because a tail or a
 detuned copy occupies the same room a voice needs. Use them on the thing that
-should sit *behind* something else, and keep the wet amount lower than sounds
+should sit _behind_ something else, and keep the wet amount lower than sounds
 right in isolation.
 
 The chain is serial: each effect processes what the one before it produced. So
@@ -149,7 +149,7 @@ not need the whole spectrum. It needs the few bands it actually occupies. Carve
 takes only those, and the bed keeps its low end and its top, so it is still music
 while the voice is still intelligible.
 
-**It is a relationship, not an effect.** The settings live on the *bed* — the
+**It is a relationship, not an effect.** The settings live on the _bed_ — the
 track that gets processed — and they name the voices to listen to, exactly as a
 sidechain compressor does: you select the track that gets quieter and pick what
 makes it quieter. **Never put a carve on a voice track.** A voice carved against
