@@ -26,6 +26,7 @@ import type { TimelineElement } from "../player/store/timelineElement";
 function wholeAxis<T extends { t0: number; t1: number }>(sel: T): T & { v0: number; v1: number } {
   return { ...sel, v0: Number.NEGATIVE_INFINITY, v1: Number.POSITIVE_INFINITY };
 }
+
 /** Minimal valid fixture — TimelineElement only requires these five fields. */
 const bgmElement: TimelineElement = {
   id: "bgm",
