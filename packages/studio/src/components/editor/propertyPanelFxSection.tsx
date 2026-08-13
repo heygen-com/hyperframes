@@ -68,7 +68,6 @@ const PRESET_AMOUNT_PARAM: HfAudioFxParam = {
   default: 1,
   hint: "How much of this preset is applied. Automate it to bring the whole preset in or out over time.",
 };
-
 export interface FxSectionProps {
   chain: HfAudioFxChain;
   /** Targets this track already automates, as `fx.<nodeId>.<param>` strings. */

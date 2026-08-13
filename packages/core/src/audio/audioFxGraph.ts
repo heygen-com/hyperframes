@@ -676,7 +676,6 @@ export function buildFxChain(
 
   const presetTargets: Record<string, FxParamTarget[]> = {};
   for (const p of presets) presetTargets[p.id] = mixTargets(p.wet.gain, p.dry.gain);
-
   return {
     input,
     output,
@@ -706,8 +705,7 @@ export function buildFxChain(
         if (!wrap) continue;
         wrap.wet.gain.value = run.amount;
         wrap.dry.gain.value = 1 - run.amount;
-      }
-      // `shape` is not reassigned: the early return above already established
+      } // `shape` is not reassigned: the early return above already established
       // that `shapeOf(next)` equals it, so recomputing was a whole normalise +
       // join per observer tick to write back the string that was already there.
       return true;

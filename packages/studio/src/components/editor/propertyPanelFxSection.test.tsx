@@ -563,7 +563,6 @@ describe("FxSection chain", () => {
       expect(onRemoveNodeAutomation).toHaveBeenCalled();
     });
   });
-
   it("brackets only nodes a preset still sits next to", () => {
     // Pulled apart by a reorder, they are no longer a unit — and a bracket
     // around the gap would claim an adjacency the signal path does not have.

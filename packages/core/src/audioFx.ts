@@ -843,11 +843,10 @@ export interface HfAudioFxNode {
    * the first node of each run. Absent means fully applied, which is what every
    * chain written before this means.
    */
-  presetAmount?: number;
-  /**
+  presetAmount?: number /**
    * Set on the gain stage the leveller writes, so re-running replaces it rather
    * than stacking a second one — the same contract `fromCarve` has.
-   */
+   */;
   fromLeveller?: boolean;
   /** Absent means enabled — chain files written before the field existed still load. */
   enabled?: boolean;
