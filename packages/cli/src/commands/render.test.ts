@@ -193,6 +193,17 @@ vi.mock("../browser/preflight.js", () => ({
   runEnvironmentChecks: vi.fn(async () => preflightState.result),
 }));
 
+// The "render command explicit composition" test below drives the real
+// `render.js` command handler, which takes the plan-based `execute.ts` path
+// (not the `renderLocal` unit under test above) — that path calls
+// `ensureBrowser` directly instead of going through the mocked preflight.
+// Unmocked, it performs a real network download of chrome-headless-shell into
+// the shared `~/.cache/hyperframes/chrome`, racing other packages' browser
+// tests in CI.
+vi.mock("../browser/manager.js", () => ({
+  ensureBrowser: vi.fn(async () => ({ executablePath: "/mock/chrome", source: "cache" })),
+}));
+
 vi.mock("../utils/orphanCleanup.js", () => ({
   killOrphanedProcesses: vi.fn(() => {
     orphanCleanupState.calls += 1;
