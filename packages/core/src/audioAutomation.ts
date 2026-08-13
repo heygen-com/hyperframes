@@ -451,10 +451,15 @@ function viaConic(viaX: number, viaY: number): { cx: number; cy: number; w: numb
   const dy = viaY - 0.5;
   const edge = 0.999;
   // Per axis, `C` stays inside when the weight is at least the pull divided by the
-  // room left in the pull's own direction.
+  // room left in the pull's own direction. A via point clamped to `edge` itself
+  // leaves zero room — `edge - viaX` is exactly 0 — which would divide out to
+  // Infinity and carry NaN into every downstream sample. Capped rather than left
+  // unbounded: past this weight the arc already reads as touching the via point,
+  // so the cap costs no visible reach.
+  const MAX_WEIGHT = 1e6;
   const needX = dx > 0 ? dx / (edge - viaX) : dx < 0 ? -dx / (viaX - (1 - edge)) : 0;
   const needY = dy > 0 ? dy / (edge - viaY) : dy < 0 ? -dy / (viaY - (1 - edge)) : 0;
-  const w = Math.max(1, needX, needY);
+  const w = Math.min(MAX_WEIGHT, Math.max(1, needX, needY));
   return { cx: viaX + dx / w, cy: viaY + dy / w, w };
 }
 
@@ -480,7 +485,7 @@ function shapeVia(x: number, viaX: number, viaY: number): number {
   const t = conicParam(a, b, x);
   const rest = 1 - t;
   const denominator = rest * rest + 2 * w * t * rest + t * t;
-  if (denominator <= 0) return x;
+  if (!(denominator > 0)) return x;
   return (2 * w * cy * t * rest + t * t) / denominator;
 }
 
