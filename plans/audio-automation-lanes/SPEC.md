@@ -111,44 +111,6 @@ valid — they just can't be automation targets until the panel touches them.
 
 **Normalization** (`normalizeAutomation`, mirrors `normalizeAudioFxParams`):
 
-- points sorted by `t`; duplicate `t` keeps the later point
-- `v` clamped to the target's registry range; non-finite → point dropped
-- lanes targeting a node id that no longer exists in the chain are **dropped**
-  (the author deleted the device; its automation dies with it — panel also
-  removes them eagerly on node delete)
-- 1-point lane = constant; empty lanes array = attribute removed
-
-**Precedence for volume** (documented + linted):
-`data-automation` volume lane → GSAP volume tween → `data-volume`.
-New lint rule `audio_volume_double_automation` (warning) when an element has
-both a volume lane and a GSAP tween on `volume`.
-
-## 5. Interpolation semantics
-
-- Between points: linear in the parameter's **working domain**. Params with
-  registry `scale: "log"` (frequency, some times) interpolate in log domain —
-  a 200 Hz → 8 kHz sweep is perceptually linear, matching what a DAW does.
-- `curve` bends the segment: `f(x) = x^(2^(k·s))` shaping applied in the
-  working domain (s = curve, k ≈ 2). Exact constant chosen to visually match
-  Ableton's feel; pinned by unit tests once chosen.
-- Before the first point: hold first value. After the last: hold last value.
-- One shared implementation `sampleAutomationLane(lane, t)` in core — used by
-  the lane renderer (drawing), the scheduler (curve sampling), and the render
-  path. One interpolator, three consumers, or preview and picture drift.
-
-## 6. Preview architecture
-
-Scheduling hooks into `schedulePlayback` (transport), which already runs on
-play / seek / rate change with the clip's `elapsed` offset:
-
-- **Volume lane** → scheduled on the source's existing `gainNode.gain`
-  (post-FX, i.e. fader semantics — matches Ableton, matches the render order
-  where FX runs before the volume bake).
-- **FX param lanes** → scheduled on AudioParams exposed by the graph builders
-  (§8) of the chain instance spliced for this source.
-
-Mechanics per lane, at schedule time:
-
 1. Convert clip-local envelope → context-time segments starting at
    `scheduledAt`, offset by `elapsed`, scaled by playback rate.
 2. Linear segments → `setValueAtTime` + `linearRampToValueAtTime` (log-domain

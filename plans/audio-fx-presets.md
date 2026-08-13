@@ -133,13 +133,13 @@ The carve pattern: read the decoded samples, measure something, emit a chain
 and/or automation lanes. **The machinery for this is already built and shipped**
 — what carve does with a voice against a bed generalises:
 
-| Script                                        | Reuses                                             | Emits                         |
-| --------------------------------------------- | -------------------------------------------------- | ----------------------------- |
-| Voice carve _(shipped)_                       | `analyseCarveBands`                                | peaking cuts + per-band lanes |
-| Auto-duck _(shipped, inside carve)_           | `analyseCarveDuck`                                 | one volume lane               |
-| Leveller _(**shipped** — `audioLeveller.ts`)_ | windowed RMS                                       | lane on a `gain` node         |
-| De-esser                                      | `analyseCarveDynamics`, re-parameterised (see §5e) | lane on a peaking cut         |
-| Tone match                                    | `powerSpectrum` vs a target curve                  | 3–5 peaking nodes             |
+| Script                              | Reuses                                             | Emits                         |
+| ----------------------------------- | -------------------------------------------------- | ----------------------------- |
+| Voice carve _(shipped)_             | `analyseCarveBands`                                | peaking cuts + per-band lanes |
+| Auto-duck _(shipped, inside carve)_ | `analyseCarveDuck`                                 | one volume lane               |
+| De-esser                            | `analyseCarveDynamics`, re-parameterised (see §5e) | lane on a peaking cut         |
+| Leveller                            | `windowDb` walk                                    | lane on a `gain` node         |
+| Tone match                          | `powerSpectrum` vs a target curve                  | 3–5 peaking nodes             |
 
 This is the strongest argument in the doc: **none of them needs new DSP** —
 only a different question asked of code that already runs. One (de-ess) needs
@@ -430,61 +430,6 @@ Four notes:
   is momentarily dry on first apply, then swaps in. Expected, not a defect.
 
 ---
-
-## 6b. What shipped
-
-| Commit      | What                                                                 |
-| ----------- | -------------------------------------------------------------------- |
-| `a533d1677` | the preset catalogue in core — 18 presets over four shelves          |
-| `de2b78047` | applying presets from the rack                                       |
-| `29f53f935` | `label` on a node, so a chain reads as jobs rather than filter types |
-| `e984a9e62` | the multi-band EQ in core, as a composite over shipping filters      |
-| `2eaa71cac` | the Tone module — faders in the rack                                 |
-| `e723216a1` | the levelling script                                                 |
-
-Three things worth carrying forward:
-
-**`parseAudioFxChain` silently dropped `fromPreset`** until `29f53f935`. The
-round-trip test compared only node _types_, so it passed while the tag that
-lets a preset find its own nodes was being lost on every reload. Any new tag on
-a node (`fromEq`, `fromLeveller`, `label`) must be added to BOTH the parser and
-the serializer, and the round-trip test must compare it.
-
-**The single-knob rule broke on `peaking`** and it took someone asking to see
-it. "How much" cannot be the one knob when the range is the first decision. The
-answer was to make the range the module — the add menu offers _jobs_ — which
-also dissolved the duplicate-name problem at the root.
-
-**The levelling target must be a level the track already reaches.** Anchoring
-it to an absolute figure turns levelling into a volume change. The 80th
-percentile of the track's own speaking windows is the figure that works.
-
-## 6c. The two scripts NOT built, and why
-
-**De-esser — deferred, not abandoned.** The leveller is its structural template:
-analysis → profile → result → remove → summary, with a mutation pass over each.
-Two constraints have to be designed for before it is written, and neither is
-visible until you try:
-
-1. `analyseCarveDynamics` cannot be reused unchanged. Its hop is
-   `max(FRAME, length / POINT_BUDGET)` — 85 ms at best, ~150 ms on a
-   real-length track — while sibilants are 50–150 ms events. At that resolution
-   the envelope cannot land on them, and its `ATTACK_S`/`RELEASE_S` are tuned
-   for musical ducking besides. Same machinery, re-parameterised for a
-   sibilance timescale.
-2. **`MAX_AUTOMATION_POINTS` is 512.** A dip needs three or four points, and a
-   long voiceover holds hundreds of sibilant events, so a naive lane blows the
-   cap and the scheduler truncates it — silently, leaving an envelope that
-   stops partway through the clip. Budget it up front: strongest-N events, or
-   merge adjacent dips.
-
-**Tone match — superseded for v1.** It existed to give a casual author a way to
-fix the tone of a track without understanding frequencies. The Tone EQ now does
-that with a control they already know, and it does it _predictably_, which
-matching against a reference clip does not. What remains is genuinely advanced
-— matching one track to another — and it carries real unknowns: which reference,
-how much correction, what to do when the two sources have different content.
-Not worth building before anyone has asked for it.
 
 ## 7. What to build first
 

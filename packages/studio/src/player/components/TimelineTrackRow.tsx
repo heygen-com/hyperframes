@@ -7,9 +7,12 @@ interface TimelineTrackRowProps {
   rowKey: number;
   logicalRow: TimelineLogicalRow;
   propertyRows: readonly TimelineLogicalRow[];
-  /** Ids the visible canvas property-lanes container (`<TimelinePropertyLanes id={lanesId}>`). */
+  /** Names the canvas-side content cell — the active clip's own property lanes,
+   *  minted with this single id in TimelinePropertyLanes. */
   lanesId: string;
-  /** Ids the visible header lane row — a distinct DOM node, so a distinct id. */
+  /** Names the header cell. Space-separated because the caret it lives under
+   *  expands two disjoint subtrees (the clip's keyframe lanes AND the track's
+   *  automation lanes) — see TimelineTrackHeader for why they cannot share one id. */
   headerLanesId: string;
   top: number;
   height: number;
