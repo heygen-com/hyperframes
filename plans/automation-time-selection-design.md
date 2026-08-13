@@ -35,9 +35,9 @@ New store slice `automationSelectionSlice.ts` (own file — `playerStore.ts` sit
 ```ts
 interface AutomationSelection {
   elementKey: string; // which clip
-  target: string;     // which lane ("volume" | "fx.<nodeId>.<param>")
-  t0: number;         // clip-local seconds
-  t1: number;         // > t0
+  target: string; // which lane ("volume" | "fx.<nodeId>.<param>")
+  t0: number; // clip-local seconds
+  t1: number; // > t0
 }
 // automationSelection: AutomationSelection | null
 // setAutomationSelection(sel), clearAutomationSelection()
@@ -99,11 +99,11 @@ Right-click the selection rect → context menu: **Ramp up · Ramp down · Swell
 **Simplify**. Pure generators in `automationShapes.ts`, one shape scaled to the selection,
 values computed in unit space so log knobs behave:
 
-| Shape     | Points | Semantics                                                            |
-| --------- | ------ | -------------------------------------------------------------------- |
-| Ramp up   | 2      | `range.min` at `t0` → envelope's own value at `t1` (fade in)          |
-| Ramp down | 2      | envelope's own value at `t0` → `range.min` at `t1` (fade out)         |
-| Swell     | 3      | edge values, peak at `range.max` at the midpoint, `curve`-smoothed    |
+| Shape     | Points | Semantics                                                                      |
+| --------- | ------ | ------------------------------------------------------------------------------ |
+| Ramp up   | 2      | `range.min` at `t0` → envelope's own value at `t1` (fade in)                   |
+| Ramp down | 2      | envelope's own value at `t0` → `range.min` at `t1` (fade out)                  |
+| Swell     | 3      | edge values, peak at `range.max` at the midpoint, `curve`-smoothed             |
 | Dip       | 3      | edge values, midpoint at 25 % of the edge value in unit space (duck), smoothed |
 
 Point counts are tiny; the 512 cap is never approached.
@@ -153,12 +153,12 @@ carve output and dense hand edits.
 
 Stacked on wa-14 (stack #3027), each under the 1000-LOC convention:
 
-| PR    | Content                                                                  | ~LOC |
-| ----- | ------------------------------------------------------------------------ | ---- |
-| wa-15 | slice, drag gesture, rect render, `replaceRange`/`pointsIn`, Delete/Esc  | 400  |
-| wa-16 | shape generators, selection context menu (ramp/swell/dip), Simplify      | 380  |
-| wa-17 | clipboard, Cmd+C/V in `useAppHotkeys`, unit-space mapping                | 300  |
-| wa-18 | edge-handle stretch gesture                                              | 250  |
+| PR    | Content                                                                 | ~LOC |
+| ----- | ----------------------------------------------------------------------- | ---- |
+| wa-15 | slice, drag gesture, rect render, `replaceRange`/`pointsIn`, Delete/Esc | 400  |
+| wa-16 | shape generators, selection context menu (ramp/swell/dip), Simplify     | 380  |
+| wa-17 | clipboard, Cmd+C/V in `useAppHotkeys`, unit-space mapping               | 300  |
+| wa-18 | edge-handle stretch gesture                                             | 250  |
 
 wa-16/17/18 are independent once wa-15 lands. File-size note: `useAutomationLaneGestures`
 grows in wa-15 and wa-18 (310 lines today — headroom exists); the menu is a new file.
