@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { bundleToSingleHtml } from "./htmlBundler";
+import { bundleToSingleHtml, emitRootCompositionVariableStyles } from "./htmlBundler";
 import { resetUnknownEnumWarnings } from "../runtime/getVariables";
+import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -1508,5 +1509,77 @@ describe("bundleToSingleHtml unknown enum values", () => {
         "which is not a declared option (green, blue, violet). " +
         'Rendering "green" instead.',
     ]);
+  });
+});
+
+/**
+ * Composition variable values are emitted as CSS declarations inside a `<style>`
+ * element. `<style>` is a RAW TEXT element: HTML serialization does not escape its
+ * content and the tokenizer closes it at the first `</style`. An unescaped value could
+ * therefore close the element and have the remainder parsed as markup.
+ */
+describe("emitRootCompositionVariableStyles — <style> breakout", () => {
+  /**
+   * The payload leads with a benign `<` before its `</style`, so escaping or
+   * stripping only the first match does not pass: that pins the `/g` flag rather
+   * than merely "something ran". A lone `<` in a value (`a < b`) is the common case.
+   */
+  const BREAKOUT = "x<y</style><script>window.__pwned=1</script><style>";
+
+  /** Emit into a document, serialize it the way the compilers do, then re-parse. */
+  function scriptsAfterRoundTrip(
+    variablesByComp: Record<string, Record<string, unknown>>,
+    body = "x",
+  ) {
+    const { document } = parseHTML(`<!doctype html><html><head></head><body>${body}</body></html>`);
+    emitRootCompositionVariableStyles(document, variablesByComp);
+    const { document: reparsed } = parseHTML(document.toString());
+    return {
+      scripts: [...reparsed.querySelectorAll("script")].map((s) => s.textContent ?? ""),
+      css: [...reparsed.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n"),
+      reparsed,
+    };
+  }
+
+  it("does not let a variable VALUE close the style element", () => {
+    const { scripts } = scriptsAfterRoundTrip({ "comp-a": { brand: BREAKOUT } });
+    expect(scripts).toEqual([]);
+  });
+
+  it("does not let a COMP ID close the style element through the generated selector", () => {
+    // The comp id reaches the stylesheet as an attribute selector, which is escaped
+    // for selector-string syntax but says nothing about element termination.
+    const { scripts, css } = scriptsAfterRoundTrip(
+      { [`comp-a${BREAKOUT}`]: { brand: "#fff" } },
+      '<div data-composition-id="comp-a"></div>',
+    );
+    expect(scripts).toEqual([]);
+    expect(css).not.toContain("</style");
+  });
+
+  it("strips the characters that smuggle a sibling rule, matching the runtime", () => {
+    // `sanitizeCssValue` is the runtime contract for a scalar folded into
+    // `background: var(--x)`; the compile path has to reach the same result, or a
+    // rendered MP4 diverges from the preview it was approved from.
+    const smuggle = "red; } body { background-image: url(//evil?data=1) } x { y:z";
+    const { css } = scriptsAfterRoundTrip({ "comp-a": { brand: smuggle } });
+
+    expect(css).not.toContain("body {");
+    // One rule, one declaration: with no `;{}` left in the value there is nothing to
+    // close the declaration with, so no sibling rule can be opened.
+    expect(css.match(/\}/g) ?? []).toHaveLength(1);
+    expect(css).toContain(`--brand: ${sanitizeCssValue(smuggle)};`);
+  });
+
+  it("strips '<' from a value the way the runtime does", () => {
+    const { css, scripts } = scriptsAfterRoundTrip({ "comp-a": { brand: "a<b" } });
+    expect(scripts).toEqual([]);
+    expect(css).not.toContain("a<b");
+    expect(css).toContain("ab");
+  });
+
+  it("leaves values without '<' untouched", () => {
+    const { css } = scriptsAfterRoundTrip({ "comp-a": { brand: "#ff0066" } });
+    expect(css).toContain("#ff0066");
   });
 });
