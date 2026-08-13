@@ -615,18 +615,14 @@ export async function encodeFramesChunkedConcat(
   const concatInput = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
   writeFileSync(concatListPath, concatInput, "utf-8");
 
-  const concatArgs = [
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    concatListPath,
-    "-c",
-    "copy",
-    "-y",
-    outputPath,
-  ];
+  const concatArgs = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  // The concat demuxer does not carry per-chunk container metadata into the
+  // output, so the chunks' provenance is dropped here even though every chunk
+  // carries it. Re-assert on the concatenated file: for a no-audio mov/webm
+  // this is the last container write, since mux is skipped and applyFaststart
+  // only copies those two formats.
+  appendRenderProvenanceArgs(concatArgs, outputPath);
+  concatArgs.push("-y", outputPath);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   const concatProcessResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
   const concatResult = {

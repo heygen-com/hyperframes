@@ -171,9 +171,14 @@ ffmpeg -i out.mp4 -map_metadata -1 -c copy clean.mp4
 ```
 
 <Note>
-  Treat the tags as a positive signal only. If they are present, HyperFrames wrote the file. If they
-  are absent that proves nothing, because re-encoding, remuxing, or any tool that drops unknown keys
-  removes them, and files rendered by older versions never carried them.
+  These tags are an unauthenticated diagnostic hint, not proof of origin. They are ordinary unsigned
+  container keys, so anything can write the same two values with a single `ffmpeg -metadata`
+  command: a tag that is present means the file *claims* to be HyperFrames output, not that
+  HyperFrames wrote it. A tag that is absent means just as little, because re-encoding, remuxing, or
+  any tool that drops unknown keys strips it, and files rendered by older versions never carried it.
+  Treat it as a "what probably produced this file?" hint for support and debugging, never as an
+  authenticity, attribution, or licensing check. Verifiable provenance needs signed claims such as
+  C2PA.
 </Note>
 
 ## If rendering fails

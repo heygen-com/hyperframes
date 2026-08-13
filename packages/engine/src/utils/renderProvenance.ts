@@ -5,18 +5,24 @@ import { readTagCI } from "./ffprobe.js";
  * Hidden render provenance.
  *
  * HyperFrames stamps the *container* — never the picture — with the renderer
- * name and version, so a rendered file can be attributed later without a
- * visible watermark burned into the frames.
+ * name and version, so a rendered file carries a machine-readable note about
+ * what produced it, with no visible watermark burned into the frames.
  *
  * What goes in is deliberately boring: renderer name and version. No file
  * paths, usernames, machine names, project names or composition content. Once
  * a file is distributed the metadata travels with it, and metadata leaks are
  * hard to walk back.
  *
- * **Positive signal only.** The tags being present means HyperFrames wrote the
- * file. Their absence proves nothing: re-encoding, remuxing, or any tool that
- * drops unknown keys removes them, and files rendered before this feature
- * never had them. Do not build "no tag therefore not HyperFrames" logic on it.
+ * **An unauthenticated hint — not an authenticity or attribution boundary.**
+ * These are ordinary unsigned container keys that any tool can write, so a
+ * present tag means the file *claims* to be HyperFrames output, not that
+ * HyperFrames produced it: one `ffmpeg -metadata hyperframes_renderer=...`
+ * forges it. Absence proves just as little, since re-encoding, remuxing, or
+ * any tool that drops unknown keys strips them, and files rendered before this
+ * feature never had them. Good for diagnostics and support ("what wrote this
+ * file?"); never a basis for trust, attribution or licensing decisions in
+ * either direction. Verifiable provenance needs signed claims (C2PA), which
+ * this deliberately is not.
  */
 
 export const PROVENANCE_RENDERER_TAG = "hyperframes_renderer";
