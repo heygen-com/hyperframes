@@ -14,8 +14,8 @@ import {
 } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
-import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
-import { CLIP_Y, CLIP_HANDLE_W, TRACK_H } from "./timelineLayout";
+import { getTimelineEditCapabilities } from "./timelineEditing";
+import { CLIP_Y, TRACK_H } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
 import {
   isMultiDragActive,
@@ -25,8 +25,8 @@ import {
 } from "./timelineMultiDragPreview";
 import type { TimelineLanesProps } from "./timelineLaneProps";
 import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
-import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
+import { createClipGestureHandlers } from "./timelineClipGestureHandlers";
 import { renderClipChildren, resolveClipRenderContext } from "./timelineClipChildren";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
@@ -389,6 +389,29 @@ export function TimelineLanes({
                     const passengerOffsetPx = isPassenger
                       ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
                       : 0;
+                    const clipGestures = createClipGestureHandlers(
+                      el,
+                      elementKey,
+                      previewElement,
+                      capabilities,
+                      {
+                        pps,
+                        onResizeElement,
+                        onMoveElement,
+                        onRazorSplit,
+                        onRazorSplitAll,
+                        blockedClipRef,
+                        shiftClickClipRef,
+                        suppressClickRef,
+                        scrollRef,
+                        setShowPopover,
+                        setRangeSelection,
+                        setResizingClip,
+                        setDraggedClip,
+                        setSelectedElementId,
+                        onSelectElement,
+                      },
+                    );
                     const clip = (
                       <TimelineClip
                         key={clipKey}
@@ -413,123 +436,9 @@ export function TimelineLanes({
                         }
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
-                        onResizeStart={
-                          // fallow-ignore-next-line complexity
-                          (edge, e) => {
-                            if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
-                            if (edge === "start" && !capabilities.canTrimStart) return;
-                            if (edge === "end" && !capabilities.canTrimEnd) return;
-                            e.stopPropagation();
-                            blockedClipRef.current = null;
-                            setShowPopover(false);
-                            setRangeSelection(null);
-                            setResizingClip({
-                              pointerId: e.pointerId,
-                              element: el,
-                              edge,
-                              originClientX: e.clientX,
-                              originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
-                              previewStart: el.start,
-                              previewDuration: el.duration,
-                              previewPlaybackStart: el.playbackStart,
-                              started: false,
-                            });
-                          }
-                        }
-                        onPointerDown={
-                          // fallow-ignore-next-line complexity
-                          (e) => {
-                            if (e.button !== 0) return;
-                            if (usePlayerStore.getState().activeTool === "razor") return;
-                            if (e.shiftKey) {
-                              shiftClickClipRef.current = {
-                                element: el,
-                                anchorX: e.clientX,
-                                anchorY: e.clientY,
-                              };
-                              return;
-                            }
-                            const target = e.currentTarget as HTMLElement;
-                            const rect = target.getBoundingClientRect();
-                            const blockedIntent = resolveBlockedTimelineEditIntent({
-                              width: rect.width,
-                              offsetX: e.clientX - rect.left,
-                              handleWidth: CLIP_HANDLE_W,
-                              capabilities,
-                            });
-                            if (
-                              blockedIntent &&
-                              ((blockedIntent === "move" && onMoveElement) ||
-                                (blockedIntent !== "move" && onResizeElement))
-                            ) {
-                              blockedClipRef.current = {
-                                pointerId: e.pointerId,
-                                element: el,
-                                intent: blockedIntent,
-                                originClientX: e.clientX,
-                                originClientY: e.clientY,
-                                started: false,
-                              };
-                              return;
-                            }
-                            if (!onMoveElement || !capabilities.canMove) return;
-                            blockedClipRef.current = null;
-                            setShowPopover(false);
-                            setRangeSelection(null);
-                            setDraggedClip({
-                              pointerId: e.pointerId,
-                              element: el,
-                              originClientX: e.clientX,
-                              originClientY: e.clientY,
-                              originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
-                              originScrollTop: scrollRef.current?.scrollTop ?? 0,
-                              pointerClientX: e.clientX,
-                              pointerClientY: e.clientY,
-                              pointerOffsetX: e.clientX - rect.left,
-                              pointerOffsetY: e.clientY - rect.top,
-                              previewStart: el.start,
-                              previewTrack: el.track,
-                              desiredTrack: el.track,
-                              insertRow: null,
-                              snapTime: null,
-                              snapType: null,
-                              started: false,
-                            });
-                          }
-                        }
-                        onClick={
-                          // fallow-ignore-next-line complexity
-                          (e) => {
-                            e.stopPropagation();
-                            if (suppressClickRef.current) return;
-                            const { activeTool } = usePlayerStore.getState();
-                            if (activeTool === "razor" && onRazorSplit) {
-                              const clipRect = (
-                                e.currentTarget as HTMLElement
-                              ).getBoundingClientRect();
-                              const clickOffsetX = e.clientX - clipRect.left;
-                              const splitTime = previewElement.start + clickOffsetX / pps;
-                              const clampedTime = Math.max(
-                                previewElement.start + SPLIT_BOUNDARY_EPSILON_S,
-                                Math.min(
-                                  previewElement.start +
-                                    previewElement.duration -
-                                    SPLIT_BOUNDARY_EPSILON_S,
-                                  splitTime,
-                                ),
-                              );
-                              if (e.shiftKey && onRazorSplitAll) {
-                                onRazorSplitAll(clampedTime);
-                              } else {
-                                onRazorSplit(el, clampedTime);
-                              }
-                              return;
-                            }
-                            // Clip selection is idempotent; empty timeline space owns deselection.
-                            setSelectedElementId(elementKey);
-                            onSelectElement?.(el);
-                          }
-                        }
+                        onResizeStart={clipGestures.onResizeStart}
+                        onPointerDown={clipGestures.onPointerDown}
+                        onClick={clipGestures.onClick}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           if (suppressClickRef.current) return;
