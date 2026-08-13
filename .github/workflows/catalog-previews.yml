@@ -15,9 +15,11 @@ on:
       - "registry/blocks/**"
       - "registry/components/**"
       - "scripts/generate-catalog-previews.ts"
-      # The containment module the renderer imports. Without it a change to
-      # path-traversal defence alone never re-runs the job that exercises it.
+      # Modules the renderer imports. Without them a change to path-traversal
+      # defence or temp-directory allocation alone never re-runs the job that
+      # exercises it.
       - "scripts/registry-target-paths.mjs"
+      - "scripts/catalog-preview-temp.ts"
       - ".github/workflows/catalog-previews.yml"
 
 concurrency:
@@ -87,7 +89,8 @@ jobs:
           # timeline at body level (rendered directly). Getting that wrong is
           # silent — the wrong-shaped block renders blank, not red.
           RENDERER_CHANGED=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD \
-            -- scripts/generate-catalog-previews.ts scripts/registry-target-paths.mjs)
+            -- scripts/generate-catalog-previews.ts scripts/registry-target-paths.mjs \
+               scripts/catalog-preview-temp.ts)
           if [ -n "$RENDERER_CHANGED" ]; then
             CHANGED_ITEMS=$(printf '%s\n' $CHANGED_ITEMS \
               code-snippet-visual-studio-dark code-snippet-apple-terminal-pro | sort -u)
