@@ -64,6 +64,23 @@ const ramp: HfAutomationLane = {
   ],
 };
 
+const curvedRamp: HfAutomationLane = {
+  target: "volume",
+  points: [
+    { t: 0, v: 0, curve: 1 },
+    { t: 2, v: 1 },
+  ],
+};
+
+/** Schedule `curvedRamp` and return the fake param it wrote to — the setup
+ *  three tests below share, each checking something different about the
+ *  curve it produces. */
+function scheduleCurved(): { target: FxParamTarget; param: FakeParam } {
+  const { target, param } = fake();
+  scheduleParamLane([target], curvedRamp, "linear", at(0));
+  return { target, param };
+}
+
 describe("scheduleParamLane", () => {
   it("seeds the current value, then ramps to each later point", () => {
     const { target, param } = fake();
@@ -133,19 +150,7 @@ describe("scheduleParamLane", () => {
   });
 
   it("samples a curved segment rather than ramping through the bend", () => {
-    const { target, param } = fake();
-    scheduleParamLane(
-      [target],
-      {
-        target: "volume",
-        points: [
-          { t: 0, v: 0, curve: 1 },
-          { t: 2, v: 1 },
-        ],
-      },
-      "linear",
-      at(0),
-    );
+    const { param } = scheduleCurved();
     const curve = param.calls.find((c) => c.op === "curve");
     expect(curve).toBeTruthy();
     if (curve?.op !== "curve") throw new Error("expected a curve");
@@ -210,19 +215,7 @@ describe("scheduleParamLane", () => {
   });
 
   it("does not seed on top of a curve that starts at the same instant", () => {
-    const { target, param } = fake();
-    scheduleParamLane(
-      [target],
-      {
-        target: "volume",
-        points: [
-          { t: 0, v: 0, curve: 1 },
-          { t: 2, v: 1 },
-        ],
-      },
-      "linear",
-      at(0),
-    );
+    const { param } = scheduleCurved();
     // A value curve may not overlap another event, so there is no set at 10.
     expect(param.calls.filter((c) => c.op === "set")).toEqual([]);
     expect(param.calls[1]?.op).toBe("curve");
