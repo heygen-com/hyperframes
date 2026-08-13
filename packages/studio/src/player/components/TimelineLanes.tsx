@@ -255,6 +255,7 @@ export function TimelineLanes({
               logicalRow={logicalRow}
               propertyRows={trackLogicalRows.slice(1)}
               lanesId={lanesId}
+              headerLanesId={`${lanesId} ${automationLanesId}`}
               top={rowGeometry.getRowTop(row)}
               height={rowHeight}
               virtualized={rowsVirtualized}
