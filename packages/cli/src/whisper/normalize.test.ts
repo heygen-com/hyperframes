@@ -567,9 +567,10 @@ describe("detectSpeechOnset", () => {
       const amplitude = energyFn(t);
       buf.writeInt16LE(Math.round(amplitude * 32767), 44 + i * 2);
     }
-    const path = join(mkdtempSync(join(tmpdir(), "hf-wav-test-")), "tone.wav");
+    const dir = mkdtempSync(join(tmpdir(), "hf-wav-test-"));
+    dirs.push(dir);
+    const path = join(dir, "tone.wav");
     writeFileSync(path, buf);
-    dirs.push(path);
     return path;
   }
 

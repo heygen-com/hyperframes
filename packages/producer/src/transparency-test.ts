@@ -20,7 +20,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -309,8 +309,7 @@ async function main(): Promise<void> {
   if (!existsSync(SHADER_FIXTURE_SRC) || !existsSync(SHADER_GOLDEN)) {
     throw new Error(`Shader fixture or golden missing: ${SHADER_FIXTURE_DIR}`);
   }
-  const workRoot = join(tmpdir(), `hf-transparency-${process.pid}-${Date.now()}`);
-  mkdirSync(workRoot, { recursive: true });
+  const workRoot = mkdtempSync(join(tmpdir(), "hf-transparency-"));
   const keepWork = process.env.KEEP_TEMP === "1";
   console.log(`work dir: ${workRoot}${keepWork ? " (KEEP_TEMP=1)" : ""}`);
 

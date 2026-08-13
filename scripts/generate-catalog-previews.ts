@@ -24,7 +24,6 @@ import {
   readFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   cpSync,
   rmSync,
   writeFileSync,
@@ -32,8 +31,8 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { createCatalogPreviewTempDir } from "./catalog-preview-temp.js";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
   captureFrame,
@@ -171,10 +170,7 @@ export async function prepareProjectDir(
   item: CatalogItem,
   options: PrepareOptions = {},
 ): Promise<string> {
-  // mkdtemp rather than a name built from `Date.now()`: it picks the random
-  // suffix and creates the directory 0700 in one syscall, so nothing can
-  // pre-create or symlink the path between choosing it and making it.
-  const tmpDir = mkdtempSync(join(tmpdir(), `hf-catalog-${item.name}-`));
+  const tmpDir = createCatalogPreviewTempDir(item.name);
   cpSync(item.sourceDir, tmpDir, { recursive: true });
   mirrorRegistryTargets(tmpDir);
 
