@@ -207,7 +207,6 @@ export function FxSection({
     },
     [],
   );
-
   const applyPreset = useCallback(
     (id: string) => {
       const preset = getAudioFxPreset(id);
@@ -240,7 +239,6 @@ export function FxSection({
     }),
     [],
   );
-
   const addEffect = useCallback(
     (type: string) => {
       auditionBase.current = null;
