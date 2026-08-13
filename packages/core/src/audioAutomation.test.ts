@@ -351,6 +351,17 @@ describe("sampling", () => {
     expect(shapeProgress(0.05, { viaX: 0.05, viaY: 0.95 })).toBeCloseTo(0.95, 6);
   });
 
+  it("never returns NaN for a via point dragged past the segment edge", () => {
+    // A via point pulled out to (5, -3) clamps to (0.999, 0.001) — exactly on the
+    // steady region's edge, where `edge - viaX` is 0 and the conic's weight used
+    // to divide out to Infinity, then NaN a few steps later. NaN reaching
+    // setValueCurveAtTime silences the node for the rest of the render.
+    for (const x of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
+      const y = shapeProgress(x, { viaX: 5, viaY: -3 });
+      expect(Number.isFinite(y)).toBe(true);
+    }
+  });
+
   it("never flattens a bend that is pulled harder", () => {
     // The regression. Holding a bend's depth inside the steady region by clamping
     // its coordinates one at a time snapped the curve flat mid-drag: near the ends
