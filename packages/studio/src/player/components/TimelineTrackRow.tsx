@@ -7,7 +7,13 @@ interface TimelineTrackRowProps {
   rowKey: number;
   logicalRow: TimelineLogicalRow;
   propertyRows: readonly TimelineLogicalRow[];
+  /** Names the canvas-side content cell — the active clip's own property lanes,
+   *  minted with this single id in TimelinePropertyLanes. */
   lanesId: string;
+  /** Names the header cell. Space-separated because the caret it lives under
+   *  expands two disjoint subtrees (the clip's keyframe lanes AND the track's
+   *  automation lanes) — see TimelineTrackHeader for why they cannot share one id. */
+  headerLanesId: string;
   top: number;
   height: number;
   virtualized: boolean;
@@ -24,6 +30,7 @@ export function TimelineTrackRow({
   logicalRow,
   propertyRows,
   lanesId,
+  headerLanesId,
   top,
   height,
   virtualized,
@@ -78,7 +85,7 @@ export function TimelineTrackRow({
             <div
               role="rowheader"
               aria-colindex={1}
-              aria-owns={timelineLogicalRowCellId(lanesId, row.id, "header")}
+              aria-owns={timelineLogicalRowCellId(headerLanesId, row.id, "header")}
             >
               {group}
             </div>
