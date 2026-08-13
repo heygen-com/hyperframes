@@ -144,6 +144,20 @@ export {
   type SupportedPlanProtocolDescriptor,
 } from "./services/distributed/planProtocol.js";
 
+export {
+  HEYGEN_PROMO_TOTAL_FRAMES,
+  CLOUDFLARE_ACCOUNT_ID,
+  SANDBOX_INSTANCE_TYPE,
+  SANDBOX_MAX_INSTANCES,
+  formatCloudflareAccountPin,
+  heygenPromoDistributedConfig,
+  renderViaSandboxes,
+  resolveSandboxFanout,
+  sandboxIdForChunk,
+  sandboxRenderToPerfSummary,
+  type SandboxRenderResult,
+} from "./services/distributed/cloudflareSandbox.js";
+
 // ── Format union ────────────────────────────────────────────────────────────
 // Canonical output-format type. The aws-lambda package re-exports it so
 // CLI / adopter SDKs can derive runtime allowlists from one source.

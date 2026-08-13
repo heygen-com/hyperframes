@@ -10,6 +10,9 @@ designed for **regression spotting**: capture a baseline, change something,
 re-run, eyeball the diff. For pass/fail thresholds see `tests/perf/baseline.json`
 and the perf-regression checks in the integration test suite.
 
+The current optimization target — beat `heygen-promo-preview-assets` by 25%
+using up to 10 Cloudflare sandboxes — lives in [`goal.md`](./goal.md).
+
 ## Quick start
 
 ```bash

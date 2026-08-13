@@ -55,6 +55,7 @@
     "check:runtime-conformance": "tsx src/runtime-conformance.ts",
     "benchmark": "tsx src/benchmark.ts",
     "bench:hdr": "tsx src/benchmark.ts --tags hdr",
+    "bench:sandbox": "tsx src/cloudflareSandboxBench.ts",
     "test": "bun run test:unit",
     "test:classification": "node --test scripts/test-classification.test.mjs && node scripts/check-test-classification.mjs",
     "test:unit": "bun run test:classification && node scripts/run-test-lane.mjs unit",

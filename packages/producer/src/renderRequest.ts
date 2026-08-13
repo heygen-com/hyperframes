@@ -149,6 +149,7 @@ function assertDistributedOptions(value: unknown): void {
     "temporal",
     "cloud-run-job",
     "k8s-job",
+    "cloudflare-sandbox",
     "none",
   ]);
   for (const field of ["rejectOnSystemFonts", "failClosedFontFetch", "cfr"] as const) {
