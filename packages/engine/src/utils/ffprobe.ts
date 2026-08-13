@@ -608,7 +608,10 @@ function extractStillImageMetadata(filePath: string): StillImageMetadata | null 
  * in newer ones; HDR tags vary similarly. Use this for any sidecar tag where
  * you want to be resilient across muxer versions.
  */
-function readTagCI(tags: Record<string, string | undefined> | undefined, name: string): string {
+export function readTagCI(
+  tags: Record<string, string | undefined> | undefined,
+  name: string,
+): string {
   if (!tags) return "";
   const target = name.toLowerCase();
   for (const [key, value] of Object.entries(tags)) {

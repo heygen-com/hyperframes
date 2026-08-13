@@ -22,6 +22,7 @@ import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
+import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -361,6 +362,7 @@ export function buildEncoderArgs(
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
     args.push("-pix_fmt", pixelFormat);
+    appendRenderProvenanceArgs(args, outputPath);
     return [...args, "-y", outputPath];
   }
 
@@ -444,6 +446,8 @@ export function buildEncoderArgs(
   }
 
   args.push("-avoid_negative_ts", "make_zero");
+
+  appendRenderProvenanceArgs(args, outputPath);
 
   args.push("-y", outputPath);
   return args;
@@ -701,6 +705,10 @@ export async function muxVideoWithAudio(
   // AAC priming packet. `make_zero` discards that edit and shifts copied video
   // forward by one AAC frame (~21ms), creating a visible first-frame offset.
   if (!copiesContainerizedAac) args.push("-avoid_negative_ts", "make_zero");
+  // Re-assert provenance here: this stage re-muxes into the delivered
+  // container, and the mp4 muxer drops the encode stage's tags without the
+  // use_metadata_tags flag that appendRenderProvenanceArgs adds.
+  appendRenderProvenanceArgs(args, outputPath);
   if (fps !== undefined) {
     // Set the exact output framerate so the muxer doesn't PTS-average a
     // fractional rational like `360000/12001` instead of `30/1` into the
@@ -742,6 +750,7 @@ export async function applyFaststart(
     return { success: true, outputPath, durationMs: 0 };
   }
   const args = ["-i", inputPath, "-c", "copy", "-movflags", "+faststart"];
+  appendRenderProvenanceArgs(args, outputPath);
   if (fps !== undefined) {
     // Set the exact output framerate so the final remux doesn't PTS-average
     // a fractional rational like `360000/12001` instead of `30/1` into the
