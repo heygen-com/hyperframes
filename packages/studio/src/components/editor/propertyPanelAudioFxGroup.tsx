@@ -466,7 +466,11 @@ export function AudioFxGroup({
    */
   const candidateIds = autoSourceIds.join("\u0000");
   useEffect(() => {
-    if (carvedAgainstBy || autoSourceIds.length === 0) return;
+    // Exactly one candidate is the sibling effect's case below, not this one's:
+    // both guards passing for a single candidate fired two setCarve calls with
+    // the same result — two decodes, two FFT runs, two concurrent attribute
+    // writes.
+    if (carvedAgainstBy || autoSourceIds.length <= 1) return;
     const all = autoSourceIds;
     // Nothing configured: the default carve, pointed at everything it could hear.
     if (carve === null) {
