@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,7 +12,12 @@ import {
   readRenderProvenance,
   renderProvenanceArgs,
 } from "./renderProvenance.js";
-import { applyFaststart, buildEncoderArgs, muxVideoWithAudio } from "../services/chunkEncoder.js";
+import {
+  applyFaststart,
+  buildEncoderArgs,
+  encodeFramesChunkedConcat,
+  muxVideoWithAudio,
+} from "../services/chunkEncoder.js";
 
 /** Same probe the ffmpeg-dependent suites use: ask the binary, don't assume it. */
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
@@ -176,6 +181,48 @@ describe.skipIf(!HAS_FFMPEG)("provenance survives a real encode", () => {
     expect(mdat).toBeGreaterThan(-1);
     expect(moov).toBeLessThan(mdat);
   });
+
+  // The in-process sibling of the distributed-assemble regression. This path
+  // does its own concat-copy straight to the deliverable, and the concat
+  // demuxer does not carry the chunks' container metadata through — so for a
+  // no-audio mov (mux skipped, faststart only copies mov) the concat is the
+  // last container write and the tags have to be re-asserted there. mp4 would
+  // hide this: faststart re-muxes it and puts them back.
+  it("survives the in-process chunked-encode concat for a no-audio mov", async () => {
+    const framesDir = join(dir, "frames");
+    mkdirSync(framesDir, { recursive: true });
+    // 70 frames against a 30-frame chunk size gives 3 chunks, so the concat
+    // step actually runs. A single chunk would skip it entirely.
+    run([
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc=size=160x120:rate=30:duration=2.34",
+      "-frames:v",
+      "70",
+      "-start_number",
+      "0",
+      "-y",
+      join(framesDir, "frame_%06d.png"),
+    ]);
+
+    const out = join(dir, "chunked.mov");
+    const result = await encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.png",
+      out,
+      { fps: { num: 30, den: 1 }, width: 160, height: 120, preset: "ultrafast" },
+      30,
+    );
+
+    expect(result.success).toBe(true);
+    expect(readRenderProvenance(formatTags(out))).toEqual({
+      renderer: PROVENANCE_RENDERER_NAME,
+      version: PROVENANCE_VERSION,
+    });
+  }, 60_000);
 
   it("survives the encode -> mux -> faststart chain that produces a delivered mp4", async () => {
     // The stage that actually bites: `muxVideoWithAudio` and `applyFaststart`
