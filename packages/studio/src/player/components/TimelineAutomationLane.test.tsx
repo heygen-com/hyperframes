@@ -657,6 +657,27 @@ describe("TimelineAutomationLane point visibility", () => {
   });
 });
 
+/** `mount`, plus the re-render a real store update causes — the persisted
+ *  automation and the new selection coming back down as props. */
+const mountRerenderable = (automation: HfAutomation, over: Record<string, unknown> = {}) => {
+  const base = laneProps({ automation, ...over });
+  const props = {
+    ...base,
+    onPreview: base.onPreview as ReturnType<typeof vi.fn>,
+    onCommit: base.onCommit as ReturnType<typeof vi.fn>,
+  };
+  const { container, rerender } = renderRerenderable(<TimelineAutomationLane {...props} />);
+  const svg = container.querySelector("svg")!;
+  stubBox(svg, BOX);
+  return {
+    container,
+    svg,
+    props,
+    rerender: (next: Record<string, unknown>) =>
+      rerender(<TimelineAutomationLane {...props} {...next} />),
+  };
+};
+
 describe("TimelineAutomationLane modifiers", () => {
   it("bends a segment when it is Alt-dragged, and leaves the points where they were", () => {
     // The shape is honoured everywhere it is read — drawn, sampled in preview,
@@ -1342,5 +1363,350 @@ describe("TimelineAutomationLane selection menu", () => {
     const { svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3, v0: 0, v1: 1 } });
     fire(svg, "contextmenu", at(3.8, 0.5));
     expect(document.querySelector(".hf-automation-menu")).toBeNull();
+  });
+});
+
+describe("TimelineAutomationLane stretch", () => {
+  // Most edges here are off any existing point, which is the EASY case. The
+  // normal state after any range operation is the opposite — delete, shape
+  // insert and stretch all leave a breakpoint exactly on the edge they created
+  // — so the priority test below is the one that decides whether the feature is
+  // repeatable, not an edge case.
+
+  /** Press, drag and release the right edge of a stretchable selection — the
+   *  shape most of this block's tests share, differing only in where the
+   *  drag ends up. */
+  function dragRightEdge(svg: Element, from: number, to: number): void {
+    fire(svg, "pointerdown", at(from, 0.5));
+    fire(svg, "pointermove", at(to, 0.5));
+    fire(svg, "pointerup", at(to, 0.5));
+  }
+
+  const stretchable: HfAutomation = {
+    version: 1,
+    lanes: [
+      {
+        target: "volume",
+        points: [
+          { t: 0, v: 1 },
+          { t: 1, v: 0.5 },
+          { t: 2, v: 0.8 },
+          { t: 4, v: 0 },
+        ],
+      },
+    ],
+  };
+
+  it("dragging the right edge retimes the interior and persists on release", () => {
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2.5, 3.3); // off any point, dragged out to 3.3
+
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+    const written = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation;
+    const points = written.lanes[0]?.points ?? [];
+    // Interior points (t=1, t=2) scale by the new/old span ratio (2.8 / 2 = 1.4).
+    expect(points.some((p) => Math.abs(p.t - 1.2) < 0.01 && p.v === 0.5)).toBe(true);
+    expect(points.some((p) => Math.abs(p.t - 2.6) < 0.01 && p.v === 0.8)).toBe(true);
+
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, expect.closeTo(3.3, 1));
+  });
+
+  it("moves the selection with the pointer instead of snapping it on release", () => {
+    // The highlight and both edge lines render from the rangeSelection prop, so
+    // a stretch that only reported its bounds on release dragged an invisible
+    // handle: the rect stayed pinned at the pre-drag bounds for the whole
+    // gesture. The marquee drag fires live for exactly this reason.
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    fire(svg, "pointermove", at(3, 0.5));
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, expect.closeTo(3, 1));
+    fire(svg, "pointermove", at(3.3, 0.5));
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, expect.closeTo(3.3, 1));
+  });
+
+  it("a bare click on an edge clears the selection instead of committing a no-op", () => {
+    // Without a movement threshold this pushed an undo entry that changed
+    // nothing, and — because the halo covers both edges — it also made the
+    // "click the background to clear" escape unreachable near either one.
+    const onRangeSelect = vi.fn();
+    const onRangeClear = vi.fn();
+    const { svg, props } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+      onRangeClear,
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    fire(svg, "pointerup", at(2.5, 0.5));
+    expect(props.onCommit).not.toHaveBeenCalled();
+    expect(props.onPreview).not.toHaveBeenCalled();
+    expect(onRangeSelect).not.toHaveBeenCalled();
+    expect(onRangeClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("a press that jitters under the threshold still clears rather than retiming", () => {
+    const onRangeClear = vi.fn();
+    const { svg, props } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeClear,
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    // ~2px at 100 px/s: a hand resting on the button, not a drag.
+    fire(svg, "pointermove", at(2.52, 0.5));
+    fire(svg, "pointerup", at(2.52, 0.5));
+    expect(props.onPreview).not.toHaveBeenCalled();
+    expect(props.onCommit).not.toHaveBeenCalled();
+    expect(onRangeClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverts an interrupted stretch rather than persisting the partial retime", () => {
+    // pointercancel means the browser abandoned the gesture. Routing it to the
+    // same handler as pointerup persisted whatever half-drag it had reached,
+    // with no way back other than undo.
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    fire(svg, "pointermove", at(3.3, 0.5));
+    fire(svg, "pointercancel", at(3.3, 0.5));
+
+    expect(props.onCommit).not.toHaveBeenCalled();
+    // The envelope goes back through the preview channel — nothing to undo —
+    // and the selection returns to the bounds the drag started from.
+    const reverted = (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]
+      ?.points;
+    expect(reverted).toEqual(stretchable.lanes[0]?.points);
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, 2.5);
+  });
+
+  it("gives up a stretch whose pointer capture vanished without a cancel", () => {
+    // A capture taken on a child that unmounts mid-drag is lost silently: no
+    // pointercancel, no pointerup. Every later hover kept retiming and writing.
+    const { svg, props } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    fire(svg, "pointermove", { ...at(3.3, 0.5), buttons: 1 });
+    fire(svg, "pointermove", { ...at(3.4, 0.5), buttons: 0 });
+    const writes = props.onPreview.mock.calls.length;
+
+    fire(svg, "pointermove", { ...at(3.8, 0.5), buttons: 0 });
+    fire(svg, "pointermove", { ...at(1, 0.5), buttons: 0 });
+    expect(props.onPreview.mock.calls.length).toBe(writes);
+    expect(props.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("previews the stretch on move without persisting, then commits once on release", () => {
+    const onPreview = vi.fn();
+    const onCommit = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onPreview,
+      onCommit,
+    });
+    fire(svg, "pointerdown", at(2.5, 0.5));
+    fire(svg, "pointermove", at(3, 0.5));
+    fire(svg, "pointermove", at(3.3, 0.5));
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(onCommit).not.toHaveBeenCalled();
+    fire(svg, "pointerup", at(3.3, 0.5));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  /** A breakpoint sitting exactly on the selection's right edge — the state every
+   *  range operation leaves behind, and the one a stretch has to be able to grab
+   *  a second time. */
+  const pointOnEdge: HfAutomation = {
+    version: 1,
+    lanes: [
+      {
+        target: "volume",
+        points: [
+          { t: 0, v: 1 },
+          { t: 1.5, v: 0.5 },
+          { t: 2, v: 0.8 },
+          { t: 4, v: 0 },
+        ],
+      },
+    ],
+  };
+
+  it("the selection's edge wins over a point sitting exactly on it", () => {
+    // The regression this pins is the feature not being repeatable: stretching
+    // pins a breakpoint on the edge it just created, so a point-first rule made
+    // the SECOND stretch of that edge a point-drag every time — at the one
+    // height (on the envelope) where the user naturally grabs it.
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(pointOnEdge, {
+      rangeSelection: { t0: 1, t1: 2 },
+      onRangeSelect,
+    });
+    fire(svg, "pointerdown", at(2, 0.8)); // the point at t=2, which is also the right edge
+    fire(svg, "pointermove", at(3, 0.8));
+    fire(svg, "pointerup", at(3, 0.8));
+    expect(onRangeSelect).toHaveBeenLastCalledWith(1, expect.closeTo(3, 1));
+  });
+
+  it("leaves that point reachable once the selection is gone", () => {
+    // The escape hatch the rule above depends on: no selection, no handle, so
+    // the point is an ordinary point again.
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(pointOnEdge, { rangeSelection: null, onRangeSelect });
+    fire(svg, "pointerdown", at(2, 0.8));
+    fire(svg, "pointermove", at(3, 0.8));
+    fire(svg, "pointerup", at(3, 0.8));
+    const written = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation;
+    const times = (written.lanes[0]?.points ?? []).map((p) => p.t);
+    expect(times).toContain(3);
+  });
+
+  it("stretches the same edge twice in a row", () => {
+    // The whole point of the priority rule, end to end: two stretches of the
+    // right edge, the second grabbing the breakpoint the first one left there.
+    const onRangeSelect = vi.fn();
+    const { svg, props, rerender } = mountRerenderable(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2, 2.6);
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, expect.closeTo(2.6, 1));
+    const afterFirst = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation;
+    // A breakpoint landed on the new edge, which is what used to disarm it.
+    expect((afterFirst.lanes[0]?.points ?? []).some((p) => Math.abs(p.t - 2.6) < 0.05)).toBe(true);
+
+    // The store comes back with the persisted envelope and the new selection.
+    rerender({ automation: afterFirst, rangeSelection: { t0: 0.5, t1: 2.6 } });
+    dragRightEdge(svg, 2.6, 3.4);
+    expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, expect.closeTo(3.4, 1));
+    expect(props.onCommit).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the far edge grabbable on a selection narrower than its own halos", () => {
+    // A selection this thin — a pasted short span, or any span at low zoom — has
+    // both handles under one press, so which edge a press takes is decided
+    // entirely by the midpoint split. Characterizing it here because nothing
+    // else does: every other test in this block has halos far enough apart that
+    // the rule never comes up.
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 2, t1: 2.08 }, // 8px wide at 100 px/s: both halos overlap
+      onRangeSelect,
+    });
+    fire(svg, "pointerdown", at(2.07, 0.5)); // nearer t1, inside t0's halo too
+    fire(svg, "pointermove", at(3, 0.5));
+    fire(svg, "pointerup", at(3, 0.5));
+    // t0 stayed put and t1 moved out: the press resolved to the right edge.
+    expect(onRangeSelect).toHaveBeenLastCalledWith(2, expect.closeTo(3, 1));
+  });
+
+  it("clamps the dragged edge so it cannot cross its partner", () => {
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2.5, 0.3); // dragged past the left edge (t0=0.5)
+    const [, t1] = onRangeSelect.mock.calls.at(-1) as [number, number];
+    expect(t1).toBeGreaterThan(0.5);
+  });
+
+  it("clamps the dragged edge to the lane's own duration", () => {
+    const onRangeSelect = vi.fn();
+    const { svg } = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onRangeSelect,
+    });
+    dragRightEdge(svg, 2.5, 10); // far past the clip's own duration (4s)
+    const [, t1] = onRangeSelect.mock.calls.at(-1) as [number, number];
+    expect(t1).toBeLessThanOrEqual(4);
+  });
+
+  it("retimes identically whether the right edge arrives in one move or several", () => {
+    // moveEdge must always retime from the points snapshotted at arm time,
+    // never from the live draft — retimeRange is a RELATIVE transform (it
+    // scales the lane's OWN current point positions by newSpan/oldSpan), so
+    // feeding it the live draft on every pointermove compounds the scale
+    // factor instead of applying it once. A real drag fires dozens of moves;
+    // this asserts the FINAL preview is identical regardless of how many.
+    const onPreviewSingle = vi.fn();
+    const single = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onPreview: onPreviewSingle,
+    });
+    fire(single.svg, "pointerdown", at(2.5, 0.5));
+    fire(single.svg, "pointermove", at(3.3, 0.5));
+    const singleShot = (onPreviewSingle.mock.calls.at(-1)?.[0] as HfAutomation | undefined)
+      ?.lanes[0]?.points;
+    expect(singleShot).toBeDefined();
+
+    const onPreviewMulti = vi.fn();
+    const multi = mount(stretchable, {
+      rangeSelection: { t0: 0.5, t1: 2.5 },
+      onPreview: onPreviewMulti,
+    });
+    fire(multi.svg, "pointerdown", at(2.5, 0.5));
+    // At least 3 separate pointermoves crossing the same span, not one jump.
+    fire(multi.svg, "pointermove", at(2.7, 0.5));
+    fire(multi.svg, "pointermove", at(2.9, 0.5));
+    fire(multi.svg, "pointermove", at(3.1, 0.5));
+    fire(multi.svg, "pointermove", at(3.3, 0.5));
+    const afterFourMoves = (onPreviewMulti.mock.calls.at(-1)?.[0] as HfAutomation | undefined)
+      ?.lanes[0]?.points;
+    expect(afterFourMoves).toBeDefined();
+
+    // Both interior points (t=1, t=2) land exactly where a single-shot retime
+    // puts them — not compounded, and not dropped.
+    expect(afterFourMoves).toEqual(singleShot);
+    expect(afterFourMoves?.length).toBe(6);
+    expect(afterFourMoves?.some((p) => Math.abs(p.t - 1.2) < 0.001 && p.v === 0.5)).toBe(true);
+    expect(afterFourMoves?.some((p) => Math.abs(p.t - 2.6) < 0.001 && p.v === 0.8)).toBe(true);
+  });
+
+  it("retimes identically whether the left edge arrives in one move or several", () => {
+    const onPreviewSingle = vi.fn();
+    const single = mount(stretchable, {
+      rangeSelection: { t0: 1, t1: 3 },
+      onPreview: onPreviewSingle,
+    });
+    fire(single.svg, "pointerdown", at(1, 0.5));
+    fire(single.svg, "pointermove", at(0.2, 0.5));
+    const singleShot = (onPreviewSingle.mock.calls.at(-1)?.[0] as HfAutomation | undefined)
+      ?.lanes[0]?.points;
+    expect(singleShot).toBeDefined();
+
+    const onPreviewMulti = vi.fn();
+    const multi = mount(stretchable, {
+      rangeSelection: { t0: 1, t1: 3 },
+      onPreview: onPreviewMulti,
+    });
+    fire(multi.svg, "pointerdown", at(1, 0.5));
+    fire(multi.svg, "pointermove", at(0.7, 0.5));
+    fire(multi.svg, "pointermove", at(0.4, 0.5));
+    fire(multi.svg, "pointermove", at(0.2, 0.5));
+    const afterThreeMoves = (onPreviewMulti.mock.calls.at(-1)?.[0] as HfAutomation | undefined)
+      ?.lanes[0]?.points;
+    expect(afterThreeMoves).toBeDefined();
+    expect(afterThreeMoves).toEqual(singleShot);
+  });
+
+  it("shows a resize cursor when hovering an edge with nothing else live", () => {
+    const { svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "pointermove", at(3, 0.5)); // near the right edge, nothing pressed
+    expect(svg.style.cursor).toBe("col-resize");
+  });
+
+  it("keeps the normal cursor away from the selection's edges", () => {
+    const { svg } = mount(ramp, { rangeSelection: { t0: 1, t1: 3 } });
+    fire(svg, "pointermove", at(2, 0.5)); // middle of the selection, not an edge
+    expect(svg.style.cursor).not.toBe("col-resize");
   });
 });
