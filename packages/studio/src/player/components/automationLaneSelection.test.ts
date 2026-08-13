@@ -94,6 +94,7 @@ describe("replaceRange", () => {
     expect(Math.max(...innerTimes)).toBeGreaterThan(3.0);
   });
 });
+
 describe("retimeRange", () => {
   it("scales interior points proportionally into the new span", () => {
     const pts = retimeRange({ lane: ramp, range: VOLUME_RANGE, t0: 2, t1: 3, newT0: 2, newT1: 5 });
