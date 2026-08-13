@@ -171,10 +171,6 @@ export function trackProfileCommitted(type: string, strength: number, c: FxTrack
   track("profile_committed", { effect: type, strength, ...ctx(c) });
 }
 
-export function trackParamAutomated(type: string, param: string, on: boolean): void {
-  track("param_automated", { effect: type, param, enabled: on });
-}
-
 // --- the measuring modules -------------------------------------------------
 
 export function trackCarveChanged(

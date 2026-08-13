@@ -20,20 +20,10 @@ import {
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import { EFFECT_COPY, SUMMARY } from "@hyperframes/core/audio-fx-copy";
-import {
-  trackNodeBypassed,
-  trackParamCommitted,
-  trackProfileCommitted,
-} from "./audioFxTelemetry.js";
-import {
-  applyAudioFxProfile,
-  audioFxProfileStrength,
-  getAudioFxProfile,
-} from "@hyperframes/core/audio-fx-profiles";
-import { fxAutomationTarget } from "@hyperframes/core/audio-automation";
-import { FxParams, FxParamRow } from "./propertyPanelFxControls.js";
-import { FxBandRuler } from "./propertyPanelFxBandRuler.js";
+import { trackNodeBypassed } from "./audioFxTelemetry.js";
+import { getAudioFxProfile } from "@hyperframes/core/audio-fx-profiles";
 import { FX_FAMILY_TYPE, fxFamilyOf, fxFamilyTint } from "./propertyPanelFxFamily.js";
+import { FxNodeOpenBody } from "./propertyPanelFxNodeOpenBody.js";
 
 /**
  * The one control that carries the module, if it has one.
@@ -234,93 +224,6 @@ function FxNodeHeader({
   );
 }
 
-/**
- * Which of an effect's knobs already have a lane.
- *
- * A lane addresses a node by id, so a node the panel has not yet given one
- * cannot be automated at all. Adding an effect mints the id, so this only
- * affects chains written before ids existed.
- */
-function automatedKeysOf(
-  node: HfAudioFxNode,
-  params: readonly { key: string }[],
-  automatedTargets: ReadonlySet<string> | undefined,
-): Set<string> {
-  if (!node.id || !automatedTargets) return new Set();
-  const nodeId = node.id;
-  return new Set(
-    params.filter((p) => automatedTargets.has(fxAutomationTarget(nodeId, p.key))).map((p) => p.key),
-  );
-}
-
-/** An open effect's knobs, with whatever automation surface applies to them. */
-function FxNodeParams({
-  node,
-  def,
-  index,
-  disabled,
-  automatedTargets,
-  liveAutomationValues,
-  onUpdate,
-  onPreview,
-  onAutomateParam,
-  onRemoveParamAutomation,
-  trackKind,
-}: {
-  node: HfAudioFxNode;
-  def: HfAudioFxDef;
-  index: number;
-  disabled: boolean;
-  automatedTargets?: ReadonlySet<string>;
-  liveAutomationValues?: ReadonlyMap<string, number>;
-  onUpdate(index: number, patch: Partial<HfAudioFxNode>): void;
-  onPreview(index: number, params: HfAudioFxParamValues): void;
-  onAutomateParam?(nodeId: string, paramKey: string): void;
-  onRemoveParamAutomation?(nodeId: string, paramKey: string): void;
-  trackKind?: string;
-}) {
-  const nodeId = node.id;
-  // Lanes address a node by id; the controls know their own parameter keys. This
-  // is the one place that translation belongs.
-  const liveValues = ((): Map<string, number> | undefined => {
-    if (!nodeId || !liveAutomationValues?.size) return undefined;
-    const byKey = new Map<string, number>();
-    for (const param of def.params) {
-      const live = liveAutomationValues.get(fxAutomationTarget(nodeId, param.key));
-      if (live !== undefined) byKey.set(param.key, live);
-    }
-    return byKey;
-  })();
-  return (
-    <FxParams
-      def={def}
-      params={node.params ?? defaultAudioFxParams(node.type)}
-      liveValues={liveValues}
-      disabled={disabled}
-      onChange={(params: HfAudioFxParamValues) => onPreview(index, params)}
-      onCommit={(next: HfAudioFxParamValues) => {
-        // Which knob actually moved. `onCommit` hands over the whole parameter
-        // set, so without the diff every commit would report the first key and
-        // the numbers would say authors only ever touch "frequency".
-        const before = node.params ?? defaultAudioFxParams(node.type);
-        for (const [key, value] of Object.entries(next)) {
-          if (before[key] === value) continue;
-          if (typeof value !== "number" && typeof value !== "string") continue;
-          trackParamCommitted(node.type, key, value, "details", { trackKind });
-        }
-        onUpdate(index, { params: next });
-      }}
-      automatedKeys={automatedKeysOf(node, def.params, automatedTargets)}
-      onAutomate={nodeId && onAutomateParam ? (key) => onAutomateParam(nodeId, key) : undefined}
-      onRemoveAutomation={
-        nodeId && onRemoveParamAutomation
-          ? (key) => onRemoveParamAutomation(nodeId, key)
-          : undefined
-      }
-    />
-  );
-}
-
 /** One effect in the chain: its header controls, and its knobs when open. */
 export function FxNodeRow({
   node,
@@ -406,106 +309,30 @@ export function FxNodeRow({
         </p>
       ) : null}
       {open ? (
-        <>
-          {/* What it is for, before what it is made of. */}
-          {copy?.does ? (
-            <p className="hf-fx-node-does border-t border-panel-border-input px-1.5 py-1 text-[10px] text-panel-text-2">
-              {copy.does}
-            </p>
-          ) : null}
-          {derived && !details ? (
-            <>
-              {/* Not routed through FxNodeParams: this knob is not in the
-                  registry, so it has no AudioParam behind it and nothing to
-                  automate. What automation there is belongs to the parameters it
-                  sets, under Details, where they can be aimed at individually. */}
-              <div className="hf-fx-params space-y-0.5 border-t border-panel-border-input px-1.5 py-1.5">
-                <FxParamRow
-                  param={derived}
-                  value={audioFxProfileStrength(node.type, params)}
-                  disabled={Boolean(disabled) || bypassed}
-                  onChange={(_k, v) =>
-                    onPreview(index, applyAudioFxProfile(node.type, Number(v), params))
-                  }
-                  onCommit={(_k, v) => {
-                    trackProfileCommitted(node.type, Number(v), { trackKind });
-                    onUpdate(index, { params: applyAudioFxProfile(node.type, Number(v), params) });
-                  }}
-                />
-              </div>
-              {profile ? (
-                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-2">
-                  <span className="truncate">{profile.ends.low}</span>
-                  <span className="truncate text-right">{profile.ends.high}</span>
-                </p>
-              ) : null}
-            </>
-          ) : null}
-          {primary && !details ? (
-            <>
-              <FxNodeParams
-                node={node}
-                def={onlyPrimary}
-                index={index}
-                disabled={Boolean(disabled) || bypassed}
-                automatedTargets={automatedTargets}
-                liveAutomationValues={liveAutomationValues}
-                onUpdate={onUpdate}
-                onPreview={onPreview}
-                onAutomateParam={onAutomateParam}
-                onRemoveParamAutomation={onRemoveParamAutomation}
-                trackKind={trackKind}
-              />
-              {/* What the two ends of that knob sound like. A number tells an
-                  author where the control is; this tells them which way to move
-                  it, which is the question they actually have. */}
-              {copy?.primaryEnds ? (
-                <p className="hf-fx-node-ends flex justify-between gap-2 px-1.5 pb-1 text-[9px] text-panel-text-2">
-                  <span className="truncate">{copy.primaryEnds.low}</span>
-                  <span className="truncate text-right">{copy.primaryEnds.high}</span>
-                </p>
-              ) : null}
-              {/* Where it is working, in the words the rack shares. Only for a
-                  module that acts on a range at all — there is nothing spectral
-                  about a limiter, and a ruler under one would be noise. */}
-              {copy?.band && typeof params.frequency === "number" ? (
-                <FxBandRuler band={copy.band} at={params.frequency} />
-              ) : null}
-            </>
-          ) : null}
-          {/* The DSP name lives on the disclosure, so it is read at the moment
-              the author asks what this really is — and never before. */}
-          {oneKnob ? (
-            <button
-              type="button"
-              className="hf-fx-node-details flex w-full items-center gap-1 border-t border-panel-border-input px-1.5 py-1 text-left font-mono text-[9px] uppercase tracking-wide text-panel-text-2 hover:text-panel-text-0"
-              aria-expanded={details}
-              onClick={() => setDetails((was) => !was)}
-            >
-              <span aria-hidden="true">{details ? "\u25BE" : "\u25B8"}</span>
-              Details — {registryDef.label}
-            </button>
-          ) : (
-            <p className="hf-fx-node-mechanism border-t border-panel-border-input px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-              Details — {registryDef.label}
-            </p>
-          )}
-          {details || !oneKnob ? (
-            <FxNodeParams
-              node={node}
-              def={def}
-              index={index}
-              disabled={Boolean(disabled) || bypassed}
-              automatedTargets={automatedTargets}
-              liveAutomationValues={liveAutomationValues}
-              onUpdate={onUpdate}
-              onPreview={onPreview}
-              onAutomateParam={onAutomateParam}
-              onRemoveParamAutomation={onRemoveParamAutomation}
-              trackKind={trackKind}
-            />
-          ) : null}
-        </>
+        <FxNodeOpenBody
+          node={node}
+          registryDef={registryDef}
+          def={def}
+          onlyPrimary={onlyPrimary}
+          primary={primary}
+          derived={derived}
+          profile={profile}
+          oneKnob={oneKnob}
+          details={details}
+          onToggleDetails={() => setDetails((was) => !was)}
+          copy={copy}
+          params={params}
+          index={index}
+          disabled={disabled}
+          bypassed={bypassed}
+          automatedTargets={automatedTargets}
+          liveAutomationValues={liveAutomationValues}
+          onUpdate={onUpdate}
+          onPreview={onPreview}
+          onAutomateParam={onAutomateParam}
+          onRemoveParamAutomation={onRemoveParamAutomation}
+          trackKind={trackKind}
+        />
       ) : null}
     </div>
   );

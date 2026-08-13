@@ -79,9 +79,8 @@ export function trackStudioEvent(event: string, properties: EventProperties = {}
   }
 }
 
-async function flushEvents(): Promise<void> {
-  if (queue.length === 0) return;
-
+/** The queue, shaped for PostHog's batch endpoint — shared by both drain paths. */
+function drainBatch() {
   const batch = queue.map((e) => ({
     event: e.event,
     properties: { ...e.properties, $ip: null },
@@ -89,6 +88,13 @@ async function flushEvents(): Promise<void> {
     timestamp: e.timestamp,
   }));
   queue = [];
+  return batch;
+}
+
+async function flushEvents(): Promise<void> {
+  if (queue.length === 0) return;
+
+  const batch = drainBatch();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
@@ -118,13 +124,7 @@ export function flushViaBeacon(): void {
     flushTimer = null;
   }
   if (queue.length === 0) return;
-  const batch = queue.map((e) => ({
-    event: e.event,
-    properties: { ...e.properties, $ip: null },
-    distinct_id: getDistinctId(),
-    timestamp: e.timestamp,
-  }));
-  queue = [];
+  const batch = drainBatch();
   const body = JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
   try {
     navigator.sendBeacon(`${POSTHOG_HOST}/batch/`, body);
