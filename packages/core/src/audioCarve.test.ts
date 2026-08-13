@@ -7,6 +7,7 @@ import {
   carveBandsToChain,
   carveProfile,
   classifyAudioName,
+  clipsOverlap,
   mixCarveSources,
   couldBeCarveSource,
   DEFAULT_CARVE,
@@ -535,6 +536,59 @@ describe("classifyAudioName", () => {
     expect(couldBeCarveSource("a1")).toBe(true);
     expect(couldBeCarveSource("music-bed")).toBe(false);
     expect(couldBeCarveSource("sfx-explosion")).toBe(false);
+  });
+
+  it("treats underscores as separators, not word characters, for short hints", () => {
+    // `\b` treats `_` as a word character, so `\bbed\b` used to miss `bed_01` —
+    // an underscore-separated bed classified as "unknown" and could end up
+    // offered as its own carve source.
+    expect(classifyAudioName("bed_01")).toBe("music");
+    expect(classifyAudioName("my_bed")).toBe("music");
+    expect(classifyAudioName("music_bed_loop")).toBe("music");
+    expect(classifyAudioName("theme_song")).toBe("music");
+    expect(classifyAudioName("vo_take3")).toBe("voice");
+    expect(classifyAudioName("main_vox")).toBe("voice");
+    expect(couldBeCarveSource("bed_01")).toBe(false);
+  });
+});
+
+describe("clipsOverlap", () => {
+  it("overlaps when the spans genuinely share time", () => {
+    expect(clipsOverlap({ start: 0, duration: 5 }, { start: 3, duration: 5 })).toBe(true);
+  });
+
+  it("does not overlap when one span ends before the other starts", () => {
+    expect(clipsOverlap({ start: 0, duration: 5 }, { start: 5, duration: 5 })).toBe(false);
+    expect(clipsOverlap({ start: 10, duration: 5 }, { start: 0, duration: 5 })).toBe(false);
+  });
+
+  it("does not overlap two clips that only touch at an edge", () => {
+    // Half-open: an end exactly at the other's start shares no time to carve.
+    expect(clipsOverlap({ start: 0, duration: 5 }, { start: 5, duration: 5 })).toBe(false);
+  });
+
+  it("treats a null or undefined duration as unbounded", () => {
+    expect(clipsOverlap({ start: 0, duration: null }, { start: 100, duration: 1 })).toBe(true);
+    expect(clipsOverlap({ start: 0 }, { start: 100, duration: 1 })).toBe(true);
+    // Symmetric: the unbounded span can be on either side.
+    expect(clipsOverlap({ start: 100, duration: 1 }, { start: 0, duration: undefined })).toBe(true);
+  });
+
+  it("gives a zero-duration clip a single instant, not a span", () => {
+    expect(clipsOverlap({ start: 5, duration: 0 }, { start: 5, duration: 5 })).toBe(false);
+    expect(clipsOverlap({ start: 5, duration: 0 }, { start: 4, duration: 5 })).toBe(true);
+  });
+
+  it("clamps a negative duration to zero rather than inverting the interval", () => {
+    // The regression: end = start + duration puts a negative-duration clip's
+    // end BEFORE its start, and end(a) is what the other clip's start gets
+    // compared against — so a smaller (earlier) broken end silently rejects
+    // real overlaps too. {start:10, duration:-5} clamped is a zero-length
+    // clip AT t=10, which genuinely sits inside {start:6, duration:20}'s
+    // [6, 26) span; the unclamped math missed it (end(a) came out to 5).
+    expect(clipsOverlap({ start: 10, duration: -5 }, { start: 6, duration: 20 })).toBe(true);
+    // And it stays correct where it isn't inside anything.
+    expect(clipsOverlap({ start: 10, duration: -5 }, { start: 20, duration: 5 })).toBe(false);
   });
 });
 

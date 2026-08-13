@@ -238,7 +238,11 @@ async function renderPanel(
 // renderPanel resetModules()+dynamic-imports PropertyPanel (needed for a fresh
 // flag read); transforming the full section graph uncached can exceed the 5s
 // default under heavy parallel full-suite load, so give these a wider margin.
-const RENDER_TIMEOUT_MS = 20_000;
+// 20s itself has now been observed timing out in CI's full-monorepo run (the
+// same suite passes in well under 2s standalone) — widened again rather than
+// re-tuned down to a number that will just need doing again next time CI adds
+// load.
+const RENDER_TIMEOUT_MS = 45_000;
 
 // Find the collapsed accordion row whose title matches and click it open.
 function openFlatGroup(host: HTMLElement, title: string) {
