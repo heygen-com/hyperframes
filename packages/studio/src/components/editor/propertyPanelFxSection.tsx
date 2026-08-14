@@ -511,10 +511,10 @@ export function FxSection({
           opened one and changed their mind had no way back: picking something
           was the only thing that set these false, so the only exits were adding
           an effect they did not want or deselecting the clip. */}
-      <div className="flex gap-1">
+      <div className="flex flex-col gap-1">
         <button
           type="button"
-          className="hf-fx-preset w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
+          className="hf-fx-preset w-full rounded-[4px] border border-panel-text-0 py-1.5 text-[11px] font-semibold text-panel-text-0 disabled:opacity-40"
           aria-expanded={picking}
           disabled={disabled}
           onClick={() => {
@@ -530,7 +530,7 @@ export function FxSection({
         </button>
         <button
           type="button"
-          className="hf-fx-add w-full rounded-[4px] border border-dashed border-panel-border-input py-1 text-[11px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
+          className="hf-fx-add self-end px-1 text-[10px] text-panel-text-2 hover:text-panel-text-0 disabled:opacity-40"
           aria-expanded={adding}
           disabled={disabled}
           onClick={() => {
@@ -542,7 +542,7 @@ export function FxSection({
             setPicking(false);
           }}
         >
-          {adding ? "Close" : "Add effect"}
+          {adding ? "Close" : "+ effect"}
         </button>
       </div>
     </div>

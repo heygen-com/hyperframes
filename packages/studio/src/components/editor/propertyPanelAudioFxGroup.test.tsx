@@ -469,7 +469,7 @@ describe("AudioFxGroup dynamic carve", () => {
     });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");
     act(() => byTextButton(host, "Audio FX")?.click());
-    act(() => byTextButton(host, "Add effect")?.click());
+    act(() => byTextButton(host, "+ effect")?.click());
     await act(async () => {
       byTextButton(host, "Even Out Levels")?.click();
       await new Promise((r) => setTimeout(r, 0));
@@ -581,7 +581,7 @@ describe("AudioFxGroup dynamic carve", () => {
     const { release, decoded } = stubGatedDecode();
     const { host, onSetAttributeLive } = mount({ "fx-chain": CHAIN });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");
-    act(() => byTextButton(host, "Add effect")?.click());
+    act(() => byTextButton(host, "+ effect")?.click());
     const level = byTextButton(host, "Even Out Levels");
     expect(level, "the levelling button was not offered").toBeTruthy();
     act(() => level?.focus());
@@ -611,7 +611,7 @@ describe("AudioFxGroup dynamic carve", () => {
     const { release, decoded } = stubGatedDecode();
     const { host, onSetAttributeLive } = mount({ "fx-chain": CHAIN });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");
-    act(() => byTextButton(host, "Add effect")?.click());
+    act(() => byTextButton(host, "+ effect")?.click());
     act(() => byTextButton(host, "Even Out Levels")?.focus());
     // Straight to a neighbour, without ever leaving the shelf.
     act(() =>
