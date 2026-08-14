@@ -39,6 +39,7 @@ import { loadExternalCompositions, loadInlineTemplateCompositions } from "./comp
 import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
+import { ensureAudioGroupInertStyle } from "../audioGroups.js";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -131,6 +132,10 @@ export function initSandboxRuntimeModular(): void {
   // custom props) — values are fixed for the page's lifetime, so applying
   // once at init keeps renders deterministic and seeks safe.
   applyVariableBindings(document);
+  // `<hf-audio-group>` is metadata, so it must not occupy a box — see
+  // ensureAudioGroupInertStyle. Injected here, before timelines bind, so no
+  // captured frame ever sees the group as a layout item.
+  ensureAudioGroupInertStyle(document);
   const exportRenderFps = resolveExportRenderFps();
   state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
   setRuntimeProtocolFps(state.canonicalFps);
