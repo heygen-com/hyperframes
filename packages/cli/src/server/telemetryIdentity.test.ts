@@ -17,6 +17,11 @@ const canaryDecisions = vi.fn<() => Record<string, { enabled: boolean; forced: b
 // assertion below ran against a refresh that silently did nothing.
 const resetPostureCache = vi.fn();
 const readConfigFresh = vi.fn();
+// Mocked for the same reason as the canary registry above: the real detector
+// reads THIS process env, so every string assertion here would pass on a
+// developer laptop and fail the moment an agent ran the suite (CLAUDECODE=1),
+// or vice versa. The agent-specific behaviour gets its own cases below.
+const detectAgent = vi.fn<() => string | null>();
 
 vi.mock("../telemetry/client.js", () => ({
   shouldTrack: (...args: unknown[]) => shouldTrack(...args),
@@ -25,6 +30,9 @@ vi.mock("../telemetry/client.js", () => ({
 vi.mock("../telemetry/config.js", () => ({
   readConfig: (...args: unknown[]) => readConfig(...args),
   readConfigFresh: () => readConfigFresh(),
+}));
+vi.mock("../telemetry/agent_runtime.js", () => ({
+  detectAgentRuntime: () => detectAgent(),
 }));
 vi.mock("../telemetry/canary.js", () => ({
   canaryDecisionsForStudio: () => canaryDecisions(),
@@ -46,6 +54,10 @@ describe("resolveCliTelemetryDistinctId", () => {
     readConfig.mockReset();
     canaryDecisions.mockReset();
     canaryDecisions.mockReturnValue({});
+    detectAgent.mockReset();
+    // No agent is the default so the existing assertions keep describing the
+    // ordinary case: a person at a terminal.
+    detectAgent.mockReturnValue(null);
   });
 
   it("returns the CLI anonymousId when telemetry is enabled", () => {
@@ -391,5 +403,63 @@ describe("cross-process opt-out refresh", () => {
     const after = buildStudioHeadScriptsForHost("", "localhost:3000");
     expect(after).not.toContain("__HF_CLI_DISTINCT_ID");
     expect(after).not.toContain("__HF_CLI_BUCKET_SEED");
+  });
+});
+
+/**
+ * Publishing which agent, if any, drives the CLI.
+ *
+ * Studio has no way to detect this — the signal is in the CLI process
+ * environment, which the browser never sees — so this injection is the only
+ * path by which an agent-driven session can ever be labelled as one.
+ */
+describe("buildCliIdentityScript agent runtime", () => {
+  beforeEach(() => {
+    shouldTrack.mockReset();
+    readConfig.mockReset();
+    readConfig.mockReturnValue({});
+    canaryDecisions.mockReset();
+    canaryDecisions.mockReturnValue({});
+    detectAgent.mockReset();
+    detectAgent.mockReturnValue(null);
+  });
+
+  it("publishes the agent when one is driving the CLI", () => {
+    shouldTrack.mockReturnValue(true);
+    detectAgent.mockReturnValue("claude_code");
+    expect(buildCliIdentityScript()).toContain('window.__HF_CLI_AGENT_RUNTIME="claude_code";');
+  });
+
+  it("publishes nothing when a person is driving it", () => {
+    shouldTrack.mockReturnValue(true);
+    expect(buildCliIdentityScript()).not.toContain("__HF_CLI_AGENT_RUNTIME");
+  });
+
+  it("stays silent when telemetry is off, even under an agent", () => {
+    // Unlike the canary decisions, which Studio needs in order NOT to enrol,
+    // this is only ever read to label an event. With telemetry off there is no
+    // event, so publishing it would leave a marker in the page of someone who
+    // asked not to be measured.
+    shouldTrack.mockReturnValue(false);
+    detectAgent.mockReturnValue("claude_code");
+    expect(buildCliIdentityScript()).not.toContain("__HF_CLI_AGENT_RUNTIME");
+  });
+
+  it("publishes it without an identity when the Host is not trusted", () => {
+    // The value is a category, not an id — a LAN Studio should still be able to
+    // say an agent opened it, the same way it still receives canary decisions.
+    shouldTrack.mockReturnValue(true);
+    detectAgent.mockReturnValue("codex");
+    const script = buildCliIdentityScript({ includeIdentity: false });
+    expect(script).toContain('window.__HF_CLI_AGENT_RUNTIME="codex";');
+    expect(script).not.toContain("__HF_CLI_DISTINCT_ID");
+  });
+
+  it("escapes a value that tries to close the script tag", () => {
+    shouldTrack.mockReturnValue(true);
+    detectAgent.mockReturnValue("</script><script>alert(1)</script>");
+    const script = buildCliIdentityScript();
+    expect(script).not.toContain("</script><script>");
+    expect(script.match(/<\/script>/g)).toHaveLength(1);
   });
 });

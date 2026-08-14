@@ -307,6 +307,118 @@ describe("syncRuntimeMedia", () => {
     document.body.innerHTML = "";
   });
 
+  describe("volume automation lane", () => {
+    const DUCK = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 0.8 },
+            { t: 2, v: 0.8 },
+            { t: 3, v: 0.1 },
+            { t: 8, v: 0.1 },
+          ],
+        },
+      ],
+    });
+
+    /**
+     * The runtime rewrites the transport's gain every tick. Before the lane fed
+     * this path it was scheduled onto the AudioParam instead and erased within a
+     * frame, so the envelope was inaudible in preview while being correct in the
+     * render.
+     */
+    function volumesAt(times: number[], automation?: string, volume = 0.55) {
+      const clip = createMockClip({ start: 0, end: 10, volume });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      if (automation) clip.el.setAttribute("data-automation", automation);
+      const seen: number[] = [];
+      for (const t of times) {
+        syncRuntimeMedia({
+          clips: [clip],
+          timeSeconds: t,
+          playing: true,
+          playbackRate: 1,
+          onElementVolume: (_el, v) => seen.push(v),
+        });
+      }
+      return seen;
+    }
+
+    it("drives the transport gain from the lane, not from data-volume", () => {
+      const [held, ducked] = volumesAt([1, 5], DUCK);
+      expect(held).toBeCloseTo(0.8, 5);
+      expect(ducked).toBeCloseTo(0.1, 5);
+    });
+
+    it("ramps between points across ticks", () => {
+      const [a, b, c] = volumesAt([2, 2.5, 3], DUCK);
+      expect(a).toBeCloseTo(0.8, 5);
+      expect(b).toBeGreaterThan(0.1);
+      expect(b).toBeLessThan(0.8);
+      expect(c).toBeCloseTo(0.1, 5);
+    });
+
+    it("falls back to data-volume when there is no lane", () => {
+      const [only] = volumesAt([5], undefined, 0.55);
+      expect(only).toBeCloseTo(0.55, 5);
+    });
+
+    /**
+     * The render bakes the lane at CLIP-LOCAL time: prepareAudioTrack already
+     * cut the wav with `-ss mediaStart`, so its t=0 is the clip's start, and
+     * normaliseEnvelope subtracts trackStart. Preview used to sample at MEDIA
+     * time — mediaStart included, scaled by playbackRate, wrapped on a loop — so
+     * the same envelope played somewhere else than it rendered.
+     */
+    it("samples the lane at clip-local time, the way the render bakes it", () => {
+      const trimmed = (t: number) => {
+        const clip = createMockClip({ start: 0, end: 10, volume: 0.55, mediaStart: 30 });
+        Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+        clip.el.setAttribute("data-automation", DUCK);
+        let seen = -1;
+        syncRuntimeMedia({
+          clips: [clip],
+          timeSeconds: t,
+          playing: true,
+          playbackRate: 1,
+          onElementVolume: (_el, v) => {
+            seen = v;
+          },
+        });
+        return seen;
+      };
+      // `data-media-start="30"` on a clip whose lane holds 0.8 until t=2 then
+      // ducks to 0.1 by t=3. At media time the playhead is already 30 s past the
+      // last point, so preview held 0.1 from the first frame and never ducked.
+      expect(trimmed(1)).toBeCloseTo(0.8, 5);
+      expect(trimmed(5)).toBeCloseTo(0.1, 5);
+    });
+
+    it("supersedes keyframes probed from the timeline", () => {
+      // Both present: the lane is the explicit one, and `lint` warns about it.
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.55 });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      clip.el.setAttribute("data-automation", DUCK);
+      clip.volumeKeyframes = [
+        { time: 0, volume: 1 },
+        { time: 10, volume: 1 },
+      ];
+      let seen = -1;
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        onElementVolume: (_el, v) => {
+          seen = v;
+        },
+      });
+      expect(seen).toBeCloseTo(0.1, 5);
+    });
+  });
+
   it("plays active clip when playing and buffered", () => {
     const clip = createMockClip({ start: 0, end: 10 });
     Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });

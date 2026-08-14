@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html matrix-decode.html
 <!--
-  Matrix Decode - remocn typography primitive for HyperFrames.
+  Matrix Decode - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -41,7 +41,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-matrix-decode"
+  class="hf-catalog-matrix-decode"
   data-final="HYPERFRAMES"
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Target text", "description": "Word the scramble resolves into. One scrambling cell per character, up to 32.", "default": "HYPERFRAMES" },
@@ -55,13 +55,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-matrix-decode {
+  .hf-catalog-matrix-decode {
     color: #18181b;
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-matrix-decode {
+  .hf-catalog-matrix-decode {
     display: inline-flex;
     gap: 3px;
     font:
@@ -74,7 +74,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     text-shadow: 0 0 var(--hf-matrix-glow-radius, 18px)
       rgba(var(--hf-matrix-glow-rgb, 22, 163, 74), var(--hf-matrix-glow-alpha, 0.28));
   }
-  .hf-remocn-matrix-decode span {
+  .hf-catalog-matrix-decode span {
     display: inline-block;
     min-width: 0.64em;
     opacity: var(--hf-matrix-opacity, 1);
@@ -118,7 +118,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var accent = accents[pick(accents, vars.accent, "green")];
     var glow = glows[pick(glows, vars.glow, "standard")];
 
-    var roots = document.querySelectorAll(".hf-remocn-matrix-decode");
+    var roots = document.querySelectorAll(".hf-catalog-matrix-decode");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-matrix-size", size + "px");
       roots[i].style.setProperty("--hf-matrix-color", accent.color);
@@ -140,7 +140,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-matrix-decode span', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-catalog-matrix-decode span', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }, startTime);
 -->
 ```
 
@@ -181,7 +181,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Matrix Decode - remocn typography primitive for HyperFrames.
+  Matrix Decode - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -207,7 +207,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-matrix-decode"
+  class="hf-catalog-matrix-decode"
   data-final="HYPERFRAMES"
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Target text", "description": "Word the scramble resolves into. One scrambling cell per character, up to 32.", "default": "HYPERFRAMES" },
@@ -221,13 +221,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-matrix-decode {
+  .hf-catalog-matrix-decode {
     color: #18181b;
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-matrix-decode {
+  .hf-catalog-matrix-decode {
     display: inline-flex;
     gap: 3px;
     font:
@@ -240,7 +240,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     text-shadow: 0 0 var(--hf-matrix-glow-radius, 18px)
       rgba(var(--hf-matrix-glow-rgb, 22, 163, 74), var(--hf-matrix-glow-alpha, 0.28));
   }
-  .hf-remocn-matrix-decode span {
+  .hf-catalog-matrix-decode span {
     display: inline-block;
     min-width: 0.64em;
     opacity: var(--hf-matrix-opacity, 1);
@@ -284,7 +284,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var accent = accents[pick(accents, vars.accent, "green")];
     var glow = glows[pick(glows, vars.glow, "standard")];
 
-    var roots = document.querySelectorAll(".hf-remocn-matrix-decode");
+    var roots = document.querySelectorAll(".hf-catalog-matrix-decode");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-matrix-size", size + "px");
       roots[i].style.setProperty("--hf-matrix-color", accent.color);
@@ -306,7 +306,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-matrix-decode span', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-catalog-matrix-decode span', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }, startTime);
 -->
 ```
 
@@ -318,7 +318,7 @@ Open `compositions/components/matrix-decode.html` and paste its contents into yo
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `remocn-port` `typography`.
+Tagged `motion-primitive` `typography`.
 
 ## Related topics
 

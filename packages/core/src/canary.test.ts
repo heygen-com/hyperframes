@@ -426,3 +426,29 @@ describe("canary reason property", () => {
     expect(canaryReasonKey("de-parallel-router")).toBe("canary_reason_de_parallel_router");
   });
 });
+
+/**
+ * The audio FX rack ships dark.
+ *
+ * Pinned as a test rather than trusted to review: the registry's own procedure
+ * is "start at percentage: 0 and merge that", and the whole point of landing a
+ * 47-PR stack behind a canary is defeated if the entry reaches main at anything
+ * else. A ramp is a deliberate edit to this number, and it should have to break
+ * a test that says so.
+ */
+describe("the audio-fx-rack canary", () => {
+  const entry = CANARIES.find((c) => c.name === "audio-fx-rack");
+
+  it("is registered", () => {
+    expect(entry, "audio-fx-rack missing from the registry").toBeDefined();
+  });
+
+  it("ships at 0%", () => {
+    expect(entry?.percentage).toBe(0);
+  });
+
+  it("carries a sunset date, so the fork cannot outlive the rollout", () => {
+    expect(entry?.sunsetAfter).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(Date.parse(`${entry?.sunsetAfter}T00:00:00Z`)).toBeGreaterThan(Date.parse("2026-08-12"));
+  });
+});

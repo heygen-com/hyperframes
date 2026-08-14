@@ -72,11 +72,19 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "chatgpt-exchange",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "chromatic-radial-split",
       "type": "hyperframes:block"
     },
     {
       "name": "cinematic-zoom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "claude-exchange",
       "type": "hyperframes:block"
     },
     {
@@ -1525,6 +1533,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "f5cb199165f8e7faec1f52713596613af0ef6b5495938341233a63167ee43d3a"
+    "revision": "6e83353888f7e2114f5195215d8b0cdf8794f925232ff8811428ac4d3979a7ba"
   }
 }

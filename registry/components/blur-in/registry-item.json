@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Blur In",
   "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
-  "tags": ["video-primitive", "remocn-port", "blur-in", "text-effect"],
+  "tags": ["video-primitive", "blur-in", "text-effect"],
   "files": [
     {
       "path": "blur-in.html",

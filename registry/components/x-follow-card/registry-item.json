@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "X Follow Card",
   "description": "A social follow card with avatar, handle, and follower motion.",
-  "tags": ["social-overlay", "remocn-port"],
+  "tags": ["social-overlay"],
   "files": [
     {
       "path": "x-follow-card.html",

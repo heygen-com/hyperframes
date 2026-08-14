@@ -31,7 +31,7 @@
         transform: scale(1.65);
         transform-origin: center center;
       }
-      .hf-remocn-spotlight-card {
+      .hf-catalog-spotlight-card {
         --hf-accent: var(--accent, #18181b);
         --hf-ink: #111827;
         --hf-muted: #6b7280;
@@ -39,7 +39,7 @@
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
       }
-      .hf-remocn-spotlight-card {
+      .hf-catalog-spotlight-card {
         position: relative;
         width: 760px;
         height: 428px;
@@ -48,7 +48,7 @@
         background: #080b12;
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
       }
-      .hf-remocn-spotlight-card .mesh {
+      .hf-catalog-spotlight-card .mesh {
         position: absolute;
         inset: -22%;
         filter: blur(44px);
@@ -70,7 +70,7 @@
             transparent 34%
           );
       }
-      .hf-remocn-spotlight-card .card {
+      .hf-catalog-spotlight-card .card {
         position: absolute;
         inset: 74px 92px;
         border: 1px solid rgba(255, 255, 255, 0.16);
@@ -82,7 +82,7 @@
         text-align: center;
         overflow: hidden;
       }
-      .hf-remocn-spotlight-card .spot {
+      .hf-catalog-spotlight-card .spot {
         position: absolute;
         width: 260px;
         height: 260px;
@@ -91,7 +91,7 @@
         transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
         mix-blend-mode: screen;
       }
-      .hf-remocn-spotlight-card .particle {
+      .hf-catalog-spotlight-card .particle {
         position: absolute;
         left: 50%;
         top: 54%;
@@ -102,12 +102,12 @@
         transform: translate(var(--hf-px, 0px), var(--hf-py, 0px)) rotate(var(--hf-pr, 0deg));
         opacity: var(--hf-po, 0);
       }
-      .hf-remocn-spotlight-card h3 {
+      .hf-catalog-spotlight-card h3 {
         margin: 0;
         font-size: 44px;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-spotlight-card p {
+      .hf-catalog-spotlight-card p {
         margin: 8px 0 0;
         font-size: 18px;
         color: rgba(255, 255, 255, 0.7);
@@ -124,7 +124,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-spotlight-card">
+        <div class="hf-catalog-spotlight-card">
           <div class="mesh"></div>
           <div class="card">
             <div class="spot"></div>
@@ -139,7 +139,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-spotlight-card .mesh",
+          ".hf-catalog-spotlight-card .mesh",
           {
             "--hf-x1": "18%",
             "--hf-y1": "28%",
@@ -161,12 +161,12 @@
           startTime,
         );
         tl.fromTo(
-          ".hf-remocn-spotlight-card .spot",
+          ".hf-catalog-spotlight-card .spot",
           { "--hf-spot-x": "-120px", "--hf-spot-y": "-70px" },
           { "--hf-spot-x": "190px", "--hf-spot-y": "90px", duration: 3, ease: "sine.inOut" },
           startTime,
         );
-        const particles_spotlight_card = gsap.utils.toArray(".hf-remocn-spotlight-card .particle");
+        const particles_spotlight_card = gsap.utils.toArray(".hf-catalog-spotlight-card .particle");
         if (particles_spotlight_card.length) {
           tl.fromTo(
             particles_spotlight_card,

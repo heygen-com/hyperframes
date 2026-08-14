@@ -10,76 +10,19 @@ import {
 } from "../../utils/studioUiPreferences";
 import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeCacheEntry, type KeyframeSlice } from "./keyframeSlice";
+import {
+  createAutomationSelectionSlice,
+  type AutomationSelectionSlice,
+} from "./automationSelectionSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
 
-export interface TimelineElement {
-  id: string;
-  label?: string;
-  key?: string;
-  kind?: ClipManifestClip["kind"];
-  tag: string;
-  start: number;
-  duration: number;
-  track: number;
-  /**
-   * The data-track-index as written in the source file. Set at the manifest
-   * translation boundary (createTimelineElementFromManifestClip) from the
-   * runtime clip's verbatim track, and preserved through display-lane remaps
-   * (normalizeToZones packs sparse authored tracks onto contiguous display
-   * lanes; expanded sub-comp children get synthetic display rows). Lane edits
-   * must persist THIS space — writing a display-lane number into a sparse file
-   * re-targets the wrong track. For an expanded child the value is in its OWN
-   * source file's coordinate space, not the host timeline's.
-   */
-  authoredTrack?: number;
-  /** Resolved z-index for stacking-aware timeline ordering. */
-  zIndex?: number;
-  /** True when the effective z-index was authored inline or through CSS, not auto. */
-  hasExplicitZIndex?: boolean;
-  /** Canonical CSS stacking context this element's z-index participates in. */
-  stackingContextId?: string | null;
-  /** Nearest parent composition context, matching RuntimeTimelineClip. */
-  parentCompositionId?: string | null;
-  /** Composition ancestry from root to nearest parent, matching RuntimeTimelineClip. */
-  compositionAncestors?: string[];
-  domId?: string;
-  /** Stable `data-hf-id` attribute value — used as primary patch target when present */
-  hfId?: string;
-  /** Best-effort selector used when patching source HTML back from timeline edits */
-  selector?: string;
-  /** Zero-based occurrence index for non-unique selectors */
-  selectorIndex?: number;
-  /** Source composition file that owns this element, when known */
-  sourceFile?: string;
-  src?: string;
-  playbackStart?: number;
-  playbackStartAttr?: "media-start" | "playback-start";
-  playbackRate?: number;
-  sourceDuration?: number;
-  volume?: number;
-  /** Path from data-composition-src — identifies sub-composition elements */
-  compositionSrc?: string;
-  /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
-  timingSource?: "authored" | "implicit";
-  /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
-  timelineLocked?: boolean;
-  /** Set by data-hidden on the host element — hides the clip in preview and render. */
-  hidden?: boolean;
-  /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
-  timelineRole?: string;
-  /**
-   * Set by useExpandedTimelineElements on an inline-expanded sub-composition
-   * child: the absolute master-timeline start of the sub-comp host the child
-   * lives in. Presence marks the element as expanded; edits subtract it to get
-   * the child's local (sourceFile-relative) time. Works at any nesting depth.
-   */
-  expandedParentStart?: number;
-  expandedHostKey?: string;
-}
+import type { TimelineElement } from "./timelineElement";
+
+export type { TimelineElement };
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
 
@@ -104,7 +47,7 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState extends KeyframeSlice, ThumbnailSlice {
+interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -223,6 +166,32 @@ interface PlayerState extends KeyframeSlice, ThumbnailSlice {
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
 
+  /**
+   * Request the transport start or stop from outside the player loop.
+   *
+   * The FX rack auditions a preset by writing it to the running graph, which is
+   * silent while the transport is paused — so hovering one has to start
+   * playback, and leaving has to put the playhead back where it was. Hovering is
+   * not an edit and must not cost the author their place.
+   *
+   * A nonce rather than a bare boolean: two hovers in a row both want play, and
+   * without it the second request is indistinguishable from the first having
+   * already been served.
+   */
+  playbackRequest: { playing: boolean; returnTo: number | null; nonce: number } | null;
+  requestPlayback: (playing: boolean, returnTo?: number | null) => void;
+  clearPlaybackRequest: () => void;
+
+  /**
+   * Request the timeline to scroll a clip into view (e.g. clicking an
+   * already-added asset card in the sidebar). Consumed and cleared by
+   * useTimelineRevealClip. The nonce makes repeat requests for the same
+   * clip observable so a second click re-reveals after the user scrolls away.
+   */
+  clipRevealRequest: { elementId: string; nonce: number } | null;
+  requestClipReveal: (elementId: string) => void;
+  clearClipRevealRequest: () => void;
+
   timelineFocus: TimelineFocusRequest | null;
   timelineFocusNonce: number;
   requestTimelineFocus: (id: string) => void;
@@ -294,6 +263,10 @@ export function createTimelineResetState() {
     motionPathArmed: false,
     motionPathCreateAvailable: false,
     selectedKeyframes: new Set<string>(),
+    // Ephemeral like every other selection here. A range surviving a project
+    // switch can match a same-keyed clip in the new project and redirect a
+    // paste through `sel.elementKey === paste.elementKey` to a stale t0.
+    automationSelection: null,
     expandedClipIds: new Set<string>(),
     focusedEaseSegment: null,
     selectedElementIds: new Set<string>(),
@@ -343,6 +316,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   })),
   ...createThumbnailSlice(set),
 
+  ...createAutomationSelectionSlice(set),
+
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
   motionPathArmed: false,
@@ -372,6 +347,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
+
+  playbackRequest: null,
+  requestPlayback: (playing, returnTo = null) =>
+    set((s) => ({
+      playbackRequest: { playing, returnTo, nonce: (s.playbackRequest?.nonce ?? 0) + 1 },
+    })),
+  clearPlaybackRequest: () => set({ playbackRequest: null }),
+
+  clipRevealRequest: null,
+  requestClipReveal: (elementId) =>
+    set((s) => ({
+      clipRevealRequest: { elementId, nonce: (s.clipRevealRequest?.nonce ?? 0) + 1 },
+    })),
+  clearClipRevealRequest: () => set({ clipRevealRequest: null }),
 
   timelineFocus: null,
   timelineFocusNonce: 0,

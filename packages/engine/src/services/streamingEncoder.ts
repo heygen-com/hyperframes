@@ -36,6 +36,7 @@ import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
+import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
 // Re-export EncoderOptions so callers can reference the type via this module.
 export type { EncoderOptions } from "./chunkEncoder.types.js";
@@ -350,6 +351,7 @@ export function buildStreamingArgs(
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
     args.push("-pix_fmt", pixelFormat);
+    appendRenderProvenanceArgs(args, outputPath);
     return [...args, "-y", outputPath];
   }
 
@@ -427,6 +429,8 @@ export function buildStreamingArgs(
   // Belt-and-suspenders against negative DTS at stream start. See chunkEncoder
   // for the full explanation; same playback compatibility class.
   args.push("-avoid_negative_ts", "make_zero");
+
+  appendRenderProvenanceArgs(args, outputPath);
 
   args.push("-y", outputPath);
   return args;

@@ -15,6 +15,7 @@
       "skills": [
         "./skills/hyperframes",
         "./skills/hyperframes-animation",
+        "./skills/hyperframes-audio",
         "./skills/hyperframes-cli",
         "./skills/hyperframes-core",
         "./skills/hyperframes-creative",

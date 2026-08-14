@@ -78,63 +78,62 @@
   { "text": "\t\n\r control chars", "ids": [101, 2491, 25869, 2015, 102] },
   { "text": "accordion", "ids": [101, 19060, 102] },
   {
-    "text": "group: accordion, disclosure, remocn-port, ui-primitive\nwhat: Accordion. A precise disclosure row with a machined edge, accessible expansion state, and deterministic reveal hooks",
+    "text": "group: accordion, disclosure, ui-primitive\nwhat: Accordion. A precise disclosure row with a machined edge, accessible expansion state, and deterministic reveal hooks",
     "ids": [
-      101, 2177, 1024, 19060, 1010, 19380, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 19060, 1012, 1037, 10480, 19380, 5216, 2007, 1037, 3698, 2094, 3341,
-      1010, 7801, 4935, 2110, 1010, 1998, 28283, 25300, 10074, 7487, 18008, 102
+      101, 2177, 1024, 19060, 1010, 19380, 1010, 21318, 1011, 10968, 2054, 1024, 19060, 1012, 1037,
+      10480, 19380, 5216, 2007, 1037, 3698, 2094, 3341, 1010, 7801, 4935, 2110, 1010, 1998, 28283,
+      25300, 10074, 7487, 18008, 102
     ]
   },
   { "text": "ai-generation-canvas", "ids": [101, 9932, 1011, 4245, 1011, 10683, 102] },
   {
-    "text": "group: ai, remocn-port, showcase\nwhat: Generation Canvas. A prompt composer expands into a generated dashboard preview.",
+    "text": "group: ai, showcase\nwhat: Generation Canvas. A prompt composer expands into a generated dashboard preview.",
     "ids": [
-      101, 2177, 1024, 9932, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024,
-      4245, 10683, 1012, 1037, 25732, 4543, 24545, 2046, 1037, 7013, 24923, 19236, 1012, 102
+      101, 2177, 1024, 9932, 1010, 13398, 2054, 1024, 4245, 10683, 1012, 1037, 25732, 4543, 24545,
+      2046, 1037, 7013, 24923, 19236, 1012, 102
     ]
   },
   { "text": "ai-prompt-flow", "ids": [101, 9932, 1011, 25732, 1011, 4834, 102] },
   {
-    "text": "group: ai, prompt, remocn-port, ui-flow\nwhat: Prompt Flow. A composed prompt flow with prompt field, suggestion chips, generate action, and preview result card",
+    "text": "group: ai, prompt, ui-flow\nwhat: Prompt Flow. A composed prompt flow with prompt field, suggestion chips, generate action, and preview result card",
     "ids": [
-      101, 2177, 1024, 9932, 1010, 25732, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 4834, 2054, 1024, 25732, 4834, 1012, 1037, 3605, 25732, 4834, 2007, 25732, 2492, 1010,
-      10293, 11772, 1010, 9699, 2895, 1010, 1998, 19236, 2765, 4003, 102
+      101, 2177, 1024, 9932, 1010, 25732, 1010, 21318, 1011, 4834, 2054, 1024, 25732, 4834, 1012,
+      1037, 3605, 25732, 4834, 2007, 25732, 2492, 1010, 10293, 11772, 1010, 9699, 2895, 1010, 1998,
+      19236, 2765, 4003, 102
     ]
   },
   { "text": "alert", "ids": [101, 9499, 102] },
   {
-    "text": "group: alert, remocn-port, status, ui-primitive\nwhat: Alert. An Operator Black status alert with a matte surface, technical icon, title, and message",
+    "text": "group: alert, status, ui-primitive\nwhat: Alert. An Operator Black status alert with a matte surface, technical icon, title, and message",
     "ids": [
-      101, 2177, 1024, 9499, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3570, 1010, 21318,
-      1011, 10968, 2054, 1024, 9499, 1012, 2019, 6872, 2304, 3570, 9499, 2007, 1037, 4717, 2063,
-      3302, 1010, 4087, 12696, 1010, 2516, 1010, 1998, 4471, 102
+      101, 2177, 1024, 9499, 1010, 3570, 1010, 21318, 1011, 10968, 2054, 1024, 9499, 1012, 2019,
+      6872, 2304, 3570, 9499, 2007, 1037, 4717, 2063, 3302, 1010, 4087, 12696, 1010, 2516, 1010,
+      1998, 4471, 102
     ]
   },
   { "text": "alert-dialog", "ids": [101, 9499, 1011, 13764, 8649, 102] },
   {
-    "text": "group: alert-dialog, overlay, remocn-port, ui-primitive\nwhat: Alert Dialog. An Operator Black destructive confirmation dialog with a flat backdrop and centered Soft Optical motion",
+    "text": "group: alert-dialog, overlay, ui-primitive\nwhat: Alert Dialog. An Operator Black destructive confirmation dialog with a flat backdrop and centered Soft Optical motion",
     "ids": [
-      101, 2177, 1024, 9499, 1011, 13764, 8649, 1010, 2058, 8485, 1010, 2128, 5302, 2278, 2078,
-      1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024, 9499, 13764, 8649, 1012, 2019, 6872, 2304,
-      15615, 13964, 13764, 8649, 2007, 1037, 4257, 18876, 1998, 8857, 3730, 9380, 4367, 102
+      101, 2177, 1024, 9499, 1011, 13764, 8649, 1010, 2058, 8485, 1010, 21318, 1011, 10968, 2054,
+      1024, 9499, 13764, 8649, 1012, 2019, 6872, 2304, 15615, 13964, 13764, 8649, 2007, 1037, 4257,
+      18876, 1998, 8857, 3730, 9380, 4367, 102
     ]
   },
   { "text": "animated-bar-chart", "ids": [101, 6579, 1011, 3347, 1011, 3673, 102] },
   {
-    "text": "group: data, remocn-port\nwhat: Animated Bar Chart. A compact data card with deterministic bar growth and value callouts.",
+    "text": "group: data\nwhat: Animated Bar Chart. A compact data card with deterministic bar growth and value callouts.",
     "ids": [
-      101, 2177, 1024, 2951, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 6579, 3347, 3673,
-      1012, 1037, 9233, 2951, 4003, 2007, 28283, 25300, 10074, 3347, 3930, 1998, 3643, 2655, 12166,
-      1012, 102
+      101, 2177, 1024, 2951, 2054, 1024, 6579, 3347, 3673, 1012, 1037, 9233, 2951, 4003, 2007,
+      28283, 25300, 10074, 3347, 3930, 1998, 3643, 2655, 12166, 1012, 102
     ]
   },
   { "text": "animated-line-chart", "ids": [101, 6579, 1011, 2240, 1011, 3673, 102] },
   {
-    "text": "group: data, remocn-port\nwhat: Animated Line Chart. A line chart draws across the card with endpoint emphasis.",
+    "text": "group: data\nwhat: Animated Line Chart. A line chart draws across the card with endpoint emphasis.",
     "ids": [
-      101, 2177, 1024, 2951, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 6579, 2240, 3673,
-      1012, 1037, 2240, 3673, 9891, 2408, 1996, 4003, 2007, 2203, 8400, 7902, 1012, 102
+      101, 2177, 1024, 2951, 2054, 1024, 6579, 2240, 3673, 1012, 1037, 2240, 3673, 9891, 2408, 1996,
+      4003, 2007, 2203, 8400, 7902, 1012, 102
     ]
   },
   { "text": "app-showcase", "ids": [101, 10439, 1011, 13398, 102] },
@@ -190,11 +189,11 @@
   },
   { "text": "aspect-ratio", "ids": [101, 7814, 1011, 6463, 102] },
   {
-    "text": "group: aspect-ratio, layout, remocn-port, ui-primitive\nwhat: Aspect Ratio. A matte aspect-ratio frame for media and previews with a compact technical dimension label",
+    "text": "group: aspect-ratio, layout, ui-primitive\nwhat: Aspect Ratio. A matte aspect-ratio frame for media and previews with a compact technical dimension label",
     "ids": [
-      101, 2177, 1024, 7814, 1011, 6463, 1010, 9621, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 7814, 6463, 1012, 1037, 4717, 2063, 7814, 1011, 6463, 4853,
-      2005, 2865, 1998, 19236, 2015, 2007, 1037, 9233, 4087, 9812, 3830, 102
+      101, 2177, 1024, 7814, 1011, 6463, 1010, 9621, 1010, 21318, 1011, 10968, 2054, 1024, 7814,
+      6463, 1012, 1037, 4717, 2063, 7814, 1011, 6463, 4853, 2005, 2865, 1998, 19236, 2015, 2007,
+      1037, 9233, 4087, 9812, 3830, 102
     ]
   },
   { "text": "aurora-drift", "ids": [101, 13158, 1011, 11852, 102] },
@@ -210,11 +209,11 @@
   },
   { "text": "avatar", "ids": [101, 22128, 102] },
   {
-    "text": "group: avatar, identity, remocn-port, ui-primitive\nwhat: Avatar. A matte initials avatar with a functional availability indicator and host-controlled sizing",
+    "text": "group: avatar, identity, ui-primitive\nwhat: Avatar. A matte initials avatar with a functional availability indicator and host-controlled sizing",
     "ids": [
-      101, 2177, 1024, 22128, 1010, 4767, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 22128, 1012, 1037, 4717, 2063, 20381, 22128, 2007, 1037, 8360, 11343,
-      17245, 1998, 3677, 1011, 4758, 9033, 6774, 102
+      101, 2177, 1024, 22128, 1010, 4767, 1010, 21318, 1011, 10968, 2054, 1024, 22128, 1012, 1037,
+      4717, 2063, 20381, 22128, 2007, 1037, 8360, 11343, 17245, 1998, 3677, 1011, 4758, 9033, 6774,
+      102
     ]
   },
   { "text": "avatar-cloud", "ids": [101, 22128, 1011, 6112, 102] },
@@ -238,20 +237,19 @@
   },
   { "text": "backdrop", "ids": [101, 18876, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Backdrop. An Operator Black flat dimming backdrop for dialog, drawer, sheet, and modal scenes.",
+    "text": "group: ui-primitive\nwhat: Backdrop. An Operator Black flat dimming backdrop for dialog, drawer, sheet, and modal scenes.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      18876, 1012, 2019, 6872, 2304, 4257, 11737, 6562, 18876, 2005, 13764, 8649, 1010, 13065, 1010,
-      7123, 1010, 1998, 16913, 2389, 5019, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 18876, 1012, 2019, 6872, 2304, 4257, 11737,
+      6562, 18876, 2005, 13764, 8649, 1010, 13065, 1010, 7123, 1010, 1998, 16913, 2389, 5019, 1012,
+      102
     ]
   },
   { "text": "badge", "ids": [101, 10780, 102] },
   {
-    "text": "group: badge, remocn-port, status, ui-primitive\nwhat: Badge. An Operator Black semantic badge for restrained success, warning, and neutral status labels",
+    "text": "group: badge, status, ui-primitive\nwhat: Badge. An Operator Black semantic badge for restrained success, warning, and neutral status labels",
     "ids": [
-      101, 2177, 1024, 10780, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3570, 1010, 21318,
-      1011, 10968, 2054, 1024, 10780, 1012, 2019, 6872, 2304, 21641, 10780, 2005, 19868, 3112, 1010,
-      5432, 1010, 1998, 8699, 3570, 10873, 102
+      101, 2177, 1024, 10780, 1010, 3570, 1010, 21318, 1011, 10968, 2054, 1024, 10780, 1012, 2019,
+      6872, 2304, 21641, 10780, 2005, 19868, 3112, 1010, 5432, 1010, 1998, 8699, 3570, 10873, 102
     ]
   },
   { "text": "badge-pop", "ids": [101, 10780, 1011, 3769, 102] },
@@ -331,20 +329,20 @@
   },
   { "text": "blur-in", "ids": [101, 14819, 1011, 1999, 102] },
   {
-    "text": "group: blur-in, remocn-port, text-effect, ui-primitive\nwhat: Blur In. An Operator Black word-level content reveal that resolves its own text from controlled blur",
+    "text": "group: blur-in, text-effect, ui-primitive\nwhat: Blur In. An Operator Black word-level content reveal that resolves its own text from controlled blur",
     "ids": [
-      101, 2177, 1024, 14819, 1011, 1999, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3793,
-      1011, 3466, 1010, 21318, 1011, 10968, 2054, 1024, 14819, 1999, 1012, 2019, 6872, 2304, 2773,
-      1011, 2504, 4180, 7487, 2008, 10663, 2015, 2049, 2219, 3793, 2013, 4758, 14819, 102
+      101, 2177, 1024, 14819, 1011, 1999, 1010, 3793, 1011, 3466, 1010, 21318, 1011, 10968, 2054,
+      1024, 14819, 1999, 1012, 2019, 6872, 2304, 2773, 1011, 2504, 4180, 7487, 2008, 10663, 2015,
+      2049, 2219, 3793, 2013, 4758, 14819, 102
     ]
   },
   { "text": "blur-out-up", "ids": [101, 14819, 1011, 2041, 1011, 2039, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Blur Out Up. Words arrive clean and depart upward with increasing blur for airy exits.",
+    "text": "group: motion-primitive, typography\nwhat: Blur Out Up. Words arrive clean and depart upward with increasing blur for airy exits.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 14819, 2041, 2039, 1012, 2616, 7180, 4550, 1998, 18280, 10745, 2007,
-      4852, 14819, 2005, 2250, 2100, 16639, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 14819, 2041, 2039,
+      1012, 2616, 7180, 4550, 1998, 18280, 10745, 2007, 4852, 14819, 2005, 2250, 2100, 16639, 1012,
+      102
     ]
   },
   { "text": "bottom-up-letters", "ids": [101, 3953, 1011, 2039, 1011, 4144, 102] },
@@ -358,12 +356,11 @@
   },
   { "text": "breadcrumb", "ids": [101, 7852, 26775, 25438, 102] },
   {
-    "text": "group: breadcrumb, navigation, remocn-port, ui-primitive\nwhat: Breadcrumb. A quiet path-navigation primitive with technical SVG separators and a strong current-page treatment",
+    "text": "group: breadcrumb, navigation, ui-primitive\nwhat: Breadcrumb. A quiet path-navigation primitive with technical SVG separators and a strong current-page treatment",
     "ids": [
-      101, 2177, 1024, 7852, 26775, 25438, 1010, 9163, 1010, 2128, 5302, 2278, 2078, 1011, 3417,
-      1010, 21318, 1011, 10968, 2054, 1024, 7852, 26775, 25438, 1012, 1037, 4251, 4130, 1011, 9163,
-      10968, 2007, 4087, 17917, 2290, 19802, 25879, 5668, 1998, 1037, 2844, 2783, 1011, 3931, 3949,
-      102
+      101, 2177, 1024, 7852, 26775, 25438, 1010, 9163, 1010, 21318, 1011, 10968, 2054, 1024, 7852,
+      26775, 25438, 1012, 1037, 4251, 4130, 1011, 9163, 10968, 2007, 4087, 17917, 2290, 19802,
+      25879, 5668, 1998, 1037, 2844, 2783, 1011, 3931, 3949, 102
     ]
   },
   { "text": "browser-device-stage", "ids": [101, 16602, 1011, 5080, 1011, 2754, 102] },
@@ -381,37 +378,35 @@
   },
   { "text": "browser-flow", "ids": [101, 16602, 1011, 4834, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Browser Flow. A browser frame walks through a three-step product flow.",
+    "text": "group: showcase\nwhat: Browser Flow. A browser frame walks through a three-step product flow.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 16602, 4834,
-      1012, 1037, 16602, 4853, 7365, 2083, 1037, 2093, 1011, 3357, 4031, 4834, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 16602, 4834, 1012, 1037, 16602, 4853, 7365, 2083, 1037,
+      2093, 1011, 3357, 4031, 4834, 1012, 102
     ]
   },
   { "text": "button", "ids": [101, 6462, 102] },
   {
-    "text": "group: button, control, remocn-port, ui-primitive\nwhat: Button. A video-safe action button with tactile press, loading, and success states",
+    "text": "group: button, control, ui-primitive\nwhat: Button. A video-safe action button with tactile press, loading, and success states",
     "ids": [
-      101, 2177, 1024, 6462, 1010, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 6462, 1012, 1037, 2678, 1011, 3647, 2895, 6462, 2007, 11937, 6593,
-      9463, 2811, 1010, 10578, 1010, 1998, 3112, 2163, 102
+      101, 2177, 1024, 6462, 1010, 2491, 1010, 21318, 1011, 10968, 2054, 1024, 6462, 1012, 1037,
+      2678, 1011, 3647, 2895, 6462, 2007, 11937, 6593, 9463, 2811, 1010, 10578, 1010, 1998, 3112,
+      2163, 102
     ]
   },
   { "text": "button-group", "ids": [101, 6462, 1011, 2177, 102] },
   {
-    "text": "group: button-group, control, remocn-port, ui-primitive\nwhat: Button Group. A compact segmented action group with clear pressed-state emphasis",
+    "text": "group: button-group, control, ui-primitive\nwhat: Button Group. A compact segmented action group with clear pressed-state emphasis",
     "ids": [
-      101, 2177, 1024, 6462, 1011, 2177, 1010, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 6462, 2177, 1012, 1037, 9233, 6903, 2098, 2895, 2177, 2007,
-      3154, 4508, 1011, 2110, 7902, 102
+      101, 2177, 1024, 6462, 1011, 2177, 1010, 2491, 1010, 21318, 1011, 10968, 2054, 1024, 6462,
+      2177, 1012, 1037, 9233, 6903, 2098, 2895, 2177, 2007, 3154, 4508, 1011, 2110, 7902, 102
     ]
   },
   { "text": "calendar", "ids": [101, 8094, 102] },
   {
-    "text": "group: calendar, date, remocn-port, ui-primitive\nwhat: Calendar. A compact date grid with a recessed selected day and deterministic reveal",
+    "text": "group: calendar, date, ui-primitive\nwhat: Calendar. A compact date grid with a recessed selected day and deterministic reveal",
     "ids": [
-      101, 2177, 1024, 8094, 1010, 3058, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 8094, 1012, 1037, 9233, 3058, 8370, 2007, 1037, 28290, 2098, 3479,
-      2154, 1998, 28283, 25300, 10074, 7487, 102
+      101, 2177, 1024, 8094, 1010, 3058, 1010, 21318, 1011, 10968, 2054, 1024, 8094, 1012, 1037,
+      9233, 3058, 8370, 2007, 1037, 28290, 2098, 3479, 2154, 1998, 28283, 25300, 10074, 7487, 102
     ]
   },
   {
@@ -625,11 +620,11 @@
   },
   { "text": "card", "ids": [101, 4003, 102] },
   {
-    "text": "group: card, remocn-port, surface, ui-primitive\nwhat: Card. A single semantic card surface with calm type hierarchy, success status, a review action, and Soft Optical reveal hooks",
+    "text": "group: card, surface, ui-primitive\nwhat: Card. A single semantic card surface with calm type hierarchy, success status, a review action, and Soft Optical reveal hooks",
     "ids": [
-      101, 2177, 1024, 4003, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3302, 1010, 21318,
-      1011, 10968, 2054, 1024, 4003, 1012, 1037, 2309, 21641, 4003, 3302, 2007, 5475, 2828, 12571,
-      1010, 3112, 3570, 1010, 1037, 3319, 2895, 1010, 1998, 3730, 9380, 7487, 18008, 102
+      101, 2177, 1024, 4003, 1010, 3302, 1010, 21318, 1011, 10968, 2054, 1024, 4003, 1012, 1037,
+      2309, 21641, 4003, 3302, 2007, 5475, 2828, 12571, 1010, 3112, 3570, 1010, 1037, 3319, 2895,
+      1010, 1998, 3730, 9380, 7487, 18008, 102
     ]
   },
   { "text": "card-resize", "ids": [101, 4003, 1011, 24501, 4697, 102] },
@@ -643,20 +638,20 @@
   },
   { "text": "caret", "ids": [101, 2729, 2102, 102] },
   {
-    "text": "group: caret, remocn-port, typing, ui-primitive\nwhat: Caret. A matte command-field caret with finite blink timing and a deterministic typed-value reveal",
+    "text": "group: caret, typing, ui-primitive\nwhat: Caret. A matte command-field caret with finite blink timing and a deterministic typed-value reveal",
     "ids": [
-      101, 2177, 1024, 2729, 2102, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 22868, 1010,
-      21318, 1011, 10968, 2054, 1024, 2729, 2102, 1012, 1037, 4717, 2063, 3094, 1011, 2492, 2729,
-      2102, 2007, 10713, 12373, 10984, 1998, 1037, 28283, 25300, 10074, 21189, 1011, 3643, 7487, 102
+      101, 2177, 1024, 2729, 2102, 1010, 22868, 1010, 21318, 1011, 10968, 2054, 1024, 2729, 2102,
+      1012, 1037, 4717, 2063, 3094, 1011, 2492, 2729, 2102, 2007, 10713, 12373, 10984, 1998, 1037,
+      28283, 25300, 10074, 21189, 1011, 3643, 7487, 102
     ]
   },
   { "text": "carousel", "ids": [101, 27628, 102] },
   {
-    "text": "group: carousel, media, remocn-port, ui-primitive\nwhat: Carousel. A restrained scene carousel with layered media surfaces, accessible position controls, and deterministic slide motion",
+    "text": "group: carousel, media, ui-primitive\nwhat: Carousel. A restrained scene carousel with layered media surfaces, accessible position controls, and deterministic slide motion",
     "ids": [
-      101, 2177, 1024, 27628, 1010, 2865, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 27628, 1012, 1037, 19868, 3496, 27628, 2007, 21323, 2865, 9972, 1010,
-      7801, 2597, 7711, 1010, 1998, 28283, 25300, 10074, 7358, 4367, 102
+      101, 2177, 1024, 27628, 1010, 2865, 1010, 21318, 1011, 10968, 2054, 1024, 27628, 1012, 1037,
+      19868, 3496, 27628, 2007, 21323, 2865, 9972, 1010, 7801, 2597, 7711, 1010, 1998, 28283, 25300,
+      10074, 7358, 4367, 102
     ]
   },
   { "text": "char-slam-explode", "ids": [101, 25869, 1011, 9555, 1011, 15044, 102] },
@@ -672,11 +667,11 @@
   },
   { "text": "chart", "ids": [101, 3673, 102] },
   {
-    "text": "group: chart, data, remocn-port, ui-primitive\nwhat: Chart. An Operator Black categorical bar chart using the shared solid data palette and deterministic growth",
+    "text": "group: chart, data, ui-primitive\nwhat: Chart. An Operator Black categorical bar chart using the shared solid data palette and deterministic growth",
     "ids": [
-      101, 2177, 1024, 3673, 1010, 2951, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 3673, 1012, 2019, 6872, 2304, 4937, 27203, 3347, 3673, 2478, 1996,
-      4207, 5024, 2951, 27396, 1998, 28283, 25300, 10074, 3930, 102
+      101, 2177, 1024, 3673, 1010, 2951, 1010, 21318, 1011, 10968, 2054, 1024, 3673, 1012, 2019,
+      6872, 2304, 4937, 27203, 3347, 3673, 2478, 1996, 4207, 5024, 2951, 27396, 1998, 28283, 25300,
+      10074, 3930, 102
     ]
   },
   { "text": "chart-story", "ids": [101, 3673, 1011, 2466, 102] },
@@ -697,29 +692,28 @@
     "ids": [101, 11834, 1011, 2000, 1011, 19236, 1011, 9621, 102]
   },
   {
-    "text": "group: ai, remocn-port, showcase\nwhat: Chat to Preview Layout. Split-pane chat and preview layout for agent-generated UI.",
+    "text": "group: ai, showcase\nwhat: Chat to Preview Layout. Split-pane chat and preview layout for agent-generated UI.",
     "ids": [
-      101, 2177, 1024, 9932, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024,
-      11834, 2000, 19236, 9621, 1012, 3975, 1011, 6090, 2063, 11834, 1998, 19236, 9621, 2005, 4005,
-      1011, 7013, 21318, 1012, 102
+      101, 2177, 1024, 9932, 1010, 13398, 2054, 1024, 11834, 2000, 19236, 9621, 1012, 3975, 1011,
+      6090, 2063, 11834, 1998, 19236, 9621, 2005, 4005, 1011, 7013, 21318, 1012, 102
     ]
   },
   { "text": "checkbox", "ids": [101, 4638, 8758, 102] },
   {
-    "text": "group: checkbox, control, remocn-port, ui-primitive\nwhat: Checkbox. An accessible checkbox with tactile feedback and a functional mint check state",
+    "text": "group: checkbox, control, ui-primitive\nwhat: Checkbox. An accessible checkbox with tactile feedback and a functional mint check state",
     "ids": [
-      101, 2177, 1024, 4638, 8758, 1010, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 4638, 8758, 1012, 2019, 7801, 4638, 8758, 2007, 11937, 6593,
-      9463, 12247, 1998, 1037, 8360, 12927, 4638, 2110, 102
+      101, 2177, 1024, 4638, 8758, 1010, 2491, 1010, 21318, 1011, 10968, 2054, 1024, 4638, 8758,
+      1012, 2019, 7801, 4638, 8758, 2007, 11937, 6593, 9463, 12247, 1998, 1037, 8360, 12927, 4638,
+      2110, 102
     ]
   },
   { "text": "checkout-flow", "ids": [101, 4638, 5833, 1011, 4834, 102] },
   {
-    "text": "group: checkout, commerce, remocn-port, ui-flow\nwhat: Checkout Flow. A composed checkout flow with plan summary, payment field rows, total, and purchase action",
+    "text": "group: checkout, commerce, ui-flow\nwhat: Checkout Flow. A composed checkout flow with plan summary, payment field rows, total, and purchase action",
     "ids": [
-      101, 2177, 1024, 4638, 5833, 1010, 6236, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 4834, 2054, 1024, 4638, 5833, 4834, 1012, 1037, 3605, 4638, 5833, 4834, 2007,
-      2933, 12654, 1010, 7909, 2492, 10281, 1010, 2561, 1010, 1998, 5309, 2895, 102
+      101, 2177, 1024, 4638, 5833, 1010, 6236, 1010, 21318, 1011, 4834, 2054, 1024, 4638, 5833,
+      4834, 1012, 1037, 3605, 4638, 5833, 4834, 2007, 2933, 12654, 1010, 7909, 2492, 10281, 1010,
+      2561, 1010, 1998, 5309, 2895, 102
     ]
   },
   {
@@ -742,11 +736,10 @@
     "ids": [101, 10381, 23645, 1011, 14863, 11335, 3508, 1011, 13387, 102]
   },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Chromatic Aberration Wipe. A fast slide wipe with RGB channel split on peak frames.",
+    "text": "group: transition-primitive\nwhat: Chromatic Aberration Wipe. A fast slide wipe with RGB channel split on peak frames.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      10381, 23645, 14863, 11335, 3508, 13387, 1012, 1037, 3435, 7358, 13387, 2007, 1054, 18259,
-      3149, 3975, 2006, 4672, 11048, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 10381, 23645, 14863, 11335, 3508, 13387, 1012,
+      1037, 3435, 7358, 13387, 2007, 1054, 18259, 3149, 3975, 2006, 4672, 11048, 1012, 102
     ]
   },
   { "text": "chromatic-radial-split", "ids": [101, 10381, 23645, 1011, 15255, 1011, 3975, 102] },
@@ -778,10 +771,10 @@
   },
   { "text": "code-accordion", "ids": [101, 3642, 1011, 19060, 102] },
   {
-    "text": "group: code-animation, remocn-port\nwhat: Code Accordion. Stacked code sections expand one at a time with line highlights.",
+    "text": "group: code-animation\nwhat: Code Accordion. Stacked code sections expand one at a time with line highlights.",
     "ids": [
-      101, 2177, 1024, 3642, 1011, 7284, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 3642,
-      19060, 1012, 16934, 3642, 5433, 7818, 2028, 2012, 1037, 2051, 2007, 2240, 11637, 1012, 102
+      101, 2177, 1024, 3642, 1011, 7284, 2054, 1024, 3642, 19060, 1012, 16934, 3642, 5433, 7818,
+      2028, 2012, 1037, 2051, 2007, 2240, 11637, 1012, 102
     ]
   },
   { "text": "code-diff", "ids": [101, 3642, 1011, 4487, 4246, 102] },
@@ -795,11 +788,10 @@
   },
   { "text": "code-diff-wipe", "ids": [101, 3642, 1011, 4487, 4246, 1011, 13387, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Code Diff Wipe. A scene transition that wipes through added and removed code lines.",
+    "text": "group: transition-primitive\nwhat: Code Diff Wipe. A scene transition that wipes through added and removed code lines.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      3642, 4487, 4246, 13387, 1012, 1037, 3496, 6653, 2008, 13387, 2015, 2083, 2794, 1998, 3718,
-      3642, 3210, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 3642, 4487, 4246, 13387, 1012, 1037, 3496,
+      6653, 2008, 13387, 2015, 2083, 2794, 1998, 3718, 3642, 3210, 1012, 102
     ]
   },
   { "text": "code-highlight", "ids": [101, 3642, 1011, 12944, 102] },
@@ -1203,39 +1195,37 @@
   },
   { "text": "collapsible", "ids": [101, 8902, 2721, 4523, 7028, 102] },
   {
-    "text": "group: collapsible, disclosure, remocn-port, ui-primitive\nwhat: Collapsible. A compact disclosure surface with an accessible trigger, restrained chevron motion, and deterministic height reveal",
+    "text": "group: collapsible, disclosure, ui-primitive\nwhat: Collapsible. A compact disclosure surface with an accessible trigger, restrained chevron motion, and deterministic height reveal",
     "ids": [
-      101, 2177, 1024, 8902, 2721, 4523, 7028, 1010, 19380, 1010, 2128, 5302, 2278, 2078, 1011,
-      3417, 1010, 21318, 1011, 10968, 2054, 1024, 8902, 2721, 4523, 7028, 1012, 1037, 9233, 19380,
-      3302, 2007, 2019, 7801, 9495, 1010, 19868, 18178, 28588, 4367, 1010, 1998, 28283, 25300,
-      10074, 4578, 7487, 102
+      101, 2177, 1024, 8902, 2721, 4523, 7028, 1010, 19380, 1010, 21318, 1011, 10968, 2054, 1024,
+      8902, 2721, 4523, 7028, 1012, 1037, 9233, 19380, 3302, 2007, 2019, 7801, 9495, 1010, 19868,
+      18178, 28588, 4367, 1010, 1998, 28283, 25300, 10074, 4578, 7487, 102
     ]
   },
   { "text": "combobox", "ids": [101, 25025, 8758, 102] },
   {
-    "text": "group: combobox, control, remocn-port, ui-primitive\nwhat: Combobox. A searchable combobox with an anchored option list and explicit selection check",
+    "text": "group: combobox, control, ui-primitive\nwhat: Combobox. A searchable combobox with an anchored option list and explicit selection check",
     "ids": [
-      101, 2177, 1024, 25025, 8758, 1010, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 25025, 8758, 1012, 1037, 3945, 3085, 25025, 8758, 2007, 2019,
-      14453, 5724, 2862, 1998, 13216, 4989, 4638, 102
+      101, 2177, 1024, 25025, 8758, 1010, 2491, 1010, 21318, 1011, 10968, 2054, 1024, 25025, 8758,
+      1012, 1037, 3945, 3085, 25025, 8758, 2007, 2019, 14453, 5724, 2862, 1998, 13216, 4989, 4638,
+      102
     ]
   },
   { "text": "command-menu", "ids": [101, 3094, 1011, 12183, 102] },
   {
-    "text": "group: command-menu, overlay, remocn-port, ui-primitive\nwhat: Command Menu. An Operator Black command palette with a recessed search field and mint selection check",
+    "text": "group: command-menu, overlay, ui-primitive\nwhat: Command Menu. An Operator Black command palette with a recessed search field and mint selection check",
     "ids": [
-      101, 2177, 1024, 3094, 1011, 12183, 1010, 2058, 8485, 1010, 2128, 5302, 2278, 2078, 1011,
-      3417, 1010, 21318, 1011, 10968, 2054, 1024, 3094, 12183, 1012, 2019, 6872, 2304, 3094, 27396,
-      2007, 1037, 28290, 2098, 3945, 2492, 1998, 12927, 4989, 4638, 102
+      101, 2177, 1024, 3094, 1011, 12183, 1010, 2058, 8485, 1010, 21318, 1011, 10968, 2054, 1024,
+      3094, 12183, 1012, 2019, 6872, 2304, 3094, 27396, 2007, 1037, 28290, 2098, 3945, 2492, 1998,
+      12927, 4989, 4638, 102
     ]
   },
   { "text": "command-menu-item", "ids": [101, 3094, 1011, 12183, 1011, 8875, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Command Menu Item. An Operator Black command-row specimen with technical shortcuts and restrained selection state.",
+    "text": "group: ui-primitive\nwhat: Command Menu Item. An Operator Black command-row specimen with technical shortcuts and restrained selection state.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      3094, 12183, 8875, 1012, 2019, 6872, 2304, 3094, 1011, 5216, 11375, 2007, 4087, 2460, 12690,
-      2015, 1998, 19868, 4989, 2110, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 3094, 12183, 8875, 1012, 2019, 6872, 2304,
+      3094, 1011, 5216, 11375, 2007, 4087, 2460, 12690, 2015, 1998, 19868, 4989, 2110, 1012, 102
     ]
   },
   { "text": "comparison-split", "ids": [101, 7831, 1011, 3975, 102] },
@@ -1251,10 +1241,10 @@
   },
   { "text": "confetti", "ids": [101, 9530, 7959, 6916, 102] },
   {
-    "text": "group: effect, remocn-port\nwhat: Confetti. A deterministic celebration burst with seeded particles and gravity.",
+    "text": "group: effect\nwhat: Confetti. A deterministic celebration burst with seeded particles and gravity.",
     "ids": [
-      101, 2177, 1024, 3466, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 9530, 7959, 6916,
-      1012, 1037, 28283, 25300, 10074, 7401, 6532, 2007, 13916, 9309, 1998, 8992, 1012, 102
+      101, 2177, 1024, 3466, 2054, 1024, 9530, 7959, 6916, 1012, 1037, 28283, 25300, 10074, 7401,
+      6532, 2007, 13916, 9309, 1998, 8992, 1012, 102
     ]
   },
   { "text": "conic-progress-ring", "ids": [101, 9530, 2594, 1011, 5082, 1011, 3614, 102] },
@@ -1280,11 +1270,11 @@
   },
   { "text": "context-menu", "ids": [101, 6123, 1011, 12183, 102] },
   {
-    "text": "group: context-menu, menu, remocn-port, ui-primitive\nwhat: Context Menu. An Operator Black context menu with a pointer anchor, technical shortcuts, and mint selection check",
+    "text": "group: context-menu, menu, ui-primitive\nwhat: Context Menu. An Operator Black context menu with a pointer anchor, technical shortcuts, and mint selection check",
     "ids": [
-      101, 2177, 1024, 6123, 1011, 12183, 1010, 12183, 1010, 2128, 5302, 2278, 2078, 1011, 3417,
-      1010, 21318, 1011, 10968, 2054, 1024, 6123, 12183, 1012, 2019, 6872, 2304, 6123, 12183, 2007,
-      1037, 20884, 8133, 1010, 4087, 2460, 12690, 2015, 1010, 1998, 12927, 4989, 4638, 102
+      101, 2177, 1024, 6123, 1011, 12183, 1010, 12183, 1010, 21318, 1011, 10968, 2054, 1024, 6123,
+      12183, 1012, 2019, 6872, 2304, 6123, 12183, 2007, 1037, 20884, 8133, 1010, 4087, 2460, 12690,
+      2015, 1010, 1998, 12927, 4989, 4638, 102
     ]
   },
   { "text": "count-up", "ids": [101, 4175, 1011, 2039, 102] },
@@ -1330,12 +1320,11 @@
   },
   { "text": "cursor", "ids": [101, 12731, 25301, 2099, 102] },
   {
-    "text": "group: cursor, pointer, remocn-port, ui-primitive\nwhat: Cursor. A technical SVG pointer with guided travel, a functional click ripple, and a compact action callout",
+    "text": "group: cursor, pointer, ui-primitive\nwhat: Cursor. A technical SVG pointer with guided travel, a functional click ripple, and a compact action callout",
     "ids": [
-      101, 2177, 1024, 12731, 25301, 2099, 1010, 20884, 1010, 2128, 5302, 2278, 2078, 1011, 3417,
-      1010, 21318, 1011, 10968, 2054, 1024, 12731, 25301, 2099, 1012, 1037, 4087, 17917, 2290,
-      20884, 2007, 8546, 3604, 1010, 1037, 8360, 11562, 24644, 1010, 1998, 1037, 9233, 2895, 2655,
-      5833, 102
+      101, 2177, 1024, 12731, 25301, 2099, 1010, 20884, 1010, 21318, 1011, 10968, 2054, 1024, 12731,
+      25301, 2099, 1012, 1037, 4087, 17917, 2290, 20884, 2007, 8546, 3604, 1010, 1037, 8360, 11562,
+      24644, 1010, 1998, 1037, 9233, 2895, 2655, 5833, 102
     ]
   },
   {
@@ -1367,10 +1356,10 @@
   },
   { "text": "dashboard-populate", "ids": [101, 24923, 1011, 3769, 9869, 102] },
   {
-    "text": "group: data, remocn-port\nwhat: Dashboard Populate. Skeleton dashboard cards resolve into populated charts and metrics.",
+    "text": "group: data\nwhat: Dashboard Populate. Skeleton dashboard cards resolve into populated charts and metrics.",
     "ids": [
-      101, 2177, 1024, 2951, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 24923, 3769,
-      9869, 1012, 13526, 24923, 5329, 10663, 2046, 10357, 6093, 1998, 12046, 2015, 1012, 102
+      101, 2177, 1024, 2951, 2054, 1024, 24923, 3769, 9869, 1012, 13526, 24923, 5329, 10663, 2046,
+      10357, 6093, 1998, 12046, 2015, 1012, 102
     ]
   },
   { "text": "data-chart", "ids": [101, 2951, 1011, 3673, 102] },
@@ -1384,10 +1373,10 @@
   },
   { "text": "data-flow-pipes", "ids": [101, 2951, 1011, 4834, 1011, 12432, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Data Flow Pipes. Animated pipe routes move packets between data nodes.",
+    "text": "group: showcase\nwhat: Data Flow Pipes. Animated pipe routes move packets between data nodes.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 2951, 4834,
-      12432, 1012, 6579, 8667, 5847, 2693, 23730, 2090, 2951, 14164, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 2951, 4834, 12432, 1012, 6579, 8667, 5847, 2693, 23730,
+      2090, 2951, 14164, 1012, 102
     ]
   },
   { "text": "decline-chart", "ids": [101, 6689, 1011, 3673, 102] },
@@ -1425,28 +1414,27 @@
   },
   { "text": "device-mockup-zoom", "ids": [101, 5080, 1011, 12934, 6279, 1011, 24095, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Device Mockup Zoom. A device frame scales forward while UI panels parallax behind it.",
+    "text": "group: showcase\nwhat: Device Mockup Zoom. A device frame scales forward while UI panels parallax behind it.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 5080, 12934,
-      6279, 24095, 1012, 1037, 5080, 4853, 9539, 2830, 2096, 21318, 9320, 11498, 4571, 2595, 2369,
-      2009, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 5080, 12934, 6279, 24095, 1012, 1037, 5080, 4853, 9539,
+      2830, 2096, 21318, 9320, 11498, 4571, 2595, 2369, 2009, 1012, 102
     ]
   },
   { "text": "dialog", "ids": [101, 13764, 8649, 102] },
   {
-    "text": "group: dialog, overlay, remocn-port, ui-primitive\nwhat: Dialog. An Operator Black centered modal with a flat backdrop, restrained actions, and Soft Optical motion",
+    "text": "group: dialog, overlay, ui-primitive\nwhat: Dialog. An Operator Black centered modal with a flat backdrop, restrained actions, and Soft Optical motion",
     "ids": [
-      101, 2177, 1024, 13764, 8649, 1010, 2058, 8485, 1010, 2128, 5302, 2278, 2078, 1011, 3417,
-      1010, 21318, 1011, 10968, 2054, 1024, 13764, 8649, 1012, 2019, 6872, 2304, 8857, 16913, 2389,
-      2007, 1037, 4257, 18876, 1010, 19868, 4506, 1010, 1998, 3730, 9380, 4367, 102
+      101, 2177, 1024, 13764, 8649, 1010, 2058, 8485, 1010, 21318, 1011, 10968, 2054, 1024, 13764,
+      8649, 1012, 2019, 6872, 2304, 8857, 16913, 2389, 2007, 1037, 4257, 18876, 1010, 19868, 4506,
+      1010, 1998, 3730, 9380, 4367, 102
     ]
   },
   { "text": "directional-wipe", "ids": [101, 20396, 1011, 13387, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Directional Wipe. A directional scene push that slides one panel over another.",
+    "text": "group: transition-primitive\nwhat: Directional Wipe. A directional scene push that slides one panel over another.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      20396, 13387, 1012, 1037, 20396, 3496, 5245, 2008, 14816, 2028, 5997, 2058, 2178, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 20396, 13387, 1012, 1037, 20396, 3496, 5245,
+      2008, 14816, 2028, 5997, 2058, 2178, 1012, 102
     ]
   },
   { "text": "domain-warp-dissolve", "ids": [101, 5884, 1011, 24136, 1011, 21969, 102] },
@@ -1459,19 +1447,19 @@
   },
   { "text": "drag-and-drop-flow", "ids": [101, 8011, 1011, 1998, 1011, 4530, 1011, 4834, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Drag and Drop Flow. Cards drag from backlog to timeline with snap feedback.",
+    "text": "group: showcase\nwhat: Drag and Drop Flow. Cards drag from backlog to timeline with snap feedback.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 8011, 1998,
-      4530, 4834, 1012, 5329, 8011, 2013, 2067, 21197, 2000, 17060, 2007, 10245, 12247, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 8011, 1998, 4530, 4834, 1012, 5329, 8011, 2013, 2067,
+      21197, 2000, 17060, 2007, 10245, 12247, 1012, 102
     ]
   },
   { "text": "drawer", "ids": [101, 13065, 102] },
   {
-    "text": "group: drawer, overlay, remocn-port, ui-primitive\nwhat: Drawer. An Operator Black bottom drawer with matte rows and edge-attached Soft Optical motion",
+    "text": "group: drawer, overlay, ui-primitive\nwhat: Drawer. An Operator Black bottom drawer with matte rows and edge-attached Soft Optical motion",
     "ids": [
-      101, 2177, 1024, 13065, 1010, 2058, 8485, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 13065, 1012, 2019, 6872, 2304, 3953, 13065, 2007, 4717, 2063,
-      10281, 1998, 3341, 1011, 4987, 3730, 9380, 4367, 102
+      101, 2177, 1024, 13065, 1010, 2058, 8485, 1010, 21318, 1011, 10968, 2054, 1024, 13065, 1012,
+      2019, 6872, 2304, 3953, 13065, 2007, 4717, 2063, 10281, 1998, 3341, 1011, 4987, 3730, 9380,
+      4367, 102
     ]
   },
   { "text": "drift-hold", "ids": [101, 11852, 1011, 2907, 102] },
@@ -1486,20 +1474,20 @@
   },
   { "text": "dropdown-menu", "ids": [101, 4530, 7698, 1011, 12183, 102] },
   {
-    "text": "group: dropdown-menu, menu, remocn-port, ui-primitive\nwhat: Dropdown Menu. An Operator Black dropdown menu with origin-aware motion and a mint selection check",
+    "text": "group: dropdown-menu, menu, ui-primitive\nwhat: Dropdown Menu. An Operator Black dropdown menu with origin-aware motion and a mint selection check",
     "ids": [
-      101, 2177, 1024, 4530, 7698, 1011, 12183, 1010, 12183, 1010, 2128, 5302, 2278, 2078, 1011,
-      3417, 1010, 21318, 1011, 10968, 2054, 1024, 4530, 7698, 12183, 1012, 2019, 6872, 2304, 4530,
-      7698, 12183, 2007, 4761, 1011, 5204, 4367, 1998, 1037, 12927, 4989, 4638, 102
+      101, 2177, 1024, 4530, 7698, 1011, 12183, 1010, 12183, 1010, 21318, 1011, 10968, 2054, 1024,
+      4530, 7698, 12183, 1012, 2019, 6872, 2304, 4530, 7698, 12183, 2007, 4761, 1011, 5204, 4367,
+      1998, 1037, 12927, 4989, 4638, 102
     ]
   },
   { "text": "dropdown-menu-item", "ids": [101, 4530, 7698, 1011, 12183, 1011, 8875, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Dropdown Menu Item. An Operator Black menu-row specimen showing idle, hover, selected, and disabled treatments.",
+    "text": "group: ui-primitive\nwhat: Dropdown Menu Item. An Operator Black menu-row specimen showing idle, hover, selected, and disabled treatments.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      4530, 7698, 12183, 8875, 1012, 2019, 6872, 2304, 12183, 1011, 5216, 11375, 4760, 18373, 1010,
-      25215, 2099, 1010, 3479, 1010, 1998, 9776, 13441, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 4530, 7698, 12183, 8875, 1012, 2019, 6872,
+      2304, 12183, 1011, 5216, 11375, 4760, 18373, 1010, 25215, 2099, 1010, 3479, 1010, 1998, 9776,
+      13441, 1012, 102
     ]
   },
   { "text": "dynamic-grid", "ids": [101, 8790, 1011, 8370, 102] },
@@ -1526,19 +1514,19 @@
   },
   { "text": "ecosystem-constellation", "ids": [101, 16927, 1011, 15300, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Ecosystem Constellation. Orbiting product nodes connect into a constellation graph.",
+    "text": "group: showcase\nwhat: Ecosystem Constellation. Orbiting product nodes connect into a constellation graph.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 16927, 15300,
-      1012, 26472, 4031, 14164, 7532, 2046, 1037, 15300, 10629, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 16927, 15300, 1012, 26472, 4031, 14164, 7532, 2046, 1037,
+      15300, 10629, 1012, 102
     ]
   },
   { "text": "empty", "ids": [101, 4064, 102] },
   {
-    "text": "group: empty, remocn-port, state, ui-primitive\nwhat: Empty. An Operator Black empty state using open space, a technical icon, clear copy, and neutral action",
+    "text": "group: empty, state, ui-primitive\nwhat: Empty. An Operator Black empty state using open space, a technical icon, clear copy, and neutral action",
     "ids": [
-      101, 2177, 1024, 4064, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2110, 1010, 21318,
-      1011, 10968, 2054, 1024, 4064, 1012, 2019, 6872, 2304, 4064, 2110, 2478, 2330, 2686, 1010,
-      1037, 4087, 12696, 1010, 3154, 6100, 1010, 1998, 8699, 2895, 102
+      101, 2177, 1024, 4064, 1010, 2110, 1010, 21318, 1011, 10968, 2054, 1024, 4064, 1012, 2019,
+      6872, 2304, 4064, 2110, 2478, 2330, 2686, 1010, 1037, 4087, 12696, 1010, 3154, 6100, 1010,
+      1998, 8699, 2895, 102
     ]
   },
   { "text": "facet-morph", "ids": [101, 2227, 2102, 1011, 22822, 8458, 102] },
@@ -1568,11 +1556,10 @@
   },
   { "text": "field", "ids": [101, 2492, 102] },
   {
-    "text": "group: field, form, remocn-port, ui-primitive\nwhat: Field. A labeled field wrapper with an accessible control and supporting description",
+    "text": "group: field, form, ui-primitive\nwhat: Field. A labeled field wrapper with an accessible control and supporting description",
     "ids": [
-      101, 2177, 1024, 2492, 1010, 2433, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 2492, 1012, 1037, 12599, 2492, 10236, 4842, 2007, 2019, 7801, 2491,
-      1998, 4637, 6412, 102
+      101, 2177, 1024, 2492, 1010, 2433, 1010, 21318, 1011, 10968, 2054, 1024, 2492, 1012, 1037,
+      12599, 2492, 10236, 4842, 2007, 2019, 7801, 2491, 1998, 4637, 6412, 102
     ]
   },
   { "text": "flash-through-white", "ids": [101, 5956, 1011, 2083, 1011, 2317, 102] },
@@ -1603,11 +1590,11 @@
   },
   { "text": "focus-blur-resolve", "ids": [101, 3579, 1011, 14819, 1011, 10663, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Focus Blur Resolve. A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
+    "text": "group: motion-primitive, typography\nwhat: Focus Blur Resolve. A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 3579, 14819, 10663, 1012, 1037, 12882, 3579, 4139, 2013, 3082, 14819,
-      2000, 15594, 3793, 1010, 2059, 1037, 3730, 14819, 1011, 2041, 6164, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 3579, 14819, 10663,
+      1012, 1037, 12882, 3579, 4139, 2013, 3082, 14819, 2000, 15594, 3793, 1010, 2059, 1037, 3730,
+      14819, 1011, 2041, 6164, 1012, 102
     ]
   },
   { "text": "focus-rack", "ids": [101, 3579, 1011, 14513, 102] },
@@ -1635,11 +1622,10 @@
   },
   { "text": "frosted-glass-wipe", "ids": [101, 10097, 2098, 1011, 3221, 1011, 13387, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Frosted Glass Wipe. A scene transition through a moving frosted glass pane.",
+    "text": "group: transition-primitive\nwhat: Frosted Glass Wipe. A scene transition through a moving frosted glass pane.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      10097, 2098, 3221, 13387, 1012, 1037, 3496, 6653, 2083, 1037, 3048, 10097, 2098, 3221, 6090,
-      2063, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 10097, 2098, 3221, 13387, 1012, 1037, 3496,
+      6653, 2083, 1037, 3048, 10097, 2098, 3221, 6090, 2063, 1012, 102
     ]
   },
   { "text": "gesture-tap", "ids": [101, 9218, 1011, 11112, 102] },
@@ -1654,10 +1640,10 @@
   },
   { "text": "glass-code-block", "ids": [101, 3221, 1011, 3642, 1011, 3796, 102] },
   {
-    "text": "group: code-animation, remocn-port\nwhat: Glass Code Block. A translucent code block with scanned line highlights.",
+    "text": "group: code-animation\nwhat: Glass Code Block. A translucent code block with scanned line highlights.",
     "ids": [
-      101, 2177, 1024, 3642, 1011, 7284, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 3221,
-      3642, 3796, 1012, 1037, 22897, 3642, 3796, 2007, 11728, 2240, 11637, 1012, 102
+      101, 2177, 1024, 3642, 1011, 7284, 2054, 1024, 3221, 3642, 3796, 1012, 1037, 22897, 3642,
+      3796, 2007, 11728, 2240, 11637, 1012, 102
     ]
   },
   { "text": "glitch", "ids": [101, 1043, 15909, 2818, 102] },
@@ -1779,20 +1765,19 @@
   },
   { "text": "hero-device-assemble", "ids": [101, 5394, 1011, 5080, 1011, 21365, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Hero Device Assemble. A landing-page device hero assembles from layers.",
+    "text": "group: showcase\nwhat: Hero Device Assemble. A landing-page device hero assembles from layers.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 5394, 5080,
-      21365, 1012, 1037, 4899, 1011, 3931, 5080, 5394, 21365, 2015, 2013, 9014, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 5394, 5080, 21365, 1012, 1037, 4899, 1011, 3931, 5080,
+      5394, 21365, 2015, 2013, 9014, 1012, 102
     ]
   },
   { "text": "hover-card", "ids": [101, 25215, 2099, 1011, 4003, 102] },
   {
-    "text": "group: hover-card, overlay, remocn-port, ui-primitive\nwhat: Hover Card. An Operator Black hover card with a matte profile preview and origin-aware Soft Optical reveal",
+    "text": "group: hover-card, overlay, ui-primitive\nwhat: Hover Card. An Operator Black hover card with a matte profile preview and origin-aware Soft Optical reveal",
     "ids": [
-      101, 2177, 1024, 25215, 2099, 1011, 4003, 1010, 2058, 8485, 1010, 2128, 5302, 2278, 2078,
-      1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024, 25215, 2099, 4003, 1012, 2019, 6872, 2304,
-      25215, 2099, 4003, 2007, 1037, 4717, 2063, 6337, 19236, 1998, 4761, 1011, 5204, 3730, 9380,
-      7487, 102
+      101, 2177, 1024, 25215, 2099, 1011, 4003, 1010, 2058, 8485, 1010, 21318, 1011, 10968, 2054,
+      1024, 25215, 2099, 4003, 1012, 2019, 6872, 2304, 25215, 2099, 4003, 2007, 1037, 4717, 2063,
+      6337, 19236, 1998, 4761, 1011, 5204, 3730, 9380, 7487, 102
     ]
   },
   { "text": "icon-morph-beat", "ids": [101, 12696, 1011, 22822, 8458, 1011, 3786, 102] },
@@ -1820,29 +1805,26 @@
     "ids": [101, 3746, 1011, 7818, 1011, 2000, 1011, 2440, 18182, 102]
   },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Image Expand to Fullscreen. An image tile expands into a full-frame scene transition.",
+    "text": "group: transition-primitive\nwhat: Image Expand to Fullscreen. An image tile expands into a full-frame scene transition.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      3746, 7818, 2000, 2440, 18182, 1012, 2019, 3746, 14090, 24545, 2046, 1037, 2440, 1011, 4853,
-      3496, 6653, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 3746, 7818, 2000, 2440, 18182, 1012, 2019,
+      3746, 14090, 24545, 2046, 1037, 2440, 1011, 4853, 3496, 6653, 1012, 102
     ]
   },
   { "text": "infinite-bento-pan", "ids": [101, 10709, 1011, 6260, 2080, 1011, 6090, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Infinite Bento Pan. A bento board pans forever with feature cards at different depths.",
+    "text": "group: showcase\nwhat: Infinite Bento Pan. A bento board pans forever with feature cards at different depths.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 10709, 6260,
-      2080, 6090, 1012, 1037, 6260, 2080, 2604, 6090, 2015, 5091, 2007, 3444, 5329, 2012, 2367,
-      11143, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 10709, 6260, 2080, 6090, 1012, 1037, 6260, 2080, 2604,
+      6090, 2015, 5091, 2007, 3444, 5329, 2012, 2367, 11143, 1012, 102
     ]
   },
   { "text": "infinite-marquee", "ids": [101, 10709, 1011, 9388, 4226, 2063, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Infinite Marquee. A looping marquee primitive for logos, tags, and feature pills.",
+    "text": "group: showcase\nwhat: Infinite Marquee. A looping marquee primitive for logos, tags, and feature pills.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 10709, 9388,
-      4226, 2063, 1012, 1037, 7077, 2075, 9388, 4226, 2063, 10968, 2005, 25571, 1010, 22073, 1010,
-      1998, 3444, 15345, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 10709, 9388, 4226, 2063, 1012, 1037, 7077, 2075, 9388,
+      4226, 2063, 10968, 2005, 25571, 1010, 22073, 1010, 1998, 3444, 15345, 1012, 102
     ]
   },
   { "text": "ink-bleed-reveal", "ids": [101, 10710, 1011, 19501, 1011, 7487, 102] },
@@ -1868,11 +1850,11 @@
   },
   { "text": "input", "ids": [101, 7953, 102] },
   {
-    "text": "group: field, input, remocn-port, ui-primitive\nwhat: Input. A video-safe text field with label, helper copy, focus state, and typed-value reveal",
+    "text": "group: field, input, ui-primitive\nwhat: Input. A video-safe text field with label, helper copy, focus state, and typed-value reveal",
     "ids": [
-      101, 2177, 1024, 2492, 1010, 7953, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 7953, 1012, 1037, 2678, 1011, 3647, 3793, 2492, 2007, 3830, 1010,
-      2393, 2121, 6100, 1010, 3579, 2110, 1010, 1998, 21189, 1011, 3643, 7487, 102
+      101, 2177, 1024, 2492, 1010, 7953, 1010, 21318, 1011, 10968, 2054, 1024, 7953, 1012, 1037,
+      2678, 1011, 3647, 3793, 2492, 2007, 3830, 1010, 2393, 2121, 6100, 1010, 3579, 2110, 1010,
+      1998, 21189, 1011, 3643, 7487, 102
     ]
   },
   { "text": "input-feedback", "ids": [101, 7953, 1011, 12247, 102] },
@@ -1886,20 +1868,20 @@
   },
   { "text": "input-group", "ids": [101, 7953, 1011, 2177, 102] },
   {
-    "text": "group: field, input-group, remocn-port, ui-primitive\nwhat: Input Group. A compound input with technical prefix, editable value, and attached action",
+    "text": "group: field, input-group, ui-primitive\nwhat: Input Group. A compound input with technical prefix, editable value, and attached action",
     "ids": [
-      101, 2177, 1024, 2492, 1010, 7953, 1011, 2177, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 7953, 2177, 1012, 1037, 7328, 7953, 2007, 4087, 17576, 1010,
-      10086, 3085, 3643, 1010, 1998, 4987, 2895, 102
+      101, 2177, 1024, 2492, 1010, 7953, 1011, 2177, 1010, 21318, 1011, 10968, 2054, 1024, 7953,
+      2177, 1012, 1037, 7328, 7953, 2007, 4087, 17576, 1010, 10086, 3085, 3643, 1010, 1998, 4987,
+      2895, 102
     ]
   },
   { "text": "input-otp", "ids": [101, 7953, 1011, 27178, 2361, 102] },
   {
-    "text": "group: field, input-otp, remocn-port, ui-primitive\nwhat: Input OTP. A segmented one-time-code field with tabular digits and an active slot",
+    "text": "group: field, input-otp, ui-primitive\nwhat: Input OTP. A segmented one-time-code field with tabular digits and an active slot",
     "ids": [
-      101, 2177, 1024, 2492, 1010, 7953, 1011, 27178, 2361, 1010, 2128, 5302, 2278, 2078, 1011,
-      3417, 1010, 21318, 1011, 10968, 2054, 1024, 7953, 27178, 2361, 1012, 1037, 6903, 2098, 2028,
-      1011, 2051, 1011, 3642, 2492, 2007, 21628, 7934, 16648, 1998, 2019, 3161, 10453, 102
+      101, 2177, 1024, 2492, 1010, 7953, 1011, 27178, 2361, 1010, 21318, 1011, 10968, 2054, 1024,
+      7953, 27178, 2361, 1012, 1037, 6903, 2098, 2028, 1011, 2051, 1011, 3642, 2492, 2007, 21628,
+      7934, 16648, 1998, 2019, 3161, 10453, 102
     ]
   },
   { "text": "instagram-follow", "ids": [101, 16021, 23091, 1011, 3582, 102] },
@@ -1939,20 +1921,20 @@
   },
   { "text": "item", "ids": [101, 8875, 102] },
   {
-    "text": "group: item, list, remocn-port, ui-primitive\nwhat: Item. A border-led interactive list row with neutral monogram, compact metadata, and deterministic hover state",
+    "text": "group: item, list, ui-primitive\nwhat: Item. A border-led interactive list row with neutral monogram, compact metadata, and deterministic hover state",
     "ids": [
-      101, 2177, 1024, 8875, 1010, 2862, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 8875, 1012, 1037, 3675, 1011, 2419, 9123, 2862, 5216, 2007, 8699,
-      18847, 13113, 1010, 9233, 27425, 1010, 1998, 28283, 25300, 10074, 25215, 2099, 2110, 102
+      101, 2177, 1024, 8875, 1010, 2862, 1010, 21318, 1011, 10968, 2054, 1024, 8875, 1012, 1037,
+      3675, 1011, 2419, 9123, 2862, 5216, 2007, 8699, 18847, 13113, 1010, 9233, 27425, 1010, 1998,
+      28283, 25300, 10074, 25215, 2099, 2110, 102
     ]
   },
   { "text": "kbd", "ids": [101, 21677, 2094, 102] },
   {
-    "text": "group: kbd, remocn-port, shortcut, ui-primitive\nwhat: Kbd. A physical keyboard legend with machined keycap depth, system monospace type, and finite press motion",
+    "text": "group: kbd, shortcut, ui-primitive\nwhat: Kbd. A physical keyboard legend with machined keycap depth, system monospace type, and finite press motion",
     "ids": [
-      101, 2177, 1024, 21677, 2094, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2460, 12690,
-      1010, 21318, 1011, 10968, 2054, 1024, 21677, 2094, 1012, 1037, 3558, 9019, 5722, 2007, 3698,
-      2094, 3145, 17695, 5995, 1010, 2291, 18847, 23058, 2828, 1010, 1998, 10713, 2811, 4367, 102
+      101, 2177, 1024, 21677, 2094, 1010, 2460, 12690, 1010, 21318, 1011, 10968, 2054, 1024, 21677,
+      2094, 1012, 1037, 3558, 9019, 5722, 2007, 3698, 2094, 3145, 17695, 5995, 1010, 2291, 18847,
+      23058, 2828, 1010, 1998, 10713, 2811, 4367, 102
     ]
   },
   { "text": "keyframe-scrub-stack", "ids": [101, 3145, 15643, 1011, 18157, 1011, 9991, 102] },
@@ -1966,11 +1948,11 @@
   },
   { "text": "kinetic-center-build", "ids": [101, 20504, 1011, 2415, 1011, 3857, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Kinetic Center Build. A centered phrase builder where words push into place until the line locks.",
+    "text": "group: motion-primitive, typography\nwhat: Kinetic Center Build. A centered phrase builder where words push into place until the line locks.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 20504, 2415, 3857, 1012, 1037, 8857, 7655, 12508, 2073, 2616, 5245,
-      2046, 2173, 2127, 1996, 2240, 11223, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 20504, 2415, 3857,
+      1012, 1037, 8857, 7655, 12508, 2073, 2616, 5245, 2046, 2173, 2127, 1996, 2240, 11223, 1012,
+      102
     ]
   },
   { "text": "kinetic-type-swap", "ids": [101, 20504, 1011, 2828, 1011, 19948, 102] },
@@ -1987,19 +1969,18 @@
   },
   { "text": "label", "ids": [101, 3830, 102] },
   {
-    "text": "group: form, label, remocn-port, ui-primitive\nwhat: Label. A calm form label with compact requirement metadata for video UI scenes",
+    "text": "group: form, label, ui-primitive\nwhat: Label. A calm form label with compact requirement metadata for video UI scenes",
     "ids": [
-      101, 2177, 1024, 2433, 1010, 3830, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 3830, 1012, 1037, 5475, 2433, 3830, 2007, 9233, 9095, 27425, 2005,
-      2678, 21318, 5019, 102
+      101, 2177, 1024, 2433, 1010, 3830, 1010, 21318, 1011, 10968, 2054, 1024, 3830, 1012, 1037,
+      5475, 2433, 3830, 2007, 9233, 9095, 27425, 2005, 2678, 21318, 5019, 102
     ]
   },
   { "text": "landing-code-showcase", "ids": [101, 4899, 1011, 3642, 1011, 13398, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Landing Code Showcase. A product hero where code output becomes a live preview card.",
+    "text": "group: showcase\nwhat: Landing Code Showcase. A product hero where code output becomes a live preview card.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 4899, 3642,
-      13398, 1012, 1037, 4031, 5394, 2073, 3642, 6434, 4150, 1037, 2444, 19236, 4003, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 4899, 3642, 13398, 1012, 1037, 4031, 5394, 2073, 3642,
+      6434, 4150, 1037, 2444, 19236, 4003, 1012, 102
     ]
   },
   { "text": "light-leak", "ids": [101, 2422, 1011, 17271, 102] },
@@ -2028,11 +2009,11 @@
   },
   { "text": "line-by-line-slide", "ids": [101, 2240, 1011, 2011, 1011, 2240, 1011, 7358, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Line-by-Line Slide. Each line enters from the left with staggered slide and exits to the right.",
+    "text": "group: motion-primitive, typography\nwhat: Line-by-Line Slide. Each line enters from the left with staggered slide and exits to the right.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2240, 1011, 2011, 1011, 2240, 7358, 1012, 2169, 2240, 8039, 2013,
-      1996, 2187, 2007, 14648, 7358, 1998, 16639, 2000, 1996, 2157, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2240, 1011, 2011,
+      1011, 2240, 7358, 1012, 2169, 2240, 8039, 2013, 1996, 2187, 2007, 14648, 7358, 1998, 16639,
+      2000, 1996, 2157, 1012, 102
     ]
   },
   { "text": "line-swap", "ids": [101, 2240, 1011, 19948, 102] },
@@ -2092,11 +2073,10 @@
   },
   { "text": "live-code-compilation", "ids": [101, 2444, 1011, 3642, 1011, 6268, 102] },
   {
-    "text": "group: code-animation, remocn-port\nwhat: Live Code Compilation. A code editor compiles into a preview panel with status ticks.",
+    "text": "group: code-animation\nwhat: Live Code Compilation. A code editor compiles into a preview panel with status ticks.",
     "ids": [
-      101, 2177, 1024, 3642, 1011, 7284, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 2444,
-      3642, 6268, 1012, 1037, 3642, 3559, 4012, 22090, 2015, 2046, 1037, 19236, 5997, 2007, 3570,
-      16356, 2015, 1012, 102
+      101, 2177, 1024, 3642, 1011, 7284, 2054, 1024, 2444, 3642, 6268, 1012, 1037, 3642, 3559, 4012,
+      22090, 2015, 2046, 1037, 19236, 5997, 2007, 3570, 16356, 2015, 1012, 102
     ]
   },
   { "text": "locked-nucleus-orbit", "ids": [101, 5299, 1011, 13502, 1011, 8753, 102] },
@@ -2294,20 +2274,18 @@
   },
   { "text": "mask-reveal-up", "ids": [101, 7308, 1011, 7487, 1011, 2039, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Mask Reveal Up. Lines reveal upward through a tight mask with compact stagger.",
+    "text": "group: motion-primitive, typography\nwhat: Mask Reveal Up. Lines reveal upward through a tight mask with compact stagger.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 7308, 7487, 2039, 1012, 3210, 7487, 10745, 2083, 1037, 4389, 7308,
-      2007, 9233, 2358, 27609, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 7308, 7487, 2039,
+      1012, 3210, 7487, 10745, 2083, 1037, 4389, 7308, 2007, 9233, 2358, 27609, 1012, 102
     ]
   },
   { "text": "masked-slide-reveal", "ids": [101, 16520, 1011, 7358, 1011, 7487, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Masked Slide Reveal. Words slide up out of an invisible horizontal mask one after another.",
+    "text": "group: motion-primitive, typography\nwhat: Masked Slide Reveal. Words slide up out of an invisible horizontal mask one after another.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 16520, 7358, 7487, 1012, 2616, 7358, 2039, 2041, 1997, 2019, 8841,
-      9876, 7308, 2028, 2044, 2178, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 16520, 7358, 7487,
+      1012, 2616, 7358, 2039, 2041, 1997, 2019, 8841, 9876, 7308, 2028, 2044, 2178, 1012, 102
     ]
   },
   { "text": "match-cut", "ids": [101, 2674, 1011, 3013, 102] },
@@ -2325,11 +2303,11 @@
   },
   { "text": "matrix-decode", "ids": [101, 8185, 1011, 21933, 3207, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Matrix Decode. Random scramble resolves left-to-right into the target text.",
+    "text": "group: motion-primitive, typography\nwhat: Matrix Decode. Random scramble resolves left-to-right into the target text.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 8185, 21933, 3207, 1012, 6721, 25740, 10663, 2015, 2187, 1011, 2000,
-      1011, 2157, 2046, 1996, 4539, 3793, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 8185, 21933, 3207,
+      1012, 6721, 25740, 10663, 2015, 2187, 1011, 2000, 1011, 2157, 2046, 1996, 4539, 3793, 1012,
+      102
     ]
   },
   { "text": "menu-morph", "ids": [101, 12183, 1011, 22822, 8458, 102] },
@@ -2343,28 +2321,27 @@
   },
   { "text": "menubar", "ids": [101, 12183, 8237, 102] },
   {
-    "text": "group: menubar, navigation, remocn-port, ui-primitive\nwhat: Menubar. A compact matte menubar for editor chrome with physical press response and restrained current-item emphasis",
+    "text": "group: menubar, navigation, ui-primitive\nwhat: Menubar. A compact matte menubar for editor chrome with physical press response and restrained current-item emphasis",
     "ids": [
-      101, 2177, 1024, 12183, 8237, 1010, 9163, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 12183, 8237, 1012, 1037, 9233, 4717, 2063, 12183, 8237, 2005,
-      3559, 18546, 2007, 3558, 2811, 3433, 1998, 19868, 2783, 1011, 8875, 7902, 102
+      101, 2177, 1024, 12183, 8237, 1010, 9163, 1010, 21318, 1011, 10968, 2054, 1024, 12183, 8237,
+      1012, 1037, 9233, 4717, 2063, 12183, 8237, 2005, 3559, 18546, 2007, 3558, 2811, 3433, 1998,
+      19868, 2783, 1011, 8875, 7902, 102
     ]
   },
   { "text": "mesh-gradient-bg", "ids": [101, 20437, 1011, 17978, 1011, 1038, 2290, 102] },
   {
-    "text": "group: effect, remocn-port\nwhat: Mesh Gradient Background. A render-safe mesh gradient using animated radial layers.",
+    "text": "group: effect\nwhat: Mesh Gradient Background. A render-safe mesh gradient using animated radial layers.",
     "ids": [
-      101, 2177, 1024, 3466, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 20437, 17978,
-      4281, 1012, 1037, 17552, 1011, 3647, 20437, 17978, 2478, 6579, 15255, 9014, 1012, 102
+      101, 2177, 1024, 3466, 2054, 1024, 20437, 17978, 4281, 1012, 1037, 17552, 1011, 3647, 20437,
+      17978, 2478, 6579, 15255, 9014, 1012, 102
     ]
   },
   { "text": "micro-scale-fade", "ids": [101, 12702, 1011, 4094, 1011, 12985, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Micro Scale Fade. A tiny scale-and-opacity transition for UI state changes.",
+    "text": "group: transition-primitive\nwhat: Micro Scale Fade. A tiny scale-and-opacity transition for UI state changes.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      12702, 4094, 12985, 1012, 1037, 4714, 4094, 1011, 1998, 1011, 6728, 6305, 3012, 6653, 2005,
-      21318, 2110, 3431, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 12702, 4094, 12985, 1012, 1037, 4714, 4094,
+      1011, 1998, 1011, 6728, 6305, 3012, 6653, 2005, 21318, 2110, 3431, 1012, 102
     ]
   },
   { "text": "micro-transitions", "ids": [101, 12702, 1011, 22166, 102] },
@@ -2463,20 +2440,20 @@
   },
   { "text": "native-select", "ids": [101, 3128, 1011, 7276, 102] },
   {
-    "text": "group: control, native-select, remocn-port, ui-primitive\nwhat: Native Select. A compact native select with a clear label, technical value, and focus state",
+    "text": "group: control, native-select, ui-primitive\nwhat: Native Select. A compact native select with a clear label, technical value, and focus state",
     "ids": [
-      101, 2177, 1024, 2491, 1010, 3128, 1011, 7276, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 3128, 7276, 1012, 1037, 9233, 3128, 7276, 2007, 1037, 3154,
-      3830, 1010, 4087, 3643, 1010, 1998, 3579, 2110, 102
+      101, 2177, 1024, 2491, 1010, 3128, 1011, 7276, 1010, 21318, 1011, 10968, 2054, 1024, 3128,
+      7276, 1012, 1037, 9233, 3128, 7276, 2007, 1037, 3154, 3830, 1010, 4087, 3643, 1010, 1998,
+      3579, 2110, 102
     ]
   },
   { "text": "navigation-menu", "ids": [101, 9163, 1011, 12183, 102] },
   {
-    "text": "group: navigation, navigation-menu, remocn-port, ui-primitive\nwhat: Navigation Menu. An anchored navigation menu with a functional selection edge and opaque trigger-origin preview surface",
+    "text": "group: navigation, navigation-menu, ui-primitive\nwhat: Navigation Menu. An anchored navigation menu with a functional selection edge and opaque trigger-origin preview surface",
     "ids": [
-      101, 2177, 1024, 9163, 1010, 9163, 1011, 12183, 1010, 2128, 5302, 2278, 2078, 1011, 3417,
-      1010, 21318, 1011, 10968, 2054, 1024, 9163, 12183, 1012, 2019, 14453, 9163, 12183, 2007, 1037,
-      8360, 4989, 3341, 1998, 28670, 9495, 1011, 4761, 19236, 3302, 102
+      101, 2177, 1024, 9163, 1010, 9163, 1011, 12183, 1010, 21318, 1011, 10968, 2054, 1024, 9163,
+      12183, 1012, 2019, 14453, 9163, 12183, 2007, 1037, 8360, 4989, 3341, 1998, 28670, 9495, 1011,
+      4761, 19236, 3302, 102
     ]
   },
   { "text": "news-ticker", "ids": [101, 2739, 1011, 16356, 2121, 102] },
@@ -2565,11 +2542,11 @@
     "ids": [101, 27120, 2075, 1011, 29096, 2099, 1011, 4834, 102]
   },
   {
-    "text": "group: onboarding, remocn-port, stepper, ui-flow\nwhat: Onboarding Stepper Flow. A composed onboarding flow with milestone rail, active step card, and next-action button",
+    "text": "group: onboarding, stepper, ui-flow\nwhat: Onboarding Stepper Flow. A composed onboarding flow with milestone rail, active step card, and next-action button",
     "ids": [
-      101, 2177, 1024, 27120, 2075, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 29096, 2099,
-      1010, 21318, 1011, 4834, 2054, 1024, 27120, 2075, 29096, 2099, 4834, 1012, 1037, 3605, 27120,
-      2075, 4834, 2007, 19199, 4334, 1010, 3161, 3357, 4003, 1010, 1998, 2279, 1011, 2895, 6462, 102
+      101, 2177, 1024, 27120, 2075, 1010, 29096, 2099, 1010, 21318, 1011, 4834, 2054, 1024, 27120,
+      2075, 29096, 2099, 4834, 1012, 1037, 3605, 27120, 2075, 4834, 2007, 19199, 4334, 1010, 3161,
+      3357, 4003, 1010, 1998, 2279, 1011, 2895, 6462, 102
     ]
   },
   { "text": "orbit-ring-camera", "ids": [101, 8753, 1011, 3614, 1011, 4950, 102] },
@@ -2650,12 +2627,11 @@
   },
   { "text": "pagination", "ids": [101, 6643, 20876, 3508, 102] },
   {
-    "text": "group: navigation, pagination, remocn-port, ui-primitive\nwhat: Pagination. A tactile pagination row with 40px controls, a recessed current page, and deterministic press feedback",
+    "text": "group: navigation, pagination, ui-primitive\nwhat: Pagination. A tactile pagination row with 40px controls, a recessed current page, and deterministic press feedback",
     "ids": [
-      101, 2177, 1024, 9163, 1010, 6643, 20876, 3508, 1010, 2128, 5302, 2278, 2078, 1011, 3417,
-      1010, 21318, 1011, 10968, 2054, 1024, 6643, 20876, 3508, 1012, 1037, 11937, 6593, 9463, 6643,
-      20876, 3508, 5216, 2007, 2871, 2361, 2595, 7711, 1010, 1037, 28290, 2098, 2783, 3931, 1010,
-      1998, 28283, 25300, 10074, 2811, 12247, 102
+      101, 2177, 1024, 9163, 1010, 6643, 20876, 3508, 1010, 21318, 1011, 10968, 2054, 1024, 6643,
+      20876, 3508, 1012, 1037, 11937, 6593, 9463, 6643, 20876, 3508, 5216, 2007, 2871, 2361, 2595,
+      7711, 1010, 1037, 28290, 2098, 2783, 3931, 1010, 1998, 28283, 25300, 10074, 2811, 12247, 102
     ]
   },
   { "text": "pan-stations", "ids": [101, 6090, 1011, 3703, 102] },
@@ -2734,20 +2710,19 @@
   },
   { "text": "per-character-rise", "ids": [101, 2566, 1011, 2839, 1011, 4125, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Per Character Rise. Letters slide up from below with crisp, deliberate kinetic timing.",
+    "text": "group: motion-primitive, typography\nwhat: Per Character Rise. Letters slide up from below with crisp, deliberate kinetic timing.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2566, 2839, 4125, 1012, 4144, 7358, 2039, 2013, 2917, 2007, 15594,
-      1010, 15063, 20504, 10984, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2566, 2839, 4125,
+      1012, 4144, 7358, 2039, 2013, 2917, 2007, 15594, 1010, 15063, 20504, 10984, 1012, 102
     ]
   },
   { "text": "per-word-crossfade", "ids": [101, 2566, 1011, 2773, 1011, 2892, 7011, 3207, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Per-Word Crossfade. Words gently fade into place with a short vertical drift for calm keynote rhythm.",
+    "text": "group: motion-primitive, typography\nwhat: Per-Word Crossfade. Words gently fade into place with a short vertical drift for calm keynote rhythm.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2566, 1011, 2773, 2892, 7011, 3207, 1012, 2616, 5251, 12985, 2046,
-      2173, 2007, 1037, 2460, 7471, 11852, 2005, 5475, 25569, 6348, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2566, 1011, 2773,
+      2892, 7011, 3207, 1012, 2616, 5251, 12985, 2046, 2173, 2007, 1037, 2460, 7471, 11852, 2005,
+      5475, 25569, 6348, 1012, 102
     ]
   },
   { "text": "per-word-rise", "ids": [101, 2566, 1011, 2773, 1011, 4125, 102] },
@@ -2776,11 +2751,11 @@
   },
   { "text": "perspective-marquee", "ids": [101, 7339, 1011, 9388, 4226, 2063, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Perspective Marquee. A 3D tilted marquee with depth feel as items roll toward the horizon.",
+    "text": "group: motion-primitive, typography\nwhat: Perspective Marquee. A 3D tilted marquee with depth feel as items roll toward the horizon.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 7339, 9388, 4226, 2063, 1012, 1037, 7605, 9939, 9388, 4226, 2063,
-      2007, 5995, 2514, 2004, 5167, 4897, 2646, 1996, 9154, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 7339, 9388, 4226,
+      2063, 1012, 1037, 7605, 9939, 9388, 4226, 2063, 2007, 5995, 2514, 2004, 5167, 4897, 2646,
+      1996, 9154, 1012, 102
     ]
   },
   { "text": "physical-exit", "ids": [101, 3558, 1011, 6164, 102] },
@@ -2822,11 +2797,11 @@
   },
   { "text": "popover", "ids": [101, 3769, 7840, 102] },
   {
-    "text": "group: overlay, popover, remocn-port, ui-primitive\nwhat: Popover. An Operator Black anchored popover with a matte surface and trigger-origin Soft Optical motion",
+    "text": "group: overlay, popover, ui-primitive\nwhat: Popover. An Operator Black anchored popover with a matte surface and trigger-origin Soft Optical motion",
     "ids": [
-      101, 2177, 1024, 2058, 8485, 1010, 3769, 7840, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010,
-      21318, 1011, 10968, 2054, 1024, 3769, 7840, 1012, 2019, 6872, 2304, 14453, 3769, 7840, 2007,
-      1037, 4717, 2063, 3302, 1998, 9495, 1011, 4761, 3730, 9380, 4367, 102
+      101, 2177, 1024, 2058, 8485, 1010, 3769, 7840, 1010, 21318, 1011, 10968, 2054, 1024, 3769,
+      7840, 1012, 2019, 6872, 2304, 14453, 3769, 7840, 2007, 1037, 4717, 2063, 3302, 1998, 9495,
+      1011, 4761, 3730, 9380, 4367, 102
     ]
   },
   { "text": "press-ripple", "ids": [101, 2811, 1011, 24644, 102] },
@@ -2844,28 +2819,26 @@
   },
   { "text": "pricing-tier-focus", "ids": [101, 20874, 1011, 7563, 1011, 3579, 102] },
   {
-    "text": "group: remocn-port, showcase\nwhat: Pricing Tier Focus. Pricing cards shift focus from free to pro with spotlight emphasis.",
+    "text": "group: showcase\nwhat: Pricing Tier Focus. Pricing cards shift focus from free to pro with spotlight emphasis.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 20874, 7563,
-      3579, 1012, 20874, 5329, 5670, 3579, 2013, 2489, 2000, 4013, 2007, 17763, 7902, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 20874, 7563, 3579, 1012, 20874, 5329, 5670, 3579, 2013,
+      2489, 2000, 4013, 2007, 17763, 7902, 1012, 102
     ]
   },
   { "text": "progress", "ids": [101, 5082, 102] },
   {
-    "text": "group: progress, remocn-port, status, ui-primitive\nwhat: Progress. An Operator Black progress primitive with a mint active segment and tabular percentage value",
+    "text": "group: progress, status, ui-primitive\nwhat: Progress. An Operator Black progress primitive with a mint active segment and tabular percentage value",
     "ids": [
-      101, 2177, 1024, 5082, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3570, 1010, 21318,
-      1011, 10968, 2054, 1024, 5082, 1012, 2019, 6872, 2304, 5082, 10968, 2007, 1037, 12927, 3161,
-      6903, 1998, 21628, 7934, 7017, 3643, 102
+      101, 2177, 1024, 5082, 1010, 3570, 1010, 21318, 1011, 10968, 2054, 1024, 5082, 1012, 2019,
+      6872, 2304, 5082, 10968, 2007, 1037, 12927, 3161, 6903, 1998, 21628, 7934, 7017, 3643, 102
     ]
   },
   { "text": "progress-steps", "ids": [101, 5082, 1011, 4084, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Progress Steps. A vertical progress sequence with clear complete, current, and waiting states.",
+    "text": "group: ui-primitive\nwhat: Progress Steps. A vertical progress sequence with clear complete, current, and waiting states.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      5082, 4084, 1012, 1037, 7471, 5082, 5537, 2007, 3154, 3143, 1010, 2783, 1010, 1998, 3403,
-      2163, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 5082, 4084, 1012, 1037, 7471, 5082, 5537,
+      2007, 3154, 3143, 1010, 2783, 1010, 1998, 3403, 2163, 1012, 102
     ]
   },
   { "text": "pull-back-reveal", "ids": [101, 4139, 1011, 2067, 1011, 7487, 102] },
@@ -2914,11 +2887,10 @@
   },
   { "text": "radio", "ids": [101, 2557, 102] },
   {
-    "text": "group: control, radio, remocn-port, ui-primitive\nwhat: Radio Group. An accessible radio group with restrained selection and active-label emphasis",
+    "text": "group: control, radio, ui-primitive\nwhat: Radio Group. An accessible radio group with restrained selection and active-label emphasis",
     "ids": [
-      101, 2177, 1024, 2491, 1010, 2557, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318,
-      1011, 10968, 2054, 1024, 2557, 2177, 1012, 2019, 7801, 2557, 2177, 2007, 19868, 4989, 1998,
-      3161, 1011, 3830, 7902, 102
+      101, 2177, 1024, 2491, 1010, 2557, 1010, 21318, 1011, 10968, 2054, 1024, 2557, 2177, 1012,
+      2019, 7801, 2557, 2177, 2007, 19868, 4989, 1998, 3161, 1011, 3830, 7902, 102
     ]
   },
   { "text": "rank-list-settle", "ids": [101, 4635, 1011, 2862, 1011, 7392, 102] },
@@ -2958,30 +2930,27 @@
   },
   { "text": "registry", "ids": [101, 15584, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Registry. An Operator Black registry list for compact installable-component metadata.",
+    "text": "group: ui-primitive\nwhat: Registry. An Operator Black registry list for compact installable-component metadata.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      15584, 1012, 2019, 6872, 2304, 15584, 2862, 2005, 9233, 16500, 3085, 1011, 6922, 27425, 1012,
-      102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 15584, 1012, 2019, 6872, 2304, 15584, 2862,
+      2005, 9233, 16500, 3085, 1011, 6922, 27425, 1012, 102
     ]
   },
-  { "text": "remocn-ui", "ids": [101, 2128, 5302, 2278, 2078, 1011, 21318, 102] },
+  { "text": "component-library", "ids": [101, 6922, 1011, 3075, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Remocn UI. An Operator Black summary of the UI primitive families available in HyperFrames.",
+    "text": "group: ui-primitive\nwhat: Component Library. An Operator Black summary of the UI primitive families available in HyperFrames.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      2128, 5302, 2278, 2078, 21318, 1012, 2019, 6872, 2304, 12654, 1997, 1996, 21318, 10968, 2945,
-      2800, 1999, 23760, 15643, 2015, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 6922, 3075, 1012, 2019, 6872, 2304, 12654,
+      1997, 1996, 21318, 10968, 2945, 2800, 1999, 23760, 15643, 2015, 1012, 102
     ]
   },
   { "text": "resizable", "ids": [101, 24501, 21335, 3468, 102] },
   {
-    "text": "group: layout, remocn-port, resizable, ui-primitive\nwhat: Resizable. An accessible split-pane primitive with structural edges, a keyboard-focusable handle, and deterministic resizing",
+    "text": "group: layout, resizable, ui-primitive\nwhat: Resizable. An accessible split-pane primitive with structural edges, a keyboard-focusable handle, and deterministic resizing",
     "ids": [
-      101, 2177, 1024, 9621, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 24501, 21335, 3468,
-      1010, 21318, 1011, 10968, 2054, 1024, 24501, 21335, 3468, 1012, 2019, 7801, 3975, 1011, 6090,
-      2063, 10968, 2007, 8332, 7926, 1010, 1037, 9019, 1011, 3579, 3085, 5047, 1010, 1998, 28283,
-      25300, 10074, 24501, 6026, 102
+      101, 2177, 1024, 9621, 1010, 24501, 21335, 3468, 1010, 21318, 1011, 10968, 2054, 1024, 24501,
+      21335, 3468, 1012, 2019, 7801, 3975, 1011, 6090, 2063, 10968, 2007, 8332, 7926, 1010, 1037,
+      9019, 1011, 3579, 3085, 5047, 1010, 1998, 28283, 25300, 10074, 24501, 6026, 102
     ]
   },
   {
@@ -2989,11 +2958,11 @@
     "ids": [101, 1054, 18259, 1011, 1043, 15909, 2818, 1011, 3793, 102]
   },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: RGB Glitch Text. RGB-offset text copies jitter briefly for a controlled glitch window.",
+    "text": "group: motion-primitive, typography\nwhat: RGB Glitch Text. RGB-offset text copies jitter briefly for a controlled glitch window.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 1054, 18259, 1043, 15909, 2818, 3793, 1012, 1054, 18259, 1011, 16396,
-      3793, 4809, 10147, 12079, 4780, 2005, 1037, 4758, 1043, 15909, 2818, 3332, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 1054, 18259, 1043,
+      15909, 2818, 3793, 1012, 1054, 18259, 1011, 16396, 3793, 4809, 10147, 12079, 4780, 2005, 1037,
+      4758, 1043, 15909, 2818, 3332, 1012, 102
     ]
   },
   { "text": "ridged-burn", "ids": [101, 5526, 2094, 1011, 6402, 102] },
@@ -3014,11 +2983,11 @@
   },
   { "text": "rolling-number", "ids": [101, 5291, 1011, 2193, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Rolling Number. Odometer-style number places roll at their own speed and settle exactly.",
+    "text": "group: motion-primitive, typography\nwhat: Rolling Number. Odometer-style number places roll at their own speed and settle exactly.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 5291, 2193, 1012, 1051, 26173, 3334, 1011, 2806, 2193, 3182, 4897,
-      2012, 2037, 2219, 3177, 1998, 7392, 3599, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 5291, 2193, 1012,
+      1051, 26173, 3334, 1011, 2806, 2193, 3182, 4897, 2012, 2037, 2219, 3177, 1998, 7392, 3599,
+      1012, 102
     ]
   },
   { "text": "rubber-band-bumper", "ids": [101, 8903, 1011, 2316, 1011, 21519, 102] },
@@ -3034,11 +3003,11 @@
   },
   { "text": "scale-down-fade", "ids": [101, 4094, 1011, 2091, 1011, 12985, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Scale Down Fade. A restrained premium settle-in followed by scale-down fade readiness.",
+    "text": "group: motion-primitive, typography\nwhat: Scale Down Fade. A restrained premium settle-in followed by scale-down fade readiness.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 4094, 2091, 12985, 1012, 1037, 19868, 12882, 7392, 1011, 1999, 2628,
-      2011, 4094, 1011, 2091, 12985, 19822, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 4094, 2091, 12985,
+      1012, 1037, 19868, 12882, 7392, 1011, 1999, 2628, 2011, 4094, 1011, 2091, 12985, 19822, 1012,
+      102
     ]
   },
   { "text": "scan-band", "ids": [101, 13594, 1011, 2316, 102] },
@@ -3078,12 +3047,11 @@
   },
   { "text": "scroll-area", "ids": [101, 17186, 1011, 2181, 102] },
   {
-    "text": "group: layout, remocn-port, scroll-area, ui-primitive\nwhat: Scroll Area. A focused matte viewport with spacing-led list content and synchronized seek-safe scrollbar motion",
+    "text": "group: layout, scroll-area, ui-primitive\nwhat: Scroll Area. A focused matte viewport with spacing-led list content and synchronized seek-safe scrollbar motion",
     "ids": [
-      101, 2177, 1024, 9621, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 17186, 1011, 2181,
-      1010, 21318, 1011, 10968, 2054, 1024, 17186, 2181, 1012, 1037, 4208, 4717, 2063, 3193, 6442,
-      2007, 12403, 6129, 1011, 2419, 2862, 4180, 1998, 25549, 6148, 1011, 3647, 17186, 8237, 4367,
-      102
+      101, 2177, 1024, 9621, 1010, 17186, 1011, 2181, 1010, 21318, 1011, 10968, 2054, 1024, 17186,
+      2181, 1012, 1037, 4208, 4717, 2063, 3193, 6442, 2007, 12403, 6129, 1011, 2419, 2862, 4180,
+      1998, 25549, 6148, 1011, 3647, 17186, 8237, 4367, 102
     ]
   },
   { "text": "scroll-camera-story", "ids": [101, 17186, 1011, 4950, 1011, 2466, 102] },
@@ -3132,39 +3100,36 @@
   },
   { "text": "select", "ids": [101, 7276, 102] },
   {
-    "text": "group: control, remocn-port, select, ui-primitive\nwhat: Select. An origin-aware select with a matte menu and explicit selected option",
+    "text": "group: control, select, ui-primitive\nwhat: Select. An origin-aware select with a matte menu and explicit selected option",
     "ids": [
-      101, 2177, 1024, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 7276, 1010, 21318,
-      1011, 10968, 2054, 1024, 7276, 1012, 2019, 4761, 1011, 5204, 7276, 2007, 1037, 4717, 2063,
-      12183, 1998, 13216, 3479, 5724, 102
+      101, 2177, 1024, 2491, 1010, 7276, 1010, 21318, 1011, 10968, 2054, 1024, 7276, 1012, 2019,
+      4761, 1011, 5204, 7276, 2007, 1037, 4717, 2063, 12183, 1998, 13216, 3479, 5724, 102
     ]
   },
   { "text": "select-item", "ids": [101, 7276, 1011, 8875, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Select Item. A compact option list with selection check, technical hints, and disabled state.",
+    "text": "group: ui-primitive\nwhat: Select Item. A compact option list with selection check, technical hints, and disabled state.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      7276, 8875, 1012, 1037, 9233, 5724, 2862, 2007, 4989, 4638, 1010, 4087, 20385, 1010, 1998,
-      9776, 2110, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 7276, 8875, 1012, 1037, 9233, 5724, 2862,
+      2007, 4989, 4638, 1010, 4087, 20385, 1010, 1998, 9776, 2110, 1012, 102
     ]
   },
   { "text": "separator", "ids": [101, 19802, 25879, 2953, 102] },
   {
-    "text": "group: layout, remocn-port, separator, ui-primitive\nwhat: Separator. A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
+    "text": "group: layout, separator, ui-primitive\nwhat: Separator. A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
     "ids": [
-      101, 2177, 1024, 9621, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 19802, 25879, 2953,
-      1010, 21318, 1011, 10968, 2054, 1024, 19802, 25879, 2953, 1012, 1037, 2028, 1011, 22138, 8332,
-      19802, 25879, 2953, 2007, 9876, 1998, 7471, 10176, 4606, 1037, 6148, 1011, 3647, 5082, 7487,
-      102
+      101, 2177, 1024, 9621, 1010, 19802, 25879, 2953, 1010, 21318, 1011, 10968, 2054, 1024, 19802,
+      25879, 2953, 1012, 1037, 2028, 1011, 22138, 8332, 19802, 25879, 2953, 2007, 9876, 1998, 7471,
+      10176, 4606, 1037, 6148, 1011, 3647, 5082, 7487, 102
     ]
   },
   { "text": "settings-toggle-flow", "ids": [101, 10906, 1011, 2000, 24679, 1011, 4834, 102] },
   {
-    "text": "group: remocn-port, settings, toggle, ui-flow\nwhat: Settings Toggle Flow. A composed settings flow with preference rows, toggle switches, and active-state feedback",
+    "text": "group: settings, toggle, ui-flow\nwhat: Settings Toggle Flow. A composed settings flow with preference rows, toggle switches, and active-state feedback",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 10906, 1010, 2000, 24679, 1010,
-      21318, 1011, 4834, 2054, 1024, 10906, 2000, 24679, 4834, 1012, 1037, 3605, 10906, 4834, 2007,
-      12157, 10281, 1010, 2000, 24679, 15924, 1010, 1998, 3161, 1011, 2110, 12247, 102
+      101, 2177, 1024, 10906, 1010, 2000, 24679, 1010, 21318, 1011, 4834, 2054, 1024, 10906, 2000,
+      24679, 4834, 1012, 1037, 3605, 10906, 4834, 2007, 12157, 10281, 1010, 2000, 24679, 15924,
+      1010, 1998, 3161, 1011, 2110, 12247, 102
     ]
   },
   { "text": "shader-displacement-panel", "ids": [101, 8703, 2099, 1011, 13508, 1011, 5997, 102] },
@@ -3178,29 +3143,27 @@
   },
   { "text": "shared-axis-y", "ids": [101, 4207, 1011, 8123, 1011, 1061, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Shared Axis Y. Per-word vertical shared-axis transition for sharp editorial swaps.",
+    "text": "group: motion-primitive, typography\nwhat: Shared Axis Y. Per-word vertical shared-axis transition for sharp editorial swaps.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 4207, 8123, 1061, 1012, 2566, 1011, 2773, 7471, 4207, 1011, 8123,
-      6653, 2005, 4629, 8368, 19948, 2015, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 4207, 8123, 1061,
+      1012, 2566, 1011, 2773, 7471, 4207, 1011, 8123, 6653, 2005, 4629, 8368, 19948, 2015, 1012, 102
     ]
   },
   { "text": "shared-axis-z", "ids": [101, 4207, 1011, 8123, 1011, 1062, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Shared Axis Z. Scale-based shared-axis transition for focus shifts and context depth.",
+    "text": "group: motion-primitive, typography\nwhat: Shared Axis Z. Scale-based shared-axis transition for focus shifts and context depth.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 4207, 8123, 1062, 1012, 4094, 1011, 2241, 4207, 1011, 8123, 6653,
-      2005, 3579, 12363, 1998, 6123, 5995, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 4207, 8123, 1062,
+      1012, 4094, 1011, 2241, 4207, 1011, 8123, 6653, 2005, 3579, 12363, 1998, 6123, 5995, 1012, 102
     ]
   },
   { "text": "sheet", "ids": [101, 7123, 102] },
   {
-    "text": "group: overlay, remocn-port, sheet, ui-primitive\nwhat: Sheet. An Operator Black side sheet with a flat backdrop and right-edge Soft Optical motion",
+    "text": "group: overlay, sheet, ui-primitive\nwhat: Sheet. An Operator Black side sheet with a flat backdrop and right-edge Soft Optical motion",
     "ids": [
-      101, 2177, 1024, 2058, 8485, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 7123, 1010,
-      21318, 1011, 10968, 2054, 1024, 7123, 1012, 2019, 6872, 2304, 2217, 7123, 2007, 1037, 4257,
-      18876, 1998, 2157, 1011, 3341, 3730, 9380, 4367, 102
+      101, 2177, 1024, 2058, 8485, 1010, 7123, 1010, 21318, 1011, 10968, 2054, 1024, 7123, 1012,
+      2019, 6872, 2304, 2217, 7123, 2007, 1037, 4257, 18876, 1998, 2157, 1011, 3341, 3730, 9380,
+      4367, 102
     ]
   },
   { "text": "shimmer-sweep", "ids": [101, 11895, 15810, 1011, 11740, 102] },
@@ -3214,39 +3177,37 @@
   },
   { "text": "short-slide-down", "ids": [101, 2460, 1011, 7358, 1011, 2091, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Short Slide Down. New words drop from above and push the stack downward into a locked composition.",
+    "text": "group: motion-primitive, typography\nwhat: Short Slide Down. New words drop from above and push the stack downward into a locked composition.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2460, 7358, 2091, 1012, 2047, 2616, 4530, 2013, 2682, 1998, 5245,
-      1996, 9991, 14047, 2046, 1037, 5299, 5512, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2460, 7358, 2091,
+      1012, 2047, 2616, 4530, 2013, 2682, 1998, 5245, 1996, 9991, 14047, 2046, 1037, 5299, 5512,
+      1012, 102
     ]
   },
   { "text": "short-slide-right", "ids": [101, 2460, 1011, 7358, 1011, 2157, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Short Slide Right. The phrase glides in from the left while words reveal in sequence.",
+    "text": "group: motion-primitive, typography\nwhat: Short Slide Right. The phrase glides in from the left while words reveal in sequence.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2460, 7358, 2157, 1012, 1996, 7655, 21096, 2015, 1999, 2013, 1996,
-      2187, 2096, 2616, 7487, 1999, 5537, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2460, 7358, 2157,
+      1012, 1996, 7655, 21096, 2015, 1999, 2013, 1996, 2187, 2096, 2616, 7487, 1999, 5537, 1012, 102
     ]
   },
   { "text": "sidebar", "ids": [101, 2217, 8237, 102] },
   {
-    "text": "group: navigation, remocn-port, sidebar, ui-primitive\nwhat: Sidebar. A single-plane sidebar with spacious link rhythm, logical-start selection, and soft deterministic entry motion",
+    "text": "group: navigation, sidebar, ui-primitive\nwhat: Sidebar. A single-plane sidebar with spacious link rhythm, logical-start selection, and soft deterministic entry motion",
     "ids": [
-      101, 2177, 1024, 9163, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2217, 8237, 1010,
-      21318, 1011, 10968, 2054, 1024, 2217, 8237, 1012, 1037, 2309, 1011, 4946, 2217, 8237, 2007,
-      22445, 4957, 6348, 1010, 11177, 1011, 2707, 4989, 1010, 1998, 3730, 28283, 25300, 10074, 4443,
-      4367, 102
+      101, 2177, 1024, 9163, 1010, 2217, 8237, 1010, 21318, 1011, 10968, 2054, 1024, 2217, 8237,
+      1012, 1037, 2309, 1011, 4946, 2217, 8237, 2007, 22445, 4957, 6348, 1010, 11177, 1011, 2707,
+      4989, 1010, 1998, 3730, 28283, 25300, 10074, 4443, 4367, 102
     ]
   },
   { "text": "signup-flow", "ids": [101, 3696, 6279, 1011, 4834, 102] },
   {
-    "text": "group: form, remocn-port, signup, ui-flow\nwhat: Signup Flow. A composed signup flow with social action, email field, password field, and submit button",
+    "text": "group: form, signup, ui-flow\nwhat: Signup Flow. A composed signup flow with social action, email field, password field, and submit button",
     "ids": [
-      101, 2177, 1024, 2433, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3696, 6279, 1010,
-      21318, 1011, 4834, 2054, 1024, 3696, 6279, 4834, 1012, 1037, 3605, 3696, 6279, 4834, 2007,
-      2591, 2895, 1010, 10373, 2492, 1010, 20786, 2492, 1010, 1998, 12040, 6462, 102
+      101, 2177, 1024, 2433, 1010, 3696, 6279, 1010, 21318, 1011, 4834, 2054, 1024, 3696, 6279,
+      4834, 1012, 1037, 3605, 3696, 6279, 4834, 2007, 2591, 2895, 1010, 10373, 2492, 1010, 20786,
+      2492, 1010, 1998, 12040, 6462, 102
     ]
   },
   { "text": "simulated-cursor", "ids": [101, 23599, 1011, 12731, 25301, 2099, 102] },
@@ -3261,20 +3222,19 @@
   },
   { "text": "skeleton", "ids": [101, 13526, 102] },
   {
-    "text": "group: loading, remocn-port, skeleton, ui-primitive\nwhat: Skeleton. An Operator Black loading skeleton using deterministic solid layers instead of gradient shimmer",
+    "text": "group: loading, skeleton, ui-primitive\nwhat: Skeleton. An Operator Black loading skeleton using deterministic solid layers instead of gradient shimmer",
     "ids": [
-      101, 2177, 1024, 10578, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13526, 1010, 21318,
-      1011, 10968, 2054, 1024, 13526, 1012, 2019, 6872, 2304, 10578, 13526, 2478, 28283, 25300,
-      10074, 5024, 9014, 2612, 1997, 17978, 11895, 15810, 102
+      101, 2177, 1024, 10578, 1010, 13526, 1010, 21318, 1011, 10968, 2054, 1024, 13526, 1012, 2019,
+      6872, 2304, 10578, 13526, 2478, 28283, 25300, 10074, 5024, 9014, 2612, 1997, 17978, 11895,
+      15810, 102
     ]
   },
   { "text": "skeleton-block", "ids": [101, 13526, 1011, 3796, 102] },
   {
-    "text": "group: remocn-port, ui-primitive\nwhat: Skeleton Block. An Operator Black skeleton block built from deterministic solid loading rows.",
+    "text": "group: ui-primitive\nwhat: Skeleton Block. An Operator Black skeleton block built from deterministic solid loading rows.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21318, 1011, 10968, 2054, 1024,
-      13526, 3796, 1012, 2019, 6872, 2304, 13526, 3796, 2328, 2013, 28283, 25300, 10074, 5024,
-      10578, 10281, 1012, 102
+      101, 2177, 1024, 21318, 1011, 10968, 2054, 1024, 13526, 3796, 1012, 2019, 6872, 2304, 13526,
+      3796, 2328, 2013, 28283, 25300, 10074, 5024, 10578, 10281, 1012, 102
     ]
   },
   { "text": "skeleton-reveal", "ids": [101, 13526, 1011, 7487, 102] },
@@ -3288,11 +3248,11 @@
   },
   { "text": "slider", "ids": [101, 7358, 2099, 102] },
   {
-    "text": "group: control, remocn-port, slider, ui-primitive\nwhat: Slider. An accessible slider with semantic progress fill, physical thumb, and value readout",
+    "text": "group: control, slider, ui-primitive\nwhat: Slider. An accessible slider with semantic progress fill, physical thumb, and value readout",
     "ids": [
-      101, 2177, 1024, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 7358, 2099, 1010,
-      21318, 1011, 10968, 2054, 1024, 7358, 2099, 1012, 2019, 7801, 7358, 2099, 2007, 21641, 5082,
-      6039, 1010, 3558, 7639, 1010, 1998, 3643, 3191, 5833, 102
+      101, 2177, 1024, 2491, 1010, 7358, 2099, 1010, 21318, 1011, 10968, 2054, 1024, 7358, 2099,
+      1012, 2019, 7801, 7358, 2099, 2007, 21641, 5082, 6039, 1010, 3558, 7639, 1010, 1998, 3643,
+      3191, 5833, 102
     ]
   },
   { "text": "slit-scan-reveal", "ids": [101, 18036, 1011, 13594, 1011, 7487, 102] },
@@ -3310,11 +3270,10 @@
   },
   { "text": "slot-machine-roll", "ids": [101, 10453, 1011, 3698, 1011, 4897, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Slot Machine Roll. A vertical reel scrolls characters from one value to another.",
+    "text": "group: motion-primitive, typography\nwhat: Slot Machine Roll. A vertical reel scrolls characters from one value to another.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 10453, 3698, 4897, 1012, 1037, 7471, 15934, 23074, 3494, 2013, 2028,
-      3643, 2000, 2178, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 10453, 3698, 4897,
+      1012, 1037, 7471, 15934, 23074, 3494, 2013, 2028, 3643, 2000, 2178, 1012, 102
     ]
   },
   { "text": "soft-blob-touch", "ids": [101, 3730, 1011, 1038, 4135, 2497, 1011, 3543, 102] },
@@ -3351,19 +3310,19 @@
   },
   { "text": "spatial-push", "ids": [101, 13589, 1011, 5245, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Spatial Push. A physical depth transition that presses the old scene backward.",
+    "text": "group: transition-primitive\nwhat: Spatial Push. A physical depth transition that presses the old scene backward.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      13589, 5245, 1012, 1037, 3558, 5995, 6653, 2008, 14616, 1996, 2214, 3496, 8848, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 13589, 5245, 1012, 1037, 3558, 5995, 6653,
+      2008, 14616, 1996, 2214, 3496, 8848, 1012, 102
     ]
   },
   { "text": "spinner", "ids": [101, 6714, 3678, 102] },
   {
-    "text": "group: loading, remocn-port, spinner, ui-primitive\nwhat: Spinner. An Operator Black finite loading spinner with a 1.5px progress ring and status label",
+    "text": "group: loading, spinner, ui-primitive\nwhat: Spinner. An Operator Black finite loading spinner with a 1.5px progress ring and status label",
     "ids": [
-      101, 2177, 1024, 10578, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6714, 3678, 1010,
-      21318, 1011, 10968, 2054, 1024, 6714, 3678, 1012, 2019, 6872, 2304, 10713, 10578, 6714, 3678,
-      2007, 1037, 1015, 1012, 1019, 2361, 2595, 5082, 3614, 1998, 3570, 3830, 102
+      101, 2177, 1024, 10578, 1010, 6714, 3678, 1010, 21318, 1011, 10968, 2054, 1024, 6714, 3678,
+      1012, 2019, 6872, 2304, 10713, 10578, 6714, 3678, 2007, 1037, 1015, 1012, 1019, 2361, 2595,
+      5082, 3614, 1998, 3570, 3830, 102
     ]
   },
   { "text": "split-tilt-cards", "ids": [101, 3975, 1011, 17010, 1011, 5329, 102] },
@@ -3389,10 +3348,10 @@
   },
   { "text": "spotlight-card", "ids": [101, 17763, 1011, 4003, 102] },
   {
-    "text": "group: effect, remocn-port\nwhat: Spotlight Card. A card with a scripted cursor spotlight and lit border.",
+    "text": "group: effect\nwhat: Spotlight Card. A card with a scripted cursor spotlight and lit border.",
     "ids": [
-      101, 2177, 1024, 3466, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 17763, 4003,
-      1012, 1037, 4003, 2007, 1037, 22892, 12731, 25301, 2099, 17763, 1998, 5507, 3675, 1012, 102
+      101, 2177, 1024, 3466, 2054, 1024, 17763, 4003, 1012, 1037, 4003, 2007, 1037, 22892, 12731,
+      25301, 2099, 17763, 1998, 5507, 3675, 1012, 102
     ]
   },
   { "text": "spring-pop", "ids": [101, 3500, 1011, 3769, 102] },
@@ -3407,11 +3366,11 @@
   },
   { "text": "spring-scale-in", "ids": [101, 3500, 1011, 4094, 1011, 1999, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Spring Scale In. Words pop in with soft overshoot scale like a physical spring settling.",
+    "text": "group: motion-primitive, typography\nwhat: Spring Scale In. Words pop in with soft overshoot scale like a physical spring settling.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 3500, 4094, 1999, 1012, 2616, 3769, 1999, 2007, 3730, 15849, 23416,
-      4094, 2066, 1037, 3558, 3500, 9853, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 3500, 4094, 1999,
+      1012, 2616, 3769, 1999, 2007, 3730, 15849, 23416, 4094, 2066, 1037, 3558, 3500, 9853, 1012,
+      102
     ]
   },
   { "text": "spring-stack-shuffle", "ids": [101, 3500, 1011, 9991, 1011, 23046, 102] },
@@ -3450,11 +3409,11 @@
   },
   { "text": "staggered-fade-up", "ids": [101, 14648, 1011, 12985, 1011, 2039, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Staggered Fade Up. Words fade in and slide up one after another with configurable delay.",
+    "text": "group: motion-primitive, typography\nwhat: Staggered Fade Up. Words fade in and slide up one after another with configurable delay.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 14648, 12985, 2039, 1012, 2616, 12985, 1999, 1998, 7358, 2039, 2028,
-      2044, 2178, 2007, 9530, 8873, 27390, 3085, 8536, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 14648, 12985, 2039,
+      1012, 2616, 12985, 1999, 1998, 7358, 2039, 2028, 2044, 2178, 2007, 9530, 8873, 27390, 3085,
+      8536, 1012, 102
     ]
   },
   { "text": "star-rating-fill", "ids": [101, 2732, 1011, 5790, 1011, 6039, 102] },
@@ -3482,11 +3441,11 @@
   },
   { "text": "stepper", "ids": [101, 29096, 2099, 102] },
   {
-    "text": "group: progress, remocn-port, stepper, ui-primitive\nwhat: Stepper. A horizontal stepper with numbered milestones, semantic progress, and current-step emphasis",
+    "text": "group: progress, stepper, ui-primitive\nwhat: Stepper. A horizontal stepper with numbered milestones, semantic progress, and current-step emphasis",
     "ids": [
-      101, 2177, 1024, 5082, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 29096, 2099, 1010,
-      21318, 1011, 10968, 2054, 1024, 29096, 2099, 1012, 1037, 9876, 29096, 2099, 2007, 8597, 19199,
-      2015, 1010, 21641, 5082, 1010, 1998, 2783, 1011, 3357, 7902, 102
+      101, 2177, 1024, 5082, 1010, 29096, 2099, 1010, 21318, 1011, 10968, 2054, 1024, 29096, 2099,
+      1012, 1037, 9876, 29096, 2099, 2007, 8597, 19199, 2015, 1010, 21641, 5082, 1010, 1998, 2783,
+      1011, 3357, 7902, 102
     ]
   },
   { "text": "sticky-mock-swap", "ids": [101, 15875, 1011, 12934, 1011, 19948, 102] },
@@ -3540,11 +3499,11 @@
   },
   { "text": "strikethrough-replace", "ids": [101, 4894, 2705, 22494, 5603, 1011, 5672, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Strikethrough Replace. Draw a strike line across old text, then reveal the replacement.",
+    "text": "group: motion-primitive, typography\nwhat: Strikethrough Replace. Draw a strike line across old text, then reveal the replacement.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 4894, 2705, 22494, 5603, 5672, 1012, 4009, 1037, 4894, 2240, 2408,
-      2214, 3793, 1010, 2059, 7487, 1996, 6110, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 4894, 2705, 22494,
+      5603, 5672, 1012, 4009, 1037, 4894, 2240, 2408, 2214, 3793, 1010, 2059, 7487, 1996, 6110,
+      1012, 102
     ]
   },
   { "text": "success-check", "ids": [101, 3112, 1011, 4638, 102] },
@@ -3611,30 +3570,29 @@
   },
   { "text": "switch", "ids": [101, 6942, 102] },
   {
-    "text": "group: remocn-port, switch, toggle, ui-primitive\nwhat: Switch. A tactile switch with a physical thumb and semantic on/off treatment",
+    "text": "group: switch, toggle, ui-primitive\nwhat: Switch. A tactile switch with a physical thumb and semantic on/off treatment",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6942, 1010, 2000, 24679, 1010,
-      21318, 1011, 10968, 2054, 1024, 6942, 1012, 1037, 11937, 6593, 9463, 6942, 2007, 1037, 3558,
-      7639, 1998, 21641, 2006, 1013, 2125, 3949, 102
+      101, 2177, 1024, 6942, 1010, 2000, 24679, 1010, 21318, 1011, 10968, 2054, 1024, 6942, 1012,
+      1037, 11937, 6593, 9463, 6942, 2007, 1037, 3558, 7639, 1998, 21641, 2006, 1013, 2125, 3949,
+      102
     ]
   },
   { "text": "table", "ids": [101, 2795, 102] },
   {
-    "text": "group: data, remocn-port, table, ui-primitive\nwhat: Table. A compact structured-data table with machined row rules, semantic statuses, and tabular time values",
+    "text": "group: data, table, ui-primitive\nwhat: Table. A compact structured-data table with machined row rules, semantic statuses, and tabular time values",
     "ids": [
-      101, 2177, 1024, 2951, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2795, 1010, 21318,
-      1011, 10968, 2054, 1024, 2795, 1012, 1037, 9233, 14336, 1011, 2951, 2795, 2007, 3698, 2094,
-      5216, 3513, 1010, 21641, 3570, 2229, 1010, 1998, 21628, 7934, 2051, 5300, 102
+      101, 2177, 1024, 2951, 1010, 2795, 1010, 21318, 1011, 10968, 2054, 1024, 2795, 1012, 1037,
+      9233, 14336, 1011, 2951, 2795, 2007, 3698, 2094, 5216, 3513, 1010, 21641, 3570, 2229, 1010,
+      1998, 21628, 7934, 2051, 5300, 102
     ]
   },
   { "text": "tabs", "ids": [101, 21628, 2015, 102] },
   {
-    "text": "group: navigation, remocn-port, tabs, ui-primitive\nwhat: Tabs. A minimal tab primitive with an inset mint selection edge, open content hierarchy, and a seek-safe indicator",
+    "text": "group: navigation, tabs, ui-primitive\nwhat: Tabs. A minimal tab primitive with an inset mint selection edge, open content hierarchy, and a seek-safe indicator",
     "ids": [
-      101, 2177, 1024, 9163, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 21628, 2015, 1010,
-      21318, 1011, 10968, 2054, 1024, 21628, 2015, 1012, 1037, 10124, 21628, 10968, 2007, 2019,
-      16021, 3388, 12927, 4989, 3341, 1010, 2330, 4180, 12571, 1010, 1998, 1037, 6148, 1011, 3647,
-      17245, 102
+      101, 2177, 1024, 9163, 1010, 21628, 2015, 1010, 21318, 1011, 10968, 2054, 1024, 21628, 2015,
+      1012, 1037, 10124, 21628, 10968, 2007, 2019, 16021, 3388, 12927, 4989, 3341, 1010, 2330, 4180,
+      12571, 1010, 1998, 1037, 6148, 1011, 3647, 17245, 102
     ]
   },
   { "text": "tabs-slide-indicator", "ids": [101, 21628, 2015, 1011, 7358, 1011, 17245, 102] },
@@ -3661,10 +3619,10 @@
   },
   { "text": "terminal-simulator", "ids": [101, 5536, 1011, 25837, 102] },
   {
-    "text": "group: code-animation, remocn-port\nwhat: Terminal Simulator. A terminal window types commands and streams log output.",
+    "text": "group: code-animation\nwhat: Terminal Simulator. A terminal window types commands and streams log output.",
     "ids": [
-      101, 2177, 1024, 3642, 1011, 7284, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 2054, 1024, 5536,
-      25837, 1012, 1037, 5536, 3332, 4127, 10954, 1998, 9199, 8833, 6434, 1012, 102
+      101, 2177, 1024, 3642, 1011, 7284, 2054, 1024, 5536, 25837, 1012, 1037, 5536, 3332, 4127,
+      10954, 1998, 9199, 8833, 6434, 1012, 102
     ]
   },
   {
@@ -3672,10 +3630,10 @@
     "ids": [101, 5536, 1011, 2000, 1011, 16602, 1011, 21296, 102]
   },
   {
-    "text": "group: remocn-port, showcase\nwhat: Terminal to Browser Deploy. Terminal deploy logs hand off into a live browser preview.",
+    "text": "group: showcase\nwhat: Terminal to Browser Deploy. Terminal deploy logs hand off into a live browser preview.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 13398, 2054, 1024, 5536, 2000,
-      16602, 21296, 1012, 5536, 21296, 15664, 2192, 2125, 2046, 1037, 2444, 16602, 19236, 1012, 102
+      101, 2177, 1024, 13398, 2054, 1024, 5536, 2000, 16602, 21296, 1012, 5536, 21296, 15664, 2192,
+      2125, 2046, 1037, 2444, 16602, 19236, 1012, 102
     ]
   },
   { "text": "testimonial-card", "ids": [101, 3231, 16339, 6200, 2140, 1011, 4003, 102] },
@@ -3737,11 +3695,11 @@
   },
   { "text": "textarea", "ids": [101, 3793, 12069, 2050, 102] },
   {
-    "text": "group: field, remocn-port, textarea, ui-primitive\nwhat: Textarea. A resilient multiline field with a precise focus treatment and readable copy",
+    "text": "group: field, textarea, ui-primitive\nwhat: Textarea. A resilient multiline field with a precise focus treatment and readable copy",
     "ids": [
-      101, 2177, 1024, 2492, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 3793, 12069, 2050,
-      1010, 21318, 1011, 10968, 2054, 1024, 3793, 12069, 2050, 1012, 1037, 24501, 18622, 4765, 4800,
-      4179, 2492, 2007, 1037, 10480, 3579, 3949, 1998, 3191, 3085, 6100, 102
+      101, 2177, 1024, 2492, 1010, 3793, 12069, 2050, 1010, 21318, 1011, 10968, 2054, 1024, 3793,
+      12069, 2050, 1012, 1037, 24501, 18622, 4765, 4800, 4179, 2492, 2007, 1037, 10480, 3579, 3949,
+      1998, 3191, 3085, 6100, 102
     ]
   },
   { "text": "texture-mask-text", "ids": [101, 14902, 1011, 7308, 1011, 3793, 102] },
@@ -3847,20 +3805,20 @@
   },
   { "text": "toast", "ids": [101, 15174, 102] },
   {
-    "text": "group: notification, remocn-port, toast, ui-primitive\nwhat: Toast. An Operator Black toast with a semantic success check, progress rail, and stack-origin motion",
+    "text": "group: notification, toast, ui-primitive\nwhat: Toast. An Operator Black toast with a semantic success check, progress rail, and stack-origin motion",
     "ids": [
-      101, 2177, 1024, 26828, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 15174, 1010, 21318,
-      1011, 10968, 2054, 1024, 15174, 1012, 2019, 6872, 2304, 15174, 2007, 1037, 21641, 3112, 4638,
-      1010, 5082, 4334, 1010, 1998, 9991, 1011, 4761, 4367, 102
+      101, 2177, 1024, 26828, 1010, 15174, 1010, 21318, 1011, 10968, 2054, 1024, 15174, 1012, 2019,
+      6872, 2304, 15174, 2007, 1037, 21641, 3112, 4638, 1010, 5082, 4334, 1010, 1998, 9991, 1011,
+      4761, 4367, 102
     ]
   },
   { "text": "toggle", "ids": [101, 2000, 24679, 102] },
   {
-    "text": "group: control, remocn-port, toggle, ui-primitive\nwhat: Toggle. A tactile toggle button with distinct pressed and unpressed states",
+    "text": "group: control, toggle, ui-primitive\nwhat: Toggle. A tactile toggle button with distinct pressed and unpressed states",
     "ids": [
-      101, 2177, 1024, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2000, 24679, 1010,
-      21318, 1011, 10968, 2054, 1024, 2000, 24679, 1012, 1037, 11937, 6593, 9463, 2000, 24679, 6462,
-      2007, 5664, 4508, 1998, 4895, 19811, 2163, 102
+      101, 2177, 1024, 2491, 1010, 2000, 24679, 1010, 21318, 1011, 10968, 2054, 1024, 2000, 24679,
+      1012, 1037, 11937, 6593, 9463, 2000, 24679, 6462, 2007, 5664, 4508, 1998, 4895, 19811, 2163,
+      102
     ]
   },
   { "text": "toggle-flip", "ids": [101, 2000, 24679, 1011, 11238, 102] },
@@ -3877,38 +3835,36 @@
   },
   { "text": "toggle-group", "ids": [101, 2000, 24679, 1011, 2177, 102] },
   {
-    "text": "group: control, remocn-port, toggle-group, ui-primitive\nwhat: Toggle Group. A segmented toggle group with a recessed sliding selection indicator",
+    "text": "group: control, toggle-group, ui-primitive\nwhat: Toggle Group. A segmented toggle group with a recessed sliding selection indicator",
     "ids": [
-      101, 2177, 1024, 2491, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2000, 24679, 1011,
-      2177, 1010, 21318, 1011, 10968, 2054, 1024, 2000, 24679, 2177, 1012, 1037, 6903, 2098, 2000,
-      24679, 2177, 2007, 1037, 28290, 2098, 8058, 4989, 17245, 102
+      101, 2177, 1024, 2491, 1010, 2000, 24679, 1011, 2177, 1010, 21318, 1011, 10968, 2054, 1024,
+      2000, 24679, 2177, 1012, 1037, 6903, 2098, 2000, 24679, 2177, 2007, 1037, 28290, 2098, 8058,
+      4989, 17245, 102
     ]
   },
   { "text": "tool-menu-slide-in", "ids": [101, 6994, 1011, 12183, 1011, 7358, 1011, 1999, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Tool Menu Slide In. A tool menu enters with short-axis slide and icon stagger.",
+    "text": "group: transition-primitive\nwhat: Tool Menu Slide In. A tool menu enters with short-axis slide and icon stagger.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      6994, 12183, 7358, 1999, 1012, 1037, 6994, 12183, 8039, 2007, 2460, 1011, 8123, 7358, 1998,
-      12696, 2358, 27609, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 6994, 12183, 7358, 1999, 1012, 1037, 6994,
+      12183, 8039, 2007, 2460, 1011, 8123, 7358, 1998, 12696, 2358, 27609, 1012, 102
     ]
   },
   { "text": "tooltip", "ids": [101, 6994, 25101, 102] },
   {
-    "text": "group: overlay, remocn-port, tooltip, ui-primitive\nwhat: Tooltip. An Operator Black tooltip with a technical trigger icon and origin-aware Soft Optical reveal",
+    "text": "group: overlay, tooltip, ui-primitive\nwhat: Tooltip. An Operator Black tooltip with a technical trigger icon and origin-aware Soft Optical reveal",
     "ids": [
-      101, 2177, 1024, 2058, 8485, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6994, 25101,
-      1010, 21318, 1011, 10968, 2054, 1024, 6994, 25101, 1012, 2019, 6872, 2304, 6994, 25101, 2007,
-      1037, 4087, 9495, 12696, 1998, 4761, 1011, 5204, 3730, 9380, 7487, 102
+      101, 2177, 1024, 2058, 8485, 1010, 6994, 25101, 1010, 21318, 1011, 10968, 2054, 1024, 6994,
+      25101, 1012, 2019, 6872, 2304, 6994, 25101, 2007, 1037, 4087, 9495, 12696, 1998, 4761, 1011,
+      5204, 3730, 9380, 7487, 102
     ]
   },
   { "text": "top-down-letters", "ids": [101, 2327, 1011, 2091, 1011, 4144, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Top-Down Letters. Letters descend from above in a pronounced staircase with zero blur.",
+    "text": "group: motion-primitive, typography\nwhat: Top-Down Letters. Letters descend from above in a pronounced staircase with zero blur.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2327, 1011, 2091, 4144, 1012, 4144, 18855, 2013, 2682, 1999, 1037,
-      8793, 10714, 2007, 5717, 14819, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2327, 1011, 2091,
+      4144, 1012, 4144, 18855, 2013, 2682, 1999, 1037, 8793, 10714, 2007, 5717, 14819, 1012, 102
     ]
   },
   { "text": "touch-indicator", "ids": [101, 3543, 1011, 17245, 102] },
@@ -4082,11 +4038,11 @@
   },
   { "text": "typewriter", "ids": [101, 2828, 15994, 102] },
   {
-    "text": "group: motion-primitive, remocn-port, typography\nwhat: Typewriter. Character-by-character text reveal with a deterministic blinking cursor.",
+    "text": "group: motion-primitive, typography\nwhat: Typewriter. Character-by-character text reveal with a deterministic blinking cursor.",
     "ids": [
-      101, 2177, 1024, 4367, 1011, 10968, 1010, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 5939,
-      6873, 12565, 2054, 1024, 2828, 15994, 1012, 2839, 1011, 2011, 1011, 2839, 3793, 7487, 2007,
-      1037, 28283, 25300, 10074, 15997, 12731, 25301, 2099, 1012, 102
+      101, 2177, 1024, 4367, 1011, 10968, 1010, 5939, 6873, 12565, 2054, 1024, 2828, 15994, 1012,
+      2839, 1011, 2011, 1011, 2839, 3793, 7487, 2007, 1037, 28283, 25300, 10074, 15997, 12731,
+      25301, 2099, 1012, 102
     ]
   },
   { "text": "ui-3d-reveal", "ids": [101, 21318, 1011, 7605, 1011, 7487, 102] },
@@ -4363,20 +4319,18 @@
   },
   { "text": "x-follow-card", "ids": [101, 1060, 1011, 3582, 1011, 4003, 102] },
   {
-    "text": "group: remocn-port, social-overlay\nwhat: X Follow Card. A social follow card with avatar, handle, and follower motion.",
+    "text": "group: social-overlay\nwhat: X Follow Card. A social follow card with avatar, handle, and follower motion.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2591, 1011, 2058, 8485, 2054, 1024,
-      1060, 3582, 4003, 1012, 1037, 2591, 3582, 4003, 2007, 22128, 1010, 5047, 1010, 1998, 22399,
-      4367, 1012, 102
+      101, 2177, 1024, 2591, 1011, 2058, 8485, 2054, 1024, 1060, 3582, 4003, 1012, 1037, 2591, 3582,
+      4003, 2007, 22128, 1010, 5047, 1010, 1998, 22399, 4367, 1012, 102
     ]
   },
   { "text": "x-followers-overview", "ids": [101, 1060, 1011, 8771, 1011, 19184, 102] },
   {
-    "text": "group: remocn-port, social-overlay\nwhat: X Followers Overview. A social analytics card with count-up and audience pills.",
+    "text": "group: social-overlay\nwhat: X Followers Overview. A social analytics card with count-up and audience pills.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 2591, 1011, 2058, 8485, 2054, 1024,
-      1060, 8771, 19184, 1012, 1037, 2591, 25095, 4003, 2007, 4175, 1011, 2039, 1998, 4378, 15345,
-      1012, 102
+      101, 2177, 1024, 2591, 1011, 2058, 8485, 2054, 1024, 1060, 8771, 19184, 1012, 1037, 2591,
+      25095, 4003, 2007, 4175, 1011, 2039, 1998, 4378, 15345, 1012, 102
     ]
   },
   { "text": "x-post", "ids": [101, 1060, 1011, 2695, 102] },
@@ -4409,11 +4363,10 @@
   },
   { "text": "zoom-through-transition", "ids": [101, 24095, 1011, 2083, 1011, 6653, 102] },
   {
-    "text": "group: remocn-port, transition-primitive\nwhat: Zoom Through Transition. A transition that zooms through a focal card into the next scene.",
+    "text": "group: transition-primitive\nwhat: Zoom Through Transition. A transition that zooms through a focal card into the next scene.",
     "ids": [
-      101, 2177, 1024, 2128, 5302, 2278, 2078, 1011, 3417, 1010, 6653, 1011, 10968, 2054, 1024,
-      24095, 2083, 6653, 1012, 1037, 6653, 2008, 24095, 2015, 2083, 1037, 15918, 4003, 2046, 1996,
-      2279, 3496, 1012, 102
+      101, 2177, 1024, 6653, 1011, 10968, 2054, 1024, 24095, 2083, 6653, 1012, 1037, 6653, 2008,
+      24095, 2015, 2083, 1037, 15918, 4003, 2046, 1996, 2279, 3496, 1012, 102
     ]
   }
 ]

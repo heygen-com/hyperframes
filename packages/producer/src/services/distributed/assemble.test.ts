@@ -19,8 +19,15 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  PROVENANCE_RENDERER_NAME,
+  PROVENANCE_VERSION,
+  readRenderProvenance,
+  renderProvenanceArgs,
+} from "@hyperframes/engine";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
 import { assemble } from "./assemble.js";
+import type { DistributedFormat } from "./shared.js";
 
 let runRoot: string;
 let hasFfmpeg = false;
@@ -42,7 +49,7 @@ afterAll(() => {
  * loop.
  */
 function buildPlanDir(
-  format: "mp4" | "png-sequence",
+  format: DistributedFormat,
   chunks: ChunkSliceJson[],
   totalFrames: number,
   hasAudio: boolean,
@@ -108,6 +115,57 @@ function makeMp4Chunk(outputPath: string, frameCount: number): void {
   if (result.status !== 0) {
     throw new Error(`ffmpeg testsrc chunk failed: ${result.stderr.toString().slice(-400)}`);
   }
+}
+
+/**
+ * Encode a tiny provenance-tagged chunk in `format`, mirroring what the chunk
+ * encoder writes. mov uses libx264 rather than production's ProRes: container
+ * metadata handling belongs to the muxer, not the codec, and h264-in-mov keeps
+ * the test fast and portable across CI ffmpeg builds.
+ */
+function makeTaggedChunk(outputPath: string, frameCount: number, format: "mov" | "webm"): void {
+  const codec =
+    format === "webm"
+      ? ["-c:v", "libvpx-vp9", "-b:v", "200k"]
+      : ["-c:v", "libx264", "-preset", "ultrafast"];
+  const args = [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc=size=160x120:rate=30:duration=${frameCount / 30}`,
+    ...codec,
+    "-g",
+    String(frameCount),
+    "-keyint_min",
+    String(frameCount),
+    "-pix_fmt",
+    "yuv420p",
+    "-vframes",
+    String(frameCount),
+    ...renderProvenanceArgs(outputPath),
+    "-y",
+    outputPath,
+  ];
+  const result = spawnSync("ffmpeg", args, { stdio: "pipe" });
+  if (result.status !== 0) {
+    throw new Error(`ffmpeg ${format} chunk failed: ${result.stderr.toString().slice(-400)}`);
+  }
+}
+
+/** Read the provenance tags ffprobe actually reports for `outputPath`. */
+function probeProvenance(outputPath: string): { renderer: string; version: string } | null {
+  const result = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-show_entries", "format_tags", "-of", "json", "--", outputPath],
+    { stdio: "pipe" },
+  );
+  if (result.status !== 0) return null;
+  const parsed = JSON.parse(result.stdout.toString()) as {
+    format?: { tags?: Record<string, string> };
+  };
+  return readRenderProvenance(parsed.format?.tags ?? {});
 }
 
 /** Generate an AAC audio file of `durationSeconds` of silence. */
@@ -601,6 +659,48 @@ describe("assemble()", () => {
           "frame_000006.png",
           "frame_000007.png",
         ]);
+      });
+    },
+    TIMEOUT_MS,
+  );
+
+  // Regression: a distributed render with NO audio skips the mux entirely, and
+  // applyFaststart only copies mov/webm rather than re-running ffmpeg. That
+  // leaves the concat step as the last container write, and the concat demuxer
+  // does not carry the chunks' container metadata through — so before the
+  // provenance args were added here, both formats shipped with no tags at all
+  // while mp4 was silently rescued by faststart's re-mux. Asserting on the
+  // assembled file rather than the argv is the point: ffmpeg accepts the
+  // metadata flags either way and simply drops the keys.
+  it.each(["mov", "webm"] as const)(
+    "keeps render provenance on a no-audio %s render",
+    async (format) => {
+      if (!hasFfmpeg) {
+        console.warn(`[assemble.test] skipping ${format} provenance test — ffmpeg not available`);
+        return;
+      }
+
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir(format, chunks, 10, false);
+
+      const chunkAPath = join(planDir, `chunk-0.${format}`);
+      const chunkBPath = join(planDir, `chunk-1.${format}`);
+      makeTaggedChunk(chunkAPath, 5, format);
+      makeTaggedChunk(chunkBPath, 5, format);
+      // The chunks really are tagged, so a failure below is the assemble step
+      // dropping them rather than the fixture never having had them.
+      expect(probeProvenance(chunkAPath)).not.toBeNull();
+
+      const outputPath = join(planDir, `output.${format}`);
+      const result = await assemble(planDir, [chunkAPath, chunkBPath], null, outputPath);
+
+      expect(existsSync(result.outputPath)).toBe(true);
+      expect(probeProvenance(outputPath)).toEqual({
+        renderer: PROVENANCE_RENDERER_NAME,
+        version: PROVENANCE_VERSION,
       });
     },
     TIMEOUT_MS,

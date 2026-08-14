@@ -81,7 +81,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             background: #111827;
           }
 
-          .hf-remocn-zoom-through-transition {
+          .hf-catalog-zoom-through-transition {
             --hf-accent: var(--accent, rgba(255, 255, 255, 0.28));
             --hf-l1: rgba(255, 255, 255, 0.72);
             --hf-l3: rgba(255, 255, 255, 0.18);
@@ -93,13 +93,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             color: var(--hf-ink);
             font-family: Inter, system-ui, sans-serif;
           }
-          .hf-remocn-zoom-through-transition {
+          .hf-catalog-zoom-through-transition {
             position: absolute;
             inset: 0;
             overflow: hidden;
             background: #111827;
           }
-          .hf-remocn-zoom-through-transition .scene {
+          .hf-catalog-zoom-through-transition .scene {
             position: absolute;
             inset: 0;
             display: grid;
@@ -109,7 +109,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             letter-spacing: -0.05em;
             color: #fff;
           }
-          .hf-remocn-zoom-through-transition .from {
+          .hf-catalog-zoom-through-transition .from {
             background:
               repeating-linear-gradient(
                 90deg,
@@ -124,7 +124,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               scale(var(--hf-from-scale, 1));
             filter: blur(calc(var(--hf-from-blur, 0px) * var(--hf-depth, 1)));
           }
-          .hf-remocn-zoom-through-transition .to {
+          .hf-catalog-zoom-through-transition .to {
             background:
               repeating-linear-gradient(
                 90deg,
@@ -143,14 +143,14 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
                 var(--hf-clip-left, 0%)
             );
           }
-          .hf-remocn-zoom-through-transition .fx {
+          .hf-catalog-zoom-through-transition .fx {
             position: absolute;
             inset: 0;
             background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
             mix-blend-mode: screen;
             transform: translateX(var(--hf-fx-x, -110%));
           }
-          .hf-remocn-zoom-through-transition .rgb {
+          .hf-catalog-zoom-through-transition .rgb {
             position: absolute;
             inset: 0;
             pointer-events: none;
@@ -165,7 +165,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
           }
         </style>
 
-        <div class="hf-remocn-zoom-through-transition">
+        <div class="hf-catalog-zoom-through-transition">
           >
           <div class="scene from">Before</div>
           <div class="scene to">Zoom Through Transition</div>
@@ -207,7 +207,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             var fromLabel = label(vars["from-label"]);
             var toLabel = label(vars["to-label"]);
 
-            var roots = document.querySelectorAll(".hf-remocn-zoom-through-transition");
+            var roots = document.querySelectorAll(".hf-catalog-zoom-through-transition");
             var mountRoot = document.getElementById("root");
             for (var i = 0; i < roots.length; i += 1) {
               var root = roots[i];
@@ -230,7 +230,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
             // this composition's own id so the runtime seeks it frame by frame.
             if (!mountRoot || !window.gsap) return;
 
-            var SELF = ".hf-remocn-zoom-through-transition";
+            var SELF = ".hf-catalog-zoom-through-transition";
             var duration = Math.max(0.001, parseFloat(mountRoot.dataset.duration || "3"));
             // The push reads as a transition only with a beat of the outgoing scene
             // before it. Clamped so the wipe always lands inside the duration.
@@ -403,7 +403,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             background: #111827;
           }
 
-          .hf-remocn-zoom-through-transition {
+          .hf-catalog-zoom-through-transition {
             --hf-accent: var(--accent, rgba(255, 255, 255, 0.28));
             --hf-l1: rgba(255, 255, 255, 0.72);
             --hf-l3: rgba(255, 255, 255, 0.18);
@@ -415,13 +415,13 @@ defaults, so this behaves exactly like the preview above until you change one:
             color: var(--hf-ink);
             font-family: Inter, system-ui, sans-serif;
           }
-          .hf-remocn-zoom-through-transition {
+          .hf-catalog-zoom-through-transition {
             position: absolute;
             inset: 0;
             overflow: hidden;
             background: #111827;
           }
-          .hf-remocn-zoom-through-transition .scene {
+          .hf-catalog-zoom-through-transition .scene {
             position: absolute;
             inset: 0;
             display: grid;
@@ -431,7 +431,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             letter-spacing: -0.05em;
             color: #fff;
           }
-          .hf-remocn-zoom-through-transition .from {
+          .hf-catalog-zoom-through-transition .from {
             background:
               repeating-linear-gradient(
                 90deg,
@@ -446,7 +446,7 @@ defaults, so this behaves exactly like the preview above until you change one:
               scale(var(--hf-from-scale, 1));
             filter: blur(calc(var(--hf-from-blur, 0px) * var(--hf-depth, 1)));
           }
-          .hf-remocn-zoom-through-transition .to {
+          .hf-catalog-zoom-through-transition .to {
             background:
               repeating-linear-gradient(
                 90deg,
@@ -465,14 +465,14 @@ defaults, so this behaves exactly like the preview above until you change one:
                 var(--hf-clip-left, 0%)
             );
           }
-          .hf-remocn-zoom-through-transition .fx {
+          .hf-catalog-zoom-through-transition .fx {
             position: absolute;
             inset: 0;
             background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
             mix-blend-mode: screen;
             transform: translateX(var(--hf-fx-x, -110%));
           }
-          .hf-remocn-zoom-through-transition .rgb {
+          .hf-catalog-zoom-through-transition .rgb {
             position: absolute;
             inset: 0;
             pointer-events: none;
@@ -487,7 +487,7 @@ defaults, so this behaves exactly like the preview above until you change one:
           }
         </style>
 
-        <div class="hf-remocn-zoom-through-transition">
+        <div class="hf-catalog-zoom-through-transition">
           >
           <div class="scene from">Before</div>
           <div class="scene to">Zoom Through Transition</div>
@@ -529,7 +529,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             var fromLabel = label(vars["from-label"]);
             var toLabel = label(vars["to-label"]);
 
-            var roots = document.querySelectorAll(".hf-remocn-zoom-through-transition");
+            var roots = document.querySelectorAll(".hf-catalog-zoom-through-transition");
             var mountRoot = document.getElementById("root");
             for (var i = 0; i < roots.length; i += 1) {
               var root = roots[i];
@@ -552,7 +552,7 @@ defaults, so this behaves exactly like the preview above until you change one:
             // this composition's own id so the runtime seeks it frame by frame.
             if (!mountRoot || !window.gsap) return;
 
-            var SELF = ".hf-remocn-zoom-through-transition";
+            var SELF = ".hf-catalog-zoom-through-transition";
             var duration = Math.max(0.001, parseFloat(mountRoot.dataset.duration || "3"));
             // The push reads as a transition only with a beat of the outgoing scene
             // before it. Clamped so the wipe always lands inside the duration.
@@ -630,7 +630,7 @@ Open `compositions/components/zoom-through-transition.html` and paste its conten
 
 {/* hf:generated-footer */}
 
-Tagged `transition-primitive` `remocn-port`.
+Tagged `transition-primitive`.
 
 ## Related topics
 

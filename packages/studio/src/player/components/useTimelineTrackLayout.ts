@@ -1,6 +1,8 @@
 import { useMemo, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { animationLaneGroups } from "./TimelinePropertyLanes";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { elementAutomationLanes, groupAutomationLanes } from "./automationLaneData";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
@@ -15,6 +17,60 @@ import {
 export { getTrackStyle } from "./timelineIcons";
 
 /**
+ * Whether this track draws the beat-dot strip: only where there are beats to
+ * draw, and only on the track the user is working in — the selected clip's, or
+ * the music track's when nothing is selected.
+ */
+export function trackShowsBeatStrip(
+  els: readonly TimelineElement[],
+  beatTimes: readonly number[] | undefined,
+  ctx: {
+    selectedElementId: string | null;
+    isMusicTrack(element: TimelineElement): boolean;
+  },
+): boolean {
+  if ((beatTimes?.length ?? 0) < 2) return false;
+  return ctx.selectedElementId
+    ? els.some((e) => (e.key ?? e.id) === ctx.selectedElementId)
+    : els.some((e) => ctx.isMusicTrack(e));
+}
+
+/**
+ * Automation lanes on one clip, or 0 for anything that is not audio.
+ *
+ * An audio clip can be worth expanding without carrying a single tween, so this
+ * counts toward whether a track has anything to disclose. A function rather than
+ * a map so every caller reads the same cached parse and none can drift.
+ */
+function automationLaneCountOf(element: TimelineElement): number {
+  return isAudioTimelineElement(element) ? elementAutomationLanes(element).length : 0;
+}
+
+/**
+ * Automation rows a TRACK reserves: the union over the clips sharing it, since
+ * clips on one row share a lane row per property. Counting only the active clip's
+ * lanes reserved a height that changed with the selection.
+ */
+function trackAutomationLaneCount(elements: readonly TimelineElement[]): number {
+  return groupAutomationLanes(elements).length;
+}
+
+/**
+ * Is this row disclosed? Expansion is stored per clip, but it reads as a property
+ * of the ROW: the active clip changes with the selection, so asking only about it
+ * collapsed the row the moment you clicked a sibling. Any expanded clip on the
+ * track holds the row open — and the caret expands and collapses all of them
+ * together (see TimelineLanes), so the two can only disagree on state predating
+ * this rule or written by the keyframe auto-expand.
+ */
+export function isTrackRowExpanded(
+  elements: readonly TimelineElement[],
+  expandedClipIds: ReadonlySet<string>,
+): boolean {
+  return elements.some((element) => expandedClipIds.has(element.key ?? element.id));
+}
+
+/**
  * The single keyframed element whose property lanes a track shows when expanded.
  * A track can hold several elements (same z-index is common), but keyframes are
  * per-element, so we scope to ONE active element — the selected one if it's on
@@ -27,10 +83,15 @@ export function resolveTrackKeyframeClip(
   laneCounts: ReadonlyMap<string, number>,
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  automationLaneCount: (element: TimelineElement) => number = automationLaneCountOf,
 ): TimelineElement | null {
-  const keyframed = elements.filter(
-    (element) => (laneCounts.get(element.key ?? element.id) ?? 0) >= 1,
-  );
+  // Automation counts toward "has something to disclose". Without it an audio
+  // clip carrying envelopes but no tweens resolved to null, so its track got no
+  // caret, no reserved height and no lanes — the automation was unreachable for
+  // exactly the tracks the feature is for.
+  const disclosable = (element: TimelineElement): number =>
+    (laneCounts.get(element.key ?? element.id) ?? 0) + automationLaneCount(element);
+  const keyframed = elements.filter((element) => disclosable(element) >= 1);
   if (keyframed.length === 0) return null;
   const selected = keyframed.find((element) => {
     const key = element.key ?? element.id;
@@ -39,8 +100,9 @@ export function resolveTrackKeyframeClip(
   if (selected) return selected;
   // Most lanes wins, first one on a tie (same as the old stable sort), but as a
   // reduce over the already non-empty list so there's no index to assert on.
-  const lanesOf = (element: TimelineElement) => laneCounts.get(element.key ?? element.id) ?? 0;
-  return keyframed.reduce((best, element) => (lanesOf(element) > lanesOf(best) ? element : best));
+  return keyframed.reduce((best, element) =>
+    disclosable(element) > disclosable(best) ? element : best,
+  );
 }
 
 /** Lanes per clip: the count of distinct property groups whose tween contributes
@@ -74,8 +136,9 @@ function useTimelineRowHeights(
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const { laneCounts, rowGeometry } = useMemo(() => {
     const laneCounts = computeLaneCounts(tracks, gsapAnimations);
-    // Row height follows only the active keyframe clip, so a track with several
+    // Keyframe lanes follow only the active clip, so a track with several
     // keyframed elements never reserves empty lanes for the ones not shown.
+    // Automation lanes follow the whole row: they are shared per property.
     const heightTracks: TimelineTrackHeightClip[][] = tracks.map(([, elements]) => {
       const active = resolveTrackKeyframeClip(
         elements,
@@ -85,7 +148,20 @@ function useTimelineRowHeights(
       );
       if (!active) return [];
       const clipId = active.key ?? active.id;
-      return [{ clipId, laneCount: laneCounts.get(clipId) ?? 0 }];
+      // `trackHeights` gates the reserved lanes on this id being expanded, and the
+      // row is expanded when ANY of its clips is — so hand it whichever clip holds
+      // the row open, while the lane counts stay the active clip's (keyframes) and
+      // the track's (automation, shared across the row).
+      const holdingOpen = elements.find((element) =>
+        expandedClipIds.has(element.key ?? element.id),
+      );
+      return [
+        {
+          clipId: holdingOpen ? (holdingOpen.key ?? holdingOpen.id) : clipId,
+          laneCount: laneCounts.get(clipId) ?? 0,
+          automationLaneCount: trackAutomationLaneCount(elements),
+        },
+      ];
     });
     const rowHeights = trackHeights(heightTracks, expandedClipIds);
     return {

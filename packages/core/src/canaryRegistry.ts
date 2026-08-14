@@ -80,6 +80,15 @@ export const CANARIES: readonly CanaryDefinition[] = [
     owner: "vance",
     sunsetAfter: "2026-09-15",
   },
+  // ── Audio FX ─────────────────────────────────────────────────────────────
+  {
+    name: "audio-fx-rack",
+    percentage: 0,
+    description:
+      "Show the Audio FX rack on audio tracks in Studio — effects, presets, the voiceover carve and levelling. Gates the AUTHORING surface only: a composition that already carries data-fx-chain still plays and renders it, because a canary should stage who can reach a feature, not make a written attribute silently inert.",
+    owner: "vance",
+    sunsetAfter: "2026-11-15",
+  },
 ] as const;
 
 export function findCanary(name: string): CanaryDefinition | undefined {

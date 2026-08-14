@@ -26,6 +26,9 @@
     // Bundled as a standalone IIFE by the position-edits render artifact
     // generator; referenced by file path rather than imported by TypeScript.
     "packages/core/stubs/position-edits-render-entry.ts",
+    // Same arrangement for the audio FX graph builders, bundled by
+    // build-audio-fx-runtime.ts for the offline render page.
+    "packages/core/stubs/audio-fx-runtime-entry.ts",
     // In-page audit scripts read as raw strings and injected via
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.
@@ -145,6 +148,49 @@
     {
       "file": "packages/studio/src/utils/studioHelpers.ts",
       "exports": ["resolveDroppedAssetDimensions"],
+    },
+    {
+      "file": "packages/core/src/audio/audioFxGraph.ts",
+      "exports": ["ensureAudioFxWorklets"],
+    },
+    // automationLaneGeometry is the bottom of the audio-automation stack: its
+    // consumer is the lane component one PR upstack, so a per-PR audit diffing
+    // against the merge base sees these as unused. Consumed for real once the
+    // stack merges; safe to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationLaneGeometry.ts",
+      "exports": [
+        "POINT_MERGE_SEC",
+        "GRAB_PX",
+        "DRAW_SAMPLES",
+        "PAD_X",
+        "formatValue",
+        "laneFor",
+        "withLane",
+      ],
+    },
+    // automationShapes is part of the audio-automation stack: its consumer is
+    // the UI layer that uses shape generators one PR upstack, so a per-PR audit
+    // diffing against the merge base sees these as unused. Consumed for real once
+    // the stack merges; safe to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationShapes.ts",
+      "exports": ["AUTOMATION_SHAPES"],
+    },
+    // automationSimplify is part of the audio-automation stack: its consumer is
+    // the UI layer one PR upstack, so a per-PR audit diffing against the merge
+    // base sees these as unused. Consumed for real once the stack merges; safe
+    // to drop this entry then.
+    {
+      "file": "packages/studio/src/player/components/automationSimplify.ts",
+      "exports": ["simplifyPoints"],
+    },
+    // propertyPanelAutomation is the shared reader for both panel sections; the
+    // FX group that consumes these two lands one PR upstack, so a per-PR audit
+    // against the merge base sees them as unused.
+    {
+      "file": "packages/studio/src/components/editor/propertyPanelAutomation.ts",
+      "exports": ["automatedTargetsOf", "resolveAutomationRange"],
     },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
@@ -640,6 +686,28 @@
       // inherited clone; consistent with the norm above of leaving parallel
       // command-test cases unabstracted.
       "packages/cli/src/commands/check.test.ts",
+      // canary.test.ts: rawFnv is a deliberate independent re-implementation of
+      // canary.ts's fnv1a32, not copy-paste — its own docstring explains why:
+      // the test re-derives the hash so it can cross-check canaryBucket against
+      // a copy that owes it nothing, rather than importing the function under
+      // test. Importing fnv1a32 here would defeat the point of the assertion.
+      "packages/core/src/canary.test.ts",
+      // The audio FX property-panel test files (and the two siblings outside
+      // this stack, propertyPanelFlatMotionSection.test.tsx and
+      // propertyPanelFlatEffectsSection.test.tsx) share a `renderInto` React
+      // mount helper — pre-existing across nine files, not introduced here.
+      // The FxSection/FlatTextSection `mount()` wrappers additionally look
+      // alike because both build a props-with-overrides harness for their own
+      // component; the prop shapes differ per component, so a shared mount
+      // abstraction would obscure more than it dedupes (same rationale as
+      // slideshowPanelHelpers.ts above).
+      "packages/studio/src/components/editor/PropertyPanelEmptyState.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatColorGradingSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatLayoutSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatPrimitives.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatTextSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatToggle.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFxSection.test.tsx",
     ],
   },
   "health": {
@@ -648,6 +716,12 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // audio-fx-runtime-entry.ts: the browser-side IIFE entry for the offline FX
+      // render. It runs only inside the headless page the engine drives, so unit
+      // coverage cannot reach it and its CRAP score is coverage-driven rather
+      // than complexity-driven (5 cyclomatic). Its behaviour is covered by the
+      // engine's real-browser render tests.
+      "packages/core/stubs/audio-fx-runtime-entry.ts",
       // useGestureRecording.ts: readBasePosition/connectGsapRuntime/tick are
       // inherited gesture-runtime control flow. This stack only changes
       // recordSample to coalesce display-rate events onto authored frames;
@@ -658,6 +732,11 @@
       // optional fields, but the line-shift fingerprint re-flags the inherited
       // complexity.
       "packages/studio/src/utils/sourcePatcher.ts",
+      // runtime/media.ts: refreshRuntimeMediaCache pre-dates this work and is
+      // untouched by it — this stack only adds a volume-lane branch to
+      // syncRuntimeMedia's author-volume resolution, but touching the file makes
+      // fallow report the inherited function.
+      "packages/core/src/runtime/media.ts",
       // timeline.ts: collectRuntimeTimelinePayload (CRITICAL) pre-dates this PR;
       // only an import line changed here (slideshow/sceneId → slideshow/index),
       // but the line-shift fingerprint makes fallow re-flag inherited complexity.
@@ -677,6 +756,11 @@
       "packages/parsers/src/gsapParser.ts",
       // htmlParser.ts has pre-existing complexity (moved from packages/core).
       "packages/parsers/src/htmlParser.ts",
+      // automationSimplify.ts: Ramer–Douglas–Peucker algorithm inherently requires
+      // nested loops and stack-based control flow (12 cyclomatic / 20 cognitive);
+      // this complexity is by design and not refactorable. Consumed by the UI
+      // layer one PR upstack in the audio-automation feature stack.
+      "packages/studio/src/player/components/automationSimplify.ts",
       // studio-server files: pre-existing complexity (moved from packages/core/src/studio-api/).
       // files.ts: executeGsapMutationRecast/Acorn are CRITICAL; excluded as files.ts
       // was already in health.ignore at the old path (packages/core/src/studio-api/routes/files.ts).

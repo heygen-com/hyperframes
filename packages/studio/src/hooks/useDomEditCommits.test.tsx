@@ -1338,6 +1338,44 @@ describe("useDomEditCommits attribute persist handling", () => {
     }
   });
 
+  it("applies a preview-only write without persisting it", async () => {
+    // What a drag needs from every pointermove: the preview and the audio graph
+    // follow, the file does not. Persisting each move filled the undo stack with
+    // fragments of one gesture — and because those writes race, a follow-up's
+    // "before" often was not the previous entry's "after", so history refused to
+    // coalesce them and undo took back a few milliseconds of the drag.
+    const fetchSpy = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeLiveCommit("volume", "0.7", undefined, {
+          previewOnly: true,
+        });
+      });
+      expect(element.getAttribute("data-volume")).toBe("0.7");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("still persists a live write that does not ask to be preview-only", async () => {
+    const fetchSpy = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeLiveCommit("volume", "0.7");
+      });
+      expect(fetchSpy).toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
   it("keeps a data-attribute commit on success", async () => {
     stubPatchFetch({
       ok: true,

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Perspective Marquee",
   "description": "A 3D tilted marquee with depth feel as items roll toward the horizon.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "perspective-marquee.html",

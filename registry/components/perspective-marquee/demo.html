@@ -30,25 +30,25 @@
         /* ponytail: scale on wrapper — GSAP only targets the inner div, so CSS transform is safe here */
         transform: scale(3);
       }
-      .hf-remocn-perspective-marquee {
+      .hf-catalog-perspective-marquee {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-perspective-marquee {
+      .hf-catalog-perspective-marquee {
         width: 580px;
         perspective: 900px;
         overflow: hidden;
         transform: rotateX(18deg);
       }
-      .hf-remocn-perspective-marquee div {
+      .hf-catalog-perspective-marquee div {
         display: inline-flex;
         gap: 22px;
         white-space: nowrap;
         transform: translateX(var(--hf-marquee-x, 0px));
       }
-      .hf-remocn-perspective-marquee span {
+      .hf-catalog-perspective-marquee span {
         padding: 12px 18px;
         border-radius: 999px;
         background: #18181b;
@@ -68,7 +68,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-perspective-marquee">
+        <div class="hf-catalog-perspective-marquee">
           <div>
             <span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span><span>AGENTS</span
             ><span>COMPONENTS</span><span>PRIMITIVES</span><span>TRANSITIONS</span
@@ -80,7 +80,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-perspective-marquee div",
+          ".hf-catalog-perspective-marquee div",
           { "--hf-marquee-x": "0px" },
           { "--hf-marquee-x": "-360px", duration: 4.5, ease: "none" },
           startTime,

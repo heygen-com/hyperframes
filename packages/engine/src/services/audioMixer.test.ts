@@ -41,6 +41,25 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
   return { ...actual, runFfmpeg: runFfmpegMock };
 });
 
+// The FX render drives a headless browser; the mix only needs to know the
+// processed file exists and how long a tail the chain asked for.
+const { applyAudioFxChainMock } = vi.hoisted(() => ({
+  applyAudioFxChainMock: vi.fn(
+    async (_src: string, _chain: unknown, outPath: string, options?: { envelope?: unknown }) => {
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(outPath, "stub");
+      // The real one bakes the volume envelope into its float output, so the
+      // mixer must not run its own pass afterwards.
+      return { path: outPath, envelopeBaked: Boolean(options?.envelope) };
+    },
+  ),
+}));
+
+vi.mock("./audioFxRender.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./audioFxRender.js")>();
+  return { ...actual, applyAudioFxChain: applyAudioFxChainMock };
+});
+
 vi.mock("../utils/ffprobe.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/ffprobe.js")>();
   return { ...actual, extractAudioMetadata: extractAudioMetadataMock };
@@ -61,6 +80,7 @@ describe("processCompositionAudio", () => {
       channels: 2,
       audioCodec: "aac",
     });
+    applyAudioFxChainMock.mockClear();
     capturedFilterScripts.length = 0;
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
@@ -235,6 +255,137 @@ describe("processCompositionAudio", () => {
     expect(filter).not.toContain("whole_dur");
     expect(filter).not.toContain("normalize=");
     expect(filter).not.toContain("weights=");
+  });
+
+  it("lets an FX tail run past the clip, still bounded by the composition", async () => {
+    // A reverb is still decaying when the clip's own audio stops. Trimming at
+    // the clip boundary is what cut every tail short in the render.
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src: "bed.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+          fxChain: JSON.stringify({
+            version: 1,
+            nodes: [
+              { type: "reverb", id: "r", params: { size: 0.5, damping: 0.5, wet: 0.4, dry: 0.7 } },
+            ],
+          }),
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      8,
+    );
+
+    expect(result.success).toBe(true);
+    expect(applyAudioFxChainMock).toHaveBeenCalledTimes(1);
+    const filter = capturedFilterScripts[capturedFilterScripts.length - 1];
+    // 2 s clip + the 1.9 s tail 0.6 + size * 2.6 generates.
+    expect(filter).toContain("atrim=0:3.9,");
+    // And still cut at the composition's end, so a tail cannot extend the video.
+    expect(filter).toContain("apad,atrim=0:8");
+  });
+
+  it("hands the volume envelope to the FX pass instead of ducking the file after it", async () => {
+    // The FX pass writes 16-bit PCM, so a chain that overshoots full scale is
+    // clipped there. Ducking afterwards bakes that distortion in even though
+    // the lane pulls the track well down; the envelope has to travel into the
+    // FX pass and land on its float output.
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 2,
+          end: 5,
+          mediaStart: 0,
+          layer: 0,
+          volume: 0.4,
+          volumeKeyframes: [
+            { time: 2, volume: 1 },
+            { time: 5, volume: 0.25 },
+          ],
+          type: "audio",
+          fxChain: JSON.stringify({
+            version: 1,
+            nodes: [{ type: "peaking", id: "p", params: { frequency: 440, gain: 12, q: 1 } }],
+          }),
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      5,
+    );
+
+    expect(result.success).toBe(true);
+    expect(applyAudioFxChainMock).toHaveBeenCalledTimes(1);
+    expect(applyAudioFxChainMock.mock.calls[0]?.[3]).toMatchObject({
+      envelope: {
+        keyframes: [
+          { time: 2, volume: 1 },
+          { time: 5, volume: 0.25 },
+        ],
+        trackStart: 2,
+        baseVolume: 0.4,
+      },
+    });
+
+    // And the mixer trusts that bake: unity gain, no second pass, no ffmpeg
+    // volume expression re-applying the same envelope on top of it.
+    const filter = capturedFilterScripts[capturedFilterScripts.length - 1];
+    expect(filter).not.toContain(":eval=frame");
+  });
+
+  it("cuts at the clip boundary when the chain has no tail", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "bed.wav"), "stub");
+
+    await processCompositionAudio(
+      [
+        {
+          id: "bed",
+          src: "bed.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+          fxChain: JSON.stringify({
+            version: 1,
+            nodes: [{ type: "peaking", id: "n1", params: { frequency: 900, gain: -6, q: 1 } }],
+          }),
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      8,
+    );
+
+    const filter = capturedFilterScripts[capturedFilterScripts.length - 1];
+    expect(filter).toContain("atrim=0:2,");
   });
 
   it("compensates amix normalization so multi-track master gain equals track count", async () => {
@@ -955,5 +1106,20 @@ describe("parseAudioElements — hidden tracks", () => {
       "master",
       "visible-video-audio",
     ]);
+  });
+});
+
+describe("parseAudioElements data-fx-chain", () => {
+  it("captures the serialised chain when present", () => {
+    const chain = `{"version":1,"nodes":[{"type":"peaking"}]}`;
+    const html = `<audio id="music" src="bgm.mp3" data-start="0" data-end="10" data-fx-chain='${chain}'></audio>`;
+    const [el] = parseAudioElements(html);
+    expect(el!.fxChain).toBe(chain);
+  });
+
+  it("leaves fxChain undefined when the attribute is absent", () => {
+    const html = `<audio id="music" src="bgm.mp3" data-start="0" data-end="10"></audio>`;
+    const [el] = parseAudioElements(html);
+    expect(el!.fxChain).toBeUndefined();
   });
 });

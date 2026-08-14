@@ -29,6 +29,55 @@ describe("saveProjectFilesWithHistory", () => {
     });
   });
 
+  /**
+   * Deleting a clip POSTs `remove-element`, which rewrites the file server-side,
+   * and only then saves the duration shrink. Expecting the content read before
+   * the mutation made the server refuse that write as a conflict: the save queue
+   * paused on the 409 and the clip stayed on the timeline until a reload.
+   */
+  it("expects what is on disk, not the undo baseline, when they differ", async () => {
+    const expectations: Record<string, string | undefined> = {};
+    const recordEdit = vi.fn();
+
+    await saveProjectFilesWithHistory({
+      projectId: "project-1",
+      label: "Delete timeline clip",
+      kind: "timeline",
+      files: { "index.html": "removed+shrunk" },
+      readFile: async () => "original",
+      diskContent: { "index.html": "removed" },
+      writeFile: async (path, _content, expectedContent) => {
+        expectations[path] = expectedContent;
+      },
+      recordEdit,
+    });
+
+    expect(expectations["index.html"]).toBe("removed");
+    // Undo still goes all the way back, which is the whole reason the two are
+    // allowed to differ.
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: { "index.html": { before: "original", after: "removed+shrunk" } },
+      }),
+    );
+  });
+
+  it("still expects the undo baseline when nothing says otherwise", async () => {
+    const expectations: Record<string, string | undefined> = {};
+    await saveProjectFilesWithHistory({
+      projectId: "project-1",
+      label: "Move layer",
+      kind: "manual",
+      files: { "index.html": "after" },
+      readFile: async () => "before",
+      writeFile: async (path, _content, expectedContent) => {
+        expectations[path] = expectedContent;
+      },
+      recordEdit: vi.fn(),
+    });
+    expect(expectations["index.html"]).toBe("before");
+  });
+
   it("skips writes and history for unchanged content", async () => {
     const writeFile = vi.fn();
     const recordEdit = vi.fn();

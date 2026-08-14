@@ -92,6 +92,72 @@
       "types": "./dist/compiler/index.d.ts",
       "environments": ["bun", "node"]
     },
+    "./audio-fx": {
+      "source": "./src/audioFx.ts",
+      "runtime": "./dist/audioFx.js",
+      "types": "./dist/audioFx.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-copy": {
+      "source": "./src/audioFxCopy.ts",
+      "runtime": "./dist/audioFxCopy.js",
+      "types": "./dist/audioFxCopy.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-profiles": {
+      "source": "./src/audioFxProfiles.ts",
+      "runtime": "./dist/audioFxProfiles.js",
+      "types": "./dist/audioFxProfiles.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-jobs": {
+      "source": "./src/audioFxJobs.ts",
+      "runtime": "./dist/audioFxJobs.js",
+      "types": "./dist/audioFxJobs.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-eq": {
+      "source": "./src/audioFxEq.ts",
+      "runtime": "./dist/audioFxEq.js",
+      "types": "./dist/audioFxEq.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-leveller": {
+      "source": "./src/audioLeveller.ts",
+      "runtime": "./dist/audioLeveller.js",
+      "types": "./dist/audioLeveller.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-presets": {
+      "source": "./src/audioFxPresets.ts",
+      "runtime": "./dist/audioFxPresets.js",
+      "types": "./dist/audioFxPresets.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-tail": {
+      "source": "./src/audio/audioFxTail.ts",
+      "runtime": "./dist/audio/audioFxTail.js",
+      "types": "./dist/audio/audioFxTail.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-fx-runtime": {
+      "source": "./src/generated/audio-fx-runtime-inline.ts",
+      "runtime": "./dist/generated/audio-fx-runtime-inline.js",
+      "types": "./dist/generated/audio-fx-runtime-inline.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./audio-carve": {
+      "source": "./src/audioCarve.ts",
+      "runtime": "./dist/audioCarve.js",
+      "types": "./dist/audioCarve.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-automation": {
+      "source": "./src/audioAutomation.ts",
+      "runtime": "./dist/audioAutomation.js",
+      "types": "./dist/audioAutomation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",

@@ -428,3 +428,75 @@ describe("media_variable_src_no_fallback", () => {
     expect(result.findings.some((f) => f.code === "media_missing_src")).toBe(true);
   });
 });
+
+describe("audio_volume_double_automation", () => {
+  const withScript = (audioAttrs: string, script: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      <audio id="bgm" src="a.wav" data-start="0" data-duration="10" ${audioAttrs}></audio>
+    </div>
+    <script>${script}</script>
+  </body></html>`;
+
+  const LANE = `data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1}]}]}'`;
+
+  it("warns when a lane and a GSAP volume tween both shape the same track", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(LANE, `tl.to("#bgm", { volume: 0, duration: 1 });`),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_volume_double_automation");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("bgm");
+  });
+
+  it("stays quiet for a lane alone, a tween alone, or a tween on another track", async () => {
+    const laneOnly = await lintHyperframeHtml(withScript(LANE, `tl.to("#bgm", { x: 10 });`));
+    const tweenOnly = await lintHyperframeHtml(withScript("", `tl.to("#bgm", { volume: 0 });`));
+    const otherTrack = await lintHyperframeHtml(withScript(LANE, `tl.to("#vo", { volume: 0 });`));
+    for (const res of [laneOnly, tweenOnly, otherTrack]) {
+      expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(false);
+    }
+  });
+
+  it("still warns when another value in the same call is a function result", async () => {
+    // Bounding the scan at the first `)` to fix the chained-timeline case
+    // silenced the rule for the ordinary shape of a tween whose object holds a
+    // call — the paren closing `fadeTime(2)` ended the match before `volume`.
+    // The lane and the tween still both drive volume, and the author still gets
+    // no warning about it.
+    const res = await lintHyperframeHtml(
+      withScript(LANE, `tl.to("#bgm", { duration: fadeTime(2), volume: 0.2 });`),
+    );
+    expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(true);
+  });
+
+  it("does not blame the wrong element in a chained timeline", async () => {
+    // A chain has no semicolon until its very end, so a run that could cross `)`
+    // reached the `volume` in a LATER call and reported the element from an
+    // earlier one. Acting on the fixHint would have deleted #bgm's only real
+    // automation to fix a tween that is on #vo.
+    const res = await lintHyperframeHtml(
+      withScript(
+        LANE,
+        `gsap.timeline().to("#bgm", { duration: 0.6, x: 10 }).to("#vo", { volume: 1 });`,
+      ),
+    );
+    expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(false);
+  });
+
+  it("still catches a real tween further down the same call", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(LANE, `gsap.timeline().to("#bgm", { duration: 0.6, ease: "none", volume: 0 });`),
+    );
+    expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(true);
+  });
+
+  it("ignores a lane that automates something other than volume", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(
+        `data-automation='{"version":1,"lanes":[{"target":"fx.n1.frequency","points":[{"t":0,"v":200}]}]}'`,
+        `tl.to("#bgm", { volume: 0 });`,
+      ),
+    );
+    expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(false);
+  });
+});

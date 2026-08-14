@@ -118,3 +118,49 @@ describe("TimelineToolbar — motion path endpoints", () => {
     act(() => root.unmount());
   });
 });
+
+describe("TimelineToolbar — keyframes on audio tracks", () => {
+  const clip = (tag: string) => ({
+    id: "bgm",
+    key: "bgm",
+    tag,
+    start: 0,
+    duration: 10,
+    track: 1,
+  });
+
+  /** A session whose selection would otherwise offer the keyframe toggle. */
+  function sessionFor(tag: string) {
+    usePlayerStore.setState({ elements: [clip(tag)], selectedElementId: "bgm", currentTime: 1 });
+    const element = document.createElement(tag);
+    element.id = "bgm";
+    return {
+      domEditSelection: makeSelection("Element", element),
+      selectedGsapAnimations: [],
+      handleGsapAddAnimation: vi.fn(),
+      handleGsapConvertToKeyframes: vi.fn(),
+      handleGsapRemoveKeyframe: vi.fn(),
+    } satisfies NonNullable<React.ComponentProps<typeof TimelineToolbar>["domEditSession"]>;
+  }
+
+  it("offers no keyframe toggle for an audio clip", () => {
+    // An audio clip has no box on the canvas, so there is nothing to move or fade —
+    // and pressing this seeded a tween from the position properties, which put a
+    // position lane on a track that has no position. Audio is automated instead.
+    const { host, root } = renderToolbar(sessionFor("audio"));
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add keyframe at playhead"]',
+    );
+    expect(button?.disabled).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("still offers it for a visual clip", () => {
+    const { host, root } = renderToolbar(sessionFor("div"));
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add keyframe at playhead"]',
+    );
+    expect(button?.disabled).toBe(false);
+    act(() => root.unmount());
+  });
+});

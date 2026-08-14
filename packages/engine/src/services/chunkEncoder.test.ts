@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+import { renderProvenanceArgs } from "../utils/renderProvenance.js";
 
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==",
@@ -403,6 +404,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "+faststart",
       "-avoid_negative_ts",
       "make_zero",
+      ...renderProvenanceArgs("/tmp/output.mp4"),
       "-r",
       "30",
       "-y",
@@ -410,6 +412,10 @@ describe("muxVideoWithAudio audio codec handling", () => {
     ]);
     expect(calls[0]!.args).not.toContain("-shortest");
     expect(calls[0]!.args).not.toContain("-use_editlist");
+    // The faststart flag set above must survive the provenance flag: ffmpeg
+    // takes the last -movflags occurrence, and a non-additive one would drop it.
+    expect(calls[0]!.args.filter((a) => a === "-movflags")).toHaveLength(2);
+    expect(calls[0]!.args).toContain("+faststart");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({

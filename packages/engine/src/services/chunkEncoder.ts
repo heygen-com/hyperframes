@@ -22,6 +22,7 @@ import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
+import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -361,6 +362,7 @@ export function buildEncoderArgs(
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
     args.push("-pix_fmt", pixelFormat);
+    appendRenderProvenanceArgs(args, outputPath);
     return [...args, "-y", outputPath];
   }
 
@@ -444,6 +446,8 @@ export function buildEncoderArgs(
   }
 
   args.push("-avoid_negative_ts", "make_zero");
+
+  appendRenderProvenanceArgs(args, outputPath);
 
   args.push("-y", outputPath);
   return args;
@@ -611,18 +615,14 @@ export async function encodeFramesChunkedConcat(
   const concatInput = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
   writeFileSync(concatListPath, concatInput, "utf-8");
 
-  const concatArgs = [
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    concatListPath,
-    "-c",
-    "copy",
-    "-y",
-    outputPath,
-  ];
+  const concatArgs = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  // The concat demuxer does not carry per-chunk container metadata into the
+  // output, so the chunks' provenance is dropped here even though every chunk
+  // carries it. Re-assert on the concatenated file: for a no-audio mov/webm
+  // this is the last container write, since mux is skipped and applyFaststart
+  // only copies those two formats.
+  appendRenderProvenanceArgs(concatArgs, outputPath);
+  concatArgs.push("-y", outputPath);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   const concatProcessResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
   const concatResult = {
@@ -701,6 +701,10 @@ export async function muxVideoWithAudio(
   // AAC priming packet. `make_zero` discards that edit and shifts copied video
   // forward by one AAC frame (~21ms), creating a visible first-frame offset.
   if (!copiesContainerizedAac) args.push("-avoid_negative_ts", "make_zero");
+  // Re-assert provenance here: this stage re-muxes into the delivered
+  // container, and the mp4 muxer drops the encode stage's tags without the
+  // use_metadata_tags flag that appendRenderProvenanceArgs adds.
+  appendRenderProvenanceArgs(args, outputPath);
   if (fps !== undefined) {
     // Set the exact output framerate so the muxer doesn't PTS-average a
     // fractional rational like `360000/12001` instead of `30/1` into the
@@ -742,6 +746,7 @@ export async function applyFaststart(
     return { success: true, outputPath, durationMs: 0 };
   }
   const args = ["-i", inputPath, "-c", "copy", "-movflags", "+faststart"];
+  appendRenderProvenanceArgs(args, outputPath);
   if (fps !== undefined) {
     // Set the exact output framerate so the final remux doesn't PTS-average
     // a fractional rational like `360000/12001` instead of `30/1` into the

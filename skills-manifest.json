@@ -18,12 +18,16 @@
       "files": 4
     },
     "hyperframes": {
-      "hash": "3a3ea01fe52e1600",
+      "hash": "756a72f58fa3739b",
       "files": 17
     },
     "hyperframes-animation": {
       "hash": "5bc2ce098387a547",
       "files": 121
+    },
+    "hyperframes-audio": {
+      "hash": "534cea75fe0f2bc6",
+      "files": 6
     },
     "hyperframes-cli": {
       "hash": "e042fcaaa3f9767f",

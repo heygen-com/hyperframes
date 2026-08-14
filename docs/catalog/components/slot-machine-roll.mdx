@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html slot-machine-roll.html
 <!--
-  Slot Machine Roll - remocn typography primitive for HyperFrames.
+  Slot Machine Roll - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -43,7 +43,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-slot-machine-roll"
+  class="hf-catalog-slot-machine-roll"
   data-composition-variables='[
     { "id": "result", "type": "string", "role": "content", "label": "Result", "description": "Characters the reels land on, one reel column per character. Whitespace is stripped and every reel starts on a zero.", "default": "A7K" },
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which way the reels roll: up lifts the zero out through the top, down drops it out through the bottom.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
@@ -61,13 +61,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-slot-machine-roll {
+  .hf-catalog-slot-machine-roll {
     color: var(--hf-slot-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-slot-machine-roll {
+  .hf-catalog-slot-machine-roll {
     display: inline-flex;
     gap: 6px;
     height: var(--hf-slot-row, 74px);
@@ -78,12 +78,12 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
       Menlo,
       monospace;
   }
-  .hf-remocn-slot-machine-roll span {
+  .hf-catalog-slot-machine-roll span {
     display: block;
     height: var(--hf-slot-row, 74px);
     overflow: hidden;
   }
-  .hf-remocn-slot-machine-roll i {
+  .hf-catalog-slot-machine-roll i {
     display: block;
     font-style: normal;
     transform: translateY(
@@ -123,7 +123,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var result = (typeof vars.result === "string" ? vars.result : "").replace(/\s+/g, "");
     if (result.length === 0) result = "A7K";
 
-    var roots = document.querySelectorAll(".hf-remocn-slot-machine-roll");
+    var roots = document.querySelectorAll(".hf-catalog-slot-machine-roll");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-slot-row", row + "px");
@@ -148,7 +148,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-slot-machine-roll i', { '--hf-slot-y': '0px' }, { '--hf-slot-y': '-74px', duration: 0.52, stagger: 0.06, ease: 'power3.inOut' }, startTime);
+  tl.fromTo('.hf-catalog-slot-machine-roll i', { '--hf-slot-y': '0px' }, { '--hf-slot-y': '-74px', duration: 0.52, stagger: 0.06, ease: 'power3.inOut' }, startTime);
 -->
 ```
 
@@ -189,7 +189,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Slot Machine Roll - remocn typography primitive for HyperFrames.
+  Slot Machine Roll - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -217,7 +217,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-slot-machine-roll"
+  class="hf-catalog-slot-machine-roll"
   data-composition-variables='[
     { "id": "result", "type": "string", "role": "content", "label": "Result", "description": "Characters the reels land on, one reel column per character. Whitespace is stripped and every reel starts on a zero.", "default": "A7K" },
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which way the reels roll: up lifts the zero out through the top, down drops it out through the bottom.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
@@ -235,13 +235,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-slot-machine-roll {
+  .hf-catalog-slot-machine-roll {
     color: var(--hf-slot-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-slot-machine-roll {
+  .hf-catalog-slot-machine-roll {
     display: inline-flex;
     gap: 6px;
     height: var(--hf-slot-row, 74px);
@@ -252,12 +252,12 @@ defaults, so this behaves exactly like the preview above until you change one:
       Menlo,
       monospace;
   }
-  .hf-remocn-slot-machine-roll span {
+  .hf-catalog-slot-machine-roll span {
     display: block;
     height: var(--hf-slot-row, 74px);
     overflow: hidden;
   }
-  .hf-remocn-slot-machine-roll i {
+  .hf-catalog-slot-machine-roll i {
     display: block;
     font-style: normal;
     transform: translateY(
@@ -297,7 +297,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var result = (typeof vars.result === "string" ? vars.result : "").replace(/\s+/g, "");
     if (result.length === 0) result = "A7K";
 
-    var roots = document.querySelectorAll(".hf-remocn-slot-machine-roll");
+    var roots = document.querySelectorAll(".hf-catalog-slot-machine-roll");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-slot-row", row + "px");
@@ -322,7 +322,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-slot-machine-roll i', { '--hf-slot-y': '0px' }, { '--hf-slot-y': '-74px', duration: 0.52, stagger: 0.06, ease: 'power3.inOut' }, startTime);
+  tl.fromTo('.hf-catalog-slot-machine-roll i', { '--hf-slot-y': '0px' }, { '--hf-slot-y': '-74px', duration: 0.52, stagger: 0.06, ease: 'power3.inOut' }, startTime);
 -->
 ```
 
@@ -334,7 +334,7 @@ Open `compositions/components/slot-machine-roll.html` and paste its contents int
 
 {/* hf:generated-footer */}
 
-Tagged `video-primitive` `motion-primitive` `remocn-port` `typography`.
+Tagged `video-primitive` `motion-primitive` `typography`.
 
 ## Related topics
 

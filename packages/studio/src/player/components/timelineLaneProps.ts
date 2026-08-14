@@ -9,6 +9,8 @@ import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./us
 import type { TimelineClipIndex, TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
+import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
+import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 import type { TimelineClipRenderContext } from "./TimelineTypes";
 
@@ -97,4 +99,21 @@ export interface TimelineLaneBaseProps {
    */
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
+}
+
+/**
+ * {@link TimelineLaneBaseProps} plus the handful of props only the lane
+ * renderer ({@link import("./TimelineLanes")}) itself needs — the drag-preview
+ * state and the edit callbacks TimelineCanvas does not otherwise touch.
+ */
+export interface TimelineLanesProps extends TimelineLaneBaseProps {
+  /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
+  draggedElement: TimelineElement | null;
+  multiDragPreview: MultiDragPreviewInput | null;
+  onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
+  onTogglePropertyGroupKeyframe: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
+  onResizeElement: TimelineEditCallbacks["onResizeElement"];
+  onMoveElement: TimelineEditCallbacks["onMoveElement"];
+  onRazorSplit: TimelineEditCallbacks["onRazorSplit"];
+  onRazorSplitAll: TimelineEditCallbacks["onRazorSplitAll"];
 }

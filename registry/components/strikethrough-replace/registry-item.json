@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Strikethrough Replace",
   "description": "Draw a strike line across old text, then reveal the replacement.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "strikethrough-replace.html",

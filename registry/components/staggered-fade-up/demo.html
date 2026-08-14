@@ -40,13 +40,13 @@
         text-transform: uppercase;
         color: var(--muted, #71717a);
       }
-      .hf-remocn-staggered-fade-up {
+      .hf-catalog-staggered-fade-up {
         color: var(--fg, #18181b);
         font-family: var(--font-display, Inter, system-ui, sans-serif);
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-staggered-fade-up {
+      .hf-catalog-staggered-fade-up {
         display: flex;
         flex-wrap: wrap;
         gap: 14px 18px;
@@ -55,7 +55,7 @@
         max-width: 680px;
         justify-content: center;
       }
-      .hf-remocn-staggered-fade-up span {
+      .hf-catalog-staggered-fade-up span {
         display: inline-block;
         transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
           scale(var(--hf-word-scale, 1));
@@ -75,7 +75,7 @@
     >
       <div class="demo-frame">
         <div class="demo-label">staggered fade up</div>
-        <div class="hf-remocn-staggered-fade-up">
+        <div class="hf-catalog-staggered-fade-up">
           <span>Motion</span><span>that</span><span>tells</span><span>a</span><span>story</span
           ><span>one</span><span>word</span><span>at</span><span>a</span><span>time</span>
         </div>
@@ -84,7 +84,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.4;
         tl.fromTo(
-          ".hf-remocn-staggered-fade-up span",
+          ".hf-catalog-staggered-fade-up span",
           { opacity: 0, "--hf-word-y": "28px", "--hf-word-scale": 0.92, "--hf-word-blur": "6px" },
           {
             opacity: 1,

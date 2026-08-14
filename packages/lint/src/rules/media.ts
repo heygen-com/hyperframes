@@ -1,6 +1,35 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
-import { readAttr, readDecodedAttr, truncateSnippet, isMediaTag } from "../utils";
+import { readAttr, readDecodedAttr, stripJsComments, truncateSnippet, isMediaTag } from "../utils";
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
+
+/**
+ * Does the GSAP call that names `#id` also set `volume` in the same call?
+ *
+ * Depth-counted rather than regex-bounded: the selector opens somewhere inside a
+ * call, and the interesting region ends when THAT call closes — a nested
+ * `fadeTime(2)` opens and closes on the way and must not end the scan. A regex
+ * cannot count parens, and both fixed bounds were wrong in opposite directions:
+ * unbounded blamed a later element, first-paren missed a whole ordinary shape.
+ */
+function tweensVolumeInSameCall(script: string, id: string): boolean {
+  const selector = new RegExp(`#${escapeRegExp(id)}(?![\\w-])`, "g");
+  for (let hit = selector.exec(script); hit; hit = selector.exec(script)) {
+    let depth = 0;
+    // Cap the scan so a malformed script cannot walk the whole file.
+    const limit = Math.min(script.length, hit.index + 2000);
+    for (let i = hit.index; i < limit; i += 1) {
+      const ch = script[i];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") {
+        // Past the end of the call the selector sits in.
+        if (depth === 0) break;
+        depth -= 1;
+      } else if (ch === ";" && depth === 0) break;
+      else if (ch === "v" && /^volume\s*:/.test(script.slice(i))) return true;
+    }
+  }
+  return false;
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -597,4 +626,52 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // imperative_media_control
   findImperativeMediaControlFindings,
+
+  // audio_volume_double_automation
+  findVolumeDoubleAutomationFindings,
 ];
+
+/**
+ * A track can have its volume shaped by an automation lane or by a GSAP tween,
+ * and only the lane is heard: the runtime reads `data-automation` first and
+ * never falls through to the probed tween. Both present means one of them is
+ * silently doing nothing, which is invisible in the file and in preview.
+ */
+function findVolumeDoubleAutomationFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const automated = ctx.tags
+    .filter((tag) => isMediaTag(tag.name))
+    .map((tag) => ({ tag, automation: readDecodedAttr(tag.raw, "data-automation") }))
+    .filter((entry) => entry.automation && /"target"\s*:\s*"volume"/.test(entry.automation))
+    .map((entry) => ({ ...entry, id: readAttr(entry.tag.raw, "id") }))
+    .filter((entry): entry is typeof entry & { id: string } => Boolean(entry.id));
+  if (automated.length === 0) return [];
+
+  const script = ctx.scripts.map((block) => stripJsComments(block.content)).join("\n");
+  const findings: HyperframeLintFinding[] = [];
+  for (const { tag, id } of automated) {
+    // ponytail: a tween is recognised by a `volume` key appearing shortly after
+    // the element's own selector, rather than by parsing the timeline. It reads
+    // the same call the runtime's own probe would pick up, and the rule only
+    // warns, so a miss costs nothing.
+    // Scan to the end of the call the selector opened, rather than to the first
+    // `)`. A chained timeline has no semicolon until the end of the whole chain,
+    // so an unbounded run matched `volume` in a LATER `.to()` and named the
+    // wrong element — but stopping at the first `)` instead silenced the rule
+    // for any object holding a call, e.g.
+    // `gsap.to("#bgm", { duration: fadeTime(2), volume: 0.2 })`, which is the
+    // ordinary case rather than an exotic one. Counting depth keeps the match
+    // inside the selector's own call AND lets it cross a nested one.
+    const tweened = tweensVolumeInSameCall(script, id);
+    if (!tweened) continue;
+    findings.push({
+      code: "audio_volume_double_automation",
+      severity: "warning",
+      message: `#${id} has both a volume automation lane and a GSAP tween on \`volume\`. The lane wins — the tween is ignored in preview and in the render.`,
+      elementId: id,
+      fixHint:
+        "Keep one of them: delete the volume lane to go back to tweening, or drop the tween and shape the level in the automation lane.",
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}

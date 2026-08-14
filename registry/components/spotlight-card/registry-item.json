@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Spotlight Card",
   "description": "A card with a scripted cursor spotlight and lit border.",
-  "tags": ["effect", "remocn-port"],
+  "tags": ["effect"],
   "files": [
     {
       "path": "spotlight-card.html",

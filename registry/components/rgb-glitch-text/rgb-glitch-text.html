@@ -1,5 +1,5 @@
 <!--
-  RGB Glitch Text - remocn typography primitive for HyperFrames.
+  RGB Glitch Text - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -24,7 +24,7 @@
 -->
 
 <div
-  class="hf-remocn-rgb-glitch-text"
+  class="hf-catalog-rgb-glitch-text"
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "The word shown on all three stacked copies.", "default": "GLITCH", "maxLength": 24 },
     { "id": "intensity", "type": "enum", "role": "motion", "label": "Intensity", "description": "Scales the red and cyan offsets the timeline drives, so the split reads as a hairline or a hard tear.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "extreme", "label": "Extreme" }] },
@@ -35,33 +35,33 @@
 </div>
 
 <style>
-  .hf-remocn-rgb-glitch-text {
+  .hf-catalog-rgb-glitch-text {
     color: var(--hf-glitch-ink, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-rgb-glitch-text {
+  .hf-catalog-rgb-glitch-text {
     position: relative;
     width: 420px;
     height: 82px;
     font-size: 72px;
     line-height: 1;
   }
-  .hf-remocn-rgb-glitch-text span,
-  .hf-remocn-rgb-glitch-text strong {
+  .hf-catalog-rgb-glitch-text span,
+  .hf-catalog-rgb-glitch-text strong {
     position: absolute;
     inset: 0;
   }
-  .hf-remocn-rgb-glitch-text span:first-child {
+  .hf-catalog-rgb-glitch-text span:first-child {
     color: #ef4444;
     transform: translateX(calc(var(--hf-glitch-red, 0px) * var(--hf-glitch-reach, 1)));
   }
-  .hf-remocn-rgb-glitch-text span:nth-child(2) {
+  .hf-catalog-rgb-glitch-text span:nth-child(2) {
     color: #22d3ee;
     transform: translateX(calc(var(--hf-glitch-blue, 0px) * var(--hf-glitch-reach, 1)));
   }
-  .hf-remocn-rgb-glitch-text strong {
+  .hf-catalog-rgb-glitch-text strong {
     color: var(--hf-glitch-ink, #18181b);
   }
 </style>
@@ -92,7 +92,7 @@
     var text =
       typeof vars.text === "string" && vars.text.trim() !== "" ? vars.text.trim() : "GLITCH";
 
-    var roots = document.querySelectorAll(".hf-remocn-rgb-glitch-text");
+    var roots = document.querySelectorAll(".hf-catalog-rgb-glitch-text");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-glitch-reach", String(reach));
       roots[i].style.setProperty("--hf-glitch-ink", tone);
@@ -106,5 +106,5 @@
 
 <!--
   Timeline integration:
-  tl.to('.hf-remocn-rgb-glitch-text', { opacity: 1, duration: 0.01 }, startTime); tl.to('.hf-remocn-rgb-glitch-text', { '--hf-glitch-red': '-8px', '--hf-glitch-blue': '8px', duration: 0.06, repeat: 5, yoyo: true, ease: 'steps(1)' }, startTime + 0.1);
+  tl.to('.hf-catalog-rgb-glitch-text', { opacity: 1, duration: 0.01 }, startTime); tl.to('.hf-catalog-rgb-glitch-text', { '--hf-glitch-red': '-8px', '--hf-glitch-blue': '8px', duration: 0.06, repeat: 5, yoyo: true, ease: 'steps(1)' }, startTime + 0.1);
 -->

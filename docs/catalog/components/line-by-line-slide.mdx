@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html line-by-line-slide.html
 <!--
-  Line-by-Line Slide - remocn typography primitive for HyperFrames.
+  Line-by-Line Slide - typography primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -40,7 +40,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-line-by-line-slide"
+  class="hf-catalog-line-by-line-slide"
   data-composition-variables='[
     {"id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Type size of the whole stack.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "display", "label": "Display"}]},
     {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: ink for light frames, paper for dark ones, accent rides the brand token.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]},
@@ -52,20 +52,20 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-line-by-line-slide {
+  .hf-catalog-line-by-line-slide {
     color: var(--hf-line-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-line-by-line-slide {
+  .hf-catalog-line-by-line-slide {
     display: grid;
     gap: var(--hf-line-gap, 10px);
     font-size: var(--hf-line-size, 52px);
     line-height: 1;
     overflow: hidden;
   }
-  .hf-remocn-line-by-line-slide span {
+  .hf-catalog-line-by-line-slide span {
     display: block;
     transform: translate(
       calc(var(--hf-line-x, 0px) * var(--hf-line-axis-x, 1)),
@@ -104,7 +104,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var gap = gaps[pick(gaps, vars.density, "standard")];
     var axis = axes[pick(axes, vars.direction, "left")];
 
-    var roots = document.querySelectorAll(".hf-remocn-line-by-line-slide");
+    var roots = document.querySelectorAll(".hf-catalog-line-by-line-slide");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-line-size", size);
@@ -117,7 +117,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-line-by-line-slide span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-line-by-line-slide span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
 -->
 ```
 
@@ -158,7 +158,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Line-by-Line Slide - remocn typography primitive for HyperFrames.
+  Line-by-Line Slide - typography primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -183,7 +183,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-line-by-line-slide"
+  class="hf-catalog-line-by-line-slide"
   data-composition-variables='[
     {"id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Type size of the whole stack.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "display", "label": "Display"}]},
     {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: ink for light frames, paper for dark ones, accent rides the brand token.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]},
@@ -195,20 +195,20 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-line-by-line-slide {
+  .hf-catalog-line-by-line-slide {
     color: var(--hf-line-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-line-by-line-slide {
+  .hf-catalog-line-by-line-slide {
     display: grid;
     gap: var(--hf-line-gap, 10px);
     font-size: var(--hf-line-size, 52px);
     line-height: 1;
     overflow: hidden;
   }
-  .hf-remocn-line-by-line-slide span {
+  .hf-catalog-line-by-line-slide span {
     display: block;
     transform: translate(
       calc(var(--hf-line-x, 0px) * var(--hf-line-axis-x, 1)),
@@ -247,7 +247,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var gap = gaps[pick(gaps, vars.density, "standard")];
     var axis = axes[pick(axes, vars.direction, "left")];
 
-    var roots = document.querySelectorAll(".hf-remocn-line-by-line-slide");
+    var roots = document.querySelectorAll(".hf-catalog-line-by-line-slide");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-line-size", size);
@@ -260,7 +260,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-line-by-line-slide span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-line-by-line-slide span', { opacity: 0, '--hf-line-x': '-36px', '--hf-line-y': '18px', '--hf-line-blur': '6px' }, { opacity: 1, '--hf-line-x': '0px', '--hf-line-y': '0px', '--hf-line-blur': '0px', duration: 0.34, stagger: 0.08, ease: 'power3.out' }, startTime);
 -->
 ```
 
@@ -272,7 +272,7 @@ Open `compositions/components/line-by-line-slide.html` and paste its contents in
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `remocn-port` `typography`.
+Tagged `motion-primitive` `typography`.
 
 ## Related topics
 

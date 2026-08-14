@@ -35,6 +35,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  appendRenderProvenanceArgs,
   applyFaststart,
   MIXED_AUDIO_FILENAME,
   muxVideoWithAudio,
@@ -177,7 +178,9 @@ export async function assemble(
     // touching the encoded stream. Multi-chunk renders continue through
     // the concat demuxer where the existing `-r` input flag works.
     if (chunkPaths.length === 1) {
-      const remuxArgs = ["-i", chunkPaths[0]!, "-c", "copy", "-r", fpsArg, "-y", concatOutputPath];
+      const remuxArgs = ["-i", chunkPaths[0]!, "-c", "copy", "-r", fpsArg];
+      appendRenderProvenanceArgs(remuxArgs, concatOutputPath);
+      remuxArgs.push("-y", concatOutputPath);
       const remuxResult = await runFfmpeg(remuxArgs, { signal: abortSignal });
       if (!remuxResult.success) {
         throw new Error(
@@ -210,9 +213,9 @@ export async function assemble(
         concatListPath,
         "-c",
         "copy",
-        "-y",
-        concatOutputPath,
       ];
+      appendRenderProvenanceArgs(concatArgs, concatOutputPath);
+      concatArgs.push("-y", concatOutputPath);
       const concatResult = await runFfmpeg(concatArgs, { signal: abortSignal });
       if (!concatResult.success) {
         throw new Error(
@@ -280,9 +283,9 @@ export async function assemble(
         "cfr",
         "-r",
         fpsArg,
-        "-y",
-        cfrOutputPath,
       ];
+      appendRenderProvenanceArgs(cfrArgs, cfrOutputPath);
+      cfrArgs.push("-y", cfrOutputPath);
       const cfrResult = await runFfmpeg(cfrArgs, { signal: abortSignal });
       if (!cfrResult.success) {
         throw new Error(

@@ -23,6 +23,7 @@ import {
   shouldTrack as telemetryShouldTrack,
 } from "../telemetry/client.js";
 import { canaryDecisionsForStudio, type CliCanaryDecision } from "../telemetry/canary.js";
+import { detectAgentRuntime } from "../telemetry/agent_runtime.js";
 
 /**
  * The CLI's anonymous distinct id to hand to Studio, or null when CLI telemetry
@@ -154,6 +155,27 @@ export function buildCliIdentityScript(options: { includeIdentity?: boolean } = 
   const decisions = resolveCliCanaryDecisions();
   if (decisions !== null) {
     parts.push(`window.__HF_CLI_CANARY_DECISIONS=${encodeInlineScriptJson(decisions)};`);
+  }
+
+  // Which agent, if any, is driving this CLI — and therefore the Studio it just
+  // opened. Studio cannot work this out for itself: the signal is entirely in
+  // the CLI process's environment, which the browser never sees.
+  //
+  // Published on the same terms as the decisions above, and for the same
+  // reason: it is a category derived from the EXISTENCE of well-known vendor
+  // env vars, never their values (`agent_runtime.ts` is explicit that it never
+  // reads a value, because some are API keys). One of a dozen fixed strings, or
+  // absent. Nothing identifying, so it does not belong behind the trusted-Host
+  // gate that gates the distinct id.
+  //
+  // Gated on telemetry being ON, unlike the decisions above. Those exist so a
+  // Studio whose CLI opted out does not enrol itself, so they have to survive
+  // the opt-out. This is only ever read to label an event, so with telemetry off
+  // there is nothing for it to label — publishing it anyway would leave a marker
+  // in the page of a user who asked not to be measured.
+  const agent = telemetryShouldTrack() ? detectAgentRuntime() : null;
+  if (agent) {
+    parts.push(`window.__HF_CLI_AGENT_RUNTIME=${encodeInlineScriptValue(agent)};`);
   }
 
   return parts.length === 0 ? "" : `<script>${parts.join("")}</script>`;

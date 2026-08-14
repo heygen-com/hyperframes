@@ -86,14 +86,31 @@ function resolveKeyframeToggleState(
   };
 }
 
+/**
+ * Can this element be keyframed at all?
+ *
+ * An audio clip cannot. It has no box on the canvas, so there is nothing to move,
+ * scale or fade — and "add a keyframe" on one seeds a tween from the position
+ * properties, which produced a position lane on a track that has no position. Audio
+ * is automated instead: volume and effect parameters, on their own lanes.
+ */
+function isKeyframeable(element: TimelineElement | undefined): boolean {
+  return element?.tag !== "audio";
+}
+
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const elements = usePlayerStore((s) => s.elements);
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
   const onToggle = useEnableKeyframes(
     sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
   );
+
+  const selected = elements.find((element) => (element.key ?? element.id) === selectedElementId);
+  if (!isKeyframeable(selected)) return { ...NO_KEYFRAME_TOGGLE, onToggle: undefined };
 
   const toggleState = resolveKeyframeToggleState(session, currentTime);
 

@@ -150,6 +150,7 @@ export function isCoreSkill(name: string): boolean {
 export const FALLBACK_CORE_SKILLS: readonly string[] = [
   "hyperframes",
   "hyperframes-animation",
+  "hyperframes-audio",
   "hyperframes-cli",
   "hyperframes-core",
   "hyperframes-creative",

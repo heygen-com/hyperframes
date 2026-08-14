@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Mesh Gradient Background",
   "description": "A render-safe mesh gradient using animated radial layers.",
-  "tags": ["effect", "remocn-port"],
+  "tags": ["effect"],
   "files": [
     {
       "path": "mesh-gradient-bg.html",

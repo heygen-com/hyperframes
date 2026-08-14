@@ -92,6 +92,7 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Seek-safe GSAP, CSS, Anime.js, WAAPI, FLIP, paths, masks, SVG, 3D keyframes, or `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
 | Design specs, concept, palette, typography, narration, beat planning                                                | `/hyperframes-creative`  |
 | Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
+| Voiceover carve, audio effect chains, or automation envelopes on a track                                            | `/hyperframes-audio`     |
 | Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
 | Registry blocks and components                                                                                      | `/hyperframes-registry`  |
 | Figma assets, tokens, components, or storyboard frames as reconstructed motion                                      | `/figma`                 |

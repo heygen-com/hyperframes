@@ -124,6 +124,7 @@ export function StudioRightPanel({
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomPathOffsetCommit,
@@ -326,6 +327,21 @@ export function StudioRightPanel({
     },
     [projectId, refreshFileTree, showToast],
   );
+
+  /**
+   * A dial being dragged writes to the preview and stops there.
+   *
+   * Every one of these panels previews on each pointermove and commits on
+   * release. Persisting the moves too put a fragment of the drag in the undo
+   * stack — and since those writes race, history could not coalesce them
+   * reliably, so undo took back a sliver of the gesture rather than the gesture.
+   * The release's own commit is what reaches the file and the undo stack.
+   */
+  const setAttributeWhileDragging = useCallback(
+    (attr: string, value: string | null) =>
+      handleDomAttributeLiveCommit(attr, value, undefined, { previewOnly: true }),
+    [handleDomAttributeLiveCommit],
+  );
   const handleHideAllSelected = () => {
     const { elements } = usePlayerStore.getState();
     const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
@@ -360,7 +376,8 @@ export function StudioRightPanel({
         onSetStyle={handleDomStyleCommit}
         onSetAttribute={handleDomAttributeCommit}
         onSetAttributes={handleDomAttributesCommit}
-        onSetAttributeLive={handleDomAttributeLiveCommit}
+        onSetAttributeLive={setAttributeWhileDragging}
+        onSetAttributeQuiet={handleDomAttributeQuietCommit}
         onApplyColorGradingScope={handleApplyColorGradingScope}
         onSetHtmlAttribute={handleDomHtmlAttributeCommit}
         onRemoveBackground={handleRemoveBackground}

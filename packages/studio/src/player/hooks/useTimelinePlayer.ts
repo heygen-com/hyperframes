@@ -389,8 +389,20 @@ export function useTimelinePlayer() {
         seek(state.requestedSeekTime);
         usePlayerStore.getState().clearSeekRequest();
       }
+      // Play or stop from outside the loop — the FX rack auditioning a preset
+      // while paused, which is silent otherwise. `returnTo` puts the playhead
+      // back where the request found it: hovering is not an edit.
+      const request = state.playbackRequest;
+      if (request && request.nonce !== prev.playbackRequest?.nonce) {
+        if (request.playing) play();
+        else {
+          pause();
+          if (request.returnTo !== null) seek(request.returnTo);
+        }
+        usePlayerStore.getState().clearPlaybackRequest();
+      }
     });
-  }, [seek]);
+  }, [seek, play, pause]);
   const { playbackKeyDownRef, playbackKeyUpRef, attachIframeShortcutListeners, togglePlay } =
     usePlaybackKeyboard({
       iframeRef,

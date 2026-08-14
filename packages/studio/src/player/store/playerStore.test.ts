@@ -557,6 +557,21 @@ describe("usePlayerStore", () => {
       expectResettableDefaults(usePlayerStore.getState());
     });
 
+    it("drops an automation time selection on reset and on a project switch", () => {
+      const sel = { elementKey: "bgm", target: "volume", t0: 1, t1: 2 };
+
+      usePlayerStore.getState().setAutomationSelection(sel);
+      usePlayerStore.getState().reset();
+      expect(usePlayerStore.getState().automationSelection).toBeNull();
+
+      // The switch matters more than reset(): a stale elementKey can match a
+      // same-keyed clip in the new project and redirect a paste to its old t0.
+      usePlayerStore.getState().beginTimelineSession("project-a");
+      usePlayerStore.getState().setAutomationSelection(sel);
+      usePlayerStore.getState().beginTimelineSession("project-b");
+      expect(usePlayerStore.getState().automationSelection).toBeNull();
+    });
+
     it("does not reset playbackRate, audioMuted, loopEnabled, zoomMode, or manualZoomPercent", () => {
       const store = usePlayerStore.getState();
       store.setPlaybackRate(2);

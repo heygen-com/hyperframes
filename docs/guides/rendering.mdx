@@ -147,6 +147,40 @@ For several variable-driven versions, use batch rendering. For remote infrastruc
 
 Those workflows involve output naming, credentials, concurrency, and infrastructure choices. Start in the [CLI guide](/developers/cli) and use the complete [CLI reference](/packages/cli) when you need every flag.
 
+## Render provenance
+
+Rendered video carries two container metadata tags that say which tool wrote the file:
+
+```bash
+ffprobe -v error -show_entries format_tags -of json out.mp4
+```
+
+```json
+{ "hyperframes_renderer": "hyperframes", "hyperframes_version": "0.7.107" }
+```
+
+That is the whole of it. The tags name the renderer and its version, and nothing else: no file
+paths, usernames, machine names, project names, or anything about the composition. They are
+container metadata, not a visible watermark, so no pixel of your video changes. Matroska
+uppercases tag names on read, so a `.webm` reports `HYPERFRAMES_RENDERER`.
+
+Strip them whenever you like:
+
+```bash
+ffmpeg -i out.mp4 -map_metadata -1 -c copy clean.mp4
+```
+
+<Note>
+  These tags are an unauthenticated diagnostic hint, not proof of origin. They are ordinary unsigned
+  container keys, so anything can write the same two values with a single `ffmpeg -metadata`
+  command: a tag that is present means the file *claims* to be HyperFrames output, not that
+  HyperFrames wrote it. A tag that is absent means just as little, because re-encoding, remuxing, or
+  any tool that drops unknown keys strips it, and files rendered by older versions never carried it.
+  Treat it as a "what probably produced this file?" hint for support and debugging, never as an
+  authenticity, attribution, or licensing check. Verifiable provenance needs signed claims such as
+  C2PA.
+</Note>
+
 ## If rendering fails
 
 Run:

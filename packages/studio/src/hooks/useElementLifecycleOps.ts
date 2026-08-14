@@ -142,6 +142,9 @@ export function useElementLifecycleOps({
           kind: "timeline",
           files: { [targetPath]: patchedContent },
           readFile: async () => originalContent,
+          // remove-element already wrote the removal, so disk holds THAT — not
+          // the content read at the top. Undo still goes back to the original.
+          diskContent: { [targetPath]: patchedContent },
           writeFile: writeProjectFile,
           recordEdit: editHistory.recordEdit,
         });

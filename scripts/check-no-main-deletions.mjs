@@ -49,6 +49,18 @@ export const ALLOWED_DELETIONS = new Map([
     "skills/embedded-captions/themes/PORTING.md",
     "#3219: same, zero inbound references; a theme-authoring procedure whose inputs (cap_fx3 demos, frame corpora, CONTRACT.md) are not distributed with the skill",
   ],
+  [
+    "packages/core/scripts/build-audio-fx-runtime.ts",
+    "merged into build-inline-artifact.ts: this and build-position-edits-render.ts were a byte-for-byte clone differing only in five names, which fallow's duplication check kept re-flagging on every unrelated line shift",
+  ],
+  [
+    "packages/core/scripts/build-position-edits-render.ts",
+    "merged into build-inline-artifact.ts, same reason as build-audio-fx-runtime.ts above",
+  ],
+  [
+    "packages/core/scripts/build-inline-artifact.ts",
+    "a later branch in this stack (wa-20b2-lfo-fixes) independently deduped the same two build scripts a different way — buildInjectedArtifact.ts plus two thin per-target files — before this consolidation and that one had merged; this branch's tree keeps that shape instead, so build-inline-artifact.ts is the one that goes.",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

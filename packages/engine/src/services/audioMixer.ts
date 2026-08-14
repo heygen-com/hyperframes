@@ -29,6 +29,18 @@ import type {
   MixResult,
 } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
+import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
+import {
+  HF_AUDIO_AUTOMATION_ATTR,
+  parseAutomation,
+  resolveAutomation,
+  sampleAutomationLane,
+  VOLUME_TARGET,
+  type HfAutomationLane,
+} from "@hyperframes/core/audio-automation";
+import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
+import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
+import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -329,6 +341,56 @@ function ffmpegFailure(
   };
 }
 
+/** Extra samples per second inside a segment the baker cannot draw straight. */
+const CURVED_SEGMENT_SAMPLES_PER_SEC = 30;
+
+/**
+ * A volume lane as keyframes for the PCM baker.
+ *
+ * The baker interpolates linearly between keyframes, so a straight segment
+ * needs only its two ends — a simple fade stays two keyframes. A bent one is
+ * sampled, or the bake would quietly straighten it.
+ *
+ * Times come out in composition seconds, which is what the baker subtracts the
+ * track start from. Returns null when the track has no volume lane.
+ */
+export function volumeLaneKeyframes(
+  automation: { lanes: HfAutomationLane[] },
+  trackStart: number,
+  duration: number,
+): AudioVolumeKeyframe[] | null {
+  const lane = automation.lanes.find((l) => l.target === VOLUME_TARGET);
+  if (!lane || lane.points.length === 0) return null;
+
+  const out: AudioVolumeKeyframe[] = [];
+  const push = (t: number, v: number): void => {
+    out.push({ time: trackStart + t, volume: v });
+  };
+
+  // The envelope holds its first value before the first point, rather than
+  // falling back to `data-volume`.
+  const first = lane.points[0]!;
+  if (first.t > 0) push(0, first.v);
+
+  for (let i = 0; i < lane.points.length; i += 1) {
+    const a = lane.points[i]!;
+    push(a.t, a.v);
+    const b = lane.points[i + 1];
+    if (!b || !a.curve) continue;
+    const steps = Math.max(2, Math.ceil((b.t - a.t) * CURVED_SEGMENT_SAMPLES_PER_SEC));
+    for (let k = 1; k < steps; k += 1) {
+      const t = a.t + ((b.t - a.t) * k) / steps;
+      push(t, sampleAutomationLane(lane, t));
+    }
+  }
+
+  // Hold the last value to the clip's end, so the baker does not ramp away
+  // from it toward whatever it would otherwise assume.
+  const last = lane.points[lane.points.length - 1]!;
+  if (duration > last.t) push(duration, last.v);
+  return out;
+}
+
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
@@ -361,11 +423,14 @@ export function parseAudioElements(html: string): AudioElement[] {
   };
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
+
   // and `type`; everything else (timing, layer, volume) is read identically.
   const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
+    const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
+    const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     return {
       id,
       src: el.getAttribute("src") as string,
@@ -374,6 +439,8 @@ export function parseAudioElements(html: string): AudioElement[] {
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
+      ...(fxChain ? { fxChain } : {}),
+      ...(automation ? { automation } : {}),
       type,
     };
   };
@@ -578,10 +645,14 @@ async function mixAudioTracks(
     const filterParts: string[] = [];
     tracks.forEach((track, i) => {
       const delayMs = Math.round(track.start * 1000);
-      const trimDuration = track.end - track.start;
+      // A clip's own audio ends at `end`, but an FX tail is still decaying past
+      // it. Trimming at the boundary is what cut every reverb short; the final
+      // atrim below still holds the mix to the composition's length, so a tail
+      // can run over what follows but never past the end of the video.
+      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
       filterParts.push(
-        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
+        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
       );
     });
 
@@ -717,9 +788,27 @@ export async function processCompositionAudio(
 
   if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
 
+  // Every element's work races under Promise.all, which rejects on the first
+  // failure without waiting for its siblings. A fatal FX error therefore has to
+  // be able to abort the in-flight ffmpeg runs before the finally-block removes
+  // workDir out from under them. Chained off the caller's signal so external
+  // cancellation still behaves as before.
+  //
+  // Every child that can outlive a sibling's failure has to be given THIS
+  // signal, not the caller's: the trim, the video extract and the download all
+  // took `signal`, so `internalController.abort()` cancelled nothing and the
+  // `rmSync(workDir)` on the next line ran while their ffmpeg children were
+  // still writing into it.
+  const internalController = new AbortController();
+  const effectiveSignal = internalController.signal;
+  if (signal) {
+    if (signal.aborted) internalController.abort();
+    else signal.addEventListener("abort", () => internalController.abort(), { once: true });
+  }
+
   await Promise.all(
     elements.map(async (element) => {
-      if (signal?.aborted) {
+      if (effectiveSignal.aborted) {
         failures.push({
           stage: "cancelled",
           reason: "cancelled",
@@ -740,9 +829,16 @@ export async function processCompositionAudio(
 
         if (isHttpUrl(srcPath)) {
           try {
-            srcPath = await downloadToTemp(srcPath, workDir, undefined, signal, undefined, {
-              onTelemetry: writeUrlDownloadTelemetry,
-            });
+            srcPath = await downloadToTemp(
+              srcPath,
+              workDir,
+              undefined,
+              effectiveSignal,
+              undefined,
+              {
+                onTelemetry: writeUrlDownloadTelemetry,
+              },
+            );
           } catch (err: unknown) {
             failures.push(downloadFailure(err, element.id));
             return;
@@ -807,7 +903,7 @@ export async function processCompositionAudio(
               startTime: element.mediaStart,
               duration: element.end - element.start,
             },
-            signal,
+            effectiveSignal,
             config,
           );
           if (!extractResult.success) {
@@ -833,7 +929,7 @@ export async function processCompositionAudio(
             trimmedPath,
             element.mediaStart,
             element.end - element.start,
-            signal,
+            effectiveSignal,
             config,
           );
           if (!prepResult.success) {
@@ -854,17 +950,74 @@ export async function processCompositionAudio(
           audioSrcPath = trimmedPath;
         }
 
-        // Primary volume-automation path: bake the envelope into the PCM samples
-        // (sample-accurate, no keyframe ceiling). If the WAV isn't the expected
-        // 16-bit PCM, fall back to the ffmpeg expression path by leaving the
-        // keyframes on the track for buildVolumeExpression to handle.
+        // Apply the track's FX chain to the dry, trimmed audio, before volume
+        // automation is baked in: effects should see the raw signal, and the
+        // envelope belongs on their output. A missing or broken chain is fatal
+        // for the whole mix rather than a per-track warning — quietly rendering
+        // the dry signal ships a mix that sounds plausible and is wrong.
+        const automation = element.automation
+          ? resolveAutomation(
+              parseAutomation(element.automation),
+              element.fxChain ? parseAudioFxChain(element.fxChain) : undefined,
+            )
+          : null;
+
+        // Computed before the chain runs, not after: the FX pass bakes the
+        // envelope into its float output so the duck lands before the ±1 clamp
+        // in writeWav, instead of after it.
+        //
+        // A volume lane supersedes keyframes probed from the timeline: the two
+        // would fight, and the lane is the explicit one. `lint` warns when a
+        // track carries both.
+        const laneKeyframes = automation
+          ? volumeLaneKeyframes(automation, element.start, element.end - element.start)
+          : null;
+        const envelopeKeyframes = laneKeyframes ?? element.volumeKeyframes;
+        const envelope =
+          envelopeKeyframes && envelopeKeyframes.length > 0
+            ? {
+                keyframes: envelopeKeyframes,
+                trackStart: element.start,
+                baseVolume: element.volume ?? 1.0,
+              }
+            : null;
+
         let bakedEnvelope = false;
-        if (element.volumeKeyframes && element.volumeKeyframes.length > 0) {
+        let tailSeconds = 0;
+        if (element.fxChain) {
+          // The chain is serialised into the attribute, the same way colour
+          // grading carries its config, so there is no side-car file to find,
+          // resolve or lose.
+          const chain = parseAudioFxChain(element.fxChain);
+          // The rendered WAV is longer than the input by exactly this much, so
+          // the mix has to be told to let it through.
+          tailSeconds = chainTailSeconds(chain, automation ?? undefined);
+          const fxResult = await applyAudioFxChain(
+            audioSrcPath,
+            chain,
+            join(workDir, `${element.id}-fx.wav`),
+            {
+              trackId: element.id,
+              signal: effectiveSignal,
+              ...(automation ? { automation } : {}),
+              ...(envelope ? { envelope } : {}),
+            },
+          );
+          audioSrcPath = fxResult.path;
+          bakedEnvelope = fxResult.envelopeBaked;
+        }
+
+        // Primary volume-automation path for a track the FX pass did not bake:
+        // multiply the envelope into the PCM samples (sample-accurate, no
+        // keyframe ceiling). If the WAV isn't the expected 16-bit PCM, fall
+        // back to the ffmpeg expression path by leaving the keyframes on the
+        // track for buildVolumeExpression to handle.
+        if (envelope && !bakedEnvelope) {
           bakedEnvelope = applyVolumeEnvelopeToWav(
             audioSrcPath,
-            element.volumeKeyframes,
-            element.start,
-            element.volume ?? 1.0,
+            envelope.keyframes,
+            envelope.trackStart,
+            envelope.baseVolume,
           );
         }
         tracks.push({
@@ -876,9 +1029,15 @@ export async function processCompositionAudio(
           duration: element.end - element.start,
           // Gain is already in the samples when baked, so mix at unity.
           volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
-          volumeKeyframes: bakedEnvelope ? undefined : element.volumeKeyframes,
+          volumeKeyframes: bakedEnvelope ? undefined : (envelopeKeyframes ?? undefined),
+          ...(tailSeconds > 0 ? { tailSeconds } : {}),
         });
       } catch (err: unknown) {
+        // An FX failure is fatal for the whole mix. Every other failure mode
+        // degrades gracefully — the track drops and siblings continue — but
+        // substituting the dry signal for a processed one ships a render that
+        // sounds plausible and is not what was authored.
+        if (err instanceof AudioFxRenderError) throw err;
         failures.push({
           stage: "internal",
           reason: "internal",
@@ -893,7 +1052,17 @@ export async function processCompositionAudio(
         });
       }
     }),
-  );
+  ).catch((err: unknown) => {
+    // Promise.all rejected on the first fatal failure without waiting for its
+    // siblings; abort them so their ffmpeg stops before workDir disappears.
+    internalController.abort();
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  });
 
   // Never turn a per-track preparation failure into a successful partial mix.
   // The producer only surfaces audio failures when `success` is false; mixing

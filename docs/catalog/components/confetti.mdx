@@ -24,13 +24,13 @@ That writes one file: `compositions/components/confetti.html`.
 
 ```html
 <!--
-  Confetti - remocn component ported to HyperFrames authoring format.
+  Confetti - catalog component for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div class="hf-remocn-confetti">
+<div class="hf-catalog-confetti">
   <div class="mesh"></div>
   <div class="card">
     <div class="spot"></div>
@@ -64,11 +64,11 @@ That writes one file: `compositions/components/confetti.html`.
 </div>
 
 <style>
-  .hf-remocn-confetti {
+  .hf-catalog-confetti {
     color: var(--fg, #111827);
     font-family: var(--font-body, Inter, system-ui, sans-serif);
   }
-  .hf-remocn-confetti {
+  .hf-catalog-confetti {
     position: relative;
     width: 760px;
     height: 428px;
@@ -77,7 +77,7 @@ That writes one file: `compositions/components/confetti.html`.
     background: var(--bg, #080b12);
     box-shadow: 0 28px 80px color-mix(in srgb, var(--bg, #0f172a) 20%, transparent);
   }
-  .hf-remocn-confetti .mesh {
+  .hf-catalog-confetti .mesh {
     position: absolute;
     inset: -22%;
     filter: blur(44px);
@@ -99,7 +99,7 @@ That writes one file: `compositions/components/confetti.html`.
         transparent 34%
       );
   }
-  .hf-remocn-confetti .card {
+  .hf-catalog-confetti .card {
     position: absolute;
     inset: var(--space-3, 74px) var(--space-3, 92px);
     border: 1px solid color-mix(in srgb, var(--border, #ffffff) 16%, transparent);
@@ -111,7 +111,7 @@ That writes one file: `compositions/components/confetti.html`.
     text-align: center;
     overflow: hidden;
   }
-  .hf-remocn-confetti .spot {
+  .hf-catalog-confetti .spot {
     position: absolute;
     width: 260px;
     height: 260px;
@@ -124,7 +124,7 @@ That writes one file: `compositions/components/confetti.html`.
     transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
     mix-blend-mode: screen;
   }
-  .hf-remocn-confetti .particle {
+  .hf-catalog-confetti .particle {
     position: absolute;
     left: 50%;
     top: 54%;
@@ -135,12 +135,12 @@ That writes one file: `compositions/components/confetti.html`.
     transform: translate(var(--hf-px, 0px), var(--hf-py, 0px)) rotate(var(--hf-pr, 0deg));
     opacity: var(--hf-po, 0);
   }
-  .hf-remocn-confetti h3 {
+  .hf-catalog-confetti h3 {
     margin: 0;
     font-size: 44px;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-confetti p {
+  .hf-catalog-confetti p {
     margin: var(--space-1, 8px) 0 0;
     color: color-mix(in srgb, var(--muted, #ffffff) 70%, transparent);
   }
@@ -148,7 +148,7 @@ That writes one file: `compositions/components/confetti.html`.
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-confetti .mesh', { '--hf-x1': '18%', '--hf-y1': '28%', '--hf-x2': '78%', '--hf-y2': '46%', '--hf-x3': '44%', '--hf-y3': '80%' }, { '--hf-x1': '34%', '--hf-y1': '42%', '--hf-x2': '62%', '--hf-y2': '60%', '--hf-x3': '58%', '--hf-y3': '64%', duration: 4, ease: 'sine.inOut' }, startTime); tl.fromTo('.hf-remocn-confetti .spot', { '--hf-spot-x': '-120px', '--hf-spot-y': '-70px' }, { '--hf-spot-x': '190px', '--hf-spot-y': '90px', duration: 3, ease: 'sine.inOut' }, startTime); const particles_confetti = gsap.utils.toArray('.hf-remocn-confetti .particle'); if (particles_confetti.length) { tl.fromTo(particles_confetti, { '--hf-po': 0, '--hf-px': '0px', '--hf-py': '0px', '--hf-pr': '0deg' }, { '--hf-po': 1, '--hf-px': (i) => (Math.cos(i * 0.83) * 250) + 'px', '--hf-py': (i) => (-120 - Math.sin(i * 0.61) * 120) + 'px', '--hf-pr': (i) => (180 + i * 37) + 'deg', duration: 0.8, stagger: 0.015, ease: 'power2.out' }, startTime + 0.2); }
+  tl.fromTo('.hf-catalog-confetti .mesh', { '--hf-x1': '18%', '--hf-y1': '28%', '--hf-x2': '78%', '--hf-y2': '46%', '--hf-x3': '44%', '--hf-y3': '80%' }, { '--hf-x1': '34%', '--hf-y1': '42%', '--hf-x2': '62%', '--hf-y2': '60%', '--hf-x3': '58%', '--hf-y3': '64%', duration: 4, ease: 'sine.inOut' }, startTime); tl.fromTo('.hf-catalog-confetti .spot', { '--hf-spot-x': '-120px', '--hf-spot-y': '-70px' }, { '--hf-spot-x': '190px', '--hf-spot-y': '90px', duration: 3, ease: 'sine.inOut' }, startTime); const particles_confetti = gsap.utils.toArray('.hf-catalog-confetti .particle'); if (particles_confetti.length) { tl.fromTo(particles_confetti, { '--hf-po': 0, '--hf-px': '0px', '--hf-py': '0px', '--hf-pr': '0deg' }, { '--hf-po': 1, '--hf-px': (i) => (Math.cos(i * 0.83) * 250) + 'px', '--hf-py': (i) => (-120 - Math.sin(i * 0.61) * 120) + 'px', '--hf-pr': (i) => (180 + i * 37) + 'deg', duration: 0.8, stagger: 0.015, ease: 'power2.out' }, startTime + 0.2); }
 -->
 ```
 
@@ -160,7 +160,7 @@ Open `compositions/components/confetti.html` and paste its contents into your co
 
 {/* hf:generated-footer */}
 
-Tagged `effect` `remocn-port`.
+Tagged `effect`.
 
 ## Related topics
 

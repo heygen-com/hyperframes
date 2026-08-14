@@ -232,10 +232,23 @@ describe("TimelineLanes track numbering", () => {
 describe("TimelineLanes disclosure target", () => {
   const ANIMATIONS = new Map([["clip-a", [positionTween("clip-a")]]]);
 
-  function ariaControlsTarget(host: HTMLElement): HTMLElement | null {
+  /**
+   * `aria-controls` is an ID LIST, and the caret needs one: it reveals the
+   * active clip's keyframe lanes AND the track's automation lanes, which cannot
+   * be one element — one belongs to a clip, the other to the row.
+   */
+  function ariaControlsIds(host: HTMLElement): string[] {
     const caret = host.querySelector("button[aria-controls]");
-    const id = caret?.getAttribute("aria-controls");
-    return id ? host.querySelector<HTMLElement>(`#${id}`) : null;
+    return (caret?.getAttribute("aria-controls") ?? "").split(/\s+/).filter(Boolean);
+  }
+
+  function ariaControlsTargets(host: HTMLElement): (HTMLElement | null)[] {
+    return ariaControlsIds(host).map((id) => host.querySelector<HTMLElement>(`#${id}`));
+  }
+
+  /** The first region named, which is the keyframe lanes. */
+  function ariaControlsTarget(host: HTMLElement): HTMLElement | null {
+    return ariaControlsTargets(host)[0] ?? null;
   }
 
   // aria-controls used to name a div in the sticky label column: it computed to
@@ -246,6 +259,9 @@ describe("TimelineLanes disclosure target", () => {
 
     expect(target).not.toBeNull();
     expect(target?.querySelectorAll("[data-timeline-property-lane]").length).toBeGreaterThan(0);
+    // Every region it names has to exist, or the caret points at nothing.
+    expect(ariaControlsTargets(view.host).length).toBeGreaterThan(1);
+    expect(ariaControlsTargets(view.host).every(Boolean)).toBe(true);
     act(() => view.root.unmount());
   });
 
@@ -255,6 +271,9 @@ describe("TimelineLanes disclosure target", () => {
 
     expect(target).not.toBeNull();
     expect(target?.querySelectorAll("[data-timeline-property-lane]")).toHaveLength(0);
+    // Including the automation region, which is mounted empty while collapsed
+    // for exactly this reason.
+    expect(ariaControlsTargets(view.host).every(Boolean)).toBe(true);
     act(() => view.root.unmount());
   });
 
@@ -266,8 +285,8 @@ describe("TimelineLanes disclosure target", () => {
     const second = renderLanes({ animations: ANIMATIONS, expandedClipIds: ["clip-a"] });
 
     const idsFor = (host: HTMLElement) =>
-      Array.from(host.querySelectorAll("button[aria-controls]")).map((caret) =>
-        caret.getAttribute("aria-controls"),
+      Array.from(host.querySelectorAll("button[aria-controls]")).flatMap((caret) =>
+        (caret.getAttribute("aria-controls") ?? "").split(/\s+/).filter(Boolean),
       );
     const firstIds = idsFor(first.host);
     const secondIds = idsFor(second.host);

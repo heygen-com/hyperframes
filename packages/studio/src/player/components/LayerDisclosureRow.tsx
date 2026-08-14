@@ -1,12 +1,11 @@
 import { CaretRight } from "@phosphor-icons/react";
-import type { TimelineElement } from "../store/playerStore";
 import { TRACK_H } from "./timelineLayout";
 import { TrackClipCount } from "./TrackClipCount";
 
 // Layer row (Figma order: disclosure ▸/▾, diamond, name) — the disclosure lives
 // here, not on the clip bar, and re-expands a collapsed layer.
 export function LayerDisclosureRow({
-  keyframeClip,
+  name,
   clipCount,
   isExpanded,
   gutterBackground,
@@ -15,7 +14,10 @@ export function LayerDisclosureRow({
   onToggleClipExpanded,
   children,
 }: {
-  keyframeClip: TimelineElement;
+  /** What this row is called. The active clip's own name when it is alone on the
+   *  track; the track itself once it holds several, since naming a shared row
+   *  after one of its clips reads as if the rows under it were that clip's. */
+  name: string;
   clipCount: number;
   isExpanded: boolean;
   gutterBackground: string;
@@ -31,7 +33,6 @@ export function LayerDisclosureRow({
   /** Trailing controls that act on the LAYER (the visibility eye), not on a lane. */
   children?: React.ReactNode;
 }) {
-  const name = keyframeClip.label ?? keyframeClip.domId ?? keyframeClip.id;
   return (
     <div
       className="absolute left-0 top-0 flex items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
+import { automationOwnsKey } from "./useAutomationSelectionKeyboard";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { isTypingTarget } from "../utils/typingTarget";
+import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -158,7 +160,14 @@ interface HotkeyCallbacks {
   showToast: (message: string, tone?: "error" | "info") => void;
 }
 
-function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): boolean {
+/** Exported for tests, like dispatchPlainKey below: lets the Cmd+C/Cmd+V
+ *  arbitration between an automation range and the clip clipboard be asserted
+ *  without standing up the whole hook. */
+export function dispatchModifierKey(
+  event: KeyboardEvent,
+  key: string,
+  cb: HotkeyCallbacks,
+): boolean {
   if (
     !shouldIgnoreHistoryShortcut(event.target) &&
     handleUndoRedoKey(
@@ -195,7 +204,15 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
     return true;
   }
 
-  if (!event.shiftKey && !event.altKey && !isTypingTarget(event.target)) {
+  if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
+    // An active automation range owns Cmd+C/Cmd+V, the same way it owns Delete
+    // below. This listener is on window/capture and runs before
+    // useAutomationSelectionKeyboard's document/capture handler, so without
+    // this the clip clipboard also claimed the key: Cmd+V duplicated the clip
+    // while the automation paste wrote the same file, and Cmd+C armed both
+    // clipboards and toasted "Copied clip". Return without preventDefault so
+    // the downstream handler still sees the key.
+    if (automationOwnsKey(event)) return true;
     if (key === "c") {
       if (cb.handleCopy()) {
         event.preventDefault();
@@ -222,7 +239,10 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
 }
 
 // fallow-ignore-next-line complexity
-function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
+/** Exported for tests: the unmodified-key half of the dispatcher, so the
+ *  Delete arbitration between keyframes, an automation range and the clip can
+ *  be asserted without standing up the whole hook. */
+export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
   if (key === "f" && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -288,6 +308,13 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
       event.preventDefault();
       return;
     }
+    // An active automation range owns Delete: useAutomationSelectionKeyboard
+    // empties the range in place, pinning the anchors. Fall through WITHOUT
+    // preventDefault so that document-level handler still sees the key — this
+    // listener is on window/capture, so it runs first and everything below
+    // would otherwise win. Without this the press reaches the clip delete
+    // below and destroys the whole clip the lane belongs to.
+    if (usePlayerStore.getState().automationSelection) return;
     if (event.key === "Backspace") {
       const { selectedElementId, keyframeCache } = usePlayerStore.getState();
       if (selectedElementId && keyframeCache.has(selectedElementId) && cb.onResetKeyframes()) {

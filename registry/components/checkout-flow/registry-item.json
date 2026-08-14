@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Checkout Flow",
   "description": "A composed checkout flow with plan summary, payment field rows, total, and purchase action",
-  "tags": ["ui-flow", "remocn-port", "checkout", "commerce"],
+  "tags": ["ui-flow", "checkout", "commerce"],
   "files": [
     {
       "path": "checkout-flow.html",

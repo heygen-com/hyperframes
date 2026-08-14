@@ -4,12 +4,12 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 19 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 19 only when the user explicitly asks for the full set.
+This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 20 only when the user explicitly asks for the full set.
 
 ```bash
 npx hyperframes skills update                                   # default: installs/refreshes the core set — workflows install on demand
-npx skills add heygen-com/hyperframes --full-depth              # interactive picker (terminal only — non-interactive without --skill installs all 19)
-npx skills add heygen-com/hyperframes --all --full-depth        # all 19 at once — only on explicit request
+npx skills add heygen-com/hyperframes --full-depth              # interactive picker (terminal only — non-interactive without --skill installs all 20)
+npx skills add heygen-com/hyperframes --all --full-depth        # all 20 at once — only on explicit request
 npx skills add heygen-com/hyperframes --skill <name> --full-depth  # just one (bare name, no leading slash)
 ```
 
@@ -39,6 +39,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 - `/hyperframes-keyframes` — seek-safe keyframe authoring across runtimes: GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, text trails, 3D depth; plus `hyperframes keyframes` diagnostics for surfacing and verifying rendered motion.
 - `/hyperframes-creative` — non-animation creative direction: `frame.md` / `design.md` handling, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns.
 - `/media-use` — the media OS: resolve any media need (BGM, SFX, image, icon, logo, voice, color grade, LUT) into a frozen local file or paste-ready block + ledger record; generate via TTS / music / image models when the catalog misses; transcribe, caption, remove backgrounds, and reuse assets across projects. One shared `scripts/audio.mjs` engine + manifest tracking; keeps search noise on disk.
+- `/hyperframes-audio` — mix the audio already placed in a composition: voiceover carve (dip a music bed only in the bands the voice occupies, static or dynamic, level match included), the effect chain (EQ, compressor, limiter, gate, saturation, delay, reverb, chorus, phaser, bitcrush), and automation envelopes on volume or any effect parameter. Sourcing the audio is `/media-use`; this is what happens to it afterwards.
 - `/hyperframes-cli` — CLI dev loop: `init`, `add`, `lint`, `check`, `snapshot`, `preview`, `render`, `publish`, `doctor`, `lambda` (AWS Lambda cloud rendering).
 - `/hyperframes-registry` — install and wire registry blocks and components into compositions via `hyperframes add`. Covers authoring a new block or component to contribute upstream.
 - `/figma` — import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition.
@@ -51,7 +52,7 @@ When adding a new skill, or substantially renaming / repurposing an existing one
 2. The scaffolded project template `packages/cli/src/templates/_shared/CLAUDE.md` + `AGENTS.md` — written into every `hyperframes init` project, so a stale entry there ships to users. The two template files must stay byte-identical.
 3. If the skill changes the routing surface for "make a video" requests, also update the routing table + intent layer in `skills/hyperframes/SKILL.md` AND that workflow's own route file, `skills/hyperframes/references/routes/<workflow>.md`. One file carries both halves: the input/output/trigger contract the router reads before the workflow is installed, and its interview entry (must-haves, conditionals, deferred asks, run-shape). The older `references/workflow-catalog.md` and `references/route-briefs.md` are now "moved" stubs pointing at `routes/` — don't edit them.
 4. Mirror the Router / Creation workflows / Domain skills grouping across all surfaces so a skill always lives in the same column.
-5. Skill count appears in the README and CLAUDE.md intro lines ("19 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
+5. Skill count appears in the README and CLAUDE.md intro lines ("20 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 

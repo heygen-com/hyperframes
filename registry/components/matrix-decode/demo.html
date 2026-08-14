@@ -43,7 +43,7 @@
         text-transform: uppercase;
         color: #71717a;
       }
-      .hf-remocn-matrix-decode {
+      .hf-catalog-matrix-decode {
         display: inline-flex;
         gap: 4px;
         font:
@@ -54,7 +54,7 @@
         color: #4ade80;
         text-shadow: 0 0 24px rgba(74, 222, 128, 0.45);
       }
-      .hf-remocn-matrix-decode span {
+      .hf-catalog-matrix-decode span {
         display: inline-block;
         min-width: 0.64em;
         opacity: var(--hf-matrix-opacity, 1);
@@ -72,7 +72,7 @@
     >
       <div class="demo-frame">
         <div class="demo-label">Matrix Decode</div>
-        <div class="hf-remocn-matrix-decode" data-final="HYPERFRAMES">
+        <div class="hf-catalog-matrix-decode" data-final="HYPERFRAMES">
           <span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span
           ><span>0</span><span>0</span><span>0</span><span>0</span>
         </div>
@@ -81,7 +81,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-matrix-decode span",
+          ".hf-catalog-matrix-decode span",
           { opacity: 0, y: 12 },
           { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: "power2.out" },
           startTime,

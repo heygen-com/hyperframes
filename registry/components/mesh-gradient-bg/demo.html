@@ -30,7 +30,7 @@
         padding: 52px;
         transform: scale(1.75);
       }
-      .hf-remocn-mesh-gradient-bg {
+      .hf-catalog-mesh-gradient-bg {
         --hf-accent: #2563eb;
         --hf-ink: #111827;
         --hf-muted: #6b7280;
@@ -38,7 +38,7 @@
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
       }
-      .hf-remocn-mesh-gradient-bg {
+      .hf-catalog-mesh-gradient-bg {
         position: relative;
         width: 760px;
         height: 428px;
@@ -47,7 +47,7 @@
         background: #080b12;
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
       }
-      .hf-remocn-mesh-gradient-bg .mesh {
+      .hf-catalog-mesh-gradient-bg .mesh {
         position: absolute;
         inset: -22%;
         filter: blur(44px);
@@ -69,7 +69,7 @@
             transparent 34%
           );
       }
-      .hf-remocn-mesh-gradient-bg .card {
+      .hf-catalog-mesh-gradient-bg .card {
         position: absolute;
         inset: 74px 92px;
         border: 1px solid rgba(255, 255, 255, 0.16);
@@ -81,7 +81,7 @@
         text-align: center;
         overflow: hidden;
       }
-      .hf-remocn-mesh-gradient-bg .spot {
+      .hf-catalog-mesh-gradient-bg .spot {
         position: absolute;
         width: 260px;
         height: 260px;
@@ -90,7 +90,7 @@
         transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
         mix-blend-mode: screen;
       }
-      .hf-remocn-mesh-gradient-bg .particle {
+      .hf-catalog-mesh-gradient-bg .particle {
         position: absolute;
         left: 50%;
         top: 54%;
@@ -101,12 +101,12 @@
         transform: translate(var(--hf-px, 0px), var(--hf-py, 0px)) rotate(var(--hf-pr, 0deg));
         opacity: var(--hf-po, 0);
       }
-      .hf-remocn-mesh-gradient-bg h3 {
+      .hf-catalog-mesh-gradient-bg h3 {
         margin: 0;
         font-size: 44px;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-mesh-gradient-bg p {
+      .hf-catalog-mesh-gradient-bg p {
         margin: 8px 0 0;
         font-size: 18px;
         color: rgba(255, 255, 255, 0.7);
@@ -123,7 +123,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-mesh-gradient-bg">
+        <div class="hf-catalog-mesh-gradient-bg">
           <div class="mesh"></div>
           <div class="card">
             <div class="spot"></div>
@@ -138,7 +138,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-mesh-gradient-bg .mesh",
+          ".hf-catalog-mesh-gradient-bg .mesh",
           {
             "--hf-x1": "18%",
             "--hf-y1": "28%",
@@ -160,13 +160,13 @@
           startTime,
         );
         tl.fromTo(
-          ".hf-remocn-mesh-gradient-bg .spot",
+          ".hf-catalog-mesh-gradient-bg .spot",
           { "--hf-spot-x": "-120px", "--hf-spot-y": "-70px" },
           { "--hf-spot-x": "190px", "--hf-spot-y": "90px", duration: 3, ease: "sine.inOut" },
           startTime,
         );
         const particles_mesh_gradient_bg = gsap.utils.toArray(
-          ".hf-remocn-mesh-gradient-bg .particle",
+          ".hf-catalog-mesh-gradient-bg .particle",
         );
         if (particles_mesh_gradient_bg.length) {
           tl.fromTo(

@@ -51,19 +51,19 @@
         will-change: opacity;
       }
       /* incoming phrase — the GSAP-animated element */
-      .hf-remocn-per-word-crossfade {
+      .hf-catalog-per-word-crossfade {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-per-word-crossfade {
+      .hf-catalog-per-word-crossfade {
         display: inline-flex;
         gap: 28px;
         font-size: 128px;
         line-height: 1;
       }
-      .hf-remocn-per-word-crossfade span {
+      .hf-catalog-per-word-crossfade span {
         display: inline-block;
         transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
           scale(var(--hf-word-scale, 1));
@@ -96,7 +96,7 @@
           <span>Write</span><span>once</span><span>publish</span><span>anywhere</span>
         </div>
         <!-- incoming phrase: per-word crossfade in -->
-        <div class="hf-remocn-per-word-crossfade">
+        <div class="hf-catalog-per-word-crossfade">
           <span>Create</span><span>once</span><span>reuse</span><span>everywhere</span>
         </div>
         <div class="demo-label">per-word crossfade</div>
@@ -119,7 +119,7 @@
 
         // incoming phrase fades in word-by-word (the named component)
         tl.fromTo(
-          ".hf-remocn-per-word-crossfade span",
+          ".hf-catalog-per-word-crossfade span",
           { opacity: 0, "--hf-word-y": "22px", "--hf-word-scale": 0.92, "--hf-word-blur": "5px" },
           {
             opacity: 1,

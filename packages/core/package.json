@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.107",
+  "version": "0.7.108",
   "description": "",
   "repository": {
     "type": "git",
@@ -105,6 +105,72 @@
       "node": "./dist/compiler/index.js",
       "import": "./src/compiler/index.ts",
       "types": "./src/compiler/index.ts"
+    },
+    "./audio-fx": {
+      "bun": "./src/audioFx.ts",
+      "node": "./dist/audioFx.js",
+      "import": "./src/audioFx.ts",
+      "types": "./src/audioFx.ts"
+    },
+    "./audio-fx-copy": {
+      "bun": "./src/audioFxCopy.ts",
+      "node": "./dist/audioFxCopy.js",
+      "import": "./src/audioFxCopy.ts",
+      "types": "./src/audioFxCopy.ts"
+    },
+    "./audio-fx-profiles": {
+      "bun": "./src/audioFxProfiles.ts",
+      "node": "./dist/audioFxProfiles.js",
+      "import": "./src/audioFxProfiles.ts",
+      "types": "./src/audioFxProfiles.ts"
+    },
+    "./audio-fx-jobs": {
+      "bun": "./src/audioFxJobs.ts",
+      "node": "./dist/audioFxJobs.js",
+      "import": "./src/audioFxJobs.ts",
+      "types": "./src/audioFxJobs.ts"
+    },
+    "./audio-fx-eq": {
+      "bun": "./src/audioFxEq.ts",
+      "node": "./dist/audioFxEq.js",
+      "import": "./src/audioFxEq.ts",
+      "types": "./src/audioFxEq.ts"
+    },
+    "./audio-leveller": {
+      "bun": "./src/audioLeveller.ts",
+      "node": "./dist/audioLeveller.js",
+      "import": "./src/audioLeveller.ts",
+      "types": "./src/audioLeveller.ts"
+    },
+    "./audio-fx-presets": {
+      "bun": "./src/audioFxPresets.ts",
+      "node": "./dist/audioFxPresets.js",
+      "import": "./src/audioFxPresets.ts",
+      "types": "./src/audioFxPresets.ts"
+    },
+    "./audio-fx-tail": {
+      "bun": "./src/audio/audioFxTail.ts",
+      "node": "./dist/audio/audioFxTail.js",
+      "import": "./src/audio/audioFxTail.ts",
+      "types": "./src/audio/audioFxTail.ts"
+    },
+    "./audio-fx-runtime": {
+      "bun": "./src/generated/audio-fx-runtime-inline.ts",
+      "node": "./dist/generated/audio-fx-runtime-inline.js",
+      "import": "./src/generated/audio-fx-runtime-inline.ts",
+      "types": "./src/generated/audio-fx-runtime-inline.ts"
+    },
+    "./audio-carve": {
+      "bun": "./src/audioCarve.ts",
+      "node": "./dist/audioCarve.js",
+      "import": "./src/audioCarve.ts",
+      "types": "./src/audioCarve.ts"
+    },
+    "./audio-automation": {
+      "bun": "./src/audioAutomation.ts",
+      "node": "./dist/audioAutomation.js",
+      "import": "./src/audioAutomation.ts",
+      "types": "./src/audioAutomation.ts"
     },
     "./color-grading": {
       "bun": "./src/colorGrading.ts",
@@ -368,6 +434,50 @@
         "import": "./dist/compiler/index.js",
         "types": "./dist/compiler/index.d.ts"
       },
+      "./audio-fx": {
+        "import": "./dist/audioFx.js",
+        "types": "./dist/audioFx.d.ts"
+      },
+      "./audio-fx-copy": {
+        "import": "./dist/audioFxCopy.js",
+        "types": "./dist/audioFxCopy.d.ts"
+      },
+      "./audio-fx-profiles": {
+        "import": "./dist/audioFxProfiles.js",
+        "types": "./dist/audioFxProfiles.d.ts"
+      },
+      "./audio-fx-jobs": {
+        "import": "./dist/audioFxJobs.js",
+        "types": "./dist/audioFxJobs.d.ts"
+      },
+      "./audio-fx-eq": {
+        "import": "./dist/audioFxEq.js",
+        "types": "./dist/audioFxEq.d.ts"
+      },
+      "./audio-leveller": {
+        "import": "./dist/audioLeveller.js",
+        "types": "./dist/audioLeveller.d.ts"
+      },
+      "./audio-fx-presets": {
+        "import": "./dist/audioFxPresets.js",
+        "types": "./dist/audioFxPresets.d.ts"
+      },
+      "./audio-fx-tail": {
+        "import": "./dist/audio/audioFxTail.js",
+        "types": "./dist/audio/audioFxTail.d.ts"
+      },
+      "./audio-fx-runtime": {
+        "import": "./dist/generated/audio-fx-runtime-inline.js",
+        "types": "./dist/generated/audio-fx-runtime-inline.d.ts"
+      },
+      "./audio-carve": {
+        "import": "./dist/audioCarve.js",
+        "types": "./dist/audioCarve.d.ts"
+      },
+      "./audio-automation": {
+        "import": "./dist/audioAutomation.js",
+        "types": "./dist/audioAutomation.d.ts"
+      },
       "./color-grading": {
         "import": "./dist/colorGrading.js",
         "types": "./dist/colorGrading.d.ts"
@@ -508,14 +618,15 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && tsc && tsx scripts/rewrite-esm-extensions.ts",
-    "test": "bun run check:position-edits-render && vitest run",
+    "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && bun run build:audio-fx-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
+    "test": "bun run check:position-edits-render && bun run build:audio-fx-runtime && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:runtime-coverage": "vitest run --coverage src/runtime",
     "typecheck": "tsc --noEmit && bun run typecheck:runtime",
     "typecheck:runtime": "tsc --noEmit -p tsconfig.runtime.json",
     "lint:runtime-preview-guards": "bun scripts/lint-runtime-preview-guards.ts",
+    "build:audio-fx-runtime": "tsx scripts/build-audio-fx-runtime.ts",
     "build:hyperframes-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",
     "build:position-edits-render": "tsx scripts/build-position-edits-render.ts",
     "check:position-edits-render": "bun run build:position-edits-render && git diff --exit-code -- src/generated/position-edits-render-inline.ts",

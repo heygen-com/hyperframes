@@ -34,20 +34,20 @@
         transform: scale(2.8);
         transform-origin: center center;
       }
-      .hf-remocn-line-by-line-slide {
+      .hf-catalog-line-by-line-slide {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-line-by-line-slide {
+      .hf-catalog-line-by-line-slide {
         display: grid;
         gap: 10px;
         font-size: 64px;
         line-height: 1.05;
         overflow: hidden;
       }
-      .hf-remocn-line-by-line-slide span {
+      .hf-catalog-line-by-line-slide span {
         display: block;
         transform: translate(var(--hf-line-x, 0px), var(--hf-line-y, 0px));
         filter: blur(var(--hf-line-blur, 0px));
@@ -65,7 +65,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-line-by-line-slide">
+        <div class="hf-catalog-line-by-line-slide">
           <span>Design faster</span><span>Render cleaner</span><span>Ship louder</span>
         </div>
       </div>
@@ -73,7 +73,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-line-by-line-slide span",
+          ".hf-catalog-line-by-line-slide span",
           { opacity: 0, "--hf-line-x": "-36px", "--hf-line-y": "18px", "--hf-line-blur": "6px" },
           {
             opacity: 1,

@@ -31,7 +31,7 @@
         /* ponytail: scale non-animated wrapper to fill ~65% of 1920×1080 */
         transform: scale(1.7);
       }
-      .hf-remocn-zoom-through-transition {
+      .hf-catalog-zoom-through-transition {
         --hf-accent: var(--accent, rgba(255, 255, 255, 0.28));
         --hf-l1: rgba(255, 255, 255, 0.72);
         --hf-l3: rgba(255, 255, 255, 0.18);
@@ -43,7 +43,7 @@
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
       }
-      .hf-remocn-zoom-through-transition {
+      .hf-catalog-zoom-through-transition {
         position: relative;
         width: 760px;
         height: 428px;
@@ -52,7 +52,7 @@
         background: #111827;
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
       }
-      .hf-remocn-zoom-through-transition .scene {
+      .hf-catalog-zoom-through-transition .scene {
         position: absolute;
         inset: 0;
         display: grid;
@@ -62,7 +62,7 @@
         letter-spacing: -0.05em;
         color: #fff;
       }
-      .hf-remocn-zoom-through-transition .from {
+      .hf-catalog-zoom-through-transition .from {
         background:
           repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 4px),
           var(--hf-l4);
@@ -70,7 +70,7 @@
           scale(var(--hf-from-scale, 1));
         filter: blur(var(--hf-from-blur, 0px));
       }
-      .hf-remocn-zoom-through-transition .to {
+      .hf-catalog-zoom-through-transition .to {
         background:
           repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 4px),
           var(--hf-l3);
@@ -81,14 +81,14 @@
             var(--hf-clip-left, 0%)
         );
       }
-      .hf-remocn-zoom-through-transition .fx {
+      .hf-catalog-zoom-through-transition .fx {
         position: absolute;
         inset: 0;
         background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
         mix-blend-mode: screen;
         transform: translateX(var(--hf-fx-x, -110%));
       }
-      .hf-remocn-zoom-through-transition .rgb {
+      .hf-catalog-zoom-through-transition .rgb {
         position: absolute;
         inset: 0;
         pointer-events: none;
@@ -113,7 +113,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-zoom-through-transition">
+        <div class="hf-catalog-zoom-through-transition">
           <div class="scene from">Before</div>
           <div class="scene to">Zoom Through Transition</div>
           <div class="fx"></div>
@@ -124,7 +124,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-zoom-through-transition .to",
+          ".hf-catalog-zoom-through-transition .to",
           { "--hf-clip-right": "100%", "--hf-to-x": "60px", "--hf-to-scale": 1.04 },
           {
             "--hf-clip-right": "0%",
@@ -136,7 +136,7 @@
           startTime,
         );
         tl.to(
-          ".hf-remocn-zoom-through-transition .from",
+          ".hf-catalog-zoom-through-transition .from",
           {
             "--hf-from-x": "-70px",
             "--hf-from-scale": 0.96,
@@ -147,13 +147,13 @@
           startTime,
         );
         tl.fromTo(
-          ".hf-remocn-zoom-through-transition .fx",
+          ".hf-catalog-zoom-through-transition .fx",
           { "--hf-fx-x": "-110%" },
           { "--hf-fx-x": "110%", duration: 0.58, ease: "power2.inOut" },
           startTime + 0.18,
         );
         tl.fromTo(
-          ".hf-remocn-zoom-through-transition .rgb",
+          ".hf-catalog-zoom-through-transition .rgb",
           { "--hf-rgb-opacity": 0, "--hf-rgb-x": "-16px" },
           {
             "--hf-rgb-opacity": 1,

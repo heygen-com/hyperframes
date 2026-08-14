@@ -33,13 +33,13 @@
         /* ponytail: scale non-GSAP wrapper; GSAP targets are children */
         transform: scale(2.8);
       }
-      .hf-remocn-strikethrough-replace {
+      .hf-catalog-strikethrough-replace {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-strikethrough-replace {
+      .hf-catalog-strikethrough-replace {
         position: relative;
         display: inline-grid;
         grid-auto-flow: column;
@@ -47,7 +47,7 @@
         align-items: center;
         font-size: 58px;
       }
-      .hf-remocn-strikethrough-replace i {
+      .hf-catalog-strikethrough-replace i {
         position: absolute;
         left: 0;
         width: 48%;
@@ -57,7 +57,7 @@
         transform: scaleX(var(--hf-strike-progress, 1));
         transform-origin: left center;
       }
-      .hf-remocn-strikethrough-replace strong {
+      .hf-catalog-strikethrough-replace strong {
         opacity: var(--hf-replace-opacity, 1);
       }
     </style>
@@ -72,7 +72,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-strikethrough-replace">
+        <div class="hf-catalog-strikethrough-replace">
           <span>Slow</span><i></i><strong>Fast</strong>
         </div>
       </div>
@@ -80,13 +80,13 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-strikethrough-replace i",
+          ".hf-catalog-strikethrough-replace i",
           { "--hf-strike-progress": 0 },
           { "--hf-strike-progress": 1, duration: 0.28, ease: "power2.out" },
           startTime,
         );
         tl.fromTo(
-          ".hf-remocn-strikethrough-replace strong",
+          ".hf-catalog-strikethrough-replace strong",
           { "--hf-replace-opacity": 0, y: 14 },
           { "--hf-replace-opacity": 1, y: 0, duration: 0.3, ease: "power2.out" },
           startTime + 0.24,

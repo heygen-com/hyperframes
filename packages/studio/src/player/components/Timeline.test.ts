@@ -37,6 +37,7 @@ import {
   getTimelineLaneTop,
   createTimelineRowGeometry,
 } from "./timelineLayout";
+import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
@@ -575,6 +576,89 @@ describe("Timeline provider boundary", () => {
     expect(expandButton).not.toBeNull();
     act(() => expandButton?.click());
     expectTrackExpansion(row, ["clip-1"], TRACK_H + 2 * LANE_H);
+    act(() => root.unmount());
+  });
+
+  // The caret belongs to the row, not to whichever clip on it is selected: the
+  // automation lanes below it are the track's, shared per property. Toggling one
+  // clip left the row's state depending on the selection, and a collapse that
+  // only dropped the active clip left the row stuck open.
+  it("expands and collapses every clip on a shared track together", () => {
+    const host = createSizedTimelineHost(720);
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+    });
+    usePlayerStore.setState({
+      duration: 8,
+      timelineReady: true,
+      elements: [
+        { id: "narration-1", tag: "audio", start: 0, duration: 4, track: 0, automation },
+        { id: "narration-2", tag: "audio", start: 4, duration: 4, track: 0, automation },
+      ],
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    const row = host.querySelector<HTMLElement>('[data-el-id="narration-1"]')?.parentElement
+      ?.parentElement;
+    // A row of several clips is named for the track, so the caret is too.
+    const caret = () => host.querySelector<HTMLButtonElement>('button[aria-label$=" keyframes"]');
+    expect(caret()?.getAttribute("aria-label")).toBe("Expand Track 1 keyframes");
+
+    act(() => caret()?.click());
+    // One shared volume row, and BOTH clips hold it open.
+    expectTrackExpansion(row, ["narration-1", "narration-2"], TRACK_H + AUTOMATION_LANE_H);
+
+    // Every clip bar on the row is capped to one track height. Only the clip
+    // owning the property lanes used to be, so its siblings stretched the whole
+    // expanded row and painted their waveforms over the envelopes below.
+    expect(
+      ["narration-1", "narration-2"].map(
+        (id) => host.querySelector<HTMLElement>(`[data-el-id="${id}"]`)?.style.height,
+      ),
+    ).toEqual([`${TRACK_H - 2 * CLIP_Y}px`, `${TRACK_H - 2 * CLIP_Y}px`]);
+
+    act(() => caret()?.click());
+    expectTrackExpansion(row, [], TRACK_H);
+    act(() => root.unmount());
+  });
+
+  // The lanes are the row's, and selecting a clip must not rebuild them. They
+  // used to hang off the active clip's property lanes, so clicking a sibling
+  // moved the whole subtree into a different element and remounted every lane —
+  // which threw away each one's hover state and any gesture in flight. Pressing
+  // a lane to select its clip therefore made the handles vanish under the
+  // pointer, which is the one gesture the read-only lane exists to support.
+  it("keeps the automation lanes mounted when the selection moves along the row", () => {
+    const host = createSizedTimelineHost(720);
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+    });
+    usePlayerStore.setState({
+      duration: 8,
+      timelineReady: true,
+      selectedElementId: "narration-2",
+      elements: [
+        { id: "narration-1", tag: "audio", start: 0, duration: 4, track: 0, automation },
+        { id: "narration-2", tag: "audio", start: 4, duration: 4, track: 0, automation },
+      ],
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label$=" keyframes"]')?.click());
+
+    const before = [...host.querySelectorAll(".hf-automation-lane")];
+    expect(before).toHaveLength(2);
+
+    act(() => usePlayerStore.setState({ selectedElementId: "narration-1" }));
+
+    // Identity, not deep equality: a remount produces structurally identical
+    // nodes, so only `toBe` can tell the two apart.
+    const after = [...host.querySelectorAll(".hf-automation-lane")];
+    expect(after).toHaveLength(before.length);
+    after.forEach((node, index) => expect(node).toBe(before[index]));
     act(() => root.unmount());
   });
 

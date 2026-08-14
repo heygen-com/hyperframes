@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Blur Out Up",
   "description": "Words arrive clean and depart upward with increasing blur for airy exits.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "blur-out-up.html",

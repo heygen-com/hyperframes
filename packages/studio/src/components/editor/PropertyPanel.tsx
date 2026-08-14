@@ -1,5 +1,5 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -29,7 +29,8 @@ import { KeyframeNavigation } from "./KeyframeNavigation";
 import { STUDIO_FLAT_INSPECTOR_ENABLED } from "./manualEditingAvailability";
 import { PropertyPanelFlat } from "./PropertyPanelFlat";
 import { createGsapLivePreview } from "./gsapLivePreview";
-import { usePlayerStore, liveTime } from "../../player";
+import { usePlayerStore } from "../../player";
+import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
@@ -114,31 +115,14 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const storeTime = usePlayerStore((s) => s.currentTime);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
   const timelineElements = usePlayerStore((s) => s.elements);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
   const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
-  const liveTimeRef = useRef(storeTime);
-  const [, forceRender] = useState(0);
-  useEffect(() => {
-    if (!isPlaying) return;
-    let timerId: ReturnType<typeof setTimeout> | 0 = 0;
-    const unsub = liveTime.subscribe((t) => {
-      liveTimeRef.current = t;
-      if (!timerId)
-        timerId = setTimeout(() => {
-          timerId = 0;
-          forceRender((v) => v + 1);
-        }, 33);
-    });
-    return () => {
-      unsub();
-      if (timerId) clearTimeout(timerId);
-    };
-  }, [isPlaying]);
-  const currentTime = isPlaying ? liveTimeRef.current : storeTime;
+  // Live during playback, the store's when paused — see the hook. Shared with the
+  // audio FX panel, which follows the playhead for the same reason: a value the
+  // timeline drives has to be shown moving, not frozen at what the attribute says.
+  const currentTime = useLivePlayheadTime();
   const cacheElementKey = element?.id ?? element?.selector ?? "";
   const cacheEntry = usePlayerStore((s) => s.keyframeCache.get(cacheElementKey));
 
