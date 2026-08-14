@@ -194,6 +194,87 @@ describe("toggleTimelineTrackHidden", () => {
 
     expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Show track 2");
   });
+
+  it("labels an audio-only track Mute/Unmute instead of Hide/Show", async () => {
+    const files = new Map([
+      ["index.html", `<div id="voiceover" data-start="0" data-duration="2"></div>`],
+    ]);
+    stubProjectFiles(files);
+
+    const recordEdit = vi.fn();
+
+    await toggleTimelineTrackHidden({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      timelineElements: [element({ id: "voiceover", domId: "voiceover", track: 0, tag: "audio" })],
+      track: 0,
+      hidden: true,
+      previewIframe: null,
+      writeProjectFile: async () => {},
+      recordEdit,
+      domEditSaveTimestampRef: { current: 0 },
+      pendingTimelineEditPathRef: { current: new Set() },
+    });
+
+    expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Mute track 1");
+  });
+
+  it("labels unmuting an audio-only track back on", async () => {
+    const files = new Map([
+      ["index.html", `<div id="voiceover" data-start="0" data-duration="2" data-hidden=""></div>`],
+    ]);
+    stubProjectFiles(files);
+
+    const recordEdit = vi.fn();
+
+    await toggleTimelineTrackHidden({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      timelineElements: [
+        element({ id: "voiceover", domId: "voiceover", track: 0, tag: "audio", hidden: true }),
+      ],
+      track: 0,
+      hidden: false,
+      previewIframe: null,
+      writeProjectFile: async () => {},
+      recordEdit,
+      domEditSaveTimestampRef: { current: 0 },
+      pendingTimelineEditPathRef: { current: new Set() },
+    });
+
+    expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Unmute track 1");
+  });
+
+  it("keeps Hide/Show wording for a mixed (audio + visual) track", async () => {
+    const files = new Map([
+      [
+        "index.html",
+        `<div id="voiceover" data-start="0" data-duration="2"></div>
+<div id="caption" data-start="0" data-duration="2"></div>`,
+      ],
+    ]);
+    stubProjectFiles(files);
+
+    const recordEdit = vi.fn();
+
+    await toggleTimelineTrackHidden({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      timelineElements: [
+        element({ id: "voiceover", domId: "voiceover", track: 0, tag: "audio" }),
+        element({ id: "caption", domId: "caption", track: 0, tag: "div" }),
+      ],
+      track: 0,
+      hidden: true,
+      previewIframe: null,
+      writeProjectFile: async () => {},
+      recordEdit,
+      domEditSaveTimestampRef: { current: 0 },
+      pendingTimelineEditPathRef: { current: new Set() },
+    });
+
+    expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Hide track 1");
+  });
 });
 
 describe("toggleTimelineElementHidden", () => {

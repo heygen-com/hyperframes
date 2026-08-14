@@ -573,6 +573,44 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).toHaveBeenCalled();
   });
 
+  describe("data-hidden silences preview volume", () => {
+    it("zeroes effective volume for a clip under a data-hidden ancestor", () => {
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      const hiddenAncestor = document.createElement("div");
+      hiddenAncestor.setAttribute("data-hidden", "");
+      document.body.appendChild(hiddenAncestor);
+      hiddenAncestor.appendChild(clip.el);
+
+      let seen = -1;
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 1,
+        playing: true,
+        playbackRate: 1,
+        onElementVolume: (_el, v) => {
+          seen = v;
+        },
+      });
+
+      expect(seen).toBe(0);
+    });
+
+    it("does not touch el.muted when silencing a hidden clip (RULES trap: transport owns el.muted)", () => {
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      const hiddenAncestor = document.createElement("div");
+      hiddenAncestor.setAttribute("data-hidden", "");
+      document.body.appendChild(hiddenAncestor);
+      hiddenAncestor.appendChild(clip.el);
+      clip.el.muted = false;
+
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 1, playing: true, playbackRate: 1 });
+
+      expect(clip.el.muted).toBe(false);
+    });
+  });
+
   describe("play() storm guard (unplayable elements)", () => {
     it("does not play() an element with a media error", () => {
       const clip = createMockClip({ start: 0, end: 10 });

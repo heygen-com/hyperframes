@@ -89,6 +89,16 @@ export const CANARIES: readonly CanaryDefinition[] = [
     owner: "vance",
     sunsetAfter: "2026-11-15",
   },
+  {
+    name: "audio-track-mute",
+    percentage: 0,
+    description:
+      "Label the visibility control as Mute on audio tracks, and make preview " +
+      "silence data-hidden audio the way the render already does. Fixes a " +
+      "shipped preview/export mismatch, so it is gated separately.",
+    owner: "vance",
+    sunsetAfter: "2026-12-15",
+  },
 ] as const;
 
 export function findCanary(name: string): CanaryDefinition | undefined {

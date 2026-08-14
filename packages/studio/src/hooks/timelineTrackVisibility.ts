@@ -7,6 +7,7 @@ import {
   trackDisplaySuffix,
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+import { isAudioTimelineElement } from "../utils/timelineInspector";
 import { readTagSnippetByTarget, type PatchOperation } from "../utils/sourcePatcher";
 import {
   applyPatchByTarget,
@@ -218,12 +219,21 @@ export async function toggleTimelineTrackHidden({
   const suffix = trackDisplaySuffix(
     trackDisplayNumber(timelineTrackOrder(timelineElements), track),
   );
+  const trackElements = timelineElements.filter((element) => element.track === track);
+  const isAudioOnlyTrack = trackElements.length > 0 && trackElements.every(isAudioTimelineElement);
+  const label = isAudioOnlyTrack
+    ? hidden
+      ? `Mute track${suffix}`
+      : `Unmute track${suffix}`
+    : hidden
+      ? `Hide track${suffix}`
+      : `Show track${suffix}`;
   return setElementsHidden({
     projectId,
     activeCompPath,
-    elements: timelineElements.filter((element) => element.track === track),
+    elements: trackElements,
     hidden,
-    label: hidden ? `Hide track${suffix}` : `Show track${suffix}`,
+    label,
     previewIframe,
     writeProjectFile,
     recordEdit,

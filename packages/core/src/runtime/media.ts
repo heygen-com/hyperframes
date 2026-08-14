@@ -315,7 +315,10 @@ export function syncRuntimeMedia(params: {
         authorVolume = fallbackAuthorVolume;
       }
 
-      const effectiveVolume = clampVolume(authorVolume * userVol);
+      // A data-hidden ancestor is silent in the export (audioMixer.ts drops
+      // it); preview must match. Folded into the per-tick volume, not
+      // el.muted (RULES trap: el.muted is the transport's ownership flag).
+      const effectiveVolume = el.closest("[data-hidden]") ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume, authorVolume);

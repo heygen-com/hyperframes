@@ -1916,6 +1916,13 @@ export function initSandboxRuntimeModular(): void {
   };
   const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
+  // A data-hidden toggle on (or affecting) an audio element must re-schedule
+  // WebAudio playback so the hidden clip's source is dropped/restored mid-
+  // playback. Batched to one call per syncTimedElementVisibility pass, not
+  // one per toggled node (schedulePlayback replaces the whole active set).
+  let hiddenAudioDirty = false;
+  const nodeAffectsAudio = (node: HTMLElement): boolean =>
+    node.matches("audio[data-start]") || node.querySelector("audio[data-start]") !== null;
 
   const syncTimedElementVisibility = (
     currentTime: number,
@@ -1929,6 +1936,7 @@ export function initSandboxRuntimeModular(): void {
         if (!dataHiddenDisplayNodes.has(rawNode)) {
           dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
           dataHiddenDisplayNodes.add(rawNode);
+          if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
         }
         rawNode.style.display = "none";
         if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
@@ -1946,6 +1954,7 @@ export function initSandboxRuntimeModular(): void {
         }
         dataHiddenDisplayRestores.delete(rawNode);
         dataHiddenDisplayNodes.delete(rawNode);
+        if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
       }
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime);
@@ -1975,6 +1984,10 @@ export function initSandboxRuntimeModular(): void {
         rawNode.style.display = "none";
       }
     }
+    if (hiddenAudioDirty && clock.isPlaying()) {
+      scheduleWebAudioForActiveClips();
+    }
+    hiddenAudioDirty = false;
   };
 
   const syncMediaForCurrentState = () => {
@@ -2915,6 +2928,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+            if (rawEl.closest("[data-hidden]")) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -3022,6 +3036,7 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+      if (rawEl.closest("[data-hidden]")) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);

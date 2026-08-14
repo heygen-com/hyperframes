@@ -1,5 +1,6 @@
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { isCanaryEnabled } from "../../telemetry/canary";
 import { Music } from "../../icons/SystemIcons";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -61,24 +62,39 @@ interface TimelineTrackHeaderProps {
   onSeek?: (time: number) => void;
 }
 
+// Audio tracks say "Mute", not "Hide" — the eye IS mute for sound-only rows.
+// Gated: the relabel ships behind the canary, unlike the preview fix.
+function visibilityButtonLabel(showAsMute: boolean, hidden: boolean, suffix: string): string {
+  if (showAsMute) return hidden ? "Muted" : "Mute";
+  return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
+}
+
+function visibilityButtonIcon(showAsMute: boolean, hidden: boolean) {
+  const Icon = showAsMute ? (hidden ? SpeakerSlash : SpeakerHigh) : hidden ? EyeSlash : Eye;
+  return <Icon size={14} weight="bold" aria-hidden="true" />;
+}
+
 function VisibilityButton({
   hidden,
   trackNumber,
   trackDisplayNumber,
   visible,
+  isAudioTrack,
   onToggle,
 }: {
   hidden: boolean;
   trackNumber: number;
   trackDisplayNumber: number | null;
   visible: boolean;
+  isAudioTrack?: boolean;
   onToggle: TimelineEditCallbacks["onToggleTrackHidden"];
 }) {
   if (!visible) return <span aria-hidden="true" className="h-6 w-6 shrink-0" />;
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = hidden ? `Show track${suffix}` : `Hide track${suffix}`;
+  const showAsMute = Boolean(isAudioTrack) && isCanaryEnabled("audio-track-mute");
+  const label = visibilityButtonLabel(showAsMute, hidden, suffix);
   return (
     <button
       type="button"
@@ -93,11 +109,7 @@ function VisibilityButton({
         void onToggle?.(trackNumber, !hidden);
       }}
     >
-      {hidden ? (
-        <EyeSlash size={14} weight="bold" aria-hidden="true" />
-      ) : (
-        <Eye size={14} weight="bold" aria-hidden="true" />
-      )}
+      {visibilityButtonIcon(showAsMute, hidden)}
     </button>
   );
 }
@@ -129,7 +141,14 @@ function PlainTrackHeader({
         <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
       )}
       {showTrackLabel && (
-        <span className="min-w-0 flex-1 truncate text-[11px]" title={trackLabel}>
+        <span
+          className={`min-w-0 flex-1 truncate text-[11px] ${
+            isAudioTrack && isTrackHidden && isCanaryEnabled("audio-track-mute")
+              ? "line-through"
+              : ""
+          }`}
+          title={trackLabel}
+        >
           {trackLabel}
         </span>
       )}
@@ -139,6 +158,7 @@ function PlainTrackHeader({
         trackNumber={trackNumber}
         trackDisplayNumber={trackDisplayNumber}
         visible
+        isAudioTrack={isAudioTrack}
         onToggle={onToggleTrackHidden}
       />
     </>
@@ -406,6 +426,7 @@ function AutomationLaneHeaderRow({
   );
 }
 
+// fallow-ignore-next-line complexity
 export function TimelineTrackHeader({
   trackNumber,
   trackDisplayNumber,
@@ -515,6 +536,7 @@ export function TimelineTrackHeader({
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
               visible
+              isAudioTrack={isAudioTrack}
               onToggle={onToggleTrackHidden}
             />
           </LayerDisclosureRow>
