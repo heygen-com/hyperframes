@@ -99,6 +99,17 @@ export const CANARIES: readonly CanaryDefinition[] = [
     owner: "vance",
     sunsetAfter: "2026-12-15",
   },
+  {
+    name: "audio-groups",
+    percentage: 0,
+    description:
+      "Group audio tracks under a shared label, FX chain, and automation " +
+      "clock. Gates the Studio UI for creating and managing groups; the " +
+      "underlying <hf-audio-group> element and data-audio-group membership " +
+      "parse and play regardless of enrollment.",
+    owner: "vance",
+    sunsetAfter: "2027-01-15",
+  },
 ] as const;
 
 export function findCanary(name: string): CanaryDefinition | undefined {
