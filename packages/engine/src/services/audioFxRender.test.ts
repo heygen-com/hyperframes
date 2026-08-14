@@ -80,6 +80,24 @@ const rms = (s: Float32Array): number =>
   Math.sqrt(s.reduce((a, x) => a + x * x, 0) / Math.max(1, s.length));
 const db = (x: number): number => 20 * Math.log10(x + 1e-30);
 
+/**
+ * Rising zero-crossings per second, over `[from, to)` seconds.
+ *
+ * `to` matters as much as `from`: a chain with a tail (reverb, delay,
+ * pitchshift) renders extra silence/decay past the input's own end, and
+ * averaging crossings over that stretch too dilutes the estimate toward zero
+ * — measure only the steady, driven portion.
+ */
+function estimateFreq(s: Float32Array, sampleRate: number, from = 0.05, to?: number): number {
+  const start = Math.round(from * sampleRate);
+  const end = to === undefined ? s.length : Math.min(s.length, Math.round(to * sampleRate));
+  let crossings = 0;
+  for (let i = start + 1; i < end; i++) {
+    if ((s[i - 1] ?? 0) < 0 && (s[i] ?? 0) >= 0) crossings++;
+  }
+  return crossings / ((end - start) / sampleRate);
+}
+
 describe("readWav / writeWav", () => {
   it("round-trips samples as 16-bit PCM, the format the volume bake requires", () => {
     const p = join(dir, "rt.wav");
@@ -242,6 +260,33 @@ describe.skipIf(!HAS_BROWSER)("browser render", () => {
       { trackId: "t" },
     );
     expect(db(rms(readWav(outPath).samples))).toBeLessThan(db(rms(readWav(input).samples)) - 3);
+  }, 180_000);
+
+  it("shifts pitch up an octave, matching the preview worklet", async () => {
+    const input = join(dir, "in.wav");
+    tone(input, 0.5, 220);
+    const outPath = join(dir, "out.wav");
+    await applyAudioFxChain(
+      input,
+      {
+        version: 1,
+        nodes: [
+          {
+            type: "pitchshift",
+            enabled: true,
+            params: { ...defaultAudioFxParams("pitchshift"), semitones: 12, mix: 1 },
+          },
+        ],
+      },
+      outPath,
+      { trackId: "t" },
+    );
+    // Measure only the driven portion — chainTailSeconds appends ~0.2s of
+    // decaying tail past the clip's own 0.5s, and averaging crossings over
+    // that too dilutes the estimate.
+    const freq = estimateFreq(readWav(outPath).samples, SR, 0.05, 0.45);
+    expect(freq).toBeGreaterThan(220 * 1.7);
+    expect(freq).toBeLessThan(220 * 2.3);
   }, 180_000);
 
   it("sweeps a filter across the clip when a lane automates it", async () => {

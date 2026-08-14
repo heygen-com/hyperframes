@@ -219,6 +219,83 @@ class HfBitcrush extends AudioWorkletProcessor {
   }
 }
 registerProcessor("hf-bitcrush", HfBitcrush);
+
+/** Linear-interpolated read, \`delaySamples\` behind the write head. */
+function readTap(ring, write, delaySamples) {
+  const len = ring.length;
+  const pos = (write - 1 - delaySamples + len) % len;
+  const i0 = Math.floor(pos);
+  const frac = pos - i0;
+  const i1 = (i0 + 1) % len;
+  return ring[i0] * (1 - frac) + ring[i1] * frac;
+}
+
+/** Equal-power-ish crossfade, zero at a tap's reset point — hides the splice. */
+function xfade(phase) {
+  return Math.sin(Math.PI * phase);
+}
+
+/**
+ * Dual-tap granular delay line: two read taps 180° apart in a 100 ms grain,
+ * each sweeping at a speed relative to the write head that shifts pitch
+ * without changing duration. One tap is always fading in as the other fades
+ * out, which hides the splice each tap makes when it wraps.
+ *
+ * write/phase are block-level state, advanced once per SAMPLE across all
+ * channels together (not once per channel) — advancing them inside the
+ * per-channel loop would move the tap 2x/4x too fast on a stereo/quad input.
+ */
+class HfPitchshift extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    this.p = o.processorOptions || {};
+    this.grain = Math.round(sampleRate * 0.1);
+    this.buf = [];
+    this.write = 0;
+    this.phase = 0;
+    this.port.onmessage = (e) => {
+      if (e.data && e.data.__hfDispose) { this.dead = true; return; }
+      this.p = { ...this.p, ...e.data };
+    };
+  }
+  process(inputs, outputs) {
+    if (this.dead) return false;
+    const i = inputs[0], o = outputs[0];
+    if (!i || !i.length) return true;
+    const p = this.p;
+    const semitones = Math.max(-12, Math.min(12, p.semitones ?? 0));
+    const mix = Math.max(0, Math.min(1, p.mix ?? 1));
+    const ratio = Math.pow(2, semitones / 12);
+    const grain = this.grain;
+    const ringLen = grain * 2;
+    const inc = (1 - ratio) / grain;
+    const n = i[0] ? i[0].length : 0;
+    for (let ch = 0; ch < i.length; ch++) {
+      if (!this.buf[ch]) this.buf[ch] = new Float32Array(ringLen);
+    }
+    let write = this.write, phase = this.phase;
+    for (let s = 0; s < n; s++) {
+      phase += inc;
+      phase -= Math.floor(phase);
+      const phaseB = (phase + 0.5) % 1;
+      const gA = xfade(phase), gB = xfade(phaseB);
+      for (let ch = 0; ch < i.length; ch++) {
+        const ring = this.buf[ch];
+        const inp = i[ch], out = o[ch];
+        const x = inp[s];
+        ring[write] = x;
+        const wet =
+          readTap(ring, write, phase * grain) * gA + readTap(ring, write, phaseB * grain) * gB;
+        out[s] = x * (1 - mix) + wet * mix;
+      }
+      write = (write + 1) % ringLen;
+    }
+    this.write = write;
+    this.phase = phase;
+    return true;
+  }
+}
+registerProcessor("hf-pitchshift", HfPitchshift);
 `;
 
 // Registration is per context, not per module: a processor registered on one

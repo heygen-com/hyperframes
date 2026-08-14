@@ -505,6 +505,7 @@ const BUILDERS: Record<string, Builder> = {
   "worklet-limiter": workletBuilder("hf-limiter"),
   "worklet-gate": workletBuilder("hf-gate"),
   "worklet-bitcrush": workletBuilder("hf-bitcrush"),
+  "worklet-pitchshift": workletBuilder("hf-pitchshift"),
   waveshaper,
   "delay-feedback": delayFeedback,
   "chorus-lfo": chorusLfo,
