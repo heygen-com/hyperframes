@@ -150,6 +150,24 @@ export const FX_PRESET_STYLE: Record<string, FxPresetStyle> = {
     color: "hsl(288, 85%, 72%)",
     family: FACE.theatrical,
   },
+  // Small, fast and squeaky — tight and bright, nothing about it sits still.
+  chipmunk: {
+    type: "text-[12px] font-black uppercase tracking-tighter",
+    color: "hsl(54, 88%, 66%)",
+    family: FACE.geometric,
+  },
+  // Huge and slow — the biggest size here, set on a face bolted to a monument.
+  giant: {
+    type: "text-[18px] font-black tracking-[0.02em]",
+    color: "hsl(250, 72%, 68%)",
+    family: FACE.engraved,
+  },
+  // Rough and too close — heavy industrial caps, growled rather than shouted.
+  monster: {
+    type: "text-[15px] font-black uppercase tracking-[0.05em]",
+    color: "hsl(350, 78%, 64%)",
+    family: FACE.condensed,
+  },
 
   // --- space: rooms. Light and wide, because that is what space looks like ---
   "room-tight": {

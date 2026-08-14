@@ -333,6 +333,28 @@ export const HF_AUDIO_FX_PRESETS: readonly HfAudioFxPreset[] = [
       },
     ],
   ),
+  preset("chipmunk", "character", "Chipmunk", "Small, fast and squeaky.", [
+    { type: "pitchshift", label: "Up High", params: { semitones: 7, mix: 1 } },
+    { type: "highshelf", label: "Extra Sparkle", params: { frequency: 4000, gain: 3 } },
+  ]),
+  preset("giant", "character", "Giant", "Huge, slow and deep.", [
+    { type: "pitchshift", label: "Down Low", params: { semitones: -5, mix: 1 } },
+    { type: "lowshelf", label: "Add Weight", params: { frequency: 150, gain: 4 } },
+    {
+      type: "compressor",
+      label: "Hold It Together",
+      params: { threshold: -18, ratio: 3, attack: 10, release: 120, knee: 6, makeup: 2, mix: 1 },
+    },
+  ]),
+  preset("monster", "character", "Monster", "Deep, rough and too close.", [
+    { type: "pitchshift", label: "Down Low", params: { semitones: -8, mix: 1 } },
+    { type: "saturate", label: "Growl", params: { type: "tanh", threshold: -12, output: -1 } },
+    {
+      type: "reverb",
+      label: "Right Behind You",
+      params: { size: 0.3, damping: 0.5, wet: 0.22, dry: 0.85 },
+    },
+  ]),
 
   // ---------------------------------------------------------------- space --
   preset("room-tight", "space", "Tight Room", "A small hard room — presence without wash.", [
