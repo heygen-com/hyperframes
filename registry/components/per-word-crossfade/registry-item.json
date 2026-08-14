@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Per-Word Crossfade",
   "description": "Words gently fade into place with a short vertical drift for calm keynote rhythm.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "per-word-crossfade.html",

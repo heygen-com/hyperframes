@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "AI Prompt Flow",
   "description": "A composed AI prompt flow with prompt field, suggestion chips, generate action, and preview result card",
-  "tags": ["ui-flow", "remocn-port", "ai", "prompt"],
+  "tags": ["ui-flow", "ai", "prompt"],
   "files": [
     {
       "path": "ai-prompt-flow.html",

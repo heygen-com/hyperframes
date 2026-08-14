@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "AI Generation Canvas",
   "description": "A prompt composer expands into a generated dashboard preview.",
-  "tags": ["showcase", "remocn-port", "ai"],
+  "tags": ["showcase", "ai"],
   "files": [
     {
       "path": "ai-generation-canvas.html",

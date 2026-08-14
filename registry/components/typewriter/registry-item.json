@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Typewriter",
   "description": "Character-by-character text reveal with a deterministic blinking cursor.",
-  "tags": ["video-primitive", "motion-primitive", "remocn-port", "typography"],
+  "tags": ["video-primitive", "motion-primitive", "typography"],
   "files": [
     {
       "path": "typewriter.html",

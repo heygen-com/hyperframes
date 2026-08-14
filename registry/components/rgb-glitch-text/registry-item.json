@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "RGB Glitch Text",
   "description": "RGB-offset text copies jitter briefly for a controlled glitch window.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "rgb-glitch-text.html",

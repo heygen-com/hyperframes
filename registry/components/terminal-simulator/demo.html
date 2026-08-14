@@ -31,7 +31,7 @@
         /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of frame */
         transform: scale(1.65);
       }
-      .hf-remocn-terminal-simulator {
+      .hf-catalog-terminal-simulator {
         --hf-accent: var(--accent, #18181b);
         --hf-ink: #111827;
         --hf-muted: #6b7280;
@@ -39,7 +39,7 @@
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
       }
-      .hf-remocn-terminal-simulator {
+      .hf-catalog-terminal-simulator {
         width: 760px;
         border-radius: 24px;
         overflow: hidden;
@@ -48,7 +48,7 @@
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
-      .hf-remocn-terminal-simulator .chrome {
+      .hf-catalog-terminal-simulator .chrome {
         height: 48px;
         display: flex;
         align-items: center;
@@ -58,7 +58,7 @@
         color: #94a3b8;
         font-size: 14px;
       }
-      .hf-remocn-terminal-simulator .dot {
+      .hf-catalog-terminal-simulator .dot {
         width: 11px;
         height: 11px;
         border-radius: 999px;
@@ -67,24 +67,24 @@
           18px 0 #f59e0b,
           36px 0 #22c55e;
       }
-      .hf-remocn-terminal-simulator .body {
+      .hf-catalog-terminal-simulator .body {
         display: grid;
         grid-template-columns: 210px 1fr;
         min-height: 340px;
       }
-      .hf-remocn-terminal-simulator .files {
+      .hf-catalog-terminal-simulator .files {
         padding: 22px;
         border-right: 1px solid rgba(148, 163, 184, 0.18);
         color: #94a3b8;
         font-size: 15px;
         line-height: 1.8;
       }
-      .hf-remocn-terminal-simulator .editor {
+      .hf-catalog-terminal-simulator .editor {
         padding: 22px;
         display: grid;
         gap: 14px;
       }
-      .hf-remocn-terminal-simulator .line {
+      .hf-catalog-terminal-simulator .line {
         display: block;
         height: 18px;
         border-radius: 999px;
@@ -93,7 +93,7 @@
         transform-origin: left center;
         opacity: var(--hf-line-opacity, 1);
       }
-      .hf-remocn-terminal-simulator .terminal {
+      .hf-catalog-terminal-simulator .terminal {
         padding: 18px 22px 24px;
         border-top: 1px solid rgba(148, 163, 184, 0.18);
         color: #86efac;
@@ -112,7 +112,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-terminal-simulator">
+        <div class="hf-catalog-terminal-simulator">
           <div class="chrome"><span class="dot"></span><span>Terminal Simulator</span></div>
           <div class="body">
             <div class="files">index.html<br />style.css<br />timeline.js</div>
@@ -131,7 +131,7 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-terminal-simulator .line",
+          ".hf-catalog-terminal-simulator .line",
           { "--hf-line": 0, "--hf-line-opacity": 0 },
           {
             "--hf-line": 1,
@@ -143,7 +143,7 @@
           startTime,
         );
         tl.fromTo(
-          ".hf-remocn-terminal-simulator .terminal",
+          ".hf-catalog-terminal-simulator .terminal",
           { opacity: 0, y: 16 },
           { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
           startTime + 0.48,

@@ -1,5 +1,5 @@
 <!--
-  Typewriter - remocn typography primitive for HyperFrames.
+  Typewriter - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -28,7 +28,7 @@
 -->
 
 <div
-  class="hf-remocn-typewriter"
+  class="hf-catalog-typewriter"
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Line that types itself out character by character.", "default": "hyperframes add typewriter" },
     { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Colour of the text and the caret: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] },
@@ -39,13 +39,13 @@
 </div>
 
 <style>
-  .hf-remocn-typewriter {
+  .hf-catalog-typewriter {
     color: var(--hf-type-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-typewriter {
+  .hf-catalog-typewriter {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -55,13 +55,13 @@
       Menlo,
       monospace;
   }
-  .hf-remocn-typewriter span {
+  .hf-catalog-typewriter span {
     display: inline-block;
     max-width: calc(var(--hf-type-progress, 1) * 100%);
     overflow: hidden;
     white-space: nowrap;
   }
-  .hf-remocn-typewriter i {
+  .hf-catalog-typewriter i {
     display: var(--hf-caret-display, block);
     width: var(--hf-caret-width, 3px);
     height: 42px;
@@ -100,7 +100,7 @@
     var caret = carets[pick(carets, vars.caret, "line")];
     var text = typeof vars.text === "string" && vars.text !== "" ? vars.text : null;
 
-    var roots = document.querySelectorAll(".hf-remocn-typewriter");
+    var roots = document.querySelectorAll(".hf-catalog-typewriter");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-type-color", tone);
@@ -117,5 +117,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-typewriter', { '--hf-type-progress': 0 }, { '--hf-type-progress': 1, duration: 1.2, ease: 'steps(28)' }, startTime); tl.to('.hf-remocn-typewriter i', { '--hf-caret-opacity': 0.2, duration: 0.24, repeat: 7, yoyo: true, ease: 'none' }, startTime + 0.2);
+  tl.fromTo('.hf-catalog-typewriter', { '--hf-type-progress': 0 }, { '--hf-type-progress': 1, duration: 1.2, ease: 'steps(28)' }, startTime); tl.to('.hf-catalog-typewriter i', { '--hf-caret-opacity': 0.2, duration: 0.24, repeat: 7, yoyo: true, ease: 'none' }, startTime + 0.2);
 -->

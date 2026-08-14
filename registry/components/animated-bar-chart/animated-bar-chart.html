@@ -1,11 +1,11 @@
 <!--
-  Animated Bar Chart - remocn component ported to HyperFrames authoring format.
+  Animated Bar Chart - catalog component for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div class="hf-remocn-animated-bar-chart">
+<div class="hf-catalog-animated-bar-chart">
   <header>
     <div>
       <h3>Animated Bar Chart</h3>
@@ -31,7 +31,7 @@
 </div>
 
 <style>
-  .hf-remocn-animated-bar-chart {
+  .hf-catalog-animated-bar-chart {
     --hf-accent: var(--accent, #111827);
     --hf-ink: #111827;
     --hf-l1: rgba(17, 24, 39, 0.72);
@@ -44,7 +44,7 @@
     color: var(--hf-ink);
     font-family: Inter, system-ui, sans-serif;
   }
-  .hf-remocn-animated-bar-chart {
+  .hf-catalog-animated-bar-chart {
     width: 760px;
     min-height: 420px;
     border-radius: 28px;
@@ -54,38 +54,38 @@
     display: grid;
     gap: 22px;
   }
-  .hf-remocn-animated-bar-chart header {
+  .hf-catalog-animated-bar-chart header {
     display: flex;
     justify-content: space-between;
     align-items: end;
   }
-  .hf-remocn-animated-bar-chart h3 {
+  .hf-catalog-animated-bar-chart h3 {
     margin: 0;
     font-size: 34px;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-animated-bar-chart strong {
+  .hf-catalog-animated-bar-chart strong {
     font-size: 54px;
     letter-spacing: -0.06em;
   }
-  .hf-remocn-animated-bar-chart .bars {
+  .hf-catalog-animated-bar-chart .bars {
     height: 210px;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     align-items: end;
     gap: 14px;
   }
-  .hf-remocn-animated-bar-chart .bar {
+  .hf-catalog-animated-bar-chart .bar {
     height: calc(var(--h) * var(--hf-grow, 1));
     border-radius: 14px 14px 5px 5px;
     background: var(--hf-l1);
   }
-  .hf-remocn-animated-bar-chart svg {
+  .hf-catalog-animated-bar-chart svg {
     width: 100%;
     height: 210px;
     overflow: visible;
   }
-  .hf-remocn-animated-bar-chart path {
+  .hf-catalog-animated-bar-chart path {
     color: var(--hf-l2);
     stroke-dasharray: 900;
     stroke-dashoffset: var(--hf-dash, 0);
@@ -94,5 +94,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-animated-bar-chart', { '--hf-grow': 0, '--hf-dash': 900 }, { '--hf-grow': 1, '--hf-dash': 0, duration: 1.2, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-animated-bar-chart', { '--hf-grow': 0, '--hf-dash': 900 }, { '--hf-grow': 1, '--hf-dash': 0, duration: 1.2, ease: 'power3.out' }, startTime);
 -->

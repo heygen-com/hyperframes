@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html shared-axis-y.html
 <!--
-  Shared Axis Y - remocn typography primitive for HyperFrames.
+  Shared Axis Y - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -39,7 +39,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-shared-axis-y"
+  class="hf-catalog-shared-axis-y"
   data-composition-variables='[
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side of the baseline the words travel in from.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
     { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
@@ -50,19 +50,19 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-shared-axis-y {
+  .hf-catalog-shared-axis-y {
     color: var(--hf-word-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-shared-axis-y {
+  .hf-catalog-shared-axis-y {
     display: inline-flex;
     gap: 12px;
     font-size: 56px;
     line-height: 1;
   }
-  .hf-remocn-shared-axis-y span {
+  .hf-catalog-shared-axis-y span {
     display: inline-block;
     transform: translate(
         var(--hf-word-x, 0px),
@@ -100,7 +100,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var reach = reaches[pick(reaches, vars.distance, "standard")];
     var tone = tones[pick(tones, vars.tone, "ink")];
 
-    var roots = document.querySelectorAll(".hf-remocn-shared-axis-y");
+    var roots = document.querySelectorAll(".hf-catalog-shared-axis-y");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-word-axis-y", String(sign * reach));
       roots[i].style.setProperty("--hf-word-color", tone);
@@ -110,7 +110,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-shared-axis-y span', { opacity: 0, '--hf-word-y': '32px' }, { opacity: 1, '--hf-word-y': '0px', duration: 0.22, stagger: 0.075, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-catalog-shared-axis-y span', { opacity: 0, '--hf-word-y': '32px' }, { opacity: 1, '--hf-word-y': '0px', duration: 0.22, stagger: 0.075, ease: 'power2.out' }, startTime);
 -->
 ```
 
@@ -150,7 +150,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Shared Axis Y - remocn typography primitive for HyperFrames.
+  Shared Axis Y - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -174,7 +174,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-shared-axis-y"
+  class="hf-catalog-shared-axis-y"
   data-composition-variables='[
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side of the baseline the words travel in from.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
     { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
@@ -185,19 +185,19 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-shared-axis-y {
+  .hf-catalog-shared-axis-y {
     color: var(--hf-word-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-shared-axis-y {
+  .hf-catalog-shared-axis-y {
     display: inline-flex;
     gap: 12px;
     font-size: 56px;
     line-height: 1;
   }
-  .hf-remocn-shared-axis-y span {
+  .hf-catalog-shared-axis-y span {
     display: inline-block;
     transform: translate(
         var(--hf-word-x, 0px),
@@ -235,7 +235,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var reach = reaches[pick(reaches, vars.distance, "standard")];
     var tone = tones[pick(tones, vars.tone, "ink")];
 
-    var roots = document.querySelectorAll(".hf-remocn-shared-axis-y");
+    var roots = document.querySelectorAll(".hf-catalog-shared-axis-y");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-word-axis-y", String(sign * reach));
       roots[i].style.setProperty("--hf-word-color", tone);
@@ -245,7 +245,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-shared-axis-y span', { opacity: 0, '--hf-word-y': '32px' }, { opacity: 1, '--hf-word-y': '0px', duration: 0.22, stagger: 0.075, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-catalog-shared-axis-y span', { opacity: 0, '--hf-word-y': '32px' }, { opacity: 1, '--hf-word-y': '0px', duration: 0.22, stagger: 0.075, ease: 'power2.out' }, startTime);
 -->
 ```
 
@@ -257,7 +257,7 @@ Open `compositions/components/shared-axis-y.html` and paste its contents into yo
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `remocn-port` `typography`.
+Tagged `motion-primitive` `typography`.
 
 ## Related topics
 

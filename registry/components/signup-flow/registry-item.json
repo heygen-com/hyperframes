@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Signup Flow",
   "description": "A composed signup flow with social action, email field, password field, and submit button",
-  "tags": ["ui-flow", "remocn-port", "signup", "form"],
+  "tags": ["ui-flow", "signup", "form"],
   "files": [
     {
       "path": "signup-flow.html",

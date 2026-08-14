@@ -32,35 +32,35 @@
         zoom: 0.28;
       }
       /* ponytail: scale-up via font-size — GSAP only touches CSS vars, not transform */
-      .hf-remocn-rgb-glitch-text {
+      .hf-catalog-rgb-glitch-text {
         color: #fafafa;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-rgb-glitch-text {
+      .hf-catalog-rgb-glitch-text {
         position: relative;
         width: 1120px;
         height: 200px;
         font-size: 192px;
         line-height: 1;
       }
-      .hf-remocn-rgb-glitch-text span,
-      .hf-remocn-rgb-glitch-text strong {
+      .hf-catalog-rgb-glitch-text span,
+      .hf-catalog-rgb-glitch-text strong {
         position: absolute;
         inset: 0;
       }
-      .hf-remocn-rgb-glitch-text span:first-child {
+      .hf-catalog-rgb-glitch-text span:first-child {
         color: #ef4444;
         mix-blend-mode: screen;
         transform: translateX(var(--hf-glitch-red, 0px));
       }
-      .hf-remocn-rgb-glitch-text span:nth-child(2) {
+      .hf-catalog-rgb-glitch-text span:nth-child(2) {
         color: #22d3ee;
         mix-blend-mode: screen;
         transform: translateX(var(--hf-glitch-blue, 0px));
       }
-      .hf-remocn-rgb-glitch-text strong {
+      .hf-catalog-rgb-glitch-text strong {
         color: #fafafa;
       }
       .demo-label {
@@ -82,7 +82,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-rgb-glitch-text">
+        <div class="hf-catalog-rgb-glitch-text">
           <span>GLITCH</span><span>GLITCH</span><strong>GLITCH</strong>
         </div>
         <div class="demo-label">RGB Glitch Text</div>
@@ -90,9 +90,9 @@
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
-        tl.to(".hf-remocn-rgb-glitch-text", { opacity: 1, duration: 0.01 }, startTime);
+        tl.to(".hf-catalog-rgb-glitch-text", { opacity: 1, duration: 0.01 }, startTime);
         tl.to(
-          ".hf-remocn-rgb-glitch-text",
+          ".hf-catalog-rgb-glitch-text",
           {
             "--hf-glitch-red": "-20px",
             "--hf-glitch-blue": "20px",

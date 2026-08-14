@@ -22,7 +22,6 @@
     "description": "A prompt composer expands into a generated dashboard preview.",
     "tags": [
       "showcase",
-      "remocn-port",
       "ai"
     ],
     "href": "/catalog/components/ai-generation-canvas",
@@ -35,7 +34,6 @@
     "description": "A composed AI prompt flow with prompt field, suggestion chips, generate action, and preview result card",
     "tags": [
       "ui-flow",
-      "remocn-port",
       "ai",
       "prompt"
     ],
@@ -48,8 +46,7 @@
     "title": "Animated Bar Chart",
     "description": "A compact data card with deterministic bar growth and value callouts.",
     "tags": [
-      "data",
-      "remocn-port"
+      "data"
     ],
     "href": "/catalog/components/animated-bar-chart",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png"
@@ -302,7 +299,6 @@
     "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
     "tags": [
       "video-primitive",
-      "remocn-port",
       "blur-in",
       "text-effect"
     ],
@@ -316,7 +312,6 @@
     "description": "Words arrive clean and depart upward with increasing blur for airy exits.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/blur-out-up",
@@ -783,7 +778,6 @@
     "description": "A composed checkout flow with plan summary, payment field rows, total, and purchase action",
     "tags": [
       "ui-flow",
-      "remocn-port",
       "checkout",
       "commerce"
     ],
@@ -797,8 +791,7 @@
     "description": "A fast slide wipe with RGB channel split on peak frames.",
     "tags": [
       "video-primitive",
-      "transition-primitive",
-      "remocn-port"
+      "transition-primitive"
     ],
     "href": "/catalog/components/chromatic-aberration-wipe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chromatic-aberration-wipe.png"
@@ -1371,8 +1364,7 @@
     "title": "Confetti",
     "description": "A deterministic celebration burst with seeded particles and gravity.",
     "tags": [
-      "effect",
-      "remocn-port"
+      "effect"
     ],
     "href": "/catalog/components/confetti",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/confetti.png"
@@ -1567,8 +1559,7 @@
     "title": "Directional Wipe",
     "description": "A directional scene push that slides one panel over another.",
     "tags": [
-      "transition-primitive",
-      "remocn-port"
+      "transition-primitive"
     ],
     "href": "/catalog/components/directional-wipe",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/directional-wipe.png"
@@ -1725,7 +1716,6 @@
     "description": "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/focus-blur-resolve",
@@ -2310,7 +2300,6 @@
     "description": "Each line enters from the left with staggered slide and exits to the right.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/line-by-line-slide",
@@ -2716,7 +2705,6 @@
     "description": "Random scramble resolves left-to-right into the target text.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/matrix-decode",
@@ -2743,8 +2731,7 @@
     "title": "Mesh Gradient Background",
     "description": "A render-safe mesh gradient using animated radial layers.",
     "tags": [
-      "effect",
-      "remocn-port"
+      "effect"
     ],
     "href": "/catalog/components/mesh-gradient-bg",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mesh-gradient-bg.png"
@@ -3190,7 +3177,6 @@
     "description": "A composed onboarding flow with milestone rail, active step card, and next-action button",
     "tags": [
       "ui-flow",
-      "remocn-port",
       "onboarding",
       "stepper"
     ],
@@ -3421,7 +3407,6 @@
     "description": "Words gently fade into place with a short vertical drift for calm keynote rhythm.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/per-word-crossfade",
@@ -3449,7 +3434,6 @@
     "description": "A 3D tilted marquee with depth feel as items roll toward the horizon.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/perspective-marquee",
@@ -3587,7 +3571,6 @@
     "description": "RGB-offset text copies jitter briefly for a controlled glitch window.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/rgb-glitch-text",
@@ -3748,7 +3731,6 @@
     "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
     "tags": [
       "video-primitive",
-      "remocn-port",
       "separator",
       "layout"
     ],
@@ -3762,7 +3744,6 @@
     "description": "A composed settings flow with preference rows, toggle switches, and active-state feedback",
     "tags": [
       "ui-flow",
-      "remocn-port",
       "settings",
       "toggle"
     ],
@@ -3791,7 +3772,6 @@
     "description": "Per-word vertical shared-axis transition for sharp editorial swaps.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/shared-axis-y",
@@ -3804,7 +3784,6 @@
     "description": "Scale-based shared-axis transition for focus shifts and context depth.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/shared-axis-z",
@@ -3846,7 +3825,6 @@
     "description": "A composed signup flow with social action, email field, password field, and submit button",
     "tags": [
       "ui-flow",
-      "remocn-port",
       "signup",
       "form"
     ],
@@ -3907,7 +3885,6 @@
     "tags": [
       "video-primitive",
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/slot-machine-roll",
@@ -4042,8 +4019,7 @@
     "title": "Spotlight Card",
     "description": "A card with a scripted cursor spotlight and lit border.",
     "tags": [
-      "effect",
-      "remocn-port"
+      "effect"
     ],
     "href": "/catalog/components/spotlight-card",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spotlight-card.png"
@@ -4115,7 +4091,6 @@
     "tags": [
       "video-primitive",
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/staggered-fade-up",
@@ -4239,7 +4214,6 @@
     "description": "Draw a strike line across old text, then reveal the replacement.",
     "tags": [
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/strikethrough-replace",
@@ -4369,8 +4343,7 @@
     "title": "Terminal Simulator",
     "description": "A terminal window types commands and streams log output.",
     "tags": [
-      "code-animation",
-      "remocn-port"
+      "code-animation"
     ],
     "href": "/catalog/components/terminal-simulator",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/terminal-simulator.png"
@@ -4605,7 +4578,6 @@
     "tags": [
       "video-primitive",
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/top-down-letters",
@@ -4865,7 +4837,6 @@
     "tags": [
       "video-primitive",
       "motion-primitive",
-      "remocn-port",
       "typography"
     ],
     "href": "/catalog/components/typewriter",
@@ -5293,8 +5264,7 @@
     "title": "X Follow Card",
     "description": "A social follow card with avatar, handle, and follower motion.",
     "tags": [
-      "social-overlay",
-      "remocn-port"
+      "social-overlay"
     ],
     "href": "/catalog/components/x-follow-card",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/x-follow-card.png"
@@ -5451,8 +5421,7 @@
     "title": "Zoom Through Transition",
     "description": "A transition that zooms through a focal card into the next scene.",
     "tags": [
-      "transition-primitive",
-      "remocn-port"
+      "transition-primitive"
     ],
     "href": "/catalog/components/zoom-through-transition",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/zoom-through-transition.png"

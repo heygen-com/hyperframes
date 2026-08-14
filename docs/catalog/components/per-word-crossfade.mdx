@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html per-word-crossfade.html
 <!--
-  Per-Word Crossfade - remocn typography primitive for HyperFrames.
+  Per-Word Crossfade - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -41,7 +41,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-per-word-crossfade"
+  class="hf-catalog-per-word-crossfade"
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "The line to animate. It is split on whitespace and every word gets its own span, so the stagger picks up the new words.", "default": "Create once reuse everywhere" },
     { "id": "drift", "type": "enum", "role": "motion", "label": "Drift", "description": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
@@ -53,19 +53,19 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-per-word-crossfade {
+  .hf-catalog-per-word-crossfade {
     color: var(--hf-word-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-per-word-crossfade {
+  .hf-catalog-per-word-crossfade {
     display: inline-flex;
     gap: 12px;
     font-size: 56px;
     line-height: 1;
   }
-  .hf-remocn-per-word-crossfade span {
+  .hf-catalog-per-word-crossfade span {
     display: inline-block;
     transform: translate(
         var(--hf-word-x, 0px),
@@ -106,7 +106,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var text = typeof vars.text === "string" ? vars.text.trim() : "";
     var words = (text || "Create once reuse everywhere").split(/\s+/);
 
-    var roots = document.querySelectorAll(".hf-remocn-per-word-crossfade");
+    var roots = document.querySelectorAll(".hf-catalog-per-word-crossfade");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-word-drift", String(drift));
@@ -127,7 +127,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-per-word-crossfade span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-per-word-crossfade span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
 -->
 ```
 
@@ -168,7 +168,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Per-Word Crossfade - remocn typography primitive for HyperFrames.
+  Per-Word Crossfade - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -194,7 +194,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-per-word-crossfade"
+  class="hf-catalog-per-word-crossfade"
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "The line to animate. It is split on whitespace and every word gets its own span, so the stagger picks up the new words.", "default": "Create once reuse everywhere" },
     { "id": "drift", "type": "enum", "role": "motion", "label": "Drift", "description": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
@@ -206,19 +206,19 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-per-word-crossfade {
+  .hf-catalog-per-word-crossfade {
     color: var(--hf-word-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-per-word-crossfade {
+  .hf-catalog-per-word-crossfade {
     display: inline-flex;
     gap: 12px;
     font-size: 56px;
     line-height: 1;
   }
-  .hf-remocn-per-word-crossfade span {
+  .hf-catalog-per-word-crossfade span {
     display: inline-block;
     transform: translate(
         var(--hf-word-x, 0px),
@@ -259,7 +259,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var text = typeof vars.text === "string" ? vars.text.trim() : "";
     var words = (text || "Create once reuse everywhere").split(/\s+/);
 
-    var roots = document.querySelectorAll(".hf-remocn-per-word-crossfade");
+    var roots = document.querySelectorAll(".hf-catalog-per-word-crossfade");
     for (var i = 0; i < roots.length; i += 1) {
       var root = roots[i];
       root.style.setProperty("--hf-word-drift", String(drift));
@@ -280,7 +280,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-per-word-crossfade span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-per-word-crossfade span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
 -->
 ```
 
@@ -292,7 +292,7 @@ Open `compositions/components/per-word-crossfade.html` and paste its contents in
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `remocn-port` `typography`.
+Tagged `motion-primitive` `typography`.
 
 ## Related topics
 

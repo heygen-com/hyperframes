@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Zoom Through Transition",
   "description": "A transition that zooms through a focal card into the next scene.",
-  "tags": ["transition-primitive", "remocn-port"],
+  "tags": ["transition-primitive"],
   "variables": [
     {
       "id": "from-label",

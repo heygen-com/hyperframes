@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Shared Axis Z",
   "description": "Scale-based shared-axis transition for focus shifts and context depth.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "shared-axis-z.html",

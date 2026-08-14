@@ -30,16 +30,16 @@
         min-width: 900px;
         min-height: 500px;
         padding: 64px;
-        /* ponytail: scale-up only; GSAP targets .hf-remocn-typewriter with CSS vars, not transforms */
+        /* ponytail: scale-up only; GSAP targets .hf-catalog-typewriter with CSS vars, not transforms */
         transform: scale(2);
       }
-      .hf-remocn-typewriter {
+      .hf-catalog-typewriter {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-typewriter {
+      .hf-catalog-typewriter {
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -49,13 +49,13 @@
           Menlo,
           monospace;
       }
-      .hf-remocn-typewriter span {
+      .hf-catalog-typewriter span {
         display: inline-block;
         max-width: calc(var(--hf-type-progress, 1) * 100%);
         overflow: hidden;
         white-space: nowrap;
       }
-      .hf-remocn-typewriter i {
+      .hf-catalog-typewriter i {
         width: 3px;
         height: 52px;
         border-radius: 999px;
@@ -74,19 +74,19 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-typewriter"><span>hyperframes add typewriter</span><i></i></div>
+        <div class="hf-catalog-typewriter"><span>hyperframes add typewriter</span><i></i></div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-typewriter",
+          ".hf-catalog-typewriter",
           { "--hf-type-progress": 0 },
           { "--hf-type-progress": 1, duration: 1.2, ease: "steps(28)" },
           startTime,
         );
         tl.to(
-          ".hf-remocn-typewriter i",
+          ".hf-catalog-typewriter i",
           { "--hf-caret-opacity": 0.2, duration: 0.24, repeat: 7, yoyo: true, ease: "none" },
           startTime + 0.2,
         );

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Staggered Fade Up",
   "description": "Words fade in and slide up one after another with configurable delay.",
-  "tags": ["video-primitive", "motion-primitive", "remocn-port", "typography"],
+  "tags": ["video-primitive", "motion-primitive", "typography"],
   "files": [
     {
       "path": "staggered-fade-up.html",

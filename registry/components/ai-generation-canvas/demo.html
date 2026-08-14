@@ -31,7 +31,7 @@
         /* ponytail: scale on wrapper (not GSAP target) to fill ~65% of 1920×1080 */
         transform: scale(1.52);
       }
-      .hf-remocn-ai-generation-canvas {
+      .hf-catalog-ai-generation-canvas {
         --hf-accent: var(--accent, #18181b);
         --hf-ink: #111827;
         --hf-muted: #6b7280;
@@ -39,7 +39,7 @@
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
       }
-      .hf-remocn-ai-generation-canvas {
+      .hf-catalog-ai-generation-canvas {
         width: 820px;
         min-height: 460px;
         border-radius: 34px;
@@ -51,19 +51,19 @@
         gap: 22px;
         overflow: hidden;
       }
-      .hf-remocn-ai-generation-canvas .panel {
+      .hf-catalog-ai-generation-canvas .panel {
         border: 1px solid rgba(15, 23, 42, 0.08);
         border-radius: 24px;
         background: rgba(255, 255, 255, 0.76);
         padding: 22px;
         backdrop-filter: blur(12px);
       }
-      .hf-remocn-ai-generation-canvas .prompt {
+      .hf-catalog-ai-generation-canvas .prompt {
         display: grid;
         gap: 12px;
         align-content: start;
       }
-      .hf-remocn-ai-generation-canvas .pill {
+      .hf-catalog-ai-generation-canvas .pill {
         height: 42px;
         border-radius: 999px;
         background: #111827;
@@ -74,11 +74,11 @@
         font-weight: 800;
         transform: translateX(var(--hf-pill-x, 0px));
       }
-      .hf-remocn-ai-generation-canvas .preview {
+      .hf-catalog-ai-generation-canvas .preview {
         display: grid;
         gap: 14px;
       }
-      .hf-remocn-ai-generation-canvas .card {
+      .hf-catalog-ai-generation-canvas .card {
         min-height: 78px;
         border-radius: 18px;
         background: #fff;
@@ -92,34 +92,34 @@
         gap: 10px;
       }
       /* skeleton bars that make the dashboard cards readable as a thumbnail */
-      .hf-remocn-ai-generation-canvas .card-label {
+      .hf-catalog-ai-generation-canvas .card-label {
         height: 10px;
         border-radius: 6px;
         background: #e4e4e7;
         width: 55%;
       }
-      .hf-remocn-ai-generation-canvas .card-bar {
+      .hf-catalog-ai-generation-canvas .card-bar {
         height: 8px;
         border-radius: 6px;
         background: #f4f4f5;
         width: 85%;
       }
-      .hf-remocn-ai-generation-canvas .card-bar.short {
+      .hf-catalog-ai-generation-canvas .card-bar.short {
         width: 60%;
       }
-      .hf-remocn-ai-generation-canvas .card-accent {
+      .hf-catalog-ai-generation-canvas .card-accent {
         height: 28px;
         border-radius: 8px;
         background: #d4d4d8;
         width: 100%;
         margin-top: 2px;
       }
-      .hf-remocn-ai-generation-canvas h3 {
+      .hf-catalog-ai-generation-canvas h3 {
         margin: 0 0 14px;
         font-size: 32px;
         letter-spacing: -0.04em;
       }
-      .hf-remocn-ai-generation-canvas p {
+      .hf-catalog-ai-generation-canvas p {
         margin: 0;
         color: #71717a;
       }
@@ -135,7 +135,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-ai-generation-canvas">
+        <div class="hf-catalog-ai-generation-canvas">
           <div class="panel prompt">
             <h3>AI Generation Canvas</h3>
             <p>A prompt composer expands into a generated dashboard preview.</p>
@@ -165,13 +165,13 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-ai-generation-canvas .pill",
+          ".hf-catalog-ai-generation-canvas .pill",
           { "--hf-pill-x": "-18px", opacity: 0 },
           { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
           startTime,
         );
         tl.fromTo(
-          ".hf-remocn-ai-generation-canvas .card",
+          ".hf-catalog-ai-generation-canvas .card",
           { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
           {
             "--hf-card-y": "0px",

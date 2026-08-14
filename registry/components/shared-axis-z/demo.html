@@ -122,8 +122,8 @@
         text-transform: uppercase;
         color: #71717a;
       }
-      /* GSAP animates .hf-remocn-shared-axis-z span — must keep class + span structure */
-      .hf-remocn-shared-axis-z {
+      /* GSAP animates .hf-catalog-shared-axis-z span — must keep class + span structure */
+      .hf-catalog-shared-axis-z {
         display: inline-flex;
         gap: 10px;
         font-size: 36px;
@@ -132,7 +132,7 @@
         line-height: 1;
         color: #18181b;
       }
-      .hf-remocn-shared-axis-z span {
+      .hf-catalog-shared-axis-z span {
         display: inline-block;
         transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
           scale(var(--hf-word-scale, 1));
@@ -215,7 +215,7 @@
           <div class="axis-z-incoming">
             <div class="axis-z-incoming-header">
               <div class="axis-z-incoming-eyebrow">Analytics</div>
-              <div class="hf-remocn-shared-axis-z"><span>Zoom</span><span>context</span></div>
+              <div class="hf-catalog-shared-axis-z"><span>Zoom</span><span>context</span></div>
               <div class="axis-z-incoming-meta">
                 Drill into any metric with a shared-axis Z transition — the new view scales in from
                 the tap point.
@@ -261,7 +261,7 @@
 
         // Word-by-word reveal on the title
         tl.fromTo(
-          ".hf-remocn-shared-axis-z span",
+          ".hf-catalog-shared-axis-z span",
           { opacity: 0, "--hf-word-scale": 0.72 },
           {
             opacity: 1,
