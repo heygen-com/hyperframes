@@ -505,6 +505,35 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     ],
     web: "worklet-bitcrush",
   },
+  {
+    id: "pitchshift",
+    label: "Pitch shift",
+    group: "time",
+    description: "Shifts pitch up or down without changing playback speed.",
+    params: [
+      {
+        kind: "number",
+        key: "semitones",
+        label: "Semitones",
+        unit: "st",
+        min: -12,
+        max: 12,
+        step: 1,
+        default: 0,
+      },
+      {
+        kind: "number",
+        key: "mix",
+        label: "Mix",
+        unit: "",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        default: 1,
+      },
+    ],
+    web: "worklet-pitchshift",
+  },
 
   {
     id: "delay",

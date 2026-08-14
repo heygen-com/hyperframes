@@ -88,6 +88,7 @@ describe("the worklet processors themselves", () => {
       "hf-limiter",
       "hf-gate",
       "hf-bitcrush",
+      "hf-pitchshift",
     ]);
 
     for (const [name, Cls] of processors) {
@@ -99,5 +100,82 @@ describe("the worklet processors themselves", () => {
       p.port.postMessage({ mix: 0.5 });
       expect(p.process(block(), block()), `${name} came back to life`).toBe(false);
     }
+  });
+
+  describe("HfPitchshift", () => {
+    const SR = 48000;
+    const BLOCK = 128;
+
+    /** Run a mono processor over a whole signal, 128 samples at a time. */
+    function run(p: Processor, signal: Float32Array): Float32Array {
+      const out = new Float32Array(signal.length);
+      for (let at = 0; at < signal.length; at += BLOCK) {
+        const inBlock = new Float32Array(BLOCK);
+        inBlock.set(signal.subarray(at, at + BLOCK));
+        const outBlock = new Float32Array(BLOCK);
+        p.process([[inBlock]], [[outBlock]]);
+        out.set(outBlock.subarray(0, Math.min(BLOCK, signal.length - at)), at);
+      }
+      return out;
+    }
+
+    function sine(freq: number, seconds: number): Float32Array {
+      const n = Math.round(SR * seconds);
+      const s = new Float32Array(n);
+      for (let i = 0; i < n; i++) s[i] = Math.sin((2 * Math.PI * freq * i) / SR);
+      return s;
+    }
+
+    /** Rising zero-crossings per second — coarse but enough to catch an octave. */
+    function estimateFreq(s: Float32Array, from: number): number {
+      const start = Math.round(from * SR);
+      let crossings = 0;
+      for (let i = start + 1; i < s.length; i++) {
+        if ((s[i - 1] ?? 0) < 0 && (s[i] ?? 0) >= 0) crossings++;
+      }
+      return crossings / ((s.length - start) / SR);
+    }
+
+    it("at semitones: 0, mix: 1 reproduces the input, delayed by exactly one grain/2", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 0, mix: 1 } });
+      const input = sine(440, 0.5);
+      const output = run(p, input);
+      const grain = Math.round(SR * 0.1);
+      // readTap reads from `write - 1`, i.e. one sample behind the one just
+      // written in this same iteration — so the effective delay is one sample
+      // more than the nominal grain/2.
+      const delay = grain / 2 + 1;
+      // Skip the first grain while the ring buffer is still filling.
+      let maxErr = 0;
+      for (let i = grain * 2; i < input.length; i++) {
+        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i - delay] ?? 0)));
+      }
+      expect(maxErr).toBeLessThan(1e-6);
+    });
+
+    it("at semitones: 12, doubles the fundamental (one octave up)", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 12, mix: 1 } });
+      const input = sine(220, 0.5);
+      const output = run(p, input);
+      // Skip the first couple of grains so the ring buffer is warm.
+      const freq = estimateFreq(output, 0.05);
+      expect(freq).toBeGreaterThan(220 * 1.7);
+      expect(freq).toBeLessThan(220 * 2.3);
+    });
+
+    it("at semitones: -12, halves the fundamental (one octave down)", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: -12, mix: 1 } });
+      const input = sine(440, 0.5);
+      const output = run(p, input);
+      const freq = estimateFreq(output, 0.05);
+      expect(freq).toBeGreaterThan(440 * 0.35);
+      expect(freq).toBeLessThan(440 * 0.65);
+    });
   });
 });
