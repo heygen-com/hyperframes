@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import {
   buildStandaloneRootTimelineElement,
   createStaticSeekPlaybackAdapter,
+  createTimelineDomPass,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
   getTimelineElementSelector,
@@ -306,26 +307,81 @@ describe("findTimelineDomNodeForClip", () => {
         <div class="clip duplicate-card second" data-start="0" data-duration="4" data-track-index="2"></div>
       </div>
     `);
-    const used = new Set<Element>();
+    const pass = createTimelineDomPass(doc);
 
     const first = findTimelineDomNodeForClip(
       doc,
       createClip({ id: "__node__index_2", track: 1 }),
       1,
-      used,
+      pass,
     ) as HTMLElement;
-    used.add(first);
     const second = findTimelineDomNodeForClip(
       doc,
       createClip({ id: "__node__index_3", track: 2 }),
       2,
-      used,
+      pass,
     ) as HTMLElement;
 
     expect(first.className).toBe("clip duplicate-card first");
     expect(second.className).toBe("clip duplicate-card second");
     expect(getTimelineElementSelector(first)).toBe(".duplicate-card");
     expect(getTimelineElementSelector(second)).toBe(".duplicate-card");
+  });
+
+  it("scans the document once per pass instead of once per clip", () => {
+    const cards = Array.from(
+      { length: 6 },
+      (_, index) =>
+        `<div class="clip card" data-start="${index}" data-duration="1" data-track-index="${index}"></div>`,
+    ).join("");
+    const doc = createDocument(`
+      <div data-composition-id="main" data-start="0" data-duration="6">${cards}</div>
+    `);
+    const scans: string[] = [];
+    const nativeQuerySelectorAll = doc.querySelectorAll.bind(doc);
+    doc.querySelectorAll = ((selectors: string) => {
+      scans.push(selectors);
+      return nativeQuerySelectorAll(selectors);
+    }) as typeof doc.querySelectorAll;
+
+    const pass = createTimelineDomPass(doc);
+    const resolved = Array.from({ length: 6 }, (_, index) =>
+      findTimelineDomNodeForClip(
+        doc,
+        createClip({ start: index, duration: 1, track: index }),
+        index,
+        pass,
+      ),
+    );
+
+    expect(scans.filter((selectors) => selectors.includes("[data-start]"))).toHaveLength(1);
+    expect(new Set(resolved).size).toBe(6);
+  });
+
+  it("resolves to the live node after the preview document changes", () => {
+    const doc = createDocument(`
+      <div data-composition-id="main" data-start="0" data-duration="8">
+        <div class="clip card first" data-start="0" data-duration="4" data-track-index="0"></div>
+        <div class="clip card second" data-start="4" data-duration="4" data-track-index="1"></div>
+      </div>
+    `);
+    const clip = createClip({ start: 4, duration: 4, track: 1 });
+    const passBeforeEdit = createTimelineDomPass(doc);
+
+    // An edit lands: the runtime replaces the second card with a fresh node.
+    const detached = doc.querySelector(".second") as HTMLElement;
+    const replacement = doc.createElement("div");
+    replacement.className = "clip card second";
+    replacement.setAttribute("data-start", "4");
+    replacement.setAttribute("data-duration", "4");
+    replacement.setAttribute("data-track-index", "1");
+    detached.replaceWith(replacement);
+
+    expect(findTimelineDomNodeForClip(doc, clip, 1, createTimelineDomPass(doc))).toBe(replacement);
+    // ...and the pass built before the edit still points at the node that is now
+    // detached, which is exactly why a pass must never outlive its derivation.
+    expect(findTimelineDomNodeForClip(doc, clip, 1, passBeforeEdit)).toBe(detached);
+    expect(detached.isConnected).toBe(false);
   });
 });
 
@@ -388,10 +444,9 @@ describe("anonymous timeline identity", () => {
       createClip({ id: null, label: "Card", start: 0, duration: 3, track: 0 }),
       createClip({ id: null, label: "Card", start: 3, duration: 3, track: 1 }),
     ];
-    const used = new Set<Element>();
+    const pass = createTimelineDomPass(doc);
     const elements = clips.map((clip, index) => {
-      const hostEl = findTimelineDomNodeForClip(doc, clip, index, used);
-      if (hostEl) used.add(hostEl);
+      const hostEl = findTimelineDomNodeForClip(doc, clip, index, pass);
       return createTimelineElementFromManifestClip({
         clip,
         fallbackIndex: index,

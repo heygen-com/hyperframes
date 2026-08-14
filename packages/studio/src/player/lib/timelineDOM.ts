@@ -46,6 +46,7 @@ export {
   buildTimelineElementIdentity,
   // fallow-ignore-next-line unused-exports
   getTimelineElementIdentity,
+  createTimelineDomPass,
   findTimelineDomNodeForClip,
 } from "./timelineElementHelpers";
 

@@ -24,6 +24,9 @@ import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /*  Font helper functions                                              */
 /* ------------------------------------------------------------------ */
 
+/** Shared so a closed font dropdown's memo keeps a stable identity. */
+const EMPTY_FONT_OPTIONS: FontOption[] = [];
+
 function splitFontFamilies(value: string): string[] {
   const families: string[] = [];
   let current = "";
@@ -272,7 +275,12 @@ export function FontFamilyField({
     [importedFonts],
   );
 
+  // Gated on `open`: the dropdown is the only consumer and it renders only
+  // while open, but the memo is keyed on the selected family — which changes on
+  // every click — so it re-collected, de-duplicated and re-sorted ~1,500
+  // families on every selection to feed a list nobody was looking at.
   const options = useMemo(() => {
+    if (!open) return EMPTY_FONT_OPTIONS;
     const documentFonts = collectDocumentFontFamilies();
     const googleSet = new Set(googleFonts.map((f) => f.toLowerCase()));
     const taggedLocal = localFonts.map(
@@ -291,7 +299,7 @@ export function FontFamilyField({
         ...DEFAULT_FONT_FAMILIES.map((f): FontOption => ({ family: f, source: "System" })),
       ]),
     );
-  }, [currentFamily, googleFonts, localFonts, projectFontAssets]);
+  }, [open, currentFamily, googleFonts, localFonts, projectFontAssets]);
 
   const filteredOptions = useMemo(() => {
     const matches = options.filter((o) => fontMatchesQuery(o.family, query));

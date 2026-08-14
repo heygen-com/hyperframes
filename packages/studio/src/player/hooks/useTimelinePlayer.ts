@@ -11,6 +11,7 @@ export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
 export {
   buildStandaloneRootTimelineElement,
   createTimelineElementFromManifestClip,
+  createTimelineDomPass,
   findTimelineDomNodeForClip,
   getTimelineElementSelector,
   mergeTimelineElementsPreservingDowngrades,
