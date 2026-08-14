@@ -367,14 +367,18 @@ export function splitElementInHtml(
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
 
-  // Adjust media trim offset for the second half
+  // A split creates two views over the same media source. Even an untrimmed
+  // audio/video element needs an explicit zero in-point stamped on the first
+  // half so the second half can advance from it instead of restarting at zero.
   const playbackStartAttr = el.hasAttribute("data-playback-start")
     ? "data-playback-start"
     : el.hasAttribute("data-media-start")
       ? "data-media-start"
       : fallbackTiming?.stampPlaybackStart
         ? "data-playback-start"
-        : null;
+        : el.matches("audio, video")
+          ? "data-media-start"
+          : null;
   if (playbackStartAttr) {
     const currentTrim =
       parseFloat(el.getAttribute(playbackStartAttr) ?? "") || fallbackTiming?.playbackStart || 0;
