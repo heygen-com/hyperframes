@@ -13,6 +13,7 @@ import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 import type { TimelineClipRenderContext } from "./TimelineTypes";
+import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
 /**
  * Props shared by the scroll container ({@link import("./TimelineCanvas")}) and
@@ -99,6 +100,8 @@ export interface TimelineLaneBaseProps {
    */
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
+  /** Resolved audio groups, positioned in row order — see useTimelineTrackDerivations. */
+  groups: readonly TimelineTrackGroupInfo[];
 }
 
 /**

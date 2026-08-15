@@ -188,7 +188,8 @@ export function useTimelineTrackLayout(
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
 ) {
-  const { tracks, trackStyles, trackOrder } = useTimelineTrackDerivations(expandedElements);
+  const { tracks, trackStyles, trackOrder, groups, trackGroupOf } =
+    useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
   const { laneCounts, rowGeometry, rowGeometryRef, rowHeights } = useTimelineRowHeights(
@@ -207,6 +208,8 @@ export function useTimelineTrackLayout(
     rowGeometry,
     rowGeometryRef,
     rowHeights,
+    groups,
+    trackGroupOf,
   };
 }
 
@@ -227,7 +230,23 @@ function useDisplayRowHeights(
 function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: number[]) {
   return useMemo(() => {
     if (!draggedClip?.started || trackOrder.includes(draggedClip.previewTrack)) return trackOrder;
-    return [...trackOrder, draggedClip.previewTrack].sort((a, b) => a - b);
+    // A group's members sit out of raw numeric order (pulled under their
+    // anchor row), so a plain numeric sort here would undo that grouping the
+    // moment a clip drags onto a brand-new track. Insert the new preview
+    // track only relative to other REAL (integer) tracks, leaving any
+    // fractional group-anchor keys exactly where grouping placed them.
+    const preview = draggedClip.previewTrack;
+    const result: number[] = [];
+    let inserted = false;
+    for (const key of trackOrder) {
+      if (!inserted && Number.isInteger(key) && key > preview) {
+        result.push(preview);
+        inserted = true;
+      }
+      result.push(key);
+    }
+    if (!inserted) result.push(preview);
+    return result;
   }, [draggedClip, trackOrder]);
 }
 

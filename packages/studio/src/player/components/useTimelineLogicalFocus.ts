@@ -3,6 +3,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
+import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 import { useTimelineFocusCoordinator } from "./useTimelineFocusCoordinator";
 import { usePlayerStore } from "../store/playerStore";
 import { useTimelineLogicalRows } from "./useTimelineLogicalRows";
@@ -15,6 +16,8 @@ interface TimelineLogicalFocusInput {
   laneCounts: ReadonlyMap<string, number>;
   selectedElementId: string | null;
   selectedElementIds: ReadonlySet<string>;
+  groups: readonly TimelineTrackGroupInfo[];
+  trackGroupOf: ReadonlyMap<number, TimelineTrackGroupInfo>;
   gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
   elements: readonly TimelineElement[];
   pixelsPerSecond: number;
@@ -32,6 +35,8 @@ interface TimelineLogicalFocusInput {
 
 export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
   const expandedClipIds = usePlayerStore((state) => state.expandedClipIds);
+  const expandedGroupIds = usePlayerStore((state) => state.expandedGroupIds);
+  const expandedLaneOwnerIds = usePlayerStore((state) => state.expandedLaneOwnerIds);
   const projectId = usePlayerStore((state) => state.timelineProjectId);
   const logicalRows = useTimelineLogicalRows({
     tracks: input.tracks,
@@ -40,6 +45,10 @@ export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
     selectedElementId: input.selectedElementId,
     selectedElementIds: input.selectedElementIds,
     expandedClipIds,
+    expandedGroupIds,
+    expandedLaneOwnerIds,
+    groups: input.groups,
+    trackGroupOf: input.trackGroupOf,
     gsapAnimations: input.gsapAnimations,
   });
   const focus = useTimelineFocusCoordinator({
