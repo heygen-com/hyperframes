@@ -22,6 +22,10 @@ const displayTrackOrder = tracks.map(([track]) => track);
 const laneCounts = new Map<string, number>();
 const selectedElementIds = new Set<string>();
 const expandedClipIds = new Set<string>();
+const expandedGroupIds = new Set<string>();
+const expandedLaneOwnerIds = new Set<string>();
+const groups: never[] = [];
+const trackGroupOf = new Map();
 const gsapAnimations = new Map();
 
 function Harness({ snapshots }: { snapshots: Array<readonly TimelineLogicalRow[]> }) {
@@ -33,6 +37,10 @@ function Harness({ snapshots }: { snapshots: Array<readonly TimelineLogicalRow[]
     selectedElementId: null,
     selectedElementIds,
     expandedClipIds,
+    expandedGroupIds,
+    expandedLaneOwnerIds,
+    groups,
+    trackGroupOf,
     gsapAnimations,
   });
   snapshots.push(logicalRows);

@@ -4,6 +4,8 @@ import { resolveBeatSourceTrack } from "../utils/timelineInspector";
 import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
+import { getTimelineElementIndexes } from "../player/lib/timelineElementIndexes";
+import { remapBeatAnalysisToComposition } from "../utils/beatEditActions";
 import {
   audioRelPathForSrc,
   beatFilePathForSrc,
@@ -88,6 +90,17 @@ async function loadBeatAnalysis(
   } catch {
     return null;
   }
+}
+
+/** The current beat analysis, remapped onto the composition's edited beat grid. */
+export function useAdjustedBeatAnalysis() {
+  const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
+  const musicElement = usePlayerStore((s) => getTimelineElementIndexes(s.elements).musicElement);
+  const beatEdits = usePlayerStore((s) => s.beatEdits);
+  return useMemo(
+    () => remapBeatAnalysisToComposition(beatAnalysis, musicElement, beatEdits),
+    [beatAnalysis, musicElement, beatEdits],
+  );
 }
 
 export function useMusicBeatAnalysis(): void {

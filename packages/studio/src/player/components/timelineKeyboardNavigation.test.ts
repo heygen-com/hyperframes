@@ -58,6 +58,10 @@ function model(overrides: Partial<Parameters<typeof buildTimelineLogicalRows>[0]
     selectedElementId: "active",
     selectedElementIds: new Set(),
     expandedClipIds: new Set(["active"]),
+    expandedGroupIds: new Set(),
+    expandedLaneOwnerIds: new Set(),
+    groups: [],
+    trackGroupOf: new Map(),
     gsapAnimations: new Map([
       [
         "active",
@@ -244,6 +248,10 @@ describe("resolveTimelineNavigationTarget", () => {
       selectedElementId: null,
       selectedElementIds: new Set(),
       expandedClipIds: new Set(),
+      expandedGroupIds: new Set(),
+      expandedLaneOwnerIds: new Set(),
+      groups: [],
+      trackGroupOf: new Map(),
       gsapAnimations: new Map(),
     });
 

@@ -12,6 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -65,6 +66,20 @@ export {
 
 function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
+}
+
+// One `<hf-audio-group>` scan per document, not per clip — resolveAudioGroups
+// walks the whole tree, and a parse touches every clip in it.
+const groupLabelCache = new WeakMap<Document, Map<string, string>>();
+
+function groupLabelFor(doc: Document | null | undefined, groupId: string): string {
+  if (!doc) return groupId;
+  let labels = groupLabelCache.get(doc);
+  if (!labels) {
+    labels = new Map(resolveAudioGroups(doc).map((group) => [group.id, group.label]));
+    groupLabelCache.set(doc, labels);
+  }
+  return labels.get(groupId) ?? groupId;
 }
 
 // fallow-ignore-next-line complexity
@@ -138,6 +153,11 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const audioGroup = hostEl.getAttribute("data-audio-group");
+    if (audioGroup) {
+      entry.audioGroup = audioGroup;
+      entry.audioGroupLabel = groupLabelFor(doc ?? hostEl.ownerDocument, audioGroup);
+    }
     const fxChain = hostEl.getAttribute("data-fx-chain");
     if (fxChain) entry.fxChain = fxChain;
     const automation = hostEl.getAttribute("data-automation");
@@ -355,6 +375,12 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
 
     const timelineRole = el.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+
+    const domAudioGroup = el.getAttribute("data-audio-group");
+    if (domAudioGroup) {
+      entry.audioGroup = domAudioGroup;
+      entry.audioGroupLabel = groupLabelFor(doc, domAudioGroup);
+    }
 
     // Sub-compositions
     const compSrc =

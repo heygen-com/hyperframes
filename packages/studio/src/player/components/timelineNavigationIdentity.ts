@@ -13,6 +13,10 @@ export function timelineTrackRowId(track: number): string {
   return stableId("track", track);
 }
 
+export function timelineGroupRowId(groupId: string): string {
+  return stableId("group", groupId);
+}
+
 export function timelinePropertyRowId(elementId: string, group: PropertyGroupName): string {
   return stableId("property", elementId, group);
 }
