@@ -52,8 +52,14 @@ export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
 }
 
 /** The group a member belongs to, or null. Groups do not nest — this ignores
- * `data-audio-group` on an `<hf-audio-group>` element itself. */
+ * `data-audio-group` on an `<hf-audio-group>` element itself.
+ *
+ * Tolerant of objects that only partially implement `Element` (test doubles
+ * for `HTMLMediaElement` commonly do) — anything missing `tagName` or
+ * `getAttribute` simply has no group, mirroring `readChain`'s style in
+ * `runtime/audioFx.ts`. */
 export function audioGroupOf(el: Element): string | null {
+  if (typeof el.tagName !== "string") return null;
   if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return null;
-  return el.getAttribute(HF_AUDIO_GROUP_ATTR);
+  return typeof el.getAttribute === "function" ? el.getAttribute(HF_AUDIO_GROUP_ATTR) : null;
 }

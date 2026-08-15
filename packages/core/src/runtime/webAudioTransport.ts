@@ -5,6 +5,7 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
+import { audioGroupOf } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
@@ -70,9 +71,12 @@ function startBoundedSource(
 /**
  * The volume lane rides the fader, after the effects — where a DAW puts it,
  * and the order the render bakes it in.
+ *
+ * Typed against the attribute reader rather than `HTMLMediaElement` so a group
+ * bus (an `<hf-audio-group>`, not a media element) can ride the same path.
  */
 function scheduleVolumeLane(
-  el: HTMLMediaElement,
+  el: { getAttribute?(name: string): string | null },
   gainNode: GainNode,
   timing: AutomationTiming,
 ): void {
@@ -119,6 +123,11 @@ export class WebAudioTransport {
   private _masterGain: GainNode | null = null;
   private _masterVolume = 1;
   private _masterMuted = false;
+  // One shared bus per group id, lazily built the first time a member of that
+  // group is scheduled. Lives for the session (mirrors `_masterGain`'s own
+  // lifecycle) rather than being torn down on every `stopAll()`, so replaying
+  // a group does not rebuild its chain; only `destroy()` disposes these.
+  private _groups = new Map<string, { input: GainNode; dispose(): void }>();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -269,6 +278,97 @@ export class WebAudioTransport {
     }
   }
 
+  /**
+   * The gain a grouped member's signal should land on, building it on first
+   * use. A group's clock is COMPOSITION time (design doc §1.3) — it has no
+   * `data-start`, and a missing start parses as 0, which is exactly
+   * composition time — so its chain and volume lane are scheduled once here
+   * against that zero-offset timing, not the member's own clip-local timing.
+   * A group id with no matching `<hf-audio-group>` element still gets a bus
+   * (flat, no chain) so a hand-authored `data-audio-group` degrades to a
+   * plain sum rather than losing the member's audio.
+   */
+  private groupInput(groupId: string, doc: Document, timing: AutomationTiming): GainNode | null {
+    const existing = this._groups.get(groupId);
+    if (existing) return existing.input;
+    if (!this._ctx || !this._masterGain) return null;
+
+    const input = this._ctx.createGain();
+    const groupEl = doc.getElementById(groupId);
+    const fx = attachElementFxChain(
+      this._ctx,
+      groupEl ?? { getAttribute: () => null },
+      input,
+      this._masterGain,
+      timing,
+    );
+    if (groupEl) scheduleVolumeLane(groupEl, input, timing);
+
+    this._groups.set(groupId, {
+      input,
+      dispose: () => {
+        try {
+          fx?.dispose();
+          input.disconnect();
+        } catch {
+          // Already torn down.
+        }
+      },
+    });
+    return input;
+  }
+
+  /** Master, unless `el` belongs to a group — then that group's bus (built on
+   *  first use, per `groupInput`). */
+  private resolveDestination(
+    el: HTMLMediaElement,
+    scheduledAt: number,
+    compositionTime: number,
+    safeRate: number,
+  ): GainNode | null {
+    if (!this._masterGain) return null;
+    const groupId = audioGroupOf(el);
+    if (!groupId) return this._masterGain;
+    const groupTiming: AutomationTiming = { scheduledAt, elapsed: compositionTime, rate: safeRate };
+    return this.groupInput(groupId, el.ownerDocument, groupTiming) ?? this._masterGain;
+  }
+
+  /**
+   * The graph goes with it. Splicing alone left the FX handle alive and then
+   * UNREACHABLE — `stopAll()` disposes by walking `_activeSources`, which the
+   * splice just emptied of this entry. Every clip that finished naturally
+   * leaked its MutationObserver for the session, and each one still answered
+   * later `data-fx-chain` edits by rebuilding a whole graph (impulse response,
+   * chorus/phaser oscillators started and never stopped) around a dead
+   * source. Not disposed when the index is already -1: `stopAll()` has
+   * already done it, and `stop()` is what fired this event.
+   */
+  private handleSourceEnded(
+    sourceNode: AudioBufferSourceNode,
+    scheduled: ScheduledSource,
+    el: HTMLMediaElement,
+    priorMuted: boolean,
+  ): void {
+    const idx = this._activeSources.indexOf(scheduled);
+    if (idx === -1) return;
+    this._activeSources.splice(idx, 1);
+    el.muted = priorMuted;
+    try {
+      sourceNode.disconnect();
+      scheduled.fx?.dispose();
+      scheduled.gainNode.disconnect();
+    } catch {
+      // Already torn down.
+    }
+    if (this._activeSources.length === 0) this._paused = true;
+  }
+
+  // Pre-existing size (110 lines before this diff, which shrank it to under
+  // 95 via two extractions — see `handleSourceEnded`/`resolveDestination`);
+  // the remainder is inherently sequential graph-wiring, not a nested
+  // decision tree, and further splitting would cost more readability than it
+  // buys. Same call the B2 step took on `TimelineLogicalRow`.
+  // fallow-ignore-next-line complexity
   async schedulePlayback(
     el: HTMLMediaElement,
     buffer: AudioBuffer,
@@ -309,7 +409,9 @@ export class WebAudioTransport {
       // output — the same order the offline render uses. Preview and render run
       // the identical graph builders, so what is heard here is what is written.
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
-      gainNode.connect(this._masterGain);
+      gainNode.connect(
+        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
+      );
 
       scheduleVolumeLane(el, gainNode, timing);
 
@@ -355,29 +457,9 @@ export class WebAudioTransport {
       this._activeSources.push(scheduled);
       this._paused = false;
 
-      sourceNode.addEventListener("ended", () => {
-        const idx = this._activeSources.indexOf(scheduled);
-        if (idx !== -1) {
-          this._activeSources.splice(idx, 1);
-          el.muted = priorMuted;
-          // The graph goes with it. Splicing alone left the FX handle alive and
-          // then UNREACHABLE — stopAll() disposes by walking this array, which
-          // the splice just emptied of this entry. Every clip that finished
-          // naturally leaked its MutationObserver for the session, and each one
-          // still answered later `data-fx-chain` edits by rebuilding a whole
-          // graph (impulse response, chorus/phaser oscillators started and never
-          // stopped) around a dead source. Not disposed when idx is -1: stopAll()
-          // has already done it, and `stop()` is what fired this event.
-          try {
-            sourceNode.disconnect();
-            fx?.dispose();
-            gainNode.disconnect();
-          } catch {
-            // Already torn down.
-          }
-          if (this._activeSources.length === 0) this._paused = true;
-        }
-      });
+      sourceNode.addEventListener("ended", () =>
+        this.handleSourceEnded(sourceNode, scheduled, el, priorMuted),
+      );
 
       return scheduled;
     } catch (err) {
@@ -500,6 +582,8 @@ export class WebAudioTransport {
 
   destroy(): void {
     this.stopAll();
+    for (const group of this._groups.values()) group.dispose();
+    this._groups.clear();
     this._bufferCache.clear();
     this._failedSrcs.clear();
     this._mediaElementSources = new WeakMap();
