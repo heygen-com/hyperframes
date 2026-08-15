@@ -3159,7 +3159,7 @@ export function initSandboxRuntimeModular(): void {
         if (!(el instanceof HTMLMediaElement)) continue;
         const parsed = parseFloat(el.dataset.volume ?? "");
         const clipVolume = Number.isFinite(parsed) ? parsed : 1;
-        el.volume = clipVolume * volume;
+        el.volume = Math.max(0, Math.min(1, clipVolume * volume));
       }
     },
     onSetMediaOutputMuted: (muted) => {

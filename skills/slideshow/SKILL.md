@@ -494,7 +494,7 @@ Studio/`preview` is useful for editing a composition, but it is not a clear fina
 {
   "scripts": {
     "dev": "npx hyperframes present ./composition",
-    "studio": "npx hyperframes preview ./composition"
+    "studio": "npx hyperframes preview ./composition --background"
   }
 }
 ```
