@@ -1507,6 +1507,142 @@ describe("AudioFxGroup carve source list", () => {
   });
 });
 
+describe("AudioFxGroup carve targets groups (B6)", () => {
+  // These tests are the only ones in this file whose auto-carve effect makes a
+  // real cross-element write call (`onAutoGroupCarveSources`), which can be a
+  // genuine Promise. None of this file's other `mount*` helpers ever unmount
+  // their React root — harmless everywhere else because their effects only
+  // ever touch a plain `onSetAttributeQuiet` mock, so an orphaned root left
+  // over from an earlier test does nothing observable if it ever re-renders.
+  // Here it can re-fire the auto-group effect against WHATEVER a later test's
+  // fixture put in the (file-global) `document`, calling a long-dead test's
+  // mock — unmounting is what prevents that.
+  const roots: ReturnType<typeof createRoot>[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) act(() => root.unmount());
+  });
+
+  /** A bed, plus tracks that may carry `data-audio-group`, plus an optional auto-group handler. */
+  const mountWith = (
+    tracks: { id: string; group?: string; start?: string; duration?: string }[],
+    onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>,
+  ) => {
+    const bed = document.createElement("audio");
+    bed.id = "bed";
+    document.body.append(bed);
+    for (const t of tracks) {
+      const el = document.createElement("audio");
+      el.id = t.id;
+      if (t.group) el.setAttribute("data-audio-group", t.group);
+      if (t.start !== undefined) el.setAttribute("data-start", t.start);
+      if (t.duration !== undefined) el.setAttribute("data-duration", t.duration);
+      document.body.append(el);
+    }
+    const onSetAttributeQuiet = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    act(() => {
+      root.render(
+        <AudioFxGroup
+          element={{ dataAttributes: {}, id: "bed", element: bed } as unknown as DomEditSelection}
+          onSetAttributeQuiet={onSetAttributeQuiet}
+          onSetAttributeLive={vi.fn()}
+          onAutoGroupCarveSources={onAutoGroupCarveSources}
+        />,
+      );
+    });
+    const offered = Array.from(host.querySelectorAll<HTMLElement>("[data-carve-source]"));
+    const options = offered.map((el) => el.dataset["carveSource"] ?? "");
+    const boxes = offered.filter((el): el is HTMLInputElement => el instanceof HTMLInputElement);
+    return { host, options, boxes, onSetAttributeQuiet };
+  };
+
+  it("offers one entry for a group and hides its members individually", () => {
+    const { options } = mountWith([
+      { id: "vo-1", group: "voiceover" },
+      { id: "vo-2", group: "voiceover" },
+    ]);
+    expect(options).toEqual(["voiceover"]);
+  });
+
+  it("offers the group when only ONE member overlaps the bed (union, not per-clip)", () => {
+    // The bed spans the whole default window (no start/duration on the
+    // selection itself in this harness resolves to [0, Infinity)), so give the
+    // members explicit, non-overlapping-with-each-other spans and confirm the
+    // group still appears as long as at least one of them is in range.
+    const { options } = mountWith([
+      { id: "vo-1", group: "voiceover", start: "0", duration: "5" },
+      { id: "vo-2", group: "voiceover", start: "1000", duration: "5" },
+    ]);
+    expect(options).toEqual(["voiceover"]);
+  });
+
+  it("auto-selects the group over its individual members", () => {
+    const { onSetAttributeQuiet } = mountWith([
+      { id: "vo-1", group: "voiceover" },
+      { id: "vo-2", group: "voiceover" },
+    ]);
+    const write = writeTo(onSetAttributeQuiet.mock.calls, "data-fx-carve");
+    expect(JSON.parse(String(write![1])).sources).toEqual(["voiceover"]);
+  });
+
+  it("auto-groups a multi-voice carve into one named group, atomically", async () => {
+    // Two ungrouped, both voice-classified: the existing "every candidate
+    // carves itself" mount effect names both by id, which is exactly the
+    // plural-ungrouped case B6 intercepts — the carve should land on the
+    // minted group, not on the two ids directly.
+    const onAutoGroupCarveSources = vi.fn().mockResolvedValue(undefined);
+    const { onSetAttributeQuiet } = mountWith(
+      [
+        { id: "narration", start: "0", duration: "5" },
+        { id: "interview-guest", start: "10", duration: "5" },
+      ],
+      onAutoGroupCarveSources,
+    );
+    expect(onAutoGroupCarveSources).toHaveBeenCalledWith(
+      ["narration", "interview-guest"],
+      "voiceover",
+    );
+    // Explicitly await the exact promise `assignGroup` returned — a bare
+    // `await Promise.resolve()`/`setTimeout` flush is guessing how deep the
+    // chain behind it goes (its `.then(...)`, the write, and the re-analysis
+    // `setCarve` awaits afterward). Left genuinely unresolved when this test
+    // returns, that chain settles during a LATER test instead, after this
+    // one's mocks and DOM are gone.
+    await act(async () => {
+      await onAutoGroupCarveSources.mock.results[0]?.value;
+      // Two more turns of the microtask queue: one for the `.then(...)` that
+      // builds the grouped settings, one for `setCarve`'s own trailing
+      // `await analyse(next)` (a no-op here — the fixture's tracks have no
+      // `src`, so `resolveCarveVoices` returns empty and `analyse` exits
+      // immediately, but it still has to actually run to completion).
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const write = writeTo(onSetAttributeQuiet.mock.calls, "data-fx-carve");
+    expect(write).toBeTruthy();
+    expect(JSON.parse(String(write![1])).sources).toEqual(["voiceover"]);
+  });
+
+  it("leaves sources alone when one of them already names a group", () => {
+    const onAutoGroupCarveSources = vi.fn();
+    const { onSetAttributeQuiet } = mountWith(
+      [
+        { id: "vo-1", group: "voiceover" },
+        { id: "vo-2", group: "voiceover" },
+      ],
+      onAutoGroupCarveSources,
+    );
+    // The default-carve effect already named the group (previous test above),
+    // so no auto-group call should ever fire for an all-group source list.
+    expect(onAutoGroupCarveSources).not.toHaveBeenCalled();
+    const write = writeTo(onSetAttributeQuiet.mock.calls, "data-fx-carve");
+    expect(JSON.parse(String(write![1])).sources).toEqual(["voiceover"]);
+  });
+});
+
 describe("AudioFxGroup carve source range", () => {
   const spanned = (tracks: { id: string; start?: string; duration?: string }[]): string[] => {
     const bed = document.createElement("audio");

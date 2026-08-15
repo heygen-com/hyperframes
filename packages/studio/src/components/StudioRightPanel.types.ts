@@ -51,5 +51,6 @@ export interface StudioRightPanelProps extends StudioEditPersistenceProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
+  onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>;
   onAddMediaOverlay?: AddMediaOverlayHandler;
 }

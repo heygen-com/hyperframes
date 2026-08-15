@@ -236,6 +236,31 @@ so one analysis covers all of them: the bands come from all the speech there is,
 the envelopes rise wherever any of it is happening. Voices that never play while the
 bed does are left out; they cannot mask it.
 
+**A carve against more than one clip id is wrong. Group the clips and carve
+against the group.** This is an invariant, not a tip. Naming clips one by one has
+to be exhaustively right and stays right only until the next edit — a fourth
+narration clip added later plays outside the carve's awareness, and the bed
+fails to duck under it silently. Naming the group instead resolves membership at
+analysis time, so a clip added to the group later is covered without touching
+`sources` at all:
+
+```html
+<!-- group the narration, then carve the bed against the group -->
+<audio id="vo-intro" data-audio-group="voiceover" …></audio>
+<audio id="vo-middle" data-audio-group="voiceover" …></audio>
+<audio id="vo-outro" data-audio-group="voiceover" …></audio>
+
+<audio
+  id="music"
+  data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.25}'
+  …
+></audio>
+```
+
+A `sources` list naming two or more plain clip ids instead of a group is caught
+by the `audio_carve_ungrouped_sources` lint rule — it still works, but it is the
+version that silently rots when a clip is added.
+
 **One knob.** `strength` is 0..1 and derives everything: how deep to cut, how
 many bands, how wide, how far to favour intelligibility over raw voice energy,
 how far the level may drop, how far under the voice to aim. Those six move

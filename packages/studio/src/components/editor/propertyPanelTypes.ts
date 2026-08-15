@@ -92,6 +92,8 @@ export interface PropertyPanelProps {
   onRemoveTextField: (fieldKey: string) => void;
   onAskAgent: () => void;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => void | Promise<void>;
+  /** B6: group two or more picked voice clips, atomically, one undo entry. */
+  onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>;
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   onAddMediaOverlay?: AddMediaOverlayHandler;
   fontAssets?: ImportedFontAsset[];

@@ -66,6 +66,37 @@ export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
 }
 
 /**
+ * Expand a list of source ids for a carve: a plain id passes through if it
+ * still exists, a group id expands to its CURRENT members. Resolved fresh
+ * every time — group membership is never frozen into the carve's own
+ * attribute, so adding a fourth voice to a group already named in a carve's
+ * `sources` picks it up on the next analysis without editing that carve.
+ *
+ * Dedupes and preserves first-seen order; an id that resolves to nothing
+ * (a deleted clip, an empty or vanished group) is dropped rather than kept
+ * as a dangling reference the analysis would only fail to find anyway.
+ */
+export function resolveCarveSourceIds(doc: Document, ids: readonly string[]): string[] {
+  const groupsById = new Map(resolveAudioGroups(doc).map((group) => [group.id, group] as const));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (id: string): void => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  for (const id of ids) {
+    const group = groupsById.get(id);
+    if (group) {
+      group.memberIds.forEach(add);
+    } else if (doc.getElementById(id)) {
+      add(id);
+    }
+  }
+  return out;
+}
+
+/**
  * The group a member belongs to, or null — the same predicate
  * `resolveAudioGroups` scans with, so the two can never disagree about a given
  * element.
