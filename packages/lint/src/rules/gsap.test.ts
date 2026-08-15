@@ -584,6 +584,12 @@ describe("GSAP rules", () => {
     const conflicts = result.findings.filter((f) => f.code === "gsap_css_transform_conflict");
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]?.message).toMatch(/x\/scale|scale\/x/);
+    // Regression: a single CSS declaration with both translate and scale must
+    // not produce doubled transform text in the message or fixHint (#3263).
+    const msg = conflicts[0]?.message ?? "";
+    const hint = conflicts[0]?.fixHint ?? "";
+    expect(msg).not.toContain("translateX(-50%) scale(0.8) translateX(-50%) scale(0.8)");
+    expect(hint).not.toContain("translateX(-50%) scale(0.8) translateX(-50%) scale(0.8)");
   });
 
   // --- Inline style transform detection tests ---
