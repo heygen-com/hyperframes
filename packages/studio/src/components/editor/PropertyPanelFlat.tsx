@@ -79,6 +79,7 @@ export function PropertyPanelFlat({
   onRemoveTextField,
   onAskAgent,
   onToggleElementHidden,
+  onAutoGroupCarveSources,
   onImportAssets,
   onAddMediaOverlay,
   onImportFonts,
@@ -440,6 +441,7 @@ export function PropertyPanelFlat({
           element={element}
           onSetAttributeQuiet={onSetAttributeQuiet ?? onSetAttributeLive}
           onSetAttributeLive={onSetAttributeLive}
+          onAutoGroupCarveSources={onAutoGroupCarveSources}
         />
       ),
     });

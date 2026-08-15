@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { audioGroupOf, HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "./audioGroups.js";
+import {
+  audioGroupOf,
+  HF_AUDIO_GROUP_ATTR,
+  resolveAudioGroups,
+  resolveCarveSourceIds,
+} from "./audioGroups.js";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -61,6 +66,47 @@ describe("audioGroupOf", () => {
   it("returns null when the attribute is absent", () => {
     document.body.innerHTML = `<audio id="vo-1"></audio>`;
     expect(audioGroupOf(document.getElementById("vo-1") as Element)).toBeNull();
+  });
+});
+
+describe("resolveCarveSourceIds", () => {
+  it("expands a group id to its current members", () => {
+    document.body.innerHTML = `
+      <audio id="vo-1" data-audio-group="voiceover"></audio>
+      <audio id="vo-2" data-audio-group="voiceover"></audio>
+    `;
+    expect(resolveCarveSourceIds(document, ["voiceover"])).toEqual(["vo-1", "vo-2"]);
+  });
+
+  it("picks up a member added to the group after the carve was set (analysis-time, not frozen)", () => {
+    document.body.innerHTML = `
+      <audio id="vo-1" data-audio-group="voiceover"></audio>
+      <audio id="vo-2" data-audio-group="voiceover"></audio>
+    `;
+    expect(resolveCarveSourceIds(document, ["voiceover"])).toEqual(["vo-1", "vo-2"]);
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<audio id="vo-3" data-audio-group="voiceover"></audio>`,
+    );
+    expect(resolveCarveSourceIds(document, ["voiceover"])).toEqual(["vo-1", "vo-2", "vo-3"]);
+  });
+
+  it("passes through a plain clip id that still exists", () => {
+    document.body.innerHTML = `<audio id="vo-1"></audio>`;
+    expect(resolveCarveSourceIds(document, ["vo-1"])).toEqual(["vo-1"]);
+  });
+
+  it("drops an id that resolves to nothing — a deleted clip, an empty or vanished group", () => {
+    document.body.innerHTML = `<audio id="vo-1"></audio>`;
+    expect(resolveCarveSourceIds(document, ["vo-1", "deleted", "no-such-group"])).toEqual(["vo-1"]);
+  });
+
+  it("dedupes and preserves first-seen order across a mix of group and plain ids", () => {
+    document.body.innerHTML = `
+      <audio id="vo-1" data-audio-group="voiceover"></audio>
+      <audio id="vo-2" data-audio-group="voiceover"></audio>
+    `;
+    expect(resolveCarveSourceIds(document, ["voiceover", "vo-1"])).toEqual(["vo-1", "vo-2"]);
   });
 });
 

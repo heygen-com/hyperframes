@@ -27,6 +27,7 @@ export type PropertyPanelFlatProps = Pick<
   | "onRemoveTextField"
   | "onAskAgent"
   | "onToggleElementHidden"
+  | "onAutoGroupCarveSources"
   | "onImportAssets"
   | "onAddMediaOverlay"
   | "onImportFonts"

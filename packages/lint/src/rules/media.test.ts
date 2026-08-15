@@ -555,3 +555,51 @@ describe("audio_volume_double_automation", () => {
     expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(false);
   });
 });
+
+describe("audio_carve_ungrouped_sources", () => {
+  const withCarve = (carveJson: string, extra = "") => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      <audio id="bed" src="bed.wav" data-start="0" data-duration="10" data-fx-carve='${carveJson}'></audio>
+      ${extra}
+    </div>
+  </body></html>`;
+
+  it("warns when sources names two or more plain clip ids", async () => {
+    const res = await lintHyperframeHtml(
+      withCarve(`{"enabled":true,"sources":["vo-1","vo-2"],"strength":0.35}`),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_carve_ungrouped_sources");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("bed");
+  });
+
+  it("stays quiet when sources names a group", async () => {
+    const res = await lintHyperframeHtml(
+      withCarve(
+        `{"enabled":true,"sources":["voiceover"],"strength":0.35}`,
+        `<hf-audio-group id="voiceover" data-label="Voiceover"></hf-audio-group>`,
+      ),
+    );
+    expect(res.findings.some((f) => f.code === "audio_carve_ungrouped_sources")).toBe(false);
+  });
+
+  it("stays quiet for a single-clip sources list", async () => {
+    const res = await lintHyperframeHtml(
+      withCarve(`{"enabled":true,"sources":["narration"],"strength":0.35}`),
+    );
+    expect(res.findings.some((f) => f.code === "audio_carve_ungrouped_sources")).toBe(false);
+  });
+
+  it("still warns when one entry is a group and the rest are plain clip ids", async () => {
+    // Mixing a group with two more bare clip ids is still an ungrouped-source
+    // rot risk for those two clips — only fully-grouped sources are silent.
+    const res = await lintHyperframeHtml(
+      withCarve(
+        `{"enabled":true,"sources":["voiceover","vo-3","vo-4"],"strength":0.35}`,
+        `<hf-audio-group id="voiceover" data-label="Voiceover"></hf-audio-group>`,
+      ),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_carve_ungrouped_sources");
+    expect(finding?.severity).toBe("warning");
+  });
+});
