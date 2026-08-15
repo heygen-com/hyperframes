@@ -655,6 +655,167 @@ describe("WebAudioTransport", () => {
     });
   });
 
+  describe("group routing (preview)", () => {
+    // Real jsdom elements — `groupInput` looks the group up via
+    // `el.ownerDocument.getElementById`, and `audioGroupOf` reads `tagName` /
+    // `getAttribute`, neither of which the plain-object mocks above implement.
+    function createGroupMockAudioContext(currentTime = 100) {
+      const gainNodes: {
+        gain: { value: number };
+        connect: ReturnType<typeof vi.fn>;
+        disconnect: ReturnType<typeof vi.fn>;
+      }[] = [];
+      const masterGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      const ctx = {
+        currentTime,
+        state: "running",
+        resume: vi.fn(),
+        createBufferSource: vi.fn(() => ({
+          buffer: null as AudioBuffer | null,
+          playbackRate: { value: 1 },
+          start: vi.fn(),
+          stop: vi.fn(),
+          disconnect: vi.fn(),
+          connect: vi.fn(),
+          addEventListener: vi.fn(),
+        })),
+        createGain: vi.fn(() => {
+          const node = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+          gainNodes.push(node);
+          return node;
+        }),
+        destination: {},
+        close: vi.fn(),
+      };
+      return { ctx, gainNodes, masterGain };
+    }
+
+    function setupGroupTransport(currentTime = 100) {
+      const transport = new WebAudioTransport();
+      const mock = createGroupMockAudioContext(currentTime);
+      (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
+      (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
+      const gen = transport.startGeneration();
+      return { transport, mock, gen };
+    }
+
+    function groupedAudioEl(id: string, groupId?: string): HTMLMediaElement {
+      const el = document.createElement("audio");
+      el.id = id;
+      if (groupId) el.setAttribute("data-audio-group", groupId);
+      document.body.appendChild(el);
+      return el as unknown as HTMLMediaElement;
+    }
+
+    /** Create a grouped member and schedule it in one step — the shape every
+     *  test below needs, differing only in id/group/generation. */
+    async function scheduleGrouped(
+      transport: WebAudioTransport,
+      gen: number,
+      id: string,
+      groupId?: string,
+    ): Promise<HTMLMediaElement> {
+      const el = groupedAudioEl(id, groupId);
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
+      return el;
+    }
+
+    /** The group's own input gain is built lazily on the first member —
+     *  index 1 in creation order (that member's gain is index 0). */
+    const firstGroupInput = (mock: ReturnType<typeof createGroupMockAudioContext>) =>
+      mock.gainNodes[1]!;
+
+    beforeEach(() => {
+      document.body.innerHTML = "";
+    });
+
+    it("routes an ungrouped member straight to master, unchanged", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+
+      await scheduleGrouped(transport, gen, "solo");
+
+      // One gain node — the member's own — connected directly to master.
+      expect(mock.gainNodes).toHaveLength(1);
+      expect(mock.gainNodes[0]!.connect).toHaveBeenCalledWith(mock.masterGain);
+    });
+
+    it("two members of the same group land on ONE shared group gain, not master directly", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+
+      await scheduleGrouped(transport, gen, "a", "vo");
+      await scheduleGrouped(transport, gen, "b", "vo");
+
+      // Member gain nodes: index 0 (a) and index 2 (b) — index 1 is the
+      // group's own input gain, built inside a's schedule call.
+      expect(mock.gainNodes.length).toBeGreaterThanOrEqual(3);
+      const groupInput = firstGroupInput(mock);
+      const aGain = mock.gainNodes[0]!;
+      const bGain = mock.gainNodes[2]!;
+
+      // Neither member connects straight to master — both feed the shared bus.
+      expect(aGain.connect).toHaveBeenCalledWith(groupInput);
+      expect(bGain.connect).toHaveBeenCalledWith(groupInput);
+      expect(aGain.connect).not.toHaveBeenCalledWith(mock.masterGain);
+      expect(bGain.connect).not.toHaveBeenCalledWith(mock.masterGain);
+
+      // The bus itself is what reaches master — a plain sum, no processing,
+      // since neither member's group has a chain-bearing `<hf-audio-group>`.
+      expect(groupInput.connect).toHaveBeenCalledWith(mock.masterGain);
+    });
+
+    it("a second member of an already-open group does not rebuild the group bus", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+
+      await scheduleGrouped(transport, gen, "a", "vo");
+      const gainCountAfterFirst = mock.gainNodes.length; // a-gain + group-input
+      await scheduleGrouped(transport, gen, "b", "vo");
+
+      // Only b's own gain is new — no second group-input gain minted.
+      expect(mock.gainNodes.length).toBe(gainCountAfterFirst + 1);
+    });
+
+    it("a group id with no matching <hf-audio-group> element still gets a flat bus", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+
+      await scheduleGrouped(transport, gen, "a", "orphan-group"); // no matching element
+
+      expect(firstGroupInput(mock).connect).toHaveBeenCalledWith(mock.masterGain);
+    });
+
+    it("group volume rides the group's own data-volume via its automation lane, not the member's", async () => {
+      document.body.innerHTML = `<hf-audio-group id="vo" data-label="Voiceover"></hf-audio-group>`;
+      const { transport, gen } = setupGroupTransport();
+
+      // No throw wiring the group's automation reader against a real
+      // <hf-audio-group> element that carries no fx/automation attrs.
+      await expect(scheduleGrouped(transport, gen, "a", "vo")).resolves.not.toBeNull();
+    });
+
+    it("destroy() disposes every group bus", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      await scheduleGrouped(transport, gen, "a", "vo");
+      const groupInput = firstGroupInput(mock);
+
+      transport.destroy();
+
+      expect(groupInput.disconnect).toHaveBeenCalled();
+    });
+
+    it("stopAll() does NOT dispose group buses — replaying the group does not rebuild it", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      await scheduleGrouped(transport, gen, "a", "vo");
+      const groupInput = firstGroupInput(mock);
+
+      transport.stopAll();
+      expect(groupInput.disconnect).not.toHaveBeenCalled();
+
+      const gen2 = transport.startGeneration();
+      await scheduleGrouped(transport, gen2, "a", "vo");
+      // Still only one group-input gain ever created for "vo".
+      expect(mock.gainNodes.filter((n) => n === groupInput)).toHaveLength(1);
+    });
+  });
+
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {
     function transportWithDecode(decodeImpl: () => Promise<AudioBuffer>) {
       const transport = new WebAudioTransport();

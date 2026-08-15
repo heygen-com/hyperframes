@@ -74,9 +74,14 @@ export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
  * `data-audio-group` on an `<hf-audio-group>` itself (groups do not nest).
  * `data-audio-group=""` returns null rather than `""` — the resolver skips a
  * falsy id, and the "or null" in this contract has to mean it.
+ *
+ * Tolerant of objects that only partially implement `Element` (test doubles for
+ * `HTMLMediaElement` commonly do): anything missing `tagName` or `getAttribute`
+ * simply has no group, mirroring `readChain`'s style in `runtime/audioFx.ts`.
  */
 export function audioGroupOf(el: Element): string | null {
-  if (el.tagName?.toLowerCase() !== "audio") return null;
+  if (typeof el.tagName !== "string" || el.tagName.toLowerCase() !== "audio") return null;
+  if (typeof el.getAttribute !== "function") return null;
   return el.getAttribute(HF_AUDIO_GROUP_ATTR) || null;
 }
 
@@ -91,8 +96,8 @@ export function audioGroupOf(el: Element): string | null {
  * would shift by adding a group, which is not something a mixing decision is
  * allowed to do.
  *
- * `!important` because the rule has to beat an author rule that sets `display`
- * on the tag — inertness here is a contract, not a default. Emitted from the
+ * `!important` because an author rule can outrank a bare type selector on
+ * specificity — inertness here is a contract, not a default. Emitted from the
  * runtime rather than the compiler so preview and render share one source.
  */
 export function ensureAudioGroupInertStyle(doc: Document): void {
