@@ -38,7 +38,7 @@ Rendered frames must be reproducible from the requested time. Do **not** use any
 - Unseeded `Math.random()`. Use a seeded PRNG if random-looking placement is needed.
 - Render-time network fetches for required assets. Inline or pre-bundle them.
 - Hover, scroll, pointer, or focus state. The renderer has no input events.
-- Infinite loops such as `repeat: -1`. Compute a finite count: `repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1)` — **`floor`, not `ceil`** (`ceil` overshoots `data-duration` and trips the `gsap_repeat_ceil_overshoot` lint; `max(0, …)` avoids a negative repeat = infinite).
+- Unbounded infinite loops. `repeat: -1` is allowed only when the root declares a finite `data-duration` — deterministic seeking and export clip to that explicit window (`gsap_infinite_repeat` demotes to a warning). Without a finite composition duration it stays a hard error: the timeline can report an unbounded length and render planning fails. When the loop itself must end **before** the composition does, compute a finite count: `repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1)` — **`floor`, not `ceil`** (`ceil` overshoots `data-duration` and trips the `gsap_repeat_ceil_overshoot` lint; `max(0, …)` avoids a negative repeat = infinite).
 
 Also avoid:
 

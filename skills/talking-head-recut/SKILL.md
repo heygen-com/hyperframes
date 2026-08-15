@@ -1153,7 +1153,7 @@ decides where the actual visible card sits.
 - Register one paused master timeline as `window.__timelines["talking-head-recut"]`.
 - Build timelines synchronously at page load; no `async`, `setTimeout`, Promises, or media `play()` calls.
 - Do not use `Math.random()` or `Date.now()` in render paths.
-- Do not use `repeat: -1`; calculate finite repeats from the video duration.
+- `repeat: -1` is allowed only under the finite root `data-duration`; for loops that must end earlier, calculate finite repeats from the video duration.
 - Prefer GSAP transforms and opacity (`x`, `y`, `scale`, `rotation`, `opacity`) over layout properties (`top`, `left`, `width`, `height`) for motion.
 - Animate wrappers such as `#video-wrap`, not the video element dimensions directly.
 - Avoid animating the same property on the same element from multiple timelines at the same time.
