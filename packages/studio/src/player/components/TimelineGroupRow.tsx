@@ -1,6 +1,11 @@
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
 import { isGroupHalfLitUnderSolo } from "../store/audioSoloSlice";
+import {
+  HF_AUDIO_FX_ATTR,
+  serializeAudioFxChain,
+  type HfAudioFxChain,
+} from "@hyperframes/core/audio-fx";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
@@ -10,6 +15,7 @@ import { TimelineGroupBusStrip } from "./TimelineGroupBusStrip";
 import { groupAutomationLanes } from "./automationLaneData";
 import { LABEL_COL_W } from "./timelineLayout";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 
 interface TimelineGroupRowProps {
   index: number;
@@ -56,9 +62,24 @@ export function TimelineGroupRow({
   });
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
   const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } = useTimelineEditContext();
+  const domEditActions = useDomEditActionsContextOptional();
   const soloed = usePlayerStore((s) => s.soloed);
   const toggleSolo = usePlayerStore((s) => s.toggleSolo);
   const memberIds = memberElements.map((el) => el.key ?? el.id);
+  const writeGroupFxChain = (next: HfAudioFxChain, live: boolean) => {
+    const value = next.nodes.length ? serializeAudioFxChain(next) : null;
+    if (live) onSetAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR, value);
+    else void onSetAudioGroupAttributeQuiet?.(group.id, HF_AUDIO_FX_ATTR, value, "Apply preset");
+  };
+  const openGroupFxRack = () => {
+    const target = domEditActions?.previewIframeRef.current?.contentDocument?.getElementById(
+      group.id,
+    );
+    if (!target) return;
+    void domEditActions
+      ?.buildDomSelectionFromTarget(target)
+      .then((selection) => selection && domEditActions.applyDomSelection(selection));
+  };
   return (
     <TimelineTrackRow
       index={index}
@@ -94,6 +115,10 @@ export function TimelineGroupRow({
         isSoloed={soloed.has(group.id)}
         isHalfLitSolo={isGroupHalfLitUnderSolo(soloed, group.id, memberIds)}
         onToggleSolo={(options) => toggleSolo(group.id, options)}
+        fxChain={group.fxChain}
+        onFxChainChange={(next) => writeGroupFxChain(next, false)}
+        onFxChainPreview={(next) => writeGroupFxChain(next, true)}
+        onOpenFxRack={openGroupFxRack}
         columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
         theme={theme}
       />

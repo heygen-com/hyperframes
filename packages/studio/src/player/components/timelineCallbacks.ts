@@ -77,6 +77,23 @@ export interface TimelineEditCallbacks {
     value: string | null,
     label: string,
   ) => Promise<void>;
+  /** C1's ungrouped-track FX pointer: "Group these clips" — write
+   *  `data-audio-group` on every one of them, atomically. Same shape B6's
+   *  carve auto-grouping uses. */
+  onGroupClips?: (clipIds: readonly string[], groupId: string) => Promise<void>;
+  /** C1's single-clip FX write: addressed by the clip itself rather than the
+   *  current selection, mirroring `onSetAudioGroupAttributeLive/Quiet`. */
+  onSetElementAttributeLive?: (
+    element: TimelineElement,
+    attr: string,
+    value: string | null,
+  ) => void;
+  onSetElementAttributeQuiet?: (
+    element: TimelineElement,
+    attr: string,
+    value: string | null,
+    label: string,
+  ) => Promise<void>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;

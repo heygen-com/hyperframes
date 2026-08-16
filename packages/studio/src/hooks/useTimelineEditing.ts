@@ -28,6 +28,7 @@ import {
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
+import { useSetElementAttribute } from "./timelineElementFxAttribute";
 import {
   useAudioGroupCarveAssignment,
   useTimelineElementVisibilityEditing,
@@ -402,6 +403,18 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
+  const setElementFxAttribute = useSetElementAttribute({
+    projectIdRef,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+  });
+
   const setAudioGroupAttribute = useSetAudioGroupAttribute({
     projectIdRef,
     activeCompPath,
@@ -586,6 +599,7 @@ export function useTimelineEditing({
     handleToggleElementHidden,
     handleAutoGroupCarveSources,
     setAudioGroupAttribute,
+    setElementFxAttribute,
     handleTimelineElementDelete,
     handleTimelineElementsDelete,
     handleTimelineElementSplit: handleRazorSplit,

@@ -20,6 +20,8 @@ export interface TimelineTrackGroupInfo {
   volume: number;
   /** The group element's `data-hidden`, mirrored from a member's parse (B5's group mute). */
   hidden: boolean;
+  /** The group element's serialized `data-fx-chain`, mirrored from a member's parse (C1's FX entry). */
+  fxChain?: string;
 }
 
 interface GroupMembership {
@@ -28,15 +30,17 @@ interface GroupMembership {
   labelByGroup: Map<string, string>;
   volumeByGroup: Map<string, number>;
   hiddenByGroup: Map<string, boolean>;
+  fxChainByGroup: Map<string, string | undefined>;
 }
 
-/** Which track belongs to which group, and each group's label/volume/hidden — one pass over raw tracks. */
+/** Which track belongs to which group, and each group's label/volume/hidden/fxChain — one pass over raw tracks. */
 function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): GroupMembership {
   const trackToGroupId = new Map<number, string>();
   const memberTracksByGroup = new Map<string, number[]>();
   const labelByGroup = new Map<string, string>();
   const volumeByGroup = new Map<string, number>();
   const hiddenByGroup = new Map<string, boolean>();
+  const fxChainByGroup = new Map<string, string | undefined>();
   for (const [trackNum, elements] of rawTracks) {
     const owner = elements.find((el) => el.audioGroup);
     if (!owner?.audioGroup) continue;
@@ -45,12 +49,20 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
       labelByGroup.set(owner.audioGroup, owner.audioGroupLabel ?? owner.audioGroup);
       volumeByGroup.set(owner.audioGroup, owner.audioGroupVolume ?? 1);
       hiddenByGroup.set(owner.audioGroup, owner.audioGroupHidden ?? false);
+      fxChainByGroup.set(owner.audioGroup, owner.audioGroupFxChain);
     }
     const members = memberTracksByGroup.get(owner.audioGroup) ?? [];
     members.push(trackNum);
     memberTracksByGroup.set(owner.audioGroup, members);
   }
-  return { trackToGroupId, memberTracksByGroup, labelByGroup, volumeByGroup, hiddenByGroup };
+  return {
+    trackToGroupId,
+    memberTracksByGroup,
+    labelByGroup,
+    volumeByGroup,
+    hiddenByGroup,
+    fxChainByGroup,
+  };
 }
 
 /** One group's resolved row info, built once the first time its id is seen. */
@@ -62,6 +74,7 @@ function buildGroupInfo(
   const memberTracks = [...(membership.memberTracksByGroup.get(groupId) ?? [])].sort(
     (a, b) => a - b,
   );
+  const fxChain = membership.fxChainByGroup.get(groupId);
   return {
     id: groupId,
     label: membership.labelByGroup.get(groupId) ?? groupId,
@@ -69,6 +82,7 @@ function buildGroupInfo(
     memberTracks,
     volume: membership.volumeByGroup.get(groupId) ?? 1,
     hidden: membership.hiddenByGroup.get(groupId) ?? false,
+    ...(fxChain ? { fxChain } : {}),
   };
 }
 

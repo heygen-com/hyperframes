@@ -1,6 +1,8 @@
 import { SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
+import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { TRACK_H } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
+import { TimelineFxButton } from "./TimelineFxButton";
 
 interface TimelineGroupHeaderProps {
   label: string;
@@ -21,14 +23,19 @@ interface TimelineGroupHeaderProps {
   isHalfLitSolo: boolean;
   /** `add: true` (⌘/Ctrl-click) toggles membership; a plain click is exclusive. */
   onToggleSolo: (options?: { add?: boolean }) => void;
+  /** C1: the group's serialized `data-fx-chain`, when set. */
+  fxChain?: string;
+  onFxChainChange: (next: HfAudioFxChain) => void;
+  onFxChainPreview?: (next: HfAudioFxChain) => void;
+  onFxAuditionTransport?: (on: boolean) => void;
+  onOpenFxRack: () => void;
   columnWidth: number;
   theme: TimelineTheme;
 }
 
 /**
  * A group's own row header: caret (member disclosure) + `▤` + label + count +
- * mute + solo + `∿ n` (lane disclosure). The FX entry point (C1) lands here
- * as a sibling once that step exists.
+ * mute + solo + FX + `∿ n` (lane disclosure).
  */
 export function TimelineGroupHeader({
   label,
@@ -43,6 +50,11 @@ export function TimelineGroupHeader({
   isSoloed,
   isHalfLitSolo,
   onToggleSolo,
+  fxChain,
+  onFxChainChange,
+  onFxChainPreview,
+  onFxAuditionTransport,
+  onOpenFxRack,
   columnWidth,
   theme,
 }: TimelineGroupHeaderProps) {
@@ -132,6 +144,13 @@ export function TimelineGroupHeader({
       >
         <span aria-hidden="true">⌗</span>
       </button>
+      <TimelineFxButton
+        fxChainRaw={fxChain}
+        onChainChange={onFxChainChange}
+        onChainPreview={onFxChainPreview}
+        onAuditionTransport={onFxAuditionTransport}
+        onOpenRack={onOpenFxRack}
+      />
       <button
         type="button"
         tabIndex={-1}

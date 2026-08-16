@@ -46,6 +46,18 @@ export interface TimelineEditCallbackDeps {
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplitAll: (splitTime: number) => Promise<void> | void;
+  /** C1's ungrouped-track FX pointer — same auto-grouping write B6's carve uses. */
+  handleGroupClips?: (clipIds: readonly string[], groupId: string) => Promise<void>;
+  /** C1's single-clip FX write, addressed by the clip itself. */
+  setElementFxAttribute?: {
+    setLive: (element: TimelineElement, attr: string, value: string | null) => void;
+    setQuiet: (
+      element: TimelineElement,
+      attr: string,
+      value: string | null,
+      label: string,
+    ) => Promise<void>;
+  };
 }
 
 interface TimelineKeyframeTargetAnimation {
@@ -108,6 +120,8 @@ export function useTimelineEditCallbacks({
   handleTimelineElementSplit,
   handleRazorSplit,
   handleRazorSplitAll,
+  handleGroupClips,
+  setElementFxAttribute,
 }: TimelineEditCallbackDeps): TimelineEditCallbacks {
   const { projectId, activeCompPath } = useStudioShellContext();
   const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
@@ -192,6 +206,9 @@ export function useTimelineEditCallbacks({
       onToggleTrackHidden: handleToggleTrackHidden,
       onSetAudioGroupAttributeLive: setAudioGroupAttribute.setLive,
       onSetAudioGroupAttributeQuiet: setAudioGroupAttribute.setQuiet,
+      onGroupClips: handleGroupClips,
+      onSetElementAttributeLive: setElementFxAttribute?.setLive,
+      onSetElementAttributeQuiet: setElementFxAttribute?.setQuiet,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
@@ -386,6 +403,8 @@ export function useTimelineEditCallbacks({
       handleTimelineGroupResize,
       handleToggleTrackHidden,
       setAudioGroupAttribute,
+      handleGroupClips,
+      setElementFxAttribute,
       handleBlockedTimelineEdit,
       handleTimelineElementSplit,
       handleRazorSplit,
