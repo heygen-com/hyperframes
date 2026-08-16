@@ -509,7 +509,12 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     id: "pitchshift",
     label: "Pitch shift",
     group: "time",
-    description: "Shifts pitch up or down without changing playback speed.",
+    // The granular algorithm reads from a 100 ms grain, so its output runs a
+    // constant ~50 ms behind its input and nothing in the graph subtracts that
+    // — there is no latency/pre-roll concept here yet. It is inaudible on its
+    // own and audible against picture or against an unshifted track, so it is
+    // stated rather than hidden. `semitones: 0` bypasses the node entirely.
+    description: "Shifts pitch up or down without changing playback speed. Adds ~50 ms of latency.",
     params: [
       {
         kind: "number",
