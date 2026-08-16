@@ -65,8 +65,9 @@ Why not a real-time spring library: an interactive spring is a stateful integrat
 ```javascript
 // springEase — a damped spring's exact position curve as a GSAP ease.
 // response         ≈ seconds one oscillation would take (0.3–0.6 for entrances)
-// dampingFraction  1.0       = critically damped — smooth settle, NO overshoot (house default)
-//                  0.80–0.85 ≈ the iOS system register — ~1–1.5% overshoot, felt not seen
+// dampingFraction  1.0       = critically damped — smooth settle, NO overshoot (house default;
+//                              also the iOS system default — Animation.default is response 0.55, dampingFraction 1.0)
+//                  0.80–0.85 ≈ SwiftUI's "snappy" preset — ~1–1.5% overshoot, felt not seen
 //                  0.60–0.70 = explicitly playful — ~5–10% overshoot (rare; replaces back.out)
 function springEase({ response = 0.5, dampingFraction = 1 } = {}) {
   const w = (2 * Math.PI) / response; // undamped natural frequency
@@ -116,12 +117,12 @@ tl.fromTo(
 );
 ```
 
-| dampingFraction   | overshoot       | register                                                                                                                                           |
-| ----------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1.0 (default)** | none (monotone) | The house settle — the exact curve `power3.out` approximates. Product / enterprise / serious tone.                                                 |
-| 0.80–0.85         | ~1–1.5%         | "Alive, not bouncy" — the iOS system default register. The overshoot is felt, not seen.                                                            |
-| 0.60–0.70         | ~5–10%          | Explicitly-playful ONLY (same rule as `back.out`, which this replaces — a spring's second-order settle reads physical where `back` reads cartoon). |
-| < 0.55            | > 12%           | Don't. Cartoon-wobble territory.                                                                                                                   |
+| dampingFraction   | overshoot       | register                                                                                                                                                                                         |
+| ----------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **1.0 (default)** | none (monotone) | The house settle — the exact curve `power3.out` approximates; also the iOS system default (`Animation.default`: a response 0.55 spring, critically damped). Product / enterprise / serious tone. |
+| 0.80–0.85         | ~1–1.5%         | "Alive, not bouncy" — ≈ SwiftUI's `snappy` preset, an optional livelier register. The overshoot is felt, not seen.                                                                               |
+| 0.60–0.70         | ~5–10%          | Explicitly-playful ONLY (same rule as `back.out`, which this replaces — a spring's second-order settle reads physical where `back` reads cartoon).                                               |
+| < 0.55            | > 12%           | Don't. Cartoon-wobble territory.                                                                                                                                                                 |
 
 | response  | duration (ζ=1) | feel                                                         |
 | --------- | -------------- | ------------------------------------------------------------ |
