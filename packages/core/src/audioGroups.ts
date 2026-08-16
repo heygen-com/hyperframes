@@ -172,3 +172,35 @@ export function ensureAudioGroupInertStyle(doc: Document): void {
   style.textContent = `${HF_AUDIO_GROUP_TAG}{display:none!important}`;
   doc.head.appendChild(style);
 }
+
+/**
+ * Solo ("Hear only this") predicate — shared by the studio store (which owns
+ * the `soloed` set and the UI's lit/half-lit state) and the preview transport
+ * (which turns it into gain). An element is audible while any solo is active
+ * only if IT is soloed, or its OWN group is soloed (group solo = members
+ * solo). There is no "ancestor" to reach up to in this data model — a group
+ * bus is never itself attenuated by solo, so a soloed member's path through
+ * its group stays open by construction; this predicate only ever gates the
+ * member's own gain. No solo active at all is the one path that returns true
+ * unconditionally.
+ */
+export function isAudibleUnderSolo(
+  soloed: ReadonlySet<string>,
+  id: string,
+  groupId?: string | null,
+): boolean {
+  if (soloed.size === 0) return true;
+  if (soloed.has(id)) return true;
+  return Boolean(groupId && soloed.has(groupId));
+}
+
+/** Half-lit: this group itself isn't soloed, but at least one of its members
+ *  is — the display-only signal that "some of what's under here still plays". */
+export function isGroupHalfLitUnderSolo(
+  soloed: ReadonlySet<string>,
+  groupId: string,
+  memberIds: readonly string[],
+): boolean {
+  if (soloed.size === 0 || soloed.has(groupId)) return false;
+  return memberIds.some((id) => soloed.has(id));
+}

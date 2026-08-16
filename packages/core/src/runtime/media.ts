@@ -223,6 +223,11 @@ export function syncRuntimeMedia(params: {
   /** Native media routed through WebAudio keeps its upstream element volume at
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
+  /** "Hear only this" gate for the HTMLMedia fallback path (video / any audio
+   *  not owned by the Web Audio transport, which applies its own dedicated
+   *  solo gain instead — see `WebAudioTransport.setSolo`). Absent when solo
+   *  isn't wired up at all, which reads as "always audible". */
+  isAudibleUnderSolo?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -332,7 +337,11 @@ export function syncRuntimeMedia(params: {
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
       // it); preview must match. Folded into the per-tick volume, not
       // el.muted (RULES trap: el.muted is the transport's ownership flag).
-      const effectiveVolume = el.closest("[data-hidden]") ? 0 : clampVolume(authorVolume * userVol);
+      // Solo rides the same fold for the same reason — never el.muted, and
+      // never touching any attribute (it is session-only, unlike hidden).
+      const silencedBySolo = params.isAudibleUnderSolo ? !params.isAudibleUnderSolo(el) : false;
+      const effectiveVolume =
+        el.closest("[data-hidden]") || silencedBySolo ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume, authorVolume);

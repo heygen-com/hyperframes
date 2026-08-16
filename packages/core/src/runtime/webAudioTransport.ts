@@ -5,7 +5,7 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
-import { audioGroupOf } from "../audioGroups.js";
+import { audioGroupOf, isAudibleUnderSolo } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
@@ -88,6 +88,11 @@ function scheduleVolumeLane(
 type ScheduledSourceBase = {
   el: HTMLMediaElement;
   gainNode: GainNode;
+  /** Solo ("Hear only this") attenuation — dedicated node, parallel to the
+   *  volume gain, so a solo toggle never fights `scheduleVolumeLane`'s ramps
+   *  on the same param (same hazard B5's group-mute gain was split out to
+   *  avoid). 0 while silenced by an active solo elsewhere, 1 otherwise. */
+  soloGain: GainNode;
   /** FX chain spliced between source and gain, when the element carries one. */
   fx?: ElementFxHandle | null;
   compositionStart: number;
@@ -131,6 +136,7 @@ export class WebAudioTransport {
     string,
     {
       input: GainNode;
+      muteGain: GainNode;
       analyser: AnalyserNode;
       // `Float32Array<ArrayBuffer>`, not bare `Float32Array`: the runtime
       // typecheck resolves the latter to `Float32Array<ArrayBufferLike>`, which
@@ -147,6 +153,10 @@ export class WebAudioTransport {
   private _rate = 1;
   private _paused = true;
   private _playGeneration = 0;
+  // Session-only "Hear only this" set (clip ids and group ids). Never read
+  // from or written to any attribute — studio pushes it in directly via
+  // `setSolo`; see `isAudibleUnderSolo` for the exact predicate.
+  private _soloed: ReadonlySet<string> = new Set();
 
   async init(): Promise<boolean> {
     try {
@@ -221,6 +231,32 @@ export class WebAudioTransport {
   }
 
   /**
+   * Gain → solo → destination: the graph tail every scheduled source shares.
+   *
+   * Both schedulers need the dedicated solo node (parallel to the volume gain,
+   * so a solo toggle never fights `scheduleVolumeLane`'s ramps on the same
+   * param) and both need the group bus when the element belongs to one. Kept in
+   * one place because a path that skipped either was silently exempt from
+   * "hear only this" and from group routing.
+   */
+  private connectThroughSolo(
+    ctx: AudioContext,
+    masterGain: GainNode,
+    el: HTMLMediaElement,
+    gainNode: GainNode,
+    timing: { scheduledAt: number; compositionTime: number; rate: number },
+  ): GainNode {
+    const soloGain = ctx.createGain();
+    soloGain.gain.value = isAudibleUnderSolo(this._soloed, el.id, audioGroupOf(el)) ? 1 : 0;
+    gainNode.connect(soloGain);
+    soloGain.connect(
+      this.resolveDestination(el, timing.scheduledAt, timing.compositionTime, timing.rate) ??
+        masterGain,
+    );
+    return soloGain;
+  }
+
+  /**
    * Route the browser's pitch-preserving HTMLMediaElement transport through the
    * same FX, automation, element-gain, and master graph used by final audio.
    * The media element remains the source-time/rate owner; Web Audio is strictly
@@ -255,7 +291,15 @@ export class WebAudioTransport {
       const elapsed = compositionTime - compositionStart;
       const timing: AutomationTiming = { scheduledAt, elapsed, rate: safeRate };
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
-      gainNode.connect(this._masterGain);
+      // A native-media clip used to connect straight to master, which left it
+      // immune to "hear only this" and outside its group's bus — preview
+      // disagreeing with the render for exactly the elements this transport
+      // exists to keep in step.
+      const soloGain = this.connectThroughSolo(this._ctx, this._masterGain, el, gainNode, {
+        scheduledAt,
+        compositionTime,
+        rate: safeRate,
+      });
       scheduleVolumeLane(el, gainNode, timing);
 
       this._rate = safeRate;
@@ -268,6 +312,7 @@ export class WebAudioTransport {
         sourceNode,
         sourceKind: "media-element",
         gainNode,
+        soloGain,
         compositionStart,
         mediaStart: _mediaStart,
         scheduledAt,
@@ -308,10 +353,10 @@ export class WebAudioTransport {
     // Stable point the FX chain (or, when there's none, the dry passthrough —
     // see `attachElementFxChain`'s `detach()`) always lands on before master,
     // regardless of whether a chain is attached/detached/rebuilt later. B7's
-    // meter taps here. B5's group mute gain MUST splice in before `output`
-    // (between the FX chain and here), never after — the meter is defined to
-    // read the group's true, honestly-muted level (design doc §5), and this
-    // node is that contract's anchor.
+    // meter taps here. The mute gain splices in BEFORE `output` (between the
+    // FX chain and here), never after — the meter is defined to read the
+    // group's true, honestly-muted level (design doc §5), and this node is
+    // that contract's anchor.
     const output = this._ctx.createGain();
     output.connect(this._masterGain);
     const analyser = this._ctx.createAnalyser();
@@ -319,23 +364,28 @@ export class WebAudioTransport {
     output.connect(analyser);
 
     const groupEl = doc.getElementById(groupId);
+    const muteGain = this._ctx.createGain();
+    muteGain.gain.value = groupEl?.hasAttribute("data-hidden") ? 0 : 1;
+    muteGain.connect(output);
     const fx = attachElementFxChain(
       this._ctx,
       groupEl ?? { getAttribute: () => null },
       input,
-      output,
+      muteGain,
       timing,
     );
     if (groupEl) scheduleVolumeLane(groupEl, input, timing);
 
     this._groups.set(groupId, {
       input,
+      muteGain,
       analyser,
       levelBuf: new Float32Array(analyser.fftSize),
       dispose: () => {
         try {
           fx?.dispose();
           input.disconnect();
+          muteGain.disconnect();
           output.disconnect();
           analyser.disconnect();
         } catch {
@@ -344,6 +394,24 @@ export class WebAudioTransport {
       },
     });
     return input;
+  }
+
+  /**
+   * Group mute, preview side — a separate gain from `input`'s volume fader
+   * (B7) so a mute toggle never fights `scheduleVolumeLane`'s ramps on the
+   * same param (the same hazard the design doc flags for §2.1). A no-op
+   * until the group has an active member: at that point `groupInput` reads
+   * the element's own `data-hidden` for its initial value, so there is
+   * nothing to catch up on here.
+   */
+  setGroupMuted(groupId: string, muted: boolean): void {
+    const group = this._groups.get(groupId);
+    if (!group) return;
+    try {
+      group.muteGain.gain.value = muted ? 0 : 1;
+    } catch (err) {
+      swallow("webAudioTransport.setGroupMuted", err);
+    }
   }
 
   /** Every group id currently routing audio (built lazily by `groupInput` —
@@ -409,6 +477,7 @@ export class WebAudioTransport {
       sourceNode.disconnect();
       scheduled.fx?.dispose();
       scheduled.gainNode.disconnect();
+      scheduled.soloGain.disconnect();
     } catch {
       // Already torn down.
     }
@@ -461,9 +530,11 @@ export class WebAudioTransport {
       // output — the same order the offline render uses. Preview and render run
       // the identical graph builders, so what is heard here is what is written.
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
-      gainNode.connect(
-        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
-      );
+      const soloGain = this.connectThroughSolo(this._ctx, this._masterGain, el, gainNode, {
+        scheduledAt,
+        compositionTime,
+        rate: safeRate,
+      });
 
       scheduleVolumeLane(el, gainNode, timing);
 
@@ -485,6 +556,7 @@ export class WebAudioTransport {
         sourceNode.disconnect();
         fx?.dispose();
         gainNode.disconnect();
+        soloGain.disconnect();
         return null;
       }
 
@@ -498,6 +570,7 @@ export class WebAudioTransport {
         sourceNode,
         sourceKind: "buffer",
         gainNode,
+        soloGain,
         compositionStart,
         mediaStart,
         scheduledAt,
@@ -569,6 +642,7 @@ export class WebAudioTransport {
         source.sourceNode.disconnect();
         source.fx?.dispose();
         source.gainNode.disconnect();
+        source.soloGain.disconnect();
       } catch {
         // already stopped
       }
@@ -615,6 +689,31 @@ export class WebAudioTransport {
 
   private applyMasterGain(): void {
     if (this._masterGain) this._masterGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
+  }
+
+  /**
+   * Push the current "Hear only this" set and re-evaluate every active
+   * source's solo gain against it — a gain-stage update, never a graph
+   * rebuild (rule 3 of B5's step doc). Group buses are never touched here:
+   * per `isAudibleUnderSolo`, a group is never attenuated by solo, so a
+   * soloed member's path through its (unattenuated) group stays open by
+   * construction.
+   */
+  setSolo(soloed: ReadonlySet<string>): void {
+    this._soloed = soloed;
+    for (const source of this._activeSources) {
+      try {
+        source.soloGain.gain.value = isAudibleUnderSolo(
+          this._soloed,
+          source.el.id,
+          audioGroupOf(source.el),
+        )
+          ? 1
+          : 0;
+      } catch (err) {
+        swallow("webAudioTransport.setSolo", err);
+      }
+    }
   }
 
   isActive(): boolean {

@@ -1450,6 +1450,18 @@ describe("parseAudioElements — hidden tracks", () => {
       "visible-video-audio",
     ]);
   });
+
+  it("excludes every member of a hidden group, even though the members carry no data-hidden of their own", () => {
+    const html =
+      `<div data-composition-id="main" data-start="0" data-duration="3">` +
+      `<hf-audio-group id="vo" data-hidden></hf-audio-group>` +
+      `<audio id="master" src="master.wav" data-start="0" data-duration="3"></audio>` +
+      `<audio id="a" src="a.wav" data-start="0" data-duration="3" data-audio-group="vo"></audio>` +
+      `<audio id="b" src="b.wav" data-start="0" data-duration="3" data-audio-group="vo"></audio>` +
+      `</div>`;
+
+    expect(parseAudioElements(html).map((track) => track.id)).toEqual(["master"]);
+  });
 });
 
 describe("parseAudioElements data-fx-chain", () => {

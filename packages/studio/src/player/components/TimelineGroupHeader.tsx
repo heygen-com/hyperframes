@@ -1,3 +1,4 @@
+import { SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { TRACK_H } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 
@@ -11,14 +12,23 @@ interface TimelineGroupHeaderProps {
   laneCount: number;
   isLaneOpen: boolean;
   onToggleLanes: () => void;
+  /** The group element's own `data-hidden` — mutes every member at once. */
+  hidden: boolean;
+  onToggleHidden: () => void;
+  /** This group id is itself in the soloed set (fully lit). */
+  isSoloed: boolean;
+  /** Not soloed itself, but at least one member is (half-lit). */
+  isHalfLitSolo: boolean;
+  /** `add: true` (⌘/Ctrl-click) toggles membership; a plain click is exclusive. */
+  onToggleSolo: (options?: { add?: boolean }) => void;
   columnWidth: number;
   theme: TimelineTheme;
 }
 
 /**
- * A group's own row header: caret (member disclosure) + `▤` + label + `∿ n`
- * (lane disclosure). Mute/solo (B5) and the FX entry point (C1) land here as
- * siblings once those steps exist — nothing to reserve for them yet.
+ * A group's own row header: caret (member disclosure) + `▤` + label + count +
+ * mute + solo + `∿ n` (lane disclosure). The FX entry point (C1) lands here
+ * as a sibling once that step exists.
  */
 export function TimelineGroupHeader({
   label,
@@ -28,6 +38,11 @@ export function TimelineGroupHeader({
   laneCount,
   isLaneOpen,
   onToggleLanes,
+  hidden,
+  onToggleHidden,
+  isSoloed,
+  isHalfLitSolo,
+  onToggleSolo,
   columnWidth,
   theme,
 }: TimelineGroupHeaderProps) {
@@ -76,6 +91,47 @@ export function TimelineGroupHeader({
       >
         {memberCount}
       </span>
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={hidden ? "Unmute group" : `Mute group ${label}`}
+        title={hidden ? "Unmute group" : `Mute group ${label}`}
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
+          hidden ? "text-[#3CE6AC] hover:text-white" : "text-white/55 hover:text-white"
+        }`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleHidden();
+        }}
+      >
+        {hidden ? (
+          <SpeakerSlash size={14} weight="bold" aria-hidden="true" />
+        ) : (
+          <SpeakerHigh size={14} weight="bold" aria-hidden="true" />
+        )}
+      </button>
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-pressed={isSoloed}
+        aria-label="Hear only this"
+        title="Hear only this"
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[13px] font-semibold transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
+          isSoloed
+            ? "text-[#F5C542] hover:text-white"
+            : isHalfLitSolo
+              ? "text-[#F5C542]/50 hover:text-white"
+              : "text-white/35 hover:text-white/75"
+        }`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleSolo({ add: event.metaKey || event.ctrlKey });
+        }}
+      >
+        <span aria-hidden="true">⌗</span>
+      </button>
       <button
         type="button"
         tabIndex={-1}

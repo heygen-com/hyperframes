@@ -43,6 +43,7 @@ import { ensureAudioGroupInertStyle } from "../audioGroups.js";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
+import { HF_AUDIO_GROUP_TAG, audioGroupOf, isAudibleUnderSolo } from "../audioGroups";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type {
@@ -182,6 +183,20 @@ export function initSandboxRuntimeModular(): void {
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
   });
+  // Studio's "Hear only this" push channel — session-only, so it rides a
+  // dedicated `__hf` field (mirrors `colorGrading`'s lazy-init pattern) rather
+  // than a DOM attribute: solo must never be written to the document (design
+  // doc §2.2 / the export-safety guarantee), so there is nothing here for
+  // `syncTimedElementVisibility`'s attribute-diffing to key off. Kept in this
+  // closure too (not just inside `webAudio`) so `syncRuntimeMedia`'s
+  // HTMLMedia-fallback path (video/non-transport audio) can apply the same
+  // predicate per tick, the same split A2 used for `data-hidden`.
+  let soloedIds: ReadonlySet<string> = new Set();
+  window.__hf = window.__hf || {};
+  window.__hf.setAudioSolo = (ids) => {
+    soloedIds = new Set(ids);
+    webAudio.setSolo(soloedIds);
+  };
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
   // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
@@ -1929,6 +1944,21 @@ export function initSandboxRuntimeModular(): void {
   const nodeAffectsAudio = (node: HTMLElement): boolean =>
     node.matches("audio[data-start]") || node.querySelector("audio[data-start]") !== null;
 
+  // An `<hf-audio-group>` carries no `data-start`, so it is never among
+  // `visibilityNodes` above — group mute needs its own small diff pass.
+  // Preview-side only (render reads the group's `data-hidden` directly at
+  // export time, per B4); this just keeps the live WebAudio group bus in
+  // sync with a `data-hidden` toggle made mid-playback.
+  const groupHiddenLast = new WeakMap<Element, boolean>();
+  const syncAudioGroupMute = () => {
+    for (const groupEl of document.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
+      const hidden = groupEl.hasAttribute("data-hidden");
+      if (groupHiddenLast.get(groupEl) === hidden) continue;
+      groupHiddenLast.set(groupEl, hidden);
+      if (groupEl.id) webAudio.setGroupMuted(groupEl.id, hidden);
+    }
+  };
+
   const syncTimedElementVisibility = (
     currentTime: number,
     visibilityNodes: Element[] = Array.from(document.querySelectorAll("[data-start]")),
@@ -1993,6 +2023,7 @@ export function initSandboxRuntimeModular(): void {
       scheduleWebAudioForActiveClips();
     }
     hiddenAudioDirty = false;
+    syncAudioGroupMute();
   };
 
   const syncMediaForCurrentState = () => {
@@ -2053,6 +2084,7 @@ export function initSandboxRuntimeModular(): void {
           webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
+        isAudibleUnderSolo: (el) => isAudibleUnderSolo(soloedIds, el.id, audioGroupOf(el)),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
