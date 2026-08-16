@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 const SAMPLE_RATE = 48000;
@@ -243,6 +245,71 @@ describe("applyVolumeEnvelopeToWav", () => {
       expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
       expect(floatSampleAt(path, Math.floor(SAMPLE_RATE / 2))).toBeCloseTo(0.7, 2);
       expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(0, 3);
+    });
+
+    /**
+     * The fixtures above are hand-built canonical 44-byte headers, which is NOT
+     * what the group sub-mix actually hands this function: ffmpeg's `pcm_f32le`
+     * writes an 18-byte `fmt ` chunk plus a `fact` chunk, putting `data` at
+     * offset 92. Every assertion above would still pass if this function could
+     * not read a real one — and an unreadable file returns false, which the
+     * caller reads as "no automation here" and drops the group's envelope.
+     */
+    it("reads what ffmpeg actually writes, not just a canonical header", () => {
+      const path = join(tmp(), "ffmpeg-f32.wav");
+      const made = spawnSync(
+        getFfmpegBinary(),
+        [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.5*sin(2*PI*440*t)|0.5*sin(2*PI*440*t):d=1:s=48000",
+          "-acodec",
+          "pcm_f32le",
+          "-ar",
+          "48000",
+          path,
+        ],
+        { encoding: "utf-8" },
+      );
+      if (made.status !== 0) return; // no usable ffmpeg here
+
+      const before = readFileSync(path);
+      // Non-canonical by construction: prove the fixture is the awkward shape.
+      expect(before.readUInt32LE(16)).toBe(18); // fmt chunk size
+      expect(before.readUInt16LE(20)).toBe(3); // WAVE_FORMAT_IEEE_FLOAT
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 0 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      // Locate `data` the way the parser does, then check the fade landed.
+      let at = 12;
+      let dataOffset = -1;
+      const after = readFileSync(path);
+      while (at + 8 <= after.length) {
+        const id = after.toString("ascii", at, at + 4);
+        const size = after.readUInt32LE(at + 4);
+        if (id === "data") {
+          dataOffset = at + 8;
+          break;
+        }
+        at += 8 + size + (size % 2);
+      }
+      expect(dataOffset).toBeGreaterThan(44);
+      // Faded to silence by the end (stereo float = 8 bytes per frame).
+      expect(Math.abs(after.readFloatLE(dataOffset + (SAMPLE_RATE - 2) * 8))).toBeLessThan(0.02);
     });
   });
 });
