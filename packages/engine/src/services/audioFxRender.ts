@@ -35,6 +35,9 @@ interface WavData {
   samples: Float32Array;
   sampleRate: number;
   channels: number;
+  /** True when the source was 32-bit float rather than 16-bit PCM. Carried so
+   *  the output can be written back in the same format — see `writeWav`. */
+  float: boolean;
 }
 
 /**
@@ -77,7 +80,12 @@ export function readWav(path: string): WavData {
   }
   const { format, channels, sampleRate, bits, data } = readWavChunks(buf);
   if (!data) throw new AudioFxRenderError(`WAV has no data chunk: ${path}`);
-  return { samples: decodeSamples(data, format, bits, path), sampleRate, channels };
+  return {
+    samples: decodeSamples(data, format, bits, path),
+    sampleRate,
+    channels,
+    float: format === 3 && bits === 32,
+  };
 }
 
 /** Interleaved samples as floats, for the two formats the mixer emits upstream. */
@@ -102,38 +110,51 @@ function decodeSamples(data: Buffer, format: number, bits: number, path: string)
 }
 
 /**
- * Write 16-bit PCM, interleaved, preserving the channel count.
+ * Write interleaved samples, preserving the channel count.
  *
- * 16-bit rather than the float32 this used to emit: the very next step in the
- * mixer bakes the volume envelope into the samples, and that baker accepts only
- * 16-bit PCM. Emitting float meant enabling any effect silently downgraded a
- * track's volume automation to the ffmpeg expression path, which is capped at 32
- * straight segments — so a curved envelope was quantised and a dense one could
- * fall back to rendering at base volume.
+ * 16-bit by default rather than the float32 this used to emit: the very next
+ * step in the mixer bakes the volume envelope into the samples, and that baker
+ * accepted only 16-bit PCM. Emitting float meant enabling any effect silently
+ * downgraded a track's volume automation to the ffmpeg expression path, which is
+ * capped at 32 straight segments — so a curved envelope was quantised and a
+ * dense one could fall back to rendering at base volume.
+ *
+ * `float` opts back out, for the ONE input that needs it: a group sub-mix. Its
+ * members sum at unity, so the sum can legitimately exceed full scale, and the
+ * group's fader is applied downstream — clamping here handed that headroom back
+ * one step before the thing that was going to reduce it, which is the same bug
+ * the float intermediate exists to avoid. Safe now only because the envelope
+ * baker reads float too; before that it was not.
  */
 export function writeWav(
   path: string,
   samples: Float32Array,
   sampleRate: number,
   channels = 1,
+  float = false,
 ): void {
   const n = samples.length;
-  const bytes = n * 2;
+  const bytesPerSample = float ? 4 : 2;
+  const bytes = n * bytesPerSample;
   const buf = Buffer.alloc(44 + bytes);
   buf.write("RIFF", 0, "ascii");
   buf.writeUInt32LE(36 + bytes, 4);
   buf.write("WAVE", 8, "ascii");
   buf.write("fmt ", 12, "ascii");
   buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(1, 20); // WAVE_FORMAT_PCM
+  buf.writeUInt16LE(float ? 3 : 1, 20); // IEEE_FLOAT / PCM
   buf.writeUInt16LE(channels, 22);
   buf.writeUInt32LE(sampleRate, 24);
-  buf.writeUInt32LE(sampleRate * channels * 2, 28);
-  buf.writeUInt16LE(channels * 2, 32);
-  buf.writeUInt16LE(16, 34);
+  buf.writeUInt32LE(sampleRate * channels * bytesPerSample, 28);
+  buf.writeUInt16LE(channels * bytesPerSample, 32);
+  buf.writeUInt16LE(float ? 32 : 16, 34);
   buf.write("data", 36, "ascii");
   buf.writeUInt32LE(bytes, 40);
   for (let i = 0; i < n; i++) {
+    if (float) {
+      buf.writeFloatLE(samples[i] ?? 0, 44 + i * 4);
+      continue;
+    }
     // Clamp before scaling: a limiter set to 0 dB or a resonant filter can push
     // past full scale, and wrapping would turn that into a click.
     const v = Math.max(-1, Math.min(1, samples[i] ?? 0));
@@ -267,7 +288,7 @@ export async function applyAudioFxChain(
     throw new AudioFxRenderError(`Audio FX input is missing: ${inputWav}`);
   }
 
-  const { samples, sampleRate, channels } = readWav(inputWav);
+  const { samples, sampleRate, channels, float } = readWav(inputWav);
   const planes = deinterleave(samples, channels);
   // An empty track has nothing to process — and an OfflineAudioContext of zero
   // length throws, which is fatal for the WHOLE render rather than this track:
@@ -414,7 +435,9 @@ export async function applyAudioFxChain(
           )
         : null;
       if (gainAt) applyEnvelopeToPlanes(outPlanes, sampleRate, gainAt);
-      writeWav(outputWav, interleave(outPlanes), sampleRate, outPlanes.length);
+      // Same format in as out: a float input is a group sub-mix whose headroom
+      // must survive to its fader (see writeWav).
+      writeWav(outputWav, interleave(outPlanes), sampleRate, outPlanes.length, float);
       return { path: outputWav, envelopeBaked: gainAt !== null };
     } finally {
       await page.close().catch(() => undefined);

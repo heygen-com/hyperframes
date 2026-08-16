@@ -347,4 +347,50 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     // reads well over a dB hot even after the fader halves it.
     expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(refOut))).toBeLessThan(0.5);
   });
+
+  // The same property, for a group that carries an FX CHAIN. That path runs the
+  // sum through applyAudioFxChain, whose writeWav clamps to ±1 and emits 16-bit
+  // — so the headroom the float sub-mix preserved was handed back before the
+  // fader, one step later than the original bug but with the same result.
+  // A transparent chain isolates the clamp from anything the effects do.
+  it("does not clip an over-unity sum before the fader when the group has FX", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-clipfx-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-clipfx-work-"));
+    tempDirs.push(projectDir, workDir);
+
+    writePeakTone(join(projectDir, "a.wav"), 440, 2, 0.7);
+    writePeakTone(join(projectDir, "b.wav"), 440, 2, 0.7);
+    writePeakTone(join(projectDir, "ref.wav"), 440, 2, 0.7);
+
+    // 0 dB gain: in the chain, doing nothing to the level.
+    const transparentChain = JSON.stringify({
+      version: 1,
+      nodes: [{ type: "gain", id: "g", params: { gain: 0 } }],
+    });
+
+    const groupedOut = join(projectDir, `clipfx-grouped-${MIXED_AUDIO_FILENAME}`);
+    const refOut = join(projectDir, `clipfx-ref-${MIXED_AUDIO_FILENAME}`);
+
+    const grouped = await processCompositionAudio(
+      [
+        { ...track("a", 2), groupId: "vo", groupVolume: 0.5, groupFxChain: transparentChain },
+        { ...track("b", 2), groupId: "vo", groupVolume: 0.5, groupFxChain: transparentChain },
+      ],
+      projectDir,
+      workDir,
+      groupedOut,
+      2,
+    );
+    const reference = await processCompositionAudio(
+      [track("ref", 2)],
+      projectDir,
+      workDir,
+      refOut,
+      2,
+    );
+    expect(grouped.success).toBe(true);
+    expect(reference.success).toBe(true);
+
+    expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(refOut))).toBeLessThan(0.5);
+  });
 });
