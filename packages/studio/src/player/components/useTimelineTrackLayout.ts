@@ -7,12 +7,14 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
+  STRIP_H,
   TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
   trackHeights,
   type TimelineTrackHeightClip,
 } from "./timelineLayout";
+import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
 export { getTrackStyle } from "./timelineIcons";
 
@@ -127,13 +129,35 @@ function computeLaneCounts(
   return laneCounts;
 }
 
+/** Group anchor rows have no elements of their own (`groupTimelineTracks`
+ *  pushes them as `[anchorKey, []]`), so `trackHeights` — which only ever
+ *  looks at a row's clips — always gives them TRACK_H. Override those
+ *  specific rows post-hoc: TRACK_H while collapsed, +STRIP_H once the
+ *  group's own `∿` (bus strip) is open. */
+function applyGroupStripHeights(
+  tracks: readonly (readonly [number, readonly TimelineElement[]])[],
+  rowHeights: number[],
+  groups: readonly TimelineTrackGroupInfo[],
+  expandedLaneOwnerIds: ReadonlySet<string>,
+): number[] {
+  if (groups.length === 0) return rowHeights;
+  const groupByAnchor = new Map(groups.map((group) => [group.anchorKey, group]));
+  return tracks.map(([track], index) => {
+    const group = groupByAnchor.get(track);
+    if (!group || !expandedLaneOwnerIds.has(group.id)) return rowHeights[index] ?? TRACK_H;
+    return TRACK_H + STRIP_H;
+  });
+}
+
 function useTimelineRowHeights(
   tracks: [number, TimelineElement[]][],
   gsapAnimations: Map<string, GsapAnimation[]>,
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  groups: readonly TimelineTrackGroupInfo[],
 ) {
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
+  const expandedLaneOwnerIds = usePlayerStore((s) => s.expandedLaneOwnerIds);
   const { laneCounts, rowGeometry } = useMemo(() => {
     const laneCounts = computeLaneCounts(tracks, gsapAnimations);
     // Keyframe lanes follow only the active clip, so a track with several
@@ -163,7 +187,12 @@ function useTimelineRowHeights(
         },
       ];
     });
-    const rowHeights = trackHeights(heightTracks, expandedClipIds);
+    const rowHeights = applyGroupStripHeights(
+      tracks,
+      trackHeights(heightTracks, expandedClipIds),
+      groups,
+      expandedLaneOwnerIds,
+    );
     return {
       laneCounts,
       rowGeometry: createTimelineRowGeometry(
@@ -171,7 +200,15 @@ function useTimelineRowHeights(
         rowHeights,
       ),
     };
-  }, [expandedClipIds, gsapAnimations, tracks, selectedElementId, selectedElementIds]);
+  }, [
+    expandedClipIds,
+    expandedLaneOwnerIds,
+    gsapAnimations,
+    groups,
+    tracks,
+    selectedElementId,
+    selectedElementIds,
+  ]);
   const rowGeometryRef = useRef<TimelineRowGeometry>(rowGeometry);
   rowGeometryRef.current = rowGeometry;
   return {
@@ -197,6 +234,7 @@ export function useTimelineTrackLayout(
     gsapAnimations,
     selectedElementId,
     selectedElementIds,
+    groups,
   );
 
   return {

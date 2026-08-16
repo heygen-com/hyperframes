@@ -68,6 +68,15 @@ export interface TimelineEditCallbacks {
     options?: { coalesceKey?: string },
   ) => Promise<void> | void;
   onToggleTrackHidden?: (track: number, hidden: boolean) => Promise<void> | void;
+  /** B7's bus strip: live-write the group's own attribute while dragging. */
+  onSetAudioGroupAttributeLive?: (groupId: string, attr: string, value: string | null) => void;
+  /** ...and persist one undo entry on release. */
+  onSetAudioGroupAttributeQuiet?: (
+    groupId: string,
+    attr: string,
+    value: string | null,
+    label: string,
+  ) => Promise<void>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;

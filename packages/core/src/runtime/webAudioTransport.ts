@@ -127,7 +127,10 @@ export class WebAudioTransport {
   // group is scheduled. Lives for the session (mirrors `_masterGain`'s own
   // lifecycle) rather than being torn down on every `stopAll()`, so replaying
   // a group does not rebuild its chain; only `destroy()` disposes these.
-  private _groups = new Map<string, { input: GainNode; dispose(): void }>();
+  private _groups = new Map<
+    string,
+    { input: GainNode; analyser: AnalyserNode; levelBuf: Float32Array; dispose(): void }
+  >();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -294,28 +297,69 @@ export class WebAudioTransport {
     if (!this._ctx || !this._masterGain) return null;
 
     const input = this._ctx.createGain();
+    // Stable point the FX chain (or, when there's none, the dry passthrough —
+    // see `attachElementFxChain`'s `detach()`) always lands on before master,
+    // regardless of whether a chain is attached/detached/rebuilt later. B7's
+    // meter taps here. B5's group mute gain MUST splice in before `output`
+    // (between the FX chain and here), never after — the meter is defined to
+    // read the group's true, honestly-muted level (design doc §5), and this
+    // node is that contract's anchor.
+    const output = this._ctx.createGain();
+    output.connect(this._masterGain);
+    const analyser = this._ctx.createAnalyser();
+    analyser.fftSize = 256; // level, not spectrum
+    output.connect(analyser);
+
     const groupEl = doc.getElementById(groupId);
     const fx = attachElementFxChain(
       this._ctx,
       groupEl ?? { getAttribute: () => null },
       input,
-      this._masterGain,
+      output,
       timing,
     );
     if (groupEl) scheduleVolumeLane(groupEl, input, timing);
 
     this._groups.set(groupId, {
       input,
+      analyser,
+      levelBuf: new Float32Array(analyser.fftSize),
       dispose: () => {
         try {
           fx?.dispose();
           input.disconnect();
+          output.disconnect();
+          analyser.disconnect();
         } catch {
           // Already torn down.
         }
       },
     });
     return input;
+  }
+
+  /** Every group id currently routing audio (built lazily by `groupInput` —
+   *  a group with no active member yet has no entry here). */
+  groupIds(): string[] {
+    return [...this._groups.keys()];
+  }
+
+  /**
+   * RMS-ish level 0..1 and whether the last block clipped, for the group's
+   * meter — or null when the group has no active member (idle/unknown).
+   * Reuses a per-group buffer; no per-frame allocation.
+   */
+  groupLevel(groupId: string): { level: number; clipped: boolean } | null {
+    const g = this._groups.get(groupId);
+    if (!g) return null;
+    g.analyser.getFloatTimeDomainData(g.levelBuf);
+    let sumSquares = 0;
+    let clipped = false;
+    for (const sample of g.levelBuf) {
+      sumSquares += sample * sample;
+      if (Math.abs(sample) >= 0.99) clipped = true;
+    }
+    return { level: Math.sqrt(sumSquares / g.levelBuf.length), clipped };
   }
 
   /** Master, unless `el` belongs to a group — then that group's bus (built on

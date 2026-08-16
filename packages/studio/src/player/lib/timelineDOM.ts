@@ -70,16 +70,24 @@ function resolveClipTag(clip: ClipManifestClip): string {
 
 // One `<hf-audio-group>` scan per document, not per clip — resolveAudioGroups
 // walks the whole tree, and a parse touches every clip in it.
-const groupLabelCache = new WeakMap<Document, Map<string, string>>();
+const groupInfoCache = new WeakMap<Document, Map<string, { label: string; volume: number }>>();
 
-function groupLabelFor(doc: Document | null | undefined, groupId: string): string {
-  if (!doc) return groupId;
-  let labels = groupLabelCache.get(doc);
-  if (!labels) {
-    labels = new Map(resolveAudioGroups(doc).map((group) => [group.id, group.label]));
-    groupLabelCache.set(doc, labels);
+function groupInfoFor(
+  doc: Document | null | undefined,
+  groupId: string,
+): { label: string; volume: number } {
+  if (!doc) return { label: groupId, volume: 1 };
+  let info = groupInfoCache.get(doc);
+  if (!info) {
+    info = new Map(
+      resolveAudioGroups(doc).map((group) => [
+        group.id,
+        { label: group.label, volume: group.volume },
+      ]),
+    );
+    groupInfoCache.set(doc, info);
   }
-  return labels.get(groupId) ?? groupId;
+  return info.get(groupId) ?? { label: groupId, volume: 1 };
 }
 
 // fallow-ignore-next-line complexity
@@ -156,7 +164,9 @@ export function createTimelineElementFromManifestClip(params: {
     const audioGroup = hostEl.getAttribute("data-audio-group");
     if (audioGroup) {
       entry.audioGroup = audioGroup;
-      entry.audioGroupLabel = groupLabelFor(doc ?? hostEl.ownerDocument, audioGroup);
+      const info = groupInfoFor(doc ?? hostEl.ownerDocument, audioGroup);
+      entry.audioGroupLabel = info.label;
+      entry.audioGroupVolume = info.volume;
     }
     const fxChain = hostEl.getAttribute("data-fx-chain");
     if (fxChain) entry.fxChain = fxChain;
@@ -379,7 +389,9 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     const domAudioGroup = el.getAttribute("data-audio-group");
     if (domAudioGroup) {
       entry.audioGroup = domAudioGroup;
-      entry.audioGroupLabel = groupLabelFor(doc, domAudioGroup);
+      const domGroupInfo = groupInfoFor(doc, domAudioGroup);
+      entry.audioGroupLabel = domGroupInfo.label;
+      entry.audioGroupVolume = domGroupInfo.volume;
     }
 
     // Sub-compositions

@@ -548,6 +548,7 @@ export function StudioApp() {
                     handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
                     handleTimelineGroupResize={timelineEditing.handleTimelineGroupResize}
                     handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
+                    setAudioGroupAttribute={timelineEditing.setAudioGroupAttribute}
                     handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
                     handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                     handleRazorSplit={timelineEditing.handleRazorSplit}
