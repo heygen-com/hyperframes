@@ -574,38 +574,57 @@ describe("syncRuntimeMedia", () => {
   });
 
   describe("data-hidden silences preview volume", () => {
-    it("zeroes effective volume for a clip under a data-hidden ancestor", () => {
+    const hiddenClip = () => {
       const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
       Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
       const hiddenAncestor = document.createElement("div");
       hiddenAncestor.setAttribute("data-hidden", "");
       document.body.appendChild(hiddenAncestor);
       hiddenAncestor.appendChild(clip.el);
-
+      return clip;
+    };
+    const volumeSeen = (clip: ReturnType<typeof hiddenClip>, silenceHiddenAudio?: boolean) => {
       let seen = -1;
       syncRuntimeMedia({
         clips: [clip],
         timeSeconds: 1,
         playing: true,
         playbackRate: 1,
+        ...(silenceHiddenAudio === undefined ? {} : { silenceHiddenAudio }),
         onElementVolume: (_el, v) => {
           seen = v;
         },
       });
+      return seen;
+    };
 
-      expect(seen).toBe(0);
+    it("zeroes effective volume for a clip under a data-hidden ancestor", () => {
+      expect(volumeSeen(hiddenClip(), true)).toBe(0);
+    });
+
+    // The `audio-track-mute` canary sits at 0%: an existing composition that
+    // carries data-hidden on an audio element must keep playing in preview
+    // until its author is enrolled, or the upgrade silences them with no way
+    // back short of a revert.
+    it("leaves a hidden clip audible when the host has not opted in", () => {
+      expect(volumeSeen(hiddenClip(), false)).toBe(0.8);
+    });
+
+    it("defaults to audible when the flag is absent entirely", () => {
+      expect(volumeSeen(hiddenClip())).toBe(0.8);
     });
 
     it("does not touch el.muted when silencing a hidden clip (RULES trap: transport owns el.muted)", () => {
-      const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
-      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
-      const hiddenAncestor = document.createElement("div");
-      hiddenAncestor.setAttribute("data-hidden", "");
-      document.body.appendChild(hiddenAncestor);
-      hiddenAncestor.appendChild(clip.el);
+      const clip = hiddenClip();
       clip.el.muted = false;
 
-      syncRuntimeMedia({ clips: [clip], timeSeconds: 1, playing: true, playbackRate: 1 });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 1,
+        playing: true,
+        playbackRate: 1,
+        silenceHiddenAudio: true,
+      });
 
       expect(clip.el.muted).toBe(false);
     });

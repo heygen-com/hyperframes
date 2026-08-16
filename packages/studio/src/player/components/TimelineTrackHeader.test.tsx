@@ -3,16 +3,27 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { getTimelineLaneTop, LABEL_COL_W } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** Enrolled canaries for the render under test. Both audio canaries sit at 0%,
+ *  so the default here is "enrolled in nothing" — the state a real user is in. */
+const enabledCanaries = new Set<string>();
+vi.mock("../../telemetry/canary", () => ({
+  isCanaryEnabled: (name: string) => enabledCanaries.has(name),
+}));
+
+beforeEach(() => {
+  enabledCanaries.clear();
+});
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -72,6 +83,7 @@ interface RenderHeaderOptions {
   onTogglePropertyGroupKeyframe?: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
   onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onRemoveAutomationLane?: (target: string) => void;
+  isAudioTrack?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -100,7 +112,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           animations={next.animations ?? [POSITION, OPACITY]}
           currentTime={next.currentTime ?? 0}
           isTrackHidden={false}
-          isAudioTrack={false}
+          isAudioTrack={next.isAudioTrack ?? false}
           theme={defaultTimelineTheme}
           onToggleClipExpanded={vi.fn()}
           onToggleTrackHidden={next.onToggleTrackHidden ?? vi.fn()}
@@ -622,6 +634,85 @@ describe("TimelineTrackHeader", () => {
         clipCount: 1,
       });
       expect(view.host.querySelector('[title="narration-2"]')?.textContent).toBe("narration-2");
+      act(() => view.root.unmount());
+    });
+  });
+
+  describe("audio ids and canary gates", () => {
+    const VOICE: TimelineElement = {
+      id: "voice-1",
+      key: "index.html#voice-1",
+      domId: "voice-1",
+      tag: "audio",
+      start: 0,
+      duration: 5,
+      track: 0,
+    };
+    const VOICE_2: TimelineElement = {
+      ...VOICE,
+      id: "voice-2",
+      key: "index.html#voice-2",
+      domId: "voice-2",
+    };
+
+    // The set is pushed straight into the runtime, which compares it against
+    // `el.id`. A store key here matches nothing, `isAudibleUnderSolo` returns
+    // false for every element, and soloing silences the whole preview.
+    it("solos by bare DOM id, not by the store key", () => {
+      enabledCanaries.add("audio-track-mute");
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      click(view.host, "Hear only this");
+      expect([...usePlayerStore.getState().soloed]).toEqual(["voice-1"]);
+      act(() => view.root.unmount());
+      usePlayerStore.getState().reset();
+    });
+
+    it("hides the FX button outside the audio-fx-rack canary", () => {
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      expect(view.host.querySelector('button[aria-label="Effects"]')).toBeNull();
+      enabledCanaries.add("audio-fx-rack");
+      view.rerender({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      expect(view.host.querySelector('button[aria-label="Effects"]')).not.toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    // The group-pointer variant WRITES a group, so it needs the groups canary
+    // too — otherwise an unenrolled user creates a group and then has no UI to
+    // manage it.
+    it("hides the group pointer unless BOTH audio canaries are on", () => {
+      const opts = {
+        keyframeClip: VOICE,
+        trackElements: [VOICE, VOICE_2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      };
+      const pointer = (host: HTMLElement) =>
+        host.querySelector('button[aria-label="Effects — group these clips first"]');
+      const view = renderHeader(opts);
+      expect(pointer(view.host)).toBeNull();
+      enabledCanaries.add("audio-fx-rack");
+      view.rerender({ ...opts });
+      expect(pointer(view.host)).toBeNull();
+      enabledCanaries.add("audio-groups");
+      view.rerender({ ...opts });
+      expect(pointer(view.host)).not.toBeNull();
       act(() => view.root.unmount());
     });
   });

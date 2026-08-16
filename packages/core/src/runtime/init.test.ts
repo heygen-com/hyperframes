@@ -1349,6 +1349,10 @@ describe("initSandboxRuntimeModular", () => {
 
     window.__timelines = { main: createMockTimeline(10) };
     initSandboxRuntimeModular();
+    // Behind the `audio-track-mute` canary — off until the host pushes it, so a
+    // composition that already carries data-hidden on an audio element keeps
+    // playing in preview for anyone not enrolled.
+    window.__hf?.setAudioMuteHidden?.(true);
 
     const decodeSpy = vi
       .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
@@ -1360,6 +1364,39 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(decodeSpy).toHaveBeenCalledTimes(1);
     expect(decodeSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
+  });
+
+  it("still schedules a data-hidden audio clip when the host has not opted in", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const hiddenAudio = document.createElement("audio");
+    hiddenAudio.setAttribute("data-start", "0");
+    hiddenAudio.setAttribute("data-duration", "10");
+    hiddenAudio.setAttribute("data-hidden", "");
+    hiddenAudio.load = () => {};
+    hiddenAudio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(hiddenAudio);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    const decodeSpy = vi
+      .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+      .mockResolvedValue(null);
+
+    const player = window.__player;
+    player?.play();
+    player?.seek(0);
+
+    expect(decodeSpy).toHaveBeenCalledTimes(1);
+    expect(decodeSpy.mock.calls[0]?.[0]).toBe(hiddenAudio);
   });
 
   it("batches a mid-playback data-hidden toggle into exactly one Web Audio reschedule", () => {

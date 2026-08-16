@@ -12,6 +12,7 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { IframeWindow } from "./playbackTypes";
+import { isCanaryEnabled } from "../../telemetry/canary";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import {
   getTimelineElementSelector,
@@ -140,6 +141,39 @@ export function setPreviewMediaVolume(iframe: HTMLIFrameElement | null, volume: 
     }
     postPreviewControl(iframe, "set-volume", { volume: nextVolume });
   } catch {}
+}
+
+/** Push the `audio-track-mute` canary state into the preview runtime, which
+ *  defaults it off (see `window.__hf.setAudioMuteHidden`). Direct call, not a
+ *  control message: it is a runtime flag, not a transport command, and the
+ *  player host has no equivalent property to set. */
+function setPreviewMuteHidden(iframe: HTMLIFrameElement | null, enabled: boolean): void {
+  if (!iframe) return;
+  try {
+    const win = iframe.contentWindow as
+      | (Window & { __hf?: { setAudioMuteHidden?: (enabled: boolean) => void } })
+      | null;
+    win?.__hf?.setAudioMuteHidden?.(enabled);
+  } catch {}
+}
+
+/**
+ * Everything the preview runtime has to be told about audio after it loads:
+ * the transport's mute, and the canary flags core cannot resolve for itself.
+ * Called from `applyPreviewAudioState`, which is the path that re-runs after a
+ * preview reload — the runtime comes back with every flag at its default and
+ * nothing else pushes them again.
+ */
+export function applyPreviewAudioFlags(
+  iframe: HTMLIFrameElement | null,
+  muted: boolean,
+  volume: number,
+): void {
+  setPreviewMediaMuted(iframe, muted);
+  // Volume too: the transport comes back at unity after a reload, so a preview
+  // the author had turned down came back loud.
+  setPreviewMediaVolume(iframe, volume);
+  setPreviewMuteHidden(iframe, isCanaryEnabled("audio-track-mute"));
 }
 
 export function setPreviewPlaybackRate(

@@ -192,6 +192,22 @@ export function initSandboxRuntimeModular(): void {
     soloedIds = new Set(ids);
     webAudio.setSolo(soloedIds);
   };
+  // A2's preview/export parity fix — silencing `data-hidden` audio the way the
+  // render already does — behind the `audio-track-mute` canary, which is what
+  // that canary was declared for. Core cannot read the registry (canaries are
+  // resolved from the studio's install id), so the host pushes the resolved
+  // state on the same channel as solo. Default OFF = the shipped behaviour: a
+  // composition carrying `data-hidden` on an audio element keeps playing in
+  // preview until its author is enrolled. Non-studio hosts (CLI preview, the
+  // bare player) never push, so they stay on the old behaviour too.
+  let silenceHiddenAudio = false;
+  window.__hf.setAudioMuteHidden = (enabled) => {
+    if (silenceHiddenAudio === enabled) return;
+    silenceHiddenAudio = enabled;
+    // The active-clip set is built with this predicate baked in, so a flip
+    // mid-session has to rebuild it — same reason a `data-hidden` toggle does.
+    if (clock.isPlaying()) scheduleWebAudioForActiveClips();
+  };
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
   // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
@@ -2080,6 +2096,7 @@ export function initSandboxRuntimeModular(): void {
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
         isAudibleUnderSolo: (el) => isAudibleUnderSolo(soloedIds, el.id, audioGroupOf(el)),
+        silenceHiddenAudio,
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
@@ -2982,7 +2999,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            if (rawEl.closest("[data-hidden]")) continue;
+            if (silenceHiddenAudio && rawEl.closest("[data-hidden]")) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -3090,7 +3107,7 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      if (rawEl.closest("[data-hidden]")) continue;
+      if (silenceHiddenAudio && rawEl.closest("[data-hidden]")) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);

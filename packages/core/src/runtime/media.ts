@@ -222,6 +222,11 @@ export function syncRuntimeMedia(params: {
    *  solo gain instead — see `WebAudioTransport.setSolo`). Absent when solo
    *  isn't wired up at all, which reads as "always audible". */
   isAudibleUnderSolo?: (el: HTMLMediaElement) => boolean;
+  /** Silence media under a `data-hidden` ancestor, matching the render. Opt-in:
+   *  the host pushes it via `__hf.setAudioMuteHidden` when the `audio-track-mute`
+   *  canary is on. Absent/false = the shipped behaviour (hidden audio still
+   *  plays in preview). */
+  silenceHiddenAudio?: boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -321,13 +326,19 @@ export function syncRuntimeMedia(params: {
       }
 
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
-      // it); preview must match. Folded into the per-tick volume, not
-      // el.muted (RULES trap: el.muted is the transport's ownership flag).
-      // Solo rides the same fold for the same reason — never el.muted, and
-      // never touching any attribute (it is session-only, unlike hidden).
+      // it); preview matches once the host opts in (`silenceHiddenAudio`, the
+      // `audio-track-mute` canary — see init.ts). Folded into the per-tick
+      // volume, not el.muted (RULES trap: el.muted is the transport's ownership
+      // flag). Solo rides the same fold for the same reason — never el.muted,
+      // and never touching any attribute (it is session-only, unlike hidden) —
+      // but is NOT gated: it is a session control with no shipped behaviour to
+      // preserve.
+      const silencedByHidden = params.silenceHiddenAudio
+        ? el.closest("[data-hidden]") !== null
+        : false;
       const silencedBySolo = params.isAudibleUnderSolo ? !params.isAudibleUnderSolo(el) : false;
       const effectiveVolume =
-        el.closest("[data-hidden]") || silencedBySolo ? 0 : clampVolume(authorVolume * userVol);
+        silencedByHidden || silencedBySolo ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume, authorVolume);

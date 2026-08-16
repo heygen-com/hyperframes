@@ -43,6 +43,12 @@ declare global {
        * read from or written to any document attribute.
        */
       setAudioSolo?: (ids: readonly string[]) => void;
+      /**
+       * Studio's `audio-track-mute` canary state: silence audio under a
+       * `data-hidden` ancestor in preview, the way the render already does.
+       * Off until pushed — core cannot resolve a canary itself.
+       */
+      setAudioMuteHidden?: (enabled: boolean) => void;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;

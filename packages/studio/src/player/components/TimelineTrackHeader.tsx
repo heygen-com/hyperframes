@@ -11,6 +11,8 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { mintGroupId } from "../../components/editor/useFxCarveGrouping";
+import { runtimeAudioId } from "../lib/timelineElementHelpers";
+import { isCanaryEnabled } from "../../telemetry/canary";
 import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { groupAutomationLanes } from "./automationLaneData";
@@ -386,7 +388,10 @@ export function TimelineTrackHeader({
   // acts on the track's first clip as a pragmatic stand-in for "this track",
   // the same simplification the mute button doesn't need to make (it patches
   // every clip on the track at once).
-  const soloTargetId = trackElements[0] ? (trackElements[0].key ?? trackElements[0].id) : null;
+  // A bare DOM id, not the store key: the set lands in the runtime, which
+  // compares it against `el.id` (see `runtimeAudioId`). A track whose first
+  // clip has no DOM id simply has no solo button.
+  const soloTargetId = trackElements[0] ? runtimeAudioId(trackElements[0]) : null;
   const soloed = usePlayerStore((s) => s.soloed);
   const toggleSolo = usePlayerStore((s) => s.toggleSolo);
 
@@ -411,7 +416,10 @@ export function TimelineTrackHeader({
   const groupUngroupedClips = () => {
     const doc = domEditActions?.previewIframeRef.current?.contentDocument;
     if (!doc || !onGroupClips) return;
-    const clipIds = trackElements.map((el) => el.key ?? el.id);
+    // DOM ids, matching the carve picker's other caller — membership is read
+    // back by `resolveAudioGroups`, which only ever sees the document.
+    const clipIds = trackElements.map(runtimeAudioId).filter((id): id is string => id !== null);
+    if (clipIds.length < 2) return;
     void onGroupClips(clipIds, mintGroupId(doc));
   };
 
@@ -447,7 +455,7 @@ export function TimelineTrackHeader({
             onToggleSolo={soloTargetId ? (options) => toggleSolo(soloTargetId, options) : undefined}
             onToggleTrackHidden={onToggleTrackHidden}
           />
-          {singleAudioClip && (
+          {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
             <TimelineFxButton
               variant="chain"
               fxChainRaw={singleAudioClip.fxChain}
@@ -457,9 +465,16 @@ export function TimelineTrackHeader({
               onOpenRack={() => openClipFxRack(singleAudioClip)}
             />
           )}
-          {isAudioTrack && clipCount > 1 && !isTrackGrouped && (
-            <TimelineFxButton variant="group-pointer" onGroupClips={groupUngroupedClips} />
-          )}
+          {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
+              a group, so it needs `audio-groups` too — without it a user outside
+              that canary could create a group and then have no UI to manage it. */}
+          {isAudioTrack &&
+            clipCount > 1 &&
+            !isTrackGrouped &&
+            isCanaryEnabled("audio-fx-rack") &&
+            isCanaryEnabled("audio-groups") && (
+              <TimelineFxButton variant="group-pointer" onGroupClips={groupUngroupedClips} />
+            )}
         </>
       ) : (
         <>

@@ -347,6 +347,25 @@ export function getTimelineElementIdentity(element: { key?: string | null; id: s
 }
 
 /**
+ * The id space the RUNTIME matches on — a bare DOM id, never a store key.
+ *
+ * Studio addresses rows by `buildTimelineElementKey`'s composite
+ * `<sourceFile>#<domId>`, but everything audio in `@hyperframes/core` keys off
+ * the live document: `resolveAudioGroups` collects `member.id`,
+ * `isAudibleUnderSolo` compares `el.id`, `resolveCarveSourceIds` and
+ * `resolveSoloLabel` both go through `getElementById`. Anything crossing into
+ * that space — a solo id, a group membership list, a carve source — has to be
+ * converted here first; a composite key silently matches nothing.
+ *
+ * `null` for a row with no DOM id at all (selector-addressed elements): such an
+ * element cannot be soloed or grouped, because `resolveAudioGroups` skips
+ * members without an `id` and would build a group that is half there.
+ */
+export function runtimeAudioId(element: { domId?: string | null }): string | null {
+  return element.domId || null;
+}
+
+/**
  * Timeline store key for a z-reorder entry built OUTSIDE the timeline
  * expansion (canvas context menu / LayersPanel), so the reorder commit can
  * update the store's zIndex synchronously. Matches buildTimelineElementKey's
