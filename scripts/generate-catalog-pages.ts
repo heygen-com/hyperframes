@@ -171,6 +171,7 @@ function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
 const GENERATED_HEADINGS = new Set([
   // current template
   "install",
+  "controls",
   "variables",
   "source",
   "add it to your video",
@@ -774,6 +775,81 @@ function generateVariables(manifest: RegistryItem): string[] {
  * not installed yet. Collapsed because these run to several hundred lines and an
  * expanded wall of markup would push everything else off the page.
  */
+interface ItemControl {
+  name: string;
+  type: "toggle" | "variant" | "scalar";
+  values?: string[];
+  fields?: string[];
+  min?: number;
+  max?: number;
+  default?: unknown;
+  drives: string;
+}
+
+/**
+ * Pipes break table cells; everything user-authored passes through here.
+ * Backslashes are escaped first so an authored `\` can never combine with the
+ * inserted `\|` escapes (or a following character) into an unintended sequence.
+ */
+function tableCell(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+
+/** The allowed inputs for one control, written the way a reader has to type them. */
+function controlRange(c: ItemControl): string {
+  if (c.type === "toggle") return "`true` / `false`";
+  if (c.type === "variant" && c.values?.length) {
+    return c.values.map((v) => `\`${v}\``).join(", ");
+  }
+  if (c.type === "scalar") {
+    if (typeof c.min === "number" && typeof c.max === "number") return `\`${c.min}\`..\`${c.max}\``;
+    return "bounded number";
+  }
+  return c.type;
+}
+
+/** The shipped state. Per-field defaults (paired toggles) list each field's value. */
+function controlDefault(c: ItemControl): string {
+  if (c.default === undefined) return "—";
+  if (typeof c.default === "object" && c.default !== null) {
+    const entries = Object.entries(c.default as Record<string, unknown>);
+    if (entries.length === 0) return "—";
+    return entries.map(([k, v]) => `\`${k}: ${String(v)}\``).join(", ");
+  }
+  return `\`${String(c.default)}\``;
+}
+
+/**
+ * The item's declared control surface, from `controls` in registry-item.json —
+ * the catalog-page render of the item's published-parameter list. Items without
+ * a declaration get no section (the field is optional until the gate requires it).
+ */
+function generateControls(manifest: RegistryItem): string[] {
+  const raw = (manifest as RegistryItem & { controls?: ItemControl[] }).controls;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  const lines: string[] = [
+    "## Controls",
+    "",
+    "The designed levers this item publishes, set in its top-of-script `CONFIG`",
+    "object. Anything not listed here — and not a content field or a documented",
+    "CSS token — is locked: changing it means editing the item source.",
+    "",
+    "| Control | Type | Accepts | Default | Drives |",
+    "| --- | --- | --- | --- | --- |",
+  ];
+  for (const c of raw) {
+    const name = c.fields?.length
+      ? `\`${c.name}\` (${c.fields.map((f) => `\`${f}\``).join(" + ")})`
+      : `\`${c.name}\``;
+    lines.push(
+      `| ${tableCell(name)} | ${c.type} | ${tableCell(controlRange(c))} | ${tableCell(controlDefault(c))} | ${tableCell(c.drives)} |`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
 function primarySource(
   kind: ItemKind,
   manifest: RegistryItem,
@@ -1055,6 +1131,7 @@ function generateItemMdx(
   //    their version is carried through below instead of being overwritten.
   lines.push(...usageSection(kind, manifest, primaryTarget, carried, textureGroups));
 
+  lines.push(...generateControls(manifest));
   lines.push(...generateParams(manifest));
   lines.push(...generateVariables(manifest));
   lines.push(...generateVariableUsage(manifest, primaryTarget));
