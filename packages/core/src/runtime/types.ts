@@ -197,6 +197,15 @@ export type RuntimePerformanceMessage = {
   tags: Record<string, string | number | boolean | null>;
 };
 
+/** One audio group's live meter reading, polled from the transport each tick
+ *  while playing. A group id absent from `levels` is idle/unknown (no active
+ *  member) — the studio side treats that as "no reading", not zero. */
+export type RuntimeGroupLevelsMessage = {
+  source: "hf-preview";
+  type: "group-levels";
+  levels: Array<{ groupId: string; level: number; clipped: boolean }>;
+};
+
 export type RuntimeOutboundMessage =
   | RuntimeStateMessage
   | RuntimeTimelineMessage
@@ -210,7 +219,8 @@ export type RuntimeOutboundMessage =
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
   | RuntimeAnalyticsMessage
-  | RuntimePerformanceMessage;
+  | RuntimePerformanceMessage
+  | RuntimeGroupLevelsMessage;
 
 export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;

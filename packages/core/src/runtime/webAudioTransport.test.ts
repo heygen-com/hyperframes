@@ -665,6 +665,12 @@ describe("WebAudioTransport", () => {
         connect: ReturnType<typeof vi.fn>;
         disconnect: ReturnType<typeof vi.fn>;
       }[] = [];
+      const analysers: {
+        fftSize: number;
+        connect: ReturnType<typeof vi.fn>;
+        disconnect: ReturnType<typeof vi.fn>;
+        getFloatTimeDomainData: ReturnType<typeof vi.fn>;
+      }[] = [];
       const masterGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
       const ctx = {
         currentTime,
@@ -684,10 +690,20 @@ describe("WebAudioTransport", () => {
           gainNodes.push(node);
           return node;
         }),
+        createAnalyser: vi.fn(() => {
+          const node = {
+            fftSize: 2048,
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+            getFloatTimeDomainData: vi.fn(),
+          };
+          analysers.push(node);
+          return node;
+        }),
         destination: {},
         close: vi.fn(),
       };
-      return { ctx, gainNodes, masterGain };
+      return { ctx, gainNodes, analysers, masterGain };
     }
 
     function setupGroupTransport(currentTime = 100) {
@@ -745,12 +761,14 @@ describe("WebAudioTransport", () => {
       await scheduleGrouped(transport, gen, "a", "vo");
       await scheduleGrouped(transport, gen, "b", "vo");
 
-      // Member gain nodes: index 0 (a) and index 2 (b) — index 1 is the
-      // group's own input gain, built inside a's schedule call.
-      expect(mock.gainNodes.length).toBeGreaterThanOrEqual(3);
+      // Member gain nodes: index 0 (a) and index 3 (b) — index 1/2 are the
+      // group's own input/output gain pair (B7's meter taps `output`),
+      // built inside a's schedule call.
+      expect(mock.gainNodes.length).toBeGreaterThanOrEqual(4);
       const groupInput = firstGroupInput(mock);
+      const groupOutput = mock.gainNodes[2]!;
       const aGain = mock.gainNodes[0]!;
-      const bGain = mock.gainNodes[2]!;
+      const bGain = mock.gainNodes[3]!;
 
       // Neither member connects straight to master — both feed the shared bus.
       expect(aGain.connect).toHaveBeenCalledWith(groupInput);
@@ -758,9 +776,12 @@ describe("WebAudioTransport", () => {
       expect(aGain.connect).not.toHaveBeenCalledWith(mock.masterGain);
       expect(bGain.connect).not.toHaveBeenCalledWith(mock.masterGain);
 
-      // The bus itself is what reaches master — a plain sum, no processing,
-      // since neither member's group has a chain-bearing `<hf-audio-group>`.
-      expect(groupInput.connect).toHaveBeenCalledWith(mock.masterGain);
+      // The bus's input never reaches master directly — it lands on the
+      // output gain (the dry passthrough, since neither member's group has a
+      // chain-bearing `<hf-audio-group>`), and THAT reaches master.
+      expect(groupInput.connect).not.toHaveBeenCalledWith(mock.masterGain);
+      expect(groupInput.connect).toHaveBeenCalledWith(groupOutput);
+      expect(groupOutput.connect).toHaveBeenCalledWith(mock.masterGain);
     });
 
     it("a second member of an already-open group does not rebuild the group bus", async () => {
@@ -779,7 +800,9 @@ describe("WebAudioTransport", () => {
 
       await scheduleGrouped(transport, gen, "a", "orphan-group"); // no matching element
 
-      expect(firstGroupInput(mock).connect).toHaveBeenCalledWith(mock.masterGain);
+      const groupOutput = mock.gainNodes[2]!;
+      expect(firstGroupInput(mock).connect).toHaveBeenCalledWith(groupOutput);
+      expect(groupOutput.connect).toHaveBeenCalledWith(mock.masterGain);
     });
 
     it("group volume rides the group's own data-volume via its automation lane, not the member's", async () => {
@@ -813,6 +836,66 @@ describe("WebAudioTransport", () => {
       await scheduleGrouped(transport, gen2, "a", "vo");
       // Still only one group-input gain ever created for "vo".
       expect(mock.gainNodes.filter((n) => n === groupInput)).toHaveLength(1);
+    });
+
+    describe("groupLevel meter (B7)", () => {
+      it("groupLevel returns null for an unknown/idle group id", () => {
+        const { transport } = setupGroupTransport();
+        expect(transport.groupLevel("never-played")).toBeNull();
+      });
+
+      it("creates exactly one analyser per group, lazily, on first member", async () => {
+        const { transport, mock, gen } = setupGroupTransport();
+        expect(mock.analysers).toHaveLength(0);
+
+        await scheduleGrouped(transport, gen, "a", "vo");
+        expect(mock.analysers).toHaveLength(1);
+        expect(mock.analysers[0]!.fftSize).toBe(256); // level, not spectrum
+
+        await scheduleGrouped(transport, gen, "b", "vo");
+        expect(mock.analysers).toHaveLength(1); // second member reuses the bus
+
+        expect(transport.groupIds()).toEqual(["vo"]);
+      });
+
+      it("groupLevel reads RMS off the group's own analyser once a member is scheduled", async () => {
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+
+        const analyser = mock.analysers[0]!;
+        analyser.getFloatTimeDomainData.mockImplementation((buf: Float32Array) => {
+          buf.fill(0.5);
+        });
+
+        const reading = transport.groupLevel("vo");
+        expect(reading).not.toBeNull();
+        expect(reading!.level).toBeCloseTo(0.5, 5);
+        expect(reading!.clipped).toBe(false);
+      });
+
+      it("flags clipped when any sample hits the ceiling", async () => {
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+
+        const analyser = mock.analysers[0]!;
+        analyser.getFloatTimeDomainData.mockImplementation((buf: Float32Array) => {
+          buf.fill(0.1);
+          buf[0] = 0.995;
+        });
+
+        expect(transport.groupLevel("vo")!.clipped).toBe(true);
+      });
+
+      it("disposes the analyser along with the rest of the group bus", async () => {
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        const analyser = mock.analysers[0]!;
+
+        transport.destroy();
+
+        expect(analyser.disconnect).toHaveBeenCalled();
+        expect(transport.groupLevel("vo")).toBeNull();
+      });
     });
   });
 

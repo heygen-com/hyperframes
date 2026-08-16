@@ -4,8 +4,10 @@ import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { TimelineGroupHeader } from "./TimelineGroupHeader";
+import { TimelineGroupBusStrip } from "./TimelineGroupBusStrip";
 import { groupAutomationLanes } from "./automationLaneData";
 import { LABEL_COL_W } from "./timelineLayout";
+import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 
 interface TimelineGroupRowProps {
   index: number;
@@ -46,6 +48,12 @@ export function TimelineGroupRow({
   const memberElements = group.memberTracks.flatMap(
     (track) => tracks.find(([t]) => t === track)?.[1] ?? [],
   );
+  const memberLabels = group.memberTracks.map((track, i) => {
+    const owner = tracks.find(([t]) => t === track)?.[1]?.find((el) => el.audioGroup);
+    return owner?.label ?? owner?.id ?? `track ${i + 1}`;
+  });
+  const isLaneOpen = expandedLaneOwnerIds.has(group.id);
+  const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } = useTimelineEditContext();
   return (
     <TimelineTrackRow
       index={index}
@@ -67,11 +75,30 @@ export function TimelineGroupRow({
         isExpanded={expandedGroupIds.has(group.id)}
         onToggleExpanded={() => toggleGroupExpanded(group.id)}
         laneCount={groupAutomationLanes(memberElements).length}
-        isLaneOpen={expandedLaneOwnerIds.has(group.id)}
+        isLaneOpen={isLaneOpen}
         onToggleLanes={() => toggleLaneOwnerExpanded(group.id)}
         columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
         theme={theme}
       />
+      {isLaneOpen && (
+        <TimelineGroupBusStrip
+          groupId={group.id}
+          volume={group.volume}
+          memberLabels={memberLabels}
+          onVolumeChange={(value) =>
+            onSetAudioGroupAttributeLive?.(group.id, "data-volume", String(value))
+          }
+          onVolumeCommit={(value) =>
+            onSetAudioGroupAttributeQuiet?.(
+              group.id,
+              "data-volume",
+              String(value),
+              "Set group volume",
+            )
+          }
+          theme={theme}
+        />
+      )}
     </TimelineTrackRow>
   );
 }

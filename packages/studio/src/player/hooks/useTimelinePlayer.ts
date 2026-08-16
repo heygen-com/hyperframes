@@ -49,6 +49,7 @@ import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
+import { groupLevels, parseGroupLevelsMessage } from "../store/groupLevels";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 
 export function useTimelinePlayer() {
@@ -499,6 +500,11 @@ export function useTimelinePlayer() {
       }
       if (data?.source === "hf-preview") {
         if (!acceptStudioRuntimeMessage(data)) return;
+      }
+      if (data?.source === "hf-preview" && data?.type === "group-levels") {
+        const levels = parseGroupLevelsMessage(data);
+        if (levels) groupLevels.notify(levels);
+        return;
       }
       if (data?.source === "hf-preview" && data?.type === "state") {
         try {

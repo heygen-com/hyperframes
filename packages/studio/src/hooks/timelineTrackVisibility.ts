@@ -18,7 +18,7 @@ import {
   type RecordEditInput,
 } from "./timelineEditingHelpers";
 
-interface MutableRef<T> {
+export interface MutableRef<T> {
   current: T;
 }
 
@@ -68,7 +68,7 @@ interface UseTimelineTrackVisibilityEditingInput extends Omit<
   forceReloadSdkSession?: () => void;
 }
 
-interface UseTimelineElementVisibilityEditingInput extends Omit<
+export interface UseTimelineElementVisibilityEditingInput extends Omit<
   ToggleTimelineElementHiddenInput,
   "projectId" | "elementKey" | "hidden" | "previewIframe" | "timelineElements"
 > {

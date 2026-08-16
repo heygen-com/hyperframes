@@ -16,31 +16,68 @@ export interface TimelineTrackGroupInfo {
   anchorKey: number;
   /** Member track numbers, ascending. */
   memberTracks: number[];
+  /** The group element's `data-volume`, mirrored from a member's parse (B7's slider). */
+  volume: number;
 }
 
 interface GroupMembership {
   trackToGroupId: Map<number, string>;
   memberTracksByGroup: Map<string, number[]>;
   labelByGroup: Map<string, string>;
+  volumeByGroup: Map<string, number>;
 }
 
-/** Which track belongs to which group, and each group's label — one pass over raw tracks. */
+/** Which track belongs to which group, and each group's label/volume — one pass over raw tracks. */
 function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): GroupMembership {
   const trackToGroupId = new Map<number, string>();
   const memberTracksByGroup = new Map<string, number[]>();
   const labelByGroup = new Map<string, string>();
+  const volumeByGroup = new Map<string, number>();
   for (const [trackNum, elements] of rawTracks) {
     const owner = elements.find((el) => el.audioGroup);
     if (!owner?.audioGroup) continue;
     trackToGroupId.set(trackNum, owner.audioGroup);
     if (!labelByGroup.has(owner.audioGroup)) {
       labelByGroup.set(owner.audioGroup, owner.audioGroupLabel ?? owner.audioGroup);
+      volumeByGroup.set(owner.audioGroup, owner.audioGroupVolume ?? 1);
     }
     const members = memberTracksByGroup.get(owner.audioGroup) ?? [];
     members.push(trackNum);
     memberTracksByGroup.set(owner.audioGroup, members);
   }
-  return { trackToGroupId, memberTracksByGroup, labelByGroup };
+  return { trackToGroupId, memberTracksByGroup, labelByGroup, volumeByGroup };
+}
+
+/** One group's resolved row info, built once the first time its id is seen. */
+function buildGroupInfo(
+  groupId: string,
+  fallbackTrackNum: number,
+  membership: GroupMembership,
+): TimelineTrackGroupInfo {
+  const memberTracks = [...(membership.memberTracksByGroup.get(groupId) ?? [])].sort(
+    (a, b) => a - b,
+  );
+  return {
+    id: groupId,
+    label: membership.labelByGroup.get(groupId) ?? groupId,
+    anchorKey: (memberTracks[0] ?? fallbackTrackNum) - 0.5,
+    memberTracks,
+    volume: membership.volumeByGroup.get(groupId) ?? 1,
+  };
+}
+
+/** Push a group's synthetic anchor row plus its members' rows, contiguously. */
+function emitGroupRows(
+  info: TimelineTrackGroupInfo,
+  rawByTrack: ReadonlyMap<number, TimelineElement[]>,
+  trackGroupOf: Map<number, TimelineTrackGroupInfo>,
+  tracks: [number, TimelineElement[]][],
+): void {
+  tracks.push([info.anchorKey, []]);
+  for (const member of info.memberTracks) {
+    trackGroupOf.set(member, info);
+    tracks.push([member, rawByTrack.get(member) ?? []]);
+  }
 }
 
 /**
@@ -54,7 +91,7 @@ function groupTimelineTracks(rawTracks: [number, TimelineElement[]][]): {
   groups: TimelineTrackGroupInfo[];
   trackGroupOf: Map<number, TimelineTrackGroupInfo>;
 } {
-  const { trackToGroupId, memberTracksByGroup, labelByGroup } = resolveGroupMembership(rawTracks);
+  const membership = resolveGroupMembership(rawTracks);
   const rawByTrack = new Map(rawTracks);
   const groups: TimelineTrackGroupInfo[] = [];
   const trackGroupOf = new Map<number, TimelineTrackGroupInfo>();
@@ -62,26 +99,16 @@ function groupTimelineTracks(rawTracks: [number, TimelineElement[]][]): {
   const tracks: [number, TimelineElement[]][] = [];
 
   for (const [trackNum, elements] of rawTracks) {
-    const groupId = trackToGroupId.get(trackNum);
+    const groupId = membership.trackToGroupId.get(trackNum);
     if (!groupId) {
       tracks.push([trackNum, elements]);
       continue;
     }
     if (emitted.has(groupId)) continue;
     emitted.add(groupId);
-    const memberTracks = [...(memberTracksByGroup.get(groupId) ?? [])].sort((a, b) => a - b);
-    const info: TimelineTrackGroupInfo = {
-      id: groupId,
-      label: labelByGroup.get(groupId) ?? groupId,
-      anchorKey: (memberTracks[0] ?? trackNum) - 0.5,
-      memberTracks,
-    };
+    const info = buildGroupInfo(groupId, trackNum, membership);
     groups.push(info);
-    tracks.push([info.anchorKey, []]);
-    for (const member of memberTracks) {
-      trackGroupOf.set(member, info);
-      tracks.push([member, rawByTrack.get(member) ?? []]);
-    }
+    emitGroupRows(info, rawByTrack, trackGroupOf, tracks);
   }
   return { tracks, groups, trackGroupOf };
 }

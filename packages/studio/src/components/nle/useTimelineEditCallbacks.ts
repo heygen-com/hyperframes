@@ -38,6 +38,10 @@ export interface TimelineEditCallbackDeps {
   ) => Promise<void> | void;
   handleTimelineGroupResize: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   handleToggleTrackHidden: (track: number, hidden: boolean) => Promise<void> | void;
+  setAudioGroupAttribute: {
+    setLive: (groupId: string, attr: string, value: string | null) => void;
+    setQuiet: (groupId: string, attr: string, value: string | null, label: string) => Promise<void>;
+  };
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
@@ -99,6 +103,7 @@ export function useTimelineEditCallbacks({
   handleTimelineElementResize,
   handleTimelineGroupResize,
   handleToggleTrackHidden,
+  setAudioGroupAttribute,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
   handleRazorSplit,
@@ -185,6 +190,8 @@ export function useTimelineEditCallbacks({
       onResizeElement: handleTimelineElementResize,
       onResizeElements: handleTimelineGroupResize,
       onToggleTrackHidden: handleToggleTrackHidden,
+      onSetAudioGroupAttributeLive: setAudioGroupAttribute.setLive,
+      onSetAudioGroupAttributeQuiet: setAudioGroupAttribute.setQuiet,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
@@ -378,6 +385,7 @@ export function useTimelineEditCallbacks({
       handleTimelineElementResize,
       handleTimelineGroupResize,
       handleToggleTrackHidden,
+      setAudioGroupAttribute,
       handleBlockedTimelineEdit,
       handleTimelineElementSplit,
       handleRazorSplit,

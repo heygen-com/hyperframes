@@ -34,6 +34,8 @@ export function TimelineEditProvider({
       value.onMoveElements,
       value.onResizeElement,
       value.onToggleTrackHidden,
+      value.onSetAudioGroupAttributeLive,
+      value.onSetAudioGroupAttributeQuiet,
       value.onBlockedEditAttempt,
       value.onSplitElement,
       value.onRazorSplit,

@@ -2145,6 +2145,25 @@ export function initSandboxRuntimeModular(): void {
     scheduleRootStageLayoutDiagnostics();
   };
 
+  /** One meter reading per group with an active member — polled from the
+   *  transport's analyser, not the DOM, so an idle group (never played, no
+   *  matching `<hf-audio-group>`) is simply absent rather than reported as
+   *  zero. Cheap when nothing is grouped: `groupIds()` is empty. */
+  const postGroupLevels = () => {
+    const groupIds = webAudio.groupIds();
+    if (groupIds.length === 0) return;
+    const levels = groupIds
+      .map((groupId) => {
+        const reading = webAudio.groupLevel(groupId);
+        return reading ? { groupId, ...reading } : null;
+      })
+      .filter(
+        (entry): entry is { groupId: string; level: number; clipped: boolean } => entry !== null,
+      );
+    if (levels.length === 0) return;
+    postRuntimeMessage({ source: "hf-preview", type: "group-levels", levels });
+  };
+
   const finitePositiveDuration = (value: number | null | undefined): number =>
     typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 
@@ -2901,6 +2920,9 @@ export function initSandboxRuntimeModular(): void {
       }
       if (transportTickCount % 30 === 0) {
         bindMediaMetadataListeners();
+      }
+      if (clock.isPlaying()) {
+        postGroupLevels();
       }
 
       // Sync clock duration with the resolved timeline each tick (catches async
