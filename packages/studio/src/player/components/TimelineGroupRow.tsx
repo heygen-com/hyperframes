@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
 import { isGroupHalfLitUnderSolo } from "../store/audioSoloSlice";
+import { runtimeAudioId } from "../lib/timelineElementHelpers";
 import {
   HF_AUDIO_FX_ATTR,
   serializeAudioFxChain,
@@ -65,7 +66,10 @@ export function TimelineGroupRow({
   const domEditActions = useDomEditActionsContextOptional();
   const soloed = usePlayerStore((s) => s.soloed);
   const toggleSolo = usePlayerStore((s) => s.toggleSolo);
-  const memberIds = memberElements.map((el) => el.key ?? el.id);
+  // Bare DOM ids: this list is compared against the `soloed` set, which the
+  // runtime matches on `el.id` (see `runtimeAudioId`). Store keys here made the
+  // half-lit state unreachable — soloing a member lit nothing on its group.
+  const memberIds = memberElements.map(runtimeAudioId).filter((id): id is string => id !== null);
   const writeGroupFxChain = (next: HfAudioFxChain, live: boolean) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
     if (live) onSetAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR, value);

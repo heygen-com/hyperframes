@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   audioGroupOf,
   isAudibleUnderSolo,
+  isGroupHalfLitUnderSolo,
   resolveAudioGroups,
 } from "@hyperframes/core/audio-groups";
 import { parseTimelineFromDOM } from "./timelineDOM";
@@ -93,6 +94,24 @@ describe("group membership ids cross into the runtime", () => {
     const memberIds = resolveAudioGroups(doc).flatMap((g) => g.memberIds);
     expect(memberIds.every((id) => doc.getElementById(id) !== null)).toBe(true);
     for (const id of memberIds) expect(clipIds).toContain(id);
+  });
+
+  // TimelineGroupRow's half-lit state ("some of what's under here still
+  // plays") compares its member list against the same soloed set. Built from
+  // store keys it never matched, so soloing a member lit nothing on its group.
+  it("half-lights the group when one member is soloed", () => {
+    const doc = docWith(COMPOSITION);
+    const members = parseTimelineFromDOM(doc, 30).filter((el) => el.audioGroup === "voiceover");
+    const memberIds = members.map(runtimeAudioId).filter((id): id is string => id !== null);
+    expect(memberIds).toEqual(["voice-1", "voice-2"]);
+
+    const soloed = new Set(["voice-1"]);
+    expect(isGroupHalfLitUnderSolo(soloed, "voiceover", memberIds)).toBe(true);
+    // Store keys are the shape that silently failed.
+    const storeKeys = members.map((el) => el.key ?? el.id);
+    expect(isGroupHalfLitUnderSolo(soloed, "voiceover", storeKeys)).toBe(false);
+    // Soloing the group itself is lit, not half-lit.
+    expect(isGroupHalfLitUnderSolo(new Set(["voiceover"]), "voiceover", memberIds)).toBe(false);
   });
 
   it("an element with no DOM id is not groupable or soloable", () => {
