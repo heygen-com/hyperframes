@@ -75,6 +75,8 @@ export interface TimelineElement {
   audioGroupVolume?: number;
   /** The owning group's `data-hidden` (defaults to false) — resolved once per parse. */
   audioGroupHidden?: boolean;
+  /** The owning group's serialized `data-fx-chain`, when set — resolved once per parse. */
+  audioGroupFxChain?: string;
   /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child

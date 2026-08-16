@@ -1,5 +1,11 @@
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
-import { applyPatchByTarget, findTagByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
+import {
+  applyPatchByTarget,
+  findTagByTarget,
+  readAttributeByTarget,
+  readTagSnippetByTarget,
+  type PatchOperation,
+} from "../utils/sourcePatcher";
 import {
   formatTimelineAttributeNumber,
   type TimelineStackingReorderIntent,
@@ -390,3 +396,74 @@ export async function persistTimelineBatchEdit(
 export { applyPatchByTarget, formatTimelineAttributeNumber };
 
 export { patchDocumentRootDuration } from "./timelineEditingGsap";
+
+export interface PersistElementAttributeInput {
+  projectId: string;
+  targetPath: string;
+  patchTarget: PatchTarget;
+  attr: string;
+  value: string | null;
+  label: string;
+  writeProjectFile: (path: string, content: string) => Promise<void>;
+  recordEdit: (input: RecordEditInput) => Promise<void>;
+  domEditSaveTimestampRef: { current: number };
+  pendingTimelineEditPathRef: { current: Set<string> };
+  /** Write the attribute directly on the live preview DOM node. */
+  patchLive: (value: string | null) => void;
+  /** Read the attribute's current value off the live preview DOM node. */
+  readLive: () => string | null;
+}
+
+/**
+ * One attribute, persisted to source and optimistically patched onto the
+ * live preview, with a revert on save failure. The shared core behind
+ * `setAudioGroupAttribute` (a group id addressed by its own DOM id) and
+ * `useSetElementAttribute` (an arbitrary timeline clip) — same shape, only
+ * how the live node is found and where the patch target resolves to differs,
+ * which is exactly what `patchLive`/`readLive`/`patchTarget` parameterize.
+ */
+export async function persistElementAttribute({
+  projectId,
+  targetPath,
+  patchTarget,
+  attr,
+  value,
+  label,
+  writeProjectFile,
+  recordEdit,
+  domEditSaveTimestampRef,
+  pendingTimelineEditPathRef,
+  patchLive,
+  readLive,
+}: PersistElementAttributeInput): Promise<string[]> {
+  const previousValue = readLive();
+  patchLive(value);
+
+  const before = await readFileContent(projectId, targetPath);
+  if (readTagSnippetByTarget(before, patchTarget) === undefined) {
+    throw new Error(`Unable to patch element in ${targetPath}`);
+  }
+  const operation: PatchOperation = { type: "attribute", property: attr, value };
+  const patched = applyPatchByTarget(before, patchTarget, operation);
+
+  pendingTimelineEditPathRef.current.add(targetPath);
+  domEditSaveTimestampRef.current = Date.now();
+  try {
+    const changedPaths = await saveProjectFilesWithHistory({
+      projectId,
+      label,
+      kind: "timeline",
+      files: { [targetPath]: patched },
+      readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
+      writeFile: writeProjectFile,
+      recordEdit,
+    });
+    domEditSaveTimestampRef.current = Date.now();
+    return changedPaths;
+  } catch (error) {
+    // The optimistic live write already ran; unwind it on a save failure so
+    // the preview doesn't show a value that never reached disk.
+    patchLive(previousValue);
+    throw error;
+  }
+}

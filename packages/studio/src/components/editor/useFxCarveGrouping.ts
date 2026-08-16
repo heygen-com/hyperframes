@@ -15,7 +15,7 @@ import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
  * document — group ids and plain element ids share one namespace, so both
  * have to be checked.
  */
-function mintGroupId(doc: Document): string {
+export function mintGroupId(doc: Document): string {
   const taken = new Set([
     ...resolveAudioGroups(doc).map((g) => g.id),
     ...Array.from(doc.querySelectorAll("[id]")).map((el) => el.id),

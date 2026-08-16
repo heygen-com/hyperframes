@@ -1,7 +1,17 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import {
+  HF_AUDIO_FX_ATTR,
+  serializeAudioFxChain,
+  type HfAudioFxChain,
+} from "@hyperframes/core/audio-fx";
+import { classifyAudioName } from "@hyperframes/core/audio-carve";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { VisibilityButton, PlainTrackHeader } from "./TimelineTrackPlainHeader";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import { mintGroupId } from "../../components/editor/useFxCarveGrouping";
+import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { groupAutomationLanes } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -380,6 +390,31 @@ export function TimelineTrackHeader({
   const soloed = usePlayerStore((s) => s.soloed);
   const toggleSolo = usePlayerStore((s) => s.toggleSolo);
 
+  // C1: the FX entry point. A single audio clip has one chain to point at; a
+  // track holding several ungrouped ones has no single chain — the design
+  // doc refuses to build "N clips = N chains", so that case gets a pointer
+  // at grouping (B6's normative rule) instead of a popover.
+  const { onGroupClips, onSetElementAttributeLive, onSetElementAttributeQuiet } =
+    useTimelineEditContextOptional();
+  const domEditActions = useDomEditActionsContextOptional();
+  const singleAudioClip =
+    isAudioTrack && clipCount === 1 && trackElements.length > 0 ? trackElements[0] : null;
+  const isTrackGrouped = trackElements.some((el) => el.audioGroup);
+  const writeClipFxChain = (clip: TimelineElement, next: HfAudioFxChain, live: boolean) => {
+    const value = next.nodes.length ? serializeAudioFxChain(next) : null;
+    if (live) onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
+    else void onSetElementAttributeQuiet?.(clip, HF_AUDIO_FX_ATTR, value, "Apply preset");
+  };
+  const openClipFxRack = (clip: TimelineElement) => {
+    void domEditActions?.handleTimelineElementSelect(clip);
+  };
+  const groupUngroupedClips = () => {
+    const doc = domEditActions?.previewIframeRef.current?.contentDocument;
+    if (!doc || !onGroupClips) return;
+    const clipIds = trackElements.map((el) => el.key ?? el.id);
+    void onGroupClips(clipIds, mintGroupId(doc));
+  };
+
   return (
     <div
       role="rowheader"
@@ -398,19 +433,34 @@ export function TimelineTrackHeader({
       }}
     >
       {!keyframeClip || !disclosable ? (
-        <PlainTrackHeader
-          trackNumber={trackNumber}
-          trackDisplayNumber={trackDisplayNumber}
-          trackLabel={trackLabel}
-          clipCount={clipCount}
-          showTrackLabel={showTrackLabel}
-          isTrackHidden={isTrackHidden}
-          isAudioTrack={isAudioTrack}
-          isGroupMuted={trackElements.some((el) => el.audioGroupHidden)}
-          isSoloed={soloTargetId !== null && soloed.has(soloTargetId)}
-          onToggleSolo={soloTargetId ? (options) => toggleSolo(soloTargetId, options) : undefined}
-          onToggleTrackHidden={onToggleTrackHidden}
-        />
+        <>
+          <PlainTrackHeader
+            trackNumber={trackNumber}
+            trackDisplayNumber={trackDisplayNumber}
+            trackLabel={trackLabel}
+            clipCount={clipCount}
+            showTrackLabel={showTrackLabel}
+            isTrackHidden={isTrackHidden}
+            isAudioTrack={isAudioTrack}
+            isGroupMuted={trackElements.some((el) => el.audioGroupHidden)}
+            isSoloed={soloTargetId !== null && soloed.has(soloTargetId)}
+            onToggleSolo={soloTargetId ? (options) => toggleSolo(soloTargetId, options) : undefined}
+            onToggleTrackHidden={onToggleTrackHidden}
+          />
+          {singleAudioClip && (
+            <TimelineFxButton
+              variant="chain"
+              fxChainRaw={singleAudioClip.fxChain}
+              trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
+              onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
+              onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+              onOpenRack={() => openClipFxRack(singleAudioClip)}
+            />
+          )}
+          {isAudioTrack && clipCount > 1 && !isTrackGrouped && (
+            <TimelineFxButton variant="group-pointer" onGroupClips={groupUngroupedClips} />
+          )}
+        </>
       ) : (
         <>
           <LayerDisclosureRow

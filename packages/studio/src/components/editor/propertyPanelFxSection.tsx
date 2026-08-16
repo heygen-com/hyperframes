@@ -14,6 +14,7 @@ import {
   type HfAudioFxParamValues,
 } from "@hyperframes/core/audio-fx";
 import { applyAudioFxPreset, getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
+import { applyPresetToChain } from "./useApplyAudioFxPreset.js";
 import {
   addAudioEq,
   audioEqIds,
@@ -31,7 +32,6 @@ import {
   trackNodeAdded,
   trackNodeMoved,
   trackNodeRemoved,
-  trackPresetApplied,
   trackPresetAuditioned,
   trackPresetAutomated,
   trackPresetRemoved,
@@ -138,23 +138,8 @@ export function FxSection({
 
   const applyPreset = useCallback(
     (id: string) => {
-      const preset = getAudioFxPreset(id);
-      if (!preset) return;
-      // Appends. Stacking a character preset onto an already-cleaned voice is a
-      // real thing to want, and replacing silently would throw work away — so
-      // the destructive option is a separate gesture, not the default one.
-      const next = applyAudioFxPreset(chain, preset);
-      // Re-applying replaces this preset's own nodes in place rather than
-      // appending a second copy, and the two are different decisions — worth
-      // telling apart in the numbers.
-      const reapply = chain.nodes.some((n) => n.fromPreset === preset.id);
-      trackPresetApplied(
-        preset.id,
-        preset.family,
-        preset.nodes.length,
-        reapply ? "reapply" : "append",
-        { trackKind },
-      );
+      const next = applyPresetToChain(chain, id, trackKind);
+      if (!next) return;
       // The audition WAS this, so there is nothing to put back — and putting the
       // old chain back over the write that just landed is a race the author
       // hears as the preset arriving and then leaving again.
@@ -162,7 +147,7 @@ export function FxSection({
       mutate(next.nodes);
       // Land on the first node the preset wrote, so the author can hear what
       // arrived and immediately see what it is made of.
-      setOpenNode(next.nodes.findIndex((n) => n.fromPreset === preset.id));
+      setOpenNode(next.nodes.findIndex((n) => n.fromPreset === id));
       setPicking(false);
     },
     [chain, mutate, clearAudition, trackKind],

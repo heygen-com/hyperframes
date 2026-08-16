@@ -1,52 +1,55 @@
+/**
+ * C1's clip-level FX write: persist one attribute directly on a specific
+ * timeline clip, addressed by the clip itself rather than the current
+ * selection — so applying a preset from the timeline FX popover doesn't
+ * depend on that clip already being selected in the property panel.
+ * Built on `persistElementAttribute` (`timelineEditingHelpers.ts`), the
+ * shared core `setAudioGroupAttribute` also uses.
+ */
+
 import { useCallback } from "react";
+import type { TimelineElement } from "../player";
 import {
   buildPatchTarget,
+  findTimelineElementInIframe,
   persistElementAttribute,
-  type RecordEditInput,
 } from "./timelineEditingHelpers";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
 
-/** Direct DOM write on the group element for the gesture in progress — no
- *  file write, no history entry (mirrors FxParamRow's live/commit split). */
-function patchLiveGroupAttribute(
+function patchLiveElementAttribute(
   iframe: HTMLIFrameElement | null,
-  groupId: string,
+  element: TimelineElement,
   attr: string,
   value: string | null,
+  activeCompPath: string | null,
 ): void {
-  const target = iframe?.contentDocument?.getElementById(groupId);
+  const target = findTimelineElementInIframe(iframe, element, activeCompPath);
   if (!target) return;
   if (value === null) target.removeAttribute(attr);
   else target.setAttribute(attr, value);
 }
 
-interface SetAudioGroupAttributeInput {
+interface SetElementAttributeInput {
   projectId: string;
   activeCompPath: string | null;
-  groupId: string;
+  element: TimelineElement;
   attr: string;
   value: string | null;
   label: string;
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
-  recordEdit: (input: RecordEditInput) => Promise<void>;
+  recordEdit: Parameters<typeof persistElementAttribute>[0]["recordEdit"];
   domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
-/**
- * Persist one attribute on the group element itself — e.g. the bus strip's
- * volume slider writing `data-volume` on release. One undo entry; mirrors
- * `createAudioGroupAndAssignMembers`'s save shape but for a single element
- * and attribute rather than a member-assignment sweep.
- */
-async function setAudioGroupAttribute({
+async function setElementAttribute({
   projectId,
   activeCompPath,
-  groupId,
+  element,
   attr,
   value,
   label,
@@ -55,9 +58,9 @@ async function setAudioGroupAttribute({
   recordEdit,
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
-}: SetAudioGroupAttributeInput): Promise<string[]> {
-  const targetPath = activeCompPath || "index.html";
-  const patchTarget = buildPatchTarget({ domId: groupId });
+}: SetElementAttributeInput): Promise<string[]> {
+  const targetPath = element.sourceFile || activeCompPath || "index.html";
+  const patchTarget = buildPatchTarget(element);
   if (!patchTarget) return [];
 
   return persistElementAttribute({
@@ -71,20 +74,14 @@ async function setAudioGroupAttribute({
     recordEdit,
     domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
-    patchLive: (v) => patchLiveGroupAttribute(previewIframe, groupId, attr, v),
+    patchLive: (v) => patchLiveElementAttribute(previewIframe, element, attr, v, activeCompPath),
     readLive: () =>
-      previewIframe?.contentDocument?.getElementById(groupId)?.getAttribute(attr) ?? null,
+      findTimelineElementInIframe(previewIframe, element, activeCompPath)?.getAttribute(attr) ??
+      null,
   });
 }
 
-/**
- * B7's bus strip: live-write the group's own attribute (`data-volume`, so
- * far — B5's mute will reuse this too) while dragging, persist one undo entry
- * on release. Unlike `useAudioGroupCarveAssignment`, this never touches
- * member elements — the group id doubles as its own DOM id, so no selection
- * or expanded-rows resolution is needed to find it.
- */
-export function useSetAudioGroupAttribute({
+export function useSetElementAttribute({
   projectIdRef,
   activeCompPath,
   showToast,
@@ -95,17 +92,22 @@ export function useSetAudioGroupAttribute({
   pendingTimelineEditPathRef,
   isRecordingRef,
 }: UseTimelineElementVisibilityEditingInput): {
-  setLive: (groupId: string, attr: string, value: string | null) => void;
-  setQuiet: (groupId: string, attr: string, value: string | null, label: string) => Promise<void>;
+  setLive: (element: TimelineElement, attr: string, value: string | null) => void;
+  setQuiet: (
+    element: TimelineElement,
+    attr: string,
+    value: string | null,
+    label: string,
+  ) => Promise<void>;
 } {
   const setLive = useCallback(
-    (groupId: string, attr: string, value: string | null) => {
-      patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
+    (element: TimelineElement, attr: string, value: string | null) => {
+      patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
     },
-    [previewIframeRef],
+    [previewIframeRef, activeCompPath],
   );
   const setQuiet = useCallback(
-    async (groupId: string, attr: string, value: string | null, label: string) => {
+    async (element: TimelineElement, attr: string, value: string | null, label: string) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
@@ -113,10 +115,10 @@ export function useSetAudioGroupAttribute({
       const pid = projectIdRef.current;
       if (!pid) return;
       try {
-        await setAudioGroupAttribute({
+        await setElementAttribute({
           projectId: pid,
           activeCompPath,
-          groupId,
+          element,
           attr,
           value,
           label,
@@ -127,8 +129,8 @@ export function useSetAudioGroupAttribute({
           pendingTimelineEditPathRef,
         });
       } catch (error) {
-        console.error("[Timeline] Failed to set group attribute", error);
-        const message = error instanceof Error ? error.message : "Failed to update group";
+        console.error("[Timeline] Failed to set element attribute", error);
+        const message = error instanceof Error ? error.message : "Failed to update effect";
         showToast(message);
       }
     },
