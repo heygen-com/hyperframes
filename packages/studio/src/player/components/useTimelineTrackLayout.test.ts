@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { LANE_H, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -12,7 +12,13 @@ import { resolveTrackKeyframeClip, useTimelineTrackLayout } from "./useTimelineT
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const enabledCanaries = new Set<string>();
+vi.mock("../../telemetry/canary", () => ({
+  isCanaryEnabled: (name: string) => enabledCanaries.has(name),
+}));
+
 afterEach(() => {
+  enabledCanaries.clear();
   usePlayerStore.getState().reset();
 });
 
@@ -37,6 +43,61 @@ function renderTrackLayout(
 
   return { layout, unmount: () => act(() => root.unmount()) };
 }
+
+describe("collapsed audio groups", () => {
+  const member = (id: string, track: number): TimelineElement => ({
+    id,
+    domId: id,
+    tag: "audio",
+    start: 0,
+    duration: 5,
+    track,
+    audioGroup: "voiceover",
+  });
+
+  function renderGrouped(): {
+    layout: ReturnType<typeof useTimelineTrackLayout>;
+    unmount: () => void;
+  } {
+    enabledCanaries.add("audio-groups");
+    const elements = [member("voice-1", 0), member("voice-2", 1)];
+    let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
+    function Probe() {
+      layout = useTimelineTrackLayout(elements, new Map(), null, new Set());
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(React.createElement(Probe)));
+    if (!layout) throw new Error("Timeline track layout did not render");
+    return { layout, unmount: () => act(() => root.unmount()) };
+  }
+
+  // buildTimelineLogicalRows stops emitting member rows once a group is
+  // collapsed, so TimelineLanes renders null for them. Rows left in `tracks`
+  // still reserve height, turning that null into visible dead space — the row
+  // list and the logical rows have to agree.
+  it("emits only the anchor row while the group is collapsed", () => {
+    const { layout, unmount } = renderGrouped();
+    expect(layout.groups).toHaveLength(1);
+    expect(layout.groups[0]!.memberTracks).toEqual([0, 1]);
+    // The anchor (0 - 0.5) and nothing else.
+    expect(layout.trackOrder).toEqual([-0.5]);
+    expect(layout.rowGeometry.rowHeights).toHaveLength(1);
+    // Membership still resolves — collapsed is hidden, not ungrouped.
+    expect(layout.trackGroupOf.get(0)?.id).toBe("voiceover");
+    unmount();
+  });
+
+  it("emits the member rows once the group is expanded", () => {
+    usePlayerStore.setState({ expandedGroupIds: new Set(["voiceover"]) });
+    const { layout, unmount } = renderGrouped();
+    expect(layout.trackOrder).toEqual([-0.5, 0, 1]);
+    for (const track of layout.groups[0]!.memberTracks) {
+      expect(layout.rowGeometry.getRowHeight(layout.rowGeometry.getRowIndex(track))).toBe(TRACK_H);
+    }
+    unmount();
+  });
+});
 
 describe("useTimelineTrackLayout", () => {
   it("counts a flat tween lane and reserves its expanded row height", () => {

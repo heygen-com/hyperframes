@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { isCanaryEnabled } from "../../telemetry/canary";
 import { getTrackStyle, type TrackVisualStyle } from "./timelineIcons";
 
@@ -86,17 +86,27 @@ function buildGroupInfo(
   };
 }
 
-/** Push a group's synthetic anchor row plus its members' rows, contiguously. */
+/**
+ * Push a group's synthetic anchor row plus its members' rows, contiguously.
+ *
+ * A collapsed group emits its anchor and nothing else. `buildTimelineLogicalRows`
+ * already stops at the anchor when collapsed, so leaving the member rows in
+ * `tracks` left row geometry reserving a full row each for rows that then
+ * rendered as `null` — a header trailed by its members' worth of blank,
+ * unreachable dead space. Membership still lands in `trackGroupOf`: a collapsed
+ * member is hidden, not ungrouped.
+ */
 function emitGroupRows(
   info: TimelineTrackGroupInfo,
   rawByTrack: ReadonlyMap<number, TimelineElement[]>,
   trackGroupOf: Map<number, TimelineTrackGroupInfo>,
   tracks: [number, TimelineElement[]][],
+  expanded: boolean,
 ): void {
   tracks.push([info.anchorKey, []]);
   for (const member of info.memberTracks) {
     trackGroupOf.set(member, info);
-    tracks.push([member, rawByTrack.get(member) ?? []]);
+    if (expanded) tracks.push([member, rawByTrack.get(member) ?? []]);
   }
 }
 
@@ -106,7 +116,10 @@ function emitGroupRows(
  * their position; a group's members move up to sit under its anchor even when
  * other (ungrouped) tracks were interleaved between them.
  */
-function groupTimelineTracks(rawTracks: [number, TimelineElement[]][]): {
+function groupTimelineTracks(
+  rawTracks: [number, TimelineElement[]][],
+  expandedGroupIds: ReadonlySet<string>,
+): {
   tracks: [number, TimelineElement[]][];
   groups: TimelineTrackGroupInfo[];
   trackGroupOf: Map<number, TimelineTrackGroupInfo>;
@@ -128,7 +141,7 @@ function groupTimelineTracks(rawTracks: [number, TimelineElement[]][]): {
     emitted.add(groupId);
     const info = buildGroupInfo(groupId, trackNum, membership);
     groups.push(info);
-    emitGroupRows(info, rawByTrack, trackGroupOf, tracks);
+    emitGroupRows(info, rawByTrack, trackGroupOf, tracks, expandedGroupIds.has(groupId));
   }
   return { tracks, groups, trackGroupOf };
 }
@@ -157,6 +170,7 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
     return Array.from(map.entries()).sort(([a], [b]) => a - b);
   }, [expandedElements]);
 
+  const expandedGroupIds = usePlayerStore((s) => s.expandedGroupIds);
   const { tracks, groups, trackGroupOf } = useMemo(() => {
     if (!isCanaryEnabled("audio-groups")) {
       return {
@@ -165,8 +179,8 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
         trackGroupOf: new Map<number, TimelineTrackGroupInfo>(),
       };
     }
-    return groupTimelineTracks(rawTracks);
-  }, [rawTracks]);
+    return groupTimelineTracks(rawTracks, expandedGroupIds);
+  }, [rawTracks, expandedGroupIds]);
 
   const trackStyles = useMemo(() => {
     const map = new Map<number, TrackVisualStyle>();

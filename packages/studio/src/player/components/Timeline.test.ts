@@ -46,10 +46,17 @@ vi.mock("./timelineRowVirtualizationFlag", () => ({
   STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED: false,
 }));
 
+/** Enrolled in nothing by default, matching a user outside every canary. */
+const enabledCanaries = new Set<string>();
+vi.mock("../../telemetry/canary", () => ({
+  isCanaryEnabled: (name: string) => enabledCanaries.has(name),
+}));
+
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   document.body.innerHTML = "";
+  enabledCanaries.clear();
   usePlayerStore.getState().reset();
 });
 
@@ -296,6 +303,44 @@ describe("Timeline provider boundary", () => {
   it("renders the public Timeline export without TimelineEditProvider", () => {
     const { root } = renderBasicTimeline();
 
+    act(() => root.unmount());
+  });
+
+  // The same assertion, with a group present. It passed on an empty fixture
+  // while TimelineGroupRow called the THROWING context hook — one grouped clip
+  // and the whole timeline render died, not just the row.
+  it("renders without the provider even when a group row is on screen", () => {
+    enabledCanaries.add("audio-groups");
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [
+        {
+          id: "voice-1",
+          domId: "voice-1",
+          tag: "audio",
+          start: 0,
+          duration: 2,
+          track: 0,
+          audioGroup: "voiceover",
+        },
+        {
+          id: "voice-2",
+          domId: "voice-2",
+          tag: "audio",
+          start: 2,
+          duration: 2,
+          track: 1,
+          audioGroup: "voiceover",
+        },
+      ],
+      expandedGroupIds: new Set(["voiceover"]),
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    expect(host.querySelector('[role="treegrid"]')).not.toBeNull();
     act(() => root.unmount());
   });
 

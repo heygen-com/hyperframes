@@ -12,6 +12,7 @@ import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimeline
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { runtimeAudioId } from "../player/lib/timelineElementHelpers";
+import { invalidateGroupInfoCache } from "../player/lib/timelineDOM";
 import { readTagSnippetByTarget, type PatchOperation } from "../utils/sourcePatcher";
 import {
   applyPatchByTarget,
@@ -39,6 +40,7 @@ function patchLiveAudioGroupState(
     if (groupId) target.setAttribute(HF_AUDIO_GROUP_ATTR, groupId);
     else target.removeAttribute(HF_AUDIO_GROUP_ATTR);
   }
+  invalidateGroupInfoCache(iframe?.contentDocument);
 }
 
 /** Group ids are interpolated into markup and into a render-side filename, so
@@ -77,6 +79,7 @@ function patchLiveGroupElement(iframe: HTMLIFrameElement | null, groupId: string
   const el = doc.createElement(HF_AUDIO_GROUP_TAG);
   el.id = groupId;
   doc.body.appendChild(el);
+  invalidateGroupInfoCache(doc);
   return true;
 }
 

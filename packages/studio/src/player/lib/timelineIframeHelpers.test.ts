@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyPreviewAudioFlags,
   buildMissingCompositionElements,
   scrubPreviewAudio,
   setPreviewMediaVolume,
@@ -85,5 +86,47 @@ describe("scrubPreviewAudio", () => {
 
     expect(audio.volume).toBeCloseTo(0.1);
     stopScrubPreviewAudio();
+  });
+});
+
+describe("applyPreviewAudioFlags", () => {
+  function fakeIframe(): { iframe: HTMLIFrameElement; calls: Record<string, unknown[]> } {
+    const calls: Record<string, unknown[]> = {};
+    const win = {
+      __hf: {
+        setAudioSolo: (ids: readonly string[]) => {
+          calls.solo = [...ids];
+        },
+        setAudioMuteHidden: (enabled: boolean) => {
+          calls.muteHidden = [enabled];
+        },
+      },
+    };
+    const iframe = {
+      contentWindow: win,
+      contentDocument: null,
+      querySelector: () => null,
+    } as unknown as HTMLIFrameElement;
+    return { iframe, calls };
+  }
+
+  // Everything pushed here is state the runtime loses on reload and nothing
+  // else re-sends: the solo bridge's effect deps do not change across a
+  // reload, so the button stayed lit while every track played.
+  it("re-pushes the whole audio state, solo included", () => {
+    const { iframe, calls } = fakeIframe();
+
+    applyPreviewAudioFlags(iframe, false, 1, new Set(["voice-1"]));
+
+    expect(calls.solo).toEqual(["voice-1"]);
+    expect(calls.muteHidden).toEqual([false]);
+  });
+
+  it("pushes an empty solo set rather than skipping the call", () => {
+    const { iframe, calls } = fakeIframe();
+
+    applyPreviewAudioFlags(iframe, false, 1, new Set());
+
+    expect(calls.solo).toEqual([]);
   });
 });

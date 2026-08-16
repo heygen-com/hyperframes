@@ -4,6 +4,7 @@ import {
   createTimelineElementFromManifestClip,
   parseTimelineFromDOM,
   createImplicitTimelineLayersFromDOM,
+  invalidateGroupInfoCache,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import type { TimelineElement } from "../store/playerStore";
@@ -107,6 +108,54 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     });
 
     expect(element.hidden).toBe(true);
+  });
+});
+
+describe("group info cache", () => {
+  const parseMember = (doc: Document) =>
+    createTimelineElementFromManifestClip({
+      clip: {
+        id: "voice-1",
+        label: "voice-1",
+        kind: "element",
+        tagName: "audio",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("voice-1"),
+    });
+
+  // Group edits are applied as LIVE patches so the preview iframe never
+  // reloads, which means the document identity this cache is keyed on never
+  // changes either. Without an explicit drop, a muted group could never be
+  // unmuted: the header kept reading the cached `hidden: false` and re-wrote
+  // `data-hidden` forever.
+  it("re-reads group state after an invalidation", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voices"></hf-audio-group>
+      </div>
+    `);
+
+    expect(parseMember(doc).audioGroupHidden).toBe(false);
+
+    doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
+    expect(parseMember(doc).audioGroupHidden).toBe(false); // still the cached scan
+
+    invalidateGroupInfoCache(doc);
+    expect(parseMember(doc).audioGroupHidden).toBe(true);
+
+    doc.getElementById("voiceover")?.removeAttribute("data-hidden");
+    invalidateGroupInfoCache(doc);
+    expect(parseMember(doc).audioGroupHidden).toBe(false);
   });
 });
 

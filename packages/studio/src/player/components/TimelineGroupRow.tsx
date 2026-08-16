@@ -15,7 +15,7 @@ import { TimelineGroupHeader } from "./TimelineGroupHeader";
 import { TimelineGroupBusStrip } from "./TimelineGroupBusStrip";
 import { groupAutomationLanes } from "./automationLaneData";
 import { LABEL_COL_W } from "./timelineLayout";
-import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 
 interface TimelineGroupRowProps {
@@ -62,7 +62,12 @@ export function TimelineGroupRow({
     return owner?.label ?? owner?.id ?? `track ${i + 1}`;
   });
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
-  const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } = useTimelineEditContext();
+  // Optional, like every sibling row: Timeline renders outside the edit
+  // provider in read-only hosts (Timeline.test.ts asserts it), and the throwing
+  // hook took the whole timeline down with it the moment a group existed —
+  // not just this row.
+  const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } =
+    useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
   const soloed = usePlayerStore((s) => s.soloed);
   const toggleSolo = usePlayerStore((s) => s.toggleSolo);

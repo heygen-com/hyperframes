@@ -79,6 +79,20 @@ interface GroupInfo {
 
 const groupInfoCache = new WeakMap<Document, Map<string, GroupInfo>>();
 
+/**
+ * Drop the cached group scan for a document.
+ *
+ * MUST be called by every live write to group state. The cache is keyed on the
+ * document, and group edits are applied as live patches precisely so the iframe
+ * never reloads — so the key never changes and the entry would otherwise live
+ * forever. Left stale, a muted group could never be unmuted (the header keeps
+ * reading `hidden:false` and re-writes `data-hidden`), the bus slider snapped
+ * back, and a second FX preset built on a stale chain, discarding the first.
+ */
+export function invalidateGroupInfoCache(doc: Document | null | undefined): void {
+  if (doc) groupInfoCache.delete(doc);
+}
+
 function groupInfoFor(doc: Document | null | undefined, groupId: string): GroupInfo {
   if (!doc) return { label: groupId, volume: 1, hidden: false };
   let info = groupInfoCache.get(doc);

@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { invalidateGroupInfoCache } from "../player/lib/timelineDOM";
 import {
   buildPatchTarget,
   persistElementAttribute,
@@ -21,6 +22,7 @@ function patchLiveGroupAttribute(
   if (!target) return;
   if (value === null) target.removeAttribute(attr);
   else target.setAttribute(attr, value);
+  invalidateGroupInfoCache(iframe?.contentDocument);
 }
 
 interface SetAudioGroupAttributeInput {

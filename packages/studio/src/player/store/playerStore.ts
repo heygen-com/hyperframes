@@ -279,6 +279,8 @@ export function createTimelineResetState() {
     // paste through `sel.elementKey === paste.elementKey` to a stale t0.
     automationSelection: null,
     expandedClipIds: new Set<string>(),
+    // Per-composition: ids from comp A match nothing in B, silencing all of it.
+    soloed: new Set<string>(),
     expandedGroupIds: new Set<string>(),
     expandedLaneOwnerIds: new Set<string>(),
     focusedEaseSegment: null,

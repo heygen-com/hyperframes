@@ -111,3 +111,18 @@ describe("isGroupHalfLitUnderSolo", () => {
     expect(isGroupHalfLitUnderSolo(new Set(["other"]), "group-1", ["a", "b"])).toBe(false);
   });
 });
+
+describe("solo does not outlive its composition", () => {
+  // Solo ids only mean anything against the document they were taken from.
+  // Carried into another composition they match nothing, and "match nothing"
+  // is exactly the state that silences every track while the banner still
+  // claims to be hearing one of them.
+  it("is cleared by the timeline reset that a composition switch runs", () => {
+    usePlayerStore.getState().toggleSolo("voice-1");
+    expect(usePlayerStore.getState().soloed.size).toBe(1);
+
+    usePlayerStore.getState().reset();
+
+    expect(usePlayerStore.getState().soloed).toEqual(new Set());
+  });
+});
