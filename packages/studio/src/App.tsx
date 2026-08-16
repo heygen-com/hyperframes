@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
@@ -38,6 +38,7 @@ import { useToast } from "./hooks/useToast";
 import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import { useEffectiveTimelineDuration } from "./hooks/useEffectiveTimelineDuration";
+import { useAudioSoloBridge } from "./hooks/useAudioSoloBridge";
 import {
   buildStudioContextValue,
   useGlobalFileDrop,
@@ -61,11 +62,8 @@ import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
 import { useStudioSessionStart } from "./hooks/useStudioSessionStart";
 import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
-import {
-  normalizeStudioCompositionPath,
-  readStudioUrlStateFromWindow,
-  resolveMasterCompositionPath,
-} from "./utils/studioUrlState";
+import { readStudioUrlStateFromWindow, resolveMasterCompositionPath } from "./utils/studioUrlState";
+import { useHydrateActiveCompPathFromUrl } from "./hooks/useHydrateActiveCompPathFromUrl";
 const getTimelineSelectionSet = () => usePlayerStore.getState().selectedElementIds;
 // fallow-ignore-next-line complexity
 export function StudioApp() {
@@ -84,6 +82,7 @@ export function StudioApp() {
   const [previewDocumentVersion, refreshPreviewDocumentVersion] = usePreviewDocumentVersion();
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  useAudioSoloBridge(previewIframeRef);
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
   const leftSidebarRef = useRef<LeftSidebarHandle>(null);
@@ -127,16 +126,14 @@ export function StudioApp() {
     activeCompPath,
     masterCompPath,
   );
-  useEffect(() => {
-    if (activeCompPathHydrated) return;
-    if (!fileManager.fileTreeLoaded) return;
-    const nextCompPath = normalizeStudioCompositionPath(
-      initialUrlStateRef.current.activeCompPath,
-      fileManager.fileTree,
-    );
-    setActiveCompPath((current) => (current === nextCompPath ? current : nextCompPath));
-    setActiveCompPathHydrated(true);
-  }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded]);
+  useHydrateActiveCompPathFromUrl({
+    hydrated: activeCompPathHydrated,
+    fileTreeLoaded: fileManager.fileTreeLoaded,
+    fileTree: fileManager.fileTree,
+    initialUrlStateRef,
+    setActiveCompPath,
+    setHydrated: setActiveCompPathHydrated,
+  });
   const previewPersistence = usePreviewPersistence({
     showToast,
     readOptionalProjectFile: fileManager.readOptionalProjectFile,

@@ -70,24 +70,27 @@ function resolveClipTag(clip: ClipManifestClip): string {
 
 // One `<hf-audio-group>` scan per document, not per clip — resolveAudioGroups
 // walks the whole tree, and a parse touches every clip in it.
-const groupInfoCache = new WeakMap<Document, Map<string, { label: string; volume: number }>>();
+const groupInfoCache = new WeakMap<
+  Document,
+  Map<string, { label: string; volume: number; hidden: boolean }>
+>();
 
 function groupInfoFor(
   doc: Document | null | undefined,
   groupId: string,
-): { label: string; volume: number } {
-  if (!doc) return { label: groupId, volume: 1 };
+): { label: string; volume: number; hidden: boolean } {
+  if (!doc) return { label: groupId, volume: 1, hidden: false };
   let info = groupInfoCache.get(doc);
   if (!info) {
     info = new Map(
       resolveAudioGroups(doc).map((group) => [
         group.id,
-        { label: group.label, volume: group.volume },
+        { label: group.label, volume: group.volume, hidden: group.hidden },
       ]),
     );
     groupInfoCache.set(doc, info);
   }
-  return info.get(groupId) ?? { label: groupId, volume: 1 };
+  return info.get(groupId) ?? { label: groupId, volume: 1, hidden: false };
 }
 
 // fallow-ignore-next-line complexity
@@ -167,6 +170,7 @@ export function createTimelineElementFromManifestClip(params: {
       const info = groupInfoFor(doc ?? hostEl.ownerDocument, audioGroup);
       entry.audioGroupLabel = info.label;
       entry.audioGroupVolume = info.volume;
+      entry.audioGroupHidden = info.hidden;
     }
     const fxChain = hostEl.getAttribute("data-fx-chain");
     if (fxChain) entry.fxChain = fxChain;
@@ -392,6 +396,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       const domGroupInfo = groupInfoFor(doc, domAudioGroup);
       entry.audioGroupLabel = domGroupInfo.label;
       entry.audioGroupVolume = domGroupInfo.volume;
+      entry.audioGroupHidden = domGroupInfo.hidden;
     }
 
     // Sub-compositions

@@ -1,4 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
+import { isGroupHalfLitUnderSolo } from "../store/audioSoloSlice";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
@@ -54,6 +56,9 @@ export function TimelineGroupRow({
   });
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
   const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } = useTimelineEditContext();
+  const soloed = usePlayerStore((s) => s.soloed);
+  const toggleSolo = usePlayerStore((s) => s.toggleSolo);
+  const memberIds = memberElements.map((el) => el.key ?? el.id);
   return (
     <TimelineTrackRow
       index={index}
@@ -77,6 +82,18 @@ export function TimelineGroupRow({
         laneCount={groupAutomationLanes(memberElements).length}
         isLaneOpen={isLaneOpen}
         onToggleLanes={() => toggleLaneOwnerExpanded(group.id)}
+        hidden={group.hidden}
+        onToggleHidden={() =>
+          onSetAudioGroupAttributeQuiet?.(
+            group.id,
+            "data-hidden",
+            group.hidden ? null : "",
+            group.hidden ? "Unmute group" : `Mute group ${group.label}`,
+          )
+        }
+        isSoloed={soloed.has(group.id)}
+        isHalfLitSolo={isGroupHalfLitUnderSolo(soloed, group.id, memberIds)}
+        onToggleSolo={(options) => toggleSolo(group.id, options)}
         columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
         theme={theme}
       />

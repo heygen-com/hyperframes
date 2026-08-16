@@ -16,6 +16,7 @@ import {
 } from "./automationSelectionSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
+import { createAudioSoloSlice, type AudioSoloSlice } from "./audioSoloSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -47,7 +48,8 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice {
+interface PlayerState
+  extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice, AudioSoloSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -329,6 +331,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   ...createThumbnailSlice(set),
 
   ...createAutomationSelectionSlice(set),
+  ...createAudioSoloSlice(set, get),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),

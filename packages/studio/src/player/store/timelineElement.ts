@@ -73,6 +73,8 @@ export interface TimelineElement {
   audioGroupLabel?: string;
   /** The owning group's `data-volume` (defaults to 1) — resolved once per parse. */
   audioGroupVolume?: number;
+  /** The owning group's `data-hidden` (defaults to false) — resolved once per parse. */
+  audioGroupHidden?: boolean;
   /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child

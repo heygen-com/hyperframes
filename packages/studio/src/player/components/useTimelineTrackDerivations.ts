@@ -18,6 +18,8 @@ export interface TimelineTrackGroupInfo {
   memberTracks: number[];
   /** The group element's `data-volume`, mirrored from a member's parse (B7's slider). */
   volume: number;
+  /** The group element's `data-hidden`, mirrored from a member's parse (B5's group mute). */
+  hidden: boolean;
 }
 
 interface GroupMembership {
@@ -25,14 +27,16 @@ interface GroupMembership {
   memberTracksByGroup: Map<string, number[]>;
   labelByGroup: Map<string, string>;
   volumeByGroup: Map<string, number>;
+  hiddenByGroup: Map<string, boolean>;
 }
 
-/** Which track belongs to which group, and each group's label/volume — one pass over raw tracks. */
+/** Which track belongs to which group, and each group's label/volume/hidden — one pass over raw tracks. */
 function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): GroupMembership {
   const trackToGroupId = new Map<number, string>();
   const memberTracksByGroup = new Map<string, number[]>();
   const labelByGroup = new Map<string, string>();
   const volumeByGroup = new Map<string, number>();
+  const hiddenByGroup = new Map<string, boolean>();
   for (const [trackNum, elements] of rawTracks) {
     const owner = elements.find((el) => el.audioGroup);
     if (!owner?.audioGroup) continue;
@@ -40,12 +44,13 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
     if (!labelByGroup.has(owner.audioGroup)) {
       labelByGroup.set(owner.audioGroup, owner.audioGroupLabel ?? owner.audioGroup);
       volumeByGroup.set(owner.audioGroup, owner.audioGroupVolume ?? 1);
+      hiddenByGroup.set(owner.audioGroup, owner.audioGroupHidden ?? false);
     }
     const members = memberTracksByGroup.get(owner.audioGroup) ?? [];
     members.push(trackNum);
     memberTracksByGroup.set(owner.audioGroup, members);
   }
-  return { trackToGroupId, memberTracksByGroup, labelByGroup, volumeByGroup };
+  return { trackToGroupId, memberTracksByGroup, labelByGroup, volumeByGroup, hiddenByGroup };
 }
 
 /** One group's resolved row info, built once the first time its id is seen. */
@@ -63,6 +68,7 @@ function buildGroupInfo(
     anchorKey: (memberTracks[0] ?? fallbackTrackNum) - 0.5,
     memberTracks,
     volume: membership.volumeByGroup.get(groupId) ?? 1,
+    hidden: membership.hiddenByGroup.get(groupId) ?? false,
   };
 }
 
