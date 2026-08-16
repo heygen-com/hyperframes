@@ -9,6 +9,9 @@
  * nothing here routes or sums audio yet.
  */
 
+import { HF_AUDIO_FX_ATTR } from "./audioFx.js";
+import { HF_AUDIO_AUTOMATION_ATTR } from "./audioAutomation.js";
+
 export const HF_AUDIO_GROUP_TAG = "hf-audio-group";
 export const HF_AUDIO_GROUP_ATTR = "data-audio-group";
 
@@ -32,6 +35,38 @@ export interface HfAudioGroup {
   label: string;
   /** Member element ids, in document order. */
   memberIds: string[];
+  /** Serialised FX chain JSON from the group element's `data-fx-chain`, when set. */
+  fxChain?: string;
+  /** Serialised automation JSON from the group element's `data-automation`, when set. */
+  automation?: string;
+  /** The group element's `data-volume`, defaulting to 1 when absent or there is no group element. */
+  volume: number;
+  /**
+   * The group element's `data-hidden`. Render drops every member rather than
+   * zeroing them (RULES: mute-by-drop, never mute-by-volume-0) — B5 defines
+   * the UI for this; this field just makes the read available now.
+   */
+  hidden: boolean;
+}
+
+function parseGroupVolume(el: Element | undefined): number {
+  const raw = el?.getAttribute("data-volume");
+  const parsed = raw ? parseFloat(raw) : 1;
+  return Number.isFinite(parsed) ? parsed : 1;
+}
+
+function buildGroup(id: string, memberIds: string[], el: Element | undefined): HfAudioGroup {
+  const fxChain = el?.getAttribute(HF_AUDIO_FX_ATTR);
+  const automation = el?.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
+  return {
+    id,
+    label: el?.getAttribute("data-label") || id,
+    memberIds,
+    ...(fxChain ? { fxChain } : {}),
+    ...(automation ? { automation } : {}),
+    volume: parseGroupVolume(el),
+    hidden: el?.hasAttribute("data-hidden") ?? false,
+  };
 }
 
 /**
@@ -58,9 +93,7 @@ export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
 
   const groups: HfAudioGroup[] = [];
   for (const [id, memberIds] of membersByGroup) {
-    const el = groupElements.get(id);
-    const label = el?.getAttribute("data-label") || id;
-    groups.push({ id, label, memberIds });
+    groups.push(buildGroup(id, memberIds, groupElements.get(id)));
   }
   return groups;
 }

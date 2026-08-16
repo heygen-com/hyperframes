@@ -23,7 +23,15 @@ describe("resolveAudioGroups", () => {
       <audio id="sfx-1"></audio>
     `;
     const groups = resolveAudioGroups(document);
-    expect(groups).toEqual([{ id: "voiceover", label: "Voiceover", memberIds: ["vo-1", "vo-2"] }]);
+    expect(groups).toEqual([
+      {
+        id: "voiceover",
+        label: "Voiceover",
+        memberIds: ["vo-1", "vo-2"],
+        volume: 1,
+        hidden: false,
+      },
+    ]);
   });
 
   it("resolves from member tags alone when the group element is absent, label = id", () => {
@@ -31,7 +39,9 @@ describe("resolveAudioGroups", () => {
       <audio id="vo-1" data-audio-group="narration"></audio>
     `;
     const groups = resolveAudioGroups(document);
-    expect(groups).toEqual([{ id: "narration", label: "narration", memberIds: ["vo-1"] }]);
+    expect(groups).toEqual([
+      { id: "narration", label: "narration", memberIds: ["vo-1"], volume: 1, hidden: false },
+    ]);
   });
 
   it("ignores data-audio-group on the group element itself (groups do not nest)", () => {
@@ -40,7 +50,9 @@ describe("resolveAudioGroups", () => {
       <audio id="vo-1" data-audio-group="outer"></audio>
     `;
     const groups = resolveAudioGroups(document);
-    expect(groups).toEqual([{ id: "outer", label: "outer", memberIds: ["vo-1"] }]);
+    expect(groups).toEqual([
+      { id: "outer", label: "outer", memberIds: ["vo-1"], volume: 1, hidden: false },
+    ]);
     expect(audioGroupOf(document.getElementById("outer") as Element)).toBeNull();
   });
 
@@ -58,6 +70,37 @@ describe("resolveAudioGroups", () => {
   it("ignores a data-audio-group on a video element (audio only in v1)", () => {
     document.body.innerHTML = `<video id="v-1" data-audio-group="voiceover"></video>`;
     expect(resolveAudioGroups(document)).toEqual([]);
+  });
+
+  it("reads the group element's fx chain, automation, volume and hidden", () => {
+    document.body.innerHTML = `
+      <hf-audio-group id="voiceover" data-fx-chain='{"version":1,"nodes":[]}' data-automation='{"lanes":[]}' data-volume="0.5" data-hidden></hf-audio-group>
+      <audio id="vo-1" data-audio-group="voiceover"></audio>
+    `;
+    const groups = resolveAudioGroups(document);
+    expect(groups).toEqual([
+      {
+        id: "voiceover",
+        label: "voiceover",
+        memberIds: ["vo-1"],
+        fxChain: '{"version":1,"nodes":[]}',
+        automation: '{"lanes":[]}',
+        volume: 0.5,
+        hidden: true,
+      },
+    ]);
+  });
+
+  it("defaults volume to 1 and hidden to false when a group element exists but carries neither", () => {
+    document.body.innerHTML = `
+      <hf-audio-group id="voiceover"></hf-audio-group>
+      <audio id="vo-1" data-audio-group="voiceover"></audio>
+    `;
+    const [group] = resolveAudioGroups(document);
+    expect(group?.volume).toBe(1);
+    expect(group?.hidden).toBe(false);
+    expect(group?.fxChain).toBeUndefined();
+    expect(group?.automation).toBeUndefined();
   });
 });
 
