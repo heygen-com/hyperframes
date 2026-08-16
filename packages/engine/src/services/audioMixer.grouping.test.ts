@@ -63,6 +63,35 @@ function writeTone(path: string, freq: number, seconds: number, gain: number): v
   if (result.status !== 0) throw new Error(`Could not write tone: ${result.stderr}`);
 }
 
+/**
+ * A sine of an EXACT peak amplitude.
+ *
+ * `writeTone` builds on ffmpeg's `sine` source, whose output is ~0.125 full
+ * scale, so its `gain` argument is a relative knob rather than a level: a tone
+ * asked for at 0.7 lands at about -21 dBFS. Fine for the relative comparisons
+ * above, useless for anything about headroom — `aevalsrc` states the amplitude
+ * outright.
+ */
+function writePeakTone(path: string, freq: number, seconds: number, peak: number): void {
+  const result = spawnSync(
+    getFfmpegBinary(),
+    [
+      "-nostdin",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `aevalsrc=${peak}*sin(2*PI*${freq}*t):d=${seconds}:s=48000`,
+      "-c:a",
+      "pcm_s16le",
+      path,
+    ],
+    { encoding: "utf-8" },
+  );
+  if (result.status !== 0) throw new Error(`Could not write tone: ${result.stderr}`);
+}
+
 const track = (id: string, end: number, volume = 1) => ({
   id,
   src: `${id}.wav`,
@@ -267,5 +296,55 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const groupedTail = meanVolumeDb(groupedOut, 3, 4);
     const flatTail = meanVolumeDb(flatOut, 3, 4);
     expect(Math.abs(groupedTail - flatTail)).toBeLessThan(0.5);
+  });
+
+  // Members sum at unity (normalize=0), so an over-unity sum used to hard-clip
+  // at ±1 in the 16-bit intermediate BEFORE the group's fader and FX chain ran
+  // — pulling the group down then operated on distortion. Every existing probe
+  // here sums to ≤ 0.8, which is exactly why nothing caught it; preview cannot
+  // reproduce it either, because its bus is float.
+  it("does not clip an over-unity member sum before the group fader", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-clip-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-clip-work-"));
+    tempDirs.push(projectDir, workDir);
+
+    // Two coherent copies of the same tone: 0.7 + 0.7 = 1.4, comfortably over.
+    // `writePeakTone`, not `writeTone` — ffmpeg's `sine` source is nowhere near
+    // full scale (its output peaks at ~0.125), so every tone in this file sits
+    // around -21 dBFS and NOTHING here can reach a clip no matter what gain is
+    // asked for. That is a large part of why this class of bug survived.
+    writePeakTone(join(projectDir, "a.wav"), 440, 2, 0.7);
+    writePeakTone(join(projectDir, "b.wav"), 440, 2, 0.7);
+    // The reference: the level that sum SHOULD reach once the group's 0.5
+    // fader has been applied — 1.4 × 0.5 = 0.7, one tone's worth.
+    writePeakTone(join(projectDir, "ref.wav"), 440, 2, 0.7);
+
+    const groupedOut = join(projectDir, `clip-grouped-${MIXED_AUDIO_FILENAME}`);
+    const refOut = join(projectDir, `clip-ref-${MIXED_AUDIO_FILENAME}`);
+
+    const grouped = await processCompositionAudio(
+      [
+        { ...track("a", 2), groupId: "vo", groupVolume: 0.5 },
+        { ...track("b", 2), groupId: "vo", groupVolume: 0.5 },
+      ],
+      projectDir,
+      workDir,
+      groupedOut,
+      2,
+    );
+    const reference = await processCompositionAudio(
+      [track("ref", 2)],
+      projectDir,
+      workDir,
+      refOut,
+      2,
+    );
+    expect(grouped.success).toBe(true);
+    expect(reference.success).toBe(true);
+
+    // Both are ONE track into the outer mix, so the outer graph is identical
+    // and the levels are directly comparable. Clipped, the flat-topped sum
+    // reads well over a dB hot even after the fader halves it.
+    expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(refOut))).toBeLessThan(0.5);
   });
 });

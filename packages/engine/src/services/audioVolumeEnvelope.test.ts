@@ -173,4 +173,76 @@ describe("applyVolumeEnvelopeToWav", () => {
       ),
     ).toBe(false);
   });
+
+  // The group sub-mix writes float precisely so an over-unity member sum keeps
+  // its headroom until the group's own fader and FX act on it. If the baker
+  // could not read that file it returned false, and the group's automation was
+  // dropped on the floor by the caller.
+  describe("32-bit float input", () => {
+    /** Stereo float32 WAV, every sample `value` — over 1.0 on purpose. */
+    function writeConstantFloatWav(path: string, frames: number, value: number): void {
+      const dataSize = frames * CHANNELS * 4;
+      const buffer = Buffer.alloc(44 + dataSize);
+      buffer.write("RIFF", 0, "ascii");
+      buffer.writeUInt32LE(36 + dataSize, 4);
+      buffer.write("WAVE", 8, "ascii");
+      buffer.write("fmt ", 12, "ascii");
+      buffer.writeUInt32LE(16, 16);
+      buffer.writeUInt16LE(3, 20); // WAVE_FORMAT_IEEE_FLOAT
+      buffer.writeUInt16LE(CHANNELS, 22);
+      buffer.writeUInt32LE(SAMPLE_RATE, 24);
+      buffer.writeUInt32LE(SAMPLE_RATE * CHANNELS * 4, 28);
+      buffer.writeUInt16LE(CHANNELS * 4, 32);
+      buffer.writeUInt16LE(32, 34);
+      buffer.write("data", 36, "ascii");
+      buffer.writeUInt32LE(dataSize, 40);
+      for (let i = 0; i < frames * CHANNELS; i += 1) buffer.writeFloatLE(value, 44 + i * 4);
+      writeFileSync(path, buffer);
+    }
+
+    const floatSampleAt = (path: string, frame: number, channel = 0): number =>
+      readFileSync(path).readFloatLE(44 + (frame * CHANNELS + channel) * 4);
+
+    it("scales float samples and keeps them above 1.0 unclamped", () => {
+      const path = join(tmp(), "float.wav");
+      writeConstantFloatWav(path, SAMPLE_RATE, 1.4);
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 1 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      // Unity envelope: unchanged, and NOT clamped down to 1.0.
+      expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
+      expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(1.4, 5);
+    });
+
+    it("applies the envelope across the file", () => {
+      const path = join(tmp(), "float-fade.wav");
+      writeConstantFloatWav(path, SAMPLE_RATE, 1.4);
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 0 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
+      expect(floatSampleAt(path, Math.floor(SAMPLE_RATE / 2))).toBeCloseTo(0.7, 2);
+      expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(0, 3);
+    });
+  });
 });

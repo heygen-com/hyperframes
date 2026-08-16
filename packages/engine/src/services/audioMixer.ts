@@ -885,20 +885,25 @@ async function mixGroupMembers(
   totalDuration: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; degradedAutomation?: boolean }> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const inputFilters = memberTracks.map((track, i) => {
-    const delayMs = Math.round(track.start * 1000);
-    const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
-    const volumeFilter = buildVolumeExpression(track);
-    return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
-  });
+  const buildInputFilters = (ignoreKeyframes: boolean) =>
+    memberTracks.map((track, i) => {
+      const delayMs = Math.round(track.start * 1000);
+      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
+      const volumeFilter = buildVolumeExpression(track, ignoreKeyframes);
+      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
+    });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
-  const runOnce = async (useNormalize: boolean): Promise<RunFfmpegResult> => {
+  const runOnce = async (
+    useNormalize: boolean,
+    ignoreKeyframes = false,
+  ): Promise<RunFfmpegResult> => {
+    const inputFilters = buildInputFilters(ignoreKeyframes);
     const mixFilter = useNormalize
       ? `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0:normalize=0[out]`
       : // amix's default normalize divides by input count; compensate by THIS
@@ -922,8 +927,15 @@ async function mixGroupMembers(
         scriptPath,
         "-map",
         "[out]",
+        // Float, not pcm_s16le: `normalize=0` sums the members at unity, so any
+        // over-unity sum hard-clipped at ±1 in the intermediate — BEFORE the
+        // group's FX chain and its fader ran. Pulling the group down, or the
+        // Giant preset's compressor, then operated on distortion. Preview
+        // cannot reproduce it (its bus is float), and it only shows up in the
+        // export. Both readers downstream take float: `readWav` (format 3) and
+        // `applyVolumeEnvelopeToWav`.
         "-acodec",
-        "pcm_s16le",
+        "pcm_f32le",
         "-ar",
         "48000",
         "-t",
@@ -943,14 +955,32 @@ async function mixGroupMembers(
     }
   };
 
-  let result = await runOnce(true);
+  let useNormalize = true;
+  let result = await runOnce(useNormalize);
   if (!result.success && groupNormalizeOptionUnsupported(result.stderr)) {
-    result = await runOnce(false);
+    useNormalize = false;
+    result = await runOnce(useNormalize);
   }
+
+  // The same defence `mixAudioTracks` has, which this forked without: a
+  // member's volume automation becomes an ffmpeg `volume` expression whose
+  // evaluator limits are build-dependent, so a dense envelope can fail the
+  // whole run. Ungrouped, that track degrades to base volume with a warning;
+  // grouped, it took the entire composition's audio down with it.
+  let degradedAutomation = false;
+  const hasAutomation = memberTracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
+  if (!result.success && !signal?.aborted && hasAutomation) {
+    const retry = await runOnce(useNormalize, true);
+    if (retry.success) {
+      result = retry;
+      degradedAutomation = true;
+    }
+  }
+
   if (signal?.aborted) return { success: false, error: "Group sub-mix cancelled" };
   if (!result.success)
     return { success: false, error: formatFfmpegError(result.exitCode, result.stderr) };
-  return { success: true };
+  return { success: true, degradedAutomation };
 }
 
 export async function processCompositionAudio(
@@ -1305,6 +1335,7 @@ export async function processCompositionAudio(
   // clock is composition time (offset 0): a group has no `data-start` of its
   // own, and members are already delayed to their composition positions
   // inside the sub-mix, so the group WAV's t=0 IS composition time.
+  const groupsDegradedAutomation: string[] = [];
   for (const [groupId, memberTracks] of groupTracks) {
     const meta = groupMeta.get(groupId);
     if (!meta) continue;
@@ -1329,6 +1360,7 @@ export async function processCompositionAudio(
       });
       continue;
     }
+    if (subMix.degradedAutomation) groupsDegradedAutomation.push(groupId);
 
     // Composition-time automation (offset 0, duration totalDuration) — same
     // resolve/lane/bake path a member uses, just anchored at the group clock
@@ -1385,6 +1417,10 @@ export async function processCompositionAudio(
       mediaStart: 0,
       duration: totalDuration,
       volume: bakedEnvelope ? 1.0 : meta.volume,
+      // Same fallback an ungrouped track gets: when the envelope could not be
+      // baked into the samples, hand the keyframes to the outer mix's volume
+      // expression instead of dropping the group's automation on the floor.
+      ...(bakedEnvelope || !laneKeyframes?.length ? {} : { volumeKeyframes: laneKeyframes }),
     });
   }
   if (failures.length > 0) return bail();
@@ -1397,9 +1433,18 @@ export async function processCompositionAudio(
     /* ignore */
   }
 
+  // A group whose sub-mix had to drop member automation reports it the same
+  // way mixAudioTracks reports its own degradation: on a SUCCESSFUL result, so
+  // the render ships and the caller can still say what was lost.
+  const degradedGroups = [...groupsDegradedAutomation];
+  const degradedNote =
+    degradedGroups.length > 0
+      ? `Volume automation exceeded this ffmpeg build's expression limits in group(s) ${degradedGroups.join(", ")}; rendered at base volume`
+      : undefined;
+
   return {
     ...mixResult,
     durationMs: Date.now() - startMs,
-    error: mixResult.error,
+    error: mixResult.error ?? degradedNote,
   };
 }

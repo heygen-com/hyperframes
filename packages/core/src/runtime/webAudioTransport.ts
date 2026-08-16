@@ -5,7 +5,7 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
-import { audioGroupOf, isAudibleUnderSolo } from "../audioGroups.js";
+import { audioGroupOf, isAudibleUnderSolo, readAudioGroupVolume } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
@@ -136,9 +136,17 @@ export class WebAudioTransport {
     string,
     {
       input: GainNode;
+      /** Post-FX fader: `data-volume` plus the volume lane. */
+      fader: GainNode;
       muteGain: GainNode;
       analyser: AnalyserNode;
       levelBuf: Float32Array;
+      /** Kept so `setRate` can re-aim this bus's FX automation, the way it does
+       *  every source's — its docblock claims it already did. */
+      fx: ElementFxHandle | null;
+      /** Play generation the current envelopes were booked against. */
+      generation: number;
+      reanchor(timing: AutomationTiming): void;
       dispose(): void;
     }
   >();
@@ -308,7 +316,18 @@ export class WebAudioTransport {
    */
   private groupInput(groupId: string, doc: Document, timing: AutomationTiming): GainNode | null {
     const existing = this._groups.get(groupId);
-    if (existing) return existing.input;
+    if (existing) {
+      // The bus outlives `stopAll()` on purpose, so a replay or a seek reuses
+      // this graph — but its envelopes were committed to the FIRST pass's
+      // absolute context times. Left alone they hold their last value forever,
+      // which for a fade-out is silence for the rest of the session. Re-anchor
+      // once per play generation, not once per member scheduled.
+      if (existing.generation !== this._playGeneration) {
+        existing.generation = this._playGeneration;
+        existing.reanchor(timing);
+      }
+      return existing.input;
+    }
     if (!this._ctx || !this._masterGain) return null;
 
     const input = this._ctx.createGain();
@@ -329,24 +348,42 @@ export class WebAudioTransport {
     const muteGain = this._ctx.createGain();
     muteGain.gain.value = groupEl?.hasAttribute("data-hidden") ? 0 : 1;
     muteGain.connect(output);
+    // The group's fader, POST-FX: `data-volume` is the static position and the
+    // volume lane rides it, which is where a DAW puts it and the order the
+    // render bakes it in (`scheduleVolumeLane`'s own contract). Scheduling it
+    // on `input` instead put the fader ahead of the effects, so any nonlinear
+    // group effect — a compressor, the Giant preset — previewed differently
+    // than it rendered.
+    const fader = this._ctx.createGain();
+    fader.gain.value = readAudioGroupVolume(groupEl);
+    fader.connect(muteGain);
     const fx = attachElementFxChain(
       this._ctx,
       groupEl ?? { getAttribute: () => null },
       input,
-      muteGain,
+      fader,
       timing,
     );
-    if (groupEl) scheduleVolumeLane(groupEl, input, timing);
+    if (groupEl) scheduleVolumeLane(groupEl, fader, timing);
 
     this._groups.set(groupId, {
       input,
+      fader,
       muteGain,
       analyser,
       levelBuf: new Float32Array(analyser.fftSize),
+      fx,
+      generation: this._playGeneration,
+      reanchor: (at: AutomationTiming) => {
+        fader.gain.value = readAudioGroupVolume(groupEl);
+        fx?.reanchor(at);
+        if (groupEl) scheduleVolumeLane(groupEl, fader, at);
+      },
       dispose: () => {
         try {
           fx?.dispose();
           input.disconnect();
+          fader.disconnect();
           muteGain.disconnect();
           output.disconnect();
           analyser.disconnect();
@@ -586,6 +623,16 @@ export class WebAudioTransport {
         source.fx?.setRate(safeRate);
       } catch (err) {
         swallow("webAudioTransport.setRate", err);
+      }
+    }
+    // Group buses are not in `_activeSources` — they outlive it — so their FX
+    // automation needs re-aiming here too, or a rate change leaves a group's
+    // envelopes running the old plan over audio at the new speed.
+    for (const group of this._groups.values()) {
+      try {
+        group.fx?.setRate(safeRate);
+      } catch (err) {
+        swallow("webAudioTransport.setRate.group", err);
       }
     }
     return true;

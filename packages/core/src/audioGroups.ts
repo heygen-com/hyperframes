@@ -35,7 +35,13 @@ export interface HfAudioGroup {
   hidden: boolean;
 }
 
-function parseGroupVolume(el: Element | undefined): number {
+/**
+ * A group element's `data-volume`, defaulting to 1 for a missing, unparseable
+ * or absent element. Shared so the preview bus and `resolveAudioGroups` (which
+ * the render reads) cannot drift: the export was ~8 dB quieter than what was
+ * auditioned for exactly as long as the preview ignored this.
+ */
+export function readAudioGroupVolume(el: Element | null | undefined): number {
   const raw = el?.getAttribute("data-volume");
   const parsed = raw ? parseFloat(raw) : 1;
   return Number.isFinite(parsed) ? parsed : 1;
@@ -50,7 +56,7 @@ function buildGroup(id: string, memberIds: string[], el: Element | undefined): H
     memberIds,
     ...(fxChain ? { fxChain } : {}),
     ...(automation ? { automation } : {}),
-    volume: parseGroupVolume(el),
+    volume: readAudioGroupVolume(el),
     hidden: el?.hasAttribute("data-hidden") ?? false,
   };
 }
