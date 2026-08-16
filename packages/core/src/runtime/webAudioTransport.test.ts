@@ -656,7 +656,24 @@ describe("WebAudioTransport", () => {
           addEventListener: vi.fn(),
         })),
         createGain: vi.fn(() => {
-          const node = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+          // The AudioParam scheduling surface is part of the contract the group
+          // bus uses (`clearParamLane` cancels before re-seeding a reused bus).
+          // A bare `{ value }` made any such call throw, and `schedulePlayback`
+          // swallows throws into `return null` — so the mock's own gap read as
+          // "the member did not play" rather than as a missing stub.
+          const node = {
+            gain: {
+              value: 1,
+              cancelScheduledValues: vi.fn(),
+              cancelAndHoldAtTime: vi.fn(),
+              setValueAtTime: vi.fn(),
+              linearRampToValueAtTime: vi.fn(),
+              exponentialRampToValueAtTime: vi.fn(),
+              setValueCurveAtTime: vi.fn(),
+            },
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+          };
           gainNodes.push(node);
           return node;
         }),
@@ -864,6 +881,29 @@ describe("WebAudioTransport", () => {
       fader.gain.value = 0;
       await scheduleGrouped(transport, gen2, "b", "vo");
       expect(fader.gain.value).toBe(0);
+    });
+
+    // reanchor runs inside schedulePlayback, whose catch turns any throw into
+    // `return null` — so a bus that fails to re-anchor would silently take the
+    // MEMBER out of the pass, and a generation stamped before the attempt would
+    // stop every later member retrying.
+    it("keeps the member playing when re-anchoring the bus throws", async () => {
+      document.body.innerHTML = `<hf-audio-group id="vo" data-volume="0.5"></hf-audio-group>`;
+      const { transport, mock, gen } = setupGroupTransport();
+      await scheduleGrouped(transport, gen, "a", "vo");
+      const fader = mock.gainNodes[5]!;
+      fader.gain.cancelScheduledValues = vi.fn(() => {
+        throw new Error("param is not schedulable");
+      });
+
+      transport.stopAll();
+      const gen2 = transport.startGeneration();
+
+      await expect(scheduleGrouped(transport, gen2, "a", "vo")).resolves.not.toBeNull();
+      // Generation not consumed by the failed attempt, so a sibling still tries.
+      fader.gain.cancelScheduledValues = vi.fn();
+      await scheduleGrouped(transport, gen2, "b", "vo");
+      expect(fader.gain.value).toBeCloseTo(0.5, 6);
     });
 
     describe('solo — "Hear only this" (B5)', () => {

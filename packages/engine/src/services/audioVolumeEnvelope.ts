@@ -122,7 +122,6 @@ export function createEnvelopeWalker(
   };
 }
 
-/**
 /** Every sample scaled by the envelope, in place, in whichever of the two
  *  formats the layout reports. Float is NOT clamped: it is the format the group
  *  sub-mix writes precisely so an over-unity sum keeps its headroom until

@@ -115,8 +115,11 @@ describe("useAudioGroupCarveAssignment", () => {
     act(() => root.unmount());
   });
 
-  // Loud, not silent: the caller persists the group id once this resolves.
-  it("toasts instead of silently writing nothing when an id resolves to no clip", async () => {
+  // Loud AND rejecting: the carve chains `.then(() => ({...next, sources:
+  // [groupId]}))` off this promise, so a resolved-but-failed call let it
+  // persist a carve aimed at a group that was never written. Toasting alone
+  // was not enough — the promise has to carry the failure too.
+  it("rejects, and toasts, when an id resolves to no clip", async () => {
     stubProjectFiles(new Map([["index.html", FILE]]));
     usePlayerStore.getState().setElements([audio({ domId: "voice-1" })]);
 
@@ -126,7 +129,7 @@ describe("useAudioGroupCarveAssignment", () => {
     });
 
     await act(async () => {
-      await assign(["voice-1", "voice-gone"], "voiceover");
+      await expect(assign(["voice-1", "voice-gone"], "voiceover")).rejects.toThrow("voice-gone");
     });
 
     expect(writes.size).toBe(0);

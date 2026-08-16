@@ -1,5 +1,6 @@
 import { attachElementFxChain, readElementAutomation, type ElementFxHandle } from "./audioFx.js";
 import {
+  clearParamLane,
   scheduleParamLane,
   volumeLane,
   type AutomationTiming,
@@ -14,6 +15,18 @@ import { readElementPlaybackRate } from "./media.js";
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return rate;
+}
+
+/**
+ * The render puts every track volume through its own `clampVolume` before
+ * building the filter, so an authored `<hf-audio-group data-volume="2">`
+ * renders at unity. Preview has to agree or the two diverge on exactly the
+ * attribute this bus exists to honour — and a negative value would invert
+ * polarity in preview while rendering silent. Compositions are hand-authorable,
+ * so out-of-range values do not need the studio slider to be reachable.
+ */
+function clampGroupVolume(volume: number): number {
+  return Math.max(0, Math.min(1, volume));
 }
 
 /**
@@ -323,8 +336,18 @@ export class WebAudioTransport {
       // which for a fade-out is silence for the rest of the session. Re-anchor
       // once per play generation, not once per member scheduled.
       if (existing.generation !== this._playGeneration) {
-        existing.generation = this._playGeneration;
-        existing.reanchor(timing);
+        // Stamped only on success, and isolated: this runs inside
+        // `schedulePlayback`, whose catch turns any throw into `return null` —
+        // i.e. a bus problem would silently drop the MEMBER from the pass. And
+        // stamping first would consume the generation, so no later member of
+        // the same group would retry and the bus would keep the previous pass's
+        // envelopes: finding 11 unfixed on exactly the pass that failed.
+        try {
+          existing.reanchor(timing);
+          existing.generation = this._playGeneration;
+        } catch (err) {
+          swallow("webAudioTransport.groupReanchor", err);
+        }
       }
       return existing.input;
     }
@@ -355,7 +378,7 @@ export class WebAudioTransport {
     // group effect — a compressor, the Giant preset — previewed differently
     // than it rendered.
     const fader = this._ctx.createGain();
-    fader.gain.value = readAudioGroupVolume(groupEl);
+    fader.gain.value = clampGroupVolume(readAudioGroupVolume(groupEl));
     fader.connect(muteGain);
     const fx = attachElementFxChain(
       this._ctx,
@@ -375,7 +398,14 @@ export class WebAudioTransport {
       fx,
       generation: this._playGeneration,
       reanchor: (at: AutomationTiming) => {
-        fader.gain.value = readAudioGroupVolume(groupEl);
+        // Cleared BEFORE the value write, and unconditionally. `scheduleVolumeLane`
+        // clears as part of scheduling, but returns early when the group no
+        // longer has a lane — and a scheduled envelope outranks a `.value`
+        // write, so deleting a group's automation mid-session otherwise left
+        // the previous pass's ramps still owning the param (for a fade-out,
+        // silence) for the rest of the session.
+        clearParamLane([{ param: fader.gain }]);
+        fader.gain.value = clampGroupVolume(readAudioGroupVolume(groupEl));
         fx?.reanchor(at);
         if (groupEl) scheduleVolumeLane(groupEl, fader, at);
       },

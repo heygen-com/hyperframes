@@ -31,6 +31,12 @@ export function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
 }
 
 /**
+ * "The auto-group failed, do not persist this carve" — distinct from a
+ * legitimate `null`, which means the carve was deliberately cleared.
+ */
+export const CARVE_ABORTED = Symbol("carve-aborted");
+
+/**
  * Plural voiceover carve, always against a group — normative, not a
  * suggestion (groups doc §1.6). Picking a second ungrouped voice clip mints a
  * group behind the two of them and points the carve at it instead, the same
@@ -71,8 +77,16 @@ export function resolveNextCarveSettings(
   nextRaw: HfCarveSettings | null,
   doc: Document | undefined,
   assignGroup: ((clipIds: readonly string[], groupId: string) => Promise<void>) | undefined,
-): HfCarveSettings | Promise<HfCarveSettings> | null {
-  return nextRaw && doc ? withAutoGroupedSources(doc, nextRaw, assignGroup) : nextRaw;
+): HfCarveSettings | Promise<HfCarveSettings | typeof CARVE_ABORTED> | null {
+  const resolved = nextRaw && doc ? withAutoGroupedSources(doc, nextRaw, assignGroup) : nextRaw;
+  // A failed auto-group resolves to the sentinel rather than rejecting: the
+  // write has already toasted, and the caller's job is simply not to persist a
+  // carve whose `sources` name a group that was never written — which reads, at
+  // playback, as a carve that silently stops ducking. Caught here rather than
+  // in the caller so the synchronous branch above stays synchronous.
+  return isPromiseLike(resolved)
+    ? resolved.catch((): typeof CARVE_ABORTED => CARVE_ABORTED)
+    : resolved;
 }
 
 export interface CarveCandidate {

@@ -16,6 +16,17 @@ export interface TimelineTrackGroupInfo {
   anchorKey: number;
   /** Member track numbers, ascending. */
   memberTracks: number[];
+  /**
+   * Every clip under this group, in member-track order — INDEPENDENT of whether
+   * the group is expanded.
+   *
+   * Collapsing a group stops emitting its member rows into `tracks`, so anything
+   * that recovered member elements by looking them up there got an empty list in
+   * the default (collapsed) state — silently disabling half-lit solo, the
+   * automation-lane count, and the bus strip's member labels. Membership is not
+   * a display concern, so it does not travel through the display list.
+   */
+  memberElements: TimelineElement[];
   /** The group element's `data-volume`, mirrored from a member's parse (B7's slider). */
   volume: number;
   /** The group element's `data-hidden`, mirrored from a member's parse (B5's group mute). */
@@ -70,6 +81,7 @@ function buildGroupInfo(
   groupId: string,
   fallbackTrackNum: number,
   membership: GroupMembership,
+  rawByTrack: ReadonlyMap<number, TimelineElement[]>,
 ): TimelineTrackGroupInfo {
   const memberTracks = [...(membership.memberTracksByGroup.get(groupId) ?? [])].sort(
     (a, b) => a - b,
@@ -80,6 +92,7 @@ function buildGroupInfo(
     label: membership.labelByGroup.get(groupId) ?? groupId,
     anchorKey: (memberTracks[0] ?? fallbackTrackNum) - 0.5,
     memberTracks,
+    memberElements: memberTracks.flatMap((track) => rawByTrack.get(track) ?? []),
     volume: membership.volumeByGroup.get(groupId) ?? 1,
     hidden: membership.hiddenByGroup.get(groupId) ?? false,
     ...(fxChain ? { fxChain } : {}),
@@ -139,7 +152,7 @@ function groupTimelineTracks(
     }
     if (emitted.has(groupId)) continue;
     emitted.add(groupId);
-    const info = buildGroupInfo(groupId, trackNum, membership);
+    const info = buildGroupInfo(groupId, trackNum, membership, rawByTrack);
     groups.push(info);
     emitGroupRows(info, rawByTrack, trackGroupOf, tracks, expandedGroupIds.has(groupId));
   }

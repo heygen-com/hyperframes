@@ -88,6 +88,18 @@ describe("collapsed audio groups", () => {
     unmount();
   });
 
+  // Membership is not a display concern. Half-lit solo, the automation-lane
+  // count and the bus strip's member labels all read the group's members, and
+  // all three silently degraded to empty when those were recovered from the
+  // display list — which a collapsed group does not appear in. Collapsed is the
+  // default, so that was every group until someone opened it.
+  it("carries its member elements even while collapsed", () => {
+    const { layout, unmount } = renderGrouped();
+    expect(layout.trackOrder).toEqual([-0.5]); // collapsed: no member rows
+    expect(layout.groups[0]!.memberElements.map((el) => el.id)).toEqual(["voice-1", "voice-2"]);
+    unmount();
+  });
+
   it("emits the member rows once the group is expanded", () => {
     usePlayerStore.setState({ expandedGroupIds: new Set(["voiceover"]) });
     const { layout, unmount } = renderGrouped();

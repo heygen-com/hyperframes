@@ -1436,15 +1436,18 @@ export async function processCompositionAudio(
   // A group whose sub-mix had to drop member automation reports it the same
   // way mixAudioTracks reports its own degradation: on a SUCCESSFUL result, so
   // the render ships and the caller can still say what was lost.
-  const degradedGroups = [...groupsDegradedAutomation];
   const degradedNote =
-    degradedGroups.length > 0
-      ? `Volume automation exceeded this ffmpeg build's expression limits in group(s) ${degradedGroups.join(", ")}; rendered at base volume`
+    groupsDegradedAutomation.length > 0
+      ? `Volume automation exceeded this ffmpeg build's expression limits in group(s) ${groupsDegradedAutomation.join(", ")}; rendered at base volume`
       : undefined;
 
   return {
     ...mixResult,
     durationMs: Date.now() - startMs,
-    error: mixResult.error ?? degradedNote,
+    // Both, when both degraded. `mixResult.error ?? degradedNote` reported only
+    // the outer mix and dropped the one that names which GROUPS lost their
+    // members' automation — two different losses, and the operator needs to
+    // hear about the one they can act on.
+    error: [mixResult.error, degradedNote].filter(Boolean).join("; ") || undefined,
   };
 }

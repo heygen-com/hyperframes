@@ -315,8 +315,10 @@ export function buildTimelineLogicalRows({
       items: [],
     });
     if (expandedLaneOwnerIds.has(group.id)) {
-      const memberElements = group.memberTracks.flatMap((track) => trackMap.get(track) ?? []);
-      for (const laneGroup of groupAutomationLanes(memberElements)) {
+      // The group's own member list, not `trackMap`: a COLLAPSED group can have
+      // its lane shelf open, and its members are absent from the display list —
+      // so looking them up there emitted zero lane rows for exactly that case.
+      for (const laneGroup of groupAutomationLanes(group.memberElements)) {
         rows.push({
           id: `${groupRowId}::${laneGroup.key}`,
           kind: "row",

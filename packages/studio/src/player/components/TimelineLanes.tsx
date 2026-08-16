@@ -163,7 +163,6 @@ export function TimelineLanes({
                 rowKey={rowKey}
                 group={group}
                 logicalRow={groupLogicalRow}
-                tracks={tracks}
                 top={rowGeometry.getRowTop(row)}
                 height={rowGeometry.getRowHeight(row)}
                 virtualized={rowsVirtualized}

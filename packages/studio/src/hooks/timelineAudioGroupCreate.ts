@@ -28,19 +28,45 @@ import {
   type UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
 
+/**
+ * Assign (or restore) `data-audio-group` across a set of members.
+ *
+ * `restore` carries each member's PRIOR value so the unwind can put back a
+ * membership that already existed, rather than removing the attribute outright.
+ * `setElementsHidden`, which this mirrors, gets away with a plain `!hidden`
+ * because hidden is boolean; group membership is an arbitrary id, and the carve
+ * path does not check whether a clip is already grouped — so a failed save
+ * could silently un-group clips that belonged to another group before it.
+ */
 function patchLiveAudioGroupState(
   iframe: HTMLIFrameElement | null,
   elements: readonly TimelineElement[],
   groupId: string | null,
   activeCompPath: string | null,
+  restore?: ReadonlyMap<TimelineElement, string | null>,
 ): void {
   for (const element of elements) {
     const target = findTimelineElementInIframe(iframe, element, activeCompPath);
     if (!target) continue;
-    if (groupId) target.setAttribute(HF_AUDIO_GROUP_ATTR, groupId);
+    const next = restore ? (restore.get(element) ?? null) : groupId;
+    if (next) target.setAttribute(HF_AUDIO_GROUP_ATTR, next);
     else target.removeAttribute(HF_AUDIO_GROUP_ATTR);
   }
   invalidateGroupInfoCache(iframe?.contentDocument);
+}
+
+/** Each member's `data-audio-group` before this write, for the unwind. */
+function captureAudioGroupState(
+  iframe: HTMLIFrameElement | null,
+  elements: readonly TimelineElement[],
+  activeCompPath: string | null,
+): Map<TimelineElement, string | null> {
+  const prior = new Map<TimelineElement, string | null>();
+  for (const element of elements) {
+    const target = findTimelineElementInIframe(iframe, element, activeCompPath);
+    prior.set(element, target?.getAttribute(HF_AUDIO_GROUP_ATTR) ?? null);
+  }
+  return prior;
 }
 
 /** Group ids are interpolated into markup and into a render-side filename, so
@@ -63,7 +89,17 @@ const GROUP_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
  * buys nothing.
  */
 function insertGroupElement(html: string, groupId: string): string {
-  if (readTagSnippetByTarget(html, { id: groupId }) !== undefined) return html;
+  const existing = readTagSnippetByTarget(html, { id: groupId });
+  if (existing !== undefined) {
+    // Only OUR tag counts as "already there". The id was minted against the
+    // live preview document, which does not contain markup that is on disk but
+    // not rendered (inside a `<template>`, or an unloaded sub-composition) — so
+    // an unrelated element can already own it. Writing nothing there would aim
+    // every later group write (`buildPatchTarget({ domId })`) at that element,
+    // stamping data-volume / data-hidden / data-fx-chain onto it.
+    if (new RegExp(`^<\\s*${HF_AUDIO_GROUP_TAG}\\b`, "i").test(existing)) return html;
+    throw new Error(`Cannot create audio group: id ${groupId} is already used in this file`);
+  }
   const tag = `<${HF_AUDIO_GROUP_TAG} id="${groupId}"></${HF_AUDIO_GROUP_TAG}>`;
   const closeBody = html.lastIndexOf("</body>");
   if (closeBody < 0) return `${html}\n${tag}\n`;
@@ -124,6 +160,7 @@ export async function createAudioGroupAndAssignMembers({
     throw new Error(`Invalid audio group id ${JSON.stringify(groupId)}`);
   }
 
+  const priorGroups = captureAudioGroupState(previewIframe, elements, activeCompPath);
   patchLiveAudioGroupState(previewIframe, elements, groupId, activeCompPath);
   const createdLiveGroupElement = patchLiveGroupElement(previewIframe, groupId);
   reseekPreviewRuntime(previewIframe);
@@ -191,7 +228,7 @@ export async function createAudioGroupAndAssignMembers({
     // Mirrors setElementsHidden's failure path: the optimistic live patch
     // already ran, so a save failure has to be unwound or the preview shows a
     // grouping that never made it to disk.
-    patchLiveAudioGroupState(previewIframe, elements, null, activeCompPath);
+    patchLiveAudioGroupState(previewIframe, elements, null, activeCompPath, priorGroups);
     if (createdLiveGroupElement) {
       previewIframe?.contentDocument?.getElementById(groupId)?.remove();
     }
@@ -263,6 +300,12 @@ export function useAudioGroupCarveAssignment({
         console.error("[Timeline] Failed to group voice clips", error);
         const message = error instanceof Error ? error.message : "Failed to group voice clips";
         showToast(message);
+        // Rethrown, not just reported: the carve's auto-group chains
+        // `.then(() => ({ ...next, sources: [groupId] }))` off this promise, so
+        // swallowing here let it persist a carve pointing at a group that was
+        // never written — the exact silent no-op the throw inside
+        // `createAudioGroupAndAssignMembers` exists to prevent.
+        throw error;
       }
     },
     [

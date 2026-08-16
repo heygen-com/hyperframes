@@ -413,14 +413,22 @@ export function TimelineTrackHeader({
   const openClipFxRack = (clip: TimelineElement) => {
     void domEditActions?.handleTimelineElementSelect(clip);
   };
+  // DOM ids, matching the carve picker's other caller — membership is read back
+  // by `resolveAudioGroups`, which only ever sees the document. A clip with no
+  // DOM id cannot be a member (resolveAudioGroups skips it), so a track holding
+  // one cannot be grouped WHOLE — and grouping the rest would quietly leave
+  // those clips outside the bus, past every fader, mute and effect, while the
+  // UI showed the track as grouped. The button is withheld instead of acting on
+  // a subset, which is also why the carve path's loud guard cannot catch this:
+  // the unresolvable ids were filtered out before the call.
+  const groupableClipIds = trackElements.map(runtimeAudioId);
+  const canGroupWholeTrack =
+    groupableClipIds.length >= 2 && groupableClipIds.every((id) => id !== null);
   const groupUngroupedClips = () => {
     const doc = domEditActions?.previewIframeRef.current?.contentDocument;
     if (!doc || !onGroupClips) return;
-    // DOM ids, matching the carve picker's other caller — membership is read
-    // back by `resolveAudioGroups`, which only ever sees the document.
-    const clipIds = trackElements.map(runtimeAudioId).filter((id): id is string => id !== null);
-    if (clipIds.length < 2) return;
-    void onGroupClips(clipIds, mintGroupId(doc));
+    if (!canGroupWholeTrack) return;
+    void onGroupClips(groupableClipIds as string[], mintGroupId(doc));
   };
 
   return (
@@ -471,6 +479,7 @@ export function TimelineTrackHeader({
           {isAudioTrack &&
             clipCount > 1 &&
             !isTrackGrouped &&
+            canGroupWholeTrack &&
             isCanaryEnabled("audio-fx-rack") &&
             isCanaryEnabled("audio-groups") && (
               <TimelineFxButton variant="group-pointer" onGroupClips={groupUngroupedClips} />

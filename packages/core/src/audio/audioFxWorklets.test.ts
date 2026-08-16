@@ -168,23 +168,77 @@ describe("the worklet processors themselves", () => {
       expect(maxErr).toBeLessThan(1e-6);
     });
 
-    // A track whose semitones are automated THROUGH zero must not jump between
-    // the delayed and the undelayed path — that discontinuity is a click, which
-    // is worse than the delay the bypass would save.
-    it("keeps processing at zero once it has shifted, rather than clicking to dry", async () => {
+    /** Largest sample-to-sample step — a splice between the dry and the
+     *  ~50 ms-delayed wet path shows up here as a discontinuity. */
+    function maxStep(s: Float32Array, from: number, to: number): number {
+      let worst = 0;
+      for (let i = from + 1; i < to; i++) {
+        worst = Math.max(worst, Math.abs((s[i] ?? 0) - (s[i - 1] ?? 0)));
+      }
+      return worst;
+    }
+
+    // Dragging the semitones slider off zero mid-playback swaps the output from
+    // x[t] to x[t-50ms]. Switched hard that is an audible click; the wet amount
+    // is ramped instead. A 440 Hz sine steps ~0.057 per sample at its steepest,
+    // so anything near the signal's own peak is a splice, not the waveform.
+    it("does not click when the shift moves off zero mid-signal", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 0, mix: 1 } });
+      run(p, sine(440, 0.3)); // settled dry, ring warm
+      p.p = { ...p.p, semitones: 7 };
+      const output = run(p, sine(440, 0.3));
+      expect(maxStep(output, 0, output.length)).toBeLessThan(0.2);
+    });
+
+    it("does not click on the way back to zero either", async () => {
       const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
       if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
       const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 1 } });
-      const input = sine(440, 0.4);
-      run(p, input);
+      run(p, sine(440, 0.3));
       p.p = { ...p.p, semitones: 0 };
-      const output = run(p, sine(440, 0.4));
-      // Still the wet path (grain-delayed), so it does NOT equal the input.
+      const output = run(p, sine(440, 0.3));
+      expect(maxStep(output, 0, output.length)).toBeLessThan(0.2);
+    });
+
+    // ...and having ramped back down it must reach TRUE bypass, not sit on a
+    // permanently latched wet path. The render builds a fresh node from the
+    // saved attribute and bypasses at semitones 0; a preview that stayed wet
+    // would carry a 50 ms delay the export does not have.
+    it("returns to true bypass after being shifted and set back to zero", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 1 } });
+      run(p, sine(440, 0.3));
+      p.p = { ...p.p, semitones: 0 };
+      run(p, sine(440, 0.3)); // ramp down settles here
+
+      const input = sine(440, 0.3);
+      const output = run(p, input);
       let maxErr = 0;
-      for (let i = 0; i < 4000; i++) {
+      for (let i = 0; i < input.length; i++) {
         maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i] ?? 0)));
       }
-      expect(maxErr).toBeGreaterThan(1e-3);
+      expect(maxErr).toBeLessThan(1e-6);
+    });
+
+    // A node parked at mix 0 has shifted nothing, so it must not have spent
+    // anything that stops the zero-shift bypass engaging later.
+    it("is transparent at zero after sitting mixed fully out", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 0 } });
+      run(p, sine(440, 0.3));
+
+      p.p = { ...p.p, semitones: 0, mix: 1 };
+      const input = sine(440, 0.3);
+      const output = run(p, input);
+      let maxErr = 0;
+      for (let i = 0; i < input.length; i++) {
+        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i] ?? 0)));
+      }
+      expect(maxErr).toBeLessThan(1e-6);
     });
 
     // The ring starts empty, so the taps read zeros for the first grain. That

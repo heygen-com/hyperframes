@@ -205,8 +205,15 @@ export function initSandboxRuntimeModular(): void {
     if (silenceHiddenAudio === enabled) return;
     silenceHiddenAudio = enabled;
     // The active-clip set is built with this predicate baked in, so a flip
-    // mid-session has to rebuild it — same reason a `data-hidden` toggle does.
-    if (clock.isPlaying()) scheduleWebAudioForActiveClips();
+    // mid-session has to rebuild it. `stopAll()` first: bumping the generation
+    // only rejects future STALE schedules, it does not stop sources already
+    // started, and there is no per-element dedup — so rescheduling on its own
+    // starts a second buffer source for every in-window clip on top of the ones
+    // still playing. `applyWebAudioRate` pairs the two for the same reason.
+    if (clock.isPlaying()) {
+      webAudio.stopAll();
+      scheduleWebAudioForActiveClips();
+    }
   };
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP

@@ -32,6 +32,7 @@ import {
 import { resolveAudioGroups, resolveCarveSourceIds } from "@hyperframes/core/audio-groups";
 import {
   collectCarveCandidates,
+  CARVE_ABORTED,
   isPromiseLike,
   resolveNextCarveSettings,
 } from "./useFxCarveGrouping.js";
@@ -425,6 +426,7 @@ export function useFxCarve(
     // awaited: see resolveNextCarveSettings's own contract.
     const resolved = resolveNextCarveSettings(nextRaw, doc, onAutoGroupCarveSources);
     const next = isPromiseLike(resolved) ? await resolved : resolved;
+    if (next === CARVE_ABORTED) return;
     // Which of the carve's settings moved. One event per change with the action
     // named, rather than a single "carve touched" — enabling a carve and nudging
     // its strength are different decisions and the interesting question (do

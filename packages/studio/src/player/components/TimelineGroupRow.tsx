@@ -1,4 +1,3 @@
-import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
 import { isGroupHalfLitUnderSolo } from "../store/audioSoloSlice";
 import { runtimeAudioId } from "../lib/timelineElementHelpers";
@@ -23,7 +22,6 @@ interface TimelineGroupRowProps {
   rowKey: number;
   group: TimelineTrackGroupInfo;
   logicalRow: TimelineLogicalRow;
-  tracks: readonly (readonly [number, readonly TimelineElement[]])[];
   top: number;
   height: number;
   virtualized: boolean;
@@ -42,7 +40,6 @@ export function TimelineGroupRow({
   rowKey,
   group,
   logicalRow,
-  tracks,
   top,
   height,
   virtualized,
@@ -54,11 +51,13 @@ export function TimelineGroupRow({
   toggleGroupExpanded,
   toggleLaneOwnerExpanded,
 }: TimelineGroupRowProps) {
-  const memberElements = group.memberTracks.flatMap(
-    (track) => tracks.find(([t]) => t === track)?.[1] ?? [],
-  );
+  // From the group, NOT from `tracks`: a collapsed group emits no member rows
+  // into the display list, and every one of these reads silently degraded to
+  // empty in that (default) state — half-lit solo went dark, the lane count
+  // read 0, and the bus strip fell back to "track 1", "track 2".
+  const memberElements = group.memberElements;
   const memberLabels = group.memberTracks.map((track, i) => {
-    const owner = tracks.find(([t]) => t === track)?.[1]?.find((el) => el.audioGroup);
+    const owner = memberElements.find((el) => el.track === track && el.audioGroup);
     return owner?.label ?? owner?.id ?? `track ${i + 1}`;
   });
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
