@@ -138,9 +138,10 @@ interface AnimeInstance {
 }
 
 interface AnimeGlobal {
-  (params: unknown): AnimeInstance;
-  timeline?: (params?: unknown) => AnimeInstance;
-  running: AnimeInstance[];
+  animate?: (targets: unknown, params?: unknown) => AnimeInstance;
+  createTimeline?: (params?: unknown) => AnimeInstance;
+  /** Legacy v3 registry retained for backward-compatible discovery. */
+  running?: AnimeInstance[];
 }
 
 interface AnimeWindow extends Window {
