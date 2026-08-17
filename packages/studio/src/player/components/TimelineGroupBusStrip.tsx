@@ -12,8 +12,18 @@ import type { TimelineTheme } from "./timelineTheme";
 /** How long "Too loud" stays lit after the last clipped block. */
 const CLIP_HOLD_MS = 2000;
 
+/**
+ * Unity is the ceiling because unity is what the pipeline honours: the render
+ * puts every track volume through its own `clampVolume` ([0,1]) before building
+ * the filter, and the preview bus clamps to match. A fader travelling to 2.0
+ * therefore spent its top half writing `data-volume` values that BOTH ends
+ * discard — the control promised +6 dB and nothing delivered it.
+ *
+ * Raising the ceiling instead would mean changing the render's shared clamp for
+ * every track, not just group buses; that is a mixer decision, not a slider one.
+ */
 function clampVolume(value: number): number {
-  return Math.min(2, Math.max(0, value));
+  return Math.min(1, Math.max(0, value));
 }
 
 interface TimelineGroupBusStripProps {
@@ -66,7 +76,7 @@ export function TimelineGroupBusStrip({
         type="range"
         aria-label="Group volume"
         min={0}
-        max={2}
+        max={1}
         step={0.01}
         value={shownVolume}
         className="h-1 w-20 shrink-0 accent-[#3CE6AC]"

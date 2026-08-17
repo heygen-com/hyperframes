@@ -11,6 +11,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
+import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -81,6 +82,14 @@ function normalizePlaybackRate(raw: number): number {
 }
 
 export function isTimelineIgnoredElement(el: Element): boolean {
+  // An `<hf-audio-group>` is a mixer bus, not a clip: it carries the group's
+  // label, fader, mute and FX chain, has no timing of its own, and is drawn as
+  // a GROUP ROW by the group derivation. Left in, the implicit-layer fallback
+  // also gave it an ordinary full-duration track — so a grouped composition
+  // showed "Voiceover • 0.0s – 12.0s" as a phantom clip directly above the real
+  // group header. Harmless-looking, but that row is draggable and trimmable,
+  // and writing timing onto the bus is meaningless.
+  if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return true;
   return Boolean(
     el.closest(
       [

@@ -77,28 +77,41 @@ describe("TimelineGroupBusStrip", () => {
     const { onVolumeChange, onVolumeCommit } = renderStrip({ volume: 1 });
     const input = slider();
 
-    act(() => setSliderValue(input, "1.2"));
-    act(() => setSliderValue(input, "1.5"));
+    act(() => setSliderValue(input, "0.4"));
+    act(() => setSliderValue(input, "0.6"));
     expect(onVolumeChange).toHaveBeenCalledTimes(2);
-    expect(onVolumeChange).toHaveBeenLastCalledWith(1.5);
+    expect(onVolumeChange).toHaveBeenLastCalledWith(0.6);
     expect(onVolumeCommit).not.toHaveBeenCalled();
 
     act(() => {
-      input.value = "1.5";
+      input.value = "0.6";
       input.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
     });
     expect(onVolumeCommit).toHaveBeenCalledTimes(1);
-    expect(onVolumeCommit).toHaveBeenCalledWith(1.5);
+    expect(onVolumeCommit).toHaveBeenCalledWith(0.6);
   });
 
-  it("clamps the volume slider to the 0..2 range", () => {
-    const { onVolumeChange } = renderStrip();
+  // Unity is the ceiling because unity is what the pipeline honours: the render
+  // clamps every track volume to [0,1] and the preview bus clamps to match, so
+  // the fader's old travel to 2.0 spent its top half writing `data-volume`
+  // values that both ends discarded — a control promising +6 dB that nothing
+  // delivered.
+  it("clamps the volume slider to the 0..1 range the pipeline honours", () => {
+    // Starts below unity so each write below is a real change — setting a range
+    // input to the value it already holds fires no change event at all.
+    const { onVolumeChange } = renderStrip({ volume: 0.5 });
     const input = slider();
     expect(input.min).toBe("0");
-    expect(input.max).toBe("2");
+    expect(input.max).toBe("1");
 
+    act(() => setSliderValue(input, "1"));
+    expect(onVolumeChange).toHaveBeenLastCalledWith(1);
+
+    // Above unity is pulled back to unity rather than written through — the
+    // element's own max does the first half, `clampVolume` the rest.
+    act(() => setSliderValue(input, "0.5"));
     act(() => setSliderValue(input, "2"));
-    expect(onVolumeChange).toHaveBeenLastCalledWith(2);
+    expect(onVolumeChange).toHaveBeenLastCalledWith(1);
   });
 
   it("the level bar tracks a live reading and shows nothing extra when it isn't clipping", () => {

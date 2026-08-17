@@ -86,3 +86,33 @@ export interface TimelineElement {
   expandedParentStart?: number;
   expandedHostKey?: string;
 }
+
+/**
+ * The fields `updateElement` may write.
+ *
+ * Deliberately a narrow allow-list rather than `Partial<TimelineElement>`: most
+ * of an element is derived from the document at parse time, and letting a
+ * caller poke those would put the store out of step with the file it mirrors.
+ *
+ * The `audioGroup*` entries are the GROUP's state, mirrored onto every member —
+ * a group row derives its label, fader, mute and chain from these, so a group
+ * write has to be able to land here or the header goes on rendering whatever it
+ * parsed at load.
+ */
+export type TimelineElementPatch = Partial<
+  Pick<
+    TimelineElement,
+    | "start"
+    | "duration"
+    | "track"
+    | "zIndex"
+    | "hasExplicitZIndex"
+    | "playbackStart"
+    | "hidden"
+    | "audioGroup"
+    | "audioGroupLabel"
+    | "audioGroupVolume"
+    | "audioGroupHidden"
+    | "audioGroupFxChain"
+  >
+>;

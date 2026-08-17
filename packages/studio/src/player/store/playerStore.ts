@@ -21,7 +21,7 @@ import { createAudioSoloSlice, type AudioSoloSlice } from "./audioSoloSlice";
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
 
-import type { TimelineElement } from "./timelineElement";
+import type { TimelineElement, TimelineElementPatch } from "./timelineElement";
 
 export type { TimelineElement };
 export type ZoomMode = "fit" | "manual";
@@ -143,22 +143,7 @@ interface PlayerState
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
-  updateElement: (
-    elementId: string,
-    updates: Partial<
-      Pick<
-        TimelineElement,
-        | "start"
-        | "duration"
-        | "track"
-        | "zIndex"
-        | "hasExplicitZIndex"
-        | "playbackStart"
-        | "hidden"
-        | "audioGroup"
-      >
-    >,
-  ) => void;
+  updateElement: (elementId: string, updates: TimelineElementPatch) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
   bumpZEditVersion: () => void;

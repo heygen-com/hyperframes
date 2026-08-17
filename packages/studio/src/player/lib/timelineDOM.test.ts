@@ -7,6 +7,7 @@ import {
   invalidateGroupInfoCache,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
+import { isTimelineIgnoredElement } from "./timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
@@ -253,6 +254,33 @@ describe("createTimelineElementFromManifestClip — source-scoped selector ident
     expect(element.sourceFile).toBe("scene.html");
     expect(element.selectorIndex).toBe(1);
     expect(element.key).toBe("scene.html:.sub:1");
+  });
+});
+
+// Caught by looking at the studio, not by reading: a grouped composition drew
+// "Voiceover • 0.0s – 12.0s" as a full-duration clip row directly above its own
+// group header. `<hf-audio-group>` is a mixer bus — no timing, drawn as a group
+// row by the group derivation — but it is still a body child with an id, so the
+// implicit-layer fallback happily gave it a track. Draggable and trimmable, and
+// writing timing onto a bus means nothing.
+describe("<hf-audio-group> is not a timeline layer", () => {
+  it("gets no implicit row of its own", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="6" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voiceover"></hf-audio-group>
+      </div>
+    `);
+
+    const implicit = createImplicitTimelineLayersFromDOM(doc, 12, []);
+
+    expect(implicit.map((el) => el.domId)).not.toContain("voiceover");
+  });
+
+  it("is excluded by the shared ignore predicate", () => {
+    const doc = makeDoc(`<hf-audio-group id="vo"></hf-audio-group><div id="panel"></div>`);
+    expect(isTimelineIgnoredElement(doc.getElementById("vo") as Element)).toBe(true);
+    expect(isTimelineIgnoredElement(doc.getElementById("panel") as Element)).toBe(false);
   });
 });
 

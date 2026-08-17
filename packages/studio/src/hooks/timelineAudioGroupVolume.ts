@@ -1,4 +1,7 @@
 import { useCallback } from "react";
+import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import { usePlayerStore } from "../player";
+import type { TimelineElementPatch } from "../player/store/timelineElement";
 import { invalidateGroupInfoCache } from "../player/lib/timelineDOM";
 import {
   buildPatchTarget,
@@ -23,6 +26,43 @@ function patchLiveGroupAttribute(
   if (value === null) target.removeAttribute(attr);
   else target.setAttribute(attr, value);
   invalidateGroupInfoCache(iframe?.contentDocument);
+}
+
+/** Which store field each writable group attribute mirrors into. */
+const GROUP_ATTR_TO_MIRROR: Record<
+  string,
+  (value: string | null, groupId: string) => TimelineElementPatch
+> = {
+  "data-hidden": (value) => ({ audioGroupHidden: value !== null }),
+  "data-volume": (value) => ({
+    audioGroupVolume: Number.isFinite(Number(value)) ? Number(value) : 1,
+  }),
+  "data-label": (value, groupId) => ({ audioGroupLabel: value ?? groupId }),
+  [HF_AUDIO_FX_ATTR]: (value) => ({ audioGroupFxChain: value ?? undefined }),
+};
+
+/**
+ * Mirror a group attribute onto the store copy every member carries.
+ *
+ * The timeline derives a group's label / volume / mute / chain from these
+ * mirrored `audioGroup*` fields on its MEMBERS, not from the group element —
+ * and a group write only ever touched the file and the live preview DOM.
+ * Nothing re-parsed, so the header went on reading the old value: the observed
+ * symptom was a muted group whose button stayed "Mute group", re-writing
+ * `data-hidden` on every click and never offering to unmute.
+ *
+ * Invalidating the parse cache is necessary but not sufficient — it only
+ * ensures the NEXT parse is honest, and a live attribute patch does not cause
+ * one. Same reason `commitDataAttribute` carries `syncStoredAutomationFromPreview`.
+ */
+function syncStoredGroupAttribute(groupId: string, attr: string, value: string | null): void {
+  const toPatch = GROUP_ATTR_TO_MIRROR[attr];
+  if (!toPatch) return;
+  const patch = toPatch(value, groupId);
+  const store = usePlayerStore.getState();
+  for (const element of store.elements) {
+    if (element.audioGroup === groupId) store.updateElement(element.key ?? element.id, patch);
+  }
 }
 
 interface SetAudioGroupAttributeInput {
@@ -103,6 +143,10 @@ export function useSetAudioGroupAttribute({
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
+      // Live too, not just on commit: a fader drag is `setLive` per frame and
+      // `setQuiet` once on release, so without this the strip's own readout
+      // fights the drag.
+      syncStoredGroupAttribute(groupId, attr, value);
     },
     [previewIframeRef],
   );
@@ -128,6 +172,7 @@ export function useSetAudioGroupAttribute({
           domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
+        syncStoredGroupAttribute(groupId, attr, value);
       } catch (error) {
         console.error("[Timeline] Failed to set group attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update group";
