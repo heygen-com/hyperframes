@@ -13,6 +13,14 @@ import {
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import { AutomationToggle } from "./propertyPanelFxControls";
+import {
+  AUDIO_GAIN_FADER_MAX,
+  AUDIO_GAIN_FADER_MIN,
+  audioFaderPositionToGain,
+  formatAudioGain,
+  audioGainToFaderPosition,
+  audioGainToText,
+} from "@hyperframes/core/audio-gain";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -54,7 +62,7 @@ export function FlatMediaSection({
   const el = element.element;
 
   const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
-  const volumePercent = Math.round(volume * 100);
+  const volumeFaderPosition = audioGainToFaderPosition(volume);
   const mediaStart =
     Number.parseFloat(
       element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
@@ -207,13 +215,7 @@ export function FlatMediaSection({
         <>
           {/* The slider is disabled while a lane owns the level: a value set
               here would be overwritten by the envelope on the next tick. The
-              toggle beside it carries the tooltip.
-
-              It is also disabled above unity, for the same reason in a
-              different guise — this control tops out at 100%, so committing
-              from it would silently cap a boosted clip and drop up to 12 dB
-              that now genuinely renders. A hold, not a fix: the dB fader that
-              can represent these levels replaces this control outright. */}
+              toggle beside it carries the tooltip. */}
           <div
             className="hf-volume-row flex items-center gap-1"
             data-volume-automated={volumeAutomated ? "" : undefined}
@@ -221,13 +223,16 @@ export function FlatMediaSection({
             <div className="min-w-0 flex-1">
               <FlatSlider
                 label="Volume"
-                value={volumePercent}
-                min={0}
-                max={100}
-                tier={volumePercent === 100 ? "default" : "explicitCustom"}
-                displayValue={`${volumePercent}%`}
-                disabled={volumeAutomated || volume > 1}
-                onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
+                value={volumeFaderPosition}
+                min={AUDIO_GAIN_FADER_MIN}
+                max={AUDIO_GAIN_FADER_MAX}
+                tier={volume === 1 ? "default" : "explicitCustom"}
+                displayValue={audioGainToText(volume)}
+                disabled={volumeAutomated}
+                centerTick
+                onCommit={(next) =>
+                  void onSetAttribute("volume", formatAudioGain(audioFaderPositionToGain(next)))
+                }
               />
             </div>
             <AutomationToggle

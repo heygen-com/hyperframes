@@ -8,6 +8,9 @@ import {
 import { resolveAutomationRange, VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { HfAutomationLane } from "@hyperframes/core/audio-automation";
 
+/** The fixture's values double as unit positions, so pin it to a 0..1 axis. */
+const UNIT_RANGE = { ...VOLUME_RANGE, max: 1 };
+
 const duck: HfAutomationLane = {
   target: "volume",
   points: [
@@ -21,7 +24,7 @@ beforeEach(clearAutomationClipboard);
 
 describe("automation clipboard", () => {
   it("copies the range rebased to zero", () => {
-    copyRange("project-a", duck, VOLUME_RANGE, 2, 4);
+    copyRange("project-a", duck, UNIT_RANGE, 2, 4);
     const entry = readClipboard("project-a");
     expect(entry?.span).toBe(2);
     expect(entry?.points.map((p) => p.t)).toEqual([0, 1, 2]);
@@ -29,11 +32,11 @@ describe("automation clipboard", () => {
   });
 
   it("pastes at a new time on the same axis unchanged", () => {
-    copyRange("project-a", duck, VOLUME_RANGE, 2, 4);
+    copyRange("project-a", duck, UNIT_RANGE, 2, 4);
     const entry = readClipboard("project-a");
     expect(entry).not.toBeNull();
     if (!entry) return;
-    const pts = pastePoints(entry, VOLUME_RANGE, 10);
+    const pts = pastePoints(entry, UNIT_RANGE, 10);
     expect(pts.map((p) => p.t)).toEqual([10, 11, 12]);
     expect(pts.map((p) => p.v)).toEqual([1, 0.25, 1]);
   });
@@ -51,7 +54,7 @@ describe("automation clipboard", () => {
     expect(frequency).toBeTruthy();
     if (!frequency) return;
     expect(frequency.scale).toBe("log");
-    copyRange("project-a", duck, VOLUME_RANGE, 2, 4);
+    copyRange("project-a", duck, UNIT_RANGE, 2, 4);
     const entry = readClipboard("project-a");
     if (!entry) return;
     const pts = pastePoints(entry, frequency, 0);
@@ -74,12 +77,12 @@ describe("automation clipboard", () => {
   });
 
   it("does not hand a range copied in one project to another", () => {
-    copyRange("project-a", duck, VOLUME_RANGE, 2, 4);
+    copyRange("project-a", duck, UNIT_RANGE, 2, 4);
     expect(readClipboard("project-b")).toBeNull();
   });
 
   it("drops the entry for good once another project has read past it", () => {
-    copyRange("project-a", duck, VOLUME_RANGE, 2, 4);
+    copyRange("project-a", duck, UNIT_RANGE, 2, 4);
     readClipboard("project-b");
     // Not merely hidden from B: switching back must not resurrect a shape whose
     // source clip may have been edited or deleted while the project was closed.
@@ -87,7 +90,7 @@ describe("automation clipboard", () => {
   });
 
   it("keeps serving the entry inside its own project", () => {
-    copyRange("project-a", duck, VOLUME_RANGE, 2, 4);
+    copyRange("project-a", duck, UNIT_RANGE, 2, 4);
     expect(readClipboard("project-a")?.span).toBe(2);
     expect(readClipboard("project-a")?.span).toBe(2);
   });

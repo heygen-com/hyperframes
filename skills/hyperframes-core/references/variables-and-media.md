@@ -98,7 +98,7 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 - **Do not** nest video inside a timed wrapper. Put timing on the media element or keep the wrapper untimed.
 - Add `crossorigin="anonymous"` for external media that needs canvas capture or pixel inspection.
 - Audio always lives on a separate `<audio>` element — even if its source file is the same as a `<video>`. The `<video>` is muted; the `<audio>` carries sound.
-- For volume fades/ducking, animate `volume` on the timeline (`tl.to("#bgm", { volume: 0, duration: 1 }, "outro")`) rather than swapping `data-volume`. The runtime probes the timeline's volume keyframes and applies them identically in preview and render; `data-volume` is the static baseline for elements no tween touches.
+- For volume fades/ducking, animate `volume` on the timeline (`tl.to("#bgm", { volume: 0, duration: 1 }, "outro")`) rather than swapping `data-volume`. The runtime probes the timeline's volume keyframes and applies them identically in preview and render; `data-volume` is the static baseline for elements no tween touches. A tween's values REPLACE that baseline rather than scaling it, so on a clip whose gain is not `1` you scale the tween's targets instead (`{ volume: 1.95 }`, not `{ volume: 1 }`) — `lint` warns with `audio_volume_tween_overrides_gain` when the two disagree.
 
 For media duration: `<video>` and `<audio>` can omit `data-duration` if the media's intrinsic length is known and you want the full clip. Otherwise provide `data-duration` explicitly.
 

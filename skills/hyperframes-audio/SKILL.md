@@ -332,7 +332,10 @@ instead. `references/fx-registry.md` marks every parameter.
 Almost no static gate covers the mix. The linter reads `data-automation` for
 exactly one conflict — `audio_volume_double_automation`, a volume lane on a track
 that also has a GSAP tween on `volume`, where the lane wins and the tween is
-ignored — and nothing validates the chain or the effect lanes at all. What
+ignored — plus `audio_volume_tween_overrides_gain`, an authored `data-volume`
+on a track whose `volume` is tweened, where the tween's values are absolute and
+replace that gain instead of scaling it. Nothing validates the
+chain or the effect lanes at all. What
 enforces those is the render: a chain it cannot parse fails the whole mix rather
 than quietly writing the dry signal, because a mix that sounds plausible and is
 wrong is worse than a refusal. Preview is the opposite by design: an unreadable
