@@ -16,31 +16,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ai-chat-reveal.png"
   },
   {
-    "name": "ai-generation-canvas",
-    "type": "component",
-    "title": "AI Generation Canvas",
-    "description": "A prompt composer expands into a generated dashboard preview.",
-    "tags": [
-      "showcase",
-      "ai"
-    ],
-    "href": "/catalog/components/ai-generation-canvas",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ai-generation-canvas.png"
-  },
-  {
-    "name": "ai-prompt-flow",
-    "type": "component",
-    "title": "AI Prompt Flow",
-    "description": "A composed AI prompt flow with prompt field, suggestion chips, generate action, and preview result card",
-    "tags": [
-      "ui-flow",
-      "ai",
-      "prompt"
-    ],
-    "href": "/catalog/components/ai-prompt-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/ai-prompt-flow.png"
-  },
-  {
     "name": "animated-bar-chart",
     "type": "component",
     "title": "Animated Bar Chart",

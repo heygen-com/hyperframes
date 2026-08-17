@@ -467,7 +467,6 @@
                 "group": "Showcases",
                 "pages": [
                   "catalog/blocks/ai-chat-reveal",
-                  "catalog/components/ai-generation-canvas",
                   "catalog/blocks/app-showcase",
                   "catalog/blocks/apple-money-count",
                   "catalog/blocks/blue-sweater-intro-video",
@@ -622,7 +621,6 @@
               {
                 "group": "Effects",
                 "pages": [
-                  "catalog/components/ai-prompt-flow",
                   "catalog/components/avatar-cloud",
                   "catalog/components/beat-timeline",
                   "catalog/components/before-after-wipe",

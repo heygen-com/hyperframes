@@ -656,14 +656,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "ai-generation-canvas",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "ai-prompt-flow",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "animated-bar-chart",
       "type": "hyperframes:component"
     },
@@ -1541,6 +1533,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "192d7e2178533342f6242faf4556f7d8d3c23e106b8dbf79170da2aa5ff45adc"
+    "revision": "032078c10ac211b74a29a4826f113876ee4ef14c3e4cf9f935b0ec763cdca97f"
   }
 }
