@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BGM_BED_VOLUME, BGM_SILENT_VOLUME, bgmDefaultVolume } from "./bgm.mjs";
+import {
+  BGM_BED_VOLUME,
+  BGM_SILENT_VOLUME,
+  bgmDefaultVolume,
+  miniMaxMusicRunnerArgs,
+} from "./bgm.mjs";
 
 // Regression: narrated pipelines used to ship BGM at 0.8 (≈ -2 dB), ~16 dB
 // hotter than a music bed under a voice should be. The default under narration
@@ -27,4 +32,37 @@ test("the narrated default is well below the voice (≈ 0 dBFS)", () => {
     separation >= 16,
     `bed should sit ≥16 dB under the voice, got ${separation.toFixed(1)} dB`,
   );
+});
+
+test("MiniMax BGM options are forwarded to the detached runner", () => {
+  const args = miniMaxMusicRunnerArgs({
+    outputPath: "/tmp/track.wav",
+    prompt: "Bright instrumental",
+    requestPath: "/tmp/audio_request.json",
+    options: {
+      model: "music-3.0",
+      region: "cn_zh",
+      lyrics: "A new day begins",
+      lyrics_optimizer: true,
+      is_instrumental: false,
+      aigc_watermark: true,
+    },
+  });
+  assert.deepEqual(args.slice(1), [
+    "--output",
+    "/tmp/track.wav",
+    "--prompt",
+    "Bright instrumental",
+    "--request",
+    "/tmp/audio_request.json",
+    "--model",
+    "music-3.0",
+    "--region",
+    "cn_zh",
+    "--lyrics",
+    "A new day begins",
+    "--lyrics-optimizer",
+    "--no-instrumental",
+    "--aigc-watermark",
+  ]);
 });
