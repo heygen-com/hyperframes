@@ -428,8 +428,6 @@ Needs a local Chrome, the same one `render` uses. Run
 within a frame or two — a different headless-Chrome audio sample rate can shift
 a beat slightly.
 
-## Look at it
-
 ### `preview`
 
 Start a live preview server with hot reload.
@@ -438,6 +436,8 @@ Start a live preview server with hot reload.
 npx hyperframes preview [dir]
 npx hyperframes preview --port 4567
 npx hyperframes preview --background     # keep running after the command exits
+npx hyperframes preview --foreground     # stay attached in a non-interactive shell
+npx hyperframes preview --status --json  # inspect a managed preview from an agent
 npx hyperframes preview --list           # every running preview
 ```
 
@@ -446,6 +446,8 @@ npx hyperframes preview --list           # every running preview
 | `--port`                             | Server port (default 3002)                                                                                |
 | `--open` / `--no-open`               | Open a browser, or leave it closed                                                                        |
 | `--background`                       | Keep an embedded preview running after the command exits                                                  |
+| `--foreground`                       | Keep the preview attached even when the shell is non-interactive                                          |
+| `--json`                             | Emit one versioned JSON result for managed start, status, stop, list, and kill-all operations              |
 | `--browser-gpu` / `--no-browser-gpu` | Hardware GPU for Studio thumbnails and frame capture, or deterministic SwiftShader (default: auto-detect)  |
 | `--proxy` / `--no-proxy`             | Auto-transcode browser-hostile codecs (HEVC, ProRes, AV1) to a cached authoring proxy (default: on)        |
 | `--browser-path`                     | Open a specific browser. `--user-data-dir`, `--remote-debugging-port`, and `--browser-no-gpu` require it.  |
@@ -454,6 +456,13 @@ To manage running servers: `--status` and `--stop` act on this project's
 background preview, `--list` and `--kill-all` act on all of them, and
 `--force-new` starts a second server for a project that already has one. Each
 exits straight after.
+
+Bare `preview` chooses the safest lifecycle for its caller: it stays in the
+foreground in a human interactive terminal, while a non-interactive or agent
+shell starts a managed background preview. Re-running the command for the same
+project reuses the healthy preview. Every start or status result includes the
+exact Studio project URL as well as the underlying server URL, so agents can
+hand off the intended project without guessing from the port.
 
 To read a running Studio from a script: `--selection` prints the selected
 element and `--context` prints the agent-readable context, both with `--json`.

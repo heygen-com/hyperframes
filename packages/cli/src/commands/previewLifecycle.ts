@@ -248,10 +248,13 @@ export function buildBackgroundPreviewArgs(argv: string[]): string[] {
     (arg) =>
       arg !== "--background" &&
       !arg.startsWith("--background=") &&
+      arg !== "--foreground" &&
+      !arg.startsWith("--foreground=") &&
       arg !== "--open" &&
-      arg !== "--no-open",
+      arg !== "--no-open" &&
+      arg !== "--json",
   );
-  return [...filtered, "--no-open"];
+  return [...filtered, "--foreground", "--no-open"];
 }
 
 export async function readBackgroundPreviewStatus(

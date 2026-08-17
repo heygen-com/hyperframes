@@ -21,7 +21,7 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
 5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
 6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
-7. **Open the final Studio preview:** run `npx hyperframes preview`, hand the timeline project URL to the user, and ask whether to revise or render.
+7. **Open the final Studio preview:** run `npx hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
 8. **Render only after approval:** use draft quality for iteration and high quality for delivery.
 9. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
 
@@ -45,7 +45,7 @@ npx hyperframes lint
 
 # Required final gate; includes lint.
 npx hyperframes check
-npx hyperframes preview
+npx hyperframes preview --background
 npx hyperframes render --quality high --output out.mp4
 test -s out.mp4
 ffprobe -v error -show_format out.mp4
