@@ -61,10 +61,10 @@
         height: 36px;
         border: 0;
         background: transparent;
-        color: #71717a;
+        color: #6f6f78;
         font-weight: 600;
       }
-      .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
+      .hf-transition-tabs-slide-indicator button:nth-of-type(1) {
         color: #fff;
       }
     </style>
@@ -93,7 +93,16 @@
           { "--hf-tab-x": "86px", duration: 0.42, ease: "power3.inOut" },
           startTime,
         );
-        tl.set({}, {}, 5);
+        tl.to(
+          ".hf-transition-tabs-slide-indicator button:nth-of-type(1)",
+          { color: "#6f6f78", duration: 0.42, ease: "power3.inOut" },
+          startTime,
+        );
+        tl.to(
+          ".hf-transition-tabs-slide-indicator button:nth-of-type(2)",
+          { color: "#fff", duration: 0.42, ease: "power3.inOut" },
+          startTime,
+        );
         window.__timelines = window.__timelines || {};
         window.__timelines["tabs-slide-indicator-demo"] = tl;
       </script>

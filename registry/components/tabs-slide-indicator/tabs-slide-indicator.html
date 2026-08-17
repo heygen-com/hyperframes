@@ -26,8 +26,8 @@
       commas. Two or more names rebuild the row, one name or none leaves the
       authored markup alone, since a single tab has nowhere to slide to.
 
-  On every default the result is identical to the original: three 86px tabs in
-  a light pill track, a near-black pill sliding from the first to the second.
+  With the defaults, this renders three 86px tabs in a light pill track. The
+  near-black pill and white active label move from the first tab to the second.
 -->
 
 <div
@@ -71,10 +71,10 @@
     height: 36px;
     border: 0;
     background: transparent;
-    color: #71717a;
+    color: #6f6f78;
     font-weight: 850;
   }
-  .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
+  .hf-transition-tabs-slide-indicator button:nth-of-type(1) {
     color: #fff;
   }
 </style>
@@ -145,4 +145,6 @@
 <!--
   Timeline integration:
   tl.fromTo('.hf-transition-tabs-slide-indicator .indicator', { '--hf-tab-x': '0px' }, { '--hf-tab-x': '86px', duration: 0.42, ease: 'power3.inOut' }, startTime);
+  tl.to('.hf-transition-tabs-slide-indicator button:nth-of-type(1)', { color: '#6f6f78', duration: 0.42, ease: 'power3.inOut' }, startTime);
+  tl.to('.hf-transition-tabs-slide-indicator button:nth-of-type(2)', { color: '#fff', duration: 0.42, ease: 'power3.inOut' }, startTime);
 -->
