@@ -9,6 +9,31 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.111"
+  description="Released - 2026-08-17"
+  tags={["Release", "Cloud", "Catalog", "Studio"]}
+>
+Distributed cloud renders now use the content-addressed Plan v2 transport by default, with explicit Plan v1 compatibility during upgrades.
+
+Catalog search now ranks names and rarer words more accurately, while new text-measurement hooks give custom tools better layout data.
+
+## Features
+
+- **Cloud:** Default distributed plans to v2 ([17a2a00ed](https://github.com/heygen-com/hyperframes/commit/17a2a00ed5248bfc1b5f4efee1267610b0610727), [#3311](https://github.com/heygen-com/hyperframes/pull/3311)).
+- **Core:** Expose pretext text measurement on window.__hyperframes ([0285a711e](https://github.com/heygen-com/hyperframes/commit/0285a711e926a592bd189d647474b50de474581c), [#3302](https://github.com/heygen-com/hyperframes/pull/3302)).
+
+## Catalog
+
+- **Catalog:** Rank on where a word appears and how rare it is ([6b17c24f9](https://github.com/heygen-com/hyperframes/commit/6b17c24f980f9514345c8c882b00477328dbc3e6), [#3312](https://github.com/heygen-com/hyperframes/pull/3312)).
+
+## Internal
+
+- **Studio:** Split the two files over the 600-line cap ([35eb6d290](https://github.com/heygen-com/hyperframes/commit/35eb6d290698fd6aac90a63fd03b70a8cd2f2b07), [#3313](https://github.com/heygen-com/hyperframes/pull/3313)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.110...v0.7.111).
+</Update>
+
+<Update
   label="HyperFrames v0.7.110"
   description="Released - 2026-08-17"
   tags={["Release", "Catalog", "Skills", "Studio"]}
