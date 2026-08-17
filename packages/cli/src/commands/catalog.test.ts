@@ -407,6 +407,26 @@ describe("catalog meaning search, on a terminal", () => {
 
     expect(output).not.toContain("missing from the on-device index");
   });
+
+  it("offers the gap report on the word tier, not just on-device", async () => {
+    // The tier that answers almost every real search, because on-device needs
+    // a consented download. Gating the nudge on on-device left it unprinted in
+    // the only case that occurs, which is how the gap channel stayed silent.
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const output = await runCatalog({ query: "count up" });
+
+    expect(output).toContain("None of these do it?");
+    expect(output).toContain("--tier words");
+  });
+
+  it("offers the gap report on the on-device tier too", async () => {
+    const output = await runCatalog({ query: "make a number count up" });
+
+    expect(output).toContain("None of these do it?");
+    expect(output).toContain("--tier on-device");
+  });
 });
 
 describe("the on-device download offer", () => {

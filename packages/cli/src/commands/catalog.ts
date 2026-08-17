@@ -363,11 +363,19 @@ export default defineCommand({
           reportLocalModelOption(json);
           await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
-      } else if (query) {
-        // On-device only. A thin result on the word tier is expected and not
-        // worth reporting, so nudging there would train people to ignore the
-        // line; a thin result once meaning search has answered is a real gap.
-        console.log(c.dim(`  None of these do it? ${searchMissCommand(query, "on-device")}`));
+      }
+      if (query) {
+        // Both tiers, deliberately. Gating this on on-device sounded right --
+        // a thin word-match result is explainable, a thin meaning-match result
+        // is a real gap -- but it silences the line in the case that produces
+        // essentially every search: the on-device tier needs a consented 33 MB
+        // download, so an agent run is on `words` unless it explicitly opted
+        // in. Every catalog gap reported to date came from the word tier. The
+        // tier rides along in the command so a vocabulary miss stays
+        // distinguishable from a meaning miss when the reports are read.
+        console.log(
+          c.dim(`  None of these do it? ${searchMissCommand(query, tierToken(searched))}`),
+        );
       }
     }
 
