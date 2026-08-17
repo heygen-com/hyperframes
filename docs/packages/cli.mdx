@@ -23,7 +23,7 @@ npm install -g hyperframes
 | You want to              | Use                                                                                                                                                                                            |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Start a project          | [`init`](#init), [`add`](#add), [`catalog`](#catalog)                                                                                                                                          |
-| Bring in source material | [`capture`](#capture), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats)                          |
+| Bring in source material | [`capture`](#capture), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`normalize-audio`](#normalize-audio) |
 | Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish)                                                                                       |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                  |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                  |
@@ -427,6 +427,32 @@ Needs a local Chrome, the same one `render` uses. Run
 `npx hyperframes browser ensure` if it is missing. Results match Studio's to
 within a frame or two — a different headless-Chrome audio sample rate can shift
 a beat slightly.
+
+## Look at it
+
+### `normalize-audio`
+
+Match one authored audio clip to a reference using the exact local media bytes
+and FFmpeg's integrated EBU R128 loudness measurement.
+
+```bash
+# Measure only (the default)
+npx hyperframes normalize-audio --reference target-audio --target user-audio
+
+# Persist the computed gain on #user-audio
+npx hyperframes normalize-audio --reference target-audio --target user-audio --write
+
+# Agent-readable result
+npx hyperframes normalize-audio --reference target-audio --target user-audio --json
+```
+
+`--reference` and `--target` are `<audio>` element ids, with or without `#`.
+The reference stays unchanged; the command accounts for both clips' current
+`data-volume` and writes the target's absolute matched gain. It measures
+`data-media-start` and `data-duration`, rejects remote or out-of-project sources,
+and refuses a result that exceeds Studio's +12 dB ceiling or would clip. Dry-run
+is deliberate: inspect the measurement before passing `--write`. Use
+`--tolerance <LU>` to change the default 0.5 LU no-op threshold.
 
 ### `preview`
 

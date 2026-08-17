@@ -47,6 +47,10 @@ const GROUPS: Group[] = [
         "Discover, apply, or clear deterministic media treatments on one media element",
       ],
       [
+        "normalize-audio",
+        "Match one authored audio clip's loudness to another using integrated LUFS",
+      ],
+      [
         "grade-compare",
         "Render candidate color grades onto a reference frame as one labeled comparison PNG",
       ],

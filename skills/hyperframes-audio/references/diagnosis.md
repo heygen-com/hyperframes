@@ -135,6 +135,41 @@ the ambiguity instead.
 
 ## Recipes
 
+### Compare loudness from the bytes the listener actually hears
+
+Do not call two clips equally loud because their Studio faders, waveform peaks,
+or cached asset metadata match. Those are controls and proxies, not a loudness
+measurement. Resolve the exact URLs used by preview/render, download or inspect
+those exact served bytes, and measure each decoded stream with FFmpeg's
+`ebur128` filter. Compare the integrated LUFS values.
+
+For a target loudness, the required move is:
+
+```text
+gain_db = target_lufs - measured_lufs
+linear_gain = 10 ** (gain_db / 20)
+```
+
+When both clips are local authored `<audio>` elements with stable ids, use the
+CLI instead of transcribing that arithmetic by hand:
+
+```bash
+npx hyperframes normalize-audio --reference target-audio --target user-audio
+npx hyperframes normalize-audio --reference target-audio --target user-audio --write
+```
+
+The first command is a dry run. The second writes only the target's
+`data-volume`, after accounting for both existing gains and refusing a boost
+that would clip or exceed Studio's ceiling. Always choose the reference from the
+author's stated intent; the command does not guess which clip should define the
+mix.
+
+Studio's clip-gain fader uses `0 dB` / linear gain `1` at its physical midpoint
+and provides up to `+12 dB` on the upper half. After changing gain, measure the
+served preview/render bytes again. If a listener still hears a mismatch, trust
+the report and first verify the asset URL and bytes are current; do not explain
+it away with matching peaks or a stale proxy measurement.
+
 All verified with ffmpeg 8.1.1. `-hide_banner` keeps the output readable;
 `volumedetect` prints to stderr, so do not silence it with `-v error`.
 
