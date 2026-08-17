@@ -178,11 +178,12 @@ describe("unwrapEvent", () => {
 });
 
 describe("dispatch", () => {
-  it("routes plan, uploads the plan tarball", async () => {
+  it("preserves explicit v1 plan compatibility", async () => {
     const gcs = new FakeGcs();
     await seedProjectTar(gcs, "gs://b/sites/x/project.tar.gz");
     const event: PlanEvent = {
       Action: "plan",
+      PlanProtocol: "v1",
       ProjectGcsUri: "gs://b/sites/x/project.tar.gz",
       PlanOutputGcsPrefix: "gs://b/renders/r1/",
       Config: { fps: 30, width: 1920, height: 1080, format: "mp4" } as PlanEvent["Config"],
@@ -201,6 +202,7 @@ describe("dispatch", () => {
     await seedPlanTar(gcs, "gs://b/renders/r1/plan.tar.gz", PLAN_HASH);
     const event: RenderChunkEvent = {
       Action: "renderChunk",
+      PlanProtocol: "v1",
       PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
       PlanHash: PLAN_HASH,
       ChunkIndex: 2,
@@ -220,6 +222,7 @@ describe("dispatch", () => {
     await seedPlanTar(gcs, "gs://b/renders/r1/plan.tar.gz", PLAN_HASH);
     const event: RenderChunkEvent = {
       Action: "renderChunk",
+      PlanProtocol: "v1",
       PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
       PlanHash: "WRONG_HASH",
       ChunkIndex: 0,
@@ -236,6 +239,7 @@ describe("dispatch", () => {
     gcs.seed("gs://b/renders/r1/chunks/0001.mp4", Buffer.from("c1"));
     const event: AssembleEvent = {
       Action: "assemble",
+      PlanProtocol: "v1",
       PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
       ChunkGcsUris: ["gs://b/renders/r1/chunks/0000.mp4", "gs://b/renders/r1/chunks/0001.mp4"],
       AudioGcsUri: null,
@@ -251,7 +255,7 @@ describe("dispatch", () => {
   // This end-to-end adapter contract is intentionally one narrative test: it
   // verifies ordering and target isolation across all three handler roles.
   // fallow-ignore-next-line complexity
-  it("runs v2 plan → target-scoped chunk → assemble with manifest-last CAS", async () => {
+  it("defaults omitted plan protocol to v2 across plan → chunk → assemble", async () => {
     const gcs = new FakeGcs();
     await seedProjectTar(gcs, "gs://b/sites/v2/project.tar.gz");
     const root = mkTmp("hf-v2-e2e-");
@@ -306,7 +310,6 @@ describe("dispatch", () => {
     const planned = await dispatch(
       {
         Action: "plan",
-        PlanProtocol: "v2",
         ProjectGcsUri: "gs://b/sites/v2/project.tar.gz",
         PlanOutputGcsPrefix: "gs://b/renders/v2/",
         Config: { fps: 30, width: 640, height: 360, format: "mp4" },
@@ -326,7 +329,6 @@ describe("dispatch", () => {
     await dispatch(
       {
         Action: "plan",
-        PlanProtocol: "v2",
         ProjectGcsUri: "gs://b/sites/v2/project.tar.gz",
         PlanOutputGcsPrefix: "gs://b/renders/v2/",
         Config: { fps: 30, width: 640, height: 360, format: "mp4" },
@@ -342,7 +344,6 @@ describe("dispatch", () => {
     const chunk = await dispatch(
       {
         Action: "renderChunk",
-        PlanProtocol: "v2",
         PlanV2ManifestGcsUri: planned.PlanV2ManifestGcsUri,
         PlanV2ArtifactGcsPrefix: planned.PlanV2ArtifactGcsPrefix,
         PlanHash: planned.PlanHash,
@@ -360,7 +361,6 @@ describe("dispatch", () => {
     await dispatch(
       {
         Action: "assemble",
-        PlanProtocol: "v2",
         PlanV2ManifestGcsUri: planned.PlanV2ManifestGcsUri,
         PlanV2ArtifactGcsPrefix: planned.PlanV2ArtifactGcsPrefix,
         PlanHash: planned.PlanHash,
@@ -409,6 +409,7 @@ describe("bucket allowlist guard", () => {
     try {
       const event: RenderChunkEvent = {
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://evil-bucket/plan.tar.gz",
         PlanHash: PLAN_HASH,
         ChunkIndex: 0,
@@ -451,6 +452,7 @@ describe("bucket allowlist guard", () => {
     try {
       const event: RenderChunkEvent = {
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://any-bucket/renders/r1/plan.tar.gz",
         PlanHash: PLAN_HASH,
         ChunkIndex: 0,
@@ -476,6 +478,7 @@ describe("createApp HTTP mapping", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
         PlanHash: PLAN_HASH,
         ChunkIndex: 0,
@@ -497,6 +500,7 @@ describe("createApp HTTP mapping", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
         PlanHash: "WRONG",
         ChunkIndex: 0,
@@ -524,6 +528,7 @@ describe("createApp HTTP mapping", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
         PlanHash: PLAN_HASH,
         ChunkIndex: 0,
@@ -561,6 +566,7 @@ describe("createApp HTTP mapping", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           Action: "renderChunk",
+          PlanProtocol: "v1",
           PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
           PlanHash: PLAN_HASH,
           ChunkIndex: 0,
@@ -598,6 +604,7 @@ describe("createApp HTTP mapping", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
         PlanHash: PLAN_HASH,
         ChunkIndex: 0,
@@ -626,6 +633,7 @@ describe("createApp HTTP mapping", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         Action: "plan",
+        PlanProtocol: "v1",
         ProjectGcsUri: "gs://b/sites/invalid-video-metadata/project.tar.gz",
         PlanOutputGcsPrefix: "gs://b/renders/invalid-video-metadata/",
         Config: { fps: 30, width: 640, height: 360, format: "mp4" },
@@ -645,6 +653,7 @@ describe("createApp HTTP mapping", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         Action: "renderChunk",
+        PlanProtocol: "v1",
         PlanGcsUri: "gs://b/renders/r1/missing.tar.gz",
         PlanHash: PLAN_HASH,
         ChunkIndex: 0,

@@ -26,9 +26,9 @@ main:
           - planOutputGcsPrefix: ${args.PlanOutputGcsPrefix}
           - outputGcsUri: ${args.OutputGcsUri}
           - config: ${args.Config}
-          # Backward-compatible default. v2 is accepted only through an
-          # explicit top-level PlanProtocol opt-in.
-          - planProtocol: ${default(map.get(args, "PlanProtocol"), "v1")}
+          # Plan v2 is the default. Explicit v1 remains available during the
+          # deprecated monolithic-plan compatibility window.
+          - planProtocol: ${default(map.get(args, "PlanProtocol"), "v2")}
 
     # ── Plan (Activity A) ────────────────────────────────────────────────────
     - selectPlanProtocol:

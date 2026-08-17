@@ -44,9 +44,12 @@ import type {
   LambdaEvent,
   LambdaResult,
   PlanEvent,
+  PlanV2Event,
   PlanLambdaResult,
   RenderChunkEvent,
+  RenderChunkV2Event,
   RenderChunkLambdaResult,
+  AssembleV2Event,
 } from "./events.js";
 import {
   downloadS3ObjectToFile,
@@ -97,6 +100,7 @@ export interface HandlerDeps {
  */
 export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<LambdaResult> {
   const unwrapped = unwrapEvent(event);
+  validatePlanProtocolShape(unwrapped);
   validateEventS3Uris(unwrapped);
   primeRuntimeEnv();
   // Single structured boot log line — CloudWatch Logs Insights queries
@@ -201,6 +205,43 @@ function isLambdaAction(value: string): value is LambdaAction {
   return value === "plan" || value === "renderChunk" || value === "assemble";
 }
 
+// This is the single fail-closed boundary for the wire union. Keeping all
+// forbidden locator combinations together makes mixed-protocol input auditable.
+// fallow-ignore-next-line complexity
+function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
+  const raw = event as unknown as Record<string, unknown>;
+  const protocol = raw.PlanProtocol;
+  if (protocol !== undefined && protocol !== "v1" && protocol !== "v2") {
+    const error = new Error(
+      `[handler] unsupported PlanProtocol ${JSON.stringify(protocol)}; expected "v1", "v2", or absent`,
+    );
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+  if (event.Action === "plan") return;
+
+  const effectiveProtocol = protocol ?? "v2";
+  const hasV1Locator = typeof raw.PlanS3Uri === "string";
+  const hasV2Manifest = typeof raw.PlanV2ManifestS3Uri === "string";
+  const hasV2Prefix = typeof raw.PlanV2ArtifactS3Prefix === "string";
+  const valid =
+    effectiveProtocol === "v2"
+      ? !hasV1Locator && hasV2Manifest && hasV2Prefix
+      : hasV1Locator && !hasV2Manifest && !hasV2Prefix;
+  if (!valid) {
+    const error = new Error(
+      `[handler] ${effectiveProtocol} ${event.Action} event has mixed or missing plan locators`,
+    );
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+  if (effectiveProtocol === "v2" && event.Action === "assemble" && event.AudioS3Uri !== null) {
+    const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+}
+
 /**
  * Emit a single JSON line to stdout. CloudWatch ingests each line as a
  * structured event; Logs Insights queries can `filter event="..."` and
@@ -229,14 +270,14 @@ function summarizeEvent(
       return {
         projectS3Uri: event.ProjectS3Uri,
         planOutputS3Prefix: event.PlanOutputS3Prefix,
-        planProtocol: event.PlanProtocol ?? "v1",
+        planProtocol: event.PlanProtocol ?? "v2",
         format: event.Config.format,
         fps: event.Config.fps,
       };
     case "renderChunk":
       return {
-        planProtocol: event.PlanProtocol ?? "v1",
-        ...(event.PlanProtocol === "v2"
+        planProtocol: event.PlanProtocol ?? "v2",
+        ...(event.PlanProtocol !== "v1"
           ? { planV2ManifestS3Uri: event.PlanV2ManifestS3Uri }
           : { planS3Uri: event.PlanS3Uri }),
         chunkIndex: event.ChunkIndex,
@@ -244,8 +285,8 @@ function summarizeEvent(
       };
     case "assemble":
       return {
-        planProtocol: event.PlanProtocol ?? "v1",
-        ...(event.PlanProtocol === "v2"
+        planProtocol: event.PlanProtocol ?? "v2",
+        ...(event.PlanProtocol !== "v1"
           ? { planV2ManifestS3Uri: event.PlanV2ManifestS3Uri }
           : { planS3Uri: event.PlanS3Uri }),
         chunkCount: event.ChunkS3Uris.length,
@@ -278,7 +319,7 @@ function primeRuntimeEnv(): void {
 // The v1 handler owns one transactional download, plan, archive, upload, and cleanup lifecycle.
 // fallow-ignore-next-line complexity
 async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLambdaResult> {
-  if (event.PlanProtocol === "v2") {
+  if (event.PlanProtocol !== "v1") {
     return handlePlanV2(event, deps);
   }
   const started = Date.now();
@@ -358,7 +399,7 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
 // and manifest-last publication must stay ordered and fail together.
 // fallow-ignore-next-line complexity
 async function handlePlanV2(
-  event: Extract<PlanEvent, { PlanProtocol: "v2" }>,
+  event: PlanV2Event,
   deps?: HandlerDeps,
 ): Promise<Extract<PlanLambdaResult, { PlanProtocol: "v2" }>> {
   const started = Date.now();
@@ -412,7 +453,7 @@ async function handleRenderChunk(
   event: RenderChunkEvent,
   deps?: HandlerDeps,
 ): Promise<RenderChunkLambdaResult> {
-  if (event.PlanProtocol === "v2") {
+  if (event.PlanProtocol !== "v1") {
     return handleRenderChunkV2(event, deps);
   }
   const started = Date.now();
@@ -481,7 +522,7 @@ async function handleRenderChunk(
 // render, and upload in one lifecycle so cleanup and errors remain atomic.
 // fallow-ignore-next-line complexity
 async function handleRenderChunkV2(
-  event: Extract<RenderChunkEvent, { PlanProtocol: "v2" }>,
+  event: RenderChunkV2Event,
   deps?: HandlerDeps,
 ): Promise<RenderChunkLambdaResult> {
   const started = Date.now();
@@ -554,7 +595,7 @@ async function handleAssemble(
   event: AssembleEvent,
   deps?: HandlerDeps,
 ): Promise<AssembleLambdaResult> {
-  if (event.PlanProtocol === "v2") {
+  if (event.PlanProtocol !== "v1") {
     return handleAssembleV2(event, deps);
   }
   const started = Date.now();
@@ -610,7 +651,7 @@ async function handleAssemble(
 // keeping the steps local makes its temporary-storage ownership explicit.
 // fallow-ignore-next-line complexity
 async function handleAssembleV2(
-  event: Extract<AssembleEvent, { PlanProtocol: "v2" }>,
+  event: AssembleV2Event,
   deps?: HandlerDeps,
 ): Promise<AssembleLambdaResult> {
   const started = Date.now();
@@ -776,12 +817,12 @@ function getEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): st
     case "plan":
       return [event.ProjectS3Uri, event.PlanOutputS3Prefix];
     case "renderChunk":
-      return event.PlanProtocol === "v2"
+      return event.PlanProtocol !== "v1"
         ? [event.PlanV2ManifestS3Uri, event.PlanV2ArtifactS3Prefix, event.ChunkOutputS3Prefix]
         : [event.PlanS3Uri, event.ChunkOutputS3Prefix];
     case "assemble":
       return [
-        ...(event.PlanProtocol === "v2"
+        ...(event.PlanProtocol !== "v1"
           ? [event.PlanV2ManifestS3Uri, event.PlanV2ArtifactS3Prefix]
           : [event.PlanS3Uri]),
         ...event.ChunkS3Uris,

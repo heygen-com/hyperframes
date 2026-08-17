@@ -145,6 +145,7 @@ describe("unwrapEvent", () => {
   it("unwraps a Step Functions { Payload } envelope", () => {
     const inner: RenderChunkEvent = {
       Action: "renderChunk",
+      PlanProtocol: "v1",
       PlanS3Uri: "s3://bucket/plan.tar.gz",
       PlanHash: "deadbeef",
       ChunkIndex: 3,
@@ -158,6 +159,7 @@ describe("unwrapEvent", () => {
   it("unwraps multiple levels of envelopes", () => {
     const inner: AssembleEvent = {
       Action: "assemble",
+      PlanProtocol: "v1",
       PlanS3Uri: "s3://bucket/plan.tar.gz",
       ChunkS3Uris: ["s3://bucket/chunks/0001.mp4"],
       AudioS3Uri: null,
@@ -176,7 +178,7 @@ describe("unwrapEvent", () => {
 });
 
 describe("handler dispatch", () => {
-  it("routes Action='plan' to the plan primitive", async () => {
+  it("preserves explicit v1 plan compatibility", async () => {
     const tmpRoot = makeTmpRoot();
     const s3 = new FakeS3Client();
     // Seed a fake project tarball so the untar step has something to chew on.
@@ -213,6 +215,7 @@ describe("handler dispatch", () => {
 
     const event: PlanEvent = {
       Action: "plan",
+      PlanProtocol: "v1",
       ProjectS3Uri: "s3://bucket/project.tar.gz",
       PlanOutputS3Prefix: "s3://bucket/renders/abc/",
       Config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
@@ -270,6 +273,7 @@ describe("handler dispatch", () => {
         handler(
           {
             Action: "plan",
+            PlanProtocol: "v1",
             ProjectS3Uri: "s3://bucket/project.tar.gz",
             PlanOutputS3Prefix: "s3://bucket/renders/terminal/",
             Config: { fps: 30, width: 640, height: 360, format: "mp4" },
@@ -332,6 +336,7 @@ describe("handler dispatch", () => {
 
     const event: PlanEvent = {
       Action: "plan",
+      PlanProtocol: "v1",
       ProjectS3Uri: "s3://bucket/project.tar.gz",
       PlanOutputS3Prefix: "s3://bucket/renders/abc/",
       Config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
@@ -406,6 +411,7 @@ describe("handler dispatch", () => {
 
     const event: RenderChunkEvent = {
       Action: "renderChunk",
+      PlanProtocol: "v1",
       PlanS3Uri: "s3://bucket/plan.tar.gz",
       PlanHash: "fakehash",
       ChunkIndex: 2,
@@ -455,6 +461,7 @@ describe("handler dispatch", () => {
 
     const event: RenderChunkEvent = {
       Action: "renderChunk",
+      PlanProtocol: "v1",
       PlanS3Uri: "s3://bucket/plan.tar.gz",
       PlanHash: "not-the-real-hash",
       ChunkIndex: 0,
@@ -511,6 +518,7 @@ describe("handler dispatch", () => {
 
     const event: AssembleEvent = {
       Action: "assemble",
+      PlanProtocol: "v1",
       PlanS3Uri: "s3://bucket/plan.tar.gz",
       ChunkS3Uris: ["s3://bucket/chunks/0001.mp4", "s3://bucket/chunks/0002.mp4"],
       AudioS3Uri: null,
@@ -541,7 +549,7 @@ describe("handler dispatch", () => {
     expect(assembleMock).toHaveBeenCalledTimes(1);
   });
 
-  it("runs v2 plan → target-scoped chunk → assemble without a PlanS3Uri", async () => {
+  it("defaults omitted plan protocol to v2 across plan → chunk → assemble", async () => {
     const tmpRoot = makeTmpRoot();
     const s3 = new FakeS3Client();
     s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
@@ -614,7 +622,6 @@ describe("handler dispatch", () => {
     const planned = await handler(
       {
         Action: "plan",
-        PlanProtocol: "v2",
         ProjectS3Uri: "s3://bucket/project.tar.gz",
         PlanOutputS3Prefix: "s3://bucket/renders/v2/",
         Config: { fps: 30, width: 640, height: 360, format: "mp4" },
@@ -642,7 +649,6 @@ describe("handler dispatch", () => {
     const chunk = await handler(
       {
         Action: "renderChunk",
-        PlanProtocol: "v2",
         PlanV2ManifestS3Uri: planned.PlanV2ManifestS3Uri,
         PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
         PlanHash: planned.PlanHash,
@@ -661,7 +667,6 @@ describe("handler dispatch", () => {
     await handler(
       {
         Action: "assemble",
-        PlanProtocol: "v2",
         PlanV2ManifestS3Uri: planned.PlanV2ManifestS3Uri,
         PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
         PlanHash: planned.PlanHash,
@@ -735,6 +740,7 @@ describe("handler — S3 URI allowlist (security: F-004)", () => {
 
     const event: AssembleEvent = {
       Action: "assemble",
+      PlanProtocol: "v1",
       PlanS3Uri: "s3://good-bucket/plan.tar.gz",
       ChunkS3Uris: ["s3://good-bucket/chunks/0001.mp4", "s3://evil-bucket/chunks/0002.mp4"],
       AudioS3Uri: null,

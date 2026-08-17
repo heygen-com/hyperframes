@@ -88,16 +88,16 @@ describe("renderToCloudRun", () => {
       OutputGcsUri: "gs://b/renders/hf-render-fixed/output.mp4",
       ServiceUrl: "https://render-abc.run.app",
       Config: config,
-      PlanProtocol: "v1",
+      PlanProtocol: "v2",
     });
     expect(fake.lastParent).toBe(
       "projects/proj/locations/us-central1/workflows/hyperframes-render",
     );
   });
 
-  it("forwards an explicit v2 whole-render opt-in", async () => {
+  it("preserves explicit plan protocol v1 compatibility", async () => {
     const fake = new FakeExecutions();
-    await renderToCloudRun({ ...opts(fake), planProtocol: "v2" });
+    await renderToCloudRun({ ...opts(fake), planProtocol: "v1" });
     const arg = JSON.parse(fake.lastArgument ?? "{}");
     expect(arg).toEqual({
       RenderId: "hf-render-fixed",
@@ -106,7 +106,7 @@ describe("renderToCloudRun", () => {
       OutputGcsUri: "gs://b/renders/hf-render-fixed/output.mp4",
       ServiceUrl: "https://render-abc.run.app",
       Config: config,
-      PlanProtocol: "v2",
+      PlanProtocol: "v1",
     });
   });
 

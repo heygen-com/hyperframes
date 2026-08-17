@@ -1,5 +1,6 @@
 {
   "Action": "plan",
+  "PlanProtocol": "v1",
   "ProjectS3Uri": "s3://example-bucket/projects/sample.tar.gz",
   "PlanOutputS3Prefix": "s3://example-bucket/renders/sample/",
   "Config": {

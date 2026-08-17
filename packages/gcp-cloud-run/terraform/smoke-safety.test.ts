@@ -7,8 +7,8 @@ const smoke = readFileSync(smokePath, "utf-8");
 const dockerfile = readFileSync(join(import.meta.dir, "../Dockerfile"), "utf-8");
 
 describe("GCP smoke ownership and protocol safety", () => {
-  it("defaults to v1 and requires an explicit v2 protocol argument", () => {
-    expect(smoke).toContain('PROTOCOLS="${PROTOCOLS:-v1}"');
+  it("defaults to v2 and retains explicit v1/v2 protocol arguments", () => {
+    expect(smoke).toContain('PROTOCOLS="${PROTOCOLS:-v2}"');
     expect(smoke).toContain("--protocols)");
     expect(smoke).toContain("PlanProtocol: $protocol");
     expect(smoke).toContain("decodedFramesEqual");
