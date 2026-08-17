@@ -18,7 +18,7 @@ import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfi
 import { resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
 import { runAdd } from "./add.js";
-import { searchByWords } from "../registry/localSearch.js";
+import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
   downloadOfferMessage,
   ensureLocalModel,
@@ -243,6 +243,13 @@ export default defineCommand({
     const matching = searched ? searched.items : tagged;
 
     if (matching.length === 0) {
+      // "We could not read your query" is a different answer from "the catalog
+      // has nothing like this", and only one of them is worth reporting as a
+      // gap. Word matching indexes English, so a query in another script parses
+      // to no tokens at all and used to return the same empty list as a genuine
+      // miss -- sending an author off to report a move that may well exist.
+      const unsearchable =
+        Boolean(query) && searched?.localMode === "words" && hasNoSearchableTokens(query as string);
       // An empty result is exactly when the tier matters most: nothing found on
       // the weakest tier means something different from nothing found on the
       // best one.
@@ -259,7 +266,13 @@ export default defineCommand({
               shown: 0,
               total: tagged.length,
               ...(warnings.length ? { warnings } : {}),
-              report_gap: searchMissCommand(query, tierToken(searched)),
+              ...(unsearchable ? { unsearchable_query: true } : {}),
+              // Withheld when the query never parsed: the catalog has not been
+              // shown to be missing anything, so inviting a gap report here
+              // would file noise against a search that never ran.
+              ...(unsearchable
+                ? {}
+                : { report_gap: searchMissCommand(query, tierToken(searched)) }),
               results: [],
             },
             null,
@@ -274,13 +287,25 @@ export default defineCommand({
           query ? `query "${query}"` : null,
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
-        console.log(`No items match ${criteria.join(" and ")}.`);
-        // Zero results is the unambiguous case: no tier judgement to make and
-        // nothing to install, so name the gap channel outright.
-        if (query) {
+        if (unsearchable) {
+          console.log(`No searchable words in query "${query}".`);
           console.log("");
-          console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-          console.log(c.dim(`  ${searchMissCommand(query, tierToken(searched))}`));
+          console.log(
+            c.warn(
+              "  Word matching indexes the catalog in English, so a query written in another\n" +
+                "  script produces no terms to match and returns nothing. This is not a gap in\n" +
+                "  the catalog. Try the same intent in English.",
+            ),
+          );
+        } else {
+          console.log(`No items match ${criteria.join(" and ")}.`);
+          // Zero results is the unambiguous case: no tier judgement to make and
+          // nothing to install, so name the gap channel outright.
+          if (query) {
+            console.log("");
+            console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
+            console.log(c.dim(`  ${searchMissCommand(query, tierToken(searched))}`));
+          }
         }
       }
       if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
@@ -561,11 +586,11 @@ async function applySearch<
   // Shared vocabulary, not substring presence. A user asking to "make the
   // pace feel faster" shares no literal substring with any description, so
   // the old test returned nothing at all for exactly the phrasing people use.
-  const words = searchByWords(
-    query,
-    items,
-    (item) => `${item.name} ${item.title} ${item.description} ${(item.tags ?? []).join(" ")}`,
-  );
+  const words = searchByWords(query, items, (item) => ({
+    // Name and title are what an author types when they already know the move.
+    strong: `${item.name} ${item.title}`,
+    weak: `${item.description} ${(item.tags ?? []).join(" ")}`,
+  }));
   // Word matching ranks the items in hand, so nothing can go missing.
   return { items: words, localMode: "words", warnings, missing: 0, unindexed: 0, topScore: null };
 }
