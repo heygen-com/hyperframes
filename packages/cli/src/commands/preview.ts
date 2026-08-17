@@ -61,7 +61,7 @@ import {
   type FindPortResult,
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
-import { resolveProject } from "../utils/project.js";
+import { resolveProject, resolveProjectOrThrow } from "../utils/project.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { studioProxyEnv } from "../utils/studioProxyEnv.js";
 import {
@@ -70,6 +70,13 @@ import {
   startBackgroundPreview,
   stopBackgroundPreview,
 } from "./previewLifecycle.js";
+import {
+  lifecycleFailurePayload,
+  lifecyclePayload,
+  writeLifecycleJson,
+  type PreviewLifecycleOperation,
+  type PreviewLifecycleSession,
+} from "./previewLifecycleOutput.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 interface BrowserLaunchOptions {
@@ -215,38 +222,83 @@ export default defineCommand({
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 
     if (args.status || args.stop) {
-      const project = resolveProject(args.dir);
-      if (args.stop) {
-        const stopped = await stopBackgroundPreview(project.dir, startPort);
+      try {
+        // Under --json a missing project is a lifecycle failure document, not a
+        // human-shaped nudge, so the throwing resolver is the right one there.
+        const project = args.json ? resolveProjectOrThrow(args.dir) : resolveProject(args.dir);
+        if (args.stop) {
+          const stopped = await stopBackgroundPreview(project.dir, startPort);
+          if (args.json) {
+            writeLifecycleJson(
+              lifecyclePayload(
+                "stop",
+                stopped
+                  ? { state: "stopped", projectDir: project.dir }
+                  : { state: "not-running", projectDir: project.dir },
+              ),
+            );
+          } else {
+            console.log(
+              stopped
+                ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
+                : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+            );
+          }
+          return;
+        }
+        const status = await readBackgroundPreviewStatus(project.dir, startPort);
+        if (!status) {
+          if (args.json) {
+            writeLifecycleJson(
+              lifecyclePayload("status", { state: "not-running", projectDir: project.dir }),
+            );
+          } else {
+            console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+          }
+          return;
+        }
+        if (args.json) {
+          writeLifecycleJson(
+            lifecyclePayload(
+              "status",
+              previewLifecycleSession({
+                state: "running",
+                mode: "background",
+                projectName: project.name,
+                projectDir: project.dir,
+                port: status.port,
+                pid: status.pid,
+                logPath: status.logPath,
+              }),
+            ),
+          );
+          return;
+        }
+        console.log(`\n  ${c.success("Background preview running")}`);
         console.log(
-          stopped
-            ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
-            : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+          `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
         );
-        return;
+        console.log(`  ${c.dim(status.logPath)}\n`);
+      } catch (error) {
+        reportPreviewFailure(
+          Boolean(args.json),
+          args.stop ? "stop" : "status",
+          args.stop ? "preview-stop-failed" : "preview-status-failed",
+          errorMessage(error),
+        );
       }
-      const status = await readBackgroundPreviewStatus(project.dir, startPort);
-      if (!status) {
-        console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
-        return;
-      }
-      console.log(`\n  ${c.success("Background preview running")}`);
-      console.log(
-        `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
-      );
-      console.log(`  ${c.dim(status.logPath)}\n`);
       return;
     }
 
     // --list: scan and display active servers
     if (args.list) {
-      await handlePreviewList(startPort);
+      await handlePreviewList(startPort, Boolean(args.json));
       return;
     }
 
     // --kill-all: kill all active servers
     if (args["kill-all"]) {
-      await handlePreviewKillAll(startPort);
+      await handlePreviewKillAll(startPort, Boolean(args.json));
       return;
     }
 
@@ -421,6 +473,44 @@ export default defineCommand({
   },
 });
 
+function previewLifecycleSession(options: {
+  state: PreviewLifecycleSession["state"];
+  mode: PreviewLifecycleSession["mode"];
+  projectName: string;
+  projectDir: string;
+  port: number;
+  pid: number | null;
+  host?: string;
+  logPath?: string;
+}): PreviewLifecycleSession {
+  const host = options.host ?? "127.0.0.1";
+  const serverUrl = previewBaseUrl(options.port, host);
+  return {
+    state: options.state,
+    mode: options.mode,
+    projectName: options.projectName,
+    projectDir: options.projectDir,
+    host,
+    port: options.port,
+    pid: options.pid,
+    serverUrl,
+    studioUrl: studioDeepLink(serverUrl, options.projectName, options.projectDir),
+    ready: true,
+    ...(options.logPath ? { logPath: options.logPath } : {}),
+  };
+}
+
+function reportPreviewFailure(
+  json: boolean,
+  operation: PreviewLifecycleOperation,
+  code: string,
+  message: string,
+): void {
+  if (json) writeLifecycleJson(lifecycleFailurePayload(operation, code, message));
+  else clack.log.error(message);
+  setCommandExitCode(1);
+}
+
 interface PreviewActionDependencies {
   scan?: typeof scanActiveServers;
   listManaged?: typeof listBackgroundPreviewStatuses;
@@ -435,38 +525,64 @@ interface PreviewActionDependencies {
  */
 export async function handlePreviewList(
   startPort: number,
+  json: boolean,
   dependencies: PreviewActionDependencies = {},
 ): Promise<void> {
-  const [scannedServers, managedSessions] = await Promise.all([
-    (dependencies.scan ?? scanActiveServers)(startPort),
-    (dependencies.listManaged ?? listBackgroundPreviewStatuses)(),
-  ]);
-  const managedKeys = new Set(
-    managedSessions.map((session) => `${resolve(session.projectDir)}\0${session.port}`),
-  );
-  const servers = [
-    ...managedSessions.map((session) => ({
-      port: session.port,
-      projectName: basename(session.projectDir),
-      projectDir: session.projectDir,
-      pid: String(session.pid),
-    })),
-    ...scannedServers.filter(
-      (server) => !managedKeys.has(`${resolve(server.projectDir)}\0${server.port}`),
-    ),
-  ];
-  if (servers.length === 0) {
-    console.log("\n  No active preview servers found.\n");
-    return;
-  }
-  console.log(`\n  ${c.bold("Active preview servers:")}\n`);
-  for (const server of servers) {
-    const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
-    console.log(
-      `  ${c.accent(`Port ${server.port}`)}  ${server.projectName}  ${c.dim(server.projectDir)}${pid}`,
+  try {
+    const [scannedServers, managedSessions] = await Promise.all([
+      (dependencies.scan ?? scanActiveServers)(startPort),
+      (dependencies.listManaged ?? listBackgroundPreviewStatuses)(),
+    ]);
+    const managedKeys = new Set(
+      managedSessions.map((session) => `${resolve(session.projectDir)}\0${session.port}`),
     );
+    const servers = [
+      ...managedSessions.map((session) => ({
+        port: session.port,
+        host: "127.0.0.1",
+        projectName: basename(session.projectDir),
+        projectDir: session.projectDir,
+        version: "managed",
+        pid: String(session.pid),
+      })),
+      ...scannedServers.filter(
+        (server) => !managedKeys.has(`${resolve(server.projectDir)}\0${server.port}`),
+      ),
+    ];
+    if (json) {
+      writeLifecycleJson(
+        lifecyclePayload("list", {
+          state: "listed",
+          sessions: servers.map((server) =>
+            previewLifecycleSession({
+              state: "running",
+              mode: server.version === "managed" ? "background" : "unknown",
+              projectName: server.projectName,
+              projectDir: server.projectDir,
+              port: server.port,
+              pid: server.pid ? Number(server.pid) : null,
+              host: server.host,
+            }),
+          ),
+        }),
+      );
+      return;
+    }
+    if (servers.length === 0) {
+      console.log("\n  No active preview servers found.\n");
+      return;
+    }
+    console.log(`\n  ${c.bold("Active preview servers:")}\n`);
+    for (const server of servers) {
+      const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
+      console.log(
+        `  ${c.accent(`Port ${server.port}`)}  ${server.projectName}  ${c.dim(server.projectDir)}${pid}`,
+      );
+    }
+    console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+  } catch (error) {
+    reportPreviewFailure(json, "list", "preview-list-failed", errorMessage(error));
   }
-  console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
 }
 
 /**
@@ -479,42 +595,66 @@ export async function handlePreviewList(
  */
 export async function handlePreviewKillAll(
   startPort: number,
+  json: boolean,
   dependencies: PreviewActionDependencies = {},
 ): Promise<void> {
-  const managedSessions = await (dependencies.listManaged ?? listBackgroundPreviewStatuses)();
-  let killed = 0;
-  const failures: string[] = [];
-  for (const session of managedSessions) {
-    try {
-      if (
-        await (dependencies.stopManaged ?? stopBackgroundPreview)(session.projectDir, session.port)
-      ) {
-        killed++;
+  try {
+    const managedSessions = await (dependencies.listManaged ?? listBackgroundPreviewStatuses)();
+    let killed = 0;
+    // One unprovable record must not abandon the servers after it. A stop pass
+    // collects per-record failures and keeps going; propagating the first one
+    // left every later preview running AND unreported.
+    const failures: string[] = [];
+    for (const session of managedSessions) {
+      try {
+        if (
+          await (dependencies.stopManaged ?? stopBackgroundPreview)(
+            session.projectDir,
+            session.port,
+          )
+        ) {
+          killed++;
+        }
+      } catch (error) {
+        failures.push(`${session.projectDir}: ${errorMessage(error)}`);
       }
-    } catch (error) {
-      failures.push(`${session.projectDir}: ${error instanceof Error ? error.message : error}`);
     }
+    const swept = await (dependencies.killScanned ?? killActiveServers)(startPort);
+    killed += swept.killed;
+    // Ports whose owner the OS could not confirm are skipped rather than
+    // signalled; an agent reading this envelope needs to see that too, not just
+    // a lower count.
+    const unverified = swept.unverified;
+    if (json) {
+      writeLifecycleJson(
+        lifecyclePayload("kill-all", {
+          state: "killed-all",
+          stopped: killed,
+          ...(failures.length > 0 ? { failed: failures } : {}),
+          ...(unverified.length > 0 ? { unverifiedPorts: unverified } : {}),
+        }),
+      );
+    } else if (failures.length > 0 || unverified.length > 0) {
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
+      for (const failure of failures) clack.log.warn(`Could not stop ${failure}`);
+      if (unverified.length > 0) {
+        const plural = unverified.length === 1 ? "" : "s";
+        clack.log.warn(
+          `Left ${unverified.length} server${plural} alone (port${plural} ` +
+            `${unverified.join(", ")}): the OS could not confirm which process owns the ` +
+            `socket, and the server's own claim is not proof. Install lsof, or stop it ` +
+            `with its own preview --stop.`,
+        );
+      }
+      console.log();
+    } else if (killed === 0) {
+      console.log("\n  No active preview servers to kill.\n");
+    } else {
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+    }
+  } catch (error) {
+    reportPreviewFailure(json, "kill-all", "preview-kill-all-failed", errorMessage(error));
   }
-  const swept = await (dependencies.killScanned ?? killActiveServers)(startPort);
-  killed += swept.killed;
-  if (killed > 0) {
-    console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
-  } else if (failures.length === 0 && swept.unverified.length === 0) {
-    console.log("\n  No active preview servers to kill.");
-  }
-  for (const failure of failures) clack.log.warn(`Could not stop ${failure}`);
-  if (swept.unverified.length > 0) {
-    // Fail-closed, said out loud: a security control that degrades silently is
-    // one nobody knows to fix.
-    const ports = swept.unverified.join(", ");
-    const plural = swept.unverified.length === 1 ? "" : "s";
-    clack.log.warn(
-      `Left ${swept.unverified.length} server${plural} alone (port${plural} ${ports}): the OS ` +
-        `could not confirm which process owns the socket, and the server's own claim is not ` +
-        `proof. Install lsof, or stop it with its own preview --stop.`,
-    );
-  }
-  console.log();
 }
 
 // `host` is the loopback the server actually bound (Vite binds `[::1]`, embedded
