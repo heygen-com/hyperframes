@@ -8,7 +8,7 @@ Cloud Workflows adapter for HyperFrames distributed rendering.
 
 ```text
 scripts/smoke.sh        Owner-isolated real-GCP deploy, render, parity, cleanup
-sample-events/          v1 and v2 handler request examples
+sample-events/          Default-v2 and explicit-v1 handler request examples
 ```
 
 The Terraform module and Cloud Workflows definition live in

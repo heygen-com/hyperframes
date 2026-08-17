@@ -682,6 +682,56 @@ describe("handler dispatch", () => {
     ).toBe(true);
   });
 
+  it("rejects unknown plan protocol values", async () => {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+
+    await expect(
+      handler(
+        {
+          Action: "plan",
+          PlanProtocol: "v3",
+          ProjectS3Uri: "s3://bucket/project.tar.gz",
+          PlanOutputS3Prefix: "s3://bucket/renders/invalid/",
+          Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+        } as unknown as LambdaEvent,
+        {
+          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+          tmpRoot,
+          skipChromeResolution: true,
+        },
+      ),
+    ).rejects.toMatchObject({ name: "PLAN_PROTOCOL_UNSUPPORTED" });
+    expect(s3.ops).toHaveLength(0);
+  });
+
+  it("rejects mixed v1/v2 plan locators at runtime", async () => {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+
+    await expect(
+      handler(
+        {
+          Action: "renderChunk",
+          PlanS3Uri: "s3://bucket/plan.tar.gz",
+          PlanHash: "fakehash",
+          ChunkIndex: 0,
+          ChunkOutputS3Prefix: "s3://bucket/renders/mixed/",
+          Format: "mp4",
+        } as unknown as LambdaEvent,
+        {
+          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+          tmpRoot,
+          skipChromeResolution: true,
+        },
+      ),
+    ).rejects.toMatchObject({
+      name: "PLAN_PROTOCOL_UNSUPPORTED",
+      message: expect.stringContaining("mixed or missing plan locators"),
+    });
+    expect(s3.ops).toHaveLength(0);
+  });
+
   it("rejects unknown actions", async () => {
     const tmpRoot = makeTmpRoot();
     await expect(

@@ -3,10 +3,10 @@
 # Cloud Run adapter.
 #
 # The default exercises Plan v2. Deprecated v1 compatibility can be selected
-# explicitly with --protocols v1 or compared with --protocols v1,v2. Every invocation derives a unique,
-# length-safe resource prefix and uses an isolated Terraform working directory
-# and state file. Cleanup verifies every owned resource is absent and fails
-# closed on API/authentication errors.
+# explicitly with --protocols v1 or compared with --protocols v1,v2. Every
+# invocation derives a unique, length-safe resource prefix and uses an isolated
+# Terraform working directory and state file. Cleanup verifies every owned
+# resource is absent and fails closed on API/authentication errors.
 #
 # Usage:
 #   ./smoke.sh --project <gcp-project>
