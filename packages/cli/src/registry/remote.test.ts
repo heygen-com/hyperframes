@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +34,7 @@ function ok(body: unknown): Response {
 async function staleAfterPriming(
   body: unknown,
   prime: () => Promise<unknown>,
-): Promise<ReturnType<typeof vi.spyOn<typeof globalThis, "fetch">>> {
+): Promise<MockInstance<typeof fetch>> {
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(body));
   await prime();
 
@@ -75,6 +76,19 @@ describe("fetchRegistryManifest", () => {
     const fetchSpy = await staleAfterPriming(MANIFEST, () =>
       fetchRegistryManifest(DEFAULT_REGISTRY_URL),
     );
+
+    await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toEqual(MANIFEST);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats an empty cached payload as a miss rather than an answer", async () => {
+    // The callers test the entry, not the payload, so a file carrying a valid
+    // fetchedAt and a null body would otherwise short-circuit the fetch and be
+    // handed back as a manifest.
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(null));
+    await fetchRegistryManifest(DEFAULT_REGISTRY_URL);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(ok(MANIFEST));
 
     await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toEqual(MANIFEST);
     expect(fetchSpy).toHaveBeenCalledTimes(1);

@@ -177,6 +177,10 @@ interface Envelope {
   top_score?: number;
   shown: number;
   warnings?: string[];
+  // Not optional: both envelope-shaped emit sites are inside `if (query)`
+  // branches and both set it, so a search envelope without it is a bug rather
+  // than a shape the caller has to handle.
+  report_gap: string;
 }
 
 async function runCatalog(args: Record<string, unknown>): Promise<string> {

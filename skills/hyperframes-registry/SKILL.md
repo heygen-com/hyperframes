@@ -130,7 +130,9 @@ If the CLI cannot reach the configured registry, inspect the raw manifest as a f
 curl -s https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/registry.json
 ```
 
-A registry the CLI cannot reach does **not** empty the catalog: a previously fetched manifest keeps serving past its 24h refresh window whenever revalidation fails, so search and install still work against the last copy on disk. An item never fetched on this machine is the only thing a network failure can genuinely block.
+A registry the CLI cannot reach does **not** empty the catalog for **discovery**: a previously fetched manifest keeps serving past its 24h refresh window whenever revalidation fails, so `catalog` and `catalog --query` still list and rank against the last copy on disk.
+
+**`add` still needs the network, even for an item you installed yesterday.** Only manifests are cached; the item's actual files are fetched on every install. So offline you can search, and you can see what an item is, but installing it fails at the file fetch. Do not promise a user an offline install.
 
 Each item's `registry-item.json` contains: name, type, title, description, tags, dimensions (blocks only), duration (blocks only), and file list.
 

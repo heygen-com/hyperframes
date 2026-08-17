@@ -58,6 +58,12 @@ function readCacheEntry<T>(path: string): CacheEntry<T> | undefined {
   try {
     const entry = JSON.parse(readFileSync(path, "utf-8")) as CacheEntry<T>;
     if (typeof entry.fetchedAt !== "number") return undefined;
+    // The callers now test the entry rather than the payload, so an empty
+    // payload would satisfy them: `null` data would short-circuit the fetch
+    // and be handed back as a RegistryItem. Rejecting it here keeps the miss
+    // failing toward "go ask the network" rather than toward "the catalog is
+    // empty", which is the whole point of the change around it.
+    if (entry.data === undefined || entry.data === null) return undefined;
     return entry;
   } catch {
     // Missing file or corrupt JSON → cache miss.
