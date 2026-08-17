@@ -15,7 +15,6 @@ import http from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
-import { c } from "../ui/colors.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 const execFileAsync = promisify(execFile);
@@ -198,14 +197,36 @@ export function detectHyperframesServer(
  * Get the PID of the process listening on a port (macOS/Linux only).
  * Returns null on Windows or if detection fails.
  */
+/**
+ * The PID the OS says is listening on `port`, or null when it cannot be
+ * determined. This is the only trustworthy answer: a config response is
+ * whatever the process on the other end chose to say.
+ */
 async function getProcessOnPort(port: number): Promise<string | null> {
-  if (process.platform === "win32") return null;
+  if (process.platform === "win32") return windowsListenerPid(port);
   try {
     const { stdout } = await execFileAsync("lsof", [`-ti:${port}`, "-sTCP:LISTEN"], {
       timeout: 2000,
     });
     const pid = stdout.trim().split("\n")[0]?.trim();
     return pid || null;
+  } catch {
+    return null;
+  }
+}
+
+async function windowsListenerPid(port: number): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], { timeout: 4000 });
+    for (const line of stdout.split(/\r?\n/)) {
+      const columns = line.trim().split(/\s+/);
+      if (columns.length < 5 || columns[3] !== "LISTENING") continue;
+      const local = columns[1] ?? "";
+      if (local.slice(local.lastIndexOf(":") + 1) !== String(port)) continue;
+      const pid = columns[4] ?? "";
+      return /^\d+$/.test(pid) && pid !== "0" ? pid : null;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -285,24 +306,7 @@ export async function scanActiveServers(startPort = 3002): Promise<ActiveServer[
     const batchEnd = Math.min(batchStart + batchSize - 1, endPort);
     const ports = Array.from({ length: batchEnd - batchStart + 1 }, (_, i) => batchStart + i);
 
-    const results = await Promise.all(
-      ports.map(async (port) => {
-        const config = await probePort(port);
-        if (!config) return null;
-        const pid =
-          Number.isInteger(config.pid) && Number(config.pid) > 0
-            ? String(config.pid)
-            : await getProcessOnPort(port);
-        return {
-          port,
-          projectName: config.projectName,
-          projectDir: config.projectDir,
-          version: config.version,
-          pid,
-          browserGpuMode: config.browserGpuMode,
-        };
-      }),
-    );
+    const results = await Promise.all(ports.map((port) => activeServerOnPort(port)));
 
     for (const r of results) {
       if (r) servers.push(r);
@@ -310,6 +314,33 @@ export async function scanActiveServers(startPort = 3002): Promise<ActiveServer[
   }
 
   return servers;
+}
+
+/**
+ * Probe exactly one port and return its HyperFrames identity.
+ *
+ * `pid` is the OS's answer for who holds the listening socket, NOT the pid the
+ * response claims. That field is load-bearing — `--stop` and `--kill-all` send
+ * signals to it — and `/__hyperframes_config` is unauthenticated, so any local
+ * process that answers on a scanned port could otherwise name an arbitrary PID
+ * and have the CLI kill it. The self-reported value is used only where the OS
+ * lookup is unavailable, which is also the only case where it is unfalsifiable.
+ */
+export async function activeServerOnPort(port: number): Promise<ActiveServer | null> {
+  const config = await probePort(port);
+  if (!config) return null;
+  const listenerPid = await getProcessOnPort(port);
+  const pid =
+    listenerPid ??
+    (Number.isInteger(config.pid) && Number(config.pid) > 0 ? String(config.pid) : null);
+  return {
+    port,
+    projectName: config.projectName,
+    projectDir: config.projectDir,
+    version: config.version,
+    pid,
+    browserGpuMode: config.browserGpuMode,
+  };
 }
 
 /**
@@ -416,16 +447,8 @@ export async function findPortAndServe(
         return { type: "already-running", port };
       }
       if (detection.type === "mismatch") {
-        console.log(
-          `  ${c.dim(`Port ${port} in use by HyperFrames project "${detection.projectName}" — skipping`)}`,
-        );
         continue;
       }
-    }
-
-    const pid = await getProcessOnPort(port);
-    if (pid) {
-      console.log(`  ${c.dim(`Port ${port} in use by PID ${pid} — skipping`)}`);
     }
   }
 

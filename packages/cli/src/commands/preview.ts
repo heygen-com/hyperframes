@@ -287,14 +287,6 @@ export default defineCommand({
       );
     }
 
-    // Kill orphaned chrome-headless-shell processes from previous crashed sessions.
-    const orphansKilled = killOrphanedProcesses();
-    if (orphansKilled > 0) {
-      console.log(
-        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
-      );
-    }
-
     const rawArg = args.dir;
     const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
     const project = resolveProject(rawArg);
@@ -351,6 +343,17 @@ export default defineCommand({
     // Resolve once so embedded, monorepo-dev, and locally installed Studio
     // modes all receive identical --proxy/--no-proxy + config semantics.
     const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
+
+    // Kill orphaned chrome-headless-shell processes from previous crashed
+    // sessions. Deliberately last: this reaches outside the process and kills
+    // other people's PIDs, so it must not run for an invocation that turns out
+    // to be a validation error and never starts anything.
+    const orphansKilled = killOrphanedProcesses();
+    if (orphansKilled > 0) {
+      console.log(
+        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
+      );
+    }
 
     if (isDevMode()) {
       if (args.background) {

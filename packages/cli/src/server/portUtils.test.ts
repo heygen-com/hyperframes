@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import {
   PORT_PROBE_HOSTS,
+  activeServerOnPort,
   detectHyperframesServer,
   findPortAndServe,
   testPortOnAllHosts,
@@ -158,6 +159,27 @@ describe("findPortAndServe — bind host (security: F-001)", () => {
     if (result.type !== "started") return;
     openAdaptorServers.push(result.server);
     expect(boundAddress(result.server)).toBe("0.0.0.0");
+  });
+});
+
+describe("activeServerOnPort — PID provenance (security)", () => {
+  it("reports the PID that owns the socket, not the one the response claims", async () => {
+    // `/__hyperframes_config` is unauthenticated and `--stop` / `--kill-all`
+    // send signals to this field. Trusting the response let any local process
+    // on a scanned port name an arbitrary PID and have the CLI kill it.
+    if (process.platform === "win32") return;
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir: "/tmp/demo-project",
+      serverBuildSignature: null,
+      version: "0.6.42",
+      pid: 999_999,
+    });
+
+    const server = await activeServerOnPort(port);
+
+    expect(server?.pid).toBe(String(process.pid));
   });
 });
 
