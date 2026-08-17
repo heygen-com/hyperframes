@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { studioLandingSearch } from "./preview.js";
+import { join, resolve } from "node:path";
+import * as clack from "@clack/prompts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { handlePreviewKillAll, handlePreviewList, studioLandingSearch } from "./preview.js";
 
 const tempDirs: string[] = [];
 
@@ -49,5 +50,73 @@ describe("studioLandingSearch", () => {
   it("lands on the timeline for fully animated boards", () => {
     const dir = projectWith(`${FRAME(1, "animated")}`, ["compositions/frames/01.html"]);
     expect(studioLandingSearch(dir)).toBe("");
+  });
+});
+
+describe("preview --kill-all", () => {
+  const session = (port: number, projectDir: string) => ({
+    pid: 4321,
+    port,
+    projectDir,
+    logPath: `${projectDir}.log`,
+  });
+
+  it("keeps stopping after a record whose ownership cannot be proven", async () => {
+    // Propagating the first failure left every later preview running AND
+    // unreported — the one thing a stop pass must never do.
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(clack.log, "warn").mockImplementation(() => {});
+
+    await handlePreviewKillAll(3002, {
+      listManaged: async () => [session(41402, "/tmp/unprovable"), session(41403, "/tmp/healthy")],
+      stopManaged: async (projectDir) => {
+        if (projectDir === "/tmp/unprovable") throw new Error("ownership failed");
+        return true;
+      },
+      killScanned: async () => ({ killed: 0, unverified: [] }),
+    });
+
+    expect(log.mock.calls.flat().join("\n")).toContain("Killed 1 preview server");
+    expect(warn.mock.calls.flat().join("\n")).toContain("/tmp/unprovable: ownership failed");
+    log.mockRestore();
+    warn.mockRestore();
+  });
+
+  it("reports nothing to kill when no preview is running", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handlePreviewKillAll(3002, {
+      listManaged: async () => [],
+      killScanned: async () => ({ killed: 0, unverified: [] }),
+    });
+
+    expect(log.mock.calls.flat().join("\n")).toContain("No active preview servers to kill");
+    log.mockRestore();
+  });
+});
+
+describe("preview --list", () => {
+  it("prefers the managed record over the same server's own self-report", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handlePreviewList(3002, {
+      listManaged: async () => [
+        { pid: 99, port: 3002, projectDir: resolve("/tmp/demo"), logPath: "/tmp/demo.log" },
+      ],
+      scan: async () => [
+        {
+          port: 3002,
+          projectName: "demo",
+          projectDir: resolve("/tmp/demo"),
+          version: "test",
+          pid: "99",
+        },
+      ],
+    });
+
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("1 server running");
+    expect(printed).toContain("PID 99");
+    log.mockRestore();
   });
 });

@@ -65,6 +65,7 @@ import { resolveProject } from "../utils/project.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { studioProxyEnv } from "../utils/studioProxyEnv.js";
 import {
+  listBackgroundPreviewStatuses,
   readBackgroundPreviewStatus,
   startBackgroundPreview,
   stopBackgroundPreview,
@@ -239,40 +240,13 @@ export default defineCommand({
 
     // --list: scan and display active servers
     if (args.list) {
-      const servers = await scanActiveServers(startPort);
-      if (servers.length === 0) {
-        console.log("\n  No active preview servers found.\n");
-        return;
-      }
-      console.log(`\n  ${c.bold("Active preview servers:")}\n`);
-      for (const s of servers) {
-        const pidStr = s.pid ? c.dim(` (PID ${s.pid})`) : "";
-        console.log(
-          `  ${c.accent(`Port ${s.port}`)}  ${s.projectName}  ${c.dim(s.projectDir)}${pidStr}`,
-        );
-      }
-      console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+      await handlePreviewList(startPort);
       return;
     }
 
     // --kill-all: kill all active servers
     if (args["kill-all"]) {
-      const servers = await scanActiveServers(startPort);
-      if (servers.length === 0) {
-        console.log("\n  No active preview servers to kill.\n");
-        return;
-      }
-      const { killed, unverified } = await killActiveServers(startPort);
-      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
-      if (unverified.length > 0) {
-        clack.log.warn(
-          `Left ${unverified.length} server${unverified.length === 1 ? "" : "s"} alone ` +
-            `(port${unverified.length === 1 ? "" : "s"} ${unverified.join(", ")}): the OS could ` +
-            `not confirm which process owns the socket, and the server's own claim is not proof. ` +
-            `Install lsof, or stop it with its own preview --stop.`,
-        );
-      }
-      console.log();
+      await handlePreviewKillAll(startPort);
       return;
     }
 
@@ -446,6 +420,102 @@ export default defineCommand({
     });
   },
 });
+
+interface PreviewActionDependencies {
+  scan?: typeof scanActiveServers;
+  listManaged?: typeof listBackgroundPreviewStatuses;
+  stopManaged?: typeof stopBackgroundPreview;
+  killScanned?: typeof killActiveServers;
+}
+
+/**
+ * Managed previews first, then anything else answering on the scanned range.
+ * A managed session is the authoritative entry for its project and port — the
+ * scan would otherwise list the same server again from its own self-report.
+ */
+export async function handlePreviewList(
+  startPort: number,
+  dependencies: PreviewActionDependencies = {},
+): Promise<void> {
+  const [scannedServers, managedSessions] = await Promise.all([
+    (dependencies.scan ?? scanActiveServers)(startPort),
+    (dependencies.listManaged ?? listBackgroundPreviewStatuses)(),
+  ]);
+  const managedKeys = new Set(
+    managedSessions.map((session) => `${resolve(session.projectDir)}\0${session.port}`),
+  );
+  const servers = [
+    ...managedSessions.map((session) => ({
+      port: session.port,
+      projectName: basename(session.projectDir),
+      projectDir: session.projectDir,
+      pid: String(session.pid),
+    })),
+    ...scannedServers.filter(
+      (server) => !managedKeys.has(`${resolve(server.projectDir)}\0${server.port}`),
+    ),
+  ];
+  if (servers.length === 0) {
+    console.log("\n  No active preview servers found.\n");
+    return;
+  }
+  console.log(`\n  ${c.bold("Active preview servers:")}\n`);
+  for (const server of servers) {
+    const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
+    console.log(
+      `  ${c.accent(`Port ${server.port}`)}  ${server.projectName}  ${c.dim(server.projectDir)}${pid}`,
+    );
+  }
+  console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+}
+
+/**
+ * Stop every managed preview through its ownership record, then sweep whatever
+ * else is still listening.
+ *
+ * Per-record failures are collected rather than propagated: one record whose
+ * ownership cannot be proven must not abandon the servers after it, which would
+ * leave them running AND unreported.
+ */
+export async function handlePreviewKillAll(
+  startPort: number,
+  dependencies: PreviewActionDependencies = {},
+): Promise<void> {
+  const managedSessions = await (dependencies.listManaged ?? listBackgroundPreviewStatuses)();
+  let killed = 0;
+  const failures: string[] = [];
+  for (const session of managedSessions) {
+    try {
+      if (
+        await (dependencies.stopManaged ?? stopBackgroundPreview)(session.projectDir, session.port)
+      ) {
+        killed++;
+      }
+    } catch (error) {
+      failures.push(`${session.projectDir}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+  const swept = await (dependencies.killScanned ?? killActiveServers)(startPort);
+  killed += swept.killed;
+  if (killed > 0) {
+    console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
+  } else if (failures.length === 0 && swept.unverified.length === 0) {
+    console.log("\n  No active preview servers to kill.");
+  }
+  for (const failure of failures) clack.log.warn(`Could not stop ${failure}`);
+  if (swept.unverified.length > 0) {
+    // Fail-closed, said out loud: a security control that degrades silently is
+    // one nobody knows to fix.
+    const ports = swept.unverified.join(", ");
+    const plural = swept.unverified.length === 1 ? "" : "s";
+    clack.log.warn(
+      `Left ${swept.unverified.length} server${plural} alone (port${plural} ${ports}): the OS ` +
+        `could not confirm which process owns the socket, and the server's own claim is not ` +
+        `proof. Install lsof, or stop it with its own preview --stop.`,
+    );
+  }
+  console.log();
+}
 
 // `host` is the loopback the server actually bound (Vite binds `[::1]`, embedded
 // binds `127.0.0.1`); default to IPv4 for the embedded/legacy callers.
