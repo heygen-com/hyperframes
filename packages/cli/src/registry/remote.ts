@@ -45,16 +45,28 @@ function cachePath(baseUrl: string, key: string): string {
   return join(CACHE_DIR, `${slug}__${key}.json`);
 }
 
-function readCache<T>(path: string): T | undefined {
+/**
+ * Read a cache entry regardless of age. Freshness is deliberately NOT decided
+ * here: a fresh entry lets a caller skip the network, and a stale one is still
+ * the best answer available once the network has already failed. Collapsing
+ * the two (returning undefined past the TTL) made a 25-hour-old manifest and
+ * no manifest at all indistinguishable, so one timeout against the registry
+ * host reported the entire catalog as unreachable and sent authors off to
+ * hand-write what they already had on disk.
+ */
+function readCacheEntry<T>(path: string): CacheEntry<T> | undefined {
   try {
     const entry = JSON.parse(readFileSync(path, "utf-8")) as CacheEntry<T>;
     if (typeof entry.fetchedAt !== "number") return undefined;
-    if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) return undefined;
-    return entry.data;
+    return entry;
   } catch {
     // Missing file or corrupt JSON → cache miss.
     return undefined;
   }
+}
+
+function isFresh<T>(entry: CacheEntry<T>): boolean {
+  return Date.now() - entry.fetchedAt <= CACHE_TTL_MS;
 }
 
 function writeCache<T>(path: string, data: T): void {
@@ -79,31 +91,37 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 /**
- * Fetch the top-level registry.json manifest. Cached for 24h.
- * Returns undefined if the registry is unreachable (offline / 404).
+ * Fetch the top-level registry.json manifest. Served from cache while fresh,
+ * revalidated after 24h, and — when revalidation fails — served stale rather
+ * than not at all. Returns undefined only when the registry is unreachable AND
+ * nothing was ever cached.
+ *
+ * `skipCache` forces revalidation; it does not forbid the stale fallback,
+ * because "check for something newer" and "rather have nothing than this" are
+ * different requests and only the first one is ever made.
  */
 export async function fetchRegistryManifest(
   baseUrl: string = DEFAULT_REGISTRY_URL,
   options?: { skipCache?: boolean },
 ): Promise<RegistryManifest | undefined> {
   const cacheFile = cachePath(baseUrl, "registry");
-  if (!options?.skipCache) {
-    const cached = readCache<RegistryManifest>(cacheFile);
-    if (cached) return cached;
-  }
+  const cached = readCacheEntry<RegistryManifest>(cacheFile);
+  if (!options?.skipCache && cached && isFresh(cached)) return cached.data;
 
   try {
     const manifest = await fetchJson<RegistryManifest>(`${baseUrl}/registry.json`);
     writeCache(cacheFile, manifest);
     return manifest;
   } catch {
-    return undefined;
+    return cached?.data;
   }
 }
 
 /**
- * Fetch a single item's `registry-item.json` manifest. Cached for 24h.
- * Throws on network failure (callers decide whether to degrade gracefully).
+ * Fetch a single item's `registry-item.json` manifest. Same freshness policy as
+ * the top-level manifest: fresh from cache, else revalidate, else serve stale.
+ * Throws on network failure only when nothing was ever cached for this item
+ * (callers decide whether to degrade gracefully).
  */
 export async function fetchItemManifest(
   name: string,
@@ -112,13 +130,18 @@ export async function fetchItemManifest(
 ): Promise<RegistryItem> {
   const dir = ITEM_TYPE_DIRS[type];
   const cacheFile = cachePath(baseUrl, `${dir}__${name}`);
-  const cached = readCache<RegistryItem>(cacheFile);
-  if (cached) return cached;
+  const cached = readCacheEntry<RegistryItem>(cacheFile);
+  if (cached && isFresh(cached)) return cached.data;
 
   const url = `${baseUrl}/${dir}/${name}/registry-item.json`;
-  const item = await fetchJson<RegistryItem>(url);
-  writeCache(cacheFile, item);
-  return item;
+  try {
+    const item = await fetchJson<RegistryItem>(url);
+    writeCache(cacheFile, item);
+    return item;
+  } catch (err) {
+    if (cached) return cached.data;
+    throw err;
+  }
 }
 
 /**

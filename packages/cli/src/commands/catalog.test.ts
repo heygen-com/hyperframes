@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { countUnindexed, pickByName } from "./catalog.js";
+import { countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -346,6 +346,45 @@ describe("catalog --json meaning search", () => {
     expect(envelope.warnings).toEqual([
       "on-device search is using the previous catalog vectors because the update failed",
     ]);
+  });
+
+  it("hands back the gap-report command even when the search found things", async () => {
+    // The reports we actually want come from searches that returned plausible
+    // items where none of them did the job. If the command only appeared on
+    // zero results it would be absent from every case worth reporting.
+    const envelope = await runEnvelope({ query: "make a number count up" });
+
+    expect(envelope.shown).toBeGreaterThan(0);
+    expect(envelope.report_gap).toBe(
+      'npx hyperframes feedback --search-miss "make a number count up" ' +
+        '--wanted "<the move you needed>" --tier on-device',
+    );
+  });
+
+  it("names the tier that actually answered in the gap-report command", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.report_gap).toContain("--tier words");
+  });
+});
+
+describe("searchMissCommand", () => {
+  it("keeps a non-ASCII query intact", () => {
+    // Half of the gap reports received so far were CJK. A query mangled on the
+    // way into the command is a report nobody can act on.
+    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
+      '--search-miss "実写写真のみ 9:16 生活ハック"',
+    );
+  });
+
+  it("escapes shell metacharacters so the printed line is safe to paste", () => {
+    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
+
+    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
   });
 });
 
