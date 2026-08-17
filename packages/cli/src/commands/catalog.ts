@@ -288,13 +288,14 @@ export default defineCommand({
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
         if (unsearchable) {
-          console.log(`No searchable words in query "${query}".`);
-          console.log("");
-          console.log(
+          console.error(c.error(`No searchable words in query "${query}".`));
+          console.error("");
+          console.error(
             c.warn(
               "  Word matching indexes the catalog in English, so a query written in another\n" +
                 "  script produces no terms to match and returns nothing. This is not a gap in\n" +
-                "  the catalog. Try the same intent in English.",
+                "  the catalog. Search in English; the on-screen copy of your video can stay\n" +
+                "  in any language.",
             ),
           );
         } else {
@@ -309,6 +310,11 @@ export default defineCommand({
         }
       }
       if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
+      // A query with no searchable words is bad input, not an empty shelf, so it
+      // exits non-zero like an invalid --type does. An agent that only checks the
+      // exit code would otherwise read "searched successfully, catalog has
+      // nothing" and go hand-author a move that is sitting in the registry.
+      if (unsearchable) finishCommand(1);
       return;
     }
 

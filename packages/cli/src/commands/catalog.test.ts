@@ -376,6 +376,74 @@ describe("catalog --json meaning search", () => {
   });
 });
 
+describe("a query with no searchable words", () => {
+  // Runs the command capturing stderr, and reports the exit code the CLI would
+  // have used. finishCommand throws a signal rather than calling process.exit.
+  async function runForExit(
+    args: Record<string, unknown>,
+  ): Promise<{ exitCode: number; err: string }> {
+    const command = (await import("./catalog.js")).default as unknown as {
+      run: (context: { args: Record<string, unknown> }) => Promise<void>;
+    };
+    const lines: string[] = [];
+    const capture = (...parts: unknown[]): void => {
+      lines.push(parts.map(String).join(" "));
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(capture);
+    const error = vi.spyOn(console, "error").mockImplementation(capture);
+    let exitCode = 0;
+    try {
+      await command.run({ args });
+    } catch (thrown) {
+      const signal = thrown as { result?: { exitCode?: number }; exitCode?: number };
+      exitCode = signal.result?.exitCode ?? signal.exitCode ?? -1;
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+    }
+    // eslint-disable-next-line no-control-regex
+    const esc = String.fromCharCode(27);
+    return { exitCode, err: lines.join("\n").split(`${esc}[`).join("").replace(/\d+m/g, "") };
+  }
+
+  it("exits non-zero, because it is bad input rather than an empty shelf", async () => {
+    // The flag is word-tier only, so the stubbed on-device ranker has to be off
+    // or it answers with hits and the branch never runs.
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { exitCode } = await runForExit({ query: "実写写真のみ 9:16 生活ハック" });
+
+    // An agent that only reads the exit code would otherwise take "success, no
+    // results" at face value and hand-author a move already in the registry.
+    expect(exitCode).toBe(1);
+  });
+
+  it("says to search in English and does not blame the catalog", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写写真のみ 9:16 生活ハック" });
+
+    expect(err).toContain("No searchable words in query");
+    expect(err).toContain("Search in English");
+    expect(err).toContain("not a gap in");
+    // The gap channel must not be offered: nothing was searched, so a report
+    // here is noise in the one signal that tells us what to build.
+    expect(err).not.toContain("--search-miss");
+  });
+
+  it("leaves a genuine empty result exiting zero", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { exitCode, err } = await runForExit({ query: "quantum entanglement reactor" });
+
+    expect(exitCode).toBe(0);
+    expect(err).toContain("No items match");
+  });
+});
+
 describe("searchMissCommand", () => {
   it("keeps a non-ASCII query intact", () => {
     // Half of the gap reports received so far were CJK. A query mangled on the
