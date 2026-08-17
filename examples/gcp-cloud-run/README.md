@@ -8,7 +8,7 @@ Cloud Workflows adapter for HyperFrames distributed rendering.
 
 ```text
 scripts/smoke.sh        Owner-isolated real-GCP deploy, render, parity, cleanup
-sample-events/          Default-v2 and explicit-v1 handler request examples
+sample-events/          Default-v2, explicit-v1, and explicit-v2 request examples
 ```
 
 The Terraform module and Cloud Workflows definition live in
@@ -136,6 +136,11 @@ curl -sX POST localhost:8080/ \
 curl -sX POST localhost:8080/ \
   -H 'content-type: application/json' \
   --data @sample-events/plan-v1.json | jq .
+
+# Explicit v2 for callers that always stamp the protocol
+curl -sX POST localhost:8080/ \
+  -H 'content-type: application/json' \
+  --data @sample-events/plan-v2.json | jq .
 ```
 
 Replace `PROJECT`, locator placeholders, and plan hashes with values returned

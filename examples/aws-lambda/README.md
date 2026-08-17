@@ -121,10 +121,13 @@ sam validate
 sam local invoke RenderFunction --event sample-events/plan.json
 ```
 
-The `sample-events/` directory ships small JSON payloads for each of the
-three actions. They reference fake S3 URIs — useful for sanity-checking
-the handler's dispatch logic; not for full end-to-end testing (real S3
-calls require credentials and a project zip to actually exist).
+The `sample-events/` directory ships three tiers for each action:
+`*.json` demonstrates default v2 with `PlanProtocol` omitted, `*-v1.json`
+demonstrates deprecated explicit-v1 compatibility, and `*-v2.json`
+demonstrates callers that stamp v2 explicitly. They reference fake S3 URIs —
+useful for sanity-checking the handler's dispatch logic; not for full
+end-to-end testing (real S3 calls require credentials and a project zip to
+actually exist).
 
 ## End-to-end smoke + benchmark
 
