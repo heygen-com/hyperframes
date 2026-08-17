@@ -65,11 +65,87 @@ export type RuntimeMediaClip = {
   volumeKeyframes?: VolumeKeyframe[];
 };
 
-export function refreshRuntimeMediaCache(params?: {
+type RuntimeMediaCacheParams = {
   resolveStartSeconds?: (element: Element) => number;
+  resolveMediaStartSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number;
+  resolvePlaybackRate?: (element: HTMLVideoElement | HTMLAudioElement) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
-}): {
+};
+
+function resolveRuntimeMediaDuration(
+  el: HTMLVideoElement | HTMLAudioElement,
+  params: RuntimeMediaCacheParams | undefined,
+  mediaStart: number,
+  playbackRate: number,
+  sourceDuration: number | null,
+): number {
+  const authored =
+    params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
+  if (Number.isFinite(authored) && authored > 0) return authored;
+  if (sourceDuration == null) return Number.POSITIVE_INFINITY;
+  const effective = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
+  return effective > 0 ? effective : Number.POSITIVE_INFINITY;
+}
+
+function resolveRuntimeMediaStart(
+  el: HTMLVideoElement | HTMLAudioElement,
+  params?: RuntimeMediaCacheParams,
+): number {
+  if (params?.resolveStartSeconds) return params.resolveStartSeconds(el);
+  return Number.parseFloat(el.dataset.start ?? "0");
+}
+
+function resolveRuntimeSourceStart(
+  el: HTMLVideoElement | HTMLAudioElement,
+  params?: RuntimeMediaCacheParams,
+): number {
+  if (params?.resolveMediaStartSeconds) return params.resolveMediaStartSeconds(el);
+  return Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
+}
+
+function resolveRuntimePlaybackRate(
+  el: HTMLVideoElement | HTMLAudioElement,
+  params?: RuntimeMediaCacheParams,
+): number {
+  if (params?.resolvePlaybackRate) return params.resolvePlaybackRate(el);
+  return readElementPlaybackRate(el);
+}
+
+function createRuntimeMediaClip(
+  el: HTMLVideoElement | HTMLAudioElement,
+  params?: RuntimeMediaCacheParams,
+): RuntimeMediaClip | null {
+  const start = resolveRuntimeMediaStart(el, params);
+  if (!Number.isFinite(start)) return null;
+  const mediaStart = resolveRuntimeSourceStart(el, params);
+  const playbackRate = resolveRuntimePlaybackRate(el, params);
+  const loop = el.loop;
+  const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+  const duration = resolveRuntimeMediaDuration(
+    el,
+    params,
+    mediaStart,
+    playbackRate,
+    sourceDuration,
+  );
+  const end =
+    Number.isFinite(duration) && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+  const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
+  return {
+    el,
+    start,
+    mediaStart,
+    duration,
+    end,
+    volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
+    playbackRate,
+    loop,
+    sourceDuration,
+  };
+}
+
+export function refreshRuntimeMediaCache(params?: RuntimeMediaCacheParams): {
   timedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
   mediaClips: RuntimeMediaClip[];
   videoClips: RuntimeMediaClip[];
@@ -85,39 +161,11 @@ export function refreshRuntimeMediaCache(params?: {
   const videoClips: RuntimeMediaClip[] = [];
   let maxMediaEnd = 0;
   for (const el of timedMediaEls) {
-    const start = params?.resolveStartSeconds
-      ? params.resolveStartSeconds(el)
-      : Number.parseFloat(el.dataset.start ?? "0");
-    if (!Number.isFinite(start)) continue;
-    const mediaStart =
-      Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
-    const playbackRate = readElementPlaybackRate(el);
-    const loop = el.loop;
-    const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
-    let duration =
-      params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
-    if ((!Number.isFinite(duration) || duration <= 0) && sourceDuration != null) {
-      // Effective duration accounts for playback rate:
-      // at 0.5x, a 10s source plays for 20s on the timeline
-      duration = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
-    }
-    const end =
-      Number.isFinite(duration) && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-    const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
-    const clip: RuntimeMediaClip = {
-      el,
-      start,
-      mediaStart,
-      duration: Number.isFinite(duration) && duration > 0 ? duration : Number.POSITIVE_INFINITY,
-      end,
-      volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
-      playbackRate,
-      loop,
-      sourceDuration,
-    };
+    const clip = createRuntimeMediaClip(el, params);
+    if (!clip) continue;
     mediaClips.push(clip);
     if (el.tagName === "VIDEO") videoClips.push(clip);
-    if (Number.isFinite(end)) maxMediaEnd = Math.max(maxMediaEnd, end);
+    if (Number.isFinite(clip.end)) maxMediaEnd = Math.max(maxMediaEnd, clip.end);
   }
   return { timedMediaEls, mediaClips, videoClips, maxMediaEnd };
 }

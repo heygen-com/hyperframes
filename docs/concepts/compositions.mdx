@@ -108,6 +108,17 @@ Use a separate file when you want to reuse it.
     It defaults to `0`. Trimming or splitting from the left pushes this offset
     forward by the time elapsed multiplied by `data-playback-rate`, so the
     nested animation keeps going instead of jumping back to its beginning.
+
+    The same in-point applies to descendant `<video>` and `<audio>` clips, like
+    a nested sequence in an NLE. If the slot starts at master time `H`, has
+    `data-playback-start="P"`, and a descendant starts at child time `L`, its
+    master start is `H + (L - P) / data-playback-rate`. Media ending at or
+    before the slot is omitted; media crossing the slot boundary begins at the
+    slot with its source advanced by the consumed child time. A descendant's
+    own `data-media-start` remains an offset into its source file and composes
+    additively with that advance. On a composition host only,
+    `data-media-start` is supported as a legacy alias for
+    `data-playback-start`; when both are present, `data-playback-start` wins.
   </Tab>
   <Tab title="Inline">
     Write the nested composition straight into the parent. Simpler for

@@ -40,6 +40,13 @@ describe("tailFrameTime", () => {
 });
 
 describe("transparent snapshot capture", () => {
+  it("uses runtime-resolved nested source offsets and playback rates", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("__hfResolveMediaSourceStartSeconds?.(v)");
+    expect(source).toContain("__hfResolveMediaPlaybackRate?.(v)");
+    expect(source).toContain("__hfResolveMediaDurationSeconds?.(v)");
+  });
+
   it("asks Chrome to retain the alpha channel in review PNGs", () => {
     const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
     expect(source).toContain(

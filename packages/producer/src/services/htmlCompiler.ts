@@ -34,6 +34,7 @@ import {
   readDeclaredDefaults,
   parseHostVariableValues,
 } from "@hyperframes/core/compiler";
+import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import {
   checkSubCompositionUsability,
   type ParsableDocumentLike,
@@ -248,12 +249,188 @@ export interface RenderModeHints {
   reasons: RenderModeHint[];
 }
 
-function dedupeElementsById<T extends { id: string }>(elements: T[]): T[] {
-  const deduped = new Map<string, T>();
-  for (const element of elements) {
-    deduped.set(element.id, element);
+const AUTHORED_MEDIA_ID_ATTR = "data-hf-authored-id";
+const NESTED_MEDIA_ATTR = "data-hf-nested-media";
+
+function finiteAttr(element: Element, name: string, fallback = 0): number {
+  const value = Number.parseFloat(element.getAttribute(name) ?? "");
+  return Number.isFinite(value) ? value : fallback;
+}
+
+type InlinedHostTransform = {
+  origin: number;
+  scale: number;
+  windowStart: number;
+  windowEnd: number;
+};
+
+/**
+ * Build producer media metadata from the already-inlined DOM. This is the one
+ * place where repeated mounts are distinguishable, so it avoids global-id
+ * dedupe and applies the exact same affine child→master mapping as preview.
+ */
+function extractInlinedNestedMedia(html: string): {
+  html: string;
+  videos: VideoElement[];
+  audios: AudioElement[];
+  images: ImageElement[];
+} {
+  const { document } = parseHTML(html);
+  const media = Array.from(document.querySelectorAll("video, audio, img[data-start]"));
+  const idCounts = new Map<string, number>();
+  for (const element of media) {
+    const id = element.getAttribute("id");
+    if (id) idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
   }
-  return Array.from(deduped.values());
+  let generated = 0;
+  for (const element of media) {
+    if (!element.closest("[data-composition-file]")) continue;
+    let host = element.closest("[data-composition-file]");
+    let hasNonIdentityHost = false;
+    while (host) {
+      const inPoint = finiteAttr(
+        host,
+        host.hasAttribute("data-playback-start") ? "data-playback-start" : "data-media-start",
+      );
+      if (inPoint > 0 || Math.abs(finiteAttr(host, "data-playback-rate", 1) - 1) > 0.000001) {
+        hasNonIdentityHost = true;
+        break;
+      }
+      host = host.parentElement?.closest("[data-composition-file]") ?? null;
+    }
+    if (hasNonIdentityHost) element.setAttribute(NESTED_MEDIA_ATTR, "");
+    const authoredId =
+      element.getAttribute(AUTHORED_MEDIA_ID_ATTR) ?? element.getAttribute("id") ?? null;
+    if (element.hasAttribute(AUTHORED_MEDIA_ID_ATTR)) continue;
+    if (!authoredId || (idCounts.get(authoredId) ?? 0) > 1) {
+      const host = element.closest("[data-composition-file]");
+      const hostId = (host?.getAttribute("data-composition-id") ?? `mount-${generated}`).replace(
+        /[^a-zA-Z0-9_-]/g,
+        "-",
+      );
+      const base = authoredId ?? `hf-${element.tagName.toLowerCase()}-${generated}`;
+      element.setAttribute("id", `${base}__${hostId}`);
+      if (authoredId) element.setAttribute(AUTHORED_MEDIA_ID_ATTR, authoredId);
+      generated += 1;
+    }
+  }
+  const outputHtml = document.toString();
+
+  const extractionDocument = parseHTML(outputHtml).document;
+  const resolverCache = new WeakMap<Element, ReturnType<typeof createRuntimeStartTimeResolver>>();
+  const scopedStartResolver = (scope: Element) => {
+    const cached = resolverCache.get(scope);
+    if (cached) return cached;
+    const findById = (id: string): Element | null => {
+      if (scope.getAttribute("id") === id) return scope;
+      const byId = Array.from(scope.querySelectorAll("[id]")).find(
+        (element) => element.getAttribute("id") === id,
+      );
+      if (byId) return byId;
+      if (scope.getAttribute("data-composition-id") === id) return scope;
+      return (
+        Array.from(scope.querySelectorAll("[data-composition-id]")).find(
+          (element) => element.getAttribute("data-composition-id") === id,
+        ) ?? null
+      );
+    };
+    const query = (selector: string): Element | null =>
+      scope.matches(selector) ? scope : scope.querySelector(selector);
+    const resolver = createRuntimeStartTimeResolver({
+      documentRef: {
+        getElementById: findById,
+        querySelector: query,
+      } as unknown as Document,
+      includeAuthoredTimingAttrs: true,
+    });
+    resolverCache.set(scope, resolver);
+    return resolver;
+  };
+  const localStart = (element: Element, parent: Element): number =>
+    Math.max(
+      0,
+      scopedStartResolver(parent).resolveStartForElement(element, 0) -
+        scopedStartResolver(parent).resolveStartForElement(parent, 0),
+    );
+  const localDuration = (element: Element, start: number): number => {
+    const duration = finiteAttr(element, "data-duration", Number.NaN);
+    if (Number.isFinite(duration) && duration > 0) return duration;
+    const end = finiteAttr(element, "data-end", Number.NaN);
+    return Number.isFinite(end) && end > start ? end - start : Infinity;
+  };
+  const transformCache = new Map<Element, InlinedHostTransform>();
+  const hostTransform = (host: Element): InlinedHostTransform => {
+    const cached = transformCache.get(host);
+    if (cached) return cached;
+    const parentHost = host.parentElement?.closest("[data-composition-file]") ?? null;
+    const parent = parentHost
+      ? hostTransform(parentHost)
+      : { origin: 0, scale: 1, windowStart: Number.NEGATIVE_INFINITY, windowEnd: Infinity };
+    const parentComposition =
+      parentHost ?? host.parentElement?.closest("[data-composition-id]") ?? null;
+    const hostStart = parentComposition
+      ? localStart(host, parentComposition)
+      : finiteAttr(host, "data-start");
+    const inPoint = Math.max(
+      0,
+      finiteAttr(
+        host,
+        host.hasAttribute("data-playback-start") ? "data-playback-start" : "data-media-start",
+      ),
+    );
+    const hostRate = Math.max(0.000001, finiteAttr(host, "data-playback-rate", 1));
+    const slotStart = parent.origin + hostStart * parent.scale;
+    const duration = localDuration(host, hostStart);
+    const result = {
+      origin: slotStart - (inPoint * parent.scale) / hostRate,
+      scale: parent.scale / hostRate,
+      windowStart: Math.max(parent.windowStart, slotStart),
+      windowEnd: Math.min(
+        parent.windowEnd,
+        Number.isFinite(duration) ? slotStart + duration * parent.scale : Infinity,
+      ),
+    };
+    transformCache.set(host, result);
+    return result;
+  };
+
+  for (const element of Array.from(
+    extractionDocument.querySelectorAll("video, audio, img[data-start]"),
+  )) {
+    const host = element.closest("[data-composition-file]");
+    if (!host) continue;
+    const transform = hostTransform(host);
+    const resolvedLocalStart = localStart(element, host);
+    const resolvedLocalDuration = localDuration(element, resolvedLocalStart);
+    const rawStart = transform.origin + resolvedLocalStart * transform.scale;
+    const rawEnd = Number.isFinite(resolvedLocalDuration)
+      ? transform.origin + (resolvedLocalStart + resolvedLocalDuration) * transform.scale
+      : Infinity;
+    const start = Math.max(rawStart, transform.windowStart);
+    const end = Math.min(rawEnd, transform.windowEnd);
+    if (end <= start) {
+      element.remove();
+      continue;
+    }
+    element.setAttribute("data-start", String(start));
+    element.setAttribute("data-end", String(end));
+    element.removeAttribute("data-duration");
+    if (element.tagName === "VIDEO" || element.tagName === "AUDIO") {
+      const ownRate = Math.max(0.000001, finiteAttr(element, "data-playback-rate", 1));
+      const mediaStart = finiteAttr(element, "data-media-start");
+      element.setAttribute(
+        "data-media-start",
+        String(mediaStart + ((start - rawStart) / transform.scale) * ownRate),
+      );
+    }
+  }
+  const extractionHtml = extractionDocument.toString();
+  return {
+    html: outputHtml,
+    videos: parseVideoElements(extractionHtml),
+    audios: parseAudioElements(extractionHtml),
+    images: parseImageElements(extractionHtml),
+  };
 }
 
 const INLINE_SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
@@ -1872,12 +2049,7 @@ export async function compileForRender(
   );
 
   // Parse sub-compositions first (extracts media + compiled HTML for each)
-  const {
-    videos: subVideos,
-    audios: subAudios,
-    images: subImages,
-    subCompositions,
-  } = await parseSubCompositions(compiledHtml, projectDir, downloadDir);
+  const { subCompositions } = await parseSubCompositions(compiledHtml, projectDir, downloadDir);
 
   // Ensure the HTML is a full document before inlining sub-compositions.
   // When index.html is a fragment (no <html>/<head>/<body>), linkedom.parseHTML()
@@ -2001,7 +2173,9 @@ export async function compileForRender(
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
-  const { html, externalAssets } = collectExternalAssets(embeddedHtml, projectDir);
+  const { html: collectedHtml, externalAssets } = collectExternalAssets(embeddedHtml, projectDir);
+  const inlinedMedia = extractInlinedNestedMedia(collectedHtml);
+  const html = inlinedMedia.html;
 
   for (const [relPath, absPath] of remoteMediaAssets) {
     externalAssets.set(relPath, absPath);
@@ -2019,17 +2193,11 @@ export async function compileForRender(
     externalAssets.set(relPath, absPath);
   }
 
-  // Parse main HTML elements
-  const mainVideos = parseVideoElements(html);
-  const mainAudios = parseAudioElements(html);
-  const mainImages = parseImageElements(html);
-
-  // Keep inlined sub-composition media authoritative on ID collisions.
-  // inlineSubCompositions() hoists those nodes into the final HTML, so the
-  // producer should follow the same precedence the runtime sees in the merged DOM.
-  const videos = dedupeElementsById([...mainVideos, ...subVideos]);
-  const audios = dedupeElementsById([...mainAudios, ...subAudios]);
-  const images = dedupeElementsById([...mainImages, ...subImages]);
+  // Extraction is derived from the inlined DOM so repeated mounts retain
+  // distinct identities and nested in-points/rates have one canonical map.
+  const videos = inlinedMedia.videos;
+  const audios = inlinedMedia.audios;
+  const images = inlinedMedia.images;
 
   // Advisory video checks (sparse keyframes, VFR). Fire-and-forget — these spawn
   // ffprobe subprocesses and should not block compilation since they only produce warnings.
@@ -2115,6 +2283,8 @@ export interface BrowserMediaElement {
   volume: number;
   /** The `muted` attribute/property. Preview silences muted media; the mix must too. */
   muted: boolean;
+  /** Compiler marker: static metadata already carries the nested host/in-point transform. */
+  nested: boolean;
 }
 
 export interface BrowserAudioVolumeAutomation {
@@ -2136,6 +2306,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       hasAudio: boolean;
       volume: number;
       muted: boolean;
+      nested: boolean;
     }[] = [];
 
     const autoImageIds = new Map<Element, string>();
@@ -2171,6 +2342,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       const muted =
         !isImage &&
         (htmlEl.hasAttribute("muted") || (htmlEl as HTMLVideoElement | HTMLAudioElement).muted);
+      const nested = htmlEl.hasAttribute("data-hf-nested-media");
 
       results.push({
         id,
@@ -2184,6 +2356,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         hasAudio,
         volume,
         muted,
+        nested,
       });
     });
 
@@ -2465,30 +2638,13 @@ export async function resolveCompositionDurations(
 export async function recompileWithResolutions(
   compiled: CompiledComposition,
   resolutions: ResolvedDuration[],
-  projectDir: string,
-  downloadDir: string,
+  _projectDir: string,
+  _downloadDir: string,
 ): Promise<CompiledComposition> {
   if (resolutions.length === 0) return compiled;
 
-  const html = injectDurations(compiled.html, resolutions);
-
-  // Re-parse sub-compositions with the updated parent bounds
-  const {
-    videos: subVideos,
-    audios: subAudios,
-    images: subImages,
-    subCompositions,
-  } = await parseSubCompositions(html, projectDir, downloadDir);
-
-  const mainVideos = parseVideoElements(html);
-  const mainAudios = parseAudioElements(html);
-  const mainImages = parseImageElements(html);
-
-  // Keep inlined sub-composition media authoritative on ID collisions.
-  const hasSubMedia = subVideos.length > 0 || subAudios.length > 0 || subImages.length > 0;
-  const videos = hasSubMedia ? dedupeElementsById([...mainVideos, ...subVideos]) : compiled.videos;
-  const audios = hasSubMedia ? dedupeElementsById([...mainAudios, ...subAudios]) : compiled.audios;
-  const images = hasSubMedia ? dedupeElementsById([...mainImages, ...subImages]) : compiled.images;
+  const resolvedHtml = injectDurations(compiled.html, resolutions);
+  const inlinedMedia = extractInlinedNestedMedia(resolvedHtml);
 
   const remaining = compiled.unresolvedCompositions.filter(
     (c) => !resolutions.some((r) => r.id === c.id),
@@ -2496,11 +2652,10 @@ export async function recompileWithResolutions(
 
   return {
     ...compiled,
-    html,
-    subCompositions,
-    videos,
-    audios,
-    images,
+    html: inlinedMedia.html,
+    videos: inlinedMedia.videos,
+    audios: inlinedMedia.audios,
+    images: inlinedMedia.images,
     unresolvedCompositions: remaining,
     renderModeHints: compiled.renderModeHints,
     hasShaderTransitions: compiled.hasShaderTransitions,

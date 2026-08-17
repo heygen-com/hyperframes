@@ -1105,13 +1105,13 @@ describe("template-wrapped sub-composition media offsets", () => {
     expect(compiled.videos[0]).toMatchObject({
       id: "scene-video",
       start: 2,
-      end: 6,
+      end: 4,
     });
     expect(compiled.audios).toHaveLength(1);
     expect(compiled.audios[0]).toMatchObject({
       id: "scene-video-audio",
       start: 2,
-      end: 6,
+      end: 4,
     });
   });
 
@@ -1134,13 +1134,13 @@ describe("template-wrapped sub-composition media offsets", () => {
     expect(recompiled.videos[0]).toMatchObject({
       id: "scene-video",
       start: 2,
-      end: 6,
+      end: 4,
     });
     expect(recompiled.audios).toHaveLength(1);
     expect(recompiled.audios[0]).toMatchObject({
       id: "scene-video-audio",
       start: 2,
-      end: 6,
+      end: 4,
     });
   });
 
@@ -1164,6 +1164,396 @@ describe("template-wrapped sub-composition media offsets", () => {
       start: 21.5,
       end: 25.5,
     });
+  });
+
+  it("maps a nested timed image from child-local time into the host timeline", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-duration="3" data-width="640" data-height="360"',
+      'data-start="0" data-duration="1"',
+      '<img id="nested-image" src="../assets/still.png" data-start="1" data-duration="1">',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.images).toContainEqual(
+      expect.objectContaining({ id: "nested-image", start: 6, end: 7 }),
+    );
+  });
+
+  it("maps and clips nested timed images through a composition in-point and rate", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-duration="2" data-playback-start="1" data-playback-rate="2" data-width="640" data-height="360"',
+      'data-start="0" data-duration="1"',
+      `<img id="before" src="../assets/before.png" data-start="0" data-duration="1">
+       <img id="overlap" src="../assets/overlap.png" data-start="0.5" data-duration="1">
+       <img id="mapped" src="../assets/mapped.png" data-start="2" data-duration="2">`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.images).not.toContainEqual(expect.objectContaining({ id: "before" }));
+    expect(compiled.images).toContainEqual(
+      expect.objectContaining({ id: "overlap", start: 5, end: 5.25 }),
+    );
+    expect(compiled.images).toContainEqual(
+      expect.objectContaining({ id: "mapped", start: 5.5, end: 6.5 }),
+    );
+  });
+
+  it("keeps repeated and idless nested timed images distinct", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-repeat-image-inpoint-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="root" data-duration="10">
+        <div data-composition-id="one" data-composition-src="compositions/scene.html" data-start="1" data-duration="2"></div>
+        <div data-composition-id="two" data-composition-src="compositions/scene.html" data-start="5" data-duration="2"></div>
+      </div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/scene.html"),
+      `<template><div data-composition-id="scene">
+        <img src="assets/idless.png" data-start="0.5" data-duration="1">
+      </div></template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.images.map((image) => image.start).sort()).toEqual([1.5, 5.5]);
+    expect(new Set(compiled.images.map((image) => image.id)).size).toBe(2);
+  });
+
+  it("keeps nested image timing and identity stable across non-empty recompilation", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-width="640" data-height="360"',
+      'data-start="0" data-duration="1"',
+      '<img id="nested-image" src="../assets/still.png" data-start="1" data-duration="1">',
+    );
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [{ id: "scene-host", duration: 3 }],
+      projectDir,
+      projectDir,
+    );
+
+    expect(recompiled.images).toEqual(compiled.images);
+    expect(recompiled.images).toContainEqual(
+      expect.objectContaining({ id: "nested-image", start: 6, end: 7 }),
+    );
+  });
+
+  it("maps explicit local data-end for nested image, video, and audio through compile/recompile", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-width="640" data-height="360"',
+      'data-start="1" data-end="2"',
+      `<audio id="explicit-audio" src="../assets/explicit.wav" data-start="1" data-end="2"></audio>
+       <img id="explicit-image" src="../assets/explicit.png" data-start="1" data-end="2">`,
+    );
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [{ id: "scene-host", duration: 4 }],
+      projectDir,
+      projectDir,
+    );
+
+    for (const result of [compiled, recompiled]) {
+      expect(result.videos).toContainEqual(
+        expect.objectContaining({ id: "scene-video", start: 6, end: 7 }),
+      );
+      expect(result.audios).toContainEqual(
+        expect.objectContaining({ id: "explicit-audio", start: 6, end: 7 }),
+      );
+      expect(result.images).toContainEqual(
+        expect.objectContaining({ id: "explicit-image", start: 6, end: 7 }),
+      );
+    }
+  });
+
+  it("resolves relative nested starts before in-point/rate mapping for all timed media", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-playback-start="1" data-playback-rate="2" data-width="640" data-height="360"',
+      'data-start="anchor + 1" data-duration="1"',
+      `<div id="anchor" data-start="2" data-duration="1"></div>
+       <audio id="relative-audio" src="../assets/relative.wav" data-start="anchor + 1" data-duration="1"></audio>
+       <img id="relative-image" src="../assets/relative.png" data-start="anchor + 1" data-duration="1">`,
+    );
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [{ id: "scene-host", duration: 4 }],
+      projectDir,
+      projectDir,
+    );
+
+    for (const result of [compiled, recompiled]) {
+      expect(result.videos).toContainEqual(
+        expect.objectContaining({ id: "scene-video", start: 6.5, end: 7 }),
+      );
+      expect(result.audios).toContainEqual(
+        expect.objectContaining({ id: "relative-audio", start: 6.5, end: 7 }),
+      );
+      expect(result.images).toContainEqual(
+        expect.objectContaining({ id: "relative-image", start: 6.5, end: 7 }),
+      );
+    }
+  });
+
+  async function compileRepeatedRelativeMounts(extraMediaMarkup: string) {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-repeat-relative-mount-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="root" data-duration="10">
+        <div id="mount-one" data-composition-id="one" data-composition-src="compositions/scene.html" data-start="1" data-duration="3"></div>
+        <div id="mount-two" data-composition-id="two" data-composition-src="compositions/scene.html" data-start="5" data-duration="3"></div>
+      </div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/scene.html"),
+      `<template><div data-composition-id="scene" data-duration="3">
+        <div id="anchor" data-start="0" data-duration="1"></div>
+        ${extraMediaMarkup}
+      </div></template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [
+        { id: "mount-one", duration: 3 },
+        { id: "mount-two", duration: 3 },
+      ],
+      projectDir,
+      projectDir,
+    );
+    return { compiled, recompiled };
+  }
+
+  function mediaStartsByType(result: {
+    videos: Array<{ start: number }>;
+    audios: Array<{ start: number }>;
+    images: Array<{ start: number }>;
+  }) {
+    return {
+      videos: result.videos.map((media) => media.start).sort(),
+      audios: result.audios.map((media) => media.start).sort(),
+      images: result.images.map((media) => media.start).sort(),
+    };
+  }
+
+  it("scopes repeated-mount relative references for explicitly identified timed media", async () => {
+    const results = await compileRepeatedRelativeMounts(
+      `<video id="relative-video" src="../assets/relative.mp4" data-start="anchor" data-duration="1"></video>
+       <audio id="relative-audio" src="../assets/relative.wav" data-start="anchor" data-duration="1"></audio>
+       <img id="relative-image" src="../assets/relative.png" data-start="anchor" data-duration="1">`,
+    );
+
+    expect([results.compiled, results.recompiled].map(mediaStartsByType)).toEqual([
+      { videos: [2, 6], audios: [2, 2, 6, 6], images: [2, 6] },
+      { videos: [2, 6], audios: [2, 2, 6, 6], images: [2, 6] },
+    ]);
+  });
+
+  it("scopes repeated-mount relative references for idless timed media", async () => {
+    const results = await compileRepeatedRelativeMounts(
+      `<video src="../assets/relative.mp4" data-start="anchor" data-duration="1"></video>
+       <audio src="../assets/relative.wav" data-start="anchor" data-duration="1"></audio>
+       <img src="../assets/relative.png" data-start="anchor" data-duration="1">`,
+    );
+
+    expect([results.compiled, results.recompiled].map(mediaStartsByType)).toEqual([
+      { videos: [2, 6], audios: [2, 2, 6, 6], images: [2, 6] },
+      { videos: [2, 6], audios: [2, 2, 6, 6], images: [2, 6] },
+    ]);
+  });
+
+  it("resolves nested host references in the parent mount despite child ID shadowing", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-nested-reference-shadow-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="root" data-duration="12">
+        <div id="parent-host" data-composition-id="parent" data-composition-src="compositions/parent.html" data-start="1" data-duration="10"></div>
+      </div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/parent.html"),
+      `<template><div data-composition-id="parent" data-duration="10">
+        <div id="anchor" data-start="0" data-duration="1"></div>
+        <div id="child-one" data-composition-id="child-one" data-composition-src="compositions/child.html" data-start="anchor" data-duration="3"></div>
+        <div id="child-two" data-composition-id="child-two" data-composition-src="compositions/child.html" data-start="anchor" data-duration="3"></div>
+      </div></template>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/child.html"),
+      `<template><div data-composition-id="child" data-duration="3">
+        <div id="anchor" data-start="0" data-duration="10"></div>
+        <video id="explicit-video" src="assets/explicit.mp4" data-start="0" data-duration="1" data-media-start="0.25" data-has-audio="true"></video>
+        <audio id="explicit-audio" src="assets/explicit.wav" data-start="0" data-end="1" data-media-start="0.5"></audio>
+        <img id="explicit-image" src="assets/explicit.png" data-start="0" data-duration="1">
+        <video src="assets/idless.mp4" data-start="0" data-duration="1" data-media-start="0.25" data-has-audio="true"></video>
+        <audio src="assets/idless.wav" data-start="0" data-end="1" data-media-start="0.5"></audio>
+        <img src="assets/idless.png" data-start="0" data-duration="1">
+      </div></template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [
+        { id: "parent-host", duration: 10 },
+        { id: "child-one", duration: 3 },
+        { id: "child-two", duration: 3 },
+      ],
+      projectDir,
+      projectDir,
+    );
+
+    for (const result of [compiled, recompiled]) {
+      expect(
+        result.videos.map(({ start, end, mediaStart }) => ({ start, end, mediaStart })),
+      ).toEqual(Array(4).fill({ start: 2, end: 3, mediaStart: 0.25 }));
+      expect(result.audios.map(({ start, end }) => ({ start, end }))).toEqual(
+        Array(8).fill({ start: 2, end: 3 }),
+      );
+      expect(result.audios.map(({ mediaStart }) => mediaStart).sort()).toEqual([
+        0.25, 0.25, 0.25, 0.25, 0.5, 0.5, 0.5, 0.5,
+      ]);
+      expect(result.images.map(({ start, end }) => ({ start, end }))).toEqual(
+        Array(4).fill({ start: 2, end: 3 }),
+      );
+      expect(new Set(result.videos.map(({ id }) => id)).size).toBe(4);
+      expect(new Set(result.images.map(({ id }) => id)).size).toBe(4);
+    }
+  });
+
+  it("applies a composition in-point to descendant media with NLE head trimming", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-end="7" data-playback-start="1.5" data-width="640" data-height="360"',
+      'data-start="1" data-duration="4" data-media-start="2" data-playback-rate="2"',
+      `<audio id="pre" src="../assets/pre.wav" data-start="0" data-duration="1.5"></audio>
+       <audio id="boundary" src="../assets/boundary.wav" data-start="0.5" data-duration="1"></audio>
+       <audio id="late" src="../assets/late.wav" data-start="2" data-duration="1"></audio>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toContainEqual(
+      expect.objectContaining({ id: "scene-video", start: 5, end: 7, mediaStart: 3 }),
+    );
+    expect(compiled.audios).not.toContainEqual(expect.objectContaining({ id: "pre" }));
+    expect(compiled.audios).not.toContainEqual(expect.objectContaining({ id: "boundary" }));
+    expect(compiled.audios).toContainEqual(
+      expect.objectContaining({ id: "late", start: 5.5, end: 6.5, mediaStart: 0 }),
+    );
+
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [{ id: "scene-host", duration: 2 }],
+      projectDir,
+      projectDir,
+    );
+    expect(recompiled.videos).toEqual(compiled.videos);
+    expect(recompiled.audios).toEqual(compiled.audios);
+  });
+
+  it("drops exact-boundary media and head-trims H=1 P=3 overlaps", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="1" data-duration="2" data-playback-start="3" data-width="640" data-height="360"',
+      'data-start="2" data-duration="2" data-media-start="5"',
+      `<audio id="boundary" src="../assets/boundary.wav" data-start="1" data-duration="2"></audio>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    expect(compiled.audios).not.toContainEqual(expect.objectContaining({ id: "boundary" }));
+    expect(compiled.videos).toContainEqual(
+      expect.objectContaining({ id: "scene-video", start: 1, end: 2, mediaStart: 6 }),
+    );
+  });
+
+  it("uses the canonical composition playback-start before its media-start alias", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-duration="3" data-playback-start="1" data-media-start="2" data-width="640" data-height="360"',
+      'data-start="2" data-duration="1"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    expect(compiled.videos).toContainEqual(
+      expect.objectContaining({ id: "scene-video", start: 6, end: 7 }),
+    );
+  });
+
+  it("composes host playback rate and nested in-points for descendant media", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-nested-inpoint-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body>
+        <div data-composition-id="root" data-duration="12">
+          <div data-composition-id="outer" data-composition-src="compositions/outer.html"
+            data-start="5" data-duration="4" data-playback-start="1" data-playback-rate="2"></div>
+        </div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/outer.html"),
+      `<template><div data-composition-id="outer">
+        <div data-composition-id="inner" data-composition-src="compositions/inner.html"
+          data-start="2" data-duration="2" data-playback-start="0.5"></div>
+      </div></template>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/inner.html"),
+      `<template><div data-composition-id="inner">
+        <video id="deep" src="assets/deep.mp4" data-start="1" data-duration="1"></video>
+      </div></template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    // Inner maps to outer source 2.5; outer source maps to master
+    // 5 + (2.5 - 1) / 2 = 5.75. The one-second inner clip spans 0.5s master.
+    expect(compiled.videos).toContainEqual(
+      expect.objectContaining({ id: "deep", start: 5.75, end: 6.25 }),
+    );
+  });
+
+  it("keeps repeated and idless sub-composition mounts as distinct render media", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-repeat-inpoint-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="root" data-duration="10">
+        <div data-composition-id="one" data-composition-src="compositions/scene.html" data-start="1" data-duration="2"></div>
+        <div data-composition-id="two" data-composition-src="compositions/scene.html" data-start="5" data-duration="2"></div>
+      </div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions/scene.html"),
+      `<template><div data-composition-id="scene">
+        <video src="assets/idless.mp4" data-start="0" data-duration="1"></video>
+        <audio id="duplicate" src="assets/same.wav" data-start="0.5" data-duration="1"></audio>
+      </div></template>`,
+    );
+
+    const first = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(first.videos.map((video) => video.start).sort()).toEqual([1, 5]);
+    expect(new Set(first.videos.map((video) => video.id)).size).toBe(2);
+    expect(
+      first.audios
+        .filter((audio) => audio.src.endsWith("same.wav"))
+        .map((audio) => audio.start)
+        .sort(),
+    ).toEqual([1.5, 5.5]);
+    expect(
+      new Set(
+        first.audios.filter((audio) => audio.src.endsWith("same.wav")).map((audio) => audio.id),
+      ).size,
+    ).toBe(2);
+
+    const second = await recompileWithResolutions(first, [], projectDir, projectDir);
+    expect(second.videos).toEqual(first.videos);
+    expect(second.audios).toEqual(first.audios);
   });
 
   it("includes explicit audio from template-wrapped sub-compositions", async () => {

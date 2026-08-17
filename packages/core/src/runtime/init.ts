@@ -616,7 +616,122 @@ export function initSandboxRuntimeModular(): void {
     return { compositionRoot, inheritedStart, inheritedDuration };
   };
 
+  type NestedMediaTiming = {
+    rawStart: number;
+    start: number;
+    end: number;
+    mediaStart: number;
+    playbackRate: number;
+    windowEnd: number | null;
+  };
+
+  const readCompositionInPoint = (element: Element): number => {
+    const raw = parseNumeric(
+      element.getAttribute("data-playback-start") ?? element.getAttribute("data-media-start"),
+    );
+    return raw != null && raw > 0 ? raw : 0;
+  };
+
+  /**
+   * Map descendant media from child-composition source time to the master
+   * timeline. Composition hosts are affine NLE slots:
+   * master = hostStart + (childLocal - inPoint) / hostRate.
+   * The root composition is intentionally excluded so opening a composition
+   * by itself remains a local preview.
+   */
+  const resolveNestedMediaTiming = (element: HTMLMediaElement): NestedMediaTiming | null => {
+    const hosts: Element[] = [];
+    let host = element.closest("[data-composition-id]");
+    while (host) {
+      const parentHost = host.parentElement?.closest("[data-composition-id]") ?? null;
+      if (!parentHost) break;
+      if (
+        host.hasAttribute("data-start") ||
+        host.hasAttribute("data-composition-file") ||
+        host.hasAttribute("data-composition-src")
+      ) {
+        hosts.push(host);
+      }
+      host = parentHost;
+    }
+    if (hosts.length === 0) return null;
+
+    const authoredStart = parseNumeric(element.getAttribute("data-start"));
+    if (authoredStart == null) return null;
+    let masterTime = authoredStart;
+    let combinedRate = readElementPlaybackRate(element);
+    let windowStart = Number.NEGATIVE_INFINITY;
+    let windowEnd = Number.POSITIVE_INFINITY;
+    for (const compositionHost of hosts) {
+      const hostStart = parseNumeric(compositionHost.getAttribute("data-start")) ?? 0;
+      const hostInPoint = readCompositionInPoint(compositionHost);
+      const hostPlaybackRate = readElementPlaybackRate(compositionHost);
+      if (hosts.length === 1 && hostInPoint === 0 && hostPlaybackRate === 1) {
+        const hostDuration = resolveDurationForElement(compositionHost, {
+          includeAuthoredTimingAttrs: true,
+        });
+        const authoredDuration = parseNumeric(element.getAttribute("data-duration"));
+        const hostEnd =
+          hostDuration != null && hostDuration > 0 ? hostStart + hostDuration : Infinity;
+        const authoredEnd =
+          authoredDuration != null && authoredDuration > 0
+            ? authoredStart + authoredDuration
+            : authoredStart;
+        if (authoredStart >= hostStart && authoredStart < hostEnd && authoredEnd > hostStart) {
+          return null;
+        }
+      }
+      const hostRate = hostPlaybackRate;
+      const inPoint = hostInPoint;
+      masterTime = hostStart + (masterTime - inPoint) / hostRate;
+      combinedRate *= hostRate;
+
+      const parentMappedSlotStart = hosts
+        .slice(hosts.indexOf(compositionHost) + 1)
+        .reduce((time, parent) => {
+          const parentStart = parseNumeric(parent.getAttribute("data-start")) ?? 0;
+          return (
+            parentStart + (time - readCompositionInPoint(parent)) / readElementPlaybackRate(parent)
+          );
+        }, hostStart);
+      windowStart = Math.max(windowStart, parentMappedSlotStart);
+      const hostDuration = resolveDurationForElement(compositionHost, {
+        includeAuthoredTimingAttrs: true,
+      });
+      if (hostDuration != null && hostDuration > 0) {
+        const outerRate = hosts
+          .slice(hosts.indexOf(compositionHost) + 1)
+          .reduce((rate, parent) => rate * readElementPlaybackRate(parent), 1);
+        windowEnd = Math.min(windowEnd, parentMappedSlotStart + hostDuration / outerRate);
+      }
+    }
+
+    const effectiveStart = Math.max(masterTime, windowStart);
+    const authoredMediaStart = readElementPlaybackStart(element);
+    const authoredDuration = parseNumeric(element.getAttribute("data-duration"));
+    const ownRate = readElementPlaybackRate(element);
+    const hostRate = combinedRate / ownRate;
+    const mediaEnd =
+      authoredDuration != null && authoredDuration > 0
+        ? masterTime + authoredDuration / hostRate
+        : Number.POSITIVE_INFINITY;
+    return {
+      rawStart: masterTime,
+      start: effectiveStart,
+      end: Math.min(mediaEnd, windowEnd),
+      mediaStart: authoredMediaStart + Math.max(0, effectiveStart - masterTime) * combinedRate,
+      playbackRate: combinedRate,
+      windowEnd: Number.isFinite(windowEnd) ? windowEnd : null,
+    };
+  };
+
   const resolveAbsoluteMediaStartSeconds = (element: Element): number => {
+    if (element instanceof HTMLMediaElement) {
+      const nested = resolveNestedMediaTiming(element);
+      if (nested) {
+        return nested.start;
+      }
+    }
     const context = resolveMediaCompositionContext(element);
     const inheritedStart = context.inheritedStart ?? 0;
     const authoredStart = parseNumeric(element.getAttribute("data-start"));
@@ -650,9 +765,30 @@ export function initSandboxRuntimeModular(): void {
   };
 
   window.__hfResolveMediaStartSeconds = resolveAbsoluteMediaStartSeconds;
+  const resolveMediaSourceStartSeconds = (element: HTMLVideoElement | HTMLAudioElement): number =>
+    resolveNestedMediaTiming(element)?.mediaStart ?? readElementPlaybackStart(element);
+  const resolveMediaPlaybackRate = (element: HTMLVideoElement | HTMLAudioElement): number =>
+    resolveNestedMediaTiming(element)?.playbackRate ?? readElementPlaybackRate(element);
+  const resolveMediaDurationSeconds = (element: HTMLVideoElement | HTMLAudioElement): number => {
+    const nested = resolveNestedMediaTiming(element);
+    if (nested) return Math.max(0, nested.end - nested.start);
+    return parseNumeric(element.getAttribute("data-duration")) ?? Number.POSITIVE_INFINITY;
+  };
+  window.__hfResolveMediaSourceStartSeconds = resolveMediaSourceStartSeconds;
+  window.__hfResolveMediaPlaybackRate = resolveMediaPlaybackRate;
+  window.__hfResolveMediaDurationSeconds = resolveMediaDurationSeconds;
   runtimeCleanupCallbacks.push(() => {
     if (window.__hfResolveMediaStartSeconds === resolveAbsoluteMediaStartSeconds) {
       delete window.__hfResolveMediaStartSeconds;
+    }
+    if (window.__hfResolveMediaSourceStartSeconds === resolveMediaSourceStartSeconds) {
+      delete window.__hfResolveMediaSourceStartSeconds;
+    }
+    if (window.__hfResolveMediaPlaybackRate === resolveMediaPlaybackRate) {
+      delete window.__hfResolveMediaPlaybackRate;
+    }
+    if (window.__hfResolveMediaDurationSeconds === resolveMediaDurationSeconds) {
+      delete window.__hfResolveMediaDurationSeconds;
     }
   });
 
@@ -667,6 +803,12 @@ export function initSandboxRuntimeModular(): void {
       ? resolveAbsoluteMediaStartSeconds(rawNode)
       : resolveStartForElement(rawNode, 0);
     let duration = resolveDurationForElement(rawNode);
+    if (rawNode instanceof HTMLMediaElement) {
+      const nestedTiming = resolveNestedMediaTiming(rawNode);
+      if (nestedTiming && Number.isFinite(nestedTiming.end)) {
+        duration = Math.max(0, nestedTiming.end - nestedTiming.start);
+      }
+    }
     const compId = rawNode.getAttribute("data-composition-id");
     if (compId) {
       const compTimeline = (window.__timelines ?? {})[compId];
@@ -1984,23 +2126,36 @@ export function initSandboxRuntimeModular(): void {
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
       resolveStartSeconds: (element) => {
-        return resolveAbsoluteMediaStartSeconds(element);
+        return element instanceof HTMLMediaElement
+          ? (resolveNestedMediaTiming(element)?.start ?? resolveAbsoluteMediaStartSeconds(element))
+          : resolveAbsoluteMediaStartSeconds(element);
       },
+      resolveMediaStartSeconds: (element) =>
+        resolveNestedMediaTiming(element)?.mediaStart ?? readElementPlaybackStart(element),
+      resolvePlaybackRate: (element) =>
+        resolveNestedMediaTiming(element)?.playbackRate ?? readElementPlaybackRate(element),
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
         const start = resolveAbsoluteMediaStartSeconds(element);
-        const mediaStart =
-          Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
-          0;
+        const nestedTiming = resolveNestedMediaTiming(element);
+        if (nestedTiming && Number.isFinite(nestedTiming.end)) {
+          return Math.max(0, nestedTiming.end - nestedTiming.start);
+        }
+        const mediaStart = nestedTiming?.mediaStart ?? readElementPlaybackStart(element);
         const hostRemaining =
           context.inheritedStart != null &&
           context.inheritedDuration != null &&
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration =
+        const sourceDurationInSourceSeconds =
           Number.isFinite(element.duration) && element.duration > mediaStart
             ? Math.max(0, element.duration - mediaStart)
+            : null;
+        const sourceDuration =
+          sourceDurationInSourceSeconds != null
+            ? sourceDurationInSourceSeconds /
+              (nestedTiming?.playbackRate ?? readElementPlaybackRate(element))
             : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound
@@ -2008,8 +2163,11 @@ export function initSandboxRuntimeModular(): void {
         // to the source-file or host-composition end. Absent → no cap (an
         // untrimmed clip plays its natural source length).
         const ownDuration = Number.parseFloat(element.dataset.duration ?? "");
+        const hostRate = nestedTiming
+          ? nestedTiming.playbackRate / readElementPlaybackRate(element)
+          : 1;
         const explicitDuration =
-          Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration : null;
+          Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration / hostRate : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
           sourceDuration,
@@ -2921,12 +3079,16 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            const start = Number.parseFloat(rawEl.dataset.start ?? "");
+            const nestedTiming = resolveNestedMediaTiming(rawEl);
+            const start = nestedTiming?.start ?? Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
-            const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
-            const mediaStart =
-              Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") ||
-              0;
+            const end =
+              nestedTiming && Number.isFinite(nestedTiming.end)
+                ? nestedTiming.end
+                : Number.isFinite(durAttr) && durAttr > 0
+                  ? start + durAttr
+                  : Infinity;
+            const mediaStart = nestedTiming?.mediaStart ?? readElementPlaybackStart(rawEl);
             if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
@@ -3001,14 +3163,20 @@ export function initSandboxRuntimeModular(): void {
     for (const el of mediaEls) {
       if (!(el instanceof HTMLMediaElement)) continue;
       if (!el.isConnected) continue;
-      const start = Number.parseFloat(el.dataset.start ?? "");
+      const nestedTiming = resolveNestedMediaTiming(el);
+      const start = nestedTiming?.start ?? Number.parseFloat(el.dataset.start ?? "");
       if (!Number.isFinite(start)) continue;
       const durAttr = Number.parseFloat(el.dataset.duration ?? "");
-      const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+      const end =
+        nestedTiming && Number.isFinite(nestedTiming.end)
+          ? nestedTiming.end
+          : Number.isFinite(durAttr) && durAttr > 0
+            ? start + durAttr
+            : Infinity;
       if (timeSeconds < start || timeSeconds >= end) continue;
-      const mediaStart =
-        Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
-      const relTime = timeSeconds - start + mediaStart;
+      const mediaStart = nestedTiming?.mediaStart ?? readElementPlaybackStart(el);
+      const playbackRate = nestedTiming?.playbackRate ?? readElementPlaybackRate(el);
+      const relTime = (timeSeconds - start) * playbackRate + mediaStart;
       if (relTime >= 0) {
         try {
           el.currentTime = relTime;
@@ -3031,15 +3199,19 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
+      const nestedTiming = resolveNestedMediaTiming(rawEl);
+      const compStart = nestedTiming?.start ?? Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
-      const mediaStart =
-        Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
+      const mediaStart = nestedTiming?.mediaStart ?? readElementPlaybackStart(rawEl);
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
       const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+      const elementRate = nestedTiming?.playbackRate ?? readElementPlaybackRate(rawEl);
+      const hostRate = elementRate / readElementPlaybackRate(rawEl);
       let clipDuration =
-        Number.isFinite(durationAttr) && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
+        Number.isFinite(durationAttr) && durationAttr > 0
+          ? durationAttr / hostRate
+          : Number.POSITIVE_INFINITY;
       const compositionRoot = rawEl.closest("[data-composition-id]");
       if (compositionRoot) {
         const inheritedStart = resolveStartForElement(compositionRoot, 0);
@@ -3063,7 +3235,7 @@ export function initSandboxRuntimeModular(): void {
           clock.now(),
           vol * state.bridgeVolume,
           gen,
-          state.playbackRate,
+          state.playbackRate * elementRate,
           clipDuration,
         );
       });

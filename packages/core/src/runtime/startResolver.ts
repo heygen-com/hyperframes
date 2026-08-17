@@ -22,6 +22,13 @@ function parseAuthoredEndAttr(element: Element): number | null {
   return parseNumeric(element.getAttribute(AUTHORED_END_ATTR));
 }
 
+function referenceMountForSource(source: Element): Element | null {
+  if (!source.hasAttribute("data-composition-file")) {
+    return source.closest("[data-composition-file]");
+  }
+  return source.parentElement?.closest("[data-composition-file]") ?? null;
+}
+
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
   includeAuthoredTimingAttrs?: boolean;
@@ -43,7 +50,22 @@ export function createRuntimeStartTimeResolver(params: {
   const durationCache = new WeakMap<Element, number | null>();
   const visiting = new Set<Element>();
 
-  const findReferenceTarget = (refId: string): Element | null => {
+  const findReferenceTarget = (refId: string, source: Element): Element | null => {
+    const mount = referenceMountForSource(source);
+    if (mount) {
+      if (
+        mount.getAttribute("id") === refId ||
+        mount.getAttribute("data-composition-id") === refId
+      ) {
+        return mount;
+      }
+      const localById = Array.from(mount.querySelectorAll("[id]")).find(
+        (candidate) => candidate.getAttribute("id") === refId,
+      );
+      if (localById) return localById;
+      const localComposition = mount.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`);
+      if (localComposition) return localComposition;
+    }
     const byId = doc.getElementById(refId);
     if (byId) return byId;
     return (
@@ -170,7 +192,7 @@ export function createRuntimeStartTimeResolver(params: {
         startCache.set(element, resolved);
         return resolved;
       }
-      const target = findReferenceTarget(expression.refId);
+      const target = findReferenceTarget(expression.refId, element);
       if (!target) {
         startCache.set(element, fallback);
         return fallback;

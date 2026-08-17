@@ -83,6 +83,12 @@ declare global {
      * restoration, and arbitrary composition nesting cannot drift.
      */
     __hfResolveMediaStartSeconds?: (element: Element) => number;
+    /** Runtime-resolved source offset after nested slot in-points/head trimming. */
+    __hfResolveMediaSourceStartSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number;
+    /** Runtime-resolved rate after composing descendant and host playback rates. */
+    __hfResolveMediaPlaybackRate?: (element: HTMLVideoElement | HTMLAudioElement) => number;
+    /** Effective master-timeline duration after nested slot clipping/rate transforms. */
+    __hfResolveMediaDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;

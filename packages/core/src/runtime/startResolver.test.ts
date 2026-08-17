@@ -238,6 +238,86 @@ describe("createRuntimeStartTimeResolver", () => {
       expect(resolver.resolveStartForElement(secondClip)).toBe(58);
     });
 
+    it("resolves duplicate relative references within each repeated inlined mount", () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      document.body.appendChild(root);
+
+      const addMount = (id: string, start: number) => {
+        const host = document.createElement("div");
+        host.id = id;
+        host.setAttribute("data-composition-id", id);
+        host.setAttribute("data-composition-file", "compositions/scene.html");
+        host.setAttribute("data-start", String(start));
+        root.appendChild(host);
+
+        const innerRoot = document.createElement("div");
+        innerRoot.setAttribute("data-composition-id", "scene");
+        innerRoot.setAttribute("data-hf-inner-root", "true");
+        host.appendChild(innerRoot);
+
+        const anchor = document.createElement("div");
+        anchor.id = "anchor";
+        anchor.setAttribute("data-start", "0");
+        anchor.setAttribute("data-duration", "1");
+        innerRoot.appendChild(anchor);
+
+        const image = document.createElement("img");
+        image.setAttribute("data-start", "anchor");
+        image.setAttribute("data-duration", "1");
+        innerRoot.appendChild(image);
+        return image;
+      };
+
+      const firstImage = addMount("mount-one", 1);
+      const secondImage = addMount("mount-two", 5);
+      const resolver = createRuntimeStartTimeResolver({});
+
+      expect([
+        resolver.resolveStartForElement(firstImage),
+        resolver.resolveStartForElement(secondImage),
+      ]).toEqual([2, 6]);
+    });
+
+    it("resolves a nested host's own reference in its parent mount before child shadowing", () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      document.body.appendChild(root);
+
+      const outerHost = document.createElement("div");
+      outerHost.setAttribute("data-composition-id", "parent");
+      outerHost.setAttribute("data-composition-file", "compositions/parent.html");
+      outerHost.setAttribute("data-start", "1");
+      root.appendChild(outerHost);
+
+      const parentAnchor = document.createElement("div");
+      parentAnchor.id = "anchor";
+      parentAnchor.setAttribute("data-start", "0");
+      parentAnchor.setAttribute("data-duration", "1");
+      outerHost.appendChild(parentAnchor);
+
+      const childHost = document.createElement("div");
+      childHost.setAttribute("data-composition-id", "child");
+      childHost.setAttribute("data-composition-file", "compositions/child.html");
+      childHost.setAttribute("data-start", "anchor");
+      outerHost.appendChild(childHost);
+
+      const childAnchor = document.createElement("div");
+      childAnchor.id = "anchor";
+      childAnchor.setAttribute("data-start", "0");
+      childAnchor.setAttribute("data-duration", "10");
+      childHost.appendChild(childAnchor);
+
+      const image = document.createElement("img");
+      image.setAttribute("data-start", "0");
+      image.setAttribute("data-duration", "1");
+      childHost.appendChild(image);
+
+      const resolver = createRuntimeStartTimeResolver({});
+      expect(resolver.resolveStartForElement(childHost)).toBe(2);
+      expect(resolver.resolveStartForElement(image)).toBe(2);
+    });
+
     it("adds the nearest composition root start for nested absolute media in inlined compositions", () => {
       const root = document.createElement("div");
       root.setAttribute("data-composition-id", "main");

@@ -509,12 +509,14 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 resolveBrowserMediaEnd(el.start, el.end, el.duration),
               );
               if (
+                !el.nested &&
                 projectedEnd > 0 &&
                 (existing.end <= 0 || Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON)
               ) {
                 existing.end = projectedEnd;
               }
               if (
+                !el.nested &&
                 el.mediaStart > 0 &&
                 (existing.mediaStart <= 0 ||
                   Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
@@ -555,12 +557,14 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 resolveBrowserMediaEnd(el.start, el.end, el.duration),
               );
               if (
+                !el.nested &&
                 projectedEnd > 0 &&
                 (existing.end <= 0 || Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON)
               ) {
                 existing.end = projectedEnd;
               }
               if (
+                !el.nested &&
                 el.mediaStart > 0 &&
                 (existing.mediaStart <= 0 ||
                   Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)

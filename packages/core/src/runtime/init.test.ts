@@ -1404,6 +1404,216 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(0);
   });
 
+  it("seeks descendant media in the same source time as an in-pointed child timeline", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "12");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "5");
+    child.setAttribute("data-duration", "3");
+    child.setAttribute("data-playback-start", "1.5");
+    root.appendChild(child);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "1");
+    video.setAttribute("data-duration", "4");
+    video.setAttribute("data-media-start", "2");
+    video.setAttribute("data-playback-rate", "2");
+    child.appendChild(video);
+    Object.defineProperties(video, {
+      duration: { value: 20, configurable: true },
+      paused: { value: true, writable: true, configurable: true },
+      readyState: { value: 4, configurable: true },
+      currentTime: { value: 0, writable: true, configurable: true },
+    });
+    video.load = () => {};
+    video.pause = () => {
+      Object.defineProperty(video, "paused", { value: true, writable: true, configurable: true });
+    };
+
+    window.__timelines = { main: createMockTimeline(12), child: createMockTimeline(6) };
+    initSandboxRuntimeModular();
+
+    // Master 5 maps to child source time 1.5. The clip began at child time 1,
+    // so its own 2x source has advanced by 1 second from data-media-start=2.
+    window.__player?.seek(5);
+    expect(window.__hfResolveMediaStartSeconds?.(video)).toBe(5);
+    expect(window.__hfResolveMediaSourceStartSeconds?.(video)).toBe(3);
+    expect(window.__hfResolveMediaPlaybackRate?.(video)).toBe(2);
+    expect(window.__hfResolveMediaDurationSeconds?.(video)).toBe(3);
+    expect(video.currentTime).toBeCloseTo(3);
+  });
+
+  it("composes host playback rate into descendant media timing", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "12");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "5");
+    child.setAttribute("data-duration", "3");
+    child.setAttribute("data-playback-start", "1");
+    child.setAttribute("data-playback-rate", "2");
+    root.appendChild(child);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "2");
+    audio.setAttribute("data-duration", "1");
+    audio.setAttribute("data-media-start", "4");
+    child.appendChild(audio);
+
+    window.__timelines = { main: createMockTimeline(12), child: createMockTimeline(6) };
+    initSandboxRuntimeModular();
+
+    // child time = 1 + (master - 5) * 2, so child-local t=2 starts at 5.5.
+    expect(window.__hfResolveMediaStartSeconds?.(audio)).toBe(5.5);
+    expect(window.__hfResolveMediaDurationSeconds?.(audio)).toBe(0.5);
+  });
+
+  it("keeps a standalone composition preview local despite a root playback-start", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "child");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "6");
+    root.setAttribute("data-playback-start", "2");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "1");
+    video.setAttribute("data-duration", "2");
+    root.appendChild(video);
+
+    window.__timelines = { child: createMockTimeline(6) };
+    initSandboxRuntimeModular();
+
+    expect(window.__hfResolveMediaStartSeconds?.(video)).toBe(1);
+  });
+
+  it("uses data-media-start as a composition-slot alias without consuming descendant source trim", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "8");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "1");
+    child.setAttribute("data-duration", "3");
+    child.setAttribute("data-media-start", "3");
+    root.appendChild(child);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "1");
+    audio.setAttribute("data-duration", "3");
+    audio.setAttribute("data-media-start", "7");
+    child.appendChild(audio);
+    Object.defineProperties(audio, {
+      duration: { value: 20, configurable: true },
+      paused: { value: true, writable: true, configurable: true },
+      readyState: { value: 4, configurable: true },
+      currentTime: { value: 0, writable: true, configurable: true },
+    });
+    audio.load = () => {};
+    audio.pause = () => {};
+
+    window.__timelines = { main: createMockTimeline(8), child: createMockTimeline(6) };
+    initSandboxRuntimeModular();
+
+    // H=1, P=3, L=1 maps to master -1, then the slot head trims to master 1.
+    // The public resolver is used by snapshot and therefore exposes the
+    // effective start, while two consumed child seconds advance source 7 to 9.
+    expect(window.__hfResolveMediaStartSeconds?.(audio)).toBe(1);
+    window.__player?.seek(1);
+    expect(audio.currentTime).toBe(9);
+  });
+
+  it("uses the effective nested mapping for play hard-sync and WebAudio scheduling", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "8");
+    document.body.appendChild(root);
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "2");
+    child.setAttribute("data-duration", "3");
+    child.setAttribute("data-playback-start", "1");
+    root.appendChild(child);
+    const audio = document.createElement("audio");
+    audio.setAttribute("src", "nested.wav");
+    audio.setAttribute("data-start", "0.5");
+    audio.setAttribute("data-duration", "2");
+    audio.setAttribute("data-media-start", "4");
+    child.appendChild(audio);
+    Object.defineProperties(audio, {
+      duration: { value: 20, configurable: true },
+      paused: { value: true, writable: true, configurable: true },
+      readyState: { value: 4, configurable: true },
+      currentTime: { value: 0, writable: true, configurable: true },
+    });
+    audio.load = () => {};
+    audio.pause = () => {};
+    audio.play = vi.fn(async () => {});
+
+    window.__timelines = { main: createMockTimeline(8), child: createMockTimeline(4) };
+    initSandboxRuntimeModular();
+    window.__player?.seek(2);
+
+    // Raw media starts before the slot; the slot head consumes 0.5 child
+    // seconds, so seek's hard sync begins at source 4.5.
+    expect(audio.currentTime).toBe(4.5);
+  });
+
+  it("ends descendant media in master time under an accelerated host", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "5");
+    child.setAttribute("data-duration", "3");
+    child.setAttribute("data-playback-start", "1");
+    child.setAttribute("data-playback-rate", "2");
+    root.appendChild(child);
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "2");
+    video.setAttribute("data-duration", "1");
+    child.appendChild(video);
+    Object.defineProperties(video, {
+      duration: { value: 10, configurable: true },
+      paused: { value: false, writable: true, configurable: true },
+      readyState: { value: 4, configurable: true },
+      currentTime: { value: 0, writable: true, configurable: true },
+    });
+    video.load = () => {};
+    video.pause = () => {
+      Object.defineProperty(video, "paused", { value: true, writable: true, configurable: true });
+    };
+
+    window.__timelines = { main: createMockTimeline(10), child: createMockTimeline(4) };
+    initSandboxRuntimeModular();
+    window.__player?.seek(6);
+
+    // Local [2,3) maps to master [5.5,6), not [5.5,6.5).
+    expect(video.style.visibility).toBe("hidden");
+    expect(video.paused).toBe(true);
+  });
+
   it("activates sub-composition timelines at data-start near 0 during renderSeek", () => {
     // Regression: sub-compositions starting at or near t=0 had their GSAP
     // sub-timelines ignored during render because renderSeek did not

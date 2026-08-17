@@ -414,17 +414,24 @@ async function captureSnapshots(
           const candidates = await page.evaluate(() => {
             const runtimeWindow = window as Window & {
               __hfResolveMediaStartSeconds?: (element: Element) => number;
+              __hfResolveMediaSourceStartSeconds?: (element: HTMLMediaElement) => number;
+              __hfResolveMediaPlaybackRate?: (element: HTMLMediaElement) => number;
+              __hfResolveMediaDurationSeconds?: (element: HTMLMediaElement) => number;
             };
             return Array.from(document.querySelectorAll("video")).map((el) => {
               const v = el as HTMLVideoElement;
               const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
               const runtimeResolvedStart = runtimeWindow.__hfResolveMediaStartSeconds?.(v);
-              const rawRate = v.defaultPlaybackRate;
+              const rawRate =
+                runtimeWindow.__hfResolveMediaPlaybackRate?.(v) ?? v.defaultPlaybackRate;
               const playbackRate =
                 Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
               const mediaStart =
-                parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
-              const rawDuration = parseFloat(v.dataset.duration ?? "");
+                runtimeWindow.__hfResolveMediaSourceStartSeconds?.(v) ??
+                (parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0);
+              const rawDuration =
+                runtimeWindow.__hfResolveMediaDurationSeconds?.(v) ??
+                parseFloat(v.dataset.duration ?? "");
               const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
               const duration =
                 Number.isFinite(rawDuration) && rawDuration > 0

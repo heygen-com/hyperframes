@@ -412,8 +412,8 @@ describe("runProbeStage — forceScreenshot threading", () => {
         tagName: "video",
         src: "runtime-still.asset",
         start: 0,
-        end: 5,
-        duration: 5,
+        end: 7,
+        duration: 7,
         mediaStart: 0,
         loop: false,
         hasAudio: false,
@@ -441,7 +441,78 @@ describe("runProbeStage — forceScreenshot threading", () => {
     await runProbeStage(input);
 
     expect(input.composition.videos[0]?.src).toBe("runtime-still.asset");
+    expect(input.composition.videos[0]?.end).toBe(7);
     expect(mediaPreflightComposition).toBe(input.composition);
+  });
+
+  it("does not replace a compiler-shifted nested media offset with browser-local metadata", async () => {
+    resetRetryMocks();
+    browserMediaResults = [
+      {
+        id: "nested-clip",
+        tagName: "video",
+        src: "clip.mp4",
+        start: 1,
+        end: 5,
+        duration: 4,
+        mediaStart: 1,
+        loop: false,
+        hasAudio: true,
+        volume: 1,
+        muted: false,
+        nested: true,
+      },
+      {
+        id: "nested-audio",
+        tagName: "audio",
+        src: "runtime-audio.wav",
+        start: 1,
+        end: 5,
+        duration: 4,
+        mediaStart: 1,
+        loop: false,
+        hasAudio: true,
+        volume: 0.5,
+        muted: false,
+        nested: true,
+      },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 8;
+    input.composition.videos.push({
+      id: "nested-clip",
+      src: "clip.mp4",
+      start: 4,
+      end: 6,
+      mediaStart: 3,
+      loop: false,
+      hasAudio: true,
+    });
+    input.composition.audios.push({
+      id: "nested-audio",
+      src: "audio.wav",
+      start: 4,
+      end: 6,
+      mediaStart: 3,
+      layer: 0,
+      volume: 1,
+      type: "audio",
+    });
+    input.compiled.html =
+      '<video id="nested-clip" src="clip.mp4" data-var-src="clip_src" data-start="1" data-end="5" data-media-start="1">';
+    input.job.config.variables = { clip_src: "clip.mp4" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.videos[0]?.start).toBe(4);
+    expect(input.composition.videos[0]?.end).toBe(6);
+    expect(input.composition.videos[0]?.mediaStart).toBe(3);
+    expect(input.composition.audios[0]?.src).toBe("runtime-audio.wav");
+    expect(input.composition.audios[0]?.start).toBe(4);
+    expect(input.composition.audios[0]?.end).toBe(6);
+    expect(input.composition.audios[0]?.mediaStart).toBe(3);
+    expect(input.composition.audios[0]?.volume).toBe(0.5);
   });
 
   it("passes cancellation through and closes probe-owned resources when preflight rejects", async () => {
