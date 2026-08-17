@@ -3,7 +3,7 @@ import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
+import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { useAutomationLanes } from "./useAutomationLanes";
 import { useAutomationSelectionKeyboard } from "../../hooks/useAutomationSelectionKeyboard";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
