@@ -286,3 +286,87 @@ describe("transient-init retry", () => {
     }
   });
 });
+
+// ── Proxy-driver tweens (the false dead-zone fix) ───────────────────────────
+// The proxy-driver idiom tweens a plain object and applies the motion inside
+// onUpdate, so the tween's targets() holds no Element. The map used to drop those
+// tweens outright, which meant computeDensity counted zero active tweens over their
+// span and findDeadZones reported real motion as a dead zone.
+//
+// The fake producer hands animation-map a session whose page.evaluate runs the
+// callback in this process, against a stubbed window/document. That exercises the real
+// enumerateTweens/computeDensity/findDeadZones code without a browser.
+const FAKE_PROXY_DRIVER_ENV = [
+  "globalThis.Element = class Element {};",
+  "const mover = new globalThis.Element();",
+  'mover.id = "mover";',
+  "mover.classList = [];",
+  // 0-1s: an ordinary element tween.
+  "const elementTween = {",
+  "  targets: () => [mover],",
+  '  vars: { x: 900, duration: 1, ease: "power2.out" },',
+  "  startTime: () => 0,",
+  "  duration: () => 1,",
+  "};",
+  // 2-4s: a proxy driver. Real motion, no Element target.
+  "const proxyTween = {",
+  "  targets: () => [{ v: 0 }],",
+  '  vars: { v: 100, duration: 2, ease: "none", onUpdate() {} },',
+  "  startTime: () => 2,",
+  "  duration: () => 2,",
+  "};",
+  // 2-4s as well: a bare spacer with no onUpdate. Produces nothing, must stay dropped,
+  // otherwise every full-span anchor tween would mask genuine dead zones.
+  "const spacerTween = {",
+  "  targets: () => [{}],",
+  "  vars: { duration: 2 },",
+  "  startTime: () => 2,",
+  "  duration: () => 2,",
+  "};",
+  "const timeline = {",
+  "  getChildren: () => [elementTween, proxyTween, spacerTween],",
+  "  startTime: () => 0,",
+  "  duration: () => 4,",
+  "  seek() {},",
+  "};",
+  "globalThis.window = { __timelines: { main: timeline } };",
+  "globalThis.document = { querySelector: () => null, querySelectorAll: () => [] };",
+  "globalThis.getComputedStyle = () => ({",
+  '  opacity: "1",',
+  '  visibility: "visible",',
+  '  display: "block",',
+  "});",
+  'export async function createFileServer() { return { url: "http://test", close() {} }; }',
+  "export async function createCaptureSession() {",
+  "  return { page: { evaluate: async (fn, arg) => fn(arg) } };",
+  "}",
+  "export async function closeCaptureSession() {}",
+  "export async function initializeSession() {}",
+  "export async function getCompositionDuration() { return 4; }",
+].join("\n");
+
+describe("proxy-driver tweens", () => {
+  it("counts an onUpdate driver's span instead of reporting it as a dead zone", () => {
+    const root = mkdtempSync(join(tmpdir(), "hyperframes-skill-proxy-test-"));
+    try {
+      const compositionDir = writeFakeEnv(root, FAKE_PROXY_DRIVER_ENV);
+      const output = runHelper(HELPERS[0], root, compositionDir);
+      const report = JSON.parse(readFileSync(join(root, "out", "animation-map.json"), "utf8"));
+
+      const drivers = report.tweens.filter((tw) => tw.driver === "onUpdate");
+      assert.equal(drivers.length, 1, `expected one onUpdate driver in:\n${output}`);
+      assert.equal(drivers[0].start, 2);
+      assert.equal(drivers[0].end, 4);
+      assert.equal(drivers[0].targets, 0);
+      assert.deepEqual(drivers[0].bboxes, [], "there is no element to measure");
+      // `[].every()` is vacuously true, so unmeasured must not read as degenerate/invisible.
+      assert.deepEqual(drivers[0].flags, []);
+
+      assert.deepEqual(report.deadZones, [], "2-4s is animating, not dead");
+      // The bare spacer stays out — only the element tween and the driver are mapped.
+      assert.equal(report.tweens.length, 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

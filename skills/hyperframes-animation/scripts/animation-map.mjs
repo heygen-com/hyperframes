@@ -104,7 +104,11 @@ try {
       (_, k) => +(tw.start + ((k + 0.5) / FRAMES) * (tw.end - tw.start)).toFixed(3),
     );
 
-    const bboxes = await sampleTweenBboxes(session.page, tw.selectorHint, times);
+    // No selector means no element to measure (an onUpdate driver). Sampling anyway
+    // would hand querySelector an unmatchable string.
+    const bboxes = tw.selectorHint
+      ? await sampleTweenBboxes(session.page, tw.selectorHint, times)
+      : [];
 
     const animProps = tw.props.filter(
       (p) => !["parent", "overwrite", "immediateRender", "startAt", "runBackwards"].includes(p),
@@ -114,7 +118,8 @@ try {
 
     report.tweens.push({
       index: i + 1,
-      selector: tw.selectorHint,
+      selector: tw.selectorHint ?? "(onUpdate driver)",
+      driver: tw.driver,
       targets: tw.targetCount,
       props: animProps,
       start: +tw.start.toFixed(3),
@@ -194,8 +199,14 @@ async function enumerateTweens(session) {
         return;
       }
       const targets = (node.targets?.() ?? []).filter((t) => t instanceof Element);
-      if (!targets.length) return;
       const vars = node.vars ?? {};
+      // The proxy-driver idiom tweens a plain object and applies the motion in onUpdate,
+      // so targets() holds no Element. Dropping those tweens hid real motion from the
+      // map: computeDensity saw zero active tweens over their span and findDeadZones
+      // reported it as dead. There is no element to select or measure here, but the span
+      // is real, so keep the tween and mark why it carries no geometry.
+      const isProxyDriver = targets.length === 0 && typeof vars.onUpdate === "function";
+      if (!targets.length && !isProxyDriver) return;
       const props = Object.keys(vars).filter(
         (k) =>
           ![
@@ -213,7 +224,10 @@ async function enumerateTweens(session) {
       const start = parentOffset + (node.startTime?.() ?? 0);
       const end = start + (node.duration?.() ?? 0);
       results.push({
-        selectorHint: selectorOf(targets[0]) ?? "(unknown)",
+        // null, not a placeholder string: this feeds document.querySelector downstream,
+        // so it must be absent rather than unmatchable.
+        selectorHint: isProxyDriver ? null : (selectorOf(targets[0]) ?? "(unknown)"),
+        driver: isProxyDriver ? "onUpdate" : "target",
         targetCount: targets.length,
         props,
         start,
@@ -234,7 +248,15 @@ function describeTween(tw, props, bboxes, flags) {
   const dur = (tw.end - tw.start).toFixed(2);
   const parts = [];
 
-  parts.push(`${tw.selectorHint} animates ${props.join("+")} over ${dur}s (${tw.ease})`);
+  if (tw.selectorHint) {
+    parts.push(`${tw.selectorHint} animates ${props.join("+")} over ${dur}s (${tw.ease})`);
+  } else {
+    // An onUpdate driver: the span and props are known, the affected element is not.
+    parts.push(
+      `an onUpdate driver animates ${props.join("+")} over ${dur}s (${tw.ease}) — ` +
+        `motion is applied in JS, so no element geometry was measured`,
+    );
+  }
 
   // Movement
   const first = bboxes[0];
@@ -299,7 +321,10 @@ function computeFlags(tw, bboxes, { width, height }) {
   const flags = [];
   const dur = tw.end - tw.start;
 
-  if (bboxes.every((b) => b.w === 0 || b.h === 0)) flags.push("degenerate");
+  // No samples at all (an onUpdate driver has no element to measure) is not evidence of
+  // a degenerate or invisible box — `[].every()` is vacuously true, so guard the
+  // geometry-derived flags. The pacing flags below read only start/end and still apply.
+  if (bboxes.length && bboxes.every((b) => b.w === 0 || b.h === 0)) flags.push("degenerate");
 
   const anyOffscreen = bboxes.some(
     (b) =>
@@ -314,7 +339,10 @@ function computeFlags(tw, bboxes, { width, height }) {
   );
   if (anyOffscreen) flags.push("offscreen");
 
-  if (bboxes.every((b) => b.opacity !== undefined && b.opacity < 0.01 && b.visible)) {
+  if (
+    bboxes.length &&
+    bboxes.every((b) => b.opacity !== undefined && b.opacity < 0.01 && b.visible)
+  ) {
     flags.push("invisible");
   }
 
