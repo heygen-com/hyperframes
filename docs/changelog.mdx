@@ -9,6 +9,35 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.110"
+  description="Released - 2026-08-17"
+  tags={["Release", "Catalog", "Skills", "Studio"]}
+>
+A registry the CLI cannot reach no longer empties the catalog. Search and browse now fall back to the last copy on disk, so one network timeout cannot send you off to hand-write a move you already have. When a search finds nothing that fits, the CLI hands you the command to report the gap.
+
+Studio also gains a preview volume control.
+
+## Features
+
+- **Studio:** Add a preview volume control ([fecaf72d1](https://github.com/heygen-com/hyperframes/commit/fecaf72d1f6de66224b3857efb78a2f2c44c41bc), [#3282](https://github.com/heygen-com/hyperframes/pull/3282)).
+
+## Fixes
+
+- Create temp dirs with mkdtemp, not a name built from Date.now() ([de4062a93](https://github.com/heygen-com/hyperframes/commit/de4062a93300cbe1826edfbd8d71fbc44be25cb7), [#3241](https://github.com/heygen-com/hyperframes/pull/3241)).
+
+## Docs & Examples
+
+- **Skills:** Fix anime.js v3 syntax in v4 adapter guidance ([67edb01bf](https://github.com/heygen-com/hyperframes/commit/67edb01bf4aa2f5931e838e46e14e0f51a5809ee), [#3064](https://github.com/heygen-com/hyperframes/pull/3064)).
+
+## Catalog
+
+- **Catalog:** Survive an unreachable registry, and ask for the gap ([37f8c4844](https://github.com/heygen-com/hyperframes/commit/37f8c48449d6c846788a76edf055bf2a888b7be5), [#3299](https://github.com/heygen-com/hyperframes/pull/3299)).
+- **Registry:** Add avatar promo and Slack notification templates ([b9a4dfcbe](https://github.com/heygen-com/hyperframes/commit/b9a4dfcbe56de5141b9a379ff30605cf23984d1e), [#3279](https://github.com/heygen-com/hyperframes/pull/3279)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.109...v0.7.110).
+</Update>
+
+<Update
   label="HyperFrames v0.7.109"
   description="Released - 2026-08-14"
   tags={["Release", "Engine", "Producer", "Studio"]}
