@@ -26,6 +26,12 @@ import {
  * - `clearCache` and `setLocale` mutate process-global state. A composition
  *   calling either would change how *other* compositions measure, which breaks
  *   the guarantee that the same file renders the same video every time.
+ *   Withholding `clearCache` does not strand memory: the cache is keyed by
+ *   (segment, font) where segments come from `Intl.Segmenter` at word
+ *   granularity, so it grows with the number of distinct *words* a composition
+ *   renders, not with frames. A counter or typewriter re-measuring every frame
+ *   reuses the same entries. Only genuinely new words allocate, which bounds it
+ *   at a composition's vocabulary.
  * - The incremental cursor API (`layoutNextLine`, `walkLineRanges`, and
  *   friends) has no caller yet. Add it when something needs it.
  *
