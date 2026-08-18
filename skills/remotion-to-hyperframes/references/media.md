@@ -44,9 +44,9 @@ didn't specify trim.
 <Audio src={staticFile("music.wav")} volume={(f) => interpolate(f, [0, 30], [0, 1])} />
 ```
 
-HF supports static `data-volume` only for now. Volume ramps need to be
-applied to the audio file at translation time (with ffmpeg `afade`) or the
-ramp is dropped with a translation note.
+Keep `data-volume` as the static baseline. Translate time-varying volume into a
+`data-automation` volume lane (clip-local seconds), or a registered seek-safe
+GSAP media-volume tween when preserving the original curve that way is simpler.
 
 ### Trim / playbackRate
 
@@ -57,15 +57,18 @@ ramp is dropped with a translation note.
 ```html
 <audio
   data-start="0"
-  data-duration="<resolved from trim>"
-  data-trim-start="2"
-  data-trim-end="6"
+  data-duration="<timeline seconds: (endAt-startFrom)/fps/playbackRate>"
+  data-media-start="2"
   data-playback-rate="1.5"
   src="assets/music.wav"
 ></audio>
 ```
 
-`startFrom` / `endAt` are frame indexes; convert to seconds.
+`startFrom` / `endAt` are frame indexes; convert them to source seconds.
+`startFrom` becomes `data-media-start`; `endAt` determines the consumed source
+span and therefore `data-duration`. HyperFrames supports one constant normalized
+playback rate (`0.1..5`) per media element in preview and final render. Audio uses
+pitch-preserving tempo. Time-varying speed ramps still require preprocessing.
 
 ## `<Video>` and `<OffthreadVideo>`
 
@@ -81,6 +84,8 @@ ramp is dropped with a translation note.
   data-start="0"
   data-duration="5"
   data-track-index="0"
+  data-media-start="0"
+  data-playback-rate="1"
   src="assets/intro.mp4"
 ></video>
 ```
@@ -91,6 +96,10 @@ collapses to a regular `<video>`.
 
 `muted` and `playsinline` are required for the runtime to autoplay
 (browser policy). Always emit them.
+
+Translate video trim and constant playback rate with the same source-span math
+as audio. Author sound separately on `<audio>` with identical timing, source
+offset, and rate when picture and sound must remain synchronized.
 
 ## `<Img>`
 

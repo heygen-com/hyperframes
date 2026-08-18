@@ -25,6 +25,19 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 8. **Render only after approval:** use draft quality for iteration and high quality for delivery.
 9. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
 
+## Mandatory creator-edit cross-references
+
+- Before authoring or diagnosing a zoom, punch-in/punch-out, reframe, camera
+  move, or any keyframe motion, read `/hyperframes-keyframes` first.
+- Before `hyperframes keyframes`, read `/hyperframes-keyframes`; the command
+  surfaces animation trajectories and does not diagnose clip cuts.
+- For a cut, trim, splice, reorder, or source timing edit, read
+  `/hyperframes-core` and use its clip/timeline contract.
+- For fade-in/fade-out, crossfade, track gain, volume automation, ducking,
+  voiceover carve, or FX on placed audio, read `/hyperframes-audio`. Load core
+  alongside it when clip placement or picture timing also changes.
+- Use `/media-use` only to source/generate media or preprocess a derived asset.
+
 ```bash
 # Fast iteration check; repeat while authoring as needed.
 npx hyperframes lint

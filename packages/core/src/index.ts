@@ -298,6 +298,7 @@ export {
 // publishConfig entry points at a file the pack doesn't contain
 // (verify:packed-manifests catches exactly that).
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
+export { normalizePlaybackRate } from "./runtime/playbackRate.js";
 
 // Variable validation (CLI / tooling-side)
 export {

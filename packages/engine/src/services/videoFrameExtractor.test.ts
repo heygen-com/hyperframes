@@ -75,6 +75,7 @@ describe("resolveVideoExtractionDuration", () => {
     start: 0,
     end: Number.POSITIVE_INFINITY,
     mediaStart: 0,
+    playbackRate: 1,
     loop: false,
     hasAudio: false,
     ...overrides,
@@ -96,6 +97,32 @@ describe("resolveVideoExtractionDuration", () => {
     const explicitLoop = video({ end: 8, loop: true });
     expect(resolveVideoExtractionDuration(explicitLoop, metadata(60), 10)).toBe(8);
     expect(explicitLoop.loop).toBe(true);
+  });
+
+  it("extracts the source span consumed by an explicit 2x timeline slot", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ end: 2, mediaStart: 1, playbackRate: 2 }),
+        metadata(8),
+        2,
+      ),
+    ).toMatchObject({
+      compositionStart: 0,
+      mediaStart: 1,
+      durationSeconds: 4,
+      timelineDurationSeconds: 2,
+    });
+  });
+
+  it("reports natural timeline duration after constant playback-rate retiming", () => {
+    expect(
+      resolveVideoExtractionWindow(video({ mediaStart: 1, playbackRate: 2 }), metadata(5), 10),
+    ).toMatchObject({
+      compositionStart: 0,
+      mediaStart: 1,
+      durationSeconds: 4,
+      timelineDurationSeconds: 2,
+    });
   });
 
   it("trims materially negative preroll and advances the source offset", () => {
@@ -648,6 +675,20 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
 });
 
 describe("parseVideoElements", () => {
+  it("parses and normalizes constant playback rate for final rendering", () => {
+    const [fast, low, high, invalid] = parseVideoElements(
+      '<video id="fast" src="clip.mp4" data-playback-rate="2"></video>' +
+        '<video id="low" src="clip.mp4" data-playback-rate="0.01"></video>' +
+        '<video id="high" src="clip.mp4" data-playback-rate="20"></video>' +
+        '<video id="invalid" src="clip.mp4" data-playback-rate="nope"></video>',
+    );
+
+    expect(fast?.playbackRate).toBe(2);
+    expect(low?.playbackRate).toBe(0.1);
+    expect(high?.playbackRate).toBe(5);
+    expect(invalid?.playbackRate).toBe(1);
+  });
+
   it("parses videos without an id or data-start attribute", () => {
     const videos = parseVideoElements('<video src="clip.mp4"></video>');
 
@@ -675,6 +716,7 @@ describe("parseVideoElements", () => {
       start: 2,
       end: 7,
       mediaStart: 1.5,
+      playbackRate: 1,
       loop: false,
       hasAudio: true,
     });
@@ -813,6 +855,15 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(0.5).get("hero")?.frameIndex).toBe(15);
     expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(15);
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
+  });
+
+  it("selects source frames at the authored constant playback rate", () => {
+    const videos = parseVideoElements(
+      '<video id="hero" src="clip.webm" data-start="0" data-duration="2" data-playback-rate="2"></video>',
+    );
+    const table = createFrameLookupTable(videos, [fakeExtracted(120, 30)]);
+
+    expect(table.getActiveFramePayloads(1).get("hero")?.frameIndex).toBe(60);
   });
 
   it("wraps at video-stream EOF when a mux container has longer audio", () => {

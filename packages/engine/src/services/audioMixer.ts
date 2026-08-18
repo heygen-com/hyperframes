@@ -39,6 +39,7 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
+import { normalizePlaybackRate } from "@hyperframes/core";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -66,6 +67,39 @@ function clampVolume(volume: number): number {
 
 function formatFilterNumber(value: number): string {
   return Number(value.toFixed(6)).toString();
+}
+
+/** Build an FFmpeg-compatible, pitch-preserving tempo chain. */
+function buildAtempoFilter(playbackRate: number): string | null {
+  let remaining = normalizePlaybackRate(playbackRate);
+  if (Math.abs(remaining - 1) < 1e-9) return null;
+  const stages: number[] = [];
+  while (remaining < 0.5 - 1e-9) {
+    stages.push(0.5);
+    remaining /= 0.5;
+  }
+  while (remaining > 2 + 1e-9) {
+    stages.push(2);
+    remaining /= 2;
+  }
+  if (Math.abs(remaining - 1) >= 1e-9) stages.push(remaining);
+  return stages.map((stage) => `atempo=${formatFilterNumber(stage)}`).join(",");
+}
+
+function preparedAudioOutputArgs(srcPath: string, playbackRate: number): Promise<string[]> {
+  return stereoOutputArgs(srcPath).then((channelArgs) => {
+    const filters: string[] = [];
+    const outputArgs: string[] = [];
+    if (channelArgs[0] === "-af" && channelArgs[1]) {
+      filters.push(channelArgs[1]);
+    } else {
+      outputArgs.push(...channelArgs);
+    }
+    const atempo = buildAtempoFilter(playbackRate);
+    if (atempo) filters.push(atempo);
+    if (filters.length > 0) outputArgs.push("-af", filters.join(","));
+    return outputArgs;
+  });
 }
 
 function escapeExpressionCommas(expression: string): string {
@@ -427,6 +461,8 @@ export function parseAudioElements(html: string): AudioElement[] {
   // and `type`; everything else (timing, layer, volume) is read identically.
   const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
     const mediaStartAttr = el.getAttribute("data-media-start");
+    const playbackStartAttr = el.getAttribute("data-playback-start");
+    const playbackRateAttr = el.getAttribute("data-playback-rate");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
@@ -436,7 +472,14 @@ export function parseAudioElements(html: string): AudioElement[] {
       src: el.getAttribute("src") as string,
       start: resolveStart(el),
       end: parseEnd(el.getAttribute("data-end")),
-      mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
+      mediaStart: playbackStartAttr
+        ? parseFloat(playbackStartAttr)
+        : mediaStartAttr
+          ? parseFloat(mediaStartAttr)
+          : 0,
+      playbackRate: normalizePlaybackRate(
+        playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
+      ),
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
       ...(fxChain ? { fxChain } : {}),
@@ -463,7 +506,7 @@ export function parseAudioElements(html: string): AudioElement[] {
 async function extractAudioFromVideo(
   videoPath: string,
   outputPath: string,
-  options?: { startTime?: number; duration?: number },
+  options?: { startTime?: number; duration?: number; playbackRate?: number },
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
@@ -471,11 +514,17 @@ async function extractAudioFromVideo(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const args: string[] = ["-i", videoPath];
+  const playbackRate = normalizePlaybackRate(options?.playbackRate ?? 1);
+  const args: string[] = [];
   if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
-  if (options?.duration !== undefined) args.push("-t", String(options.duration));
-  const channelArgs = await stereoOutputArgs(videoPath);
-  args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...channelArgs, "-y", outputPath);
+  if (options?.duration !== undefined) args.push("-t", String(options.duration * playbackRate));
+  args.push("-i", videoPath);
+  const outputArgs = await preparedAudioOutputArgs(videoPath, playbackRate);
+  args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
+  if (playbackRate !== 1 && options?.duration !== undefined) {
+    args.push("-t", String(options.duration));
+  }
+  args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
@@ -513,29 +562,31 @@ async function prepareAudioTrack(
   outputPath: string,
   mediaStart: number,
   duration: number,
+  playbackRate = 1,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-  const channelArgs = await stereoOutputArgs(srcPath);
+  const normalizedPlaybackRate = normalizePlaybackRate(playbackRate);
+  const outputArgs = await preparedAudioOutputArgs(srcPath, normalizedPlaybackRate);
 
   const args = [
     "-ss",
     String(mediaStart),
     "-t",
-    String(duration),
+    String(duration * normalizedPlaybackRate),
     "-i",
     srcPath,
     "-acodec",
     "pcm_s16le",
     "-ar",
     "48000",
-    ...channelArgs,
-    "-y",
-    outputPath,
+    ...outputArgs,
   ];
+  if (normalizedPlaybackRate !== 1) args.push("-t", String(duration));
+  args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
@@ -888,7 +939,9 @@ export async function processCompositionAudio(
             );
             return;
           }
-          const effectiveDuration = metadata.durationSeconds - element.mediaStart;
+          const effectiveDuration =
+            (metadata.durationSeconds - element.mediaStart) /
+            normalizePlaybackRate(element.playbackRate ?? 1);
           element.end =
             element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
         }
@@ -902,6 +955,7 @@ export async function processCompositionAudio(
             {
               startTime: element.mediaStart,
               duration: element.end - element.start,
+              playbackRate: element.playbackRate,
             },
             effectiveSignal,
             config,
@@ -929,6 +983,7 @@ export async function processCompositionAudio(
             trimmedPath,
             element.mediaStart,
             element.end - element.start,
+            element.playbackRate,
             effectiveSignal,
             config,
           );

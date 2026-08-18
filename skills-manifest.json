@@ -18,7 +18,7 @@
       "files": 4
     },
     "hyperframes": {
-      "hash": "756a72f58fa3739b",
+      "hash": "e05aca66e618a32e",
       "files": 17
     },
     "hyperframes-animation": {
@@ -26,11 +26,11 @@
       "files": 121
     },
     "hyperframes-audio": {
-      "hash": "534cea75fe0f2bc6",
+      "hash": "d8c1204ed074a2a6",
       "files": 6
     },
     "hyperframes-cli": {
-      "hash": "dc900e2ef0aa16b2",
+      "hash": "09865d0df77d5c1d",
       "files": 11
     },
     "hyperframes-core": {
@@ -42,7 +42,7 @@
       "files": 78
     },
     "hyperframes-keyframes": {
-      "hash": "d00744ff0e669624",
+      "hash": "f6e1d87c4ee19710",
       "files": 3
     },
     "hyperframes-registry": {
@@ -70,7 +70,7 @@
       "files": 28
     },
     "remotion-to-hyperframes": {
-      "hash": "bf184a65059b95e8",
+      "hash": "87b4f7b015f3dd99",
       "files": 70
     },
     "slideshow": {

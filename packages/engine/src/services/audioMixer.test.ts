@@ -257,6 +257,129 @@ describe("processCompositionAudio", () => {
     expect(filter).not.toContain("weights=");
   });
 
+  it("trims the consumed source span and applies pitch-preserving tempo at 2x", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "timecode.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "timecode",
+          src: "timecode.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 1,
+          playbackRate: 2,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(true);
+    const prepareArgs = runFfmpegMock.mock.calls[0]?.[0] ?? [];
+    expect(prepareArgs).toEqual(expect.arrayContaining(["-ss", "1", "-t", "4", "-af", "atempo=2"]));
+    expect(prepareArgs.filter((arg) => arg === "-t")).toHaveLength(2);
+    expect(prepareArgs.at(-3)).toBe("2");
+  });
+
+  it.each([
+    { rate: 0.1, filter: "atempo=0.5,atempo=0.5,atempo=0.5,atempo=0.8" },
+    { rate: 5, filter: "atempo=2,atempo=2,atempo=1.25" },
+  ])("builds a bounded atempo chain for normalized rate $rate", async ({ rate, filter }) => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "timecode.wav"), "stub");
+
+    await processCompositionAudio(
+      [
+        {
+          id: "timecode",
+          src: "timecode.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          playbackRate: rate,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(["-af", filter]));
+  });
+
+  it("keeps automation on authored timeline time after constant retiming", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "timecode.wav"), "stub");
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 0 },
+            { t: 2, v: 1 },
+          ],
+        },
+      ],
+    });
+    const fxChain = JSON.stringify({
+      version: 1,
+      nodes: [{ type: "gain", id: "gain", params: { gain: 1 } }],
+    });
+
+    await processCompositionAudio(
+      [
+        {
+          id: "timecode",
+          src: "timecode.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          playbackRate: 2,
+          layer: 0,
+          volume: 1,
+          automation,
+          fxChain,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining(["-t", "4", "-af", "atempo=2"]),
+    );
+    expect(applyAudioFxChainMock.mock.calls[0]?.[3]).toMatchObject({
+      envelope: {
+        keyframes: [
+          { time: 0, volume: 0 },
+          { time: 2, volume: 1 },
+        ],
+        trackStart: 0,
+      },
+    });
+  });
+
   it("lets an FX tail run past the clip, still bounded by the composition", async () => {
     // A reverb is still decaying when the clip's own audio stops. Trimming at
     // the clip boundary is what cut every tail short in the render.
@@ -1033,6 +1156,21 @@ describe("processCompositionAudio", () => {
 });
 
 describe("parseAudioElements — relative data-start resolution", () => {
+  it("parses and normalizes constant playback rate", () => {
+    const html = wrap(
+      '<audio id="fast" data-start="0" src="a.m4a" data-playback-rate="2"></audio>' +
+        '<audio id="low" data-start="0" src="a.m4a" data-playback-rate="0.01"></audio>' +
+        '<audio id="high" data-start="0" src="a.m4a" data-playback-rate="20"></audio>' +
+        '<audio id="invalid" data-start="0" src="a.m4a" data-playback-rate="bad"></audio>',
+    );
+    const tracks = parseAudioElements(html);
+
+    expect(tracks.find((track) => track.id === "fast")?.playbackRate).toBe(2);
+    expect(tracks.find((track) => track.id === "low")?.playbackRate).toBe(0.1);
+    expect(tracks.find((track) => track.id === "high")?.playbackRate).toBe(5);
+    expect(tracks.find((track) => track.id === "invalid")?.playbackRate).toBe(1);
+  });
+
   const wrap = (body: string) =>
     `<div id="root" class="composition" data-composition-id="c" data-start="0" data-duration="10">${body}</div>`;
 
