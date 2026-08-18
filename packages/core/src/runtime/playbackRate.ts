@@ -27,7 +27,19 @@ export function resolveNaturalMediaTimelineDuration(
   el: Pick<Element, "getAttribute">,
   sourceDuration: number,
 ): number | null {
+  return resolveNaturalMediaTimelineDurationFromValues(
+    sourceDuration,
+    readMediaStart(el),
+    readElementPlaybackRate(el),
+  );
+}
+
+export function resolveNaturalMediaTimelineDurationFromValues(
+  sourceDuration: number,
+  mediaStart: number,
+  playbackRate: number,
+): number | null {
   if (!Number.isFinite(sourceDuration)) return null;
-  const remaining = Math.max(0, sourceDuration - readMediaStart(el));
-  return remaining / readElementPlaybackRate(el);
+  const remaining = Math.max(0, sourceDuration - mediaStart);
+  return remaining / normalizePlaybackRate(playbackRate);
 }

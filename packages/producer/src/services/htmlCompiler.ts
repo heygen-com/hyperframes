@@ -21,6 +21,7 @@ import {
   shouldClampResolvedMediaDuration,
   CSS_URL_RE,
   isNonRelativeUrl,
+  resolveNaturalMediaTimelineDurationFromValues,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -421,12 +422,13 @@ export function detectShaderTransitionUsage(html: string): boolean {
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
+  playbackRate: number,
   baseDir: string,
   downloadDir: string,
   tagName: string,
   elementIdentity: string,
   log?: ProducerLogger,
-): Promise<{ duration: number; resolvedPath: string }> {
+): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
 
   if (isHttpUrl(src)) {
@@ -438,14 +440,14 @@ async function resolveMediaDuration(
     } catch {
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
       // The element will get duration 0 and be excluded from the render.
-      return { duration: 0, resolvedPath: src };
+      return { duration: null, resolvedPath: src };
     }
   } else if (!filePath.startsWith("/")) {
     filePath = join(baseDir, filePath);
   }
 
   if (!existsSync(filePath)) {
-    return { duration: 0, resolvedPath: filePath };
+    return { duration: null, resolvedPath: filePath };
   }
 
   return withMediaProbeSlot(async () => {
@@ -473,7 +475,7 @@ async function resolveMediaDuration(
               "file — the element is dropped from the render. Point it at a rendered media file.",
           );
         }
-        return { duration: 0, resolvedPath: filePath };
+        return { duration: null, resolvedPath: filePath };
       }
       throw error;
     }
@@ -489,13 +491,16 @@ async function resolveMediaDuration(
         // Source file has no audio stream (e.g. a silent video used as an audio src).
         // Return duration 0 so the element is excluded from the composition gracefully,
         // matching how missing files and failed downloads are already handled above.
-        return { duration: 0, resolvedPath: filePath };
+        return { duration: null, resolvedPath: filePath };
       }
     }
 
     const fileDuration = metadata.durationSeconds;
-    const effectiveDuration = fileDuration - mediaStart;
-    const duration = effectiveDuration > 0 ? effectiveDuration : fileDuration;
+    const duration = resolveNaturalMediaTimelineDurationFromValues(
+      fileDuration,
+      mediaStart,
+      playbackRate,
+    );
 
     return { duration, resolvedPath: filePath };
   });
@@ -525,6 +530,7 @@ async function compileHtmlFile(
       resolveMediaDuration(
         el.src!,
         el.mediaStart,
+        el.playbackRate,
         baseDir,
         downloadDir,
         el.tagName,
@@ -533,7 +539,9 @@ async function compileHtmlFile(
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
-  const resolutions: ResolvedDuration[] = resolvedResults.filter((r) => r.duration > 0);
+  const resolutions: ResolvedDuration[] = resolvedResults.filter(
+    (r): r is ResolvedDuration => r.duration != null && Number.isFinite(r.duration),
+  );
 
   let compiledHtml =
     resolutions.length > 0 ? injectDurations(staticCompiled, resolutions) : staticCompiled;
@@ -548,6 +556,7 @@ async function compileHtmlFile(
         const { duration: maxDuration } = await resolveMediaDuration(
           el.src!,
           el.mediaStart,
+          el.playbackRate,
           baseDir,
           downloadDir,
           el.tagName,
@@ -560,7 +569,7 @@ async function compileHtmlFile(
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
     if (
-      r.maxDuration > 0 &&
+      r.maxDuration != null &&
       shouldClampResolvedMediaDuration(r.tagName, r.duration, r.maxDuration)
     ) {
       clampList.push({ id: r.id, duration: r.maxDuration });

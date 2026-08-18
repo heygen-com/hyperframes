@@ -300,8 +300,10 @@ export {
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 export {
   normalizePlaybackRate,
+  readElementPlaybackRate,
   readMediaStart,
   resolveNaturalMediaTimelineDuration,
+  resolveNaturalMediaTimelineDurationFromValues,
 } from "./runtime/playbackRate.js";
 
 // Variable validation (CLI / tooling-side)

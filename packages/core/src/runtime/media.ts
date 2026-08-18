@@ -82,19 +82,19 @@ export function refreshRuntimeMediaCache(params?: {
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
     let duration =
       params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
-    if ((!Number.isFinite(duration) || duration <= 0) && sourceDuration != null) {
+    if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {
       // Effective duration accounts for playback rate:
       // at 0.5x, a 10s source plays for 20s on the timeline
       duration = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
     }
-    const end =
-      Number.isFinite(duration) && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+    const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
+    const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
     const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
     const clip: RuntimeMediaClip = {
       el,
       start,
       mediaStart,
-      duration: Number.isFinite(duration) && duration > 0 ? duration : Number.POSITIVE_INFINITY,
+      duration: hasKnownDuration ? duration : Number.POSITIVE_INFINITY,
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,

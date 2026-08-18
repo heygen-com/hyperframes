@@ -15,6 +15,8 @@
  * and call injectDurations() to complete the compilation.
  */
 
+import { readElementPlaybackRate, readMediaStart } from "../runtime/playbackRate.js";
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface UnresolvedElement {
@@ -25,6 +27,7 @@ export interface UnresolvedElement {
   end?: number;
   duration?: number;
   mediaStart: number;
+  playbackRate: number;
   compositionSrc?: string;
 }
 
@@ -40,6 +43,7 @@ export interface ResolvedMediaElement {
   start: number;
   duration: number;
   mediaStart: number;
+  playbackRate: number;
   loop: boolean;
 }
 
@@ -137,8 +141,9 @@ function compileTag(
     startStr = "0";
   }
   const start = parseFloat(startStr);
-  const mediaStartStr = getAttr(result, "data-media-start");
-  const mediaStart = mediaStartStr ? parseFloat(mediaStartStr) : 0;
+  const attrReader = { getAttribute: (name: string) => getAttr(result, name) };
+  const mediaStart = readMediaStart(attrReader);
+  const playbackRate = readElementPlaybackRate(attrReader);
 
   // 1. Compute data-end from data-start + data-duration
   if (!hasAttr(result, "data-end")) {
@@ -154,6 +159,7 @@ function compileTag(
         src: getAttr(result, "src") ?? undefined,
         start,
         mediaStart,
+        playbackRate,
       };
     }
   }
@@ -215,6 +221,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
         tagName: "div",
         start: startStr ? parseFloat(startStr) : 0,
         mediaStart: 0,
+        playbackRate: 1,
         compositionSrc: compositionSrc ?? undefined,
       });
     }
@@ -284,7 +291,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
 
     const isVideo = /^<video/i.test(tag);
     const startStr = getAttr(tag, "data-start");
-    const mediaStartStr = getAttr(tag, "data-media-start");
+    const attrReader = { getAttribute: (name: string) => getAttr(tag, name) };
 
     resolved.push({
       id,
@@ -292,7 +299,8 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
       src: getAttr(tag, "src") ?? undefined,
       start: startStr !== null ? parseFloat(startStr) : 0,
       duration,
-      mediaStart: mediaStartStr ? parseFloat(mediaStartStr) : 0,
+      mediaStart: readMediaStart(attrReader),
+      playbackRate: readElementPlaybackRate(attrReader),
       loop: hasAttr(tag, "loop"),
     });
   }

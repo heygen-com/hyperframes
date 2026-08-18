@@ -7,6 +7,7 @@ import {
   syncRuntimeMedia,
 } from "./media";
 import type { RuntimeMediaClip } from "./media";
+import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
 
 function createVideo(attrs: Record<string, string>): HTMLVideoElement {
   const el = document.createElement("video");
@@ -203,6 +204,31 @@ describe("refreshRuntimeMediaCache", () => {
     // 5s source at 0.5x = 10s effective; should NOT be capped to 5s
     expect(result.mediaClips[0].duration).toBe(10);
     expect(result.mediaClips[0].end).toBe(10);
+  });
+
+  it.each([10, 11])(
+    "preserves an authoritative zero duration at or past EOF (start=%s)",
+    (mediaStart) => {
+      const el = createVideo({ "data-start": "3", "data-media-start": String(mediaStart) });
+      Object.defineProperty(el, "duration", { value: 10, writable: true });
+      const result = refreshRuntimeMediaCache({
+        resolveDurationSeconds: (element) =>
+          resolveNaturalMediaTimelineDuration(element, element.duration),
+      });
+
+      expect(result.mediaClips[0].duration).toBe(0);
+      expect(result.mediaClips[0].end).toBe(3);
+      expect(result.maxMediaEnd).toBe(3);
+    },
+  );
+
+  it("distinguishes an authoritative zero duration from an unknown duration", () => {
+    createVideo({ "data-start": "3" });
+    const knownZero = refreshRuntimeMediaCache({ resolveDurationSeconds: () => 0 });
+    const unknown = refreshRuntimeMediaCache({ resolveDurationSeconds: () => null });
+
+    expect(knownZero.mediaClips[0]).toMatchObject({ duration: 0, end: 3 });
+    expect(unknown.mediaClips[0]).toMatchObject({ duration: Infinity, end: Infinity });
   });
 
   it("reads native loop attribute", () => {
