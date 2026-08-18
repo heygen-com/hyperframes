@@ -122,8 +122,8 @@
         text-transform: uppercase;
         color: #71717a;
       }
-      /* GSAP animates .hf-remocn-shared-axis-z span — must keep class + span structure */
-      .hf-remocn-shared-axis-z {
+      /* GSAP animates .hf-catalog-shared-axis-z span — must keep class + span structure */
+      .hf-catalog-shared-axis-z {
         display: inline-flex;
         gap: 10px;
         font-size: 36px;
@@ -132,7 +132,7 @@
         line-height: 1;
         color: #18181b;
       }
-      .hf-remocn-shared-axis-z span {
+      .hf-catalog-shared-axis-z span {
         display: inline-block;
         transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
           scale(var(--hf-word-scale, 1));
@@ -215,7 +215,16 @@
           <div class="axis-z-incoming">
             <div class="axis-z-incoming-header">
               <div class="axis-z-incoming-eyebrow">Analytics</div>
-              <div class="hf-remocn-shared-axis-z"><span>Zoom</span><span>context</span></div>
+              <div
+                class="hf-catalog-shared-axis-z"
+                data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which way the words travel along the z axis: in swells up from small, out settles down from large.", "default": "in", "options": [{ "value": "in", "label": "In" }, { "value": "out", "label": "Out" }] },
+    { "id": "depth", "type": "enum", "role": "motion", "label": "Depth", "description": "Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "shallow", "label": "Shallow" }, { "value": "standard", "label": "Standard" }, { "value": "deep", "label": "Deep" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+              >
+                <span>Zoom</span><span>context</span>
+              </div>
               <div class="axis-z-incoming-meta">
                 Drill into any metric with a shared-axis Z transition — the new view scales in from
                 the tap point.
@@ -240,6 +249,39 @@
         </div>
       </div>
       <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var signs = { in: 1, out: -1 };
+          var reaches = { shallow: 0.5, standard: 1, deep: 1.85 };
+          var tones = {
+            ink: "#18181b",
+            paper: "#fafafa",
+            accent: "var(--brand, #34d399)",
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var sign = signs[pick(signs, vars.direction, "in")];
+          var reach = reaches[pick(reaches, vars.depth, "standard")];
+          var tone = tones[pick(tones, vars.tone, "ink")];
+
+          var roots = document.querySelectorAll(".hf-catalog-shared-axis-z");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-word-depth", String(sign * reach));
+            roots[i].style.setProperty("--hf-word-color", tone);
+          }
+        })();
+      </script>
+      <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
 
@@ -261,7 +303,7 @@
 
         // Word-by-word reveal on the title
         tl.fromTo(
-          ".hf-remocn-shared-axis-z span",
+          ".hf-catalog-shared-axis-z span",
           { opacity: 0, "--hf-word-scale": 0.72 },
           {
             opacity: 1,
@@ -278,5 +320,26 @@
         window.__timelines["shared-axis-z-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-catalog-shared-axis-z {
+        color: var(--hf-word-color, #18181b);
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-catalog-shared-axis-z {
+        display: inline-flex;
+        gap: 12px;
+        font-size: 56px;
+        line-height: 1;
+      }
+      .hf-catalog-shared-axis-z span {
+        display: inline-block;
+        transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+          scale(calc(1 + (var(--hf-word-scale, 1) - 1) * var(--hf-word-depth, 1)));
+        filter: blur(var(--hf-word-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
   </body>
 </html>

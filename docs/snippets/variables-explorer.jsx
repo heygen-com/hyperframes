@@ -1669,7 +1669,11 @@ export const VariablesExplorer = ({
     "<!doctype html><html><head><meta charset='utf-8'>",
     "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}",
     "hyperframes-player{display:block;width:100%;height:100%}</style>",
-    '<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"></' +
+    // `latest`, not a pinned line. A pin here is a number nothing reads back:
+    // the panel keeps working on whatever build the pin names, so a stale one
+    // is invisible until someone wonders why a shipped fix never arrived.
+    // `scripts/player-cdn-pin.test.ts` fails if a pin comes back.
+    '<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"></' +
       "script>",
     "</head><body><script>",
     "(function(){",

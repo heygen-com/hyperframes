@@ -2529,6 +2529,8 @@ async function executeRenderPipeline(input: {
           workDir,
           compiledDir,
           duration: probeResult.duration,
+          ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+          audioGain: cfg.audioGain,
           audios: composition.audios,
           abortSignal: executionSignal,
           assertNotAborted,

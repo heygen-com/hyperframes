@@ -62,6 +62,7 @@ interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, Thumbnail
   selectedElementId: string | null;
   playbackRate: number;
   audioMuted: boolean;
+  audioVolume: number;
   loopEnabled: boolean;
   /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses manualZoomPercent */
   zoomMode: ZoomMode;
@@ -132,6 +133,7 @@ interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, Thumbnail
   setDuration: (duration: number) => void;
   setPlaybackRate: (rate: number) => void;
   setAudioMuted: (muted: boolean) => void;
+  setAudioVolume: (volume: number) => void;
   setLoopEnabled: (enabled: boolean) => void;
   setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
@@ -298,6 +300,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   selectedElementId: null,
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
   audioMuted: readStudioUiPreferences().audioMuted ?? false,
+  audioVolume: readStudioUiPreferences().audioVolume ?? 1,
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
@@ -445,6 +448,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setAudioMuted: (muted) => {
     writeStudioUiPreferences({ audioMuted: muted });
     set({ audioMuted: muted });
+  },
+  setAudioVolume: (volume) => {
+    const nextVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+    writeStudioUiPreferences({ audioVolume: nextVolume });
+    set({ audioVolume: nextVolume });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),

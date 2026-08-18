@@ -20,18 +20,10 @@ interface StudioContextInput {
   editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string; redoLabel: string };
   handleUndo: StudioContextValue["handleUndo"];
   handleRedo: StudioContextValue["handleRedo"];
-  renderQueue: {
-    jobs: unknown[];
-    isRendering: boolean;
-    loadError: string | null;
-    actionError: string | null;
-    dismissActionError: () => void;
-    reloadRenders: () => void;
-    deleteRender: (id: string) => void;
-    cancelRender: (id: string) => void;
-    clearCompleted: () => void;
-    startRender: (options: unknown) => Promise<void>;
-  };
+  // Was a second copy of the same shape, which meant every field added to the
+  // context had to be added here too or the build broke. Same idiom as the
+  // fields around it: the context type owns it.
+  renderQueue: StudioContextValue["renderQueue"];
   compositionDimensions: { width: number; height: number } | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;

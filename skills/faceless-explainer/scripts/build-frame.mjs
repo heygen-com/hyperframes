@@ -431,8 +431,15 @@ if (brandFonts.length || (brandColors.length && presetColors.length)) {
 // ── stage brand font files + emit @font-face ──────────────────────────────────
 // A brand font is rarely a Google font, so renaming the family in frame.md is not enough:
 // nothing loads the actual face. If the capture downloaded font files, copy them to
-// assets/fonts/ under CLEAN, weight-named names (so captions.mjs' family-prefix matcher
+// assets/fonts/ under CLEAN, face-named names (so captions.mjs' family-prefix matcher
 // finds them too) and append a ready-to-paste, ROOT-RELATIVE @font-face block to frame.md.
+//
+// The staged NAME is a contract, not cosmetics: captions.mjs derives each face's weight and
+// style back out of it. So the name has to carry every axis that distinguishes one face from
+// another, and the dedup key has to be the whole face. Naming on weight alone made Google's
+// two-file Newsreader download (upright + italic, both scoring "Regular") collide on one
+// slot: the italic sorts first, took the name, the upright was never staged, and the block
+// below then asserted font-style:normal over italic bytes.
 if (brandFonts.length) {
   const norm = (s) =>
     String(s)
@@ -442,6 +449,16 @@ if (brandFonts.length) {
   const FMT = { woff2: "woff2", woff: "woff", ttf: "truetype", otf: "opentype" };
   const weightInfo = (name) => {
     const s = name.toLowerCase();
+    // A numeric axis is the font's own answer, so it beats the word heuristic. Fontsource
+    // names every face that way and carries no weight WORD at all, so word-only parsing
+    // scored a whole family "Regular" and staged exactly one of its faces.
+    //
+    // A weight token must not be buried inside a longer run: this reads capture files,
+    // which are commonly hash-named, and "Newsreader-a1b200c3.woff2" is not a 200-weight
+    // face. Hence a non-digit before (which also stops "2100" reading as 100) and no
+    // alphanumeric after. "Roboto900.ttf" still parses.
+    const numeric = /(?:^|[^0-9])([1-9]00)(?![0-9a-z])/.exec(s);
+    if (numeric) return { n: Number(numeric[1]), w: numeric[1] };
     if (/black|heavy|ultra|extrabold/.test(s)) return { n: 800, w: "ExtraBold" };
     if (/semibold|demibold/.test(s)) return { n: 600, w: "SemiBold" };
     if (/bold/.test(s)) return { n: 700, w: "Bold" };
@@ -449,6 +466,7 @@ if (brandFonts.length) {
     if (/light|thin/.test(s)) return { n: 300, w: "Light" };
     return { n: 400, w: "Regular" };
   };
+  const styleOf = (name) => (/italic|oblique/i.test(name) ? "italic" : "normal");
   const fams = [...new Set(brandFonts)];
   const srcDirs = [
     join(hyperframesDir, "capture/assets/fonts"),
@@ -469,13 +487,14 @@ if (brandFonts.length) {
     const fam = famOf(f);
     if (!fam) continue;
     const { n, w } = weightInfo(f);
-    const clean = `${fam.replace(/[^A-Za-z0-9]/g, "")}-${w}.${extOf(f)}`;
+    const style = styleOf(f);
+    const clean = `${fam.replace(/[^A-Za-z0-9]/g, "")}-${w}${style === "italic" ? "-Italic" : ""}.${extOf(f)}`;
     if (stagedNames.has(clean)) continue;
     mkdirSync(outDir, { recursive: true });
     if (!existsSync(join(outDir, clean))) copyFileSync(join(d, f), join(outDir, clean));
     stagedNames.add(clean);
     faces.push(
-      `@font-face{font-family:"${fam}";font-weight:${n};font-style:normal;font-display:block;src:url("assets/fonts/${clean}") format("${FMT[extOf(f)]}");}`,
+      `@font-face{font-family:"${fam}";font-weight:${n};font-style:${style};font-display:block;src:url("assets/fonts/${clean}") format("${FMT[extOf(f)]}");}`,
     );
   }
   if (faces.length) {

@@ -2,11 +2,11 @@
 # Owner-isolated real-GCP smoke + v1/v2 parity test for the HyperFrames
 # Cloud Run adapter.
 #
-# The default is intentionally v1-only. Plan protocol v2 must be opted into
-# explicitly with --protocols v1,v2. Every invocation derives a unique,
-# length-safe resource prefix and uses an isolated Terraform working directory
-# and state file. Cleanup verifies every owned resource is absent and fails
-# closed on API/authentication errors.
+# The default exercises Plan v2. Deprecated v1 compatibility can be selected
+# explicitly with --protocols v1 or compared with --protocols v1,v2. Every
+# invocation derives a unique, length-safe resource prefix and uses an isolated
+# Terraform working directory and state file. Cleanup verifies every owned
+# resource is absent and fails closed on API/authentication errors.
 #
 # Usage:
 #   ./smoke.sh --project <gcp-project>
@@ -33,7 +33,7 @@ REGION="${GCP_REGION:-us-central1}"
 FIXTURE="${FIXTURE:-mp4-h264-sdr}"
 CHUNK_SIZES="${CHUNK_SIZES:-}"
 PSNR_THRESHOLD="${PSNR_THRESHOLD:-35}"
-PROTOCOLS="${PROTOCOLS:-v1}"
+PROTOCOLS="${PROTOCOLS:-v2}"
 OWNER="${HYPERFRAMES_SMOKE_OWNER:-}"
 AR_REPO="${AR_REPO:-}"
 AR_REPO_WAS_EXPLICIT=0

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Chromatic Aberration Wipe",
   "description": "A fast slide wipe with RGB channel split on peak frames.",
-  "tags": ["video-primitive", "transition-primitive", "remocn-port"],
+  "tags": ["video-primitive", "transition-primitive"],
   "files": [
     {
       "path": "chromatic-aberration-wipe.html",

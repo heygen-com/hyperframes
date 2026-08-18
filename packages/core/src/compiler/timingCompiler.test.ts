@@ -19,6 +19,23 @@ it("source contains no raw NUL bytes", () => {
 });
 
 describe("compileTimingAttrs", () => {
+  it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN"])(
+    "does not partially parse invalid literal data-duration=%j",
+    (duration) => {
+      const html = `<video id="v1" src="a.mp4" data-start="2" data-duration="${duration}">`;
+      const { html: compiled } = compileTimingAttrs(html);
+
+      expect(compiled).not.toContain("data-end=");
+    },
+  );
+
+  it("uses Number semantics for hexadecimal literal timing", () => {
+    const { html: compiled } = compileTimingAttrs(
+      '<video id="v1" src="a.mp4" data-start="2" data-duration="0x10">',
+    );
+    expect(compiled).toContain('data-end="18"');
+  });
+
   it("adds data-end when data-start and data-duration are present on a video", () => {
     const html = '<video id="v1" src="a.mp4" data-start="2" data-duration="5">';
     const { html: compiled, unresolved } = compileTimingAttrs(html);

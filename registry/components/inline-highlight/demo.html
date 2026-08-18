@@ -62,11 +62,51 @@
       data-width="1920"
       data-height="1080"
       data-duration="4"
+      data-composition-variables='[
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Marker colour. Green, blue and violet ride --brand, --accent and --accent-2.", "default": "yellow", "options": [{ "value": "yellow", "label": "Yellow" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "thickness", "type": "enum", "role": "style", "label": "Thickness", "description": "Height of the marker band behind the text, as a share of the font size.", "default": "standard", "options": [{ "value": "thin", "label": "Thin" }, { "value": "standard", "label": "Standard" }, { "value": "thick", "label": "Thick" }] },
+    { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Edge the marker grows out of as the scale variable runs from 0 to 1.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "center", "label": "Center" }] }
+  ]'
     >
       <div class="copy">
         Turn the important words into
         <span class="hf-inline-highlight">animated emphasis</span> without rebuilding the scene.
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var tints = {
+            yellow: "#fff06a",
+            green: "var(--brand, #34d399)",
+            blue: "var(--accent, #38bdf8)",
+            violet: "var(--accent-2, #a78bfa)",
+          };
+          var heights = { thin: "0.22em", standard: "0.38em", thick: "0.62em" };
+          var origins = { left: "left center", right: "right center", center: "center" };
+
+          var root = document.documentElement;
+          root.style.setProperty("--hf-highlight-color", tints[pick(tints, vars.tint, "yellow")]);
+          root.style.setProperty(
+            "--hf-highlight-height",
+            heights[pick(heights, vars.thickness, "standard")],
+          );
+          root.style.setProperty(
+            "--hf-highlight-origin",
+            origins[pick(origins, vars.origin, "left")],
+          );
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.from(".copy", { opacity: 0, y: 24, duration: 0.55, ease: "power3.out" }, 0.3);
@@ -79,5 +119,31 @@
         window.__timelines["inline-highlight-demo"] = tl;
       </script>
     </div>
+    <style
+      data-composition-variables='[
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Marker colour. Green, blue and violet ride --brand, --accent and --accent-2.", "default": "yellow", "options": [{ "value": "yellow", "label": "Yellow" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "thickness", "type": "enum", "role": "style", "label": "Thickness", "description": "Height of the marker band behind the text, as a share of the font size.", "default": "standard", "options": [{ "value": "thin", "label": "Thin" }, { "value": "standard", "label": "Standard" }, { "value": "thick", "label": "Thick" }] },
+    { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Edge the marker grows out of as the scale variable runs from 0 to 1.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "center", "label": "Center" }] }
+  ]'
+    >
+      .hf-inline-highlight {
+        --hf-highlight-scale: 0;
+        position: relative;
+        display: inline;
+        z-index: 0;
+      }
+      .hf-inline-highlight::after {
+        content: "";
+        position: absolute;
+        left: -0.08em;
+        right: -0.08em;
+        bottom: 0.05em;
+        height: var(--hf-highlight-height, 0.38em);
+        background: var(--hf-highlight-color, #fff06a);
+        transform: scaleX(var(--hf-highlight-scale));
+        transform-origin: var(--hf-highlight-origin, left center);
+        z-index: -1;
+      }
+    </style>
   </body>
 </html>

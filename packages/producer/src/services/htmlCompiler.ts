@@ -21,6 +21,9 @@ import {
   shouldClampResolvedMediaDuration,
   CSS_URL_RE,
   isNonRelativeUrl,
+  parseStrictFiniteTimingNumber,
+  readMediaStart,
+  resolveNaturalMediaTimelineDurationFromValues,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -421,12 +424,13 @@ export function detectShaderTransitionUsage(html: string): boolean {
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
+  playbackRate: number,
   baseDir: string,
   downloadDir: string,
   tagName: string,
   elementIdentity: string,
   log?: ProducerLogger,
-): Promise<{ duration: number; resolvedPath: string }> {
+): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
 
   if (isHttpUrl(src)) {
@@ -438,14 +442,14 @@ async function resolveMediaDuration(
     } catch {
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
       // The element will get duration 0 and be excluded from the render.
-      return { duration: 0, resolvedPath: src };
+      return { duration: null, resolvedPath: src };
     }
   } else if (!filePath.startsWith("/")) {
     filePath = join(baseDir, filePath);
   }
 
   if (!existsSync(filePath)) {
-    return { duration: 0, resolvedPath: filePath };
+    return { duration: null, resolvedPath: filePath };
   }
 
   return withMediaProbeSlot(async () => {
@@ -473,7 +477,7 @@ async function resolveMediaDuration(
               "file — the element is dropped from the render. Point it at a rendered media file.",
           );
         }
-        return { duration: 0, resolvedPath: filePath };
+        return { duration: null, resolvedPath: filePath };
       }
       throw error;
     }
@@ -489,13 +493,16 @@ async function resolveMediaDuration(
         // Source file has no audio stream (e.g. a silent video used as an audio src).
         // Return duration 0 so the element is excluded from the composition gracefully,
         // matching how missing files and failed downloads are already handled above.
-        return { duration: 0, resolvedPath: filePath };
+        return { duration: null, resolvedPath: filePath };
       }
     }
 
     const fileDuration = metadata.durationSeconds;
-    const effectiveDuration = fileDuration - mediaStart;
-    const duration = effectiveDuration > 0 ? effectiveDuration : fileDuration;
+    const duration = resolveNaturalMediaTimelineDurationFromValues(
+      fileDuration,
+      mediaStart,
+      playbackRate,
+    );
 
     return { duration, resolvedPath: filePath };
   });
@@ -525,6 +532,7 @@ async function compileHtmlFile(
       resolveMediaDuration(
         el.src!,
         el.mediaStart,
+        el.playbackRate,
         baseDir,
         downloadDir,
         el.tagName,
@@ -533,7 +541,9 @@ async function compileHtmlFile(
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
-  const resolutions: ResolvedDuration[] = resolvedResults.filter((r) => r.duration > 0);
+  const resolutions: ResolvedDuration[] = resolvedResults.filter(
+    (r): r is ResolvedDuration => r.duration != null && Number.isFinite(r.duration),
+  );
 
   let compiledHtml =
     resolutions.length > 0 ? injectDurations(staticCompiled, resolutions) : staticCompiled;
@@ -548,6 +558,7 @@ async function compileHtmlFile(
         const { duration: maxDuration } = await resolveMediaDuration(
           el.src!,
           el.mediaStart,
+          el.playbackRate,
           baseDir,
           downloadDir,
           el.tagName,
@@ -560,7 +571,7 @@ async function compileHtmlFile(
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
     if (
-      r.maxDuration > 0 &&
+      r.maxDuration != null &&
       shouldClampResolvedMediaDuration(r.tagName, r.duration, r.maxDuration)
     ) {
       clampList.push({ id: r.id, duration: r.maxDuration });
@@ -646,8 +657,7 @@ async function parseSubCompositions(
     if (!srcPath) continue;
 
     const elStart = parseFloat(el.getAttribute("data-start") || "0");
-    const elEndRaw = el.getAttribute("data-end");
-    const elEnd = elEndRaw ? parseFloat(elEndRaw) : Infinity;
+    const elEnd = parseStrictFiniteTimingNumber(el.getAttribute("data-end")) ?? Infinity;
 
     const absoluteStart = parentOffset + elStart;
     const absoluteEnd = Math.min(parentEnd, isFinite(elEnd) ? parentOffset + elEnd : Infinity);
@@ -2070,11 +2080,9 @@ export async function compileForRender(
 
   // Static duration (may be 0 if set at runtime by GSAP)
   const staticDuration = rootEl
-    ? parseFloat(
-        rootEl.getAttribute("data-duration") ||
-          rootEl.getAttribute("data-composition-duration") ||
-          "0",
-      )
+    ? (parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration")) ??
+      parseStrictFiniteTimingNumber(rootEl.getAttribute("data-composition-duration")) ??
+      0)
     : 0;
 
   return {
@@ -2126,12 +2134,13 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
   const elements = await page.evaluate(() => {
     const results: {
       id: string;
-      tagName: string;
+      tagName: "video" | "audio" | "image";
       src: string;
       start: number;
-      end: number;
-      duration: number;
-      mediaStart: number;
+      endRaw: string | null;
+      durationRaw: string | null;
+      playbackStartRaw: string | null;
+      mediaStartRaw: string | null;
       loop: boolean;
       hasAudio: boolean;
       volume: number;
@@ -2156,15 +2165,21 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
     mediaEls.forEach((el) => {
       const htmlEl = el as HTMLVideoElement | HTMLAudioElement | HTMLImageElement;
       const isImage = htmlEl.tagName.toLowerCase() === "img";
+      const tagName: "video" | "audio" | "image" = isImage
+        ? "image"
+        : htmlEl.tagName.toLowerCase() === "video"
+          ? "video"
+          : "audio";
       const id = htmlEl.id || (isImage ? autoImageIds.get(htmlEl) : undefined);
       if (!id) return;
 
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
       const src = htmlEl.currentSrc || htmlEl.src || htmlEl.getAttribute("src") || "";
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
-      const end = parseFloat(htmlEl.getAttribute("data-end") || "0");
-      const duration = parseFloat(htmlEl.getAttribute("data-duration") || "0");
-      const mediaStart = parseFloat(htmlEl.getAttribute("data-media-start") || "0");
+      const endRaw = htmlEl.getAttribute("data-end");
+      const durationRaw = htmlEl.getAttribute("data-duration");
+      const playbackStartRaw = htmlEl.getAttribute("data-playback-start");
+      const mediaStartRaw = htmlEl.getAttribute("data-media-start");
       const loop = htmlEl.hasAttribute("loop");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");
@@ -2174,12 +2189,13 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
 
       results.push({
         id,
-        tagName: isImage ? "image" : htmlEl.tagName.toLowerCase(),
+        tagName,
         src,
         start,
-        end,
-        duration,
-        mediaStart,
+        endRaw,
+        durationRaw,
+        playbackStartRaw,
+        mediaStartRaw,
         loop,
         hasAudio,
         volume,
@@ -2190,7 +2206,18 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
     return results;
   });
 
-  return elements as BrowserMediaElement[];
+  return elements.map(({ endRaw, durationRaw, playbackStartRaw, mediaStartRaw, ...element }) => ({
+    ...element,
+    end: parseStrictFiniteTimingNumber(endRaw) ?? 0,
+    duration: parseStrictFiniteTimingNumber(durationRaw) ?? 0,
+    mediaStart: readMediaStart({
+      getAttribute(name: string) {
+        if (name === "data-playback-start") return playbackStartRaw;
+        if (name === "data-media-start") return mediaStartRaw;
+        return null;
+      },
+    }),
+  }));
 }
 
 export async function discoverAudioVolumeAutomationFromTimeline(
@@ -2202,8 +2229,34 @@ export async function discoverAudioVolumeAutomationFromTimeline(
   if (audioIds.length === 0 || compositionDuration <= 0) return [];
 
   const sampleStep = 1 / Math.min(60, Math.max(1, sampleFps));
+  const rawWindows = await page.evaluate((ids: string[]) => {
+    return ids.flatMap((id) => {
+      const el = document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
+      if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) return [];
+      return [
+        {
+          id,
+          startRaw: el.dataset.start ?? null,
+          endRaw: el.dataset.end ?? null,
+          durationRaw: el.dataset.duration ?? null,
+        },
+      ];
+    });
+  }, audioIds);
+  const clips = rawWindows.map(({ id, startRaw, endRaw, durationRaw }) => {
+    const start = parseStrictFiniteTimingNumber(startRaw) ?? 0;
+    const authoredDuration = parseStrictFiniteTimingNumber(durationRaw);
+    const authoredEnd = parseStrictFiniteTimingNumber(endRaw);
+    const end =
+      authoredDuration != null && authoredDuration > 0
+        ? start + authoredDuration
+        : authoredEnd != null && authoredEnd > start
+          ? authoredEnd
+          : compositionDuration;
+    return { id, start, end };
+  });
   return page.evaluate(
-    ({ ids, duration, step }) => {
+    ({ clips, duration, step }) => {
       const results: { id: string; keyframes: { time: number; volume: number }[] }[] = [];
       const timelines = (window as unknown as { __timelines?: Record<string, unknown> })
         .__timelines;
@@ -2229,20 +2282,11 @@ export async function discoverAudioVolumeAutomationFromTimeline(
         }
       };
 
-      for (const id of ids) {
+      for (const { id, start, end } of clips) {
         const el =
           document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
         if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) continue;
 
-        const start = Number.parseFloat(el.dataset.start ?? "0") || 0;
-        const endAttr = Number.parseFloat(el.dataset.end ?? "");
-        const durationAttr = Number.parseFloat(el.dataset.duration ?? "");
-        const end =
-          Number.isFinite(durationAttr) && durationAttr > 0
-            ? start + durationAttr
-            : Number.isFinite(endAttr) && endAttr > start
-              ? endAttr
-              : duration;
         const sampleStart = Math.max(0, start);
         const sampleEnd = Math.min(duration, end);
         const initialVolumeAttr = Number.parseFloat(el.dataset.volume ?? "");
@@ -2293,7 +2337,7 @@ export async function discoverAudioVolumeAutomationFromTimeline(
       seekTl(0);
       return results;
     },
-    { ids: audioIds, duration: compositionDuration, step: sampleStep },
+    { clips, duration: compositionDuration, step: sampleStep },
   );
 }
 
@@ -2415,7 +2459,13 @@ export async function resolveCompositionDurations(
   const results = await page.evaluate((compIds: string[]) => {
     const win = window as unknown as { __timelines?: Record<string, { duration(): number }> };
     const timelines = win.__timelines || {};
-    const resolved: { id: string; duration: number; source: string }[] = [];
+    const resolved: {
+      id: string;
+      duration: number;
+      source: string;
+      durationRaw?: string;
+      compositionDurationRaw?: string;
+    }[] = [];
 
     for (const id of compIds) {
       // Try window.__timelines[id].duration() first (GSAP timeline)
@@ -2431,14 +2481,17 @@ export async function resolveCompositionDurations(
       // Fallback: check for authored duration on the element itself
       const el = document.getElementById(id);
       if (el) {
-        const compDurAttr =
-          el.getAttribute("data-duration") || el.getAttribute("data-composition-duration");
-        if (compDurAttr) {
-          const dur = parseFloat(compDurAttr);
-          if (dur > 0) {
-            resolved.push({ id, duration: dur, source: "data-duration" });
-            continue;
-          }
+        const durationRaw = el.getAttribute("data-duration");
+        const compositionDurationRaw = el.getAttribute("data-composition-duration");
+        if (durationRaw != null || compositionDurationRaw != null) {
+          resolved.push({
+            id,
+            duration: 0,
+            source: "data-duration",
+            ...(durationRaw != null ? { durationRaw } : {}),
+            ...(compositionDurationRaw != null ? { compositionDurationRaw } : {}),
+          });
+          continue;
         }
       }
 
@@ -2450,8 +2503,12 @@ export async function resolveCompositionDurations(
 
   const resolutions: ResolvedDuration[] = [];
   for (const r of results) {
-    if (r.duration > 0) {
-      resolutions.push({ id: r.id, duration: r.duration });
+    const duration =
+      parseStrictFiniteTimingNumber(r.durationRaw) ??
+      parseStrictFiniteTimingNumber(r.compositionDurationRaw) ??
+      r.duration;
+    if (duration != null && duration > 0) {
+      resolutions.push({ id: r.id, duration });
     }
   }
 

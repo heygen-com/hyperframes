@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { countUnindexed, pickByName } from "./catalog.js";
+import { countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -177,6 +177,10 @@ interface Envelope {
   top_score?: number;
   shown: number;
   warnings?: string[];
+  // Not optional: both envelope-shaped emit sites are inside `if (query)`
+  // branches and both set it, so a search envelope without it is a bug rather
+  // than a shape the caller has to handle.
+  report_gap: string;
 }
 
 async function runCatalog(args: Record<string, unknown>): Promise<string> {
@@ -347,6 +351,113 @@ describe("catalog --json meaning search", () => {
       "on-device search is using the previous catalog vectors because the update failed",
     ]);
   });
+
+  it("hands back the gap-report command even when the search found things", async () => {
+    // The reports we actually want come from searches that returned plausible
+    // items where none of them did the job. If the command only appeared on
+    // zero results it would be absent from every case worth reporting.
+    const envelope = await runEnvelope({ query: "make a number count up" });
+
+    expect(envelope.shown).toBeGreaterThan(0);
+    expect(envelope.report_gap).toBe(
+      'npx hyperframes feedback --search-miss "make a number count up" ' +
+        '--wanted "<the move you needed>" --tier on-device',
+    );
+  });
+
+  it("names the tier that actually answered in the gap-report command", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.report_gap).toContain("--tier words");
+  });
+});
+
+describe("a query with no searchable words", () => {
+  // Runs the command capturing stderr, and reports the exit code the CLI would
+  // have used. finishCommand throws a signal rather than calling process.exit.
+  async function runForExit(
+    args: Record<string, unknown>,
+  ): Promise<{ exitCode: number; err: string }> {
+    const command = (await import("./catalog.js")).default as unknown as {
+      run: (context: { args: Record<string, unknown> }) => Promise<void>;
+    };
+    const lines: string[] = [];
+    const capture = (...parts: unknown[]): void => {
+      lines.push(parts.map(String).join(" "));
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(capture);
+    const error = vi.spyOn(console, "error").mockImplementation(capture);
+    let exitCode = 0;
+    try {
+      await command.run({ args });
+    } catch (thrown) {
+      const signal = thrown as { result?: { exitCode?: number }; exitCode?: number };
+      exitCode = signal.result?.exitCode ?? signal.exitCode ?? -1;
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+    }
+    // eslint-disable-next-line no-control-regex
+    const esc = String.fromCharCode(27);
+    return { exitCode, err: lines.join("\n").split(`${esc}[`).join("").replace(/\d+m/g, "") };
+  }
+
+  it("exits non-zero, because it is bad input rather than an empty shelf", async () => {
+    // The flag is word-tier only, so the stubbed on-device ranker has to be off
+    // or it answers with hits and the branch never runs.
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { exitCode } = await runForExit({ query: "実写写真のみ 9:16 生活ハック" });
+
+    // An agent that only reads the exit code would otherwise take "success, no
+    // results" at face value and hand-author a move already in the registry.
+    expect(exitCode).toBe(1);
+  });
+
+  it("says to search in English and does not blame the catalog", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写写真のみ 9:16 生活ハック" });
+
+    expect(err).toContain("No searchable words in query");
+    expect(err).toContain("Search in English");
+    expect(err).toContain("not a gap in");
+    // The gap channel must not be offered: nothing was searched, so a report
+    // here is noise in the one signal that tells us what to build.
+    expect(err).not.toContain("--search-miss");
+  });
+
+  it("leaves a genuine empty result exiting zero", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { exitCode, err } = await runForExit({ query: "quantum entanglement reactor" });
+
+    expect(exitCode).toBe(0);
+    expect(err).toContain("No items match");
+  });
+});
+
+describe("searchMissCommand", () => {
+  it("keeps a non-ASCII query intact", () => {
+    // Half of the gap reports received so far were CJK. A query mangled on the
+    // way into the command is a report nobody can act on.
+    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
+      '--search-miss "実写写真のみ 9:16 生活ハック"',
+    );
+  });
+
+  it("escapes shell metacharacters so the printed line is safe to paste", () => {
+    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
+
+    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
+  });
 });
 
 describe("catalog meaning search, on a terminal", () => {
@@ -363,6 +474,26 @@ describe("catalog meaning search, on a terminal", () => {
     const output = await runCatalog({ query: "make a number count up" });
 
     expect(output).not.toContain("missing from the on-device index");
+  });
+
+  it("offers the gap report on the word tier, not just on-device", async () => {
+    // The tier that answers almost every real search, because on-device needs
+    // a consented download. Gating the nudge on on-device left it unprinted in
+    // the only case that occurs, which is how the gap channel stayed silent.
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const output = await runCatalog({ query: "count up" });
+
+    expect(output).toContain("None of these do it?");
+    expect(output).toContain("--tier words");
+  });
+
+  it("offers the gap report on the on-device tier too", async () => {
+    const output = await runCatalog({ query: "make a number count up" });
+
+    expect(output).toContain("None of these do it?");
+    expect(output).toContain("--tier on-device");
   });
 });
 

@@ -91,9 +91,23 @@ export async function resolveItem(
   }
   const item = items[items.length - 1];
   if (!item) {
-    throw new Error(`Item "${name}" not found — registry unreachable or empty.`);
+    throw new Error(unreachableRegistryMessage(name, options.baseUrl));
   }
   return item;
+}
+
+/**
+ * "registry unreachable or empty" without saying WHICH registry is the same
+ * dead end the item-file failure used to be: a project that sets `registry` in
+ * hyperframes.json reads it as the public catalog having lost the item, and
+ * goes looking in the wrong place. Naming the host is the diagnosis.
+ */
+export function unreachableRegistryMessage(name: string, baseUrl?: string): string {
+  const where =
+    baseUrl && !baseUrl.startsWith(DEFAULT_REGISTRY_URL)
+      ? ` Contacted ${baseUrl}, set by this project's hyperframes.json, not the public registry.`
+      : "";
+  return `Item "${name}" not found — registry unreachable or empty.${where}`;
 }
 
 /**
@@ -122,7 +136,7 @@ export async function resolveItemWithDependencies(
     throw new Error(
       available.length > 0
         ? `Item "${name}" not found in registry. Available: ${available}`
-        : `Item "${name}" not found — registry unreachable or empty.`,
+        : unreachableRegistryMessage(name, options.baseUrl),
     );
   }
 
@@ -146,7 +160,7 @@ export async function resolveItemWithDependencies(
       throw new Error(
         available.length > 0
           ? `Dependency "${itemName}" not found in registry. Available: ${available}`
-          : `Dependency "${itemName}" not found — registry unreachable or empty.`,
+          : unreachableRegistryMessage(itemName, options.baseUrl),
       );
     }
 

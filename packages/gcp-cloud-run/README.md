@@ -45,20 +45,33 @@ per-step durations on success.
 
 ### Plan transport selection
 
-Plan v2 is recommended for new integrations. `renderToCloudRun` still
-interprets an omitted `planProtocol` as `"v1"` for backwards compatibility,
-so new callers should select v2 explicitly:
+Plan v2 is the default for new renders. When `planProtocol` is omitted,
+`renderToCloudRun` sends an explicit `PlanProtocol: "v2"` so the SDK and
+the deployed workflow agree:
 
 ```ts
 await renderToCloudRun({
   // ...project, bucket, workflow, service, and config...
-  planProtocol: "v2",
 });
 ```
 
 V2 uses separate manifest and content-addressed artifact locators throughout
 the workflow. Unknown protocols and integrity failures fail closed; a render
 never mixes v1 and v2 artifacts.
+
+The monolithic v1 transport remains available as deprecated compatibility by
+passing `planProtocol: "v1"` explicitly.
+
+#### Upgrade order
+
+Redeploy the Cloud Run image and Cloud Workflows definition from the same new
+package version before upgrading an application that calls
+`renderToCloudRun`. Pause new renders and drain active workflow executions
+during the infrastructure update. Older workflows can default omission to v1
+or lack the v2 branch, while the new SDK sends explicit v2. If infrastructure
+cannot be redeployed first, keep the previous SDK version or pass
+`planProtocol: "v1"` explicitly until the Terraform/workflow redeploy is
+complete.
 
 ## Chrome runtime
 

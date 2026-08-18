@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Shared Axis Y",
   "description": "Per-word vertical shared-axis transition for sharp editorial swaps.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "shared-axis-y.html",

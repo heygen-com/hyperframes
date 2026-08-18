@@ -32,17 +32,23 @@ const catalogImageBase = "https://static.heygen.ai/hyperframes-oss/docs/images/c
 const payloadRoot = resolve(repoRoot, "docs/public/catalog");
 
 /**
- * The player is loaded from a CDN rather than bundled into the docs, pinned to
- * the minor line this repo ships so a patch release reaches the catalog without
- * regenerating every page, and a major one never does silently.
+ * The player is loaded from a CDN rather than bundled into the docs, on
+ * `latest` rather than a pinned line.
+ *
+ * This used to derive the minor line from the player's own package.json, which
+ * is correct only while every page is regenerated on the release that moves it.
+ * That is not what happened: the pages sat on the previous minor after a bump,
+ * so a shipped player fix reached npm and never reached the catalog, and
+ * nothing surfaced it, because a page on an old player still renders. A version
+ * that has to be carried in step across 175 generated pages and two hand
+ * written snippets is a version that will be stale, and staleness here is
+ * silent, which is the worst combination.
+ *
+ * `latest` costs the ability to hold the docs back from a bad player release.
+ * That is a real cost, paid deliberately: the previous arrangement did not buy
+ * that control either, it only delayed every good release too.
  */
-const playerVersionRange = ((): string => {
-  const pkg = JSON.parse(
-    readFileSync(resolve(repoRoot, "packages/player/package.json"), "utf-8"),
-  ) as { version: string };
-  const [major, minor] = pkg.version.split(".");
-  return `${major}.${minor}`;
-})();
+const playerVersionRange = "latest";
 
 /** Has a preview payload been built for this item? */
 function hasPayload(kind: ItemKind, name: string): boolean {

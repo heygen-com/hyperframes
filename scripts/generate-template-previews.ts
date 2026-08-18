@@ -21,6 +21,7 @@ import {
   writeFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   cpSync,
   rmSync,
 } from "node:fs";
@@ -126,8 +127,7 @@ function discoverTemplates(only: string | null): string[] {
 }
 
 function prepareTemplateDir(templateId: string): string {
-  const tmpDir = join(tmpdir(), `hf-preview-${templateId}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = mkdtempSync(join(tmpdir(), `hf-preview-${templateId}-`));
   const src = resolveTemplateDir(templateId);
   if (!src) throw new Error(`Template directory not found for "${templateId}"`);
   cpSync(src, tmpDir, { recursive: true });

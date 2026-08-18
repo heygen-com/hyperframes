@@ -1,9 +1,10 @@
 ---
 name: hyperframes-keyframes
 description: >
-  Use when a HyperFrames composition needs seek-safe 2D/3D keyframes, GSAP
-  timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw,
-  text trails, 3D depth, or `hyperframes keyframes` diagnostics.
+  Use when a HyperFrames composition needs a punch-in, punch-out, zoom, reframe,
+  Ken Burns treatment, camera move, visual match/whip handoff, or other seek-safe
+  2D/3D keyframes; also for GSAP, CSS keyframes, Anime.js, WAAPI, FLIP, paths,
+  masks, SVG morph/draw, text trails, 3D depth, or `hyperframes keyframes` diagnostics.
   Don't use for broad scene strategy, brand design, media sourcing, captions, or
   general video planning.
 ---
@@ -13,6 +14,38 @@ description: >
 Keyframes are a pose contract: visible states, continuous subject identity, seek-safe runtime, verified pixels.
 
 Use `hyperframes-animation` for broad scene recipes. Use `hyperframes-cli` for full command docs. Use `references/keyframe-patterns.md` only when choosing implementation mechanisms, not visual style.
+
+## Creator editing boundary
+
+Keyframes own visual motion, not clip assembly. Source-range hard cuts, trim,
+splice, and reorder belong to `/hyperframes-core`: author one media element per
+kept range, place it with `data-start` and `data-duration`, and select its source
+offset with `data-media-start`. Adjacent ranges make a hard cut. A crossfade
+uses overlapping clips on different tracks plus visual opacity keyframes; sound
+fades use `/hyperframes-audio`.
+
+| Creator request                         | Truthful mechanism                                                                                                                                                                                                          |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Punch-in / punch-out                    | Keyframe `scale` with `x`/`y` or percentage translation on a non-timed visual/crop wrapper inside the clip. Use a set/short tween for a hard punch and a tween for a smooth move.                                           |
+| Smooth multi-state zoom or reframe      | Keep one subject wrapper alive and author multiple zoom/reframe states as a pose ladder with per-segment easing.                                                                                                            |
+| Pan, reframe, or Ken Burns camera move  | Animate wrapper translation plus scale. Geometry is authored; this is not face tracking or automatic semantic reframing.                                                                                                    |
+| Chained camera moves                    | Chain labeled transform beats on one registered seek-safe timeline.                                                                                                                                                         |
+| Match cut or whip pan                   | `/hyperframes-animation` owns the visual handoff; `/hyperframes-registry` supplies primitives; keyframes preserve authored geometry, direction, and velocity. There is no automatic matching-frame discovery.               |
+| Crop and mask reframe                   | Interpolate `clip-path` or a mask on an inner visual wrapper to crop/reframe without changing source time. Polygon keyframes can form a polygon/mask transition.                                                            |
+| Directional wipe cut or iris/reveal cut | Animate a mask/clip boundary across overlapping visual clips; `/hyperframes-animation` owns the handoff choreography.                                                                                                       |
+| Split-screen handoff                    | Keep both visual clips placed by core, then keyframe their inner crop/mask wrappers and divider geometry.                                                                                                                   |
+| Constant source retime                  | `/hyperframes-core` owns normalized `data-playback-rate` (`0.1..5`) for render-safe picture and pitch-preserved sound. It is constant for the whole media element.                                                          |
+| Source speed ramps                      | Not supported: there is no time-varying playback-rate envelope. Preprocess a derived media asset, then place it through core.                                                                                               |
+| Freeze / hold                           | A visual pose, final source frame, or finished sub-composition can hold. Arbitrary mid-source freeze is not supported; preprocess a still/derived segment, place it as its own clip, then resume with another source range. |
+
+When editing picture and sound together, load `/hyperframes-core`, this skill for
+visual motion, and `/hyperframes-audio` for fades, crossfades, volume automation,
+ducking/carve, or effects on the placed tracks.
+
+A visual transition or cropping treatment is not a temporal source trim or
+splice. `/hyperframes-core` owns the timeline, clip timing, and source ranges;
+keyframes only animate the visible handoff or crop on wrappers inside those clips.
+For copyable combined picture/sound recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 ## Procedure
 

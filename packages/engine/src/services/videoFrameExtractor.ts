@@ -14,10 +14,14 @@ import {
   fpsToFfmpegArg,
   fpsToNumber,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
+  normalizePlaybackRate,
+  parseStrictFiniteTimingNumber,
+  readMediaStart,
   toFps,
   type FpsInput,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
+import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
 import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,
@@ -57,6 +61,7 @@ export interface VideoElement {
   start: number;
   end: number;
   mediaStart: number;
+  playbackRate?: number;
   loop: boolean;
   hasAudio: boolean;
 }
@@ -542,7 +547,7 @@ export function parseVideoElements(html: string): VideoElement[] {
     const startAttr = el.getAttribute("data-start");
     const endAttr = el.getAttribute("data-end");
     const durationAttr = el.getAttribute("data-duration");
-    const mediaStartAttr = el.getAttribute("data-media-start");
+    const playbackRateAttr = el.getAttribute("data-playback-rate");
     const hasAudioAttr = el.getAttribute("data-has-audio");
 
     // Resolve data-start, including relative references ("intro", "intro + 2")
@@ -551,16 +556,19 @@ export function parseVideoElements(html: string): VideoElement[] {
     // blank in the final render. `startAttr` may be a plain number or a
     // reference; the resolver handles both.
     const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
+    if (isKnownInactiveTimelineWindow(el, start)) continue;
     // Derive end from data-end → data-start+data-duration → Infinity (natural duration).
     // Static compilation cannot always clamp root media because GSAP may supply
     // the root duration at runtime. The producer passes the resolved timeline
     // end into frame extraction, which caps the source duration only after the
     // natural duration is known without rewriting authored timing metadata.
     let end = 0;
-    if (endAttr) {
-      end = parseFloat(endAttr);
-    } else if (durationAttr) {
-      end = start + parseFloat(durationAttr);
+    const authoredEnd = parseStrictFiniteTimingNumber(endAttr);
+    const authoredDuration = parseStrictFiniteTimingNumber(durationAttr);
+    if (authoredEnd != null) {
+      end = authoredEnd;
+    } else if (authoredDuration != null) {
+      end = start + authoredDuration;
     } else {
       end = Infinity; // no explicit bounds — play for the full natural video duration
     }
@@ -570,7 +578,10 @@ export function parseVideoElements(html: string): VideoElement[] {
       src,
       start,
       end,
-      mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
+      mediaStart: readMediaStart(el),
+      playbackRate: normalizePlaybackRate(
+        playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
+      ),
       loop: el.hasAttribute("loop"),
       hasAudio: hasAudioAttr === "true",
     });
@@ -611,10 +622,12 @@ export function parseImageElements(html: string): ImageElement[] {
     // referenced image start doesn't become NaN and drop the image from the render.
     const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     let end = 0;
-    if (endAttr) {
-      end = parseFloat(endAttr);
-    } else if (durationAttr) {
-      end = start + parseFloat(durationAttr);
+    const authoredEnd = parseStrictFiniteTimingNumber(endAttr);
+    const authoredDuration = parseStrictFiniteTimingNumber(durationAttr);
+    if (authoredEnd != null) {
+      end = authoredEnd;
+    } else if (authoredDuration != null) {
+      end = start + authoredDuration;
     } else {
       end = Infinity;
     }
@@ -870,6 +883,8 @@ export interface TimelineExtractionWindow {
   compositionStart: number;
   mediaStart: number;
   durationSeconds: number;
+  /** Visible duration on the authored composition timeline after retiming. */
+  timelineDurationSeconds?: number;
   /**
    * Preserve the authored timeline origin and mediaStart for lookup. This is
    * required when a looped visible interval crosses a source boundary and
@@ -893,6 +908,7 @@ export interface TimelineExtractionWindow {
 }
 
 type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "mediaStart"> &
+  Partial<Pick<VideoElement, "playbackRate">> &
   Partial<Pick<VideoElement, "loop">>;
 
 // Logical duration assigned to a one-frame held-tail representation. This is
@@ -916,50 +932,67 @@ export function resolveTimelineExtractionWindow(
   timelineEnd?: number,
   sourceDuration?: number,
 ): TimelineExtractionWindow {
+  const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
+  const withTimelineDuration = (
+    window: TimelineExtractionWindow,
+    timelineDurationSeconds: number,
+  ): TimelineExtractionWindow =>
+    playbackRate === 1 ? window : { ...window, timelineDurationSeconds };
   if (timelineEnd === undefined) {
-    return {
-      compositionStart: video.start,
-      mediaStart: video.mediaStart,
-      durationSeconds: resolvedDuration,
-    };
+    return withTimelineDuration(
+      {
+        compositionStart: video.start,
+        mediaStart: video.mediaStart,
+        durationSeconds: resolvedDuration * playbackRate,
+      },
+      resolvedDuration,
+    );
   }
   if (!Number.isFinite(timelineEnd)) {
     throw new Error(`Video extraction timelineEnd must be finite; got ${String(timelineEnd)}`);
   }
   const compositionStart = Math.max(0, video.start);
   const trimmedPreroll = compositionStart - video.start;
+  const trimmedSourcePreroll = trimmedPreroll * playbackRate;
   const timelineDuration = Math.max(0, timelineEnd - compositionStart);
   // Infinity means "natural source duration", not an authored infinite slot.
   // Explicit finite slots may outlive the source (loop or held tail), while an
   // omitted duration remains source-bounded exactly like the browser runtime.
   const resolvedVisibleDuration = resolvedDuration - trimmedPreroll;
   const visibleDuration = Math.max(0, Math.min(resolvedVisibleDuration, timelineDuration));
-  let mediaStart = video.mediaStart + trimmedPreroll;
+  const visibleSourceDuration = visibleDuration * playbackRate;
+  let mediaStart = video.mediaStart + trimmedSourcePreroll;
   if (visibleDuration > 0 && sourceDuration !== undefined) {
     const sourceRemaining = Math.max(0, sourceDuration - video.mediaStart);
     if (sourceRemaining > 0 && video.loop && Number.isFinite(video.end)) {
-      const phaseOffset = trimmedPreroll % sourceRemaining;
+      const phaseOffset = trimmedSourcePreroll % sourceRemaining;
       const phaseRemaining = sourceRemaining - phaseOffset;
       // The element visibility contract includes its end boundary. Preserve a
       // complete cycle on equality as well, otherwise a rebased suffix would
       // wrap to its own first frame instead of the source cycle's first frame.
-      if (visibleDuration >= phaseRemaining) {
-        return {
-          compositionStart: video.start,
-          mediaStart: video.mediaStart,
-          durationSeconds: sourceRemaining,
-          preserveTimelinePhase: true,
-        };
+      if (visibleSourceDuration >= phaseRemaining) {
+        return withTimelineDuration(
+          {
+            compositionStart: video.start,
+            mediaStart: video.mediaStart,
+            durationSeconds: sourceRemaining,
+            preserveTimelinePhase: true,
+          },
+          visibleDuration,
+        );
       }
       mediaStart = video.mediaStart + phaseOffset;
     } else if (sourceRemaining > 0) {
-      const sourceVisibleAfterPreroll = Math.max(0, sourceRemaining - trimmedPreroll);
-      if (visibleDuration <= sourceVisibleAfterPreroll) {
-        return {
-          compositionStart,
-          mediaStart,
-          durationSeconds: visibleDuration,
-        };
+      const sourceVisibleAfterPreroll = Math.max(0, sourceRemaining - trimmedSourcePreroll);
+      if (visibleSourceDuration <= sourceVisibleAfterPreroll) {
+        return withTimelineDuration(
+          {
+            compositionStart,
+            mediaStart,
+            durationSeconds: visibleSourceDuration,
+          },
+          visibleDuration,
+        );
       }
 
       // The visible interval enters (or is entirely inside) the held tail.
@@ -971,20 +1004,26 @@ export function resolveTimelineExtractionWindow(
         Math.max(sourceVisibleAfterPreroll, FINAL_FRAME_LOGICAL_DURATION_SECONDS),
       );
       const extractionOffset = sourceRemaining - extractionDuration;
-      return {
-        compositionStart: video.start + extractionOffset,
-        mediaStart: video.mediaStart + extractionOffset,
-        durationSeconds: extractionDuration,
-        preserveTimelineEnd: true,
-        ensureFinalFrame: true,
-      };
+      return withTimelineDuration(
+        {
+          compositionStart: video.start + extractionOffset / playbackRate,
+          mediaStart: video.mediaStart + extractionOffset,
+          durationSeconds: extractionDuration,
+          preserveTimelineEnd: true,
+          ensureFinalFrame: true,
+        },
+        visibleDuration,
+      );
     }
   }
-  return {
-    compositionStart,
-    mediaStart,
-    durationSeconds: visibleDuration,
-  };
+  return withTimelineDuration(
+    {
+      compositionStart,
+      mediaStart,
+      durationSeconds: visibleSourceDuration,
+    },
+    visibleDuration,
+  );
 }
 
 /**
@@ -1018,6 +1057,9 @@ export async function resolveFinalFrameExtractionWindow(
     mediaStart: playableDuration - logicalDuration,
     extractionMediaStart: finalFrameTimestamp,
     durationSeconds: logicalDuration,
+    ...(window.timelineDurationSeconds !== undefined
+      ? { timelineDurationSeconds: window.timelineDurationSeconds }
+      : {}),
     preserveTimelineEnd: true,
     finalFrameOnly: true,
   };
@@ -1046,11 +1088,13 @@ export function resolveVideoExtractionWindow(
       `Video media start ${video.mediaStart}s is outside playable video duration ${playableDuration}s`,
     );
   }
-  const resolvedDuration = resolveSegmentDuration(
-    video.end - video.start,
-    video.mediaStart,
-    playableDuration,
-  );
+  const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
+  const requestedTimelineDuration = video.end - video.start;
+  const resolvedDuration =
+    Number.isFinite(requestedTimelineDuration) && requestedTimelineDuration > 0
+      ? requestedTimelineDuration
+      : resolveSegmentDuration(requestedTimelineDuration, video.mediaStart, playableDuration) /
+        playbackRate;
   return resolveTimelineExtractionWindow(video, resolvedDuration, timelineEnd, playableDuration);
 }
 
@@ -1908,7 +1952,7 @@ export async function extractAllVideoFrames(
         if (!window.preserveTimelinePhase) {
           video.start = window.compositionStart;
           if (!window.preserveTimelineEnd) {
-            video.end = window.compositionStart + videoDuration;
+            video.end = window.compositionStart + (window.timelineDurationSeconds ?? videoDuration);
           }
           video.mediaStart = window.mediaStart;
         }
@@ -2054,16 +2098,20 @@ function getFrameIndexAtTime(
   loop = false,
   mediaStart = 0,
   holdLastFrame = false,
+  playbackRate = 1,
 ): number | null {
   let localTime = globalTime - videoStart;
   if (localTime < 0) return null;
-  const loopDuration = Math.max(0, resolvePlayableVideoDuration(extracted.metadata) - mediaStart);
+  const normalizedPlaybackRate = normalizePlaybackRate(playbackRate);
+  const loopDuration =
+    Math.max(0, resolvePlayableVideoDuration(extracted.metadata) - mediaStart) /
+    normalizedPlaybackRate;
   if (loop && loopDuration > 0 && localTime >= loopDuration) {
     localTime %= loopDuration;
   }
   // Add epsilon before flooring to avoid IEEE 754 boundary errors where
   // e.g. 0.28 * 25 === 6.999999999999999 instead of 7.
-  const frameIndex = Math.floor(localTime * extracted.fps + 1e-9);
+  const frameIndex = Math.floor(localTime * normalizedPlaybackRate * extracted.fps + 1e-9);
   if (frameIndex < 0 || extracted.totalFrames <= 0) return null;
   if (frameIndex >= extracted.totalFrames) {
     return loop || holdLastFrame ? extracted.totalFrames - 1 : null;
@@ -2114,6 +2162,7 @@ export class FrameLookupTable {
       end: number;
       mediaStart: number;
       loop: boolean;
+      playbackRate: number;
     }
   > = new Map();
   private orderedVideos: Array<{
@@ -2123,6 +2172,7 @@ export class FrameLookupTable {
     end: number;
     mediaStart: number;
     loop: boolean;
+    playbackRate: number;
   }> = [];
   private activeVideoIds: Set<string> = new Set();
   private startCursor = 0;
@@ -2134,8 +2184,16 @@ export class FrameLookupTable {
     end: number,
     mediaStart: number,
     loop = false,
+    playbackRate = 1,
   ): void {
-    this.videos.set(extracted.videoId, { extracted, start, end, mediaStart, loop });
+    this.videos.set(extracted.videoId, {
+      extracted,
+      start,
+      end,
+      mediaStart,
+      loop,
+      playbackRate: normalizePlaybackRate(playbackRate),
+    });
     this.orderedVideos = Array.from(this.videos.entries())
       .map(([videoId, video]) => ({ videoId, ...video }))
       .sort((a, b) => a.start - b.start);
@@ -2153,6 +2211,7 @@ export class FrameLookupTable {
       video.loop,
       video.mediaStart,
       true,
+      video.playbackRate,
     );
     return frameIndex == null ? null : video.extracted.framePaths.get(frameIndex) || null;
   }
@@ -2222,6 +2281,7 @@ export class FrameLookupTable {
         video.loop,
         video.mediaStart,
         true,
+        video.playbackRate,
       );
       if (frameIndex == null) continue;
       const framePath = video.extracted.framePaths.get(frameIndex);
@@ -2266,7 +2326,9 @@ export function createFrameLookupTable(
 
   for (const video of videos) {
     const ext = extractedMap.get(video.id);
-    if (ext) table.addVideo(ext, video.start, video.end, video.mediaStart, video.loop);
+    if (ext) {
+      table.addVideo(ext, video.start, video.end, video.mediaStart, video.loop, video.playbackRate);
+    }
   }
 
   return table;

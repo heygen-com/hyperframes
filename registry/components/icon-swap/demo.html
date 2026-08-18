@@ -70,10 +70,62 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <button class="hf-transition-icon-swap" type="button">
+        <button
+          class="hf-transition-icon-swap"
+          type="button"
+          data-composition-variables='[
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Button fill and glyph colour. Accent rides --brand.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Button box and glyph size, from a toolbar chip to a hero action.", "default": "standard", "options": [{ "value": "small", "label": "Small" }, { "value": "standard", "label": "Standard" }, { "value": "large", "label": "Large" }] },
+    { "id": "shape", "type": "enum", "role": "style", "label": "Shape", "description": "Corner treatment of the button box.", "default": "rounded", "options": [{ "value": "rounded", "label": "Rounded" }, { "value": "circle", "label": "Circle" }, { "value": "square", "label": "Square" }] },
+    { "id": "blur", "type": "enum", "role": "motion", "label": "Blur", "description": "Scales the blur radius the timeline drives through the swap, from a light haze to a full smear.", "default": "standard", "options": [{ "value": "soft", "label": "Soft" }, { "value": "standard", "label": "Standard" }, { "value": "heavy", "label": "Heavy" }] }
+  ]'
+        >
           <span class="from">+</span><span class="to">OK</span>
         </button>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var tones = {
+            dark: { bg: "#18181b", fg: "#ffffff" },
+            light: { bg: "#fafafa", fg: "#18181b" },
+            accent: { bg: "var(--brand, #34d399)", fg: "#052e21" },
+          };
+          var sizes = {
+            small: { box: "44px", font: "22px" },
+            standard: { box: "58px", font: "28px" },
+            large: { box: "76px", font: "38px" },
+          };
+          var shapes = { rounded: "16px", circle: "50%", square: "6px" };
+          var blurScales = { soft: 0.45, standard: 1, heavy: 2.2 };
+
+          var tone = tones[pick(tones, vars.tone, "dark")];
+          var size = sizes[pick(sizes, vars.size, "standard")];
+          var shape = shapes[pick(shapes, vars.shape, "rounded")];
+          var blurScale = blurScales[pick(blurScales, vars.blur, "standard")];
+
+          var roots = document.querySelectorAll(".hf-transition-icon-swap");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-icon-bg", tone.bg);
+            roots[i].style.setProperty("--hf-icon-fg", tone.fg);
+            roots[i].style.setProperty("--hf-icon-size", size.box);
+            roots[i].style.setProperty("--hf-icon-font-size", size.font);
+            roots[i].style.setProperty("--hf-icon-radius", shape);
+            roots[i].style.setProperty("--hf-icon-blur-scale", String(blurScale));
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
@@ -112,5 +164,33 @@
         window.__timelines["icon-swap-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-icon-swap {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: var(--hf-icon-size, 58px);
+        height: var(--hf-icon-size, 58px);
+        border: 0;
+        border-radius: var(--hf-icon-radius, 16px);
+        background: var(--hf-icon-bg, #18181b);
+        color: var(--hf-icon-fg, #fff);
+        font:
+          900 28px/1 Inter,
+          system-ui,
+          sans-serif;
+        font-size: var(--hf-icon-font-size, 28px);
+        box-shadow: 0 18px 44px rgba(24, 24, 27, 0.22);
+      }
+      .hf-transition-icon-swap span {
+        position: absolute;
+        filter: blur(calc(var(--hf-icon-blur, 0px) * var(--hf-icon-blur-scale, 1)));
+        transform: scale(var(--hf-icon-scale, 1)) rotate(var(--hf-icon-rotate, 0deg));
+        will-change: transform, filter, opacity;
+      }
+      .hf-transition-icon-swap .to {
+        opacity: 0;
+      }
+    </style>
   </body>
 </html>

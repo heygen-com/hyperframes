@@ -9,6 +9,160 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.3"
+  description="Released - 2026-08-18"
+  tags={["Release"]}
+>
+Studio now keeps voices natural at every preview speed and applies authored track gain and user volume exactly once.
+Creator skills also add copyable recipes for cuts, trims, zooms, masks, transitions, and placed audio.
+
+## Features
+
+- Make creator media edits render-safe ([afafca4b9](https://github.com/heygen-com/hyperframes/commit/afafca4b9670cad60afd66475207ef6a016a759b), [#3322](https://github.com/heygen-com/hyperframes/pull/3322)).
+
+## Fixes
+
+- Separate Studio author and user audio gain ([995c9e346](https://github.com/heygen-com/hyperframes/commit/995c9e346e5b1bfff015db3979896ec576cff12c), [#3328](https://github.com/heygen-com/hyperframes/pull/3328)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.2...v0.8.3).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.2"
+  description="Released - 2026-08-18"
+  tags={["Release", "Catalog", "Skills"]}
+>
+The variables panel on a component's catalog page now changes its preview. Pick an accent or a size and the preview answers, so what you see is what the copied snippet installs.
+
+## Fixes
+
+- **Skills:** Count proxy-driver tweens in the animation map ([0d874adc6](https://github.com/heygen-com/hyperframes/commit/0d874adc685a94a519311cf9ed9e4107bb0347c9), [#3301](https://github.com/heygen-com/hyperframes/pull/3301)).
+- **Skills:** Declare the caption brand font's style axis, not just its weight ([a41da8651](https://github.com/heygen-com/hyperframes/commit/a41da8651768942adf588a959d9dc062c90c6a13), [#3300](https://github.com/heygen-com/hyperframes/pull/3300)).
+- **Skills:** Pin UTF-8 in Python scripts instead of the platform code page ([f8a1e2d31](https://github.com/heygen-com/hyperframes/commit/f8a1e2d315e51856491af003958914152371c29d), [#3298](https://github.com/heygen-com/hyperframes/pull/3298)).
+
+## Catalog
+
+- **Catalog:** Make component previews answer their variables panel ([406bf316a](https://github.com/heygen-com/hyperframes/commit/406bf316a38d8a6ff24c00696d9e537ee85997d4), [#3323](https://github.com/heygen-com/hyperframes/pull/3323)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.1...v0.8.2).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.1"
+  description="Released - 2026-08-18"
+  tags={["Release", "Docs", "Studio", "Add"]}
+>
+Variables you pass to `hyperframes add` now reach the file it installs, instead of being dropped without a word. Studio also asks for FFmpeg before an export starts, rather than after one fails.
+
+## Features
+
+- **Studio:** Prompt to install FFmpeg before Export, not after ([5058236ed](https://github.com/heygen-com/hyperframes/commit/5058236eda13cc31536e39bd37cf7eb4f9a99025), [#3314](https://github.com/heygen-com/hyperframes/pull/3314)).
+
+## Fixes
+
+- **Docs:** Load the player from latest, not a pinned minor ([d7688f994](https://github.com/heygen-com/hyperframes/commit/d7688f9943814b44ab20b7d4b079ab50f7ca36df), [#3320](https://github.com/heygen-com/hyperframes/pull/3320)).
+- **Add:** Make chosen variables actually take effect, in the CLI and the preview ([ea7c48f37](https://github.com/heygen-com/hyperframes/commit/ea7c48f37249aff26211913562c74e29b85e8ddb), [#3316](https://github.com/heygen-com/hyperframes/pull/3316)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.0...v0.8.1).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.0"
+  description="Released - 2026-08-17"
+  tags={["Release", "Cloud", "Migration", "Catalog"]}
+>
+HyperFrames 0.8 establishes the supported version boundary for Plan v2 as the default distributed cloud transport.
+
+Version 0.7.111 already contained this behavior. Version 0.8.0 adds no further cloud runtime changes beyond that release.
+
+## Migration
+
+- Redeploy AWS Lambda, SAM, or CDK infrastructure from version 0.8.0 before upgrading SDK callers to 0.8.0.
+- Redeploy GCP Cloud Run services and workflows from version 0.8.0 before upgrading SDK callers to 0.8.0.
+- Omitting `planProtocol` selects Plan v2. Explicit `"v1"` remains available for compatibility while older work drains.
+- Keep the producer, SDK, and cloud adapter packages on the same version during the upgrade.
+
+## Catalog
+
+- **Catalog:** Remove two AI UI items ([ed18f1ea9](https://github.com/heygen-com/hyperframes/commit/ed18f1ea9aae00c26fdb712b231ac123e9170086), [#3317](https://github.com/heygen-com/hyperframes/pull/3317)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.111...v0.8.0).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.111"
+  description="Released - 2026-08-17"
+  tags={["Release", "Cloud", "Catalog", "Studio"]}
+>
+Distributed cloud renders now use the content-addressed Plan v2 transport by default, with explicit Plan v1 compatibility during upgrades.
+
+Catalog search now ranks names and rarer words more accurately, while new text-measurement hooks give custom tools better layout data.
+
+## Features
+
+- **Cloud:** Default distributed plans to v2 ([17a2a00ed](https://github.com/heygen-com/hyperframes/commit/17a2a00ed5248bfc1b5f4efee1267610b0610727), [#3311](https://github.com/heygen-com/hyperframes/pull/3311)).
+- **Core:** Expose pretext text measurement on window.__hyperframes ([0285a711e](https://github.com/heygen-com/hyperframes/commit/0285a711e926a592bd189d647474b50de474581c), [#3302](https://github.com/heygen-com/hyperframes/pull/3302)).
+
+## Catalog
+
+- **Catalog:** Rank on where a word appears and how rare it is ([6b17c24f9](https://github.com/heygen-com/hyperframes/commit/6b17c24f980f9514345c8c882b00477328dbc3e6), [#3312](https://github.com/heygen-com/hyperframes/pull/3312)).
+
+## Internal
+
+- **Studio:** Split the two files over the 600-line cap ([35eb6d290](https://github.com/heygen-com/hyperframes/commit/35eb6d290698fd6aac90a63fd03b70a8cd2f2b07), [#3313](https://github.com/heygen-com/hyperframes/pull/3313)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.110...v0.7.111).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.110"
+  description="Released - 2026-08-17"
+  tags={["Release", "Catalog", "Skills", "Studio"]}
+>
+A registry the CLI cannot reach no longer empties the catalog. Search and browse now fall back to the last copy on disk, so one network timeout cannot send you off to hand-write a move you already have. When a search finds nothing that fits, the CLI hands you the command to report the gap.
+
+Studio also gains a preview volume control.
+
+## Features
+
+- **Studio:** Add a preview volume control ([fecaf72d1](https://github.com/heygen-com/hyperframes/commit/fecaf72d1f6de66224b3857efb78a2f2c44c41bc), [#3282](https://github.com/heygen-com/hyperframes/pull/3282)).
+
+## Fixes
+
+- Create temp dirs with mkdtemp, not a name built from Date.now() ([de4062a93](https://github.com/heygen-com/hyperframes/commit/de4062a93300cbe1826edfbd8d71fbc44be25cb7), [#3241](https://github.com/heygen-com/hyperframes/pull/3241)).
+
+## Docs & Examples
+
+- **Skills:** Fix anime.js v3 syntax in v4 adapter guidance ([67edb01bf](https://github.com/heygen-com/hyperframes/commit/67edb01bf4aa2f5931e838e46e14e0f51a5809ee), [#3064](https://github.com/heygen-com/hyperframes/pull/3064)).
+
+## Catalog
+
+- **Catalog:** Survive an unreachable registry, and ask for the gap ([37f8c4844](https://github.com/heygen-com/hyperframes/commit/37f8c48449d6c846788a76edf055bf2a888b7be5), [#3299](https://github.com/heygen-com/hyperframes/pull/3299)).
+- **Registry:** Add avatar promo and Slack notification templates ([b9a4dfcbe](https://github.com/heygen-com/hyperframes/commit/b9a4dfcbe56de5141b9a379ff30605cf23984d1e), [#3279](https://github.com/heygen-com/hyperframes/pull/3279)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.109...v0.7.110).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.109"
+  description="Released - 2026-08-14"
+  tags={["Release", "Engine", "Producer", "Studio"]}
+>
+Audio and video clips now continue from the correct source position after a split. Renders also honor mixer settings and carry diagnostic metadata.
+
+## Features
+
+- **Engine:** Add invisible, unsigned renderer and version metadata to encoded files for diagnostics ([f7d2260f9](https://github.com/heygen-com/hyperframes/commit/f7d2260f9d8edb33e708138067a0eaf393c1f214), [#3264](https://github.com/heygen-com/hyperframes/pull/3264)).
+
+## Fixes
+
+- **Producer:** Honor configured FFmpeg timeouts and master gain during audio mixing ([c32b8041d](https://github.com/heygen-com/hyperframes/commit/c32b8041dbd157178220b7a364071fe8e3cb783a), [#3239](https://github.com/heygen-com/hyperframes/pull/3239)).
+- **Studio:** Keep audio and video at the correct source position after splitting a clip ([b1b368d0f](https://github.com/heygen-com/hyperframes/commit/b1b368d0f0967506db02224ce1503f88b36b6487), [#3272](https://github.com/heygen-com/hyperframes/pull/3272)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.108...v0.7.109).
+</Update>
+
+<Update
   label="HyperFrames v0.7.108"
   description="Released - 2026-08-13"
   tags={["Release", "Studio", "Core", "Audio"]}

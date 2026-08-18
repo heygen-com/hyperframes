@@ -1,4 +1,5 @@
 import type { RuntimeTimelineLike } from "./types";
+import { parseStrictFiniteTimingNumber } from "./playbackRate";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -95,7 +96,7 @@ function recordVolumeSample(
   }
 }
 
-function parseFiniteDatasetNumber(value: string | undefined): number | undefined {
+function parseVolumeNumber(value: string | undefined): number | undefined {
   const parsed = Number.parseFloat(value ?? "");
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -104,16 +105,16 @@ function resolveVolumeProbeWindow(
   el: HTMLAudioElement | HTMLVideoElement,
   compositionDuration: number,
 ): { start: number; end: number; staticVolume: number } {
-  const start = parseFiniteDatasetNumber(el.dataset.start) ?? 0;
-  const endAttr = parseFiniteDatasetNumber(el.dataset.end);
-  const durAttr = parseFiniteDatasetNumber(el.dataset.duration);
+  const start = parseStrictFiniteTimingNumber(el.dataset.start) ?? 0;
+  const endAttr = parseStrictFiniteTimingNumber(el.dataset.end) ?? undefined;
+  const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration) ?? undefined;
   let end = compositionDuration;
   if (durAttr !== undefined && durAttr > 0) {
     end = start + durAttr;
   } else if (endAttr !== undefined && endAttr > start) {
     end = endAttr;
   }
-  const staticAttr = parseFiniteDatasetNumber(el.dataset.volume) ?? 1;
+  const staticAttr = parseVolumeNumber(el.dataset.volume) ?? 1;
   const staticVolume = Math.max(0, Math.min(1, staticAttr));
   return { start, end, staticVolume };
 }

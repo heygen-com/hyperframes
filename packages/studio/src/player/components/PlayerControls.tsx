@@ -8,6 +8,7 @@ import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { SpeedMenu } from "./SpeedMenu";
+import { VolumeControl } from "./VolumeControl";
 
 /* ── Icon sub-components ─────────────────────────────────────────── */
 
@@ -54,60 +55,6 @@ function PlayPauseMorphIcon({ playing }: { playing: boolean }) {
 }
 
 /* ── Button sub-components ───────────────────────────────────────── */
-
-const MuteButton = memo(function MuteButton({
-  audioMuted,
-  controlsDisabled,
-  setAudioMuted,
-}: {
-  audioMuted: boolean;
-  controlsDisabled: boolean;
-  setAudioMuted: (v: boolean) => void;
-}) {
-  const label = audioMuted ? "Unmute audio" : "Mute audio";
-  return (
-    <Tooltip label={label}>
-      <button
-        type="button"
-        onClick={() => {
-          trackStudioEvent("playback", { action: "mute_toggle", muted: !audioMuted });
-          setAudioMuted(!audioMuted);
-        }}
-        disabled={controlsDisabled}
-        aria-label={label}
-        aria-pressed={audioMuted}
-        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-30 ${
-          audioMuted ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
-        }`}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M11 5 6 9H3v6h3l5 4V5Z" />
-          {audioMuted ? (
-            <>
-              <path d="m19 9-6 6" />
-              <path d="m13 9 6 6" />
-            </>
-          ) : (
-            <>
-              <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-              <path d="M18.5 5.5a9 9 0 0 1 0 13" />
-            </>
-          )}
-        </svg>
-      </button>
-    </Tooltip>
-  );
-});
 
 const LoopButton = memo(function LoopButton({
   loopEnabled,
@@ -228,9 +175,11 @@ export const PlayerControls = memo(function PlayerControls({
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const playbackRate = usePlayerStore((s) => s.playbackRate);
   const audioMuted = usePlayerStore((s) => s.audioMuted);
+  const audioVolume = usePlayerStore((s) => s.audioVolume);
   const loopEnabled = usePlayerStore((s) => s.loopEnabled);
   const setPlaybackRate = usePlayerStore.getState().setPlaybackRate;
   const setAudioMuted = usePlayerStore.getState().setAudioMuted;
+  const setAudioVolume = usePlayerStore.getState().setAudioVolume;
   const setLoopEnabled = usePlayerStore.getState().setLoopEnabled;
   const inPoint = usePlayerStore((s) => s.inPoint);
   const outPoint = usePlayerStore((s) => s.outPoint);
@@ -313,10 +262,12 @@ export const PlayerControls = memo(function PlayerControls({
       </Tooltip>
 
       <div className="flex min-w-0 items-center justify-self-end">
-        <MuteButton
+        <VolumeControl
           audioMuted={audioMuted}
-          controlsDisabled={controlsDisabled}
+          audioVolume={audioVolume}
+          disabled={controlsDisabled}
           setAudioMuted={setAudioMuted}
+          setAudioVolume={setAudioVolume}
         />
         <SpeedMenu
           playbackRate={playbackRate}

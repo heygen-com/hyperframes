@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+import { parseHTML } from "linkedom";
 import {
   existsSync,
   mkdirSync,
@@ -107,6 +108,9 @@ function postCutBatch(
       splitTime: number;
       elementStart: number;
       elementDuration: number;
+      playbackStart?: number;
+      playbackRate?: number;
+      isComposition?: boolean;
     }>;
   }>,
 ): Promise<Response> {
@@ -849,6 +853,55 @@ describe("registerFileRoutes", () => {
       version: payload.files[0].version,
       writeToken: "cut-test",
     });
+  });
+
+  it("persists media in-points for audio and video in an atomic split-all cut", async () => {
+    const projectDir = createProjectDir();
+    const before =
+      '<audio id="audio" src="voice.mp3" data-start="0" data-duration="6"></audio>' +
+      '<video id="video" src="clip.mp4" data-start="0" data-duration="6" data-playback-rate="2"></video>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(before),
+        targets: [
+          {
+            target: { id: "audio" },
+            originalId: "audio",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 6,
+            playbackStart: 0,
+            playbackRate: 1,
+          },
+          {
+            target: { id: "video" },
+            originalId: "video",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 6,
+            playbackStart: 0,
+            playbackRate: 2,
+          },
+        ],
+      },
+    ]);
+    const payload = (await response.json()) as {
+      files: Array<{ after: string; splitCount: number }>;
+    };
+    const { document } = parseHTML(payload.files[0].after);
+
+    expect(response.status).toBe(200);
+    expect(payload.files[0].splitCount).toBe(2);
+    expect(document.getElementById("audio")?.getAttribute("data-media-start")).toBe("0");
+    expect(document.getElementById("audio-split")?.getAttribute("data-media-start")).toBe("2");
+    expect(document.getElementById("video")?.getAttribute("data-media-start")).toBe("0");
+    expect(document.getElementById("video-split")?.getAttribute("data-media-start")).toBe("4");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(payload.files[0].after);
   });
 
   it("cuts multiple id-less selector targets against their original indices", async () => {

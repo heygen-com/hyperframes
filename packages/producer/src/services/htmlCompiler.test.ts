@@ -3,6 +3,7 @@ import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { defaultLogger } from "../logger.js";
@@ -22,11 +23,16 @@ import {
   localizeRemoteImageSources,
   localizeRemoteFontFaces,
   recompileWithResolutions,
+  resolveCompositionDurations,
 } from "./htmlCompiler.js";
 import { validateNoSystemFonts } from "./render/planValidation.js";
 
 describe("discoverMediaFromBrowser", () => {
-  async function discover(html: string, currentSrcById: Record<string, string>) {
+  async function discover(
+    html: string,
+    currentSrcById: Record<string, string>,
+    serializeCallback = false,
+  ) {
     const { document } = parseHTML(html);
     for (const [id, currentSrc] of Object.entries(currentSrcById)) {
       const element = document.getElementById(id);
@@ -35,7 +41,13 @@ describe("discoverMediaFromBrowser", () => {
     const previousDocument = Reflect.get(globalThis, "document");
     Reflect.set(globalThis, "document", document);
     try {
-      return await discoverMediaFromBrowser({ evaluate: async (collect) => collect() } as never);
+      return await discoverMediaFromBrowser({
+        evaluate: async (collect) => {
+          if (!serializeCallback) return collect();
+          const isolated = runInThisContext(`(${collect.toString()})`) as typeof collect;
+          return isolated();
+        },
+      } as never);
     } finally {
       if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
       else Reflect.set(globalThis, "document", previousDocument);
@@ -83,6 +95,15 @@ describe("discoverMediaFromBrowser", () => {
       tagName: "image",
       src: "https://cdn.example/runtime.avif",
     });
+  });
+
+  it("keeps strict timing parsing self-contained after Puppeteer serializes the callback", async () => {
+    const media = await discover(
+      '<video id="clip" src="clip.mp4" data-start="0" data-end="2" data-duration="2" data-media-start="1"></video>',
+      {},
+      true,
+    );
+    expect(media[0]).toMatchObject({ start: 0, end: 2, duration: 2, mediaStart: 1 });
   });
 });
 
@@ -1975,6 +1996,41 @@ h1 { font-size: 2rem; }`;
 });
 
 describe("discoverAudioVolumeAutomationFromTimeline", () => {
+  it("treats trailing-garbage duration as unknown instead of truncating automation sampling", async () => {
+    class TestAudioElement {
+      id = "music";
+      dataset = { start: "0", duration: "5s", volume: "0" };
+      volume = 0;
+    }
+    class TestVideoElement {}
+    const audio = new TestAudioElement();
+    const previous = {
+      window: globalThis.window,
+      document: globalThis.document,
+      audio: globalThis.HTMLAudioElement,
+      video: globalThis.HTMLVideoElement,
+    };
+    globalThis.window = {
+      __timelines: { root: { totalTime: (time: number) => (audio.volume = time < 7 ? 0 : 1) } },
+    } as any;
+    globalThis.document = {
+      querySelector: () => ({ getAttribute: () => "root" }),
+      getElementById: () => audio,
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+    try {
+      const page = { evaluate: async (fn: (arg: any) => unknown, arg: unknown) => fn(arg) } as any;
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["music"], 10, 1);
+      expect(automation?.keyframes).toContainEqual({ time: 7, volume: 1 });
+    } finally {
+      globalThis.window = previous.window;
+      globalThis.document = previous.document;
+      globalThis.HTMLAudioElement = previous.audio;
+      globalThis.HTMLVideoElement = previous.video;
+    }
+  });
+
   it("emits plateau boundaries around a sampled volume change", async () => {
     class TestAudioElement {
       id = "music";
@@ -2091,6 +2147,55 @@ describe("discoverAudioVolumeAutomationFromTimeline", () => {
       globalThis.document = previousDocument;
       globalThis.HTMLAudioElement = previousAudioElement;
       globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+});
+
+describe("resolveCompositionDurations strict literal timing", () => {
+  it("falls through whitespace data-duration to a valid composition duration", async () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.window = { __timelines: {} } as any;
+    globalThis.document = {
+      getElementById: () => ({
+        getAttribute: (name: string) =>
+          name === "data-duration" ? "   " : name === "data-composition-duration" ? "5" : null,
+      }),
+    } as any;
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+      const result = await resolveCompositionDurations(page, [
+        { id: "scene", tagName: "div", start: 0, mediaStart: 0, playbackRate: 1 },
+      ]);
+      expect(result).toEqual([{ id: "scene", duration: 5 }]);
+    } finally {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
+    }
+  });
+
+  it("does not partially parse trailing-garbage composition duration", async () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.window = { __timelines: {} } as any;
+    globalThis.document = {
+      getElementById: () => ({
+        getAttribute: (name: string) => (name === "data-composition-duration" ? "5s" : null),
+      }),
+    } as any;
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+      const result = await resolveCompositionDurations(page, [
+        { id: "scene", tagName: "div", start: 0, mediaStart: 0, playbackRate: 1 },
+      ]);
+      expect(result).toEqual([]);
+    } finally {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
     }
   });
 });

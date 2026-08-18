@@ -8,7 +8,7 @@ Cloud Workflows adapter for HyperFrames distributed rendering.
 
 ```text
 scripts/smoke.sh        Owner-isolated real-GCP deploy, render, parity, cleanup
-sample-events/          v1 and v2 handler request examples
+sample-events/          Default-v2, explicit-v1, and explicit-v2 request examples
 ```
 
 The Terraform module and Cloud Workflows definition live in
@@ -16,8 +16,9 @@ The Terraform module and Cloud Workflows definition live in
 
 ## Protocol rollout
 
-The workflow defaults to plan protocol v1 when `PlanProtocol` is absent. V2 is
-accepted only when the caller explicitly sends `PlanProtocol: "v2"`.
+The workflow defaults to Plan v2 when `PlanProtocol` is absent. Deprecated v1
+compatibility remains available only when the caller explicitly sends
+`PlanProtocol: "v1"`.
 
 V1 and v2 use disjoint plan locators:
 
@@ -26,9 +27,15 @@ V1 and v2 use disjoint plan locators:
 
 The workflow validates that the plan response matches the selected protocol
 before starting chunk fan-out. It never silently falls back from v2 to v1.
-Deploy the v2 workflow only with a Cloud Run image whose handler implements
-the matching v2 request/response contract. An older v1-only handler will keep
-serving default v1 requests, but explicit v2 smoke executions will fail closed.
+Deploy the workflow only with a Cloud Run image whose handler implements the
+matching v2 request/response contract.
+
+For an existing installation, pause new renders and drain active workflow
+executions. Redeploy the Cloud Run image and workflow from the same package
+version before upgrading the application SDK. The new SDK sends explicit v2;
+older workflows may still default omission to v1 or lack v2 support. Keep
+passing `planProtocol: "v1"` until the infrastructure redeploy completes if
+you need a staged migration.
 
 ## Prerequisites
 
@@ -40,7 +47,7 @@ serving default v1 requests, but explicit v2 smoke executions will fail closed.
 
 ## Run the smoke
 
-V1 remains the safe default:
+Plan v2 is the normal smoke path:
 
 ```bash
 ./scripts/smoke.sh \
@@ -120,12 +127,17 @@ old invocation's state or image implicitly.
 The sample events mirror the request bodies sent by Cloud Workflows:
 
 ```bash
-# V1
+# Default v2 (PlanProtocol omitted)
 curl -sX POST localhost:8080/ \
   -H 'content-type: application/json' \
   --data @sample-events/plan.json | jq .
 
-# Explicit v2
+# Deprecated explicit v1 compatibility
+curl -sX POST localhost:8080/ \
+  -H 'content-type: application/json' \
+  --data @sample-events/plan-v1.json | jq .
+
+# Explicit v2 for callers that always stamp the protocol
 curl -sX POST localhost:8080/ \
   -H 'content-type: application/json' \
   --data @sample-events/plan-v2.json | jq .

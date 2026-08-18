@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html chromatic-aberration-wipe.html
 <!--
-  Chromatic Aberration Wipe - remocn component ported to HyperFrames authoring format.
+  Chromatic Aberration Wipe - catalog component for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -42,7 +42,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-chromatic-aberration-wipe"
+  class="hf-catalog-chromatic-aberration-wipe"
   data-composition-variables='[
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "The direction the reveal travels; both scenes slide the same way and the wipe edge follows.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
     { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the incoming scene&#39;s gradient.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "green", "label": "Green" }, { "value": "violet", "label": "Violet" }] },
@@ -56,7 +56,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-chromatic-aberration-wipe {
+  .hf-catalog-chromatic-aberration-wipe {
     --hf-accent: #2563eb;
     --hf-ink: #111827;
     --hf-muted: #6b7280;
@@ -64,7 +64,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     color: var(--hf-ink);
     font-family: Inter, system-ui, sans-serif;
   }
-  .hf-remocn-chromatic-aberration-wipe {
+  .hf-catalog-chromatic-aberration-wipe {
     position: relative;
     width: 760px;
     height: 428px;
@@ -73,7 +73,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     background: #111827;
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
   }
-  .hf-remocn-chromatic-aberration-wipe .scene {
+  .hf-catalog-chromatic-aberration-wipe .scene {
     position: absolute;
     inset: 0;
     display: grid;
@@ -83,7 +83,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     letter-spacing: -0.05em;
     color: #fff;
   }
-  .hf-remocn-chromatic-aberration-wipe .from {
+  .hf-catalog-chromatic-aberration-wipe .from {
     background: linear-gradient(135deg, #111827, #374151);
     transform: translate(
         calc(var(--hf-from-x, 0px) * var(--hf-wipe-ax, 1)),
@@ -92,7 +92,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
       scale(var(--hf-from-scale, 1));
     filter: blur(var(--hf-from-blur, 0px));
   }
-  .hf-remocn-chromatic-aberration-wipe .to {
+  .hf-catalog-chromatic-aberration-wipe .to {
     background: linear-gradient(135deg, var(--hf-scene-a, #2563eb), var(--hf-scene-b, #7c3aed));
     transform: translate(
         calc(var(--hf-to-x, 0px) * var(--hf-wipe-ax, 1)),
@@ -106,14 +106,14 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
         calc(var(--hf-clip-left, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-l, 0))
     );
   }
-  .hf-remocn-chromatic-aberration-wipe .fx {
+  .hf-catalog-chromatic-aberration-wipe .fx {
     position: absolute;
     inset: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
     mix-blend-mode: screen;
     transform: translateX(var(--hf-fx-x, -110%));
   }
-  .hf-remocn-chromatic-aberration-wipe .rgb {
+  .hf-catalog-chromatic-aberration-wipe .rgb {
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -160,7 +160,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var raw = typeof vars.aberration === "string" ? parseFloat(vars.aberration) : vars.aberration;
     var aberration = typeof raw === "number" && isFinite(raw) ? Math.min(2, Math.max(0, raw)) : 1;
 
-    var roots = document.querySelectorAll(".hf-remocn-chromatic-aberration-wipe");
+    var roots = document.querySelectorAll(".hf-catalog-chromatic-aberration-wipe");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-wipe-ax", direction.ax);
       roots[i].style.setProperty("--hf-wipe-ay", direction.ay);
@@ -177,7 +177,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-chromatic-aberration-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-chromatic-aberration-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-chromatic-aberration-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-chromatic-aberration-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+  tl.fromTo('.hf-catalog-chromatic-aberration-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-catalog-chromatic-aberration-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-catalog-chromatic-aberration-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-catalog-chromatic-aberration-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
 -->
 ```
 
@@ -217,7 +217,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Chromatic Aberration Wipe - remocn component ported to HyperFrames authoring format.
+  Chromatic Aberration Wipe - catalog component for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -244,7 +244,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-chromatic-aberration-wipe"
+  class="hf-catalog-chromatic-aberration-wipe"
   data-composition-variables='[
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "The direction the reveal travels; both scenes slide the same way and the wipe edge follows.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
     { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the incoming scene&#39;s gradient.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "green", "label": "Green" }, { "value": "violet", "label": "Violet" }] },
@@ -258,7 +258,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-chromatic-aberration-wipe {
+  .hf-catalog-chromatic-aberration-wipe {
     --hf-accent: #2563eb;
     --hf-ink: #111827;
     --hf-muted: #6b7280;
@@ -266,7 +266,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     color: var(--hf-ink);
     font-family: Inter, system-ui, sans-serif;
   }
-  .hf-remocn-chromatic-aberration-wipe {
+  .hf-catalog-chromatic-aberration-wipe {
     position: relative;
     width: 760px;
     height: 428px;
@@ -275,7 +275,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     background: #111827;
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
   }
-  .hf-remocn-chromatic-aberration-wipe .scene {
+  .hf-catalog-chromatic-aberration-wipe .scene {
     position: absolute;
     inset: 0;
     display: grid;
@@ -285,7 +285,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     letter-spacing: -0.05em;
     color: #fff;
   }
-  .hf-remocn-chromatic-aberration-wipe .from {
+  .hf-catalog-chromatic-aberration-wipe .from {
     background: linear-gradient(135deg, #111827, #374151);
     transform: translate(
         calc(var(--hf-from-x, 0px) * var(--hf-wipe-ax, 1)),
@@ -294,7 +294,7 @@ defaults, so this behaves exactly like the preview above until you change one:
       scale(var(--hf-from-scale, 1));
     filter: blur(var(--hf-from-blur, 0px));
   }
-  .hf-remocn-chromatic-aberration-wipe .to {
+  .hf-catalog-chromatic-aberration-wipe .to {
     background: linear-gradient(135deg, var(--hf-scene-a, #2563eb), var(--hf-scene-b, #7c3aed));
     transform: translate(
         calc(var(--hf-to-x, 0px) * var(--hf-wipe-ax, 1)),
@@ -308,14 +308,14 @@ defaults, so this behaves exactly like the preview above until you change one:
         calc(var(--hf-clip-left, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-l, 0))
     );
   }
-  .hf-remocn-chromatic-aberration-wipe .fx {
+  .hf-catalog-chromatic-aberration-wipe .fx {
     position: absolute;
     inset: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
     mix-blend-mode: screen;
     transform: translateX(var(--hf-fx-x, -110%));
   }
-  .hf-remocn-chromatic-aberration-wipe .rgb {
+  .hf-catalog-chromatic-aberration-wipe .rgb {
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -362,7 +362,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var raw = typeof vars.aberration === "string" ? parseFloat(vars.aberration) : vars.aberration;
     var aberration = typeof raw === "number" && isFinite(raw) ? Math.min(2, Math.max(0, raw)) : 1;
 
-    var roots = document.querySelectorAll(".hf-remocn-chromatic-aberration-wipe");
+    var roots = document.querySelectorAll(".hf-catalog-chromatic-aberration-wipe");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-wipe-ax", direction.ax);
       roots[i].style.setProperty("--hf-wipe-ay", direction.ay);
@@ -379,7 +379,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-chromatic-aberration-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-chromatic-aberration-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-chromatic-aberration-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-chromatic-aberration-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+  tl.fromTo('.hf-catalog-chromatic-aberration-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-catalog-chromatic-aberration-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-catalog-chromatic-aberration-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-catalog-chromatic-aberration-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
 -->
 ```
 
@@ -391,7 +391,7 @@ Open `compositions/components/chromatic-aberration-wipe.html` and paste its cont
 
 {/* hf:generated-footer */}
 
-Tagged `video-primitive` `transition-primitive` `remocn-port`.
+Tagged `video-primitive` `transition-primitive`.
 
 ## Related topics
 

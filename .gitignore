@@ -149,6 +149,8 @@ captures/
 *-capture/
 *-demo/
 *-ad/
+!registry/blocks/slack-notification-ad/
+!registry/blocks/slack-notification-ad/**
 *-tour/
 *-brand/
 

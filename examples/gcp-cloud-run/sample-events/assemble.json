@@ -1,7 +1,8 @@
 {
   "Action": "assemble",
-  "PlanProtocol": "v1",
-  "PlanGcsUri": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/plan.tar.gz",
+  "PlanV2ManifestGcsUri": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/v2/manifest.json",
+  "PlanV2ArtifactGcsPrefix": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/v2/artifacts/sha256",
+  "PlanHash": "REPLACE_WITH_PLAN_HASH",
   "ChunkGcsUris": [
     "gs://hyperframes-render-PROJECT/renders/hf-render-demo/chunks/0000.mp4",
     "gs://hyperframes-render-PROJECT/renders/hf-render-demo/chunks/0001.mp4"

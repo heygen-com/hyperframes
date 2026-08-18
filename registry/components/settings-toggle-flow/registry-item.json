@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Settings Toggle Flow",
   "description": "A composed settings flow with preference rows, toggle switches, and active-state feedback",
-  "tags": ["ui-flow", "remocn-port", "settings", "toggle"],
+  "tags": ["ui-flow", "settings", "toggle"],
   "files": [
     {
       "path": "settings-toggle-flow.html",

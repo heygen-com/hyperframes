@@ -10,10 +10,21 @@ Prints: the path `d` string + layout info on stderr.
 """
 import re, sys
 
+# Windows sizes stdio to the ANSI code page (cp1252). These scripts emit UTF-8 on
+# every platform; say so rather than depending on the console's code page. Carry
+# `errors` across: reconfigure() resets it to "strict", and CPython deliberately gives
+# stderr "backslashreplace" so the diagnostic path can never itself raise.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
+
 font_path, text, target_w, baseline_y, x0 = (
     sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5]))
 
-svg = open(font_path).read()
+# SVG fonts are UTF-8 and each glyph's `unicode="…"` attribute IS a literal character.
+# Decoded with the platform default, a non-ASCII glyph key silently becomes the wrong
+# character (or raises) on Windows, so that glyph never matches the requested text.
+svg = open(font_path, encoding="utf-8").read()
 glyphs = {}
 for m in re.finditer(r'<glyph\s+unicode="(.)"[^>]*?horiz-adv-x="([\d.]+)"(?:[^>]*?d="([^"]*)")?', svg):
     ch, adv, d = m.group(1), float(m.group(2)), m.group(3) or ""

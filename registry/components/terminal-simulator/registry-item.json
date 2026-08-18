@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Terminal Simulator",
   "description": "A terminal window types commands and streams log output.",
-  "tags": ["code-animation", "remocn-port"],
+  "tags": ["code-animation"],
   "files": [
     {
       "path": "terminal-simulator.html",

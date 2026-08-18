@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { FfmpegStatus } from "../components/renders/useFfmpegStatus";
 
 export interface StudioShellValue {
   projectId: string;
@@ -27,6 +28,12 @@ export interface StudioShellValue {
     cancelRender: (jobId: string) => void;
     clearCompleted: () => void;
     startRender: (options: unknown) => Promise<void>;
+    /** Encoder availability. `null` means "no answer", not "missing". */
+    ffmpeg: FfmpegStatus | null;
+    /** True only when the server positively reported no usable FFmpeg. */
+    ffmpegMissing: boolean;
+    ffmpegChecking: boolean;
+    recheckFfmpeg: () => void;
   };
   compositionDimensions: CompositionDimensions | null;
   waitForPendingDomEditSaves: () => Promise<void>;

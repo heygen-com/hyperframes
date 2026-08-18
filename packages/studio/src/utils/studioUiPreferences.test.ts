@@ -23,6 +23,7 @@ describe("studio UI preferences", () => {
     writeStudioUiPreferences({ leftWidth: 384, rightWidth: 424 }, storage);
     writeStudioUiPreferences({ playbackRate: 1.5 }, storage);
     writeStudioUiPreferences({ audioMuted: true }, storage);
+    writeStudioUiPreferences({ audioVolume: 0.4 }, storage);
     writeStudioUiPreferences({ previewZoom: { zoomPercent: 160, panX: -20, panY: 12 } }, storage);
 
     expect(readStudioUiPreferences(storage)).toEqual({
@@ -31,6 +32,7 @@ describe("studio UI preferences", () => {
       rightWidth: 424,
       playbackRate: 1.5,
       audioMuted: true,
+      audioVolume: 0.4,
       previewZoom: { zoomPercent: 160, panX: -20, panY: 12 },
     });
   });
@@ -46,6 +48,7 @@ describe("studio UI preferences", () => {
         timelineVisible: true,
         playbackRate: Number.NaN,
         audioMuted: "false",
+        audioVolume: 2,
         previewZoom: { zoomPercent: 150, panX: 0, panY: "bad" },
       }),
     );

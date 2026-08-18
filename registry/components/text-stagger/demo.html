@@ -72,13 +72,72 @@
     >
       <div class="demo-frame">
         <div class="demo-label">text-stagger</div>
-        <div class="hf-transition-text-stagger">
+        <div
+          class="hf-transition-text-stagger"
+          data-composition-variables='[
+    {"id": "text", "type": "string", "role": "content", "label": "Text", "description": "Headline copy. Every whitespace-separated word becomes one staggered span.", "default": "Build motion systems fast"},
+    {"id": "size", "type": "number", "role": "layout", "label": "Size", "description": "Type size of every word in pixels, clamped to 24-160. Line height stays proportional.", "default": 74, "min": 24, "max": 160, "step": 1, "unit": "px"},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Base word colour: ink for light frames, paper for dark ones.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}]},
+    {"id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour of the shimmer the second timeline step sweeps across the words.", "default": "blue", "options": [{"value": "blue", "label": "Blue"}, {"value": "green", "label": "Green"}, {"value": "violet", "label": "Violet"}]}
+  ]'
+        >
           <span>Build</span>
           <span>motion</span>
           <span>systems</span>
           <span>fast</span>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var DEFAULT_TEXT = "Build motion systems fast";
+          var tones = { ink: "#111827", paper: "#f8fafc" };
+          var accents = { blue: "#38bdf8", green: "#34d399", violet: "#a78bfa" };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var words = String(vars.text == null ? DEFAULT_TEXT : vars.text)
+            .split(/\s+/)
+            .filter(function (word) {
+              return word.length > 0;
+            });
+          if (words.length === 0) words = DEFAULT_TEXT.split(" ");
+
+          // Number(null) is 0, so null has to miss the numeric branch and clamp back
+          // to the declared default instead of snapping to the minimum.
+          var size = typeof vars.size === "number" ? vars.size : parseFloat(vars.size);
+          if (!isFinite(size)) size = 74;
+          size = Math.min(160, Math.max(24, size));
+
+          var tone = tones[pick(tones, vars.tone, "ink")];
+          var accent = accents[pick(accents, vars.accent, "blue")];
+
+          var roots = document.querySelectorAll(".hf-transition-text-stagger");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-stagger-size", size + "px");
+            root.style.setProperty("--hf-stagger-ink", tone);
+            root.style.setProperty("--hf-stagger-accent", accent);
+            // Rebuilt without whitespace between the spans: whitespace-only text
+            // between flex items is not rendered, so this matches the markup above.
+            root.textContent = "";
+            for (var w = 0; w < words.length; w += 1) {
+              var span = document.createElement("span");
+              span.textContent = words[w];
+              root.appendChild(span);
+            }
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.fromTo(
@@ -104,5 +163,34 @@
         window.__timelines["text-stagger-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-text-stagger {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.24em;
+        color: var(--hf-stagger-ink, #111827);
+        font:
+          900 74px/0.95 Inter,
+          system-ui,
+          sans-serif;
+        font-size: var(--hf-stagger-size, 74px);
+        letter-spacing: -0.045em;
+      }
+      .hf-transition-text-stagger span {
+        display: inline-block;
+        background: linear-gradient(
+          90deg,
+          var(--hf-stagger-ink, #111827),
+          var(--hf-stagger-ink, #111827),
+          var(--hf-stagger-accent, #38bdf8),
+          var(--hf-stagger-ink, #111827)
+        );
+        background-size: 240% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        will-change: transform, opacity, filter, background-position;
+      }
+    </style>
   </body>
 </html>

@@ -88,7 +88,14 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-transition-badge-pop">
+        <div
+          class="hf-transition-badge-pop"
+          data-composition-variables='[
+    { "id": "count", "type": "string", "role": "style", "label": "Count", "description": "Text shown inside the notification badge, up to four characters.", "default": "3", "maxLength": 4 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the badge.", "default": "red", "options": [{ "value": "red", "label": "Red" }, { "value": "blue", "label": "Blue" }, { "value": "green", "label": "Green" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "surface", "type": "enum", "role": "style", "label": "Surface", "description": "Chrome of the button and the badge ring: light for bright frames, dark for dark ones.", "default": "light", "options": [{ "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" }] }
+  ]'
+        >
           <button class="hf-transition-badge-button" type="button" aria-label="Notifications">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
@@ -98,6 +105,55 @@
           <span class="hf-transition-badge-count">3</span>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          // The badge is the one accent-carrying element here. red is the literal
+          // notification convention and stays; the decorative options ride the
+          // composition's own tokens and fall back to ink.
+          var accents = {
+            red: "#ef4444",
+            blue: "var(--accent, #18181b)",
+            green: "var(--brand, #18181b)",
+            violet: "var(--accent-2, #18181b)",
+          };
+          var surfaces = {
+            light: { surface: "#ffffff", border: "#e4e4e7", ink: "#18181b" },
+            dark: { surface: "#101014", border: "#2a2a32", ink: "#fafafa" },
+          };
+
+          var accent = accents[pick(accents, vars.accent, "red")];
+          var surface = surfaces[pick(surfaces, vars.surface, "light")];
+          var count =
+            typeof vars.count === "string" && vars.count.trim()
+              ? vars.count.trim().slice(0, 4)
+              : "3";
+
+          var roots = document.querySelectorAll(".hf-transition-badge-pop");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-badge-pop-accent", accent);
+            root.style.setProperty("--hf-badge-pop-surface", surface.surface);
+            root.style.setProperty("--hf-badge-pop-border", surface.border);
+            root.style.setProperty("--hf-badge-pop-ink", surface.ink);
+            var label = root.querySelector(".hf-transition-badge-count");
+            if (label) {
+              label.textContent = count;
+            }
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.fromTo(
@@ -122,5 +178,54 @@
         window.__timelines["badge-pop-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-badge-pop {
+        --hf-badge-pop-accent: #ef4444;
+        --hf-badge-pop-surface: #ffffff;
+        --hf-badge-pop-border: #e4e4e7;
+        --hf-badge-pop-ink: #18181b;
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-transition-badge-button {
+        display: grid;
+        place-items: center;
+        width: 76px;
+        height: 76px;
+        border: 1px solid var(--hf-badge-pop-border);
+        border-radius: 22px;
+        background: var(--hf-badge-pop-surface);
+        color: var(--hf-badge-pop-ink);
+        box-shadow: 0 20px 58px rgba(0, 0, 0, 0.12);
+      }
+      .hf-transition-badge-button svg {
+        width: 30px;
+        height: 30px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .hf-transition-badge-count {
+        position: absolute;
+        right: -8px;
+        top: -8px;
+        display: grid;
+        place-items: center;
+        min-width: 30px;
+        height: 30px;
+        padding: 0 8px;
+        border: 3px solid var(--hf-badge-pop-surface);
+        border-radius: 999px;
+        background: var(--hf-badge-pop-accent);
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 900;
+        transform-origin: center;
+      }
+    </style>
   </body>
 </html>

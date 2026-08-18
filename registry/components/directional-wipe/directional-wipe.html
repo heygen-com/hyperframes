@@ -1,5 +1,5 @@
 <!--
-  Directional Wipe - remocn component ported to HyperFrames authoring format.
+  Directional Wipe - catalog component for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -21,7 +21,7 @@
 -->
 
 <div
-  class="hf-remocn-directional-wipe"
+  class="hf-catalog-directional-wipe"
   data-composition-variables='[
     { "id": "palette", "type": "enum", "role": "style", "label": "Palette", "description": "Theme token for the ring marking the incoming panel. Slate rides --accent, teal --brand, ember --accent-2; each falls back to a neutral hairline.", "default": "slate", "options": [{ "value": "slate", "label": "Slate" }, { "value": "teal", "label": "Teal" }, { "value": "ember", "label": "Ember" }] },
     { "id": "corner", "type": "enum", "role": "style", "label": "Corner", "description": "Corner radius of the transition card.", "default": "rounded", "options": [{ "value": "square", "label": "Square" }, { "value": "rounded", "label": "Rounded" }, { "value": "soft", "label": "Soft" }] }
@@ -34,7 +34,7 @@
 </div>
 
 <style>
-  .hf-remocn-directional-wipe {
+  .hf-catalog-directional-wipe {
     --hf-accent: var(--accent, rgba(255, 255, 255, 0.28));
     --hf-l1: rgba(255, 255, 255, 0.72);
     --hf-l3: rgba(255, 255, 255, 0.18);
@@ -46,7 +46,7 @@
     color: var(--hf-ink);
     font-family: Inter, system-ui, sans-serif;
   }
-  .hf-remocn-directional-wipe {
+  .hf-catalog-directional-wipe {
     position: relative;
     width: 760px;
     height: 428px;
@@ -55,7 +55,7 @@
     background: #111827;
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
   }
-  .hf-remocn-directional-wipe .scene {
+  .hf-catalog-directional-wipe .scene {
     position: absolute;
     inset: 0;
     display: grid;
@@ -65,7 +65,7 @@
     letter-spacing: -0.05em;
     color: #fff;
   }
-  .hf-remocn-directional-wipe .from {
+  .hf-catalog-directional-wipe .from {
     background:
       repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 4px),
       var(--hf-l4);
@@ -73,7 +73,7 @@
       scale(var(--hf-from-scale, 1));
     filter: blur(var(--hf-from-blur, 0px));
   }
-  .hf-remocn-directional-wipe .to {
+  .hf-catalog-directional-wipe .to {
     background:
       repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 4px),
       var(--hf-l3);
@@ -84,14 +84,14 @@
         var(--hf-clip-left, 0%)
     );
   }
-  .hf-remocn-directional-wipe .fx {
+  .hf-catalog-directional-wipe .fx {
     position: absolute;
     inset: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
     mix-blend-mode: screen;
     transform: translateX(var(--hf-fx-x, -110%));
   }
-  .hf-remocn-directional-wipe .rgb {
+  .hf-catalog-directional-wipe .rgb {
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -132,7 +132,7 @@
     var palette = palettes[pick(palettes, vars.palette, "slate")];
     var corner = corners[pick(corners, vars.corner, "rounded")];
 
-    var roots = document.querySelectorAll(".hf-remocn-directional-wipe");
+    var roots = document.querySelectorAll(".hf-catalog-directional-wipe");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-accent", palette);
       roots[i].style.setProperty("--hf-corner", corner);
@@ -142,5 +142,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-directional-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-remocn-directional-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-remocn-directional-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-remocn-directional-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
+  tl.fromTo('.hf-catalog-directional-wipe .to', { '--hf-clip-right': '100%', '--hf-to-x': '60px', '--hf-to-scale': 1.04 }, { '--hf-clip-right': '0%', '--hf-to-x': '0px', '--hf-to-scale': 1, duration: 0.9, ease: 'power3.inOut' }, startTime); tl.to('.hf-catalog-directional-wipe .from', { '--hf-from-x': '-70px', '--hf-from-scale': 0.96, '--hf-from-blur': '5px', duration: 0.9, ease: 'power3.inOut' }, startTime); tl.fromTo('.hf-catalog-directional-wipe .fx', { '--hf-fx-x': '-110%' }, { '--hf-fx-x': '110%', duration: 0.58, ease: 'power2.inOut' }, startTime + 0.18); tl.fromTo('.hf-catalog-directional-wipe .rgb', { '--hf-rgb-opacity': 0, '--hf-rgb-x': '-16px' }, { '--hf-rgb-opacity': 1, '--hf-rgb-x': '16px', repeat: 3, yoyo: true, duration: 0.07, ease: 'steps(1)' }, startTime + 0.32);
 -->

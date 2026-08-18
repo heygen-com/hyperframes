@@ -123,6 +123,36 @@ describe("splitElementInHtml", () => {
     expect(result.html).toMatch(/id="box-split"[^>]*data-playback-start="2"/);
   });
 
+  it.each(["audio", "video"])(
+    "seeds the second %s half with a media in-point when the source starts at zero",
+    (tag) => {
+      const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><${tag} id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6"></${tag}></div></body></html>`;
+
+      const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+      const { document } = parseHTML(result.html);
+
+      expect(result.matched).toBe(true);
+      expect(document.getElementById("media")?.getAttribute("data-media-start")).toBe("0");
+      expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("2");
+    },
+  );
+
+  it("advances a zero-based media in-point by playback rate", () => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6" data-playback-rate="2"></video></div></body></html>`;
+
+    const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+    const { document } = parseHTML(result.html);
+
+    expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("4");
+  });
+
+  it("does not add a media in-point to non-media elements", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
+
+    expect(result.html).not.toContain("data-media-start");
+    expect(result.html).not.toContain("data-playback-start");
+  });
+
   it("stamps a legacy composition offset and advances the second half by playback rate", () => {
     const result = splitElementInHtml(source, { id: "box" }, 3, "box-split", {
       start: 1,

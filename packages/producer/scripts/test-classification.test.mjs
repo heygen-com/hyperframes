@@ -45,4 +45,15 @@ describe("producer test classification", () => {
       summary.total,
     );
   });
+
+  it("keeps the real-media natural-duration compiler test in the integration lane", () => {
+    const test = discoverProducerTests().find(
+      ({ file }) => file === "src/services/htmlCompiler.naturalDuration.test.ts",
+    );
+    assert.deepEqual(test, {
+      file: "src/services/htmlCompiler.naturalDuration.test.ts",
+      runner: "bun",
+      lane: "integration",
+    });
+  });
 });

@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Separator",
   "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
-  "tags": ["video-primitive", "remocn-port", "separator", "layout"],
+  "tags": ["video-primitive", "separator", "layout"],
   "files": [
     {
       "path": "separator.html",

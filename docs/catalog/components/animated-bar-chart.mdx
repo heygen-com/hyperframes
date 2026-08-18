@@ -9,7 +9,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
   title="animated-bar-chart preview"
   loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/animated-bar-chart.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png");document.body.appendChild(p)});<\/script></body></html>`}
+  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/animated-bar-chart.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png");document.body.appendChild(p)});<\/script></body></html>`}
 />
 
 ## Install
@@ -24,13 +24,13 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
 
 ```html
 <!--
-  Animated Bar Chart - remocn component ported to HyperFrames authoring format.
+  Animated Bar Chart - catalog component for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div class="hf-remocn-animated-bar-chart">
+<div class="hf-catalog-animated-bar-chart">
   <header>
     <div>
       <h3>Animated Bar Chart</h3>
@@ -56,7 +56,7 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
 </div>
 
 <style>
-  .hf-remocn-animated-bar-chart {
+  .hf-catalog-animated-bar-chart {
     --hf-accent: var(--accent, #111827);
     --hf-ink: #111827;
     --hf-l1: rgba(17, 24, 39, 0.72);
@@ -69,7 +69,7 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
     color: var(--hf-ink);
     font-family: Inter, system-ui, sans-serif;
   }
-  .hf-remocn-animated-bar-chart {
+  .hf-catalog-animated-bar-chart {
     width: 760px;
     min-height: 420px;
     border-radius: 28px;
@@ -79,38 +79,38 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
     display: grid;
     gap: 22px;
   }
-  .hf-remocn-animated-bar-chart header {
+  .hf-catalog-animated-bar-chart header {
     display: flex;
     justify-content: space-between;
     align-items: end;
   }
-  .hf-remocn-animated-bar-chart h3 {
+  .hf-catalog-animated-bar-chart h3 {
     margin: 0;
     font-size: 34px;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-animated-bar-chart strong {
+  .hf-catalog-animated-bar-chart strong {
     font-size: 54px;
     letter-spacing: -0.06em;
   }
-  .hf-remocn-animated-bar-chart .bars {
+  .hf-catalog-animated-bar-chart .bars {
     height: 210px;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     align-items: end;
     gap: 14px;
   }
-  .hf-remocn-animated-bar-chart .bar {
+  .hf-catalog-animated-bar-chart .bar {
     height: calc(var(--h) * var(--hf-grow, 1));
     border-radius: 14px 14px 5px 5px;
     background: var(--hf-l1);
   }
-  .hf-remocn-animated-bar-chart svg {
+  .hf-catalog-animated-bar-chart svg {
     width: 100%;
     height: 210px;
     overflow: visible;
   }
-  .hf-remocn-animated-bar-chart path {
+  .hf-catalog-animated-bar-chart path {
     color: var(--hf-l2);
     stroke-dasharray: 900;
     stroke-dashoffset: var(--hf-dash, 0);
@@ -119,7 +119,7 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-animated-bar-chart', { '--hf-grow': 0, '--hf-dash': 900 }, { '--hf-grow': 1, '--hf-dash': 0, duration: 1.2, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-animated-bar-chart', { '--hf-grow': 0, '--hf-dash': 900 }, { '--hf-grow': 1, '--hf-dash': 0, duration: 1.2, ease: 'power3.out' }, startTime);
 -->
 ```
 
@@ -131,7 +131,7 @@ Open `compositions/components/animated-bar-chart.html` and paste its contents in
 
 {/* hf:generated-footer */}
 
-Tagged `data` `remocn-port`.
+Tagged `data`.
 
 ## Related topics
 

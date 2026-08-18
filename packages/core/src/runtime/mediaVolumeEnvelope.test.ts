@@ -7,6 +7,24 @@ import {
 } from "./mediaVolumeEnvelope";
 
 describe("probeElementVolumeKeyframes", () => {
+  it("treats trailing-garbage duration as unknown instead of truncating preview sampling", () => {
+    const audio = document.createElement("audio");
+    audio.dataset.start = "0";
+    audio.dataset.duration = "5s";
+    audio.dataset.volume = "0";
+
+    const keyframes = probeElementVolumeKeyframes(
+      audio,
+      (time) => {
+        audio.volume = time < 7 ? 0 : 1;
+      },
+      10,
+      1,
+    );
+
+    expect(keyframes).toContainEqual({ time: 7, volume: 1 });
+  });
+
   it("retains the last plateau sample before a short volume change", () => {
     const audio = document.createElement("audio");
     audio.dataset.start = "0";

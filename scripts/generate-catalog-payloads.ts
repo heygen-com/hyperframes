@@ -20,7 +20,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import { join, resolve, dirname, extname } from "node:path";
+import { join, relative, resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -29,6 +29,12 @@ import {
   type CatalogItem,
   type ItemKind,
 } from "./generate-catalog-previews.js";
+import { componentFiles } from "./catalog/component-files.ts";
+import { runAsCommand } from "./entrypoint.ts";
+import {
+  snippetOwnsItsMotion,
+  SNIPPET_PREVIEW_RENDERS_STILL,
+} from "./catalog/component-variables.ts";
 import {
   clearPinnedVariableValues,
   externalizeDataUris,
@@ -120,6 +126,53 @@ function declaresVariables(item: CatalogItem): boolean {
   }
 }
 
+/**
+ * Which file this component's interactive preview is built from.
+ *
+ * `snippet` for the ones that register their own timeline: the snippet alone is
+ * a whole piece, and building from it carries markup, variables and motion
+ * together. `demo` for the ones that are markup plus a commented recipe, where
+ * the demo owns the motion. Those demos carry the snippet's variable machinery
+ * in the registry itself, kept in step by
+ * `scripts/catalog/sync-demo-variables.ts`, so nothing has to be patched in
+ * here at build time.
+ */
+function snippetFileFor(item: CatalogItem): string | null {
+  if (item.kind !== "component") return null;
+  return componentFiles(item.sourceDir)?.snippetPath ?? null;
+}
+
+function buildsFromSnippet(item: CatalogItem, snippetFile: string): boolean {
+  return (
+    snippetOwnsItsMotion(readFileSync(snippetFile, "utf-8")) &&
+    !SNIPPET_PREVIEW_RENDERS_STILL.has(item.name)
+  );
+}
+
+function previewSource(item: CatalogItem): { mode: "snippet" | "demo"; file: string } | null {
+  const file = snippetFileFor(item);
+  if (!file) return null;
+  return { mode: buildsFromSnippet(item, file) ? "snippet" : "demo", file };
+}
+
+/**
+ * What the preview is built from, and whether that is the component's snippet.
+ *
+ * A component whose snippet owns its motion gets its preview built from that
+ * snippet, so variables and animation arrive together. Everything else keeps
+ * its authored entry.
+ */
+function renderEntry(
+  item: CatalogItem,
+  interactive: boolean,
+): { entry: CatalogItem; fromSnippet: boolean } {
+  const source = interactive ? previewSource(item) : null;
+  if (source?.mode !== "snippet") return { entry: item, fromSnippet: false };
+
+  const entry = { ...item, entryFile: relative(item.sourceDir, source.file) };
+  return { entry, fromSnippet: true };
+}
+
 async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
@@ -131,9 +184,14 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   // A composition whose variables are meant to be changed has to reach the
   // reader uncompiled, or its values are already resolved into the markup.
   const interactive = declaresVariables(item);
+  const { entry, fromSnippet } = renderEntry(item, interactive);
+
   let projectDir: string;
   try {
-    projectDir = await prepareProjectDir(item, { compile: !interactive });
+    projectDir = await prepareProjectDir(entry, {
+      compile: !interactive,
+      uiFragment: fromSnippet,
+    });
   } catch (err) {
     // Some items are a stylesheet and a paragraph of prose — a class you add to
     // your own captions, with no standalone scene to show. That is a shape, not
@@ -255,9 +313,4 @@ async function main(): Promise<void> {
   if (failed > 0) console.log(`${failed} item(s) failed to build.`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runAsCommand(import.meta.url, main);

@@ -83,7 +83,15 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-transition-tilt-card">
+        <div
+          class="hf-transition-tilt-card"
+          data-composition-variables='[
+    {"id": "eyebrow", "type": "string", "role": "content", "label": "Eyebrow", "description": "Small uppercase kicker above the headline.", "default": "Primitive"},
+    {"id": "headline", "type": "string", "role": "content", "label": "Headline", "description": "Large card headline.", "default": "Agent-ready motion"},
+    {"id": "glow", "type": "enum", "role": "motion", "label": "Glow", "description": "How far the corner glow reaches past the card edges, which sets both its spread at rest and how far the timeline drift carries it.", "default": "standard", "options": [{"value": "tight", "label": "Tight"}, {"value": "standard", "label": "Standard"}, {"value": "wide", "label": "Wide"}]},
+    {"id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the card gradient, corner glow, eyebrow and drop shadow.", "default": "indigo", "options": [{"value": "indigo", "label": "Indigo"}, {"value": "emerald", "label": "Emerald"}, {"value": "violet", "label": "Violet"}]}
+  ]'
+        >
           <div class="hf-transition-tilt-glow"></div>
           <div class="hf-transition-tilt-content">
             <span>Primitive</span>
@@ -91,6 +99,65 @@
           </div>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var insets = { tight: "-18%", standard: "-30%", wide: "-46%" };
+          var accents = {
+            indigo: {
+              accent: "#312e81",
+              glow: "rgba(125, 211, 252, 0.5)",
+              label: "#a5b4fc",
+              shadow: "rgba(49, 46, 129, 0.34)",
+            },
+            emerald: {
+              accent: "#065f46",
+              glow: "rgba(110, 231, 183, 0.5)",
+              label: "#6ee7b7",
+              shadow: "rgba(6, 95, 70, 0.34)",
+            },
+            violet: {
+              accent: "#5b21b6",
+              glow: "rgba(216, 180, 254, 0.5)",
+              label: "#d8b4fe",
+              shadow: "rgba(91, 33, 182, 0.34)",
+            },
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          function text(value, fallback) {
+            var resolved = value == null ? "" : String(value).trim();
+            return resolved.length > 0 ? resolved : fallback;
+          }
+
+          var eyebrow = text(vars.eyebrow, "Primitive");
+          var headline = text(vars.headline, "Agent-ready motion");
+          var inset = insets[pick(insets, vars.glow, "standard")];
+          var accent = accents[pick(accents, vars.accent, "indigo")];
+
+          var roots = document.querySelectorAll(".hf-transition-tilt-card");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-tilt-glow-inset", inset);
+            root.style.setProperty("--hf-tilt-accent", accent.accent);
+            root.style.setProperty("--hf-tilt-glow", accent.glow);
+            root.style.setProperty("--hf-tilt-label", accent.label);
+            root.style.setProperty("--hf-tilt-shadow", accent.shadow);
+            root.querySelector(".hf-transition-tilt-content span").textContent = eyebrow;
+            root.querySelector(".hf-transition-tilt-content strong").textContent = headline;
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.fromTo(
@@ -114,5 +181,50 @@
         window.__timelines["tilt-card-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-tilt-card {
+        position: relative;
+        width: 420px;
+        height: 260px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 30px;
+        background: linear-gradient(135deg, #18181b, var(--hf-tilt-accent, #312e81));
+        color: #ffffff;
+        font-family: Inter, system-ui, sans-serif;
+        transform-style: preserve-3d;
+        box-shadow: 0 32px 90px var(--hf-tilt-shadow, rgba(49, 46, 129, 0.34));
+      }
+      .hf-transition-tilt-glow {
+        position: absolute;
+        inset: var(--hf-tilt-glow-inset, -30%);
+        background: radial-gradient(
+          circle at 30% 20%,
+          var(--hf-tilt-glow, rgba(125, 211, 252, 0.5)),
+          transparent 36%
+        );
+      }
+      .hf-transition-tilt-content {
+        position: relative;
+        display: grid;
+        align-content: end;
+        gap: 10px;
+        height: 100%;
+        padding: 34px;
+        transform: translateZ(38px);
+      }
+      .hf-transition-tilt-content span {
+        color: var(--hf-tilt-label, #a5b4fc);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .hf-transition-tilt-content strong {
+        max-width: 280px;
+        font-size: 34px;
+        line-height: 0.96;
+      }
+    </style>
   </body>
 </html>

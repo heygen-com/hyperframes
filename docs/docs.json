@@ -468,7 +468,6 @@
                 "group": "Showcases",
                 "pages": [
                   "catalog/blocks/ai-chat-reveal",
-                  "catalog/components/ai-generation-canvas",
                   "catalog/blocks/app-showcase",
                   "catalog/blocks/apple-money-count",
                   "catalog/blocks/blue-sweater-intro-video",
@@ -477,6 +476,7 @@
                   "catalog/blocks/claude-exchange",
                   "catalog/blocks/cosmic-orb",
                   "catalog/blocks/gallery-tunnel",
+                  "catalog/blocks/heygen-avatar-promo-card",
                   "catalog/blocks/message-thread-reveal",
                   "catalog/blocks/north-korea-locked-down",
                   "catalog/blocks/notes-reveal",
@@ -485,6 +485,7 @@
                   "catalog/blocks/oscilloscope-trace",
                   "catalog/blocks/rack-focus",
                   "catalog/blocks/share-sheet-carousel",
+                  "catalog/blocks/slack-notification-ad",
                   "catalog/blocks/ui-3d-reveal",
                   "catalog/blocks/vfx-anamorphic-flare",
                   "catalog/blocks/vpn-youtube-spot"
@@ -621,7 +622,6 @@
               {
                 "group": "Effects",
                 "pages": [
-                  "catalog/components/ai-prompt-flow",
                   "catalog/components/avatar-cloud",
                   "catalog/components/beat-timeline",
                   "catalog/components/before-after-wipe",

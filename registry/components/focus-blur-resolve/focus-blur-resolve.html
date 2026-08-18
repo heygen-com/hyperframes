@@ -1,5 +1,5 @@
 <!--
-  Focus Blur Resolve - remocn typography primitive for HyperFrames.
+  Focus Blur Resolve - typography primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -22,7 +22,7 @@
 -->
 
 <div
-  class="hf-remocn-focus-blur-resolve"
+  class="hf-catalog-focus-blur-resolve"
   data-composition-variables='[
     { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] },
     { "id": "size", "type": "enum", "role": "style", "label": "Size", "description": "Type size of the words, from a caption-scale line to a full display card.", "default": "standard", "options": [{ "value": "compact", "label": "Compact" }, { "value": "standard", "label": "Standard" }, { "value": "display", "label": "Display" }] },
@@ -33,19 +33,19 @@
 </div>
 
 <style>
-  .hf-remocn-focus-blur-resolve {
+  .hf-catalog-focus-blur-resolve {
     color: var(--hf-word-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-focus-blur-resolve {
+  .hf-catalog-focus-blur-resolve {
     display: inline-flex;
     gap: 12px;
     font-size: var(--hf-word-size, 56px);
     line-height: 1;
   }
-  .hf-remocn-focus-blur-resolve span {
+  .hf-catalog-focus-blur-resolve span {
     display: inline-block;
     transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
       scale(var(--hf-word-scale, 1));
@@ -76,7 +76,7 @@
     var size = sizes[pick(sizes, vars.size, "standard")];
     var blurScale = blurScales[pick(blurScales, vars.blur, "standard")];
 
-    var roots = document.querySelectorAll(".hf-remocn-focus-blur-resolve");
+    var roots = document.querySelectorAll(".hf-catalog-focus-blur-resolve");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-word-color", tone);
       roots[i].style.setProperty("--hf-word-size", size);
@@ -87,5 +87,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-focus-blur-resolve span', { opacity: 0, '--hf-word-scale': 1.08, '--hf-word-blur': '16px' }, { opacity: 1, '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.52, stagger: 0.05, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-catalog-focus-blur-resolve span', { opacity: 0, '--hf-word-scale': 1.08, '--hf-word-blur': '16px' }, { opacity: 1, '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.52, stagger: 0.05, ease: 'power3.out' }, startTime);
 -->

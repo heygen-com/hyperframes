@@ -87,7 +87,9 @@ export const CatalogOverviewPlayer = ({ title, children }) => {
     "#stage,hyperframes-player{position:absolute;inset:0;display:block;width:100%;height:100%}",
     "#label{position:absolute;z-index:2;top:24px;left:24px;padding:10px 16px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(5,7,11,.82);color:#fff;font:700 18px/1.2 ui-sans-serif,system-ui,sans-serif;pointer-events:none}",
     "#error{position:absolute;z-index:3;inset:0;display:none;place-items:center;background:#05070b;color:#fff;font:600 18px ui-sans-serif,system-ui,sans-serif}</style>",
-    '<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@0.7/dist/hyperframes-player.global.js"></' +
+    // `latest`, not a pinned line. See the note in variables-explorer.jsx: a
+    // pin here fails silently, because the page still works on the old build.
+    '<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"></' +
       "script>",
     `</head><body><div id="stage"></div><div id="label"></div><div id="error">Preview unavailable</div><script>var scenes=${scenes};var reduced=${JSON.stringify(reduced)};var catalogBase=${JSON.stringify(catalogBase)};var assetBase=${JSON.stringify(assetBase)};var current=0;var request=0;`,
     "function videoComposition(scene){return \"<!doctype html><html><head><meta charset='utf-8'><style>html,body{width:1920px;height:1080px;margin:0;overflow:hidden;background:#05070b}video{width:100%;height:100%;object-fit:cover}</style></head><body><main data-composition-id='catalog-video' data-start='0' data-duration='15' data-width='1920' data-height='1080'><video id='catalog-video-media' src='\"+scene.video+\"' data-start='0' data-duration='15' muted playsinline></video></main><script>window.__timelines=window.__timelines||{};var media=document.querySelector('video');window.__timelines['catalog-video']={duration:function(){return 15},time:function(){return media.currentTime},seek:function(t){media.currentTime=t;return this},play:function(){media.play();return this},pause:function(){media.pause();return this}};</\"+\"script></body></html>\"}",

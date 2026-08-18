@@ -33,6 +33,10 @@ export interface AudioStageInput {
   compiledDir: string;
   /** Composition duration (post-probe). Must be > 0 — probeStage guarantees this. */
   duration: number;
+  /** Timeout forwarded to ffmpeg subprocesses used by the audio mixer. */
+  ffmpegProcessTimeout: number;
+  /** Master gain forwarded to the audio mixer. */
+  audioGain: number;
   /** Read-only view of `composition.audios`. */
   audios: CompositionMetadata["audios"];
   abortSignal: AbortSignal | undefined;
@@ -59,8 +63,18 @@ export interface AudioStageResult {
 }
 
 export async function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
-  const { projectDir, workDir, compiledDir, duration, audios, abortSignal, assertNotAborted, log } =
-    input;
+  const {
+    projectDir,
+    workDir,
+    compiledDir,
+    duration,
+    ffmpegProcessTimeout,
+    audioGain,
+    audios,
+    abortSignal,
+    assertNotAborted,
+    log,
+  } = input;
 
   const stage3Start = Date.now();
   const audioOutputPath = join(workDir, MIXED_AUDIO_FILENAME);
@@ -84,7 +98,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
         audioOutputPath,
         duration,
         abortSignal,
-        undefined,
+        { ffmpegProcessTimeout, audioGain },
         compiledDir,
       );
     } catch (err) {

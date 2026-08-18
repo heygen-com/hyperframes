@@ -1,0 +1,406 @@
+---
+title: "HeyGen Avatar Promo Card"
+description: "A portrait HeyGen offer card pairs a moving avatar mosaic with bold promotional typography and a branded callout"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.png" autoPlay muted loop playsInline />
+
+## Install
+
+<InstallCommand command="npx hyperframes add heygen-avatar-promo-card" item="heygen-avatar-promo-card" />
+
+That writes `compositions/heygen-avatar-promo-card.html`, plus 14 supporting files under `assets/` and `assets/fonts/`.
+
+## Add it to your video
+
+It runs for 10 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="heygen-avatar-promo-card"
+  data-composition-src="compositions/heygen-avatar-promo-card.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Source
+
+<Accordion title={`heygen-avatar-promo-card.html`}>
+
+```html
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /* The source project used proprietary HeyGen brand fonts. These OFL faces
+     keep the public catalog block self-contained and redistributable. */
+      @font-face {
+        font-family: "AvatarDisplay";
+        src: url("assets/fonts/eb-garamond-latin-400-normal.woff2") format("woff2");
+        font-weight: 400 600;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "AvatarDisplay";
+        src: url("assets/fonts/eb-garamond-latin-700-normal.woff2") format("woff2");
+        font-weight: 700 900;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "AvatarSans";
+        src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "AvatarSans";
+        src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+        font-weight: 500;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "AvatarSans";
+        src: url("assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+        font-weight: 600 900;
+        font-display: block;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        font-family: "AvatarSans", sans-serif;
+      }
+      /* palette: canvas #EAF6FA · ink #0A1418 · light tile #F7FCFE · dark tile #0B1215 ·
+     cyan #00C3FF (fills / dark-bg display only) · subhead #47545B */
+      #heygen-avatar-promo-card {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+      }
+      .bgfill {
+        position: absolute;
+        inset: 0;
+        background: #eaf6fa;
+      }
+
+      .hdr {
+        position: absolute;
+        left: 0;
+        width: 1080px;
+        text-align: center;
+        color: #0a1418;
+      }
+      #apc-hdr-logo {
+        top: 118px;
+        height: 44px;
+      }
+      #apc-hdr-logo img {
+        height: 44px;
+      }
+      #apc-hdr-title {
+        top: 205px;
+        font-family: "AvatarDisplay", serif;
+        font-weight: 700;
+        font-size: 148px;
+        line-height: 150px;
+        letter-spacing: -0.02em;
+      }
+      #apc-hdr-subhead {
+        top: 524px;
+        font-family: "AvatarSans", sans-serif;
+        font-weight: 500;
+        font-size: 37px;
+        color: #47545b;
+        letter-spacing: -0.01em;
+      }
+      #apc-hdr-pills {
+        top: 1590px;
+        display: flex;
+        justify-content: center;
+        gap: 28px;
+      }
+      .pill {
+        border: 2px solid #0a1418;
+        border-radius: 999px;
+        padding: 0 42px;
+        height: 92px;
+        line-height: 88px;
+        font-family: "AvatarSans", sans-serif;
+        font-weight: 600;
+        font-size: 27px;
+        letter-spacing: 0.12em;
+        color: #0a1418;
+      }
+
+      #apc-belt-linear {
+        position: absolute;
+        top: 640px;
+        left: 0;
+        width: 2600px;
+        height: 784px;
+      }
+      #apc-belt-entry {
+        position: absolute;
+        inset: 0;
+      }
+      .tile {
+        position: absolute;
+        width: 362px;
+        height: 380px;
+        border-radius: 30px;
+        overflow: hidden;
+        display: block;
+      }
+      .row1 {
+        top: 0;
+      }
+      .row2 {
+        top: 404px;
+      }
+      .tile video {
+        width: 362px;
+        height: 380px;
+        object-fit: cover;
+        display: block;
+      }
+      .light {
+        background: #f7fcfe;
+      }
+      .dark {
+        background: #0b1215;
+      }
+      .cyan {
+        background: #00c3ff;
+      }
+      .serif-tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "AvatarDisplay", serif;
+        font-weight: 500;
+        font-size: 165px;
+        color: #0a1418;
+      }
+      .brand-tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .brand-tile img {
+        width: 240px;
+      }
+      .code-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+      }
+      .code-tile .code {
+        font-family: "AvatarSans", sans-serif;
+        font-weight: 600;
+        font-size: 26px;
+        letter-spacing: 0.42em;
+        color: #8fa3ad;
+        text-indent: 0.42em;
+      }
+      .code-tile .promo {
+        font-family: "AvatarSans", sans-serif;
+        font-weight: 800;
+        font-size: 92px;
+        letter-spacing: -0.01em;
+      }
+      .code-tile .promo .gen {
+        color: #00c3ff;
+      }
+      .code-tile .promo .n25 {
+        color: #fbfcfc;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="heygen-avatar-promo-card"
+      data-composition-id="heygen-avatar-promo-card"
+      data-start="0"
+      data-width="1080"
+      data-height="1920"
+      data-duration="10"
+      data-fps="25"
+    >
+      <div class="bgfill"></div>
+
+      <!-- belt: geometry + motion law measured from the reference (see reversal spec) -->
+      <div id="apc-belt-linear">
+        <div id="apc-belt-entry">
+          <!-- row 1 -->
+          <div class="tile row1 cyan brand-tile" style="left: 139.1px">
+            <img src="assets/heygen-logo.svg?t=1" alt="" />
+          </div>
+          <video
+            class="tile row1 clip"
+            id="apc-v-r1k1"
+            src="assets/av_r1k1.mp4"
+            style="left: 523.4px"
+            data-start="0"
+            data-duration="8.60"
+            data-track-index="1"
+            muted
+            playsinline
+          ></video>
+          <div class="tile row1 light serif-tile" style="left: 907.7px">25%</div>
+          <video
+            class="tile row1 clip"
+            id="apc-v-r1k3"
+            src="assets/av_r1k3.mp4"
+            style="left: 1292px"
+            data-start="1.44"
+            data-duration="8.56"
+            data-track-index="2"
+            muted
+            playsinline
+          ></video>
+          <video
+            class="tile row1 clip"
+            id="apc-v-r1k4"
+            src="assets/av_r1k4.mp4"
+            style="left: 1676.3px"
+            data-start="5.56"
+            data-duration="4.44"
+            data-track-index="3"
+            muted
+            playsinline
+          ></video>
+          <div class="tile row1 cyan" style="left: 2060.6px"></div>
+          <!-- row 2 -->
+          <video
+            class="tile row2 clip"
+            id="apc-v-r2k0"
+            src="assets/av_r2k0.mp4"
+            style="left: 139.1px"
+            data-start="0"
+            data-duration="4.48"
+            data-track-index="4"
+            muted
+            playsinline
+          ></video>
+          <div class="tile row2 light serif-tile" style="left: 523.4px; font-size: 146px">OFF</div>
+          <video
+            class="tile row2 clip"
+            id="apc-v-r2k2"
+            src="assets/av_r2k2.mp4"
+            style="left: 907.7px"
+            data-start="0"
+            data-duration="10"
+            data-track-index="5"
+            muted
+            playsinline
+          ></video>
+          <div class="tile row2 dark code-tile" style="left: 1292px">
+            <div class="code">CODE</div>
+            <div class="promo"><span class="gen">GEN</span><span class="n25">25</span></div>
+          </div>
+          <div class="tile row2 light brand-tile" style="left: 1676.3px">
+            <img src="assets/heygen-logo.svg?t=2" alt="" />
+          </div>
+          <div class="tile row2 dark" style="left: 2060.6px"></div>
+        </div>
+      </div>
+
+      <!-- header block -->
+      <div class="hdr" id="apc-hdr-logo"><img src="assets/heygen-logo.svg" alt="HeyGen" /></div>
+      <div class="hdr" id="apc-hdr-title">
+        Your avatar,
+        <div>by HeyGen.</div>
+      </div>
+      <div class="hdr" id="apc-hdr-subhead">AI video, camera-free.</div>
+      <div class="hdr" id="apc-hdr-pills">
+        <div class="pill">4K AVATARS</div>
+        <div class="pill">NO CAMERA NEEDED</div>
+      </div>
+
+      <audio
+        id="apc-bgm"
+        class="clip"
+        src="assets/bgm.m4a"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+      ></audio>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Belt conveyor — measured from reference: 93.601 px/s constant, leftward
+      tl.fromTo("#apc-belt-linear", { x: 0 }, { x: -936.01, duration: 10, ease: "none" }, 0);
+      // Belt entry — measured offset table, one keyframe per source frame, linear between
+      const entryX = [
+        0, -11.39, -21.64, -30.9, -39.04, -46.29, -52.55, -57.98, -62.72, -66.71, -69.99, -72.75,
+        -74.86, -76.52, -77.85, -78.8, -79.36, -79.75, -79.87, -79.94, -80.0,
+      ];
+      for (let i = 1; i < entryX.length; i++) {
+        tl.fromTo(
+          "#apc-belt-entry",
+          { x: entryX[i - 1] },
+          { x: entryX[i], duration: 0.04, ease: "none", immediateRender: i === 1 },
+          (i - 1) * 0.04,
+        );
+      }
+
+      // Header waterfall — measured fades
+      tl.fromTo(
+        "#apc-hdr-logo",
+        { autoAlpha: 0 },
+        { autoAlpha: 1, duration: 0.4, ease: "power2.out" },
+        0.0,
+      );
+      tl.fromTo(
+        "#apc-hdr-title",
+        { autoAlpha: 0 },
+        { autoAlpha: 1, duration: 0.6, ease: "power2.out" },
+        0.1,
+      );
+      tl.fromTo(
+        "#apc-hdr-subhead",
+        { autoAlpha: 0 },
+        { autoAlpha: 1, duration: 0.4, ease: "power2.out" },
+        0.5,
+      );
+      // pills static from frame 0
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["heygen-avatar-promo-card"] = tl;
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `showcase` `avatar` `promotion` `vertical` `ad-template`.
+
+Created by HeyGen.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

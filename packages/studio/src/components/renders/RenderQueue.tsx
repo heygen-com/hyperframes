@@ -2,6 +2,8 @@ import { memo, useState, useRef, useEffect, useLayoutEffect, useId } from "react
 import { createPortal } from "react-dom";
 import { CANVAS_DIMENSIONS } from "@hyperframes/parsers";
 import { RenderQueueItem } from "./RenderQueueItem";
+import { FfmpegRequiredNotice } from "./FfmpegRequiredNotice";
+import type { FfmpegStatus } from "./useFfmpegStatus";
 import { Button } from "../ui/Button";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
@@ -41,6 +43,13 @@ interface RenderQueueProps {
    * a 1080p or 4K scale. `null` falls back to landscape (legacy default).
    */
   compositionDimensions?: CompositionDimensions | null;
+  /**
+   * Encoder availability, owned by useRenderQueue so the panel's Export button
+   * and the header's agree. `null` means "no answer", not "missing".
+   */
+  ffmpeg: FfmpegStatus | null;
+  ffmpegChecking: boolean;
+  onRecheckFfmpeg: () => void;
 }
 
 // Orientation is derived from the composition's authored aspect ratio,
@@ -266,17 +275,29 @@ function FormatExportButton({
   isRendering,
   compositionDimensions,
   lastRenderDurationMs,
+  ffmpeg,
+  ffmpegChecking,
+  onRecheckFfmpeg,
 }: {
   onStartRender: StartRenderHandler;
   isRendering: boolean;
   compositionDimensions?: CompositionDimensions | null;
   lastRenderDurationMs?: number;
+  ffmpeg: FfmpegStatus | null;
+  ffmpegChecking: boolean;
+  onRecheckFfmpeg: () => void;
 }) {
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
   const [resolution, setResolution] = useState<RenderScale>("auto");
   const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
+
+  // Only a definite "not installed" blocks Export. A null status means the
+  // probe gave no answer, and refusing to export on no answer would break
+  // setups that are perfectly fine. Holding the narrowed value rather than a
+  // boolean keeps the notice from re-testing what this line already decided.
+  const missingFfmpeg = ffmpeg && !ffmpeg.ok ? ffmpeg : null;
 
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
@@ -286,6 +307,13 @@ function FormatExportButton({
 
   return (
     <div className="flex flex-col gap-3">
+      {missingFfmpeg && (
+        <FfmpegRequiredNotice
+          status={missingFfmpeg}
+          checking={ffmpegChecking}
+          onRecheck={onRecheckFfmpeg}
+        />
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1">
@@ -369,10 +397,12 @@ function FormatExportButton({
         variant="primary"
         size="md"
         loading={isRendering}
+        disabled={missingFfmpeg !== null}
+        title={missingFfmpeg ? "Install FFmpeg to export. See the note above." : undefined}
         onClick={() => {
           // loading already disables the button; this guard also stops a
           // double-click in the same frame from enqueueing two renders.
-          if (isRendering) return;
+          if (isRendering || missingFfmpeg) return;
           const outputResolution = resolveResolution(resolution, compositionDimensions);
           trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
           void onStartRender(format, quality, outputResolution, fps);
@@ -403,6 +433,9 @@ export const RenderQueue = memo(function RenderQueue({
   actionError,
   onDismissActionError,
   compositionDimensions,
+  ffmpeg,
+  ffmpegChecking,
+  onRecheckFfmpeg,
 }: RenderQueueProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -427,6 +460,9 @@ export const RenderQueue = memo(function RenderQueue({
           isRendering={isRendering}
           compositionDimensions={compositionDimensions}
           lastRenderDurationMs={lastRenderDurationMs}
+          ffmpeg={ffmpeg}
+          ffmpegChecking={ffmpegChecking}
+          onRecheckFfmpeg={onRecheckFfmpeg}
         />
       </div>
 

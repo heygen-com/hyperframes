@@ -24,6 +24,7 @@ import {
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
+  resolveNaturalMediaTimelineDuration,
   syncRuntimeMedia,
 } from "./media";
 import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
@@ -54,6 +55,7 @@ import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseNumeric } from "./startExpression";
+import { parseStrictFiniteTimingNumber } from "./playbackRate";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -634,7 +636,7 @@ export function initSandboxRuntimeModular(): void {
     // Preserve the global value when its authored window already intersects
     // the host's absolute window. Otherwise it is unambiguously local and
     // must inherit the recursively-resolved host start.
-    const authoredDuration = parseNumeric(element.getAttribute("data-duration"));
+    const authoredDuration = parseStrictFiniteTimingNumber(element.getAttribute("data-duration"));
     const hostDuration = context.inheritedDuration;
     const hostEnd = hostDuration != null && hostDuration > 0 ? inheritedStart + hostDuration : null;
     const authoredEnd =
@@ -743,16 +745,12 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const resolveMediaElementDurationSeconds = (node: HTMLMediaElement): number | null => {
-    const declaredDuration = Number(node.getAttribute("data-duration"));
-    if (Number.isFinite(declaredDuration) && declaredDuration > 0) {
+    const declaredDuration = parseStrictFiniteTimingNumber(node.getAttribute("data-duration"));
+    if (declaredDuration != null && declaredDuration > 0) {
       return declaredDuration;
     }
-    const playbackStart = Number(
-      node.getAttribute("data-playback-start") ?? node.getAttribute("data-media-start") ?? "0",
-    );
-    const safePlaybackStart = Number.isFinite(playbackStart) ? Math.max(0, playbackStart) : 0;
-    if (Number.isFinite(node.duration) && node.duration > safePlaybackStart) {
-      return Math.max(0, node.duration - safePlaybackStart);
+    if (Number.isFinite(node.duration)) {
+      return resolveNaturalMediaTimelineDuration(node, node.duration);
     }
     return null;
   };
@@ -787,8 +785,8 @@ export function initSandboxRuntimeModular(): void {
     // even slightly short of the declared duration shrinks the playable
     // window — and duration-gated consumers (e.g. the studio's adapter
     // selection) silently reject the runtime player, losing audio playback.
-    const rootDeclaredSeconds = Number.parseFloat(rootEl.getAttribute("data-duration") ?? "");
-    if (Number.isFinite(rootDeclaredSeconds) && rootDeclaredSeconds > 0) {
+    const rootDeclaredSeconds = parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration"));
+    if (rootDeclaredSeconds != null && rootDeclaredSeconds > 0) {
       maxWindowEndSeconds = rootDeclaredSeconds;
     }
     const compositionNodes = Array.from(
@@ -1181,8 +1179,9 @@ export function initSandboxRuntimeModular(): void {
       // GSAP timeline, extend the timeline in-place with a zero-duration no-op
       // tween. Studio previews can inline only part of the timeline registry
       // while preserving the full host schedule in data-hf-authored-duration.
-      const rootDeclaredDurAttr = rootCompositionNode?.getAttribute("data-duration");
-      const rootDeclaredDur = rootDeclaredDurAttr ? parseFloat(rootDeclaredDurAttr) : null;
+      const rootDeclaredDur = parseStrictFiniteTimingNumber(
+        rootCompositionNode?.getAttribute("data-duration"),
+      );
       const rootDurationFloorSeconds = Math.max(
         isUsableTimelineDuration(rootDeclaredDur) ? rootDeclaredDur : 0,
         authoredCompositionDurationFloorSeconds ?? 0,
@@ -1989,27 +1988,22 @@ export function initSandboxRuntimeModular(): void {
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
         const start = resolveAbsoluteMediaStartSeconds(element);
-        const mediaStart =
-          Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
-          0;
         const hostRemaining =
           context.inheritedStart != null &&
           context.inheritedDuration != null &&
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration =
-          Number.isFinite(element.duration) && element.duration > mediaStart
-            ? Math.max(0, element.duration - mediaStart)
-            : null;
+        const sourceDuration = Number.isFinite(element.duration)
+          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+          : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound
         // playback so a trimmed track stops at its edge instead of running on
         // to the source-file or host-composition end. Absent → no cap (an
         // untrimmed clip plays its natural source length).
-        const ownDuration = Number.parseFloat(element.dataset.duration ?? "");
-        const explicitDuration =
-          Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration : null;
+        const ownDuration = parseStrictFiniteTimingNumber(element.dataset.duration);
+        const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
           sourceDuration,
@@ -2033,14 +2027,14 @@ export function initSandboxRuntimeModular(): void {
         timeSeconds: state.currentTime,
         playing: state.isPlaying,
         playbackRate: state.playbackRate,
-        outputMuted:
-          state.mediaOutputMuted ||
-          (!state.webAudioMediaDisabled && !state.nativeMediaSyncDisabled && webAudio.isActive()),
+        outputMuted: state.mediaOutputMuted,
         userMuted: state.bridgeMuted,
         userVolume: state.bridgeVolume,
         forceSync,
-        onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
+        onElementVolume: (el, _effectiveVolume, authorVolume) =>
+          webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
+        isWebAudioRouted: (el) => webAudio.routesElement(el),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
@@ -2133,15 +2127,15 @@ export function initSandboxRuntimeModular(): void {
     scheduleRootStageLayoutDiagnostics();
   };
 
-  const finitePositiveDuration = (value: number): number =>
-    Number.isFinite(value) && value > 0 ? value : 0;
+  const finitePositiveDuration = (value: number | null | undefined): number =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 
   const growRootDurationLive = (durationSeconds: number) => {
     const nextDuration = finitePositiveDuration(Number(durationSeconds));
     if (nextDuration <= 0) return;
     const rootEl = resolveRootCompositionElement();
     const rootAttrDuration = finitePositiveDuration(
-      Number.parseFloat(rootEl?.getAttribute("data-duration") ?? ""),
+      parseStrictFiniteTimingNumber(rootEl?.getAttribute("data-duration")),
     );
     const currentDuration = Math.max(
       liveRootDurationOverrideSeconds,
@@ -2922,11 +2916,9 @@ export function initSandboxRuntimeModular(): void {
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
-            const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
-            const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
-            const mediaStart =
-              Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") ||
-              0;
+            const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
+            const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
+            const mediaStart = readElementPlaybackStart(rawEl);
             if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
@@ -3003,11 +2995,10 @@ export function initSandboxRuntimeModular(): void {
       if (!el.isConnected) continue;
       const start = Number.parseFloat(el.dataset.start ?? "");
       if (!Number.isFinite(start)) continue;
-      const durAttr = Number.parseFloat(el.dataset.duration ?? "");
-      const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+      const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
+      const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
       if (timeSeconds < start || timeSeconds >= end) continue;
-      const mediaStart =
-        Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
+      const mediaStart = readElementPlaybackStart(el);
       const relTime = timeSeconds - start + mediaStart;
       if (relTime >= 0) {
         try {
@@ -3033,13 +3024,12 @@ export function initSandboxRuntimeModular(): void {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
-      const mediaStart =
-        Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
+      const mediaStart = readElementPlaybackStart(rawEl);
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
-      const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+      const durationAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
       let clipDuration =
-        Number.isFinite(durationAttr) && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
+        durationAttr != null && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
       const compositionRoot = rawEl.closest("[data-composition-id]");
       if (compositionRoot) {
         const inheritedStart = resolveStartForElement(compositionRoot, 0);
@@ -3053,20 +3043,43 @@ export function initSandboxRuntimeModular(): void {
           );
         }
       }
-      void webAudio.decodeAudioElement(rawEl).then((buffer) => {
-        if (!buffer || !clock.isPlaying()) return;
-        void webAudio.schedulePlayback(
+      void webAudio
+        .scheduleMediaElementPlayback(
           rawEl,
-          buffer,
           compStart,
           mediaStart,
           clock.now(),
-          vol * state.bridgeVolume,
+          vol,
           gen,
           state.playbackRate,
-          clipDuration,
-        );
-      });
+        )
+        .then((scheduled) => {
+          if (scheduled || !clock.isPlaying()) return;
+          const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
+          const hasProcessing =
+            rawEl.hasAttribute("data-fx-chain") || rawEl.hasAttribute("data-automation");
+          // A decoded AudioBufferSourceNode changes pitch whenever its playback
+          // rate is non-unit. Bare tracks may safely stay on native output; a
+          // processed track must fail closed rather than silently lose its graph.
+          if (Math.abs(effectiveRate - 1) > 1e-9) {
+            if (hasProcessing) rawEl.muted = true;
+            return;
+          }
+          void webAudio.decodeAudioElement(rawEl).then((buffer) => {
+            if (!buffer || !clock.isPlaying()) return;
+            void webAudio.schedulePlayback(
+              rawEl,
+              buffer,
+              compStart,
+              mediaStart,
+              clock.now(),
+              vol,
+              gen,
+              state.playbackRate,
+              clipDuration,
+            );
+          });
+        });
     }
   };
 

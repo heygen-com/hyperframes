@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Line-by-Line Slide",
   "description": "Each line enters from the left with staggered slide and exits to the right.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "tags": ["motion-primitive", "typography"],
   "files": [
     {
       "path": "line-by-line-slide.html",

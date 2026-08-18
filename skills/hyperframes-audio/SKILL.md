@@ -2,6 +2,7 @@
 name: hyperframes-audio
 description: >
   Use when audio already placed in a HyperFrames composition needs to be mixed:
+  fade-in/fade-out, crossfade, track gain or volume, volume automation, ducking,
   a music bed that fights a voiceover (voiceover carve), effects on a track
   (EQ, compressor, limiter, gate, saturation, delay, reverb, chorus, phaser,
   bitcrush), or automation envelopes drawn on a track's volume or any effect
@@ -23,6 +24,20 @@ same Web Audio graph — the studio in a live context, the engine in an offline 
 inside the browser it already drives. There is one implementation of each effect,
 so what you hear while scrubbing is what gets written. You never tune twice.
 
+Clip timing remains `/hyperframes-core`: audio/video trims and source ranges use
+`data-start`, `data-duration`, and `data-media-start`, and crossfades overlap
+clips on different tracks. This skill owns placed-track fade-in/fade-out,
+crossfade envelopes, track gain/track volume, volume and effect automation,
+ducking/voiceover carve, and the effect chain. `/media-use` owns sourcing,
+generation, and preprocessing.
+
+Constant `data-playback-rate` (`0.1..5`) is render-safe for picture and
+pitch-preserved sound when matching audio/video elements use the same timing,
+source offset, and rate. Source speed ramps are not supported because there is
+no rate envelope; preprocess a derived synchronized asset. HyperFrames does not
+provide automatic waveform sync or drift correction.
+For copyable cut/crossfade/retime recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
+
 Three attributes carry everything, all on the audio/video element itself:
 
 | Attribute         | Holds                                                     |
@@ -30,6 +45,9 @@ Three attributes carry everything, all on the audio/video element itself:
 | `data-fx-chain`   | the effects, in signal order                              |
 | `data-automation` | envelopes on this track's volume or its effect parameters |
 | `data-fx-carve`   | the carve's own settings, so it can be re-derived         |
+
+The shipped effect families are gain, EQ (highpass, lowpass, peaking, shelves),
+compressor, limiter, gate, saturate, delay, reverb, chorus, phaser, and bitcrush.
 
 Exact JSON for each, and the rules a lane must satisfy: `references/attributes.md`.
 Every effect with its parameters, ranges and units: `references/fx-registry.md`.

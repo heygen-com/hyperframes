@@ -11,6 +11,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
 import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
+import { applyVariableDefaults, type ApplyResult } from "./variableDefaults.js";
 
 export interface InstallOptions {
   /** Project root where files land. Every target resolves relative to this. */
@@ -19,6 +20,12 @@ export interface InstallOptions {
   baseUrl?: string;
   /** Overwrite files the project has changed since they were installed. */
   force?: boolean;
+  /**
+   * `--vars` values to bake into a COMPONENT's declared defaults. A block
+   * carries its values on the mount element instead, so this is ignored there:
+   * per-mount values are strictly better when a mount exists.
+   */
+  variableValues?: Record<string, unknown> | null;
 }
 
 export interface InstallResult {
@@ -26,6 +33,11 @@ export interface InstallResult {
   written: string[];
   /** Absolute paths left alone because the project had changed them. */
   preserved: string[];
+  /** Variable ids whose default was rewritten in an installed component. */
+  variablesApplied: string[];
+  /** Ids the item does not declare, and ids it declares but cannot accept. */
+  variablesUnknown: string[];
+  variablesInvalid: { id: string; reason: string }[];
 }
 
 /**
@@ -91,7 +103,7 @@ export function hasLocalEdits(
  * install time so a registry that bypasses schema validation still can't write
  * outside the project.
  */
-export function assertSafeTarget(destDir: string, target: string): void {
+function assertSafeTarget(destDir: string, target: string): void {
   if (isAbsolute(target)) {
     throw new Error(`Unsafe target "${target}": absolute paths are not allowed.`);
   }
@@ -108,6 +120,11 @@ export function assertSafeTarget(destDir: string, target: string): void {
   }
 }
 
+/** A component's pasteable markup: the file whose declared defaults `--vars` edits. */
+function isInstalledComponentSnippet(item: RegistryItem, file: FileTarget): boolean {
+  return item.type === "hyperframes:component" && file.target.toLowerCase().endsWith(".html");
+}
+
 function isInstalledRegistryBlockComposition(item: RegistryItem, file: FileTarget): boolean {
   return (
     item.type === "hyperframes:block" &&
@@ -122,6 +139,61 @@ function addRegistryItemMarker(source: string, item: RegistryItem): string {
   }
 
   return `<!-- hyperframes-registry-item: ${item.name} -->\n${source}`;
+}
+
+interface FileOutcome {
+  destPath: string;
+  target: string;
+  preserved: boolean;
+  hash: string | null;
+  vars: ApplyResult | null;
+}
+
+/** Fetch, write and post-process one file. Extracted so installItem stays readable. */
+async function installOneFile(
+  item: RegistryItem,
+  file: FileTarget,
+  destDir: string,
+  baseUrl: string,
+  record: InstallRecord,
+  options: InstallOptions,
+): Promise<FileOutcome> {
+  const destPath = resolve(destDir, file.target);
+
+  // Decided before fetching rather than after: a file we are going to keep
+  // should never be overwritten and then put back, because a crash in
+  // between would lose it for real.
+  if (
+    !options.force &&
+    existsSync(destPath) &&
+    hasLocalEdits(record, file.target, readFileSync(destPath))
+  ) {
+    return { destPath, target: file.target, preserved: true, hash: null, vars: null };
+  }
+
+  await fetchItemFile(item, file, destPath, baseUrl);
+  if (isInstalledRegistryBlockComposition(item, file)) {
+    const source = readFileSync(destPath, "utf-8");
+    writeFileSync(destPath, addRegistryItemMarker(source, item), "utf-8");
+  }
+  // A component has no mount element to hang values on, so the chosen
+  // values go into its own declaration or they go nowhere. See
+  // variableDefaults.ts for why that is the only surviving home.
+  let vars: ApplyResult | null = null;
+  if (options.variableValues && isInstalledComponentSnippet(item, file)) {
+    const source = readFileSync(destPath, "utf-8");
+    vars = applyVariableDefaults(source, options.variableValues);
+    if (vars.applied.length > 0) writeFileSync(destPath, vars.html, "utf-8");
+  }
+  // Hash what actually landed, marker and baked defaults included, or the
+  // next install reads its own output as the project's edit.
+  return {
+    destPath,
+    target: file.target,
+    preserved: false,
+    hash: digest(readFileSync(destPath)),
+    vars,
+  };
 }
 
 /**
@@ -143,34 +215,9 @@ export async function installItem(
   const record = readInstallRecord(destDir);
 
   const outcomes = await Promise.all(
-    item.files.map(async (file: FileTarget) => {
-      const destPath = resolve(destDir, file.target);
-
-      // Decided before fetching rather than after: a file we are going to keep
-      // should never be overwritten and then put back, because a crash in
-      // between would lose it for real.
-      if (
-        !options.force &&
-        existsSync(destPath) &&
-        hasLocalEdits(record, file.target, readFileSync(destPath))
-      ) {
-        return { destPath, target: file.target, preserved: true, hash: null };
-      }
-
-      await fetchItemFile(item, file, destPath, baseUrl);
-      if (isInstalledRegistryBlockComposition(item, file)) {
-        const source = readFileSync(destPath, "utf-8");
-        writeFileSync(destPath, addRegistryItemMarker(source, item), "utf-8");
-      }
-      // Hash what actually landed, marker included, or the next install reads
-      // its own marker as the project's edit.
-      return {
-        destPath,
-        target: file.target,
-        preserved: false,
-        hash: digest(readFileSync(destPath)),
-      };
-    }),
+    item.files.map((file: FileTarget) =>
+      installOneFile(item, file, destDir, baseUrl, record, options),
+    ),
   );
 
   const written = outcomes.filter((o) => !o.preserved).map((o) => o.destPath);
@@ -183,5 +230,19 @@ export async function installItem(
     writeInstallRecord(destDir, record);
   }
 
-  return { written, preserved };
+  const vars = outcomes.map((o) => o.vars).filter((v): v is ApplyResult => v !== null);
+  return {
+    written,
+    preserved,
+    variablesApplied: vars.flatMap((v) => v.applied),
+    // An id nothing declared is only genuinely unknown once every file has had
+    // a chance at it, so intersect rather than union.
+    variablesUnknown: vars.length
+      ? vars.reduce<string[]>(
+          (acc, v) => acc.filter((id) => v.unknown.includes(id)),
+          vars[0]!.unknown,
+        )
+      : [],
+    variablesInvalid: vars.flatMap((v) => v.invalid),
+  };
 }

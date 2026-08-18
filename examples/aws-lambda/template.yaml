@@ -222,12 +222,12 @@ Resources:
               - Variable: $.PlanProtocol
                 IsPresent: true
                 Next: UnsupportedPlanProtocol
-            Default: Plan
+            Default: PlanV2
 
           UnsupportedPlanProtocol:
             Type: Fail
             Error: PLAN_PROTOCOL_UNSUPPORTED
-            Cause: PlanProtocol must be "v1", "v2", or absent (defaults to v1).
+            Cause: PlanProtocol must be "v1", "v2", or absent (defaults to v2).
 
           Plan:
             Type: Task
@@ -236,6 +236,7 @@ Resources:
               FunctionName: !GetAtt RenderFunction.Arn
               Payload:
                 Action: plan
+                PlanProtocol: v1
                 ProjectS3Uri.$: "$.ProjectS3Uri"
                 PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
                 Config.$: "$.Config"
@@ -391,6 +392,7 @@ Resources:
                     FunctionName: !GetAtt RenderFunction.Arn
                     Payload:
                       Action: renderChunk
+                      PlanProtocol: v1
                       ChunkIndex.$: "$.ChunkIndex"
                       PlanS3Uri.$: "$.PlanS3Uri"
                       PlanHash.$: "$.PlanHash"
@@ -427,6 +429,7 @@ Resources:
               FunctionName: !GetAtt RenderFunction.Arn
               Payload:
                 Action: assemble
+                PlanProtocol: v1
                 PlanS3Uri.$: "$.Plan.PlanS3Uri"
                 ChunkS3Uris.$: "$.Chunks[*].ChunkS3Uri"
                 AudioS3Uri.$: "$.Plan.AudioS3Uri"

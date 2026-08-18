@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+// fallow-ignore-file code-duplication complexity
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { WebAudioTransport } from "./webAudioTransport";
 
 function createMockAudioContext(currentTime = 100) {
@@ -21,6 +22,10 @@ function createMockAudioContext(currentTime = 100) {
     connect: vi.fn(),
     disconnect: vi.fn(),
   };
+  const mediaElementSourceNode = {
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  };
   const masterGain = {
     gain: { value: 1 },
     connect: vi.fn(),
@@ -30,11 +35,12 @@ function createMockAudioContext(currentTime = 100) {
     state: "running",
     resume: vi.fn(),
     createBufferSource: vi.fn(() => sourceNode),
+    createMediaElementSource: vi.fn(() => mediaElementSourceNode),
     createGain: vi.fn(() => gainNode),
     destination: {},
     close: vi.fn(),
   };
-  return { ctx, sourceNode, gainNode, masterGain, startFn };
+  return { ctx, sourceNode, mediaElementSourceNode, gainNode, masterGain, startFn };
 }
 
 function setupTransport(currentTime = 100) {
@@ -47,9 +53,76 @@ function setupTransport(currentTime = 100) {
 }
 
 const mockBuffer = {} as AudioBuffer;
-const mockEl = { muted: false } as HTMLMediaElement;
+const mockEl = {
+  muted: false,
+  volume: 0.4,
+  getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+} as unknown as HTMLMediaElement;
 
 describe("WebAudioTransport", () => {
+  beforeEach(() => {
+    mockEl.muted = false;
+    mockEl.volume = 0.4;
+  });
+
+  describe("pitch-preserving media-element source route", () => {
+    it("routes native media through WebAudio without decoding, resampling, or muting it", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+
+      const scheduled = await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 0.8, gen, 2);
+
+      expect(scheduled).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledWith(mockEl);
+      expect(mock.ctx.createBufferSource).not.toHaveBeenCalled();
+      expect(mock.mediaElementSourceNode.connect).toHaveBeenCalled();
+      expect(mock.gainNode.connect).toHaveBeenCalledWith(mock.masterGain);
+      expect(mockEl.muted).toBe(false);
+      expect(mockEl.volume).toBe(1);
+      expect(mock.gainNode.gain.value).toBe(0.8);
+      expect(transport.ownsElement(mockEl)).toBe(false);
+      expect(transport.routesElement(mockEl)).toBe(true);
+      expect(transport.isActive()).toBe(true);
+    });
+
+    it("creates one MediaElementAudioSourceNode per element and context", async () => {
+      const { transport, mock } = setupTransport(100);
+
+      let gen = transport.startGeneration();
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.stopAll();
+      gen = transport.startGeneration();
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 2);
+
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-aims FX automation on a global-rate change without resampling the native source", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      const active = (transport as unknown as { _activeSources: { fx?: unknown }[] })
+        ._activeSources;
+      const setRate = vi.fn();
+      active[0]!.fx = { dispose: vi.fn(), setRate };
+
+      transport.setRate(2);
+
+      expect(setRate).toHaveBeenCalledWith(2);
+      expect(mock.ctx.createBufferSource).not.toHaveBeenCalled();
+    });
+
+    it("disconnects the transient graph on stop but keeps the cached native source reusable", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 2);
+
+      transport.stopAll();
+
+      expect(mock.mediaElementSourceNode.disconnect).toHaveBeenCalled();
+      expect(mockEl.muted).toBe(false);
+      expect(mockEl.volume).toBe(0.4);
+      expect(transport.isActive()).toBe(false);
+    });
+  });
+
   it("tracks play generation for async race prevention", () => {
     const transport = new WebAudioTransport();
     expect(transport.currentGeneration()).toBe(0);
@@ -75,6 +148,7 @@ describe("WebAudioTransport", () => {
     const mockEl = { muted: false } as HTMLMediaElement;
     const mockSource = {
       el: mockEl,
+      sourceKind: "buffer" as const,
       sourceNode: { stop: vi.fn(), disconnect: vi.fn() } as unknown as AudioBufferSourceNode,
       gainNode: { disconnect: vi.fn() } as unknown as GainNode,
       compositionStart: 0,
@@ -100,6 +174,7 @@ describe("WebAudioTransport", () => {
     const mockEl = { muted: true } as HTMLMediaElement;
     const mockSource = {
       el: mockEl,
+      sourceKind: "buffer" as const,
       sourceNode: { stop: vi.fn(), disconnect: vi.fn() } as unknown as AudioBufferSourceNode,
       gainNode: { disconnect: vi.fn() } as unknown as GainNode,
       compositionStart: 0,
@@ -129,11 +204,33 @@ describe("WebAudioTransport", () => {
     expect(transport.isActive()).toBe(false);
   });
 
+  it("restores the configured master volume after user mute then unmute", () => {
+    const { transport, mock } = setupTransport();
+    transport.setVolume(0.4);
+    transport.setMuted(true);
+    expect(mock.masterGain.gain.value).toBe(0);
+
+    transport.setMuted(false);
+
+    expect(mock.masterGain.gain.value).toBe(0.4);
+  });
+
+  it("applies author and user volume once in separate gain layers", async () => {
+    const { transport, mock, gen } = setupTransport();
+    await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 0.8, gen, 1);
+    transport.setVolume(0.5);
+
+    expect(mock.gainNode.gain.value).toBe(0.8);
+    expect(mock.masterGain.gain.value).toBe(0.5);
+    expect(mock.gainNode.gain.value * mock.masterGain.gain.value).toBeCloseTo(0.4);
+  });
+
   describe("ownsElement (per-element mute gate)", () => {
     function withSource(el: HTMLMediaElement) {
       const transport = new WebAudioTransport();
       const source = {
         el,
+        sourceKind: "buffer" as const,
         sourceNode: { stop: vi.fn(), disconnect: vi.fn() } as unknown as AudioBufferSourceNode,
         gainNode: { disconnect: vi.fn() } as unknown as GainNode,
         compositionStart: 0,
@@ -147,12 +244,18 @@ describe("WebAudioTransport", () => {
     }
 
     it("returns true for an element the transport plays", () => {
-      const el = { muted: false } as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
       expect(withSource(el).ownsElement(el)).toBe(true);
     });
 
     it("returns false for an element the transport does not play", () => {
-      const el = { muted: false } as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
       const other = { muted: false } as HTMLMediaElement;
       expect(withSource(el).ownsElement(other)).toBe(false);
     });
@@ -230,11 +333,11 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).not.toHaveBeenCalled();
     });
 
-    it("scales the bound by playback rate (buffer seconds)", async () => {
+    it("keeps source bounds in authored media time when global rate changes", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      // rate=2, clipDuration=10 → clipSourceLen=20; elapsed=3 → 17 buffer seconds left
+      // Global rate=2 changes wallclock speed, not source-time span.
       await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2, 10);
-      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 17);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
     });
 
     it("plays unbounded when clipDuration is omitted (legacy behavior)", async () => {
@@ -245,6 +348,27 @@ describe("WebAudioTransport", () => {
   });
 
   describe("playback rate", () => {
+    it("combines authored media rate with global rate without corrupting source seek or clock", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "2" : null),
+      } as unknown as HTMLMediaElement;
+
+      // At composition t=0.5 with mediaStart=1, authored 2x has consumed one
+      // source second. Global 0.5x makes the source node's wallclock rate 1x,
+      // but the composition clock must still advance at global 0.5x.
+      await transport.schedulePlayback(el, mockBuffer, 0, 1, 0.5, 1, gen, 0.5, 2);
+
+      expect(mock.sourceNode.playbackRate.value).toBe(1);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 2, 3);
+      mock.ctx.currentTime = 101;
+      expect(transport.getTime()).toBe(1);
+
+      transport.setRate(1);
+      expect(mock.sourceNode.playbackRate.value).toBe(2);
+    });
+
     it("sets sourceNode.playbackRate.value when rate is provided", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
@@ -380,7 +504,10 @@ describe("WebAudioTransport", () => {
   describe("onended cleanup (audio dropout fix)", () => {
     it("cleans up _activeSources when AudioBufferSourceNode ends naturally", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: false } as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(transport.isActive()).toBe(true);
@@ -394,7 +521,10 @@ describe("WebAudioTransport", () => {
 
     it("restores priorMuted=true when element was already muted", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: true } as HTMLMediaElement;
+      const el = {
+        muted: true,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(el.muted).toBe(true);
@@ -428,7 +558,10 @@ describe("WebAudioTransport", () => {
 
     it("onended after stopAll is a no-op — does not clobber restored state", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: false } as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(el.muted).toBe(true);
@@ -454,7 +587,10 @@ describe("WebAudioTransport", () => {
       return transport;
     }
     const el = (src: string) =>
-      ({ getAttribute: () => src, currentSrc: "" }) as unknown as HTMLMediaElement;
+      ({
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+      }) as unknown as HTMLMediaElement;
     const failedSrcs = (t: WebAudioTransport) =>
       (t as unknown as { _failedSrcs: Set<string> })._failedSrcs;
 

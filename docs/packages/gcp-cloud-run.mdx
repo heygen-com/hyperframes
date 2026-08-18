@@ -79,7 +79,6 @@ import { getRenderProgress, renderToCloudRun } from "@hyperframes/gcp-cloud-run/
 
 const handle = await renderToCloudRun({
   projectDir: "./my-composition",
-  planProtocol: "v2",
   config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
   bucketName: "hyperframes-render-my-project",
   projectId: "my-project",
@@ -97,10 +96,17 @@ while (progress.status === "running") {
 console.log(progress.status, progress.outputFile, progress.costs.displayCost);
 ```
 
-Plan v2 is recommended for new integrations because workers fetch
-manifest-selected content-addressed artifacts. For backwards compatibility,
-omitting `planProtocol` still selects v1; existing callers do not change
-behavior until they opt in.
+Plan v2 is the default because workers fetch manifest-selected
+content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
+omitted. Deprecated v1 compatibility remains available by passing
+`planProtocol: "v1"`.
+
+<Warning>
+  For an existing installation, pause new renders and drain active workflow
+  executions. Redeploy the Cloud Run image and Cloud Workflows definition from
+  the same package version before upgrading the application SDK. Older
+  workflows may default omission to v1 or lack v2 support.
+</Warning>
 
 Pass `projectDir` for one-shot uploads, or call `deploySite()` separately and reuse the returned site handle across many renders.
 

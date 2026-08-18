@@ -1,8 +1,14 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular } from "./init";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import type { RuntimeTimelineLike } from "./types";
+
+it("schedules WebAudio element gain from author volume without bridge volume", () => {
+  const source = readFileSync("src/runtime/init.ts", "utf8");
+  expect(source).not.toMatch(/vol\s*\*\s*state\.bridgeVolume/);
+});
 
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
@@ -109,6 +115,30 @@ describe("initSandboxRuntimeModular", () => {
     }) as typeof window.requestAnimationFrame;
     window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
   });
+
+  it.each([
+    ["2x", 5],
+    ["0x2", 10],
+  ])("derives a native-parsed natural media window for rate %s", (rate, expected) => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true"><video data-start="0" data-playback-rate="${rate}"></video></div>`;
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "duration", { value: 10, configurable: true });
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+    expect(window.__player?.getDuration()).toBe(expected);
+  });
+
+  it.each([10, 11])(
+    "preserves a known zero natural media window at source EOF (start=%s)",
+    (start) => {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true"><video data-start="0" data-media-start="${start}"></video></div>`;
+      const video = document.querySelector("video")!;
+      Object.defineProperty(video, "duration", { value: 10, configurable: true });
+      window.__timelines = {};
+      initSandboxRuntimeModular();
+      expect(window.__player?.getDuration()).toBe(0);
+    },
+  );
 
   afterEach(() => {
     window.__hfRuntimeTeardown?.();

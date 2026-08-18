@@ -15,7 +15,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 ```html strikethrough-replace.html
 <!--
-  Strikethrough Replace - remocn typography primitive for HyperFrames.
+  Strikethrough Replace - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -43,7 +43,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 -->
 
 <div
-  class="hf-remocn-strikethrough-replace"
+  class="hf-catalog-strikethrough-replace"
   data-composition-variables='[
     { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Edge the strike grows out of as the timeline runs its scale from 0 to 1.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "center", "label": "Center" }, { "value": "right", "label": "Right" }] },
     { "id": "thickness", "type": "enum", "role": "style", "label": "Thickness", "description": "Height of the strike line, from a hairline rule to a heavy bar.", "default": "standard", "options": [{ "value": "thin", "label": "Thin" }, { "value": "standard", "label": "Standard" }, { "value": "thick", "label": "Thick" }] },
@@ -55,13 +55,13 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 </div>
 
 <style>
-  .hf-remocn-strikethrough-replace {
+  .hf-catalog-strikethrough-replace {
     color: var(--hf-strike-text-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-strikethrough-replace {
+  .hf-catalog-strikethrough-replace {
     position: relative;
     display: inline-grid;
     grid-auto-flow: column;
@@ -69,7 +69,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     align-items: center;
     font-size: 58px;
   }
-  .hf-remocn-strikethrough-replace i {
+  .hf-catalog-strikethrough-replace i {
     position: absolute;
     left: 0;
     width: 48%;
@@ -79,7 +79,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     transform: scaleX(var(--hf-strike-progress, 1));
     transform-origin: var(--hf-strike-origin, left center);
   }
-  .hf-remocn-strikethrough-replace strong {
+  .hf-catalog-strikethrough-replace strong {
     opacity: var(--hf-replace-opacity, 1);
   }
 </style>
@@ -113,7 +113,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     var tint = tints[pick(tints, vars.tint, "red")];
     var tone = tones[pick(tones, vars.tone, "ink")];
 
-    var roots = document.querySelectorAll(".hf-remocn-strikethrough-replace");
+    var roots = document.querySelectorAll(".hf-catalog-strikethrough-replace");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-strike-origin", origin);
       roots[i].style.setProperty("--hf-strike-thickness", thickness);
@@ -125,7 +125,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-strikethrough-replace i', { '--hf-strike-progress': 0 }, { '--hf-strike-progress': 1, duration: 0.28, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-strikethrough-replace strong', { '--hf-replace-opacity': 0, y: 14 }, { '--hf-replace-opacity': 1, y: 0, duration: 0.3, ease: 'power2.out' }, startTime + 0.24);
+  tl.fromTo('.hf-catalog-strikethrough-replace i', { '--hf-strike-progress': 0 }, { '--hf-strike-progress': 1, duration: 0.28, ease: 'power2.out' }, startTime); tl.fromTo('.hf-catalog-strikethrough-replace strong', { '--hf-replace-opacity': 0, y: 14 }, { '--hf-replace-opacity': 1, y: 0, duration: 0.3, ease: 'power2.out' }, startTime + 0.24);
 -->
 ```
 
@@ -166,7 +166,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 ```html
 <!--
-  Strikethrough Replace - remocn typography primitive for HyperFrames.
+  Strikethrough Replace - typography primitive for HyperFrames.
 
   Paste the markup, CSS and script into a composition. Drive the timeline
   integration from a paused GSAP timeline so renders remain deterministic.
@@ -194,7 +194,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 -->
 
 <div
-  class="hf-remocn-strikethrough-replace"
+  class="hf-catalog-strikethrough-replace"
   data-composition-variables='[
     { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Edge the strike grows out of as the timeline runs its scale from 0 to 1.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "center", "label": "Center" }, { "value": "right", "label": "Right" }] },
     { "id": "thickness", "type": "enum", "role": "style", "label": "Thickness", "description": "Height of the strike line, from a hairline rule to a heavy bar.", "default": "standard", "options": [{ "value": "thin", "label": "Thin" }, { "value": "standard", "label": "Standard" }, { "value": "thick", "label": "Thick" }] },
@@ -206,13 +206,13 @@ defaults, so this behaves exactly like the preview above until you change one:
 </div>
 
 <style>
-  .hf-remocn-strikethrough-replace {
+  .hf-catalog-strikethrough-replace {
     color: var(--hf-strike-text-color, #18181b);
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-strikethrough-replace {
+  .hf-catalog-strikethrough-replace {
     position: relative;
     display: inline-grid;
     grid-auto-flow: column;
@@ -220,7 +220,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     align-items: center;
     font-size: 58px;
   }
-  .hf-remocn-strikethrough-replace i {
+  .hf-catalog-strikethrough-replace i {
     position: absolute;
     left: 0;
     width: 48%;
@@ -230,7 +230,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     transform: scaleX(var(--hf-strike-progress, 1));
     transform-origin: var(--hf-strike-origin, left center);
   }
-  .hf-remocn-strikethrough-replace strong {
+  .hf-catalog-strikethrough-replace strong {
     opacity: var(--hf-replace-opacity, 1);
   }
 </style>
@@ -264,7 +264,7 @@ defaults, so this behaves exactly like the preview above until you change one:
     var tint = tints[pick(tints, vars.tint, "red")];
     var tone = tones[pick(tones, vars.tone, "ink")];
 
-    var roots = document.querySelectorAll(".hf-remocn-strikethrough-replace");
+    var roots = document.querySelectorAll(".hf-catalog-strikethrough-replace");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-strike-origin", origin);
       roots[i].style.setProperty("--hf-strike-thickness", thickness);
@@ -276,7 +276,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-strikethrough-replace i', { '--hf-strike-progress': 0 }, { '--hf-strike-progress': 1, duration: 0.28, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-strikethrough-replace strong', { '--hf-replace-opacity': 0, y: 14 }, { '--hf-replace-opacity': 1, y: 0, duration: 0.3, ease: 'power2.out' }, startTime + 0.24);
+  tl.fromTo('.hf-catalog-strikethrough-replace i', { '--hf-strike-progress': 0 }, { '--hf-strike-progress': 1, duration: 0.28, ease: 'power2.out' }, startTime); tl.fromTo('.hf-catalog-strikethrough-replace strong', { '--hf-replace-opacity': 0, y: 14 }, { '--hf-replace-opacity': 1, y: 0, duration: 0.3, ease: 'power2.out' }, startTime + 0.24);
 -->
 ```
 
@@ -288,7 +288,7 @@ Open `compositions/components/strikethrough-replace.html` and paste its contents
 
 {/* hf:generated-footer */}
 
-Tagged `motion-primitive` `remocn-port` `typography`.
+Tagged `motion-primitive` `typography`.
 
 ## Related topics
 

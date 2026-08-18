@@ -1,24 +1,11 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
-import { normalizePlaybackRate } from "./playbackRate.js";
-
-export function readElementPlaybackRate(el: Element): number {
-  const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
-  const raw =
-    Number.isFinite(authored) && authored > 0
-      ? authored
-      : el instanceof HTMLMediaElement
-        ? el.defaultPlaybackRate
-        : 1;
-  return normalizePlaybackRate(raw);
-}
+import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
+export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
 export function readElementPlaybackStart(el: Element): number {
-  const raw = Number.parseFloat(
-    el.getAttribute("data-playback-start") ?? el.getAttribute("data-media-start") ?? "",
-  );
-  return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  return readMediaStart(el);
 }
 
 /**
@@ -41,7 +28,7 @@ export function resolveRuntimeMediaClipDuration(params: {
     params.isVideo
       ? [mediaDuration, params.hostRemaining]
       : [mediaDuration, params.hostRemaining, params.explicitDuration]
-  ).filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+  ).filter((value): value is number => value != null && Number.isFinite(value) && value >= 0);
   return candidates.length > 0 ? Math.min(...candidates) : null;
 }
 
@@ -89,26 +76,25 @@ export function refreshRuntimeMediaCache(params?: {
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.dataset.start ?? "0");
     if (!Number.isFinite(start)) continue;
-    const mediaStart =
-      Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
+    const mediaStart = readElementPlaybackStart(el);
     const playbackRate = readElementPlaybackRate(el);
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
     let duration =
       params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
-    if ((!Number.isFinite(duration) || duration <= 0) && sourceDuration != null) {
+    if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {
       // Effective duration accounts for playback rate:
       // at 0.5x, a 10s source plays for 20s on the timeline
       duration = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
     }
-    const end =
-      Number.isFinite(duration) && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+    const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
+    const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
     const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
     const clip: RuntimeMediaClip = {
       el,
       start,
       mediaStart,
-      duration: Number.isFinite(duration) && duration > 0 ? duration : Number.POSITIVE_INFINITY,
+      duration: hasKnownDuration ? duration : Number.POSITIVE_INFINITY,
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,
@@ -221,11 +207,14 @@ export function syncRuntimeMedia(params: {
    * outbound message; further invocations are suppressed by the caller.
    */
   onAutoplayBlocked?: () => void;
-  onElementVolume?: (el: HTMLMediaElement, volume: number) => void;
+  onElementVolume?: (el: HTMLMediaElement, effectiveVolume: number, authorVolume: number) => void;
   /** Is THIS element owned by the Web Audio transport? Owned → mute it (transport
    *  plays it); not owned → leave audible (HTMLMedia fallback). Per-element, not a
    *  global flag, so a not-yet-claimed track isn't muted by other tracks. */
   isWebAudioOwned?: (el: HTMLMediaElement) => boolean;
+  /** Native media routed through WebAudio keeps its upstream element volume at
+   * unity; do not mistake that transport write for an authored volume edit. */
+  isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -295,6 +284,8 @@ export function syncRuntimeMedia(params: {
         // for an untrimmed clip playing at 1x from t=0.
         const elapsedInClip = params.timeSeconds - clip.start;
         authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
+      } else if (params.isWebAudioRouted?.(el)) {
+        authorVolume = fallbackAuthorVolume;
       } else if (previousRuntimeVolume === undefined) {
         // First tick this clip is active. The transport has already seeked GSAP
         // to the current time (seekTimelineAndAdapters runs before syncRuntimeMedia),
@@ -312,7 +303,7 @@ export function syncRuntimeMedia(params: {
       const effectiveVolume = clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
-      params.onElementVolume?.(el, effectiveVolume);
+      params.onElementVolume?.(el, effectiveVolume, authorVolume);
       // Mute only when force-muted or the transport owns this element; an unclaimed
       // track stays audible via the HTMLMedia fallback.
       if (forceMuteAll || params.isWebAudioOwned?.(el)) el.muted = true;

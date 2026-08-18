@@ -38,6 +38,46 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "docs/catalog/components/ai-generation-canvas.mdx",
+    "owner-directed removal of the AI Generation Canvas catalog item and its generated documentation",
+  ],
+  [
+    "docs/catalog/components/ai-prompt-flow.mdx",
+    "owner-directed removal of the AI Prompt Flow catalog item and its generated documentation",
+  ],
+  [
+    "docs/public/catalog/components/ai-generation-canvas.json",
+    "owner-directed removal of the AI Generation Canvas catalog item and its generated public payload",
+  ],
+  [
+    "docs/public/catalog/components/ai-prompt-flow.json",
+    "owner-directed removal of the AI Prompt Flow catalog item and its generated public payload",
+  ],
+  [
+    "registry/components/ai-generation-canvas/ai-generation-canvas.html",
+    "owner-directed removal of the AI Generation Canvas catalog source component",
+  ],
+  [
+    "registry/components/ai-generation-canvas/demo.html",
+    "owner-directed removal of the AI Generation Canvas catalog preview source",
+  ],
+  [
+    "registry/components/ai-generation-canvas/registry-item.json",
+    "owner-directed removal of the AI Generation Canvas catalog registry entry",
+  ],
+  [
+    "registry/components/ai-prompt-flow/ai-prompt-flow.html",
+    "owner-directed removal of the AI Prompt Flow catalog source component",
+  ],
+  [
+    "registry/components/ai-prompt-flow/demo.html",
+    "owner-directed removal of the AI Prompt Flow catalog preview source",
+  ],
+  [
+    "registry/components/ai-prompt-flow/registry-item.json",
+    "owner-directed removal of the AI Prompt Flow catalog registry entry",
+  ],
+  [
     "packages/studio/src/components/StudioFeedbackBar.tsx",
     "replaced by components/feedback/StudioFeedbackCard.tsx; too little shared content for git to pair as a rename",
   ],

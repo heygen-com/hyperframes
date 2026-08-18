@@ -1,5 +1,5 @@
 <!--
-  Perspective Marquee - remocn typography primitive for HyperFrames.
+  Perspective Marquee - typography primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
@@ -28,7 +28,7 @@
 -->
 
 <div
-  class="hf-remocn-perspective-marquee"
+  class="hf-catalog-perspective-marquee"
   data-composition-variables='[
     { "id": "tilt", "type": "enum", "role": "style", "label": "Tilt", "description": "How far the marquee plane leans back toward the horizon.", "default": "standard", "options": [{ "value": "flat", "label": "Flat" }, { "value": "standard", "label": "Standard" }, { "value": "steep", "label": "Steep" }] },
     { "id": "travel", "type": "enum", "role": "motion", "label": "Travel", "description": "Scales the offset the timeline drives, so the strip covers a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "short", "label": "Short" }, { "value": "standard", "label": "Standard" }, { "value": "long", "label": "Long" }] },
@@ -43,25 +43,25 @@
 </div>
 
 <style>
-  .hf-remocn-perspective-marquee {
+  .hf-catalog-perspective-marquee {
     color: #18181b;
     font-family: Inter, system-ui, sans-serif;
     font-weight: 900;
     letter-spacing: -0.04em;
   }
-  .hf-remocn-perspective-marquee {
+  .hf-catalog-perspective-marquee {
     width: 720px;
     perspective: 900px;
     overflow: hidden;
     transform: rotateX(var(--hf-marquee-tilt, 18deg));
   }
-  .hf-remocn-perspective-marquee div {
+  .hf-catalog-perspective-marquee div {
     display: inline-flex;
     gap: 22px;
     white-space: nowrap;
     transform: translateX(calc(var(--hf-marquee-x, 0px) * var(--hf-marquee-reach, 1)));
   }
-  .hf-remocn-perspective-marquee span {
+  .hf-catalog-perspective-marquee span {
     padding: 12px 18px;
     border-radius: 999px;
     background: var(--hf-marquee-pill-bg, #18181b);
@@ -110,7 +110,7 @@
     var tone = tones[pick(tones, vars.tone, "ink")];
     var words = parseWords(vars.words);
 
-    var roots = document.querySelectorAll(".hf-remocn-perspective-marquee");
+    var roots = document.querySelectorAll(".hf-catalog-perspective-marquee");
     for (var i = 0; i < roots.length; i += 1) {
       roots[i].style.setProperty("--hf-marquee-tilt", tilt);
       roots[i].style.setProperty("--hf-marquee-reach", String(reach));
@@ -132,5 +132,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-perspective-marquee div', { '--hf-marquee-x': '0px' }, { '--hf-marquee-x': '-360px', duration: 4.5, ease: 'none' }, startTime);
+  tl.fromTo('.hf-catalog-perspective-marquee div', { '--hf-marquee-x': '0px' }, { '--hf-marquee-x': '-360px', duration: 4.5, ease: 'none' }, startTime);
 -->

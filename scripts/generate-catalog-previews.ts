@@ -31,8 +31,9 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { createCatalogPreviewTempDir } from "./catalog-preview-temp.js";
+import { runAsCommand } from "./entrypoint.ts";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
   captureFrame,
@@ -164,14 +165,24 @@ export interface PrepareOptions {
    * means anything.
    */
   compile?: boolean;
+  /**
+   * The mounted entry is a bare component snippet, not a staged scene.
+   *
+   * A snippet sizes its own type and leaves placement to whatever you paste it
+   * into: its root is content with no canvas behind it and no vertical
+   * placement. Mounted into the plain wrapper it lands against white in the
+   * top-left corner and clips. This supplies the part its authored demo would
+   * have: a dark canvas, the dark theme its own tokens are written against, and
+   * the component centred with room around it.
+   */
+  uiFragment?: boolean;
 }
 
 export async function prepareProjectDir(
   item: CatalogItem,
   options: PrepareOptions = {},
 ): Promise<string> {
-  const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = createCatalogPreviewTempDir(item.name);
   cpSync(item.sourceDir, tmpDir, { recursive: true });
   mirrorRegistryTargets(tmpDir);
 
@@ -252,7 +263,7 @@ export async function prepareProjectDir(
     // Dark background for social overlays so transparent cards are visible.
     const tags = manifest.tags ?? [];
     const isSocialOverlay = tags.includes("social") || tags.includes("overlay");
-    const bgColor = isSocialOverlay ? "#1a1a2e" : "#ffffff";
+    const bgColor = options.uiFragment ? "#0a0a0a" : isSocialOverlay ? "#1a1a2e" : "#ffffff";
 
     // Mount the mirrored install-layout copy when one exists. Blocks reference
     // their own assets the way they will after `hyperframes add`
@@ -263,16 +274,26 @@ export async function prepareProjectDir(
     const entrySrc =
       entryTarget && existsSync(join(tmpDir, entryTarget)) ? entryTarget : item.entryFile;
 
+    // `inset: 0` is load-bearing. The runtime positions a mount absolutely and
+    // leaves it to size itself, so without it the mount shrinks to the
+    // component plus padding and there is nothing for centring to centre in.
+    // `place-items: center stretch` centres it vertically while letting it span
+    // the width, so a component's own alignment variable still reads.
+    const staging = options.uiFragment
+      ? `\n    [data-composition-src] { inset: 0; display: grid; place-items: center stretch; box-sizing: border-box; padding: ${Math.round(height / 11)}px; }`
+      : "";
+    const theme = options.uiFragment ? ' data-hf-theme="dark"' : "";
+
     const wrapper = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=${width}, height=${height}" />
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-  <style>* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }</style>
+  <style>* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }${staging}</style>
 </head>
 <body>
-  <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0" data-duration="${duration}">
+  <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0" data-duration="${duration}"${theme}>
     <div data-composition-id="${item.name}" data-composition-src="${entrySrc}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
   </div>
   <script>
@@ -453,9 +474,4 @@ async function main(): Promise<void> {
 // Only render when run as a command. This module also exports discoverItems
 // and prepareProjectDir for the payload generator, and an unguarded main()
 // would render every preview the moment that script imported them.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runAsCommand(import.meta.url, main);
