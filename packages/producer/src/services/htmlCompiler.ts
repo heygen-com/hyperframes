@@ -2229,8 +2229,34 @@ export async function discoverAudioVolumeAutomationFromTimeline(
   if (audioIds.length === 0 || compositionDuration <= 0) return [];
 
   const sampleStep = 1 / Math.min(60, Math.max(1, sampleFps));
+  const rawWindows = await page.evaluate((ids: string[]) => {
+    return ids.flatMap((id) => {
+      const el = document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
+      if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) return [];
+      return [
+        {
+          id,
+          startRaw: el.dataset.start ?? null,
+          endRaw: el.dataset.end ?? null,
+          durationRaw: el.dataset.duration ?? null,
+        },
+      ];
+    });
+  }, audioIds);
+  const clips = rawWindows.map(({ id, startRaw, endRaw, durationRaw }) => {
+    const start = parseStrictFiniteTimingNumber(startRaw) ?? 0;
+    const authoredDuration = parseStrictFiniteTimingNumber(durationRaw);
+    const authoredEnd = parseStrictFiniteTimingNumber(endRaw);
+    const end =
+      authoredDuration != null && authoredDuration > 0
+        ? start + authoredDuration
+        : authoredEnd != null && authoredEnd > start
+          ? authoredEnd
+          : compositionDuration;
+    return { id, start, end };
+  });
   return page.evaluate(
-    ({ ids, duration, step }) => {
+    ({ clips, duration, step }) => {
       const results: { id: string; keyframes: { time: number; volume: number }[] }[] = [];
       const timelines = (window as unknown as { __timelines?: Record<string, unknown> })
         .__timelines;
@@ -2256,20 +2282,11 @@ export async function discoverAudioVolumeAutomationFromTimeline(
         }
       };
 
-      for (const id of ids) {
+      for (const { id, start, end } of clips) {
         const el =
           document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
         if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) continue;
 
-        const start = Number.parseFloat(el.dataset.start ?? "0") || 0;
-        const endAttr = Number.parseFloat(el.dataset.end ?? "");
-        const durationAttr = Number.parseFloat(el.dataset.duration ?? "");
-        const end =
-          Number.isFinite(durationAttr) && durationAttr > 0
-            ? start + durationAttr
-            : Number.isFinite(endAttr) && endAttr > start
-              ? endAttr
-              : duration;
         const sampleStart = Math.max(0, start);
         const sampleEnd = Math.min(duration, end);
         const initialVolumeAttr = Number.parseFloat(el.dataset.volume ?? "");
@@ -2320,7 +2337,7 @@ export async function discoverAudioVolumeAutomationFromTimeline(
       seekTl(0);
       return results;
     },
-    { ids: audioIds, duration: compositionDuration, step: sampleStep },
+    { clips, duration: compositionDuration, step: sampleStep },
   );
 }
 
@@ -2442,7 +2459,7 @@ export async function resolveCompositionDurations(
   const results = await page.evaluate((compIds: string[]) => {
     const win = window as unknown as { __timelines?: Record<string, { duration(): number }> };
     const timelines = win.__timelines || {};
-    const resolved: { id: string; duration: number; source: string }[] = [];
+    const resolved: { id: string; duration: number; source: string; durationRaw?: string }[] = [];
 
     for (const id of compIds) {
       // Try window.__timelines[id].duration() first (GSAP timeline)
@@ -2461,11 +2478,8 @@ export async function resolveCompositionDurations(
         const compDurAttr =
           el.getAttribute("data-duration") || el.getAttribute("data-composition-duration");
         if (compDurAttr) {
-          const dur = parseFloat(compDurAttr);
-          if (dur > 0) {
-            resolved.push({ id, duration: dur, source: "data-duration" });
-            continue;
-          }
+          resolved.push({ id, duration: 0, source: "data-duration", durationRaw: compDurAttr });
+          continue;
         }
       }
 
@@ -2477,8 +2491,9 @@ export async function resolveCompositionDurations(
 
   const resolutions: ResolvedDuration[] = [];
   for (const r of results) {
-    if (r.duration > 0) {
-      resolutions.push({ id: r.id, duration: r.duration });
+    const duration = r.durationRaw ? parseStrictFiniteTimingNumber(r.durationRaw) : r.duration;
+    if (duration != null && duration > 0) {
+      resolutions.push({ id: r.id, duration });
     }
   }
 

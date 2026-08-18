@@ -23,6 +23,7 @@ import {
   localizeRemoteImageSources,
   localizeRemoteFontFaces,
   recompileWithResolutions,
+  resolveCompositionDurations,
 } from "./htmlCompiler.js";
 import { validateNoSystemFonts } from "./render/planValidation.js";
 
@@ -1995,6 +1996,41 @@ h1 { font-size: 2rem; }`;
 });
 
 describe("discoverAudioVolumeAutomationFromTimeline", () => {
+  it("treats trailing-garbage duration as unknown instead of truncating automation sampling", async () => {
+    class TestAudioElement {
+      id = "music";
+      dataset = { start: "0", duration: "5s", volume: "0" };
+      volume = 0;
+    }
+    class TestVideoElement {}
+    const audio = new TestAudioElement();
+    const previous = {
+      window: globalThis.window,
+      document: globalThis.document,
+      audio: globalThis.HTMLAudioElement,
+      video: globalThis.HTMLVideoElement,
+    };
+    globalThis.window = {
+      __timelines: { root: { totalTime: (time: number) => (audio.volume = time < 7 ? 0 : 1) } },
+    } as any;
+    globalThis.document = {
+      querySelector: () => ({ getAttribute: () => "root" }),
+      getElementById: () => audio,
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+    try {
+      const page = { evaluate: async (fn: (arg: any) => unknown, arg: unknown) => fn(arg) } as any;
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["music"], 10, 1);
+      expect(automation?.keyframes).toContainEqual({ time: 7, volume: 1 });
+    } finally {
+      globalThis.window = previous.window;
+      globalThis.document = previous.document;
+      globalThis.HTMLAudioElement = previous.audio;
+      globalThis.HTMLVideoElement = previous.video;
+    }
+  });
+
   it("emits plateau boundaries around a sampled volume change", async () => {
     class TestAudioElement {
       id = "music";
@@ -2111,6 +2147,31 @@ describe("discoverAudioVolumeAutomationFromTimeline", () => {
       globalThis.document = previousDocument;
       globalThis.HTMLAudioElement = previousAudioElement;
       globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+});
+
+describe("resolveCompositionDurations strict literal timing", () => {
+  it("does not partially parse trailing-garbage composition duration", async () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.window = { __timelines: {} } as any;
+    globalThis.document = {
+      getElementById: () => ({
+        getAttribute: (name: string) => (name === "data-composition-duration" ? "5s" : null),
+      }),
+    } as any;
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+      const result = await resolveCompositionDurations(page, [
+        { id: "scene", tagName: "div", start: 0, mediaStart: 0, playbackRate: 1 },
+      ]);
+      expect(result).toEqual([]);
+    } finally {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
     }
   });
 });
