@@ -67,6 +67,19 @@ vi.mock("../utils/ffprobe.js", async (importOriginal) => {
 
 import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
+describe("parseAudioElements strict literal timing", () => {
+  it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN", "0x10"])(
+    "does not drop hand-authored data-duration=%j as an explicit zero window",
+    (duration) => {
+      expect(
+        parseAudioElements(
+          `<audio id="a" src="tone.wav" data-start="0" data-duration="${duration}"></audio>`,
+        ),
+      ).toHaveLength(1);
+    },
+  );
+});
+
 describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
 

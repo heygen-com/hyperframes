@@ -15,7 +15,11 @@
  * and call injectDurations() to complete the compilation.
  */
 
-import { readElementPlaybackRate, readMediaStart } from "../runtime/playbackRate.js";
+import {
+  parseStrictFiniteTimingNumber,
+  readElementPlaybackRate,
+  readMediaStart,
+} from "../runtime/playbackRate.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -96,6 +100,11 @@ function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
 }
 
+function setAttr(tag: string, attr: string, value: string): string {
+  if (!hasAttr(tag, attr)) return injectAttr(tag, attr, value);
+  return tag.replace(new RegExp(`(${attr}=["'])[^"']*(["'])`), `$1${value}$2`);
+}
+
 // Real media/timing elements never live inside comments, <script>, or <style>.
 // The tag regexes below aren't comment-aware, so a comment that merely mentions
 // `<video>`/`<audio>` gets rewritten as if it were a real element (issue #1938).
@@ -148,8 +157,9 @@ function compileTag(
   // 1. Compute data-end from data-start + data-duration
   if (!hasAttr(result, "data-end")) {
     const durationStr = getAttr(result, "data-duration");
-    if (durationStr !== null) {
-      const end = start + parseFloat(durationStr);
+    const duration = parseStrictFiniteTimingNumber(durationStr);
+    if (duration != null) {
+      const end = start + duration;
       result = injectAttr(result, "data-end", String(end));
     } else if (id) {
       // No data-duration: mark as unresolved so caller can provide it
@@ -248,8 +258,8 @@ export function injectDurations(html: string, resolutions: ResolvedDuration[]): 
       let result = tag;
 
       // Add data-duration if missing
-      if (!hasAttr(result, "data-duration")) {
-        result = injectAttr(result, "data-duration", String(duration));
+      if (parseStrictFiniteTimingNumber(getAttr(result, "data-duration")) == null) {
+        result = setAttr(result, "data-duration", String(duration));
       }
 
       // Add data-end if missing
@@ -286,8 +296,8 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
     const durationStr = getAttr(tag, "data-duration");
     if (!id || durationStr === null) continue;
 
-    const duration = parseFloat(durationStr);
-    if (!Number.isFinite(duration) || duration <= 0) continue;
+    const duration = parseStrictFiniteTimingNumber(durationStr);
+    if (duration == null || duration <= 0) continue;
 
     const isVideo = /^<video/i.test(tag);
     const startStr = getAttr(tag, "data-start");

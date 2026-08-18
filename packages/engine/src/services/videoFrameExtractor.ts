@@ -15,6 +15,7 @@ import {
   fpsToNumber,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
   normalizePlaybackRate,
+  parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
   type FpsInput,
@@ -562,10 +563,12 @@ export function parseVideoElements(html: string): VideoElement[] {
     // end into frame extraction, which caps the source duration only after the
     // natural duration is known without rewriting authored timing metadata.
     let end = 0;
-    if (endAttr) {
-      end = parseFloat(endAttr);
-    } else if (durationAttr) {
-      end = start + parseFloat(durationAttr);
+    const authoredEnd = parseStrictFiniteTimingNumber(endAttr);
+    const authoredDuration = parseStrictFiniteTimingNumber(durationAttr);
+    if (authoredEnd != null) {
+      end = authoredEnd;
+    } else if (authoredDuration != null) {
+      end = start + authoredDuration;
     } else {
       end = Infinity; // no explicit bounds — play for the full natural video duration
     }
@@ -619,10 +622,12 @@ export function parseImageElements(html: string): ImageElement[] {
     // referenced image start doesn't become NaN and drop the image from the render.
     const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     let end = 0;
-    if (endAttr) {
-      end = parseFloat(endAttr);
-    } else if (durationAttr) {
-      end = start + parseFloat(durationAttr);
+    const authoredEnd = parseStrictFiniteTimingNumber(endAttr);
+    const authoredDuration = parseStrictFiniteTimingNumber(durationAttr);
+    if (authoredEnd != null) {
+      end = authoredEnd;
+    } else if (authoredDuration != null) {
+      end = start + authoredDuration;
     } else {
       end = Infinity;
     }

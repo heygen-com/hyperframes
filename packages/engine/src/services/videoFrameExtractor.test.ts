@@ -36,6 +36,19 @@ import {
   type ExtractedFrames,
   type ExtractionResult,
 } from "./videoFrameExtractor.js";
+
+describe("parseVideoElements strict literal timing", () => {
+  it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN", "0x10"])(
+    "does not drop hand-authored data-duration=%j as an explicit zero window",
+    (duration) => {
+      expect(
+        parseVideoElements(
+          `<video id="v" src="clip.mp4" data-start="0" data-duration="${duration}"></video>`,
+        ),
+      ).toHaveLength(1);
+    },
+  );
+});
 import {
   extractFinalVideoFrameTimestamp,
   extractVideoMetadata,

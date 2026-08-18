@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { attachElementFxChain } from "./audioFx.js";
-import { defaultAudioFxParams, HF_AUDIO_FX } from "../audioFx.js";
+import { defaultAudioFxParams, HF_AUDIO_FX, HF_AUDIO_FX_ATTR } from "../audioFx.js";
 
 /**
  * The DSP is proven in a real browser by the engine's render tests. What needs
@@ -107,7 +107,9 @@ describe("attachElementFxChain", () => {
     const dst = new Node();
     const handle = attachElementFxChain(
       ctx(),
-      { getAttribute: () => "{not json" },
+      {
+        getAttribute: (name: string) => (name === HF_AUDIO_FX_ATTR ? "{not json" : null),
+      },
       src as never,
       dst as never,
     );

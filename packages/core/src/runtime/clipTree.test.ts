@@ -27,6 +27,17 @@ describe("createClipTree", () => {
     rootDuration: 10,
   };
 
+  it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN"])(
+    "keeps a clip with invalid literal data-duration=%j on the fallback window",
+    (duration) => {
+      document.body.innerHTML = `
+        <div data-composition-id="root" data-duration="10" data-start="0" id="root">
+          <div data-start="0" data-duration="${duration}" id="clip"></div>
+        </div>`;
+      expect(createClipTree(params).roots.map((node) => node.id)).toContain("clip");
+    },
+  );
+
   // Regression: id-less children (root index.html uses data-hf-id, not id) must
   // get their data-hf-id as the node id — not a synthetic `__clip-N` — so the
   // tree aligns with __clipManifest (which also keys on data-hf-id) and inline

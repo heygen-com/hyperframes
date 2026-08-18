@@ -55,6 +55,7 @@ import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseNumeric } from "./startExpression";
+import { parseStrictFiniteTimingNumber } from "./playbackRate";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -635,7 +636,7 @@ export function initSandboxRuntimeModular(): void {
     // Preserve the global value when its authored window already intersects
     // the host's absolute window. Otherwise it is unambiguously local and
     // must inherit the recursively-resolved host start.
-    const authoredDuration = parseNumeric(element.getAttribute("data-duration"));
+    const authoredDuration = parseStrictFiniteTimingNumber(element.getAttribute("data-duration"));
     const hostDuration = context.inheritedDuration;
     const hostEnd = hostDuration != null && hostDuration > 0 ? inheritedStart + hostDuration : null;
     const authoredEnd =
@@ -744,8 +745,8 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const resolveMediaElementDurationSeconds = (node: HTMLMediaElement): number | null => {
-    const declaredDuration = Number(node.getAttribute("data-duration"));
-    if (Number.isFinite(declaredDuration) && declaredDuration > 0) {
+    const declaredDuration = parseStrictFiniteTimingNumber(node.getAttribute("data-duration"));
+    if (declaredDuration != null && declaredDuration > 0) {
       return declaredDuration;
     }
     if (Number.isFinite(node.duration)) {
@@ -784,8 +785,8 @@ export function initSandboxRuntimeModular(): void {
     // even slightly short of the declared duration shrinks the playable
     // window — and duration-gated consumers (e.g. the studio's adapter
     // selection) silently reject the runtime player, losing audio playback.
-    const rootDeclaredSeconds = Number.parseFloat(rootEl.getAttribute("data-duration") ?? "");
-    if (Number.isFinite(rootDeclaredSeconds) && rootDeclaredSeconds > 0) {
+    const rootDeclaredSeconds = parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration"));
+    if (rootDeclaredSeconds != null && rootDeclaredSeconds > 0) {
       maxWindowEndSeconds = rootDeclaredSeconds;
     }
     const compositionNodes = Array.from(
@@ -1178,8 +1179,9 @@ export function initSandboxRuntimeModular(): void {
       // GSAP timeline, extend the timeline in-place with a zero-duration no-op
       // tween. Studio previews can inline only part of the timeline registry
       // while preserving the full host schedule in data-hf-authored-duration.
-      const rootDeclaredDurAttr = rootCompositionNode?.getAttribute("data-duration");
-      const rootDeclaredDur = rootDeclaredDurAttr ? parseFloat(rootDeclaredDurAttr) : null;
+      const rootDeclaredDur = parseStrictFiniteTimingNumber(
+        rootCompositionNode?.getAttribute("data-duration"),
+      );
       const rootDurationFloorSeconds = Math.max(
         isUsableTimelineDuration(rootDeclaredDur) ? rootDeclaredDur : 0,
         authoredCompositionDurationFloorSeconds ?? 0,
@@ -2000,9 +2002,8 @@ export function initSandboxRuntimeModular(): void {
         // playback so a trimmed track stops at its edge instead of running on
         // to the source-file or host-composition end. Absent → no cap (an
         // untrimmed clip plays its natural source length).
-        const ownDuration = Number.parseFloat(element.dataset.duration ?? "");
-        const explicitDuration =
-          Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration : null;
+        const ownDuration = parseStrictFiniteTimingNumber(element.dataset.duration);
+        const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
           sourceDuration,
@@ -2126,15 +2127,15 @@ export function initSandboxRuntimeModular(): void {
     scheduleRootStageLayoutDiagnostics();
   };
 
-  const finitePositiveDuration = (value: number): number =>
-    Number.isFinite(value) && value > 0 ? value : 0;
+  const finitePositiveDuration = (value: number | null | undefined): number =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 
   const growRootDurationLive = (durationSeconds: number) => {
     const nextDuration = finitePositiveDuration(Number(durationSeconds));
     if (nextDuration <= 0) return;
     const rootEl = resolveRootCompositionElement();
     const rootAttrDuration = finitePositiveDuration(
-      Number.parseFloat(rootEl?.getAttribute("data-duration") ?? ""),
+      parseStrictFiniteTimingNumber(rootEl?.getAttribute("data-duration")),
     );
     const currentDuration = Math.max(
       liveRootDurationOverrideSeconds,
@@ -2915,8 +2916,8 @@ export function initSandboxRuntimeModular(): void {
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
-            const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
-            const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+            const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
+            const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart = readElementPlaybackStart(rawEl);
             if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
@@ -2994,8 +2995,8 @@ export function initSandboxRuntimeModular(): void {
       if (!el.isConnected) continue;
       const start = Number.parseFloat(el.dataset.start ?? "");
       if (!Number.isFinite(start)) continue;
-      const durAttr = Number.parseFloat(el.dataset.duration ?? "");
-      const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+      const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
+      const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
       if (timeSeconds < start || timeSeconds >= end) continue;
       const mediaStart = readElementPlaybackStart(el);
       const relTime = timeSeconds - start + mediaStart;
@@ -3026,9 +3027,9 @@ export function initSandboxRuntimeModular(): void {
       const mediaStart = readElementPlaybackStart(rawEl);
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
-      const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+      const durationAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
       let clipDuration =
-        Number.isFinite(durationAttr) && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
+        durationAttr != null && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
       const compositionRoot = rawEl.closest("[data-composition-id]");
       if (compositionRoot) {
         const inheritedStart = resolveStartForElement(compositionRoot, 0);

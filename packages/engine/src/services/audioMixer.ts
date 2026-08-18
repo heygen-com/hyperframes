@@ -40,7 +40,11 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
-import { normalizePlaybackRate, readMediaStart } from "@hyperframes/core";
+import {
+  normalizePlaybackRate,
+  parseStrictFiniteTimingNumber,
+  readMediaStart,
+} from "@hyperframes/core";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -447,8 +451,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   // from data-duration / natural media downstream); guard NaN so a malformed
   // value never poisons the mix instead of falling back to 0.
   const parseEnd = (raw: string | null): number => {
-    const end = raw ? parseFloat(raw) : 0;
-    return Number.isFinite(end) ? end : 0;
+    return parseStrictFiniteTimingNumber(raw) ?? 0;
   };
   const isHidden = (el: AudioMediaElement): boolean => {
     for (let current: AudioMediaElement | null = el; current; current = current.parentElement) {

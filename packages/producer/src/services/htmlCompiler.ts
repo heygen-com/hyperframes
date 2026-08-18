@@ -21,6 +21,8 @@ import {
   shouldClampResolvedMediaDuration,
   CSS_URL_RE,
   isNonRelativeUrl,
+  parseStrictFiniteTimingNumber,
+  readMediaStart,
   resolveNaturalMediaTimelineDurationFromValues,
   type ResolvedDuration,
   type UnresolvedElement,
@@ -655,8 +657,7 @@ async function parseSubCompositions(
     if (!srcPath) continue;
 
     const elStart = parseFloat(el.getAttribute("data-start") || "0");
-    const elEndRaw = el.getAttribute("data-end");
-    const elEnd = elEndRaw ? parseFloat(elEndRaw) : Infinity;
+    const elEnd = parseStrictFiniteTimingNumber(el.getAttribute("data-end")) ?? Infinity;
 
     const absoluteStart = parentOffset + elStart;
     const absoluteEnd = Math.min(parentEnd, isFinite(elEnd) ? parentOffset + elEnd : Infinity);
@@ -2079,11 +2080,9 @@ export async function compileForRender(
 
   // Static duration (may be 0 if set at runtime by GSAP)
   const staticDuration = rootEl
-    ? parseFloat(
-        rootEl.getAttribute("data-duration") ||
-          rootEl.getAttribute("data-composition-duration") ||
-          "0",
-      )
+    ? (parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration")) ??
+      parseStrictFiniteTimingNumber(rootEl.getAttribute("data-composition-duration")) ??
+      0)
     : 0;
 
   return {
@@ -2171,9 +2170,9 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
       const src = htmlEl.currentSrc || htmlEl.src || htmlEl.getAttribute("src") || "";
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
-      const end = parseFloat(htmlEl.getAttribute("data-end") || "0");
-      const duration = parseFloat(htmlEl.getAttribute("data-duration") || "0");
-      const mediaStart = parseFloat(htmlEl.getAttribute("data-media-start") || "0");
+      const end = parseStrictFiniteTimingNumber(htmlEl.getAttribute("data-end")) ?? 0;
+      const duration = parseStrictFiniteTimingNumber(htmlEl.getAttribute("data-duration")) ?? 0;
+      const mediaStart = readMediaStart(htmlEl);
       const loop = htmlEl.hasAttribute("loop");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");

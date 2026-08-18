@@ -11,7 +11,7 @@
  */
 
 import type { RuntimeTimelineLike } from "./types";
-import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import { parseStrictFiniteTimingNumber, resolveNaturalMediaTimelineDuration } from "./playbackRate";
 
 export interface ClipNode {
   readonly id: string;
@@ -52,9 +52,7 @@ interface StartResolverLike {
 }
 
 function parseNum(value: string | null): number | null {
-  if (value == null) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  return parseStrictFiniteTimingNumber(value);
 }
 
 function durationFromTimeline(

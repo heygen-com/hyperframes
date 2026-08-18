@@ -17,6 +17,15 @@ const files = {
   editingRecipes: "skills/hyperframes-core/references/creator-editing-recipes.md",
   runtimeMedia: "packages/core/src/runtime/media.ts",
   runtimeInit: "packages/core/src/runtime/init.ts",
+  timingNumbers: "packages/core/src/runtime/playbackRate.ts",
+  clipTree: "packages/core/src/runtime/clipTree.ts",
+  timeline: "packages/core/src/runtime/timeline.ts",
+  timingCompiler: "packages/core/src/compiler/timingCompiler.ts",
+  mediaWindow: "packages/engine/src/services/mediaTimelineWindow.ts",
+  videoExtractor: "packages/engine/src/services/videoFrameExtractor.ts",
+  audioMixer: "packages/engine/src/services/audioMixer.ts",
+  webAudioTransportTest: "packages/core/src/runtime/webAudioTransport.test.ts",
+  audioFxTest: "packages/core/src/runtime/audioFx.test.ts",
 };
 
 function requiresAll(text, patterns, surface) {
@@ -348,4 +357,33 @@ test("every temporal source-range recipe includes matching audio markup", async 
       }
     }
   }
+});
+
+test("all literal timing readers use one strict finite-number contract", async () => {
+  assert.match(await read(files.timingNumbers), /parseStrictFiniteTimingNumber/);
+  for (const path of [
+    files.clipTree,
+    files.timeline,
+    files.runtimeInit,
+    files.timingCompiler,
+    files.mediaWindow,
+    files.videoExtractor,
+    files.audioMixer,
+  ]) {
+    assert.match(
+      await read(path),
+      /parseStrictFiniteTimingNumber/,
+      `${path} bypasses strict timing`,
+    );
+  }
+});
+
+test("attribute mocks dispatch by name instead of answering every attribute", async () => {
+  const webAudio = await read(files.webAudioTransportTest);
+  const audioFx = await read(files.audioFxTest);
+  assert.doesNotMatch(webAudio, /getAttribute:\s*\(\)\s*=>\s*(?:"1"|src)/);
+  assert.doesNotMatch(audioFx, /getAttribute:\s*\(\)\s*=>\s*"\{not json"/);
+  assert.match(webAudio, /name\s*===\s*"data-playback-rate"/);
+  assert.match(webAudio, /name\s*===\s*"src"/);
+  assert.match(audioFx, /name\s*===\s*HF_AUDIO_FX_ATTR/);
 });

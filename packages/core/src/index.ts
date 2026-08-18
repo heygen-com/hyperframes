@@ -300,6 +300,7 @@ export {
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 export {
   normalizePlaybackRate,
+  parseStrictFiniteTimingNumber,
   readElementPlaybackRate,
   readMediaStart,
   resolveNaturalMediaTimelineDuration,

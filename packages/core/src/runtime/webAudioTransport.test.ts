@@ -159,7 +159,10 @@ describe("WebAudioTransport", () => {
     });
 
     it("returns false for an element the transport does not play", () => {
-      const el = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
       const other = { muted: false } as HTMLMediaElement;
       expect(withSource(el).ownsElement(other)).toBe(false);
     });
@@ -491,7 +494,10 @@ describe("WebAudioTransport", () => {
       return transport;
     }
     const el = (src: string) =>
-      ({ getAttribute: () => src, currentSrc: "" }) as unknown as HTMLMediaElement;
+      ({
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+      }) as unknown as HTMLMediaElement;
     const failedSrcs = (t: WebAudioTransport) =>
       (t as unknown as { _failedSrcs: Set<string> })._failedSrcs;
 
