@@ -13,11 +13,13 @@
  *
  * ## Why the lane rides a `gain` node
  *
- * The obvious home is the track's volume lane, and that cannot work: volume is
- * 0..1 and `normaliseEnvelope` clamps every keyframe into it, so a volume lane
- * can only ever attenuate. Lifting a quiet passage needs a `gain` node, which
- * spans -60..+12 dB — which is what the audio skill means when it calls `gain`
- * "what an automation lane rides when a track has to move".
+ * The obvious home is the track's volume lane. Both now span the same range —
+ * `normaliseEnvelope` clamps keyframes to 0..+12 dB, not 0..1 — so the reason
+ * is no longer that a volume lane can only attenuate. It is ownership: the
+ * volume lane is the fader the author draws, and a leveller that wrote into it
+ * would silently redraw their envelope. A `gain` node is a separate stage the
+ * leveller owns outright, which is what the audio skill means when it calls
+ * `gain` "what an automation lane rides when a track has to move".
  */
 
 import {

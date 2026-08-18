@@ -27,6 +27,7 @@ import {
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
+import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import {
   assignBundledRuntimeCompositionIds,
   type BundledHostCompositionIdentity,
@@ -2256,8 +2257,44 @@ export async function discoverAudioVolumeAutomationFromTimeline(
     return { id, start, end };
   });
   return page.evaluate(
-    ({ clips, duration, step }) => {
+    ({ clips, duration, step, maxGain }) => {
       const results: { id: string; keyframes: { time: number; volume: number }[] }[] = [];
+      const clampGain = (value: number) =>
+        Number.isFinite(value) ? Math.max(0, Math.min(maxGain, value)) : 1;
+      // `HTMLMediaElement.volume` is spec-clamped to [0,1], so a clip authored
+      // above unity — or a GSAP tween seeded from one — reads back as 0 dB and
+      // the whole authored boost is lost from the mix. Shadow the accessor for
+      // the probe so the authored value survives; the native setter still gets
+      // the clamped value. Mirrors `withUnclampedVolume` in
+      // packages/core/src/audioGain.ts, which the preview probe uses; this copy
+      // exists only because the probe body is serialized into the page.
+      //
+      // Guarded because this body is also executed directly by tests that stand
+      // in for a Page, where there is no DOM and no HTMLMediaElement.
+      const volumeDescriptor =
+        typeof HTMLMediaElement === "undefined"
+          ? undefined
+          : Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
+      const nativeVolumeGet = volumeDescriptor?.get;
+      const nativeVolumeSet = volumeDescriptor?.set;
+      const withUnclampedVolume = <T>(el: HTMLMediaElement, probe: () => T): T => {
+        if (!nativeVolumeGet || !nativeVolumeSet) return probe();
+        let authored = Number(nativeVolumeGet.call(el));
+        Object.defineProperty(el, "volume", {
+          configurable: true,
+          get: () => authored,
+          set: (value: number) => {
+            authored = Number(value);
+            nativeVolumeSet.call(el, Math.max(0, Math.min(1, authored)));
+          },
+        });
+        try {
+          return probe();
+        } finally {
+          delete (el as unknown as Record<"volume", unknown>).volume;
+          nativeVolumeSet.call(el, Math.max(0, Math.min(1, authored)));
+        }
+      };
       const timelines = (window as unknown as { __timelines?: Record<string, unknown> })
         .__timelines;
       if (!timelines) return results;
@@ -2290,42 +2327,46 @@ export async function discoverAudioVolumeAutomationFromTimeline(
         const sampleStart = Math.max(0, start);
         const sampleEnd = Math.min(duration, end);
         const initialVolumeAttr = Number.parseFloat(el.dataset.volume ?? "");
-        if (Number.isFinite(initialVolumeAttr)) {
-          el.volume = Math.max(0, Math.min(1, initialVolumeAttr));
-        }
 
-        const keyframes: { time: number; volume: number }[] = [];
-        let previousSample: { time: number; volume: number } | undefined;
-        for (let t = sampleStart; t <= sampleEnd + 0.000001; t = Math.min(sampleEnd, t + step)) {
-          seekTl(t);
-          const rawVolume = Number(el.volume);
-          if (!Number.isFinite(rawVolume)) {
-            if (t === sampleEnd) break;
-            continue;
+        const keyframes = withUnclampedVolume(el, () => {
+          if (Number.isFinite(initialVolumeAttr)) {
+            el.volume = clampGain(initialVolumeAttr);
           }
-          const volume = Math.max(0, Math.min(1, rawVolume));
-          const sample = {
-            time: Number(t.toFixed(6)),
-            volume: Number(volume.toFixed(6)),
-          };
-          const last = keyframes.at(-1);
-          if (!last || Math.abs(last.volume - volume) > 0.0001) {
-            // Retain the preceding real sample when compression omitted a flat
-            // run. Continuous ramps already have that sample as their last
-            // keyframe, so their interpolation remains unchanged.
-            if (last && previousSample && previousSample.time > last.time) {
-              keyframes.push(previousSample);
+
+          const keyframes: { time: number; volume: number }[] = [];
+          let previousSample: { time: number; volume: number } | undefined;
+          for (let t = sampleStart; t <= sampleEnd + 0.000001; t = Math.min(sampleEnd, t + step)) {
+            seekTl(t);
+            const rawVolume = Number(el.volume);
+            if (!Number.isFinite(rawVolume)) {
+              if (t === sampleEnd) break;
+              continue;
             }
-            keyframes.push(sample);
-          } else if (t === sampleEnd && sample.time > last.time) {
-            keyframes.push(sample);
+            const volume = clampGain(rawVolume);
+            const sample = {
+              time: Number(t.toFixed(6)),
+              volume: Number(volume.toFixed(6)),
+            };
+            const last = keyframes.at(-1);
+            if (!last || Math.abs(last.volume - volume) > 0.0001) {
+              // Retain the preceding real sample when compression omitted a flat
+              // run. Continuous ramps already have that sample as their last
+              // keyframe, so their interpolation remains unchanged.
+              if (last && previousSample && previousSample.time > last.time) {
+                keyframes.push(previousSample);
+              }
+              keyframes.push(sample);
+            } else if (t === sampleEnd && sample.time > last.time) {
+              keyframes.push(sample);
+            }
+            previousSample = sample;
+            if (t === sampleEnd) break;
           }
-          previousSample = sample;
-          if (t === sampleEnd) break;
-        }
+          return keyframes;
+        });
 
         const staticAttr = Number.parseFloat(el.dataset.volume ?? "");
-        const staticVolume = Number.isFinite(staticAttr) ? Math.max(0, Math.min(1, staticAttr)) : 1;
+        const staticVolume = Number.isFinite(staticAttr) ? clampGain(staticAttr) : 1;
         const hasAutomation = keyframes.some(
           (keyframe) => Math.abs(keyframe.volume - staticVolume) > 0.0001,
         );
@@ -2337,7 +2378,7 @@ export async function discoverAudioVolumeAutomationFromTimeline(
       seekTl(0);
       return results;
     },
-    { clips, duration: compositionDuration, step: sampleStep },
+    { clips, duration: compositionDuration, step: sampleStep, maxGain: MAX_AUDIO_GAIN },
   );
 }
 

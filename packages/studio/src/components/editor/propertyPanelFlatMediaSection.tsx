@@ -207,7 +207,13 @@ export function FlatMediaSection({
         <>
           {/* The slider is disabled while a lane owns the level: a value set
               here would be overwritten by the envelope on the next tick. The
-              toggle beside it carries the tooltip. */}
+              toggle beside it carries the tooltip.
+
+              It is also disabled above unity, for the same reason in a
+              different guise — this control tops out at 100%, so committing
+              from it would silently cap a boosted clip and drop up to 12 dB
+              that now genuinely renders. A hold, not a fix: the dB fader that
+              can represent these levels replaces this control outright. */}
           <div
             className="hf-volume-row flex items-center gap-1"
             data-volume-automated={volumeAutomated ? "" : undefined}
@@ -220,7 +226,7 @@ export function FlatMediaSection({
                 max={100}
                 tier={volumePercent === 100 ? "default" : "explicitCustom"}
                 displayValue={`${volumePercent}%`}
-                disabled={volumeAutomated}
+                disabled={volumeAutomated || volume > 1}
                 onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
               />
             </div>

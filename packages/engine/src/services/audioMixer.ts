@@ -10,6 +10,7 @@ import { join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
+import { clampAudioGain } from "@hyperframes/core/audio-gain";
 import {
   downloadToTemp,
   isHttpUrl,
@@ -66,8 +67,7 @@ export type { AudioElement, MixResult } from "./audioMixer.types.js";
 export const MIXED_AUDIO_FILENAME = "audio.m4a";
 
 function clampVolume(volume: number): number {
-  if (!Number.isFinite(volume)) return 1;
-  return Math.max(0, Math.min(1, volume));
+  return clampAudioGain(volume);
 }
 
 function formatFilterNumber(value: number): string {

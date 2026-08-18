@@ -2,6 +2,7 @@ import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
+import { clampAudioGain } from "../audioGain.js";
 export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
 export function readElementPlaybackStart(el: Element): number {
@@ -255,7 +256,7 @@ export function syncRuntimeMedia(params: {
         }
       }
       const userVol = clampVolume(params.userVolume ?? 1);
-      const fallbackAuthorVolume = clampVolume(clip.volume ?? 1);
+      const fallbackAuthorVolume = clampAudioGain(clip.volume ?? 1);
       const previousRuntimeVolume = lastRuntimeAppliedVolume.get(el);
       const currentElementVolume = clampVolume(el.volume);
 
@@ -273,7 +274,7 @@ export function syncRuntimeMedia(params: {
       // there is one time base, and this is it.
       const laneGain = elementVolumeLaneGain(el, params.timeSeconds - clip.start);
       if (laneGain !== null) {
-        authorVolume = clampVolume(laneGain);
+        authorVolume = clampAudioGain(laneGain);
       } else if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
         // Keyframes probed from the GSAP timeline — same source as the renderer.
         // Use the interpolated envelope value directly; no need to track GSAP changes.
@@ -283,7 +284,7 @@ export function syncRuntimeMedia(params: {
         // and the playback rate — so it only coincides with the envelope's time base
         // for an untrimmed clip playing at 1x from t=0.
         const elapsedInClip = params.timeSeconds - clip.start;
-        authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
+        authorVolume = clampAudioGain(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
       } else if (params.isWebAudioRouted?.(el)) {
         authorVolume = fallbackAuthorVolume;
       } else if (previousRuntimeVolume === undefined) {
