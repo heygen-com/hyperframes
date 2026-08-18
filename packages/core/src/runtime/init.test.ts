@@ -1453,6 +1453,52 @@ describe("initSandboxRuntimeModular", () => {
     expect(decodeSpy).toHaveBeenCalledTimes(2);
   });
 
+  // Scheduling does NOT replace the active set: it bumps a generation, which
+  // only rejects schedules still in flight. Every source already started keeps
+  // playing and there is no per-element dedup, so rescheduling on its own laid
+  // a second buffer source over every sounding clip — the whole mix doubled,
+  // slightly out of phase, from one mute click until the next pause.
+  it("stops the running sources before rescheduling on a data-hidden toggle", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("data-hidden", "");
+    audio.load = () => {};
+    audio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audio);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    const player = window.__player;
+    player?.play();
+
+    vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+    const stopSpy = vi.spyOn(WebAudioTransport.prototype, "stopAll");
+    const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
+
+    audio.removeAttribute("data-hidden");
+    player?.seek(1, { keepPlaying: true });
+
+    expect(generationSpy).toHaveBeenCalledTimes(1);
+    // Two: `seek` clears the graph on its way in, and the toggle's own
+    // reschedule clears it again. Only the second one is what this covers —
+    // without it the count is 1 and the reschedule stacks on live sources.
+    expect(stopSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    // Order matters, not just presence: stopping AFTER the reschedule would
+    // silence the clips it had just started.
+    const lastStop = Math.max(...stopSpy.mock.invocationCallOrder);
+    expect(lastStop).toBeLessThan(generationSpy.mock.invocationCallOrder[0] ?? 0);
+  });
+
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {
     withStudioIframe(() => {
       const root = document.createElement("div");

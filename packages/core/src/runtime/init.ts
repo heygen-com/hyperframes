@@ -1961,7 +1961,16 @@ export function initSandboxRuntimeModular(): void {
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
   // playback. Batched to one call per syncTimedElementVisibility pass, not
-  // one per toggled node (schedulePlayback replaces the whole active set).
+  // one per toggled node.
+  //
+  // The reschedule is paired with `stopAll()` below, for the reason
+  // `setCanaries` and `applyWebAudioRate` already spell out: scheduling does
+  // NOT replace the active set. It bumps a generation, which only rejects
+  // stale schedules still in flight — every source already started keeps
+  // playing, and there is no per-element dedup. This comment used to claim the
+  // opposite and the call site trusted it, so muting a track mid-playback
+  // started a second buffer source for every in-window clip on top of the ones
+  // still sounding: the whole mix audibly doubled, slightly out of phase.
   let hiddenAudioDirty = false;
   const nodeAffectsAudio = (node: HTMLElement): boolean =>
     node.matches("audio[data-start]") || node.querySelector("audio[data-start]") !== null;
@@ -2042,6 +2051,7 @@ export function initSandboxRuntimeModular(): void {
       }
     }
     if (hiddenAudioDirty && clock.isPlaying()) {
+      webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
     hiddenAudioDirty = false;
