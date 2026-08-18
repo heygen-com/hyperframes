@@ -490,6 +490,27 @@ describe("syncRuntimeMedia", () => {
     });
   });
 
+  it("hands the transport an above-unity author gain, uncapped", () => {
+    // The preview terminus. `el.volume` is spec-bound to [0,1] and always will
+    // be, so the boost can only reach the ear through the Web Audio gain node —
+    // which means the author gain handed to the transport must NOT be capped on
+    // the way out, even though the native write beside it is.
+    const clip = createMockClip({ start: 0, end: 10, volume: 1.949845 });
+    const onElementVolume = vi.fn();
+
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 1,
+      playing: false,
+      playbackRate: 1,
+      onElementVolume,
+    });
+
+    const [, , authorVolume] = onElementVolume.mock.calls.at(-1) as [unknown, number, number];
+    expect(authorVolume).toBeCloseTo(1.949845, 6);
+    expect(clip.el.volume).toBe(1);
+  });
+
   it("plays active clip when playing and buffered", () => {
     const clip = createMockClip({ start: 0, end: 10 });
     Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });

@@ -292,7 +292,13 @@ export function syncRuntimeMedia(params: {
         // to the current time (seekTimelineAndAdapters runs before syncRuntimeMedia),
         // so el.volume reflects the animated value — trust it rather than falling
         // back to data-volume, which would clobber the GSAP-seeked position.
-        authorVolume = currentElementVolume;
+        //
+        // Except above unity. `el.volume` is spec-bound to [0,1], so it cannot
+        // represent an authored boost, and reading it back can only lose the
+        // gain. Without this, a boosted clip opened at 0 dB for one tick and
+        // then jumped once the unchanged-since-last-tick branch below took over
+        // — audible, and invisible to any test that ticks more than once.
+        authorVolume = fallbackAuthorVolume > 1 ? fallbackAuthorVolume : currentElementVolume;
       } else if (Math.abs(currentElementVolume - previousRuntimeVolume) > 0.0001) {
         // GSAP (or user code) changed el.volume between ticks — track it.
         //
