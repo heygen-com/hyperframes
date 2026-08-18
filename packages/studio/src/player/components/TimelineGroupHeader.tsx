@@ -91,19 +91,37 @@ export function TimelineGroupHeader({
           ▸
         </span>
       </button>
-      <span aria-hidden="true" className="shrink-0 text-[12px] leading-none text-white/50">
-        ▤
-      </span>
-      <span className="min-w-0 flex-1 truncate font-medium" title={label}>
-        {label}
-      </span>
-      <span
-        className="shrink-0 rounded-full bg-white/10 px-1 text-[9px] leading-[14px] tabular-nums text-white/55"
-        aria-hidden="true"
-        title={`${memberCount} tracks`}
+      {/* The group's name IS the way into its rack. A group is an element
+          carrying `data-fx-chain`, so selecting it is what puts the chain in
+          the property panel — but nothing on this row said so, and the FX
+          popover's footer was the only route to it. A button rather than a
+          click handler on the row: it has to be reachable by keyboard, and the
+          sibling controls each stopPropagation already, so widening the target
+          to the whole row would only add ambiguity over their hit areas. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={`Open ${label} effects`}
+        title="Open effects"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded border-0 bg-transparent p-0 text-left text-[11px] text-white hover:text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenFxRack();
+        }}
       >
-        {memberCount}
-      </span>
+        <span aria-hidden="true" className="shrink-0 text-[12px] leading-none text-white/50">
+          ▤
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+        <span
+          className="shrink-0 rounded-full bg-white/10 px-1 text-[9px] leading-[14px] tabular-nums text-white/55"
+          aria-hidden="true"
+          title={`${memberCount} tracks`}
+        >
+          {memberCount}
+        </span>
+      </button>
       <button
         type="button"
         tabIndex={-1}

@@ -6,8 +6,12 @@
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind, HfCarveSettings } from "@hyperframes/core/audio-carve";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
+import type { AudioFxSignalPath } from "./audioFxSignalPath.js";
 
 export interface FxSectionProps {
+  /** What the rack's `In`/`Out` lines name — see `audioFxSignalPath`. Absent
+   *  means an ungrouped clip, which is what those lines said before groups. */
+  signalPath?: AudioFxSignalPath;
   chain: HfAudioFxChain;
   /** Targets this track already automates, as `fx.<nodeId>.<param>` strings. */
   automatedTargets?: ReadonlySet<string>;

@@ -7,7 +7,7 @@
  * budget, and self-contained enough to test on its own.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   HF_AUDIO_FX_ATTR,
   HF_AUDIO_FX_DATA_KEY,
@@ -44,6 +44,8 @@ import { FxSection } from "./propertyPanelFxSection.js";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
 import { useFxChainObserved } from "./useFxChainObserved.js";
 import { useFxCarve } from "./useFxCarve.js";
+import { audioFxSignalPath } from "./audioFxSignalPath.js";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { useFxLevelling } from "./useFxLevelling.js";
 
 /**
@@ -226,6 +228,18 @@ export function AudioFxGroup({
 
   const [analysing, setAnalysing] = useState(false);
 
+  // The rack's In/Out lines. Resolved from the live document because a group's
+  // membership lives on the members, so neither end of the routing can be read
+  // off the selected element alone.
+  const signalPath = useMemo(() => {
+    const doc = element.element?.ownerDocument;
+    return audioFxSignalPath(
+      element.tagName?.toLowerCase(),
+      element.id ?? undefined,
+      doc ? resolveAudioGroups(doc) : [],
+    );
+  }, [element]);
+
   const { carvedAgainstBy, sourceOptions, setCarve } = useFxCarve(
     element,
     chain,
@@ -273,6 +287,7 @@ export function AudioFxGroup({
           next.nodes.length ? serializeAudioFxChain(next) : null,
         )
       }
+      signalPath={signalPath}
       onAuditionTransport={auditionTransport}
       onChainPreview={(next) =>
         // Live writes skip the preview refresh entirely, so dragging a knob no

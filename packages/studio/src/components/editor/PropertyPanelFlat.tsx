@@ -136,7 +136,13 @@ export function PropertyPanelFlat({
         ? "style"
         : sections.media
           ? "media"
-          : "layout",
+          : // An `<hf-audio-group>` has no style, no layout and no media — its
+            // chain is the only reason to select one. Without this the fallback
+            // landed on "layout", a section a bus does not render, so opening the
+            // rack on a group produced a panel with everything collapsed.
+            sections.audioFx
+            ? "audio-fx"
+            : "layout",
   );
 
   // Tracks which group(s) are actively transitioning this toggle cycle, so

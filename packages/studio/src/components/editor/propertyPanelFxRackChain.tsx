@@ -1,7 +1,8 @@
 /**
  * The rack's own signal path: the carve, the Tone EQ modules, and every
- * hand-built effect or preset run in between — bracketed by the "In this
- * track" / "Out to mix" labels that say the order is the point.
+ * hand-built effect or preset run in between — bracketed by the `In` / `Out`
+ * labels that say the order is the point. What those two name depends on what
+ * is selected; see `audioFxSignalPath`.
  *
  * Split out of `propertyPanelFxSection.tsx`, which owned this whole chain
  * before the file grew past a size where the chain and the add/pick menus
@@ -15,8 +16,11 @@ import { trackEqChanged, trackPresetAmount } from "./audioFxTelemetry.js";
 import { FxCarveModule, type AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 import { FxEqModule } from "./propertyPanelFxEqModule.js";
 import { FxPresetRun } from "./propertyPanelFxPresetRun.js";
+import type { AudioFxSignalPath } from "./audioFxSignalPath.js";
 
 export interface FxRackChainProps {
+  /** What the `In`/`Out` lines name — a clip's answer differs from a bus's. */
+  signalPath: AudioFxSignalPath;
   chain: HfAudioFxChain;
   showCarve: boolean;
   carveNodes: HfAudioFxNode[];
@@ -103,6 +107,7 @@ export function FxRackChain({
   presetAutomated,
   presetAutomateHandler,
   presetRemoveAutomationHandler,
+  signalPath,
 }: FxRackChainProps) {
   return (
     <div className="hf-fx-chain space-y-1">
@@ -111,7 +116,7 @@ export function FxRackChain({
           "move up" look cosmetic — it is the most consequential control here. */}
       <p className="hf-fx-term flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
         <span className="hf-fx-term-cap text-panel-text-1">In</span>
-        <span>this track</span>
+        <span>{signalPath.inLabel}</span>
       </p>
       {/* Carve leads the rack, which is also where its effects sit in the signal
           path — corrective work before anything the author added. Present
@@ -151,7 +156,9 @@ export function FxRackChain({
       ))}
       {handBuiltCount === 0 && eqIds.length === 0 ? (
         <p className="hf-fx-empty py-1 text-[11px] text-panel-text-2">
-          {showCarve ? "No other effects on this track." : "No effects on this track."}
+          {showCarve
+            ? `No other effects on this ${signalPath.subject}.`
+            : `No effects on this ${signalPath.subject}.`}
         </p>
       ) : (
         runs.map((run) => {
@@ -195,7 +202,7 @@ export function FxRackChain({
       )}
       <p className="hf-fx-term hf-fx-term-out flex items-baseline gap-1.5 px-1.5 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
         <span className="hf-fx-term-cap text-panel-text-1">Out</span>
-        <span>to mix</span>
+        <span>{signalPath.outLabel}</span>
       </p>
     </div>
   );

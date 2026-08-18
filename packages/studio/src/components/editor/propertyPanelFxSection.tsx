@@ -25,6 +25,7 @@ import { applyAudioFxProfile, getAudioFxProfile } from "@hyperframes/core/audio-
 import { audioFxJobNode, type HfAudioFxJob } from "@hyperframes/core/audio-fx-jobs";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxRackChain } from "./propertyPanelFxRackChain.js";
+import { CLIP_SIGNAL_PATH } from "./audioFxSignalPath.js";
 import { FxAddMenu } from "./propertyPanelFxAddMenu.js";
 import { useFxAudition } from "./useFxAudition.js";
 import {
@@ -103,6 +104,7 @@ export function FxSection({
   onRemovePresetAutomation,
   automatedPresets,
   onAuditionTransport,
+  signalPath,
 }: FxSectionProps) {
   const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
@@ -417,6 +419,7 @@ export function FxSection({
       onKeyDown={closeMenus}
     >
       <FxRackChain
+        signalPath={signalPath ?? CLIP_SIGNAL_PATH}
         chain={chain}
         showCarve={showCarve}
         carveNodes={carveNodes}
