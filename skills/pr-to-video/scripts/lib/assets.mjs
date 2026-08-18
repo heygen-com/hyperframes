@@ -17,8 +17,8 @@ export function basenamesFromCandidates(value) {
 }
 
 // Copy each frame's asset_candidates from capture/{assets,assets/videos,
-// screenshots} into assets/. Already-staged files are left as is (first-wins),
-// so calling this twice is safe. Returns { staged, wanted, anomalies }.
+// assets/svgs, screenshots} into assets/. Already-staged files are left as is
+// (first-wins), so calling this twice is safe. Returns { staged, wanted, anomalies }.
 export function stageAssets({ hyperframesDir, frames }) {
   const wanted = new Set();
   for (const f of frames) {
@@ -27,6 +27,7 @@ export function stageAssets({ hyperframesDir, frames }) {
   const captureDirs = [
     join(hyperframesDir, "capture/assets"),
     join(hyperframesDir, "capture/assets/videos"), // videos download into a subdir
+    join(hyperframesDir, "capture/assets/svgs"), // inline SVGs extract into a subdir
     join(hyperframesDir, "capture/screenshots"),
   ];
   const assetsDir = join(hyperframesDir, "assets");
