@@ -156,4 +156,28 @@ describe("TimelineGroupBusStrip", () => {
     });
     expect(container.textContent ?? "").not.toMatch(/dB/i);
   });
+
+  // The design docs live on their own branch and never reach this PR, so the
+  // vocabulary rule they carry has to be enforced from inside the code or it
+  // gets re-broken by whoever reads only the component. It already was once:
+  // this strip shipped a "Bus level" label and a "how loud this bus is playing"
+  // tooltip. Mixing-desk nouns are ours, for talking to each other — an author
+  // has never met a bus, a fader, an insert or a send, and will not learn them
+  // to put reverb on a voiceover.
+  it("uses no mixing-desk vocabulary in anything the author can read", () => {
+    vi.useFakeTimers();
+    renderStrip({ volume: 0.5 });
+    act(() => {
+      groupLevels.notify(new Map([["vo", { level: 0.9, clipped: true }]]));
+      vi.advanceTimersByTime(40);
+    });
+    // Tooltips too, not just text: the regression this catches was a `title`.
+    const readable = [
+      container.textContent ?? "",
+      ...Array.from(container.querySelectorAll("[title], [aria-label]")).map(
+        (el) => `${el.getAttribute("title") ?? ""} ${el.getAttribute("aria-label") ?? ""}`,
+      ),
+    ].join(" ");
+    expect(readable).not.toMatch(/\b(bus|submix|fader|insert|send)s?\b/i);
+  });
 });

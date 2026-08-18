@@ -2,7 +2,7 @@
  * B7: the group's own volume slider + a living level bar + "Holds …" — the
  * bus, not the mechanism. No dB numbers, no peak-hold readout, no routing
  * row (groups doc §5, casual-user section) — a slider, a bar that moves with
- * the sound, and the words "Too loud" when it clips.
+ * the sound, and the words "⚠ Too loud" when it clips.
  */
 import { useEffect, useRef, useState } from "react";
 import { useGroupLevel } from "../../hooks/useGroupLevel";
