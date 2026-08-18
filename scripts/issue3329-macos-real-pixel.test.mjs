@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, parse, resolve } from "node:path";
 import test from "node:test";
@@ -33,6 +41,24 @@ test("cleanup rejects broad, traversing, home, and arbitrary external targets", 
     outside,
   ]) {
     assert.throws(() => safetyModule.validateArtifactRoot(target, repo), /artifact root/i);
+  }
+});
+
+test("cleanup rejects a descendant that escapes through a symlink", () => {
+  assert.ok(safetyModule, "artifact cleanup safety module must exist");
+  const artifactSpace = join(repo, ".artifacts");
+  const outside = mkdtempSync(join(tmpdir(), "hf-issue3329-symlink-external-"));
+  const escape = join(artifactSpace, `escape-${process.pid}-${Date.now()}`);
+  mkdirSync(artifactSpace, { recursive: true });
+  symlinkSync(outside, escape, "dir");
+  try {
+    assert.throws(
+      () => safetyModule.validateArtifactRoot(join(escape, "run"), repo),
+      /artifact root/i,
+    );
+  } finally {
+    unlinkSync(escape);
+    rmSync(outside, { recursive: true });
   }
 });
 
