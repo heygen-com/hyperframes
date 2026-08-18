@@ -73,10 +73,10 @@ export function TimelineGroupBusStrip({
       style={{ top: TRACK_H, height: STRIP_H }}
     >
       {/* Named, because unnamed it reads as an unexplained slider next to an
-          empty capsule: the row opens off a control labelled "lanes", so the
-          first question it has to answer is what it IS. Two words, no dB and no
-          numeric readout — that part of the casual-user rule stands. */}
-      <span className="shrink-0 text-white/45">Bus level</span>
+          empty capsule. "Volume" is the design mockup's own label (groups doc
+          §5) — B7's list is slider, bar, "Holds …", "⚠ Too loud" and NOTHING
+          else, and the vocabulary rule bans "bus" from the product outright. */}
+      <span className="shrink-0 text-white/45">Volume</span>
       <input
         type="range"
         aria-label="Group volume"
@@ -99,9 +99,6 @@ export function TimelineGroupBusStrip({
       <div
         className="relative h-1.5 w-16 shrink-0 overflow-hidden rounded-full"
         style={{ background: theme.gutterBorder }}
-        // Empty while the transport is stopped, which is when somebody is most
-        // likely to be wondering what it is.
-        title="How loud this bus is playing right now"
         aria-hidden="true"
       >
         <div
@@ -112,7 +109,7 @@ export function TimelineGroupBusStrip({
           }}
         />
       </div>
-      {clipped && <span className="shrink-0 font-medium text-[#ff5c5c]">Too loud</span>}
+      {clipped && <span className="shrink-0 font-medium text-[#ff5c5c]">⚠ Too loud</span>}
       <span className="min-w-0 flex-1 truncate" title={holdsText}>
         {holdsText}
       </span>

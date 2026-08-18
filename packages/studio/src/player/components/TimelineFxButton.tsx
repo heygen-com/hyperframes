@@ -18,10 +18,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { TimelineFxPopover } from "../../components/editor/TimelineFxPopover.js";
-import {
-  useAuditionTransport,
-  type AuditionSpan,
-} from "../../components/editor/useAuditionTransport.js";
+import { useAuditionTransport } from "../../components/editor/useAuditionTransport.js";
 
 function parseFxChainOrEmpty(raw: string | undefined): HfAudioFxChain {
   if (!raw) return { version: 1, nodes: [] };
@@ -39,12 +36,6 @@ interface TimelineFxButtonChainProps {
   fxChainRaw: string | undefined;
   onChainChange: (next: HfAudioFxChain) => void;
   onChainPreview?: (next: HfAudioFxChain) => void;
-  /** The clips this chain is heard through, so an audition can start where they
-   *  actually sound instead of playing silence from a playhead parked before
-   *  the first one. */
-  auditionSpans?: readonly AuditionSpan[];
-  /** Why an audition here will be silent (excluded by someone else's solo). */
-  silentReason?: string | null;
   /** Whether this target is muted right now. */
   isMuted?: boolean;
   /** Set this target's mute on the running graph WITHOUT touching the document,
@@ -161,10 +152,9 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
               if (on) borrowedMute.current = props.isMuted === true;
               if (borrowedMute.current) props.onSetMutedLive?.(!on);
               if (!on) borrowedMute.current = false;
-              transport(on, props.auditionSpans);
+              transport(on);
             }}
             onOpenRack={props.onOpenRack}
-            silentReason={props.silentReason}
           />,
           document.body,
         )}

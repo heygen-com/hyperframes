@@ -490,22 +490,12 @@ export function TimelineTrackHeader({
               trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
               onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
               onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
-              auditionSpans={[singleAudioClip]}
-              // Mute is borrowed for the hover and put back (see the group row);
-              // solo is not ours to lift, so it gets said out loud instead.
+              // Muted, an audition is silent — so the hover lifts the mute on
+              // the running graph and puts it back on the way out, the same
+              // borrow-and-return it already does with the playhead.
               isMuted={isTrackHidden}
               onSetMutedLive={(muted) =>
                 onSetElementAttributeLive?.(singleAudioClip, "data-hidden", muted ? "" : null)
-              }
-              // The clip's own mute is borrowed above. A mute that lives
-              // somewhere else — the bus this clip hangs off, or another
-              // track's solo — is not this row's to lift, so it gets said.
-              silentReason={
-                singleAudioClip.audioGroupHidden
-                  ? "This clip's group is muted — unmute the group to hear presets."
-                  : soloed.size > 0 && !(soloTargetId !== null && soloed.has(soloTargetId))
-                    ? "Another track is soloed — presets here are silent."
-                    : null
               }
               onOpenRack={() => openClipFxRack(singleAudioClip)}
             />
