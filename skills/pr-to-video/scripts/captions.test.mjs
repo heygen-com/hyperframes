@@ -134,3 +134,54 @@ test("word-named weights still parse when the filename carries no numeric axis",
     /font-weight: 400; font-style: normal/,
   );
 });
+
+// build-frame.mjs stages captured brand fonts under a REWRITTEN name, and brandFontFaces
+// derives the face's axes back out of that name. The two are a contract, and it is easy to
+// break silently from either side: build-frame used to drop the style token while renaming,
+// so an italic file arrived as "Newsreader-Regular.ttf" and was declared upright — leaving
+// the document-global normal slot pointing at italic bytes even once brandFontFaces learned
+// about styles. These two tests pin both ends of that contract.
+test("the names build-frame.mjs stages round-trip back to the right face", () => {
+  const faces = withFontProject(
+    [
+      "Newsreader-Regular.ttf",
+      "Newsreader-Regular-Italic.ttf",
+      "Inter-400.woff2",
+      "Inter-600-Italic.woff2",
+    ],
+    brandFontFaces,
+  );
+  for (const [file, weight, style] of [
+    ["Newsreader-Regular.ttf", 400, "normal"],
+    ["Newsreader-Regular-Italic.ttf", 400, "italic"],
+    ["Inter-400.woff2", 400, "normal"],
+    ["Inter-600-Italic.woff2", 600, "italic"],
+  ]) {
+    const line = faces.split("\n").find((candidate) => candidate.includes(`/${file}'`));
+    assert.ok(line, `${file} must be declared`);
+    assert.match(line, new RegExp(`font-weight: ${weight};`));
+    assert.match(line, new RegExp(`font-style: ${style};`));
+  }
+});
+
+test("every build-frame.mjs copy stages the style axis it promises", () => {
+  for (const skill of ["product-launch-video", "faceless-explainer", "pr-to-video"]) {
+    const source = readFileSync(
+      new URL(`../../${skill}/scripts/build-frame.mjs`, import.meta.url),
+      "utf8",
+    );
+    // The staged filename must carry the style, or the italic and upright faces of one
+    // weight collide on a single name and only whichever sorts first survives.
+    assert.match(
+      source,
+      /const clean = `\$\{fam\.replace\(\/\[\^A-Za-z0-9\]\/g, ""\)\}-\$\{w\}\$\{style === "italic" \? "-Italic" : ""\}\./,
+      `${skill}/build-frame.mjs must keep the style token in the staged name`,
+    );
+    // ...and the emitted descriptor must report the real style, not a hardcoded normal.
+    assert.doesNotMatch(
+      source,
+      /font-weight:\$\{n\};font-style:normal/,
+      `${skill}/build-frame.mjs must not assert font-style:normal over captured bytes`,
+    );
+  }
+});
