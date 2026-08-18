@@ -452,7 +452,12 @@ if (brandFonts.length) {
     // A numeric axis is the font's own answer, so it beats the word heuristic. Fontsource
     // names every face that way and carries no weight WORD at all, so word-only parsing
     // scored a whole family "Regular" and staged exactly one of its faces.
-    const numeric = /(?:^|[^0-9])([1-9]00)(?:[^0-9]|$)/.exec(s);
+    //
+    // A weight token must not be buried inside a longer run: this reads capture files,
+    // which are commonly hash-named, and "Newsreader-a1b200c3.woff2" is not a 200-weight
+    // face. Hence a non-digit before (which also stops "2100" reading as 100) and no
+    // alphanumeric after. "Roboto900.ttf" still parses.
+    const numeric = /(?:^|[^0-9])([1-9]00)(?![0-9a-z])/.exec(s);
     if (numeric) return { n: Number(numeric[1]), w: numeric[1] };
     if (/black|heavy|ultra|extrabold/.test(s)) return { n: 800, w: "ExtraBold" };
     if (/semibold|demibold/.test(s)) return { n: 600, w: "SemiBold" };

@@ -164,6 +164,38 @@ test("the names build-frame.mjs stages round-trip back to the right face", () =>
   }
 });
 
+test("a weight token buried in a longer run is not read as a weight", () => {
+  // capture/assets/fonts commonly holds hash-named files, and a hash is not a weight.
+  const faces = withFontProject(
+    ["Newsreader-a1b200c3.woff2", "Inter-2100.woff2", "Inter900.woff2"],
+    brandFontFaces,
+  );
+  const weightOf = (file) =>
+    Number(/font-weight: (\d+);/.exec(faces.split("\n").find((l) => l.includes(file)))?.[1]);
+
+  // "200" sits mid-run (…b200c3), so the word path decides: Regular.
+  assert.equal(weightOf("Newsreader-a1b200c3.woff2"), 400);
+  // 4-digit guard: "2100" must not read as 100.
+  assert.equal(weightOf("Inter-2100.woff2"), 400);
+  // ...but a trailing weight with no separator is still a weight.
+  assert.equal(weightOf("Inter900.woff2"), 900);
+});
+
+// captions.mjs ships once per creation workflow because each skill installs standalone,
+// and the three copies are meant to be byte-identical. This PR alone had to land the same
+// two-axis fix in all three; a future one that lands in only one drifts silently.
+test("captions.mjs is byte-identical across the three workflows that ship it", () => {
+  const [first, ...rest] = ["product-launch-video", "faceless-explainer", "pr-to-video"].map(
+    (skill) => ({
+      skill,
+      source: readFileSync(new URL(`../../${skill}/scripts/captions.mjs`, import.meta.url), "utf8"),
+    }),
+  );
+  for (const other of rest) {
+    assert.equal(other.source, first.source, `${other.skill} drifted from ${first.skill}`);
+  }
+});
+
 test("every build-frame.mjs copy stages the style axis it promises", () => {
   for (const skill of ["product-launch-video", "faceless-explainer", "pr-to-video"]) {
     const source = readFileSync(

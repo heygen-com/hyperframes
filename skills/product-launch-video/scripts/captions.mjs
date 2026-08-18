@@ -306,7 +306,12 @@ function brandFontFaces(framePath, hyperframesDir) {
     // names every face this way ("inter-latin-500-normal.woff2") and carries no weight
     // WORD at all, so word-only parsing collapsed a whole family onto 400 and shipped
     // exactly one of its faces.
-    const numeric = /(?:^|[^0-9])([1-9]00)(?:[^0-9]|$)/.exec(s);
+    //
+    // A weight token must not be buried inside a longer run: capture/assets/fonts holds
+    // hash-named files, and "Newsreader-a1b200c3.woff2" is not a 200-weight face. Hence a
+    // non-digit before (which also stops "2100" reading as 100) and no alphanumeric after.
+    // "Roboto900.ttf" still parses — requiring separators on both sides would have lost it.
+    const numeric = /(?:^|[^0-9])([1-9]00)(?![0-9a-z])/.exec(s);
     if (numeric) return Number(numeric[1]);
     if (/black|heavy|ultra|extrabold/.test(s)) return 800;
     if (/semibold|demibold/.test(s)) return 600; // before /bold/ — "demibold" contains "bold"
